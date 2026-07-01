@@ -17,6 +17,7 @@ import { XMarkIcon } from "@heroicons/react/24/outline";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/format";
 import { useMyDay, useTaskAttention } from "@/hooks/use-tasks";
+import { usePermissions } from "@/hooks/use-permissions";
 import { DeskHandle } from "./desk-shared";
 import { DESK_TABS, DESK_TAB_LABELS, type DeskTab } from "@/types/desk";
 import { DeskToday } from "./desk-today";
@@ -76,15 +77,22 @@ export function DeskDrawer() {
   const { open, setOpen, tab, setTab } = useDeskState();
   const isDesktop = useIsDesktop();
 
+  // Standup is a developer/staff workflow — admins & super-admins don't push one,
+  // so don't nag them about it (or surface it in the summary).
+  const { isAdminOrAbove } = usePermissions();
+  const showStandup = !isAdminOrAbove;
+
   // Light, always-on queries drive the collapsed summary (shared cache with HQ /
   // the tab bodies — no extra Google calls until the drawer is opened).
   const attention = useTaskAttention({ mine: true });
-  const myDay = useMyDay();
+  const myDay = useMyDay(undefined, { enabled: showStandup });
 
   const overdue = attention.data?.overdueCount ?? 0;
   const doing = attention.data?.doingCount ?? 0;
   const standupPending =
-    myDay.data != null && (!myDay.data.update.amPushedAt || !myDay.data.update.pmPushedAt);
+    showStandup &&
+    myDay.data != null &&
+    (!myDay.data.update.amPushedAt || !myDay.data.update.pmPushedAt);
 
   const summaryParts: string[] = [];
   if (overdue > 0) summaryParts.push(`${overdue} OVERDUE`);
@@ -106,7 +114,7 @@ export function DeskDrawer() {
           className="group fixed bottom-0 left-0 right-0 z-40 flex h-12 items-center justify-between gap-3 border-t border-[var(--border-2)] bg-[var(--surface-0)] px-5 text-left shadow-[0_-4px_16px_-8px_rgba(10,13,18,0.15)] transition hover:bg-[var(--surface-canvas)] lg:left-[280px]"
         >
           {/* grab handle */}
-          <span className="absolute left-1/2 top-1.5 h-1 w-9 -translate-x-1/2 rounded-full bg-[var(--border-1)] transition group-hover:w-12 group-hover:bg-[var(--brand-500)]" />
+          <span className="absolute left-1/2 top-1.5 h-1 w-10 origin-center -translate-x-1/2 transform-gpu rounded-full bg-[var(--border-1)] transition-all duration-300 ease-out group-hover:scale-x-[1.4] group-hover:bg-[var(--brand-500)] motion-reduce:transition-none" />
           <span className="flex shrink-0 items-center gap-2">
             <span className="h-1.5 w-1.5 rounded-full bg-[var(--brand-600)]" />
             <span

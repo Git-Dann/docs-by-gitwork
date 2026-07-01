@@ -58,7 +58,7 @@ export function DeskHandle({ onClick, label }: { onClick: () => void; label: str
       aria-label={label}
       className="group flex w-full shrink-0 items-center justify-center py-2.5"
     >
-      <span className="h-1 w-9 rounded-full bg-[var(--border-1)] transition group-hover:w-12 group-hover:bg-[var(--brand-500)]" />
+      <span className="h-1 w-10 origin-center transform-gpu rounded-full bg-[var(--border-1)] transition-all duration-300 ease-out group-hover:scale-x-[1.4] group-hover:bg-[var(--brand-500)] motion-reduce:transition-none" />
     </button>
   );
 }

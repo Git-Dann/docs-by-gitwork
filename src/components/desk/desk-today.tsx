@@ -1,11 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { CheckCircleIcon } from "@heroicons/react/24/outline";
 import { useAccount } from "@/hooks/use-account";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useMyDay, useTaskAttention } from "@/hooks/use-tasks";
+import { useClientList } from "@/hooks/use-proposals";
 import { useDeskCalendar } from "@/hooks/use-desk";
 import { cn } from "@/lib/format";
-import { EditorialRow, Stamp, DeskTaskRow, DeskEmpty, DeskSkeleton } from "./desk-shared";
+import { EditorialRow, Stamp, DeskTaskRow, DeskEmpty, DeskSkeleton, RevealList } from "./desk-shared";
 
 function greeting(hour: number): string {
   if (hour < 12) return "Good morning";
@@ -17,6 +20,8 @@ function greeting(hour: number): string {
  *  two-column rows. On brand: blue, not yellow. */
 export function DeskToday() {
   const account = useAccount();
+  const { isAdminOrAbove, canViewClientFinancials } = usePermissions();
+  const showStandup = !isAdminOrAbove; // devs/staff push standups; admins & super-admins don't
   const myDay = useMyDay();
   const attention = useTaskAttention({ mine: true });
   const calendar = useDeskCalendar();
@@ -70,14 +75,16 @@ export function DeskToday() {
       {/* Push your work forward */}
       <EditorialRow
         title="Push your work forward"
-        caption="Your focus and standup for today."
-        stamp={<Stamp label="My Day" href="/app" />}
+        caption={showStandup ? "Your focus and standup for today." : "Your focus for today."}
+        stamp={<Stamp label="My tasks" href="/app" />}
       >
-        <div className="flex flex-wrap items-center gap-2">
-          <StandupPill label="AM standup" done={amPushed} />
-          <StandupPill label="PM standup" done={pmPushed} />
-        </div>
-        <div className="mt-4">
+        {showStandup ? (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <StandupPill label="AM standup" done={amPushed} />
+            <StandupPill label="PM standup" done={pmPushed} />
+          </div>
+        ) : null}
+        <div>
           {myDay.isPending ? (
             <DeskSkeleton />
           ) : focus ? (
@@ -131,8 +138,95 @@ export function DeskToday() {
           )}
         </div>
       </EditorialRow>
+
+      {/* Client cash flow — admins/super-admins who may see financials (e.g. Harry). */}
+      {canViewClientFinancials ? <CashFlowRow /> : null}
     </div>
   );
+}
+
+function CashFlowRow() {
+  const clients = useClientList();
+  const withCost = (clients.data?.clients ?? [])
+    .filter((c) => c.monthlyCost && c.monthlyCost.amount > 0)
+    .sort((a, b) => (b.monthlyCost?.amount ?? 0) - (a.monthlyCost?.amount ?? 0));
+
+  const totals = new Map<string, number>();
+  for (const c of withCost) {
+    const mc = c.monthlyCost!;
+    totals.set(mc.currency, (totals.get(mc.currency) ?? 0) + mc.amount);
+  }
+  const dominant = [...totals.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
+
+  return (
+    <EditorialRow
+      title="Client cash flow"
+      caption="Monthly dev cost by client."
+      stamp={<Stamp label="Portal" href="/app/portal" />}
+    >
+      {clients.isPending ? (
+        <DeskSkeleton />
+      ) : withCost.length === 0 ? (
+        <DeskEmpty>No priced client work yet.</DeskEmpty>
+      ) : (
+        <>
+          {dominant ? (
+            <div className="mb-3 flex items-baseline gap-2">
+              <span
+                className="text-[30px] leading-none text-[var(--text-1)]"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {money(dominant[1], dominant[0])}
+              </span>
+              <span
+                className="text-[11px] uppercase tracking-[0.8px] text-[var(--text-4)]"
+                style={{ fontFamily: "var(--font-mono)" }}
+              >
+                / mo · {withCost.length} {withCost.length === 1 ? "client" : "clients"}
+                {totals.size > 1 ? " · mixed" : ""}
+              </span>
+            </div>
+          ) : null}
+          <RevealList
+            items={withCost}
+            initial={6}
+            renderItem={(c) => (
+              <Link
+                key={c.id}
+                href={`/app/portal/${c.slug}`}
+                className="flex items-center justify-between gap-3 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3.5 py-2.5 transition hover:border-[var(--brand-300)] hover:shadow-[var(--shadow-xs)]"
+              >
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text-1)]">
+                  {c.name}
+                </span>
+                <span
+                  className="shrink-0 text-sm text-[var(--text-2)]"
+                  style={{ fontFamily: "var(--font-mono)" }}
+                >
+                  {c.monthlyCost?.mixedCurrency
+                    ? "mixed"
+                    : money(c.monthlyCost!.amount, c.monthlyCost!.currency)}
+                </span>
+              </Link>
+            )}
+          />
+        </>
+      )}
+    </EditorialRow>
+  );
+}
+
+/** Compact currency format, whole units. */
+function money(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch {
+    return `${Math.round(amount)} ${currency}`;
+  }
 }
 
 function StandupPill({ label, done }: { label: string; done: boolean }) {

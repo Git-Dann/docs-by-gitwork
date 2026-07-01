@@ -243,10 +243,11 @@ export function useAddTaskComment() {
 
 // ─── Standup ─────────────────────────────────────────────────────────────────
 
-export function useMyDay(date?: string) {
+export function useMyDay(date?: string, opts: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: QK.myDay(date),
     queryFn: () => getMyDay(date),
+    enabled: opts.enabled ?? true,
     staleTime: 15_000,
   });
 }
