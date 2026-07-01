@@ -40,7 +40,6 @@ function Graphic({
 export function ProposalSectionPreview({
   section,
   proposal,
-  index,
   onSelectSection,
   editable,
   onChange,
@@ -119,21 +118,18 @@ export function ProposalSectionPreview({
   }
 
   const sectionId = `section-${section.id ?? section.key}`;
-  const sectionNumber = String(index + 1).padStart(2, "0");
   const sectionAssets = proposal.assets.filter((asset) => asset.placement === section.key);
 
   return wrapSelectable(
-    <section
-      id={sectionId}
-      className="proposal-block-avoid space-y-6 border-b border-[var(--border-2)] pb-10 last:border-0 last:pb-0 print:pb-8"
-    >
-      <header className="max-w-3xl space-y-3">
-        <p className="app-eyebrow">Section {sectionNumber}</p>
-        <h2 className="text-[32px] font-semibold tracking-[-0.04em] text-[var(--text-1)] sm:text-[36px]">
+    <section id={sectionId} className="proposal-block-avoid space-y-5">
+      <header className="max-w-3xl space-y-2">
+        <h2 className="text-[24px] leading-[1.2] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]">
           {section.title}
         </h2>
         {section.description ? (
-          <p className="max-w-2xl text-sm leading-7 text-[var(--text-3)]">{section.description}</p>
+          <p className="max-w-2xl text-[13px] leading-6 text-[var(--doc-muted)]">
+            {section.description}
+          </p>
         ) : null}
       </header>
 

@@ -154,7 +154,40 @@ export const coverSection = defineSection<CoverSectionData>({
 
     const docTypeLabel =
       DOC_TYPE_EYEBROW[proposal.documentType] ?? "DOCUMENT";
-    const eyebrow = `FOUNDRY // ${docTypeLabel}`;
+    // Statement cover: the accent eyebrow reads "CLIENT  /  DOC TYPE".
+    const eyebrow = [
+      clientName && clientName !== "Client" ? clientName : null,
+      docTypeLabel,
+    ]
+      .filter(Boolean)
+      .join("  /  ")
+      .toUpperCase();
+
+    // Prepared date — the cover's `date` override, else the doc's updated date. Pretty form
+    // ("1 JULY 2026") for the classification stack + meta grid.
+    const preparedIso = (data.date?.trim() || proposal.updatedAt).slice(0, 10);
+    const preparedDate = new Date(preparedIso);
+    const prettyPrepared = Number.isNaN(preparedDate.getTime())
+      ? preparedIso
+      : preparedDate
+          .toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+          .toUpperCase();
+
+    // Top-right classification stack (doc type · prepared · confidential).
+    const classification = [
+      docTypeLabel,
+      `PREPARED ${prettyPrepared}`,
+      confidentialityText ? "CONFIDENTIAL" : null,
+    ].filter(Boolean) as string[];
+
+    // Gitwork company footer (from the agency's letterhead — same on every doc).
+    const companyFooter = {
+      left: [
+        "GITWORK GROUP LTD  /  COMPANY NO. 15756347  /  VAT REG. 468314867",
+        "3RD FLOOR, ANCHORAGE ONE, ANCHORAGE QUAY, SALFORD QUAYS, M50 3YJ",
+      ],
+      right: ["ACCOUNTS@GITWORK.CO.UK", "WWW.GITWORK.CO.UK"],
+    };
 
     const visibleSections = proposal.sections.filter((s) => s.isVisible).length;
     const phasesCount = proposal.timelinePhases.length;
@@ -177,6 +210,8 @@ export const coverSection = defineSection<CoverSectionData>({
     const meta: Array<{ label: string; value: string }> = [];
     if (clientName && clientName !== "Client") meta.push({ label: "Client", value: clientName });
     if (authorLine) meta.push({ label: "Prepared by", value: authorLine });
+    meta.push({ label: "Date", value: prettyPrepared });
+    if (proposal.version) meta.push({ label: "Version", value: proposal.version });
 
     const summary =
       intro?.statement?.trim() ||
@@ -224,13 +259,16 @@ export const coverSection = defineSection<CoverSectionData>({
                   { count: visibleSections, label: "Sections" },
                   { count: phasesCount, label: "Phases" },
                   { count: touchpointsCount, label: "Touchpoints" },
-                  { count: formattedValue, label: "Value", color: "#1D4ED8" },
+                  // The one dark tile — echoes the statement's "total" emphasis.
+                  { count: formattedValue, label: "Value", bg: "#191817", color: "#FFFFFF" },
                 ]
               : undefined
           }
           executiveSummary={summary || undefined}
           callout={confidentialityText ? { text: confidentialityText, tone: "neutral" } : undefined}
-          dated={proposal.updatedAt.slice(0, 10)}
+          dated={prettyPrepared}
+          classification={classification}
+          companyFooter={companyFooter}
           logoUrl={brandLogoUrl}
           coBrand={
             data.brandLockup === "CLIENT_X_GITWORK" &&

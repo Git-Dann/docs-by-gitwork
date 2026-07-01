@@ -480,6 +480,36 @@ is a low-alpha wide stroke; the eraser is `destination-out`. DPR-aware for crisp
 
 ---
 
+## Document Render (statement style)
+
+The rendered **document** (Docs editor canvas, public `/docs/[token]`, and PDF/print) follows an
+editorial financial-statement look (Harry's reference). This is a distinct surface from the app UI
+and the dashboard — it deliberately breaks the app's Inter-body rule. Scoped to `.proposal-document`
+(`globals.css`); Pulse reports render `DocumentCover` in `bold` style and never carry this class, so
+they are unaffected.
+
+**Palette (doc-scoped tokens).** Warm cream **paper** `--doc-paper #F0EEE8`, near-white **panel**
+tiles `#F7F5EF`, one **dark** tile `#191817`, warm **ink** `#1A1A17` / soft `#4B4A44`, warm-grey
+**muted** labels `#8A867C`, hairlines `rgba(0,0,0,0.14)`, and a **periwinkle accent** `--doc-accent
+#4F5BD5` (distinct from the app's royal `--brand`). Used only for the cover eyebrow/title period,
+callout rule, and links.
+
+**Type.** DM Serif Display headings (section titles, the cover title, stat figures); **JetBrains
+Mono body** (paragraphs, table cells, bullets — the signature); mono uppercase labels/eyebrows.
+Section blocks drop the `Section NN` eyebrow + numbering and the between-section dividers — serif
+title, optional mono description, flowing on spacing.
+
+**`statement-cover`** (`DocumentCover` when `coverStyle !== "bold"`) — a full cream page:
+- Header: brand logo left, a mono **classification stack** right (`DOC TYPE` · `PREPARED {date}` ·
+  `CONFIDENTIAL`), then a full-width hairline.
+- A short accent bar, an **accent eyebrow** (`CLIENT / DOC TYPE`), and the big serif **title with a
+  periwinkle period**.
+- A mono **meta grid** (Client · Prepared by · Date · Version, up to 4-up), a mono executive
+  summary, **stat tiles** (rounded panels, one dark), an accent-ruled confidentiality callout, and
+  a **company footer** strip (Gitwork letterhead left, contact right).
+
+---
+
 ## Do's and Don'ts
 
 ### Do

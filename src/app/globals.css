@@ -1169,6 +1169,37 @@ button {
   font: inherit;
 }
 
+/* ── Document render (Docs) — editorial financial-statement look, per Harry's reference ──
+   Scoped to `.proposal-document` (Docs editor canvas + public /docs/[token] + print). Pulse
+   reports render DocumentCover directly (bold style) and never carry this class, so they are
+   unaffected. Warm cream paper, warm ink, mono body, DM Serif Display headings, periwinkle
+   accent. */
+.proposal-document {
+  --doc-paper: #f0eee8;
+  --doc-panel: #f7f5ef;
+  --doc-panel-dark: #191817;
+  --doc-ink: #1a1a17;
+  --doc-ink-soft: #4b4a44;
+  --doc-muted: #8a867c;
+  --doc-line: rgba(0, 0, 0, 0.14);
+  --doc-line-soft: rgba(0, 0, 0, 0.08);
+  --doc-accent: #4f5bd5;
+  background: var(--doc-paper);
+  color: var(--doc-ink);
+  font-family: var(--font-mono), "SF Mono", Menlo, Consolas, monospace;
+}
+.proposal-document h1,
+.proposal-document h2,
+.proposal-document h3,
+.proposal-document h4 {
+  font-family: var(--font-display), "Times New Roman", Georgia, serif;
+  font-weight: 400;
+  color: var(--doc-ink);
+}
+.proposal-document a {
+  color: var(--doc-accent);
+}
+
 @media print {
   @page {
     size: A4 portrait;

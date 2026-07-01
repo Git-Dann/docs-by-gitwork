@@ -106,6 +106,11 @@ export interface DocumentCoverProps {
   onTitleChange?: (next: string) => void;
   /** Editor-only: when set, the subtitle renders as an inline editable field on the canvas. */
   onSubtitleChange?: (next: string) => void;
+  /** Statement cover (light/minimal): the mono classification stack top-right (e.g.
+   *  ["FINANCIAL REVIEW", "PREPARED 1 JULY 2026", "CONFIDENTIAL"]). */
+  classification?: string[];
+  /** Statement cover (light/minimal): the company footer strip — left + right mono caps lines. */
+  companyFooter?: { left?: string[]; right?: string[] };
 }
 
 const TONE_PALETTE: Record<NonNullable<DocumentCoverCallout["tone"]>, { border: string; text: string }> = {
@@ -133,6 +138,8 @@ export function DocumentCover({
   heroImage,
   onTitleChange,
   onSubtitleChange,
+  classification,
+  companyFooter,
 }: DocumentCoverProps) {
   const isPrint = variant === "print";
   const callTone = callout ? TONE_PALETTE[callout.tone ?? "neutral"] : null;
@@ -141,10 +148,340 @@ export function DocumentCover({
   const mono = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
   const serif = "var(--font-display), 'DM Serif Display', 'Times New Roman', Georgia, serif";
 
-  // ── Theme: `bold` keeps the legacy blue gradient hero; `light`/`minimal` are editorial covers
-  // on a light field with ink type and blue used only as a thin accent (per DESIGN.md). ──
-  const isBold = coverStyle === "bold";
-  const isMinimal = coverStyle === "minimal";
+  // ── Statement cover (light / minimal) — the editorial financial-statement look (Harry's
+  // reference): warm cream paper, serif logo/title with a periwinkle accent, mono meta + body,
+  // stat tiles (one dark), and a company footer. Bold (Pulse) falls through to the legacy hero. ──
+  if (coverStyle !== "bold") {
+    const paper = "#F0EEE8";
+    const panel = "#F7F5EF";
+    const ink = "#1A1A17";
+    const inkSoft = "#4B4A44";
+    const muted = "#8A867C";
+    const line = "rgba(0,0,0,0.14)";
+    const accent = "#4F5BD5";
+    // Strip a trailing period so we can render it in the accent colour.
+    const cleanTitle = (title || "").replace(/\s*\.\s*$/, "");
+    const pad = isPrint ? "56px 60px 40px" : "34px 40px 32px";
+
+    return (
+      <section
+        className={isPrint ? "document-cover document-cover-print" : "document-cover"}
+        style={{
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          background: paper,
+          color: ink,
+          minHeight: isPrint ? "100vh" : undefined,
+          breakAfter: isPrint ? "page" : undefined,
+          pageBreakAfter: isPrint ? "always" : undefined,
+          padding: pad,
+          overflow: "hidden",
+        }}
+      >
+        {watermark ? (
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%) rotate(-28deg)",
+              pointerEvents: "none",
+              zIndex: 0,
+              fontFamily: mono,
+              fontWeight: 800,
+              fontSize: isPrint ? "7vw" : 72,
+              letterSpacing: "0.25em",
+              whiteSpace: "nowrap",
+              color: `rgba(26,26,23,${watermarkTone === "neutral" ? "0.05" : watermarkAlpha})`,
+              userSelect: "none",
+            }}
+          >
+            {watermark}
+          </div>
+        ) : null}
+
+        {/* Header — logo left, classification stack right. */}
+        <div
+          style={{
+            position: "relative",
+            zIndex: 1,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 24,
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={logoUrl} alt="Gitwork" style={{ height: 26, objectFit: "contain", display: "block" }} />
+          {classification && classification.length ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, textAlign: "right" }}>
+              {classification.map((row, i) => (
+                <span
+                  key={i}
+                  style={{
+                    fontFamily: mono,
+                    fontSize: 10,
+                    fontWeight: 600,
+                    letterSpacing: "0.14em",
+                    textTransform: "uppercase",
+                    color: muted,
+                  }}
+                >
+                  {row}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        {/* Rule under the header. */}
+        <div aria-hidden="true" style={{ marginTop: 18, height: 1, background: line }} />
+
+        {/* Eyebrow (accent) + short accent bar + title. */}
+        <div style={{ position: "relative", zIndex: 1, marginTop: 30 }}>
+          <div aria-hidden="true" style={{ width: 32, height: 2, background: accent, marginBottom: 14 }} />
+          <p
+            style={{
+              margin: 0,
+              fontFamily: mono,
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: accent,
+            }}
+          >
+            {eyebrow}
+          </p>
+
+          {onTitleChange ? (
+            <div style={{ marginTop: 14, maxWidth: "92%" }}>
+              <InlineTextArea
+                value={title}
+                onChange={onTitleChange}
+                placeholder="Document title"
+                ariaLabel="Document title"
+                style={{
+                  fontFamily: serif,
+                  fontSize: isPrint ? 46 : 36,
+                  fontWeight: 400,
+                  letterSpacing: "-0.02em",
+                  lineHeight: 1.08,
+                  color: ink,
+                }}
+              />
+            </div>
+          ) : (
+            <h1
+              style={{
+                margin: "14px 0 0",
+                fontFamily: serif,
+                fontSize: isPrint ? 46 : 36,
+                fontWeight: 400,
+                letterSpacing: "-0.02em",
+                lineHeight: 1.08,
+                color: ink,
+                maxWidth: "92%",
+              }}
+            >
+              {cleanTitle}
+              <span style={{ color: accent }}>.</span>
+            </h1>
+          )}
+
+          {onSubtitleChange ? (
+            <div style={{ marginTop: 14, maxWidth: "80%" }}>
+              <InlineTextArea
+                value={subtitle ?? ""}
+                onChange={onSubtitleChange}
+                placeholder="Subtitle / version"
+                ariaLabel="Subtitle"
+                style={{ fontFamily: mono, fontSize: 12, lineHeight: 1.5, color: muted }}
+              />
+            </div>
+          ) : null}
+        </div>
+
+        {/* Meta grid — up to 4-up. */}
+        {meta && meta.length ? (
+          <div
+            style={{
+              marginTop: 26,
+              display: "grid",
+              gridTemplateColumns: `repeat(${Math.min(meta.length, 4)}, minmax(0, 1fr))`,
+              gap: "18px 24px",
+            }}
+          >
+            {meta.map((row) => (
+              <div key={row.label} style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontFamily: mono,
+                    fontSize: 10,
+                    fontWeight: 600,
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    color: muted,
+                    marginBottom: 6,
+                  }}
+                >
+                  {row.label}
+                </div>
+                <div style={{ fontFamily: mono, fontSize: 13, fontWeight: 500, color: ink, lineHeight: 1.4 }}>
+                  {row.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {/* Executive summary — mono body. */}
+        {executiveSummary ? (
+          <div style={{ marginTop: 24, maxWidth: "80ch" }}>
+            {executiveSummary
+              .split(/\n{2,}/)
+              .map((para) => para.trim())
+              .filter(Boolean)
+              .map((para, idx) => (
+                <p
+                  key={idx}
+                  style={{
+                    margin: idx === 0 ? 0 : "12px 0 0",
+                    fontFamily: mono,
+                    fontSize: 12.5,
+                    lineHeight: 1.85,
+                    color: inkSoft,
+                  }}
+                >
+                  {para}
+                </p>
+              ))}
+          </div>
+        ) : null}
+
+        {/* Stat tiles — rounded panels, one dark (via stat.bg). */}
+        {stats && stats.length ? (
+          <div
+            style={{
+              marginTop: 28,
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+              gap: 12,
+            }}
+          >
+            {stats.map((stat, i) => {
+              const dark = Boolean(stat.bg) && stat.bg !== "#FAFAF9";
+              return (
+                <div
+                  key={`${stat.label}-${i}`}
+                  style={{
+                    borderRadius: 10,
+                    padding: "16px 16px 18px",
+                    background: dark ? stat.bg : panel,
+                    border: dark ? "none" : `1px solid ${line}`,
+                    minWidth: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontFamily: mono,
+                      fontSize: 10,
+                      fontWeight: 600,
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      color: dark ? "rgba(255,255,255,0.6)" : muted,
+                      marginBottom: 10,
+                    }}
+                  >
+                    {stat.label}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: serif,
+                      fontSize: 28,
+                      fontWeight: 400,
+                      letterSpacing: "-0.02em",
+                      lineHeight: 1,
+                      color: stat.color ?? (dark ? "#FFFFFF" : ink),
+                      overflowWrap: "break-word",
+                    }}
+                  >
+                    {stat.count}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+
+        {/* Confidentiality callout. */}
+        {callout ? (
+          <div
+            style={{
+              marginTop: 24,
+              borderLeft: `3px solid ${accent}`,
+              paddingLeft: 16,
+              fontFamily: mono,
+              fontSize: 12,
+              lineHeight: 1.7,
+              color: inkSoft,
+              maxWidth: "80ch",
+            }}
+          >
+            {callout.text}
+          </div>
+        ) : null}
+
+        {/* Footer — company strip (left) + dated/contact (right). */}
+        <div style={{ marginTop: "auto", paddingTop: 28 }}>
+          <div aria-hidden="true" style={{ height: 1, background: line, marginBottom: 14 }} />
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 24, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+              {(companyFooter?.left ?? []).map((row, i) => (
+                <span
+                  key={i}
+                  style={{
+                    fontFamily: mono,
+                    fontSize: 9.5,
+                    fontWeight: 600,
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    color: muted,
+                  }}
+                >
+                  {row}
+                </span>
+              ))}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, textAlign: "right" }}>
+              {(companyFooter?.right ?? [dated]).map((row, i) => (
+                <span
+                  key={i}
+                  style={{
+                    fontFamily: mono,
+                    fontSize: 9.5,
+                    fontWeight: 600,
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    color: muted,
+                  }}
+                >
+                  {row}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // ── Bold hero (legacy blue gradient) — the only path that reaches here; light/minimal returned
+  // above via the statement cover. Kept intact for Pulse and any direct bold caller. ──
+  const isBold = true;
+  const isMinimal = false;
   const hero = {
     background: isBold
       ? "linear-gradient(140deg, #1D4ED8 0%, #1E3A8A 100%)"
