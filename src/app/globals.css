@@ -1184,9 +1184,36 @@ button {
   --doc-line: rgba(0, 0, 0, 0.14);
   --doc-line-soft: rgba(0, 0, 0, 0.08);
   --doc-accent: #4f5bd5;
+  --doc-accent-tint: rgba(79, 91, 213, 0.12);
   background: var(--doc-paper);
   color: var(--doc-ink);
   font-family: var(--font-mono), "SF Mono", Menlo, Consolas, monospace;
+
+  /* Remap the app palette tokens to the document palette WITHIN the document only. Every block
+     preview already paints with these tokens (--text-*, --border-*, --surface-*, --brand-*), so
+     this aligns all blocks to the warm/periwinkle statement look with no per-file edits. The app
+     UI, dashboard, and Pulse never carry .proposal-document, so their tokens are untouched. */
+  --text-1: var(--doc-ink);
+  --text-2: var(--doc-ink);
+  --text-3: var(--doc-ink-soft);
+  --text-4: var(--doc-muted);
+  --border-1: var(--doc-line);
+  --border-2: var(--doc-line);
+  --border-3: var(--doc-line-soft);
+  --surface-0: var(--doc-panel);
+  --surface-1: var(--doc-panel);
+  --surface-brand: var(--doc-accent-tint);
+  --brand-200: var(--doc-accent-tint);
+  --brand-300: var(--doc-accent);
+  --brand-500: var(--doc-accent);
+  --brand-600: var(--doc-accent);
+  --brand-700: var(--doc-accent);
+  --brand-800: var(--doc-accent);
+}
+/* bg-white panels inside a document sit on cream — warm them to the panel tone. Cover uses inline
+   styles (not this class), so it is unaffected. */
+.proposal-document .bg-white {
+  background-color: var(--doc-panel) !important;
 }
 .proposal-document h1,
 .proposal-document h2,

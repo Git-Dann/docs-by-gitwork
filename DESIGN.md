@@ -499,6 +499,13 @@ Mono body** (paragraphs, table cells, bullets — the signature); mono uppercase
 Section blocks drop the `Section NN` eyebrow + numbering and the between-section dividers — serif
 title, optional mono description, flowing on spacing.
 
+**Blocks.** Every section preview inherits the statement palette automatically: `.proposal-document`
+**remaps the app tokens** (`--text-*`, `--border-*`, `--surface-*`, `--brand-*`) to the doc palette,
+and `.bg-white` panels warm to `--doc-panel` — so blocks that already paint with those tokens
+(tables, KPI tiles, callouts, lists) go warm + periwinkle with no per-file edits. Big figures stay
+DM Serif Display, labels/cells stay mono. The block **editors** (e.g. `CostBreakdownTable`) render
+outside `.proposal-document`, so they keep the standard app styling.
+
 **`statement-cover`** (`DocumentCover` when `coverStyle !== "bold"`) — a full cream page:
 - Header: brand logo left, a mono **classification stack** right (`DOC TYPE` · `PREPARED {date}` ·
   `CONFIDENTIAL`), then a full-width hairline.
