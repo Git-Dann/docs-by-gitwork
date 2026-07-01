@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useDeskCalendar, useDeskActionItems } from "@/hooks/use-desk";
 import type { CalendarEvent } from "@/lib/api";
-import { EditorialRow, DeskEmpty, DeskSkeleton, DeskConnectGoogle } from "./desk-shared";
+import { EditorialRow, DeskEmpty, DeskSkeleton, DeskConnectGoogle, RevealList } from "./desk-shared";
 
 /** MEETINGS tab — today's calendar (reused per-user Google read) + my open
  *  Scribe action items, as editorial rows. */
@@ -50,8 +50,10 @@ export function DeskMeetings() {
         ) : items.length === 0 ? (
           <DeskEmpty>Nothing outstanding from your meetings.</DeskEmpty>
         ) : (
-          <div className="space-y-2">
-            {items.map((item, i) => {
+          <RevealList
+            items={items}
+            initial={5}
+            renderItem={(item, i) => {
               const inner = (
                 <>
                   <span
@@ -86,8 +88,8 @@ export function DeskMeetings() {
                   {inner}
                 </div>
               );
-            })}
-          </div>
+            }}
+          />
         )}
       </EditorialRow>
     </div>

@@ -1,9 +1,67 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "@/lib/format";
 import type { TaskDTO, TaskStatus } from "@/types/tasks";
+
+/**
+ * A capped list with a "Show N more" reveal, so long sections (action items, tasks,
+ * mail) stay scannable and the drawer never becomes an endless scroll. Expands in one
+ * click; collapses back with "Show less".
+ */
+export function RevealList<T>({
+  items,
+  initial = 5,
+  renderItem,
+}: {
+  items: T[];
+  initial?: number;
+  renderItem: (item: T, index: number) => React.ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? items : items.slice(0, initial);
+  const hidden = items.length - visible.length;
+  return (
+    <div className="space-y-2">
+      {visible.map((item, i) => renderItem(item, i))}
+      {hidden > 0 ? (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="w-full rounded-[8px] border border-dashed border-[var(--border-2)] py-2 text-[11px] uppercase tracking-[1px] text-[var(--text-4)] transition hover:border-[var(--brand-300)] hover:text-[var(--brand-700)]"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          Show {hidden} more
+        </button>
+      ) : null}
+      {expanded && items.length > initial ? (
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="w-full py-1 text-[11px] uppercase tracking-[1px] text-[var(--text-4)] transition hover:text-[var(--text-2)]"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          Show less
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** The grab handle — a click-to-toggle affordance at the top of the dock/panel. */
+export function DeskHandle({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="group flex w-full shrink-0 items-center justify-center py-2.5"
+    >
+      <span className="h-1 w-9 rounded-full bg-[var(--border-1)] transition group-hover:w-12 group-hover:bg-[var(--brand-500)]" />
+    </button>
+  );
+}
 
 /** Status chip styles — token-backed so dark mode flips cleanly. */
 export const STATUS_STYLES: Record<TaskStatus, string> = {

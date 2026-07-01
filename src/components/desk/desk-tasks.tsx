@@ -2,7 +2,7 @@
 
 import { useMyDay, useTaskAttention } from "@/hooks/use-tasks";
 import type { TaskDTO } from "@/types/tasks";
-import { EditorialRow, Stamp, DeskTaskRow, DeskEmpty, DeskSkeleton } from "./desk-shared";
+import { EditorialRow, Stamp, DeskTaskRow, DeskEmpty, DeskSkeleton, RevealList } from "./desk-shared";
 
 /** TASKS tab — the caller's work grouped by urgency as editorial rows. All from
  *  existing scoped queries (attention + my-day), so it matches the Portal board. */
@@ -33,7 +33,7 @@ export function DeskTasks() {
       <EditorialRow
         title="Your tasks"
         caption="Everything assigned to you, by urgency."
-        stamp={<Stamp label="Open board" href="/app/portal" />}
+        stamp={<Stamp label="My tasks" href="/app" />}
         first
       >
         <DeskEmpty>No tasks assigned to you right now — enjoy the calm.</DeskEmpty>
@@ -48,7 +48,7 @@ export function DeskTasks() {
           title="Overdue"
           count={attention.data?.overdueCount}
           caption="Past their due date — clear these first."
-          stamp={<Stamp label="Open board" href="/app/portal" />}
+          stamp={<Stamp label="My tasks" href="/app" />}
           first
         >
           <TaskList tasks={overdue} />
@@ -78,10 +78,12 @@ export function DeskTasks() {
 
 function TaskList({ tasks, showStatus = true }: { tasks: TaskDTO[]; showStatus?: boolean }) {
   return (
-    <div className="space-y-2">
-      {tasks.map((t, i) => (
+    <RevealList
+      items={tasks}
+      initial={5}
+      renderItem={(t, i) => (
         <DeskTaskRow key={t.id} task={t} index={i + 1} showStatus={showStatus} />
-      ))}
-    </div>
+      )}
+    />
   );
 }

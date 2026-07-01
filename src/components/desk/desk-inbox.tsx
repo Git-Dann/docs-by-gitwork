@@ -2,7 +2,7 @@
 
 import { useDeskGmail } from "@/hooks/use-desk";
 import type { GmailMessage } from "@/lib/api";
-import { EditorialRow, DeskEmpty, DeskSkeleton, DeskConnectGoogle } from "./desk-shared";
+import { EditorialRow, DeskEmpty, DeskSkeleton, DeskConnectGoogle, RevealList } from "./desk-shared";
 
 /** INBOX tab — recent Gmail (reused per-user Google read) as an editorial row.
  *  Slack activity across the caller's assigned client channels lands here in Phase 2. */
@@ -26,14 +26,11 @@ export function DeskInbox() {
         ) : messages.length === 0 ? (
           <DeskEmpty>Inbox is clear.</DeskEmpty>
         ) : (
-          <div className="space-y-2">
-            {[...messages]
-              .sort((a, b) => Number(b.unread) - Number(a.unread))
-              .slice(0, 12)
-              .map((m, i) => (
-                <MailRow key={m.id} m={m} index={i + 1} />
-              ))}
-          </div>
+          <RevealList
+            items={[...messages].sort((a, b) => Number(b.unread) - Number(a.unread))}
+            initial={6}
+            renderItem={(m, i) => <MailRow key={m.id} m={m} index={i + 1} />}
+          />
         )}
       </EditorialRow>
 

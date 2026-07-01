@@ -13,10 +13,11 @@
  */
 
 import { useEffect, useState } from "react";
-import { ChevronUpIcon, ChevronDownIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { XMarkIcon } from "@heroicons/react/24/outline";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/format";
 import { useMyDay, useTaskAttention } from "@/hooks/use-tasks";
+import { DeskHandle } from "./desk-shared";
 import { DESK_TABS, DESK_TAB_LABELS, type DeskTab } from "@/types/desk";
 import { DeskToday } from "./desk-today";
 import { DeskTasks } from "./desk-tasks";
@@ -96,7 +97,7 @@ export function DeskDrawer() {
 
   return (
     <>
-      {/* ── Collapsed dock (both breakpoints) ── */}
+      {/* ── Collapsed dock (both breakpoints) — click anywhere (incl. the grab handle) to open ── */}
       {!open && (
         <button
           type="button"
@@ -105,7 +106,7 @@ export function DeskDrawer() {
           className="group fixed bottom-0 left-0 right-0 z-40 flex h-12 items-center justify-between gap-3 border-t border-[var(--border-2)] bg-[var(--surface-0)] px-5 text-left shadow-[0_-4px_16px_-8px_rgba(10,13,18,0.15)] transition hover:bg-[var(--surface-canvas)] lg:left-[280px]"
         >
           {/* grab handle */}
-          <span className="absolute left-1/2 top-1.5 h-1 w-9 -translate-x-1/2 rounded-full bg-[var(--border-1)] transition group-hover:bg-[var(--brand-400)]" />
+          <span className="absolute left-1/2 top-1.5 h-1 w-9 -translate-x-1/2 rounded-full bg-[var(--border-1)] transition group-hover:w-12 group-hover:bg-[var(--brand-500)]" />
           <span className="flex shrink-0 items-center gap-2">
             <span className="h-1.5 w-1.5 rounded-full bg-[var(--brand-600)]" />
             <span
@@ -121,7 +122,6 @@ export function DeskDrawer() {
           >
             {summary}
           </span>
-          <ChevronUpIcon className="h-4 w-4 shrink-0 text-[var(--text-4)] transition group-hover:text-[var(--brand-600)]" />
         </button>
       )}
 
@@ -133,7 +133,7 @@ export function DeskDrawer() {
           role="region"
           aria-label={WORDMARK}
         >
-          <span className="absolute left-1/2 top-1.5 h-1 w-9 -translate-x-1/2 rounded-full bg-[var(--border-1)]" />
+          <DeskHandle onClick={() => setOpen(false)} label={`Close ${WORDMARK}`} />
           <DeskHeader tab={tab} onSelect={setTab} onClose={() => setOpen(false)} />
           <div className="min-h-0 flex-1 overflow-auto">
             <div className="mx-auto max-w-5xl px-6 py-2">
@@ -151,6 +151,7 @@ export function DeskDrawer() {
         labelledById="desk-sheet-title"
         panelClassName="flex h-[92vh] w-full max-w-none flex-col bg-[var(--surface-canvas)]"
       >
+        <DeskHandle onClick={() => setOpen(false)} label={`Close ${WORDMARK}`} />
         <DeskHeader
           tab={tab}
           onSelect={setTab}
@@ -210,18 +211,14 @@ function DeskHeader({
           </button>
         ))}
       </div>
+      {/* Mobile keeps an explicit close (X); desktop closes via the grab handle. */}
       <button
         type="button"
         onClick={onClose}
         aria-label={`Close ${WORDMARK}`}
-        className="shrink-0 text-[var(--text-4)] transition hover:text-[var(--text-1)]"
+        className="shrink-0 text-[var(--text-4)] transition hover:text-[var(--text-1)] lg:hidden"
       >
-        <span className="lg:hidden">
-          <XMarkIcon className="h-5 w-5" />
-        </span>
-        <span className="hidden lg:inline">
-          <ChevronDownIcon className="h-5 w-5" />
-        </span>
+        <XMarkIcon className="h-5 w-5" />
       </button>
     </div>
   );
