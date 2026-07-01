@@ -177,16 +177,17 @@ export function AppOverview() {
       {/* Today band — "On your desk" (personal to-do, auto-hides when empty)
           and the DevOps lead's "Daily roll-up". Side-by-side only when both
           render; otherwise the present card fills the row. */}
-      <div className={todayTwoUp ? "grid items-start gap-3 lg:grid-cols-2" : ""}>
+      <div className={todayTwoUp ? "grid items-stretch gap-3 lg:grid-cols-2" : ""}>
         <OnYourDeskCard
           index={1}
           onVisibilityChange={setDeskVisible}
           canApprove={canApprove}
           canSeeTasks={canSeeTasks}
           canSeeSignoff={canSeeSignoff}
+          className={todayTwoUp ? "h-full" : undefined}
         />
         {hasRightColumn ? (
-          <div className="space-y-3">
+          <div className="flex flex-col gap-3">
             {canPublishRollup ? <DailyRollup index={rollupNumber} canPublish={canActuallyPublish} /> : null}
             {canBroadcast ? <BroadcastComposer index={broadcastNumber} enabled /> : null}
           </div>
