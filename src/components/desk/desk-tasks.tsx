@@ -2,19 +2,18 @@
 
 import { useMyDay, useTaskAttention } from "@/hooks/use-tasks";
 import type { TaskDTO } from "@/types/tasks";
-import { DeskSectionLabel, DeskTaskRow, DeskEmpty, DeskSkeleton } from "./desk-shared";
+import { EditorialRow, Stamp, DeskTaskRow, DeskEmpty, DeskSkeleton } from "./desk-shared";
 
-/** TASKS tab — the caller's work grouped by urgency. All from existing scoped
- *  queries (attention + my-day), so it matches the Portal board exactly. */
+/** TASKS tab — the caller's work grouped by urgency as editorial rows. All from
+ *  existing scoped queries (attention + my-day), so it matches the Portal board. */
 export function DeskTasks() {
   const attention = useTaskAttention({ mine: true });
   const myDay = useMyDay();
 
-  const loading = attention.isPending || myDay.isPending;
-
-  if (loading) {
+  if (attention.isPending || myDay.isPending) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-3">
+        <DeskSkeleton />
         <DeskSkeleton />
         <DeskSkeleton />
       </div>
@@ -30,45 +29,59 @@ export function DeskTasks() {
     overdue.length === 0 && doing.length === 0 && upcoming.length === 0 && doneToday.length === 0;
 
   if (isEmpty) {
-    return <DeskEmpty>No tasks assigned to you right now.</DeskEmpty>;
+    return (
+      <EditorialRow
+        title="Your tasks"
+        caption="Everything assigned to you, by urgency."
+        stamp={<Stamp label="Open board" href="/app/portal" />}
+        first
+      >
+        <DeskEmpty>No tasks assigned to you right now — enjoy the calm.</DeskEmpty>
+      </EditorialRow>
+    );
   }
 
   return (
-    <div className="grid gap-5 md:grid-cols-2">
-      <div className="space-y-5">
-        <Group label="Overdue" tasks={overdue} count={attention.data?.overdueCount} emptyHidden />
-        <Group label="In progress" tasks={doing} count={attention.data?.doingCount} emptyHidden />
-      </div>
-      <div className="space-y-5">
-        <Group label="Up next" tasks={upcoming} emptyHidden />
-        <Group label="Done today" tasks={doneToday} emptyHidden showStatus={false} />
-      </div>
+    <div>
+      {overdue.length > 0 ? (
+        <EditorialRow
+          title="Overdue"
+          count={attention.data?.overdueCount}
+          caption="Past their due date — clear these first."
+          stamp={<Stamp label="Open board" href="/app/portal" />}
+          first
+        >
+          <TaskList tasks={overdue} />
+        </EditorialRow>
+      ) : null}
+
+      {doing.length > 0 ? (
+        <EditorialRow title="In progress" count={attention.data?.doingCount} first={overdue.length === 0}>
+          <TaskList tasks={doing} />
+        </EditorialRow>
+      ) : null}
+
+      {upcoming.length > 0 ? (
+        <EditorialRow title="Up next" caption="Ready to pick up.">
+          <TaskList tasks={upcoming} />
+        </EditorialRow>
+      ) : null}
+
+      {doneToday.length > 0 ? (
+        <EditorialRow title="Done today" count={doneToday.length}>
+          <TaskList tasks={doneToday} showStatus={false} />
+        </EditorialRow>
+      ) : null}
     </div>
   );
 }
 
-function Group({
-  label,
-  tasks,
-  count,
-  emptyHidden,
-  showStatus = true,
-}: {
-  label: string;
-  tasks: TaskDTO[];
-  count?: number;
-  emptyHidden?: boolean;
-  showStatus?: boolean;
-}) {
-  if (tasks.length === 0 && emptyHidden) return null;
+function TaskList({ tasks, showStatus = true }: { tasks: TaskDTO[]; showStatus?: boolean }) {
   return (
-    <div>
-      <DeskSectionLabel count={count ?? tasks.length}>{label}</DeskSectionLabel>
-      <div className="space-y-1.5">
-        {tasks.map((t) => (
-          <DeskTaskRow key={t.id} task={t} showStatus={showStatus} />
-        ))}
-      </div>
+    <div className="space-y-2">
+      {tasks.map((t, i) => (
+        <DeskTaskRow key={t.id} task={t} index={i + 1} showStatus={showStatus} />
+      ))}
     </div>
   );
 }
