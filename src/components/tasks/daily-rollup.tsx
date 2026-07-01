@@ -8,6 +8,7 @@ import {
   ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/format";
 import { useRollupRoster, usePublishRollup } from "@/hooks/use-tasks";
 import { TaskAvatar } from "@/components/tasks/task-avatar";
 
@@ -17,6 +18,7 @@ export function DailyRollup({
   enabled = true,
   canPublish = true,
   index = 2,
+  className,
 }: {
   enabled?: boolean;
   /** When false the card renders as monitor-only (no Publish / Publish-anyway
@@ -25,6 +27,8 @@ export function DailyRollup({
   canPublish?: boolean;
   /** Sequential dashboard number, supplied by the HQ overview. */
   index?: number;
+  /** Extra classes on the card root (e.g. h-full to match a sibling's height). */
+  className?: string;
 }) {
   const { data, isPending } = useRollupRoster(enabled);
   const publish = usePublishRollup();
@@ -56,7 +60,7 @@ export function DailyRollup({
   }
 
   return (
-    <section className="widget-card">
+    <section className={cn("widget-card", className)}>
       <div className="widget-header">
         <span className="widget-header__label">
           <span className="widget-header__label--number">{String(index).padStart(2, "0")}</span>

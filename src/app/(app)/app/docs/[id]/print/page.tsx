@@ -44,8 +44,8 @@ export default function ProposalPrintPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[var(--surface-canvas)] px-4 py-6 print:bg-white print:px-0 print:py-0">
-      <div className="mx-auto w-full max-w-[210mm] space-y-3 bg-transparent print:max-w-none">
+    <main className="min-h-screen bg-[var(--surface-canvas)] px-4 py-6 print:bg-transparent print:px-0 print:py-0">
+      <div className="mx-auto w-full max-w-[210mm] space-y-3 bg-transparent print:max-w-none print:space-y-0">
         <PrintToolbar proposalId={id} />
         <ProposalPreview proposal={data.proposal} showTableOfContents={false} frame />
         {completedRequest ? (

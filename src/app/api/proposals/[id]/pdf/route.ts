@@ -53,10 +53,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
     try {
       const page = await browser.newPage();
       await page.goto(target, { waitUntil: "networkidle0", timeout: 45_000 });
+      // Zero margins → full-bleed cream to the page edge (no white frame) and no header/footer
+      // band. The document's own print CSS supplies the page inset, so content still breathes.
       const pdf = await page.pdf({
         format: "A4",
         printBackground: true,
-        margin: { top: "12mm", bottom: "16mm", left: "0mm", right: "0mm" },
+        margin: { top: "0mm", bottom: "0mm", left: "0mm", right: "0mm" },
       });
 
       const filename = `${doc.documentNumber ?? doc.title ?? "document"}.pdf`.replace(/[^\w.\-]+/g, "-");

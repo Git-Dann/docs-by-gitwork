@@ -1228,13 +1228,26 @@ button {
 }
 
 @media print {
+  /* Default page keeps a margin (Pulse report + any other print surface unchanged). Documents use
+     a dedicated named page with ZERO margin → no white paper frame around the cream, and Chrome
+     drops its own date/URL/page headers (no margin to draw them in). Breathing room lives inside
+     the document instead. Full-bleed, designed-elements-only — like a real PDF, not a Google Doc. */
   @page {
     size: A4 portrait;
     margin: 12mm;
   }
+  @page docpage {
+    margin: 0;
+  }
 
+  html,
   body {
-    background: #ffffff;
+    background: var(--doc-paper, #f0eee8);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  * {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -1244,6 +1257,29 @@ button {
   .app-subtle-panel,
   .app-table-shell {
     box-shadow: none !important;
+  }
+
+  /* Full-bleed cream document. The page inset (breathing room) is padding on the section wrapper,
+     not an @page margin, so the paper reaches every edge. The cover breaks out of that inset to
+     sit truly full-bleed on page one. */
+  .proposal-document {
+    page: docpage;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: var(--doc-paper) !important;
+  }
+  .proposal-document > div {
+    padding: 16mm 18mm 18mm !important;
+  }
+  .proposal-document .proposal-cover {
+    margin: -16mm -18mm 0 !important;
+  }
+  /* A section that lands at the top of a fresh page keeps some breathing room (break-inside:avoid
+     keeps each section whole, so this reads as top-of-page padding on continuation pages). */
+  .proposal-document section.proposal-block-avoid {
+    padding-top: 6mm;
   }
 
   .proposal-cover {

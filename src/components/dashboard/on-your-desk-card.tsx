@@ -15,7 +15,7 @@
 
 import Link from "next/link";
 import { ArrowRightIcon, CheckIcon, XMarkIcon } from "@heroicons/react/16/solid";
-import { formatCurrency, formatDate, taskRef } from "@/lib/format";
+import { cn, formatCurrency, formatDate, taskRef } from "@/lib/format";
 import {
   useApproveLeaveRequest,
   useExpenses,
@@ -59,9 +59,11 @@ interface OnYourDeskCardProps {
   /** Reports whether the card actually rendered, so the parent can keep the
    *  dashboard numbering gap-free when this card self-hides on an empty desk. */
   onVisibilityChange?: (visible: boolean) => void;
+  /** Extra classes on the card root (e.g. h-full to match a sibling's height). */
+  className?: string;
 }
 
-export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff, index, onVisibilityChange }: OnYourDeskCardProps) {
+export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff, index, onVisibilityChange, className }: OnYourDeskCardProps) {
   // Tasks — scoped to the current user's assignments. A super admin/admin doesn't
   // want the whole workspace's 242 overdue bleeding into their "On your desk"
   // (that's a Portal-level concern); they want what THEY own.
@@ -149,7 +151,7 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff, index, 
   if (!hasAnything) return null;
 
   return (
-    <section className="widget-card">
+    <section className={cn("widget-card", className)}>
       <div className="widget-header">
         <span className="widget-header__label">
           <span className="widget-header__label--number">{String(index).padStart(2, "0")}</span>

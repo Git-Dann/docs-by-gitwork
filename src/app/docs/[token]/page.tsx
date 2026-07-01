@@ -87,14 +87,16 @@ export default async function PublicDocumentPage({ params, searchParams }: PageP
   const proposal = serializeProposal(record);
 
   if (printMode) {
+    // Full-bleed for the server PDF: no white wrapper, no outer padding — the document's own
+    // print CSS supplies the page inset and paints the cream to every edge.
     return (
-      <main className="min-h-screen bg-white">
-        <div className="px-4 py-8 sm:px-6">
+      <main className="min-h-screen bg-[#f0eee8]">
+        <div className="px-4 py-8 sm:px-6 print:p-0">
           <ProposalPreview
             proposal={proposal}
             showTableOfContents={false}
             frame={false}
-            className="mx-auto w-full max-w-[880px]"
+            className="mx-auto w-full max-w-[880px] print:max-w-none"
           />
         </div>
       </main>
