@@ -17,15 +17,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // (separate from GOOGLE_CLIENT_ID/SECRET used by the Care Gmail connector)
       clientId: process.env.AUTH_GOOGLE_ID!,
       clientSecret: process.env.AUTH_GOOGLE_SECRET!,
-      // Request Gmail + Calendar read access so dashboard widgets work, plus
-      // Drive read access so Scribe can read Google Meet's "Notes by Gemini" docs.
+      // Request Gmail + Calendar read access so dashboard widgets work, Drive read access so
+      // Scribe can read Google Meet's "Notes by Gemini" docs, plus drive.file (write) so the
+      // Docs Google Drive backup can create/update a Google Doc per document. `drive.file` is
+      // the least-privilege write scope — the app can only touch files it created (our backup
+      // folder + the docs inside it), never the rest of the user's Drive.
       authorization: {
         params: {
           scope:
             "openid email profile " +
             "https://www.googleapis.com/auth/gmail.readonly " +
             "https://www.googleapis.com/auth/calendar.readonly " +
-            "https://www.googleapis.com/auth/drive.readonly",
+            "https://www.googleapis.com/auth/drive.readonly " +
+            "https://www.googleapis.com/auth/drive.file",
           access_type: "offline",
           // Force the consent prompt every sign-in so Google always returns a refresh_token.
           // Without this, Google only returns refresh_token on the *first* consent — which

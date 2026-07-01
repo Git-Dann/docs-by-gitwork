@@ -20,7 +20,10 @@ const SESSION_MAX_AGE = 8 * 60 * 60;            // 8 hours (no remember me)
 //       permissions are now resolved from the role matrix. Bumping re-issues every JWT
 //       with the correct role + resolved permissions (so e.g. the owner's session
 //       carries SUPER_ADMIN and can reach the Roles & Permissions matrix immediately).
-export const SESSION_VERSION = 4;
+//   5 — Docs Drive backup: added the Google Drive (drive.file) write scope so the backup
+//       cron can create/update a Google Doc per document in Drive. Bumping forces re-consent
+//       so the new scope is granted (existing refresh tokens only carry the read scopes).
+export const SESSION_VERSION = 5;
 
 export const authConfig = {
   session: { strategy: "jwt" as const, maxAge: REMEMBER_ME_MAX_AGE },
