@@ -43,6 +43,7 @@ import type {
   CodeClearTier,
 } from "@/types/codeclear";
 import type { NotificationDTO } from "@/types/notifications";
+import type { DeskActionItemDTO } from "@/types/desk";
 import type {
   ProofCreateDocumentInput,
   ProofDocumentRecord,
@@ -2146,6 +2147,12 @@ export async function getGmailMessages(): Promise<{ connected: boolean; messages
 
 export async function getCalendarEvents(): Promise<{ connected: boolean; events: CalendarEvent[] }> {
   return apiFetch("/api/integrations/calendar");
+}
+
+// ─── The Desk (internal aggregator drawer) ────────────────────────────────────
+
+export async function getDeskActionItems(): Promise<{ items: DeskActionItemDTO[] }> {
+  return apiFetch("/api/desk/action-items");
 }
 
 export interface MeetingSummaryResponse {

@@ -27,6 +27,7 @@ import { listTeamMembers } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { AiSpendCard } from "@/components/ai-spend-card";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { DeskDrawer } from "@/components/desk/desk-drawer";
 
 type NavItem = {
   href?: string;
@@ -254,6 +255,9 @@ export function AppShell({
           </main>
         </div>
       </div>
+
+      {/* The Desk — persistent internal aggregator drawer (fixed to the viewport). */}
+      <DeskDrawer />
     </div>
   );
 }

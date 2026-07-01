@@ -10,9 +10,12 @@
  */
 
 import { google } from "googleapis";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { findGeminiNotesForEvent, extractMeetingCode } from "@/server/google-drive-notes";
 import { resolveAiConfig, completeText, parseJsonObject, type WorkspaceAiFields } from "@/server/ai-provider";
+import type { EffectiveUser } from "@/server/auth/effective-user";
+import type { DeskActionItemDTO } from "@/types/desk";
 
 type OAuth2Client = InstanceType<typeof google.auth.OAuth2>;
 
@@ -463,4 +466,62 @@ export async function findPastClientCalls(
     const byName = nameUsable && condense(c.title).includes(nameKey);
     return byDomain || byName;
   });
+}
+
+// ─── The Desk: my open action items ──────────────────────────────────────────
+
+/**
+ * Open Scribe action items relevant to the current user, for the Desk drawer.
+ *
+ * "Relevant" = the user attended the meeting (their email is in `Meeting.attendees`)
+ * OR the item has been turned into a board task assigned to them. Read-only aggregation;
+ * done items and other people's meetings are excluded. Capped for the drawer.
+ */
+export async function getMyActionItems(user: EffectiveUser): Promise<DeskActionItemDTO[]> {
+  // Task ids assigned to the user (m-n relation, with the legacy single-assignee fallback).
+  const myTasks = await prisma.task.findMany({
+    where: {
+      workspaceId: user.workspaceId,
+      OR: [{ assignees: { some: { id: user.id } } }, { assigneeId: user.id }],
+    },
+    select: { id: true },
+  });
+  const myTaskIds = myTasks.map((t) => t.id);
+
+  const relevance: Prisma.MeetingActionItemWhereInput[] = [];
+  if (user.email) relevance.push({ meeting: { attendees: { has: user.email } } });
+  if (myTaskIds.length) relevance.push({ taskId: { in: myTaskIds } });
+  if (relevance.length === 0) return [];
+
+  const items = await prisma.meetingActionItem.findMany({
+    where: {
+      done: false,
+      meeting: { workspaceId: user.workspaceId },
+      OR: relevance,
+    },
+    include: {
+      meeting: {
+        select: {
+          id: true,
+          title: true,
+          startedAt: true,
+          client: { select: { slug: true, name: true } },
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 30,
+  });
+
+  return items.map((item) => ({
+    id: item.id,
+    title: (item.title ?? item.text).trim(),
+    text: item.text,
+    meetingId: item.meeting.id,
+    meetingTitle: item.meeting.title,
+    meetingStartedAt: item.meeting.startedAt?.toISOString() ?? null,
+    clientSlug: item.meeting.client?.slug ?? null,
+    clientName: item.meeting.client?.name ?? null,
+    hasTask: Boolean(item.taskId),
+  }));
 }
