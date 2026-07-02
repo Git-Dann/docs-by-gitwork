@@ -14,5 +14,13 @@ export default async function PortalLoginPage({
   const { next } = await searchParams;
   // Only accept internal wiki paths as a post-login destination.
   const safeNext = next && next.startsWith("/wiki/") ? next : null;
-  return <PortalLoginForm next={safeNext} />;
+  return (
+    <>
+      {/* Theme-lock the document itself to the cream so iOS Safari's overscroll /
+          address-bar area matches the login (the app body is otherwise dark in
+          OS dark mode, which showed as a "cropped" background). */}
+      <style>{`html,body{background:#EDE8E1 !important;color-scheme:light;}`}</style>
+      <PortalLoginForm next={safeNext} />
+    </>
+  );
 }
