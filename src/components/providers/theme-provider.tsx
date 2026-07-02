@@ -21,7 +21,7 @@ const EVENT = "gitwork:theme-changed";
  * render path (which navigates to /docs/[token]?print=1 via headless Chromium).
  * Kept in sync with the inline anti-flash script in src/app/layout.tsx.
  */
-const FORCE_LIGHT = /^\/(docs|report|sign|wiki|timeline|brand|onboarding|preview|embed)\//;
+const FORCE_LIGHT = /^\/(docs|report|sign|wiki|timeline|brand|onboarding|preview|embed|demo)\//;
 
 type ThemeContextValue = {
   /** The user's chosen mode. */
