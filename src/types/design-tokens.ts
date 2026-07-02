@@ -214,6 +214,8 @@ export interface DesignSystemDTO {
   enabled: boolean;
   /** Show Foundry masthead/footer branding on the guidelines. Default true. */
   showFoundryBranding: boolean;
+  /** Opt-in: the client-branded Brand Guidelines deck (+ tab + PDF). Default false. */
+  guidelinesEnabled: boolean;
   tokens: DesignTokens | null;
   status: DesignSystemStatus;
   updatedAt: string | null;
@@ -229,4 +231,6 @@ export interface PublicDesignSystemDTO {
   logoUrl: string | null;
   /** Show Foundry masthead/footer branding on the public guidelines. Default true. */
   showFoundryBranding: boolean;
+  /** Opt-in: the client-branded Brand Guidelines deck is available. Default false. */
+  guidelinesEnabled: boolean;
 }

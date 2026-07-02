@@ -35,6 +35,7 @@ type RowWithUser = {
   tokens: Prisma.JsonValue | null;
   enabled: boolean | null;
   showFoundryBranding: boolean;
+  guidelinesEnabled: boolean;
   status: DesignSystemStatus;
   updatedAt: Date;
   shareToken: string | null;
@@ -49,6 +50,7 @@ function toDTO(row: RowWithUser): DesignSystemDTO {
     // null = unset → default to visible when tokens exist; true/false is an explicit override.
     enabled: row.enabled ?? hasTokens,
     showFoundryBranding: row.showFoundryBranding,
+    guidelinesEnabled: row.guidelinesEnabled,
     tokens: hasTokens ? (row.tokens as unknown as DesignTokens) : null,
     status: row.status,
     updatedAt: row.updatedAt.toISOString(),
@@ -61,6 +63,7 @@ const EMPTY_DTO: DesignSystemDTO = {
   exists: false,
   enabled: false,
   showFoundryBranding: true,
+  guidelinesEnabled: false,
   tokens: null,
   status: "DRAFT",
   updatedAt: null,
@@ -163,6 +166,22 @@ export async function setDesignSystemFoundryBranding(
   return toDTO(row);
 }
 
+/** Opt in / out of the client-branded Brand Guidelines deck (+ tab + PDF). */
+export async function setDesignSystemGuidelinesEnabled(
+  user: EffectiveUser,
+  clientId: string,
+  enabled: boolean,
+): Promise<DesignSystemDTO> {
+  await assertClientInScope(user, clientId);
+  const row = await prisma.clientDesignSystem.upsert({
+    where: { clientId },
+    create: { clientId, guidelinesEnabled: enabled },
+    update: { guidelinesEnabled: enabled },
+    include: { updatedBy: { select: { name: true, email: true } } },
+  });
+  return toDTO(row);
+}
+
 /** Public read — no auth. Returns null when the token is unknown, sharing is off, or no tokens. */
 export async function getPublicDesignSystem(token: string): Promise<PublicDesignSystemDTO | null> {
   const row = await prisma.clientDesignSystem.findFirst({
@@ -177,6 +196,7 @@ export async function getPublicDesignSystem(token: string): Promise<PublicDesign
     generatedAt: row.updatedAt.toISOString(),
     logoUrl: row.client.logoUrl ?? null,
     showFoundryBranding: row.showFoundryBranding,
+    guidelinesEnabled: row.guidelinesEnabled,
   };
 }
 

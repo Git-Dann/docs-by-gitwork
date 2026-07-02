@@ -84,6 +84,7 @@ export interface WikiDesignSystem {
   tokens: DesignTokens;
   logoUrl: string | null;
   showFoundryBranding: boolean;
+  guidelinesEnabled: boolean;
 }
 
 export interface WikiDTO {
@@ -270,6 +271,7 @@ async function loadWikiDesignSystem(clientId: string): Promise<WikiDesignSystem 
     tokens: row.tokens as unknown as DesignTokens,
     logoUrl: row.client.logoUrl ?? null,
     showFoundryBranding: row.showFoundryBranding,
+    guidelinesEnabled: row.guidelinesEnabled,
   };
 }
 

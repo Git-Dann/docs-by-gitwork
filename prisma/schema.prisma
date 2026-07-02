@@ -1126,6 +1126,8 @@ model ClientDesignSystem {
   enabled      Boolean?
   /// Show the Foundry masthead/footer branding on the guidelines. Off = clean own-brand doc.
   showFoundryBranding Boolean       @default(true)
+  /// Opt-in: expose the client-branded Brand Guidelines deck (+ tab + PDF). Off by default.
+  guidelinesEnabled Boolean         @default(false)
   shareToken   String?
   shareEnabled Boolean            @default(false)
   updatedById  String?

@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useClientDetail } from "@/hooks/use-proposals";
 import {
   useClientDesignSystem,
   useSetClientDesignSystemShare,
   useSetClientDesignSystemFoundryBranding,
+  useSetClientDesignSystemGuidelinesEnabled,
 } from "@/hooks/use-design-system";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
@@ -15,10 +16,14 @@ import {
   ClipboardDocumentIcon,
   CheckIcon,
   ArrowTopRightOnSquareIcon,
+  ArrowDownTrayIcon,
   GlobeAltIcon,
   CubeTransparentIcon,
+  BookOpenIcon,
 } from "@heroicons/react/24/outline";
+import { cn } from "@/lib/format";
 import { DesignSystemViewer } from "./design-system-viewer";
+import { GuidelinesDeck } from "./guidelines-deck";
 import { ImportModal } from "./import-modal";
 import { LogoManagerModal } from "./logo-manager-modal";
 
@@ -145,12 +150,38 @@ export function DesignSystemWorkspace({
   const share = useSetClientDesignSystemShare(slug);
   const foundryBranding = useSetClientDesignSystemFoundryBranding(slug);
   const showFoundryBranding = ds?.showFoundryBranding ?? true;
+  const guidelines = useSetClientDesignSystemGuidelinesEnabled(slug);
+  const guidelinesEnabled = ds?.guidelinesEnabled ?? false;
 
   const [importOpen, setImportOpen] = useState(false);
   const [logoOpen, setLogoOpen] = useState(false);
   const [copiedCss, setCopiedCss] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedWiki, setCopiedWiki] = useState(false);
+  // Tokens is always the default view; Guidelines only when the client opts in.
+  const [view, setView] = useState<"tokens" | "guidelines">("tokens");
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const deckRef = useRef<HTMLDivElement>(null);
+  const activeView = guidelinesEnabled ? view : "tokens";
+
+  async function handleDownloadPdf() {
+    if (!deckRef.current) return;
+    setPdfBusy(true);
+    try {
+      const nodes = Array.from(deckRef.current.querySelectorAll<HTMLElement>("[data-brand-page]"));
+      if (!nodes.length) return;
+      const { exportGuidelinesPdf } = await import("@/lib/design-system/guidelines-pdf");
+      const base = (tokens?.clientName ?? client?.name ?? slug)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      await exportGuidelinesPdf(nodes, `${base}-brand-guidelines.pdf`);
+    } catch {
+      /* export failed — surface nothing; the deck stays on screen */
+    } finally {
+      setPdfBusy(false);
+    }
+  }
 
   const wikiHref =
     wikiShare?.enabled && wikiShare.token ? `/wiki/${slug}/${wikiShare.token}` : null;
@@ -189,6 +220,49 @@ export function DesignSystemWorkspace({
 
         {ds?.exists && (
           <div className={`flex items-center gap-2${embedded ? " ml-auto" : ""}`}>
+            {/* Tokens / Guidelines view toggle — only when the client opts into guidelines. */}
+            {guidelinesEnabled && (
+              <div className="inline-flex overflow-hidden rounded-[8px] border border-[var(--border-2)]">
+                <button
+                  type="button"
+                  onClick={() => setView("tokens")}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition",
+                    activeView === "tokens"
+                      ? "bg-[var(--surface-brand)] text-[var(--brand-800)]"
+                      : "bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+                  )}
+                >
+                  <CubeTransparentIcon className="h-4 w-4" /> Tokens
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setView("guidelines")}
+                  className={cn(
+                    "flex items-center gap-1.5 border-l border-[var(--border-2)] px-3 py-1.5 text-xs font-medium transition",
+                    activeView === "guidelines"
+                      ? "bg-[var(--surface-brand)] text-[var(--brand-800)]"
+                      : "bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+                  )}
+                >
+                  <BookOpenIcon className="h-4 w-4" /> Guidelines
+                </button>
+              </div>
+            )}
+
+            {/* Download the branded deck as a PDF — client-side, no sharing needed. */}
+            {guidelinesEnabled && activeView === "guidelines" && (
+              <button
+                type="button"
+                onClick={() => void handleDownloadPdf()}
+                disabled={pdfBusy}
+                className={chipBtn}
+              >
+                <ArrowDownTrayIcon className="h-4 w-4" />
+                {pdfBusy ? "Preparing…" : "Download PDF"}
+              </button>
+            )}
+
             {/* Share — hidden when embedded in the wiki (sharing lives in wiki Settings). */}
             {!embedded && (
             <Menu as="div" className="relative">
@@ -328,6 +402,20 @@ export function DesignSystemWorkspace({
                 <MenuItem>
                   <button
                     type="button"
+                    onClick={() => {
+                      const next = !guidelinesEnabled;
+                      guidelines.mutate(next);
+                      setView(next ? "guidelines" : "tokens");
+                    }}
+                    disabled={guidelines.isPending}
+                    className={menuItem}
+                  >
+                    {guidelinesEnabled ? "Remove brand guidelines" : "Add brand guidelines"}
+                  </button>
+                </MenuItem>
+                <MenuItem>
+                  <button
+                    type="button"
                     onClick={() => foundryBranding.mutate(!showFoundryBranding)}
                     disabled={foundryBranding.isPending}
                     className={menuItem}
@@ -366,6 +454,14 @@ export function DesignSystemWorkspace({
             </button>
           </div>
         </section>
+      ) : activeView === "guidelines" ? (
+        <div ref={deckRef}>
+          <GuidelinesDeck
+            tokens={tokens}
+            clientLogoUrl={client?.logoUrl ?? null}
+            showFoundryBranding={showFoundryBranding}
+          />
+        </div>
       ) : (
         <DesignSystemViewer
           tokens={tokens}
