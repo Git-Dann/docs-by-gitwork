@@ -16,7 +16,6 @@ import {
   FlagIcon,
   PlusIcon,
   ServerStackIcon,
-  SignalIcon,
   Squares2X2Icon,
   TrashIcon,
   WrenchScrewdriverIcon,
@@ -25,7 +24,6 @@ import {
 export type WikiSection =
   | "dashboard"
   | "timeline"
-  | "system-status"
   | "monitors"
   | "design-system"
   | "ia"
@@ -99,7 +97,6 @@ export function WikiSidebar({
     availableSections ?? [
       "dashboard",
       "timeline",
-      "system-status",
       "monitors",
       "design-system",
       "ia",
@@ -192,7 +189,6 @@ export function WikiSidebar({
       <div className="flex gap-1 overflow-x-auto md:min-h-0 md:flex-1 md:flex-col md:gap-0 md:space-y-0.5 md:overflow-x-visible md:overflow-y-auto">
         {navItem("dashboard", "Dashboard", <Squares2X2Icon />)}
         {navItem("timeline", "Timeline", <CalendarDaysIcon />)}
-        {navItem("system-status", "System Status", <SignalIcon />)}
         {navItem("monitors", "Monitors", <BoltIcon />)}
         {navItem("design-system", "Design System", <CubeTransparentIcon />)}
         {navItem("ia", "Info Architecture", <BookOpenIcon />)}

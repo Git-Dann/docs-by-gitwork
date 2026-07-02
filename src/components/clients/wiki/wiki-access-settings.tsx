@@ -63,7 +63,6 @@ function generatePassword(length = 12): string {
 // Design System has its own brand share, dashboard/settings aren't shareable).
 const SHARE_SECTION_LABELS: Partial<Record<WikiSection, string>> = {
   timeline: "Timeline",
-  "system-status": "System Status",
   monitors: "Monitors",
   "design-system": "Design System",
   ia: "Information Architecture",

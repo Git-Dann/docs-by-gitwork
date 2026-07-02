@@ -10,9 +10,7 @@ import { CourseRequestsSection } from "./course-requests-section";
 import { WikiTimelineSection } from "./wiki-timeline-section";
 import { WikiDashboard } from "./wiki-dashboard";
 import { DesignSystemViewer } from "@/components/clients/design-system/design-system-viewer";
-import { SystemStatusEditor } from "./system-status-editor";
 import { MonitorStatusBoard } from "./monitors-section";
-import { parseSystemStatus } from "@/lib/wiki/system-status";
 import { apiFetch } from "@/lib/api";
 
 type WikiPageType =
@@ -22,7 +20,6 @@ type WikiPageType =
   | "ARCHITECTURE"
   | "RUNBOOK"
   | "DATA_MODEL"
-  | "SYSTEM_STATUS"
   | "CUSTOM";
 
 const SECTION_TO_TYPE: Partial<Record<WikiSection, WikiPageType>> = {
@@ -32,7 +29,6 @@ const SECTION_TO_TYPE: Partial<Record<WikiSection, WikiPageType>> = {
   architecture: "ARCHITECTURE",
   runbook: "RUNBOOK",
   "data-model": "DATA_MODEL",
-  "system-status": "SYSTEM_STATUS",
 };
 
 const TYPE_TO_SECTION: Partial<Record<WikiPageType, WikiSection>> = {
@@ -48,7 +44,6 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   dashboard: "Dashboard",
   settings: "Settings",
   timeline: "Timeline",
-  "system-status": "System Status",
   monitors: "Monitors",
   "design-system": "Design System",
   ia: "Information Architecture",
@@ -90,15 +85,11 @@ export function WikiPublicView({
     });
   const hasTimeline =
     wiki.timeline.blocks.length > 0 || wiki.timeline.milestones.length > 0;
-  const statusSystems = parseSystemStatus(
-    wiki.pages.find((p) => p.type === "SYSTEM_STATUS")?.content,
-  ).systems;
   const availableSections: WikiSection[] = [
     // Dashboard is always the public landing — a visual overview that links into
     // whatever sections exist below.
     "dashboard",
     ...(hasTimeline ? (["timeline"] as const) : []),
-    ...(statusSystems.length > 0 ? (["system-status"] as const) : []),
     ...(wiki.monitors.enabled && wiki.monitors.monitors.some((m) => m.enabled)
       ? (["monitors"] as const)
       : []),
@@ -170,11 +161,6 @@ export function WikiPublicView({
 
     if (activeSection === "timeline") {
       return <WikiTimelineSection timeline={wiki.timeline} />;
-    }
-
-    if (activeSection === "system-status") {
-      const page = wiki.pages.find((p) => p.type === "SYSTEM_STATUS");
-      return <SystemStatusEditor content={page?.content} readOnly />;
     }
 
     if (activeSection === "monitors") {
