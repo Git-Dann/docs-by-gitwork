@@ -23,8 +23,13 @@ import {
   getWikiCourseIngest,
   setWikiCourseIngest,
   syncBigWedgeStatusApi,
+  createWikiMonitorApi,
+  updateWikiMonitorApi,
+  deleteWikiMonitorApi,
+  runWikiMonitorApi,
+  setWikiMonitorsEnabledApi,
 } from "@/lib/api";
-import type { CourseImportInput, BigWedgeSyncResult } from "@/lib/api";
+import type { CourseImportInput, BigWedgeSyncResult, MonitorInput } from "@/lib/api";
 
 export function useClientWiki(slug: string) {
   return useQuery({
@@ -280,5 +285,48 @@ export function useSetCourseIngest(slug: string) {
     onSuccess: (data) => {
       queryClient.setQueryData(["course-ingest", slug], data);
     },
+  });
+}
+
+// ─── Monitors (uptime) ────────────────────────────────────────────────────────
+
+export function useCreateWikiMonitor(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: MonitorInput) => createWikiMonitorApi(slug, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useUpdateWikiMonitor(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Partial<MonitorInput> }) =>
+      updateWikiMonitorApi(slug, id, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useDeleteWikiMonitor(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteWikiMonitorApi(slug, id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useRunWikiMonitor(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => runWikiMonitorApi(slug, id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useSetWikiMonitorsEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiMonitorsEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });
 }

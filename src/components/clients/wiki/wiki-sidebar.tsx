@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  BoltIcon,
   BookOpenIcon,
   CalendarDaysIcon,
   ChevronDownIcon,
@@ -25,6 +26,7 @@ export type WikiSection =
   | "dashboard"
   | "timeline"
   | "system-status"
+  | "monitors"
   | "design-system"
   | "ia"
   | "dev-guide"
@@ -98,6 +100,7 @@ export function WikiSidebar({
       "dashboard",
       "timeline",
       "system-status",
+      "monitors",
       "design-system",
       "ia",
       "dev-guide",
@@ -190,6 +193,7 @@ export function WikiSidebar({
         {navItem("dashboard", "Dashboard", <Squares2X2Icon />)}
         {navItem("timeline", "Timeline", <CalendarDaysIcon />)}
         {navItem("system-status", "System Status", <SignalIcon />)}
+        {navItem("monitors", "Monitors", <BoltIcon />)}
         {navItem("design-system", "Design System", <CubeTransparentIcon />)}
         {navItem("ia", "Info Architecture", <BookOpenIcon />)}
         {navItem("dev-guide", "Developer Guide", <CodeBracketIcon />)}

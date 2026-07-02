@@ -64,6 +64,7 @@ function generatePassword(length = 12): string {
 const SHARE_SECTION_LABELS: Partial<Record<WikiSection, string>> = {
   timeline: "Timeline",
   "system-status": "System Status",
+  monitors: "Monitors",
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",

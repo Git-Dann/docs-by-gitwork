@@ -36,6 +36,7 @@ import { CourseApiIntakeModal } from "./course-api-intake-modal";
 import { WikiTimelineSection } from "./wiki-timeline-section";
 import { WikiDashboard } from "./wiki-dashboard";
 import { SystemStatusEditor } from "./system-status-editor";
+import { MonitorsManager } from "./monitors-section";
 import { WikiAccessSettings } from "./wiki-access-settings";
 import {
   ApiDocsPageEditor,
@@ -56,6 +57,7 @@ import {
   useUpdateCourseRequest,
   useDeleteCourseRequest,
   useSyncBigWedgeStatus,
+  useSetWikiMonitorsEnabled,
 } from "@/hooks/use-wiki";
 import type { BigWedgeSyncResult } from "@/lib/api";
 import type { ChangelogEntryPayload, ChangelogEditInitial } from "./changelog-entry-form";
@@ -95,6 +97,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   settings: "Settings",
   timeline: "Timeline",
   "system-status": "System Status",
+  monitors: "Monitors",
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
@@ -833,6 +836,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
   const upsertPage = useUpsertWikiPage(slug);
   const deletePage = useDeleteWikiPage(slug);
+  const setMonitorsEnabled = useSetWikiMonitorsEnabled(slug);
   const addEntry = useAddChangelogEntry(slug);
   const deleteEntry = useDeleteChangelogEntry(slug);
   const updatePlatforms = useUpdateWikiPlatforms(slug);
@@ -870,10 +874,12 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   // System Status is a structured (non-markdown) page; it lives in the sidebar
   // once its page exists, and is offered in Add New until then.
   const hasSystemStatus = wiki.pages.some((p) => p.type === "SYSTEM_STATUS");
+  const monitorsOn = wiki.monitors.enabled;
   const availableSections: WikiSection[] = [
     "dashboard",
     "timeline",
     ...(hasSystemStatus ? (["system-status"] as const) : []),
+    ...(monitorsOn ? (["monitors"] as const) : []),
     "design-system",
     ...OPTIONAL_DOC_SECTIONS.filter(
       (item) =>
@@ -895,6 +901,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(hasSystemStatus
       ? []
       : [{ section: "system-status" as WikiSection, label: "System Status" }]),
+    ...(monitorsOn ? [] : [{ section: "monitors" as WikiSection, label: "Monitors" }]),
   ];
 
   // Which sections are publicly shared (for the sidebar globe indicator):
@@ -919,6 +926,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   }
 
   async function handleAddSection(section: WikiSection) {
+    if (section === "monitors") {
+      await setMonitorsEnabled.mutateAsync(true);
+      setActiveSection("monitors");
+      return;
+    }
     if (!isDocsPageSection(section) && section !== "system-status") return;
     const type = SECTION_TO_TYPE[section];
     if (!type) return;
@@ -932,6 +944,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   }
 
   async function handleDeletePage(section: WikiSection) {
+    if (section === "monitors") {
+      await setMonitorsEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "monitors") ?? "dashboard");
+      return;
+    }
     if (!isDocsPageSection(section) && section !== "system-status") return;
     const type = SECTION_TO_TYPE[section];
     if (!type) return;
@@ -941,7 +958,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   }
 
   function confirmDeletePage(section: WikiSection) {
-    if (!isDocsPageSection(section) && section !== "system-status") return;
+    if (!isDocsPageSection(section) && section !== "system-status" && section !== "monitors") return;
     const ok = window.confirm(`Delete ${SECTION_TITLES[section]} from this wiki? You can add it back later from Add New.`);
     if (!ok) return;
     void handleDeletePage(section);
@@ -1126,6 +1143,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           onSave={(c) => handleSavePage("system-status", "System Status", c)}
         />
       );
+    }
+
+    // ── Monitors — automated uptime checks (HTTP/TCP connectors).
+    if (activeSection === "monitors") {
+      return <MonitorsManager slug={slug} monitors={wiki!.monitors.monitors} />;
     }
 
     // ── Design System — embedded inline (has its own action bar)
@@ -1485,7 +1507,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             onAddSection={(section) => void handleAddSection(section)}
             isAddingSection={upsertPage.isPending}
             deletableSections={availableSections.filter(
-              (s) => isDocsPageSection(s) || s === "system-status",
+              (s) => isDocsPageSection(s) || s === "system-status" || s === "monitors",
             )}
             onDeleteSection={confirmDeletePage}
             isDeletingSection={deletePage.isPending}
