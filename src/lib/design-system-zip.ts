@@ -279,22 +279,22 @@ export async function buildLogoPack(
     }
   }
 
-  // Skill-generated lockups with explicit downloadUrl
+  // Skill-generated lockups — prefer downloadUrl, fall back to src
   const assets = tokens.logoRules?.assets ?? [];
   await Promise.all(
-    assets
-      .filter((a) => a.downloadUrl)
-      .map(async (asset) => {
-        const bytes = await fetchAsBytes(asset.downloadUrl!);
-        if (bytes) {
-          const ext = extFromUrl(asset.downloadUrl!);
-          const safeName = asset.label
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-+|-+$/g, "");
-          files[`logos/${safeName}.${ext}`] = bytes;
-        }
-      }),
+    assets.map(async (asset) => {
+      const source = asset.downloadUrl || asset.src;
+      if (!source) return;
+      const bytes = await fetchAsBytes(source);
+      if (bytes) {
+        const ext = extFromUrl(source);
+        const safeName = asset.label
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+        files[`logos/${safeName}.${ext}`] = bytes;
+      }
+    }),
   );
 
   const lr = tokens.logoRules;
@@ -304,9 +304,7 @@ export async function buildLogoPack(
 
   readmeParts.push("## Files");
   if (clientLogoUrl) readmeParts.push("- `logos/logo.*` — uploaded client logo");
-  assets
-    .filter((a) => a.downloadUrl)
-    .forEach((a) => readmeParts.push(`- **${a.label}**`));
+  assets.forEach((a) => readmeParts.push(`- \`logos/${a.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}.*\` — ${a.label}`));
   readmeParts.push("");
 
   if (lr?.colourRules?.length) {
