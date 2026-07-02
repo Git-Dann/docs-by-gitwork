@@ -1164,15 +1164,84 @@ model ClientWiki {
   accessProtected    Boolean               @default(false)
   accessUsername     String?
   accessPasswordHash String?
+  /// Whether the Monitors (uptime) section is enabled for this wiki. The section
+  /// appears once enabled; individual monitors live in WikiMonitor.
+  monitorsEnabled   Boolean                @default(false)
   pages             ClientWikiPage[]
   changelog         ClientChangelogEntry[]
   courseRequests    ClientCourseRequest[]
   wikiUsers         ClientWikiUser[]
+  monitors          WikiMonitor[]
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
 
   @@index([shareToken])
   @@map("ClientWiki")
+}
+
+/// A single uptime/health monitor within a wiki's Monitors section. Probed on a
+/// schedule by /api/cron/wiki-monitors; each probe writes a WikiMonitorCheck and
+/// updates the denormalised `last*` fields for fast reads.
+model WikiMonitor {
+  id              String             @id @default(cuid())
+  wikiId          String
+  wiki            ClientWiki         @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  name            String
+  /// Connector type — see src/server/wiki-monitors (HTTP, TCP, …).
+  type            WikiMonitorType    @default(HTTP)
+  /// URL for HTTP; "host:port" for TCP.
+  target          String
+  /// HTTP request method (HTTP only).
+  method          String             @default("GET")
+  /// Exact expected HTTP status; null = any 2xx/3xx counts as up.
+  expectedStatus  Int?
+  /// Optional body substring that must be present for the check to pass (HTTP).
+  keyword         String?
+  /// Latency (ms) above which an otherwise-up check is reported DEGRADED. Null = off.
+  degradedMs      Int?
+  enabled         Boolean            @default(true)
+  intervalMinutes Int                @default(5)
+  sortOrder       Int                @default(0)
+  /// Denormalised latest result for fast public reads.
+  lastStatus      WikiMonitorStatus  @default(UNKNOWN)
+  lastCheckedAt   DateTime?
+  lastLatencyMs   Int?
+  lastStatusCode  Int?
+  lastError       String?
+  checks          WikiMonitorCheck[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([wikiId])
+  @@map("WikiMonitor")
+}
+
+/// One probe result for a WikiMonitor — the history behind uptime % and the
+/// recent-status bar strip. Pruned by the cron beyond the retention window.
+model WikiMonitorCheck {
+  id         String            @id @default(cuid())
+  monitorId  String
+  monitor    WikiMonitor       @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  status     WikiMonitorStatus
+  latencyMs  Int?
+  statusCode Int?
+  error      String?
+  checkedAt  DateTime          @default(now())
+
+  @@index([monitorId, checkedAt])
+  @@map("WikiMonitorCheck")
+}
+
+enum WikiMonitorType {
+  HTTP
+  TCP
+}
+
+enum WikiMonitorStatus {
+  UP
+  DEGRADED
+  DOWN
+  UNKNOWN
 }
 
 /// A client-facing login for the PUBLIC wiki link. Multiple per wiki; the team

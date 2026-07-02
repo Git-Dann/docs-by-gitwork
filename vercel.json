@@ -38,6 +38,10 @@
     {
       "path": "/api/cron/docs-gdrive-backup",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/wiki-monitors",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

@@ -17,6 +17,7 @@ import type {
   CourseRequestStatus,
 } from "@prisma/client";
 import type { DesignTokens } from "@/types/design-tokens";
+import { loadWikiMonitors, type WikiMonitorsSection } from "./wiki-monitors";
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -108,6 +109,8 @@ export interface WikiDTO {
   timeline: WikiTimeline;
   /** The client's design system tokens, when one exists (null otherwise). */
   designSystem: WikiDesignSystem | null;
+  /** Uptime monitors section — whether it's enabled + the monitors with stats. */
+  monitors: WikiMonitorsSection;
   /**
    * Client login accounts for the public link (email + name; password never
    * exposed). Populated only for the internal editor — the public payload omits
@@ -360,6 +363,7 @@ async function buildDTO(
       .map(serializeCourseRequest),
     timeline: await loadWikiTimeline(wiki.clientId),
     designSystem: await loadWikiDesignSystem(wiki.clientId),
+    monitors: await loadWikiMonitors(wiki.clientId),
     users: opts?.includeUsers
       ? (wiki.wikiUsers ?? [])
           .slice()
@@ -946,6 +950,7 @@ export async function deleteWikiUser(clientId: string, userId: string): Promise<
 const SHAREABLE_SECTIONS = [
   "timeline",
   "system-status",
+  "monitors",
   "design-system",
   "ia",
   "dev-guide",

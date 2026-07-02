@@ -11,6 +11,7 @@ import { WikiTimelineSection } from "./wiki-timeline-section";
 import { WikiDashboard } from "./wiki-dashboard";
 import { DesignSystemViewer } from "@/components/clients/design-system/design-system-viewer";
 import { SystemStatusEditor } from "./system-status-editor";
+import { MonitorStatusBoard } from "./monitors-section";
 import { parseSystemStatus } from "@/lib/wiki/system-status";
 import { apiFetch } from "@/lib/api";
 
@@ -48,6 +49,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   settings: "Settings",
   timeline: "Timeline",
   "system-status": "System Status",
+  monitors: "Monitors",
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
@@ -97,6 +99,9 @@ export function WikiPublicView({
     "dashboard",
     ...(hasTimeline ? (["timeline"] as const) : []),
     ...(statusSystems.length > 0 ? (["system-status"] as const) : []),
+    ...(wiki.monitors.enabled && wiki.monitors.monitors.some((m) => m.enabled)
+      ? (["monitors"] as const)
+      : []),
     ...(wiki.designSystem ? (["design-system"] as const) : []),
     ...existingDocSections,
     ...(wiki.changelog.length > 0 ? (["changelog"] as const) : []),
@@ -170,6 +175,10 @@ export function WikiPublicView({
     if (activeSection === "system-status") {
       const page = wiki.pages.find((p) => p.type === "SYSTEM_STATUS");
       return <SystemStatusEditor content={page?.content} readOnly />;
+    }
+
+    if (activeSection === "monitors") {
+      return <MonitorStatusBoard monitors={wiki.monitors.monitors} />;
     }
 
     if (activeSection === "design-system") {

@@ -12,6 +12,7 @@ const bodySchema = z.object({
     .enum([
       "timeline",
       "system-status",
+      "monitors",
       "design-system",
       "ia",
       "dev-guide",

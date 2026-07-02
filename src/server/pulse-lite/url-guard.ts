@@ -128,3 +128,29 @@ export async function assertScannableUrl(raw: string): Promise<{ url: string; ho
 
   return { url: parsed.toString(), hostname };
 }
+
+/**
+ * Bare-hostname variant of the SSRF guard — for non-URL probes (e.g. a TCP
+ * monitor's host:port). Rejects blocked/loopback/private-resolving hosts.
+ * @throws {UrlNotScannableError} (status 400) on any unsafe host.
+ */
+export async function assertPublicHost(hostname: string): Promise<void> {
+  const host = (hostname ?? "").trim().toLowerCase().replace(/\.$/, "");
+  if (!host) throw new UrlNotScannableError("Enter a host.");
+  if (BLOCKED_HOSTNAMES.has(host) || BLOCKED_HOST_SUFFIXES.some((s) => host.endsWith(s))) {
+    throw new UrlNotScannableError("That host can't be monitored.");
+  }
+  if (isIP(host)) {
+    if (isPrivateAddress(host)) throw new UrlNotScannableError("That address can't be monitored.");
+    return;
+  }
+  let addresses: { address: string }[];
+  try {
+    addresses = await lookup(host, { all: true });
+  } catch {
+    throw new UrlNotScannableError("Couldn't resolve that host — check it and try again.");
+  }
+  if (addresses.length === 0 || addresses.some((a) => isPrivateAddress(a.address))) {
+    throw new UrlNotScannableError("That host resolves to a private address and can't be monitored.");
+  }
+}

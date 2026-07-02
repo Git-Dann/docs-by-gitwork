@@ -3038,6 +3038,46 @@ export async function updateWikiPlatformsApi(slug: string, platforms: string[]):
   });
 }
 
+// ─── Wiki monitors (uptime) ─────────────────────────────────────────────────
+import type { WikiMonitorDTO, MonitorInput } from "@/server/wiki-monitors";
+export type { WikiMonitorDTO, WikiMonitorsSection, MonitorInput } from "@/server/wiki-monitors";
+
+export async function createWikiMonitorApi(slug: string, input: MonitorInput): Promise<WikiMonitorDTO> {
+  return apiFetch<WikiMonitorDTO>(`/api/clients/${slug}/wiki/monitors`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateWikiMonitorApi(
+  slug: string,
+  id: string,
+  input: Partial<MonitorInput>,
+): Promise<WikiMonitorDTO> {
+  return apiFetch<WikiMonitorDTO>(`/api/clients/${slug}/wiki/monitors/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteWikiMonitorApi(slug: string, id: string): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/monitors/${id}`, { method: "DELETE" });
+}
+
+export async function runWikiMonitorApi(slug: string, id: string): Promise<WikiMonitorDTO> {
+  return apiFetch<WikiMonitorDTO>(`/api/clients/${slug}/wiki/monitors/${id}/run`, { method: "POST" });
+}
+
+export async function setWikiMonitorsEnabledApi(slug: string, enabled: boolean): Promise<{ enabled: boolean }> {
+  return apiFetch<{ enabled: boolean }>(`/api/clients/${slug}/wiki/monitors`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 export async function getPublicWikiApi(token: string): Promise<WikiDTO> {
   return apiFetch<WikiDTO>(`/api/wiki/${token}`);
 }
