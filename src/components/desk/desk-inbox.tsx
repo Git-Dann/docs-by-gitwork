@@ -1,15 +1,19 @@
 "use client";
 
-import { useDeskGmail } from "@/hooks/use-desk";
+import Link from "next/link";
+import { useDeskGmail, useDeskSlack } from "@/hooks/use-desk";
 import type { GmailMessage } from "@/lib/api";
+import type { DeskSlackMessage } from "@/types/desk";
 import { EditorialRow, DeskEmpty, DeskSkeleton, DeskConnectGoogle, RevealList } from "./desk-shared";
 
-/** INBOX tab — recent Gmail (reused per-user Google read) as an editorial row.
- *  Slack activity across the caller's assigned client channels lands here in Phase 2. */
+/** INBOX tab — recent Gmail (per-user Google read) + recent Slack activity across
+ *  the caller's client channels, as editorial rows. Both are pure aggregations. */
 export function DeskInbox() {
   const gmail = useDeskGmail();
+  const slack = useDeskSlack();
   const messages = gmail.data?.messages ?? [];
   const unread = messages.filter((m) => m.unread).length;
+  const slackMessages = slack.data?.messages ?? [];
 
   return (
     <div>
@@ -34,19 +38,26 @@ export function DeskInbox() {
         )}
       </EditorialRow>
 
-      <EditorialRow title="Slack" caption="Chatter from the channels you're on.">
-        <div className="rounded-[8px] border border-dashed border-[var(--border-2)] px-4 py-8 text-center">
-          <p
-            className="text-[11px] uppercase tracking-[1.4px] text-[var(--text-4)]"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            Coming next
-          </p>
-          <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-[var(--text-4)]">
-            Activity across your assigned client channels will surface right here — no
-            channel-hopping to see what moved.
-          </p>
-        </div>
+      <EditorialRow
+        title="Slack"
+        count={slack.data?.reason === "ok" ? slackMessages.length : undefined}
+        caption="What moved across your client channels."
+      >
+        {slack.isPending ? (
+          <DeskSkeleton />
+        ) : !slack.data?.configured ? (
+          <DeskEmpty>Slack isn&apos;t connected for this workspace yet.</DeskEmpty>
+        ) : slack.data.reason === "no_channels" ? (
+          <DeskEmpty>None of your clients have a linked Slack channel.</DeskEmpty>
+        ) : slackMessages.length === 0 ? (
+          <DeskEmpty>No recent messages in your channels.</DeskEmpty>
+        ) : (
+          <RevealList
+            items={slackMessages}
+            initial={6}
+            renderItem={(m) => <SlackRow key={m.id} m={m} />}
+          />
+        )}
       </EditorialRow>
     </div>
   );
@@ -79,4 +90,43 @@ function MailRow({ m, index }: { m: GmailMessage; index: number }) {
       </div>
     </div>
   );
+}
+
+function SlackRow({ m }: { m: DeskSlackMessage }) {
+  return (
+    <Link
+      href={`/app/portal/${m.clientSlug}`}
+      className="block rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3.5 py-3 transition hover:border-[var(--brand-300)] hover:shadow-[var(--shadow-xs)]"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className="truncate text-[11px] uppercase tracking-[0.8px] text-[var(--text-4)]"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          {m.clientName} · {m.author}
+        </span>
+        <span
+          className="shrink-0 text-[11px] text-[var(--text-4)]"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          {relTime(m.ts)}
+        </span>
+      </div>
+      <p className="mt-1 line-clamp-2 text-sm text-[var(--text-2)]">{m.text}</p>
+    </Link>
+  );
+}
+
+/** Compact "2m / 3h / 5d" relative time. */
+function relTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const mins = Math.max(0, Math.round((Date.now() - then) / 60000));
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  const days = Math.round(hrs / 24);
+  if (days < 7) return `${days}d`;
+  return `${Math.round(days / 7)}w`;
 }

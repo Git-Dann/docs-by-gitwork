@@ -835,3 +835,38 @@ so there's an off-platform copy that's searchable/editable in Drive (not just an
   pixel-fidelity; a PDF-snapshot path could be added alongside via `/api/proposals/[id]/pdf`);
   backups live in the backup account's Drive (share the folder with the `gitwork.co.uk` domain if
   the whole team should see them). Cron is daily on Hobby.
+
+## 22. Recent Changes (July 2026) — "On Your Desk" (persistent internal drawer)
+
+A Twilio-Workbench-style pull-up drawer docked at the bottom of the whole `/app` shell
+(`DeskDrawer` mounted once in `src/components/app-shell.tsx`), for **internal Gitwork users
+only** (not clients). **Pure aggregator — no live AI**: it only reads per-current-user data other
+modules already own. Inspired by Dia's daily brief; DESIGN.md-first with editorial liberties
+(serif-italic section rails, a hand-lettered `Caveat` "stamp" CTA, mono date/time rails) kept on
+brand (blue, never Dia's yellow).
+
+- **Interaction** — collapsed dock shows a mono summary (`N OVERDUE · N DOING · …`); the **grab
+  handle** is the click toggle (no chevrons; mobile keeps an ✕). Desktop expands to an inline
+  bottom panel; mobile to a full-height `<Modal>` sheet. Open state + last tab persist to
+  `localStorage` (`gitwork.desk.v1`). Panel uses warm `--surface-canvas`; z-40 (below modals).
+- **Tabs** (`src/components/desk/`): **TODAY** (masthead + standup + focus + next meeting +, for
+  financial viewers, a client cash-flow row), **TASKS** (overdue/doing/up-next/done-today),
+  **MEETINGS** (today's calendar + my Scribe action items), **INBOX** (Gmail + Slack). Long lists
+  are capped with a `RevealList` "Show N more". Editorial layout via `EditorialRow` + `Stamp` in
+  `desk-shared.tsx`.
+- **Role-aware** — standup (AM/PM) shows only for devs/staff (`!isAdminOrAbove`), never admins/
+  super-admins (fixes false "standup pending"). The **cash-flow** row (per-client monthly dev cost
+  from `useClientList().monthlyCost`) shows only when `canViewClientFinancials` (Super Admin +
+  `clients.viewFinancials` toggle, e.g. Harry). Slack/tasks are scoped exactly like the task board.
+- **Reuses** `useMyDay` / `useTaskAttention({mine:true})` / `useClientList` / `getCalendarEvents` /
+  `getGmailMessages` / `<Modal>` / `requireAuthedUser`. Hooks in `src/hooks/use-desk.ts`.
+- **Net-new backend (2 endpoints, no schema change, no cron, no OAuth re-consent):**
+  - `getMyActionItems(user)` in `src/server/meetings.ts` → `GET /api/desk/action-items` — open
+    `MeetingActionItem`s where the user attended the meeting (email in `Meeting.attendees`) or the
+    item is linked to a task assigned to them.
+  - `getMyDeskSlack(user)` in **`src/server/desk.ts`** → `GET /api/desk/slack` — merges recent
+    `conversations.history` across the caller's scoped client channels (reuses the workspace bot
+    token + the same read as `/api/clients/[slug]/slack-activity`, **minus the AI summary**). No new
+    Slack scopes, **no Slack↔Foundry user mapping** — it surfaces channel activity, not @mentions/DMs.
+- **Deferred:** true Slack @mentions/DMs (needs user mapping + scopes); revenue/margin cash flow
+  (only dev *cost* is wired today); an optional cached morning digest if narrative is ever wanted.

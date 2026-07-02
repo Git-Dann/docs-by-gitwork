@@ -22,6 +22,25 @@ export type DeskActionItemDTO = {
   hasTask: boolean;
 };
 
+/** One recent Slack message from a client channel the user has access to. */
+export type DeskSlackMessage = {
+  id: string;
+  author: string;
+  text: string;
+  ts: string; // ISO
+  clientName: string;
+  clientSlug: string;
+};
+
+export type DeskSlackReason = "ok" | "no_token" | "no_channels" | "empty";
+
+export type DeskSlackResult = {
+  /** False only when the workspace has no Slack bot token at all. */
+  configured: boolean;
+  reason: DeskSlackReason;
+  messages: DeskSlackMessage[];
+};
+
 export const DESK_TABS = ["TODAY", "TASKS", "MEETINGS", "INBOX"] as const;
 export type DeskTab = (typeof DESK_TABS)[number];
 

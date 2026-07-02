@@ -11,7 +11,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { getCalendarEvents, getGmailMessages, getDeskActionItems } from "@/lib/api";
+import { getCalendarEvents, getGmailMessages, getDeskActionItems, getDeskSlack } from "@/lib/api";
 
 export function useDeskCalendar(opts: { enabled?: boolean } = {}) {
   return useQuery({
@@ -39,6 +39,16 @@ export function useDeskActionItems(opts: { enabled?: boolean } = {}) {
     queryFn: getDeskActionItems,
     enabled: opts.enabled ?? true,
     staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useDeskSlack(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ["desk", "slack"] as const,
+    queryFn: getDeskSlack,
+    enabled: opts.enabled ?? true,
+    staleTime: 120_000,
     refetchOnWindowFocus: false,
   });
 }
