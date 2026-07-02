@@ -6,7 +6,6 @@ import { auth } from "@/auth";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { WikiPublicView } from "@/components/clients/wiki/wiki-public-view";
-import { WikiAccessGate } from "@/components/clients/wiki/wiki-access-gate";
 
 // Session/cookie-dependent (the access lockdown) — render per request.
 export const dynamic = "force-dynamic";
@@ -70,7 +69,8 @@ export default async function PublicWikiPage({
 
   // Hard lockdown: the public wiki is viewable only by (a) a logged-in
   // Gitwork/Foundry staff member, or (b) an authenticated client user with a
-  // valid access cookie. Anyone else gets the email/password login form.
+  // valid access cookie. Anyone else is sent to the central client portal login,
+  // which authenticates by email and routes back here (?next).
   const session = await auth();
   const isStaff = Boolean(session?.user?.id);
   if (!isStaff) {
@@ -78,7 +78,7 @@ export default async function PublicWikiPage({
     const cookieValue = cookieStore.get(wikiAccessCookieName(wiki.id))?.value;
     const unlocked = await verifyWikiAccessCookie(wiki.id, cookieValue);
     if (!unlocked) {
-      return <WikiAccessGate token={token} clientName={wiki.clientName} />;
+      redirect(`/portal/login?next=${encodeURIComponent(`/wiki/${slug}/${token}`)}`);
     }
   }
 
