@@ -14,6 +14,7 @@ export function usePermissions() {
   const { data, isPending } = useAccount();
   const role = data?.role ?? "";
   const permissions = data?.permissions ?? [];
+  const showDevRates = data?.showDevRates ?? false;
   const can = (id: string) => isSuperAdmin(role) || permissions.includes(id);
 
   return {
@@ -24,11 +25,12 @@ export function usePermissions() {
     // (e.g. moving devs between Bench / Off Bench, which is admin+ only).
     isAdminOrAbove: isAtLeast(role, "ADMIN"),
     isSuperAdmin: isSuperAdmin(role),
-    // Field gates
-    canViewRates: can("code.viewRates"),
+    // Field gates — rate/financial fields also respect the workspace showDevRates toggle
+    // (Settings → General → Developer rates) so admins can hide them for demos.
+    canViewRates: can("code.viewRates") && showDevRates,
     canViewCosts: can("docs.viewCosts"),
-    canViewRateCard: can("rateCard.view"),
-    canViewClientFinancials: can("clients.viewFinancials"),
+    canViewRateCard: can("rateCard.view") && showDevRates,
+    canViewClientFinancials: can("clients.viewFinancials") && showDevRates,
     // Off → Docs is scoped to the lightweight types (no proposals/contracts). Default off for devs.
     canViewAdminDocTypes: can("docs.viewAdminTypes"),
     // Action gates (view vs manage + high-risk)
