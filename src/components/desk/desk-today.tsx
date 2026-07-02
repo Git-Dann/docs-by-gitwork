@@ -139,9 +139,9 @@ export function DeskToday() {
         </div>
       </EditorialRow>
 
-      {/* Client cash flow — gated by both the per-user financials permission AND the
-          workspace showDevRates flag (off by default — toggle in Settings → General). */}
-      {canViewClientFinancials && account.data?.showDevRates ? <CashFlowRow /> : null}
+      {/* Client cash flow — gated by canViewClientFinancials (which includes the
+          workspace showDevRates toggle — off by default, set in Settings → General). */}
+      {canViewClientFinancials ? <CashFlowRow /> : null}
     </div>
   );
 }
