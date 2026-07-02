@@ -418,8 +418,8 @@ export function WikiDashboard({
 
   return (
     <div className="mx-auto w-full max-w-5xl">
-      {/* Hero */}
-      <section className="widget-card overflow-hidden">
+      {/* Hero — overflow visible so the team avatars' name tooltips aren't clipped. */}
+      <section className="widget-card">
         <div className="flex flex-col gap-5 p-6 md:p-8">
           <div className="flex items-center gap-4">
             {wiki.designSystem?.logoUrl ? (
@@ -488,6 +488,44 @@ export function WikiDashboard({
                   {wiki.contact.phone}
                 </a>
               )}
+            </div>
+          )}
+
+          {/* Delivery team — stacked dev avatars with an (unclipped) name tooltip. */}
+          {wiki.team.length > 0 && (
+            <div className="flex items-center gap-3">
+              <span
+                className="text-[11px] font-medium uppercase tracking-[0.1em] text-[var(--text-4)]"
+                style={{ fontFamily: MONO }}
+              >
+                Your team
+              </span>
+              <div className="flex -space-x-2">
+                {wiki.team.slice(0, 6).map((m, i) => (
+                  <div key={i} className="group relative">
+                    {m.avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={m.avatarUrl}
+                        alt={m.name}
+                        className="h-8 w-8 rounded-full object-cover ring-2 ring-white"
+                      />
+                    ) : (
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--brand-50)] text-[11px] font-semibold text-[var(--brand-700)] ring-2 ring-white">
+                        {m.initials}
+                      </span>
+                    )}
+                    <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--text-1)] px-2 py-1 text-[11px] font-medium text-white shadow-lg group-hover:block">
+                      {m.name}
+                    </span>
+                  </div>
+                ))}
+                {wiki.team.length > 6 && (
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-1)] text-[11px] font-semibold text-[var(--text-3)] ring-2 ring-white">
+                    +{wiki.team.length - 6}
+                  </span>
+                )}
+              </div>
             </div>
           )}
 

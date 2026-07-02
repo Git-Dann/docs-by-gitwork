@@ -79,6 +79,13 @@ export interface WikiTimeline {
   milestones: WikiTimelineMilestone[];
 }
 
+/** A delivery-team member (active dev on the client), for the dashboard hero stack. */
+export interface WikiTeamMember {
+  name: string;
+  initials: string;
+  avatarUrl: string | null;
+}
+
 /** The client's design system, surfaced inside the wiki when it exists. */
 export interface WikiDesignSystem {
   tokens: DesignTokens;
@@ -113,6 +120,8 @@ export interface WikiDTO {
   designSystem: WikiDesignSystem | null;
   /** Uptime monitors section — whether it's enabled + the monitors with stats. */
   monitors: WikiMonitorsSection;
+  /** Active delivery team (devs) on the project — for the dashboard hero stack. */
+  team: WikiTeamMember[];
   /**
    * Client login accounts for the public link (email + name; password never
    * exposed). Populated only for the internal editor — the public payload omits
@@ -204,6 +213,36 @@ const DEFAULT_PLATFORMS = ["IOS", "ANDROID", "WEB"];
  * the standalone /timeline/[token] share show the same client-facing roadmap:
  * block names + task titles + progress only — no assignees/notes/internal status.
  */
+/** Two-letter initials from a name, for avatar fallbacks. */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/**
+ * The client's active delivery team — distinct candidates with an open placement
+ * (endDate null), excluding off-billing PRO_BONO devs. Same source as the Portal
+ * "DEVS" tile. Shown as a stacked avatar row on the wiki dashboard hero.
+ */
+async function loadWikiTeam(clientId: string): Promise<WikiTeamMember[]> {
+  const placements = await prisma.placement.findMany({
+    where: { clientId, endDate: null, candidate: { devGroup: { not: "PRO_BONO" } } },
+    orderBy: { startDate: "asc" },
+    select: { candidate: { select: { id: true, name: true, avatarUrl: true } } },
+  });
+  const seen = new Set<string>();
+  const team: WikiTeamMember[] = [];
+  for (const p of placements) {
+    const c = p.candidate;
+    if (!c || seen.has(c.id)) continue;
+    seen.add(c.id);
+    team.push({ name: c.name, initials: initialsOf(c.name), avatarUrl: c.avatarUrl });
+  }
+  return team;
+}
+
 async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
   const blocks = await prisma.featureBlock.findMany({
     where: { clientId },
@@ -368,6 +407,7 @@ async function buildDTO(
     timeline: await loadWikiTimeline(wiki.clientId),
     designSystem: await loadWikiDesignSystem(wiki.clientId),
     monitors: await loadWikiMonitors(wiki.clientId),
+    team: await loadWikiTeam(wiki.clientId),
     users: opts?.includeUsers
       ? (wiki.wikiUsers ?? [])
           .slice()
