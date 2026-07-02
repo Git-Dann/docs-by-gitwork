@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: foundry-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: foundry
+      POSTGRES_USER: foundry
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foundry"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: ghcr.io/git-dann/docs-by-gitwork:latest
+    container_name: foundry
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+
+volumes:
+  postgres_data:
