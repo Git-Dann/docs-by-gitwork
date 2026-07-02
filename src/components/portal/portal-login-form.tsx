@@ -159,7 +159,9 @@ export function PortalLoginForm({ next }: { next: string | null }) {
   return (
     <div
       className="flex min-h-screen items-center justify-center p-4 sm:p-8"
-      style={{ background: PAGE_BG, colorScheme: "light" }}
+      // 100dvh tracks the visible viewport on iOS Safari (min-h-screen/100vh
+      // overshoots behind the toolbar → dark body shows on overscroll).
+      style={{ background: PAGE_BG, colorScheme: "light", minHeight: "100dvh" }}
     >
       <div
         className="grid w-full max-w-4xl overflow-hidden rounded-[28px] shadow-[0_30px_70px_-30px_rgba(0,0,0,0.30)] md:grid-cols-2"
