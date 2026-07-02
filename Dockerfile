@@ -39,11 +39,11 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Prisma client + schema for runtime queries and db push on start
+# Generated Prisma client for runtime queries. The `prisma` CLI is NOT included —
+# schema changes are applied manually via `docker exec` (see docker-entrypoint.sh),
+# so the deep CLI dep chain (@prisma/config → effect → fast-check) isn't needed.
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
-COPY --from=builder /app/node_modules/effect ./node_modules/effect
 COPY --from=builder /app/prisma ./prisma
 
 # Entrypoint: run prisma db push then start the app

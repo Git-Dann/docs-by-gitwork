@@ -51,5 +51,8 @@ jobs:
           script: |
             cd /opt/apps/foundry
             docker compose pull app
+            docker compose up -d db
+            docker compose run --rm --no-deps --user root --entrypoint sh app \
+              -c "npx --yes prisma@6.16.2 db push --schema=prisma/schema.prisma --skip-generate"
             docker compose up -d --no-deps app
             docker image prune -f
