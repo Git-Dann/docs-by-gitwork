@@ -85,6 +85,27 @@ function parseVarMap(css: string): Map<string, string> {
 
 const mono = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
 
+function downloadLogo(src: string, label: string): void {
+  let ext = "png";
+  if (src.startsWith("data:")) {
+    const mime = /^data:([^;,]+)/.exec(src)?.[1] ?? "image/png";
+    ext = mime.split("/")[1] ?? "png";
+    if (ext === "svg+xml") ext = "svg";
+  } else {
+    try {
+      const p = new URL(src).pathname;
+      ext = p.split(".").pop()?.split("?")[0] ?? "png";
+    } catch { /* keep png */ }
+  }
+  const safeName = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "logo";
+  const a = document.createElement("a");
+  a.href = src;
+  a.download = `${safeName}.${ext}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 // ── chrome primitives (Foundry widget grammar) ─────────────────────────────────
 
 function Section({
@@ -777,7 +798,7 @@ function LogoSection({
   return (
     <div className="flex flex-col gap-6">
       {cards.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className={`grid gap-4 ${cards.length === 3 ? "sm:grid-cols-3" : "grid-cols-2 sm:grid-cols-2 lg:grid-cols-4"}`}>
           {cards.map((a, i) => (
             <div key={`${a.label}-${i}`} className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]">
               <div
@@ -787,12 +808,23 @@ function LogoSection({
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={a.src} alt={a.label} style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain" }} />
               </div>
-              <p
-                className="px-3.5 py-2 text-[10px] uppercase tracking-[0.08em]"
-                style={{ fontFamily: mono, color: "var(--text-4)" }}
-              >
-                {a.label}
-              </p>
+              <div className="flex items-center justify-between px-3.5 py-2">
+                <p
+                  className="truncate text-[10px] uppercase tracking-[0.08em]"
+                  style={{ fontFamily: mono, color: "var(--text-4)" }}
+                >
+                  {a.label}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => downloadLogo(a.src, a.label)}
+                  title={`Download ${a.label}`}
+                  className="ml-2 shrink-0 text-[11px] text-[var(--brand-600)] transition hover:text-[var(--brand-700)]"
+                  style={{ fontFamily: mono }}
+                >
+                  ↓
+                </button>
+              </div>
             </div>
           ))}
         </div>
