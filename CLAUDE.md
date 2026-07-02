@@ -25,16 +25,18 @@ It serves two audiences simultaneously:
 > runs on a **Fasthosts VPS** (`194.164.127.222`) via **Docker Compose** — the Next.js app container
 > + a self-hosted **PostgreSQL** container (with pgvector), behind a reverse proxy with a **Let's
 > Encrypt** cert. `foundry.gitwork.co.uk` points at the VPS by an **A record** (managed in
-> **Squarespace** DNS). There is **no auto-deploy** — deploying is a Docker Compose step on the VPS.
-> The Vercel-specific details in this section (auto-deploy on push, `vercel.json` build, Neon URLs)
-> are **historical/rollback context** — Vercel + Neon are kept live read-only as a fallback until
-> decommissioned. **See §23 for the current setup.**
+> **Squarespace** DNS). **Push to `main` auto-deploys to the VPS** via GitHub Actions
+> (`.github/workflows/deploy.yml`): build image → GHCR → SSH to VPS → `docker compose pull` +
+> `prisma db push` + restart (~6 min). Vercel is still Git-connected and builds in parallel, but
+> that's **vestigial** (DNS no longer points at it). The Vercel-specific details in this section
+> (`vercel.json` build, Neon URLs) are **historical/rollback context** — Vercel + Neon are kept live
+> as a fallback until decommissioned. **See §23 for the current setup.**
 
 | Item | Value |
 |---|---|
 | GitHub repo | `Git-Dann/docs-by-gitwork` |
 | Production host | **Fasthosts VPS `194.164.127.222`** — Docker Compose (app + Postgres). See §23 |
-| Production branch | `main` — **no auto-deploy**; deploy is a manual Docker step on the VPS (historically Vercel auto-deployed) |
+| Production branch | `main` — **auto-deploys to the VPS** via GitHub Actions (`deploy.yml`) on push, ~6 min. (Vercel still builds in parallel — vestigial, §23) |
 | Merge policy | **Squash-merge only** · merge & rebase-merge disabled · branches auto-delete on merge |
 | Production URL | `foundry.gitwork.co.uk` |
 | Vercel team | `dans-projects-7462374f` |
@@ -45,10 +47,9 @@ It serves two audiences simultaneously:
 
 ### Branch, merge & deploy workflow
 
-**`main` is the mainline branch.** *(Historically every push auto-deployed to Vercel; since the
-July 2026 migration production runs on the Fasthosts VPS and is deployed via Docker Compose — see
-§23 — so a merge to `main` does **not** auto-deploy: someone must deploy on the VPS.)* The
-squash-merge discipline below is still worth keeping for a clean, readable history:
+**`main` is the production branch — every push auto-deploys**, now to the **Fasthosts VPS** via
+GitHub Actions (`.github/workflows/deploy.yml`, ~6 min), not Vercel (§23). The squash-merge
+discipline below is still worth keeping for a clean, readable history:
 
 - **Squash-merge only** — merge commits and rebase-merge are disabled. Each PR lands as a
   single commit on `main`, titled with the PR title (which becomes the Vercel deploy label).
@@ -908,9 +909,13 @@ This supersedes the Vercel/Neon assumptions throughout §2, §3, §5.
   column + HNSW index on boot (Care semantic search). Without it, boot/Care search fail.
 - **Data** — migrated by `pg_dump`/`pg_restore` from Neon into the VPS Postgres. `DATABASE_URL` and
   `DIRECT_URL` both point at the local `db` container (single long-running server → no PgBouncer).
-- **Deploy — NO auto-deploy.** Vercel's push-to-deploy is gone; deploying is a Docker Compose step
-  on the VPS (rebuild image + restart). The image build still runs `prisma db push` (never with
-  `--accept-data-loss`).
+- **Deploy — auto via GitHub Actions.** `.github/workflows/deploy.yml` runs on push to `main`:
+  builds the image → pushes to **GHCR** (`ghcr.io/git-dann/docs-by-gitwork:latest` + `:sha`) → SSHes
+  to the VPS (`/opt/apps/foundry`, secrets `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY`) and runs
+  `docker compose pull app` → `docker compose up -d db` → `prisma db push` (no `--accept-data-loss`)
+  → `docker compose up -d --no-deps app` → prune. ~6 min end-to-end. **Vercel is still Git-connected
+  and builds every push in parallel, but it's vestigial** — DNS points at the VPS, so those Vercel
+  deploys reach nothing live. Disconnect Vercel's Git integration to stop the phantom builds.
 - **Secrets / env** — production secrets live in the **VPS `.env`** (loaded by Compose), not Vercel.
   All Vercel "Sensitive" vars were **write-only and could not be exported** (`vercel env pull`
   returns them blank), so each was re-sourced: Google OAuth from Cloud Console (two web clients —
