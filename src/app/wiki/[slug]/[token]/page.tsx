@@ -52,10 +52,13 @@ export async function generateMetadata({
 
 export default async function PublicWikiPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string; token: string }>;
+  searchParams: Promise<{ section?: string }>;
 }) {
   const { slug, token } = await params;
+  const { section } = await searchParams;
   const resolved = await resolvePublicWiki(token);
   if (!resolved) notFound();
 
@@ -97,7 +100,12 @@ export default async function PublicWikiPage({
       {/* Content grows to fill the viewport so the footer stays pinned to the bottom
           AND the sidebar divider spans the full height (flex-col → child stretches). */}
       <main className="flex flex-1 flex-col">
-        <WikiPublicView wiki={wiki} onlySection={onlySection} token={token} />
+        <WikiPublicView
+          wiki={wiki}
+          onlySection={onlySection}
+          initialSection={section ?? null}
+          token={token}
+        />
       </main>
 
       {/* Footer */}

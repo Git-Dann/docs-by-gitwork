@@ -65,11 +65,14 @@ const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, mo
 export function WikiPublicView({
   wiki,
   onlySection,
+  initialSection,
   token,
 }: {
   wiki: WikiDTO;
   /** When set, render only this one section (per-page share) — no sidebar nav. */
   onlySection?: string | null;
+  /** Optional deep-link (?section=) to open the whole-wiki view on a section. */
+  initialSection?: string | null;
   /** The share token from the URL — used to authenticate mutations on the public view. */
   token: string;
 }) {
@@ -102,9 +105,14 @@ export function WikiPublicView({
       : []),
   ];
   // Whole-wiki share opens on the Dashboard (the headline overview); per-page
-  // shares open on their one section.
+  // shares open on their one section; a ?section= deep-link opens on that section
+  // when it exists (else falls back to the Dashboard).
+  const deepLink =
+    initialSection && availableSections.includes(initialSection as WikiSection)
+      ? (initialSection as WikiSection)
+      : null;
   const [activeSection, setActiveSection] = useState<WikiSection>(
-    (onlySection as WikiSection) ?? "dashboard",
+    (onlySection as WikiSection) ?? deepLink ?? "dashboard",
   );
   const [courseRequests, setCourseRequests] = useState(wiki.courseRequests);
 
