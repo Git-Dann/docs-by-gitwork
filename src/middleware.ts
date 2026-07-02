@@ -82,6 +82,8 @@ const PUBLIC_API_PATHS = [
   "/api/public/pulse",
   // Public wiki share — token in URL is its own auth (validated server-side).
   "/api/wiki",
+  // Central client-portal login — email + password is the auth (no API key).
+  "/api/portal",
   // Inbound course-request API — per-wiki token in the URL path is the auth.
   "/api/public/course-requests",
   // Public webhook ingest — per-connection token in the URL path is the auth.

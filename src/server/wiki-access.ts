@@ -77,48 +77,61 @@ export async function verifyWikiAccessCookie(
   return constantTimeEqual(cookieValue, expected);
 }
 
-export interface WikiLoginResult {
+/** One wiki a portal user can reach, plus the cookie that unlocks it. */
+export interface PortalWikiAccess {
   wikiId: string;
+  clientName: string;
+  slug: string;
+  /** Canonical public URL: /wiki/<slug>/<token>. */
+  url: string;
   cookieName: string;
   cookieValue: string;
 }
 
 /**
- * Validate an email/password against the wiki resolved from a public share token
- * (whole-wiki token or any per-section token). Returns the cookie to set on
- * success, or null on bad token / unknown email / wrong password.
+ * Central portal login: authenticate an email + password against ClientWikiUser
+ * rows across ALL wikis (email is unique per-wiki, so the same address can appear
+ * on several). Returns every whole-wiki-shared wiki whose stored password matches
+ * — the caller sets each cookie and routes the user (one → straight in, many →
+ * chooser). No token needed; this is the tokenless entry point.
  */
-export async function loginWikiAccess(
-  token: string,
+export async function loginPortalUser(
   email: string,
   password: string,
-): Promise<WikiLoginResult | null> {
-  // Resolve by whole-wiki token first, then by any per-section token — mirrors
-  // resolvePublicWiki so login works from whatever public link was shared.
-  const wiki =
-    (await prisma.clientWiki.findFirst({
-      where: { shareToken: token, shareEnabled: true },
-      select: { id: true },
-    })) ??
-    (await prisma.clientWiki.findFirst({
-      where: { pageShareTokens: { has: token } },
-      select: { id: true },
-    }));
+): Promise<PortalWikiAccess[]> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized || !password) return [];
 
-  if (!wiki) return null;
-
-  const user = await prisma.clientWikiUser.findUnique({
-    where: { wikiId_email: { wikiId: wiki.id, email: email.trim().toLowerCase() } },
-    select: { id: true, passwordHash: true },
+  const users = await prisma.clientWikiUser.findMany({
+    where: { email: normalized },
+    select: {
+      id: true,
+      passwordHash: true,
+      wiki: {
+        select: {
+          id: true,
+          shareToken: true,
+          shareEnabled: true,
+          client: { select: { name: true, slug: true } },
+        },
+      },
+    },
   });
-  if (!user) return null;
 
-  const passOk = await bcrypt.compare(password, user.passwordHash);
-  if (!passOk) return null;
-
-  return {
-    wikiId: wiki.id,
-    cookieName: wikiAccessCookieName(wiki.id),
-    cookieValue: signWikiUserAccess(wiki.id, user),
-  };
+  const out: PortalWikiAccess[] = [];
+  for (const u of users) {
+    // Can only route to a wiki that's publicly shared with a whole-wiki token.
+    if (!u.wiki.shareEnabled || !u.wiki.shareToken) continue;
+    const passOk = await bcrypt.compare(password, u.passwordHash);
+    if (!passOk) continue;
+    out.push({
+      wikiId: u.wiki.id,
+      clientName: u.wiki.client.name,
+      slug: u.wiki.client.slug,
+      url: `/wiki/${u.wiki.client.slug}/${u.wiki.shareToken}`,
+      cookieName: wikiAccessCookieName(u.wiki.id),
+      cookieValue: signWikiUserAccess(u.wiki.id, { id: u.id, passwordHash: u.passwordHash }),
+    });
+  }
+  return out;
 }
