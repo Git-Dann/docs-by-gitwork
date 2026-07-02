@@ -36,6 +36,7 @@ import { CourseApiIntakeModal } from "./course-api-intake-modal";
 import { WikiTimelineSection } from "./wiki-timeline-section";
 import { WikiDashboard } from "./wiki-dashboard";
 import { MonitorsManager } from "./monitors-section";
+import { DocumentsManager } from "./documents-section";
 import { WikiAccessSettings } from "./wiki-access-settings";
 import {
   ApiDocsPageEditor,
@@ -57,6 +58,7 @@ import {
   useDeleteCourseRequest,
   useSyncBigWedgeStatus,
   useSetWikiMonitorsEnabled,
+  useSetWikiDocumentsEnabled,
 } from "@/hooks/use-wiki";
 import type { BigWedgeSyncResult } from "@/lib/api";
 import type { ChangelogEntryPayload, ChangelogEditInitial } from "./changelog-entry-form";
@@ -94,6 +96,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   settings: "Settings",
   timeline: "Timeline",
   monitors: "Monitors",
+  documents: "Documents",
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
@@ -833,6 +836,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const upsertPage = useUpsertWikiPage(slug);
   const deletePage = useDeleteWikiPage(slug);
   const setMonitorsEnabled = useSetWikiMonitorsEnabled(slug);
+  const setDocumentsEnabled = useSetWikiDocumentsEnabled(slug);
   const addEntry = useAddChangelogEntry(slug);
   const deleteEntry = useDeleteChangelogEntry(slug);
   const updatePlatforms = useUpdateWikiPlatforms(slug);
@@ -868,10 +872,12 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       }),
   );
   const monitorsOn = wiki.monitors.enabled;
+  const documentsOn = wiki.documents.enabled;
   const availableSections: WikiSection[] = [
     "dashboard",
     "timeline",
     ...(monitorsOn ? (["monitors"] as const) : []),
+    ...(documentsOn ? (["documents"] as const) : []),
     "design-system",
     ...OPTIONAL_DOC_SECTIONS.filter(
       (item) =>
@@ -891,6 +897,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
         (!["ia", "dev-guide"].includes(item.section) && !existingDocsPageSections.has(item.section)),
     ),
     ...(monitorsOn ? [] : [{ section: "monitors" as WikiSection, label: "Monitors" }]),
+    ...(documentsOn ? [] : [{ section: "documents" as WikiSection, label: "Documents" }]),
   ];
 
   // Which sections are publicly shared (for the sidebar globe indicator):
@@ -920,6 +927,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection("monitors");
       return;
     }
+    if (section === "documents") {
+      await setDocumentsEnabled.mutateAsync(true);
+      setActiveSection("documents");
+      return;
+    }
     if (!isDocsPageSection(section)) return;
     const type = SECTION_TO_TYPE[section];
     if (!type) return;
@@ -938,6 +950,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection(availableSections.find((s) => s !== "monitors") ?? "dashboard");
       return;
     }
+    if (section === "documents") {
+      await setDocumentsEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "documents") ?? "dashboard");
+      return;
+    }
     if (!isDocsPageSection(section)) return;
     const type = SECTION_TO_TYPE[section];
     if (!type) return;
@@ -947,7 +964,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   }
 
   function confirmDeletePage(section: WikiSection) {
-    if (!isDocsPageSection(section) && section !== "monitors") return;
+    if (!isDocsPageSection(section) && section !== "monitors" && section !== "documents") return;
     const ok = window.confirm(`Delete ${SECTION_TITLES[section]} from this wiki? You can add it back later from Add New.`);
     if (!ok) return;
     void handleDeletePage(section);
@@ -1125,6 +1142,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     // ── Monitors — automated uptime checks (HTTP/TCP connectors).
     if (activeSection === "monitors") {
       return <MonitorsManager slug={slug} monitors={wiki!.monitors.monitors} />;
+    }
+
+    // ── Documents — clean list of links / Foundry docs / uploaded files.
+    if (activeSection === "documents") {
+      return <DocumentsManager slug={slug} documents={wiki!.documents.documents} />;
     }
 
     // ── Design System — embedded inline (has its own action bar)
@@ -1484,7 +1506,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             onAddSection={(section) => void handleAddSection(section)}
             isAddingSection={upsertPage.isPending}
             deletableSections={availableSections.filter(
-              (s) => isDocsPageSection(s) || s === "monitors",
+              (s) => isDocsPageSection(s) || s === "monitors" || s === "documents",
             )}
             onDeleteSection={confirmDeletePage}
             isDeletingSection={deletePage.isPending}

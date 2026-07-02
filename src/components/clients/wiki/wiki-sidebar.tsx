@@ -11,6 +11,7 @@ import {
   CircleStackIcon,
   ClockIcon,
   CodeBracketIcon,
+  DocumentDuplicateIcon,
   CubeTransparentIcon,
   DocumentTextIcon,
   FlagIcon,
@@ -25,6 +26,7 @@ export type WikiSection =
   | "dashboard"
   | "timeline"
   | "monitors"
+  | "documents"
   | "design-system"
   | "ia"
   | "dev-guide"
@@ -98,6 +100,7 @@ export function WikiSidebar({
       "dashboard",
       "timeline",
       "monitors",
+      "documents",
       "design-system",
       "ia",
       "dev-guide",
@@ -190,6 +193,7 @@ export function WikiSidebar({
         {navItem("dashboard", "Dashboard", <Squares2X2Icon />)}
         {navItem("timeline", "Timeline", <CalendarDaysIcon />)}
         {navItem("monitors", "Monitors", <BoltIcon />)}
+        {navItem("documents", "Documents", <DocumentDuplicateIcon />)}
         {navItem("design-system", "Design System", <CubeTransparentIcon />)}
         {navItem("ia", "Info Architecture", <BookOpenIcon />)}
         {navItem("dev-guide", "Developer Guide", <CodeBracketIcon />)}

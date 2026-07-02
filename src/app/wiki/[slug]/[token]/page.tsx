@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 const SECTION_LABELS: Record<string, string> = {
   timeline: "Timeline",
   monitors: "Monitors",
+  documents: "Documents",
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
