@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   LockClosedIcon,
+  ExclamationTriangleIcon,
   PlusIcon,
   PencilSquareIcon,
   TrashIcon,
@@ -92,6 +93,9 @@ export function WikiAccessSettings({
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
 
   const users = wiki.users ?? [];
+  // Client sign-in only works once the wiki is shared — the login gates the
+  // public link. With users added but sharing off, sign-in fails ("no workspace").
+  const wikiShared = wiki.shareEnabled && Boolean(wiki.shareToken);
 
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -119,6 +123,17 @@ export function WikiAccessSettings({
               without these credentials.
             </p>
           </div>
+
+          {users.length > 0 && !wikiShared && (
+            <div className="flex items-start gap-3 rounded-[10px] border border-amber-300 bg-amber-50 p-4">
+              <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+              <p className="text-[13px] leading-relaxed text-amber-800">
+                This wiki isn&apos;t shared yet, so these users <strong>can&apos;t sign in</strong>{" "}
+                — the portal login reports &ldquo;no workspace found&rdquo;. Turn on{" "}
+                <strong>Share entire wiki</strong> in the Sharing panel below to let them in.
+              </p>
+            </div>
+          )}
 
           {/* User list */}
           {users.length === 0 ? (
