@@ -1292,3 +1292,20 @@ button {
     page-break-inside: avoid;
   }
 }
+
+/* On Your Desk — the blue "stamp" seal rotates slowly while the drawer is open.
+   Rotation lives on the shape element only (the label stays upright); hover-scale
+   sits on the wrapper so the two transforms never fight. */
+@keyframes desk-stamp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.desk-stamp-spin {
+  animation: desk-stamp-spin 18s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .desk-stamp-spin {
+    animation: none;
+  }
+}

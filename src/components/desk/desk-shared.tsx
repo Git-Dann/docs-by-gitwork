@@ -147,11 +147,12 @@ export function Stamp({
 }) {
   const clip = useMemo(() => burstClip(11, 50, 43), []);
   const inner = (
-    <span className="group relative inline-grid h-[84px] w-[84px] place-items-center">
+    <span className="relative inline-grid h-[84px] w-[84px] origin-center place-items-center transition-transform duration-200 ease-out hover:scale-[1.06]">
+      {/* The seal spins slowly; only the shape rotates so the label stays upright. */}
       <span
         aria-hidden
-        className="absolute inset-0 bg-[var(--brand-600)] transition-transform duration-200 ease-out group-hover:scale-[1.06] group-hover:-rotate-6"
-        style={{ clipPath: clip, transform: "rotate(-4deg)" }}
+        className="desk-stamp-spin absolute inset-0 bg-[var(--brand-600)]"
+        style={{ clipPath: clip }}
       />
       <span
         className="relative z-[1] px-2 text-center text-[19px] leading-[0.95] text-white"
