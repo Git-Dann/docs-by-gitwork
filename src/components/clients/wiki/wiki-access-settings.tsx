@@ -93,9 +93,12 @@ export function WikiAccessSettings({
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
 
   const users = wiki.users ?? [];
-  // Client sign-in only works once the wiki is shared — the login gates the
-  // public link. With users added but sharing off, sign-in fails ("no workspace").
-  const wikiShared = wiki.shareEnabled && Boolean(wiki.shareToken);
+  // Client sign-in needs a shared surface to land on — either the whole wiki OR
+  // any shared section (e.g. Design System). With users added but nothing shared,
+  // sign-in fails ("no workspace found").
+  const wikiShared =
+    (wiki.shareEnabled && Boolean(wiki.shareToken)) ||
+    Object.keys(wiki.pageShares ?? {}).length > 0;
 
   return (
     <div className="mx-auto w-full max-w-2xl">
