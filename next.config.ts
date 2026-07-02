@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   // @heroicons/react is a barrel (151 import sites). optimizePackageImports rewrites
   // `import { XIcon } from "@heroicons/react/24/outline"` to per-icon imports so each
   // chunk only ships the icons it uses, not the whole set. Pure build-time transform.
