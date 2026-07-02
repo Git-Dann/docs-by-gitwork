@@ -77,6 +77,18 @@ export function DeskDrawer() {
   const { open, setOpen, tab, setTab } = useDeskState();
   const isDesktop = useIsDesktop();
 
+  // ⌘J / Ctrl+J toggles the drawer from anywhere (⌘J is unused in macOS browsers).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === "j" || e.key === "J")) {
+        e.preventDefault();
+        setOpen((v) => !v);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setOpen]);
+
   // Standup is a developer/staff workflow — admins & super-admins don't push one,
   // so don't nag them about it (or surface it in the summary).
   const { isAdminOrAbove } = usePermissions();

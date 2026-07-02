@@ -43,7 +43,7 @@ import type {
   CodeClearTier,
 } from "@/types/codeclear";
 import type { NotificationDTO } from "@/types/notifications";
-import type { DeskActionItemDTO, DeskSlackResult } from "@/types/desk";
+import type { DeskActionItemDTO, DeskSlackResult, DeskHolidays } from "@/types/desk";
 import type {
   ProofCreateDocumentInput,
   ProofDocumentRecord,
@@ -2157,6 +2157,10 @@ export async function getDeskActionItems(): Promise<{ items: DeskActionItemDTO[]
 
 export async function getDeskSlack(): Promise<DeskSlackResult> {
   return apiFetch("/api/desk/slack");
+}
+
+export async function getDeskHolidays(): Promise<DeskHolidays> {
+  return apiFetch("/api/desk/holidays");
 }
 
 export interface MeetingSummaryResponse {

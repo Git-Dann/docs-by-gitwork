@@ -13,7 +13,8 @@ import { prisma } from "@/lib/prisma";
 import { getSlackBotToken } from "@/server/slack/client";
 import { canSeeAllClients, type EffectiveUser } from "@/server/auth/effective-user";
 import { assignedClientIds } from "@/server/tasks";
-import type { DeskSlackMessage, DeskSlackResult } from "@/types/desk";
+import { getHolidaysForCountry } from "@/server/backstage-holidays";
+import type { DeskSlackMessage, DeskSlackResult, DeskHolidays, NextHoliday } from "@/types/desk";
 
 const SLACK_API = "https://slack.com/api";
 const MAX_CHANNELS = 8; // cap Slack calls — plenty for a "what moved" glance
@@ -129,6 +130,32 @@ export async function getMyDeskSlack(user: EffectiveUser): Promise<DeskSlackResu
     .slice(0, MAX_MESSAGES);
 
   return { configured: true, reason: "ok", messages };
+}
+
+// ─── The Desk: next public holidays (UK + Pakistan) ──────────────────────────
+
+/**
+ * The next upcoming public/bank holiday for each hub country, for the Desk's
+ * "Around the team" strip. Uses the bundled `date-holidays` (server-only, no API,
+ * no AI) via `getHolidaysForCountry` — looks a full year ahead so the next holiday
+ * is always found even when it's months out (the staffing-alerts window caps at 90d).
+ */
+export function getNextHolidays(): DeskHolidays {
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const horizon = new Date(today);
+  horizon.setUTCDate(horizon.getUTCDate() + 400);
+
+  const pick = (cc: string): NextHoliday => {
+    const hols = getHolidaysForCountry(cc, today, horizon); // sorted asc
+    const next = hols.find((h) => h.type === "public" || h.type === "bank") ?? hols[0];
+    if (!next) return null;
+    const when = new Date(`${next.date}T00:00:00Z`);
+    const inDays = Math.round((when.getTime() - today.getTime()) / 86_400_000);
+    return { name: next.name, date: next.date, inDays };
+  };
+
+  return { gb: pick("GB"), pk: pick("PK") };
 }
 
 /** Turn Slack mrkdwn tokens into readable text (mentions, channels, links, entities). */

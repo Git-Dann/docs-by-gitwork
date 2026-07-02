@@ -41,6 +41,12 @@ export type DeskSlackResult = {
   messages: DeskSlackMessage[];
 };
 
+/** The next upcoming public/bank holiday for a country (null if none found). */
+export type NextHoliday = { name: string; date: string; inDays: number } | null;
+
+/** Next UK + Pakistan holidays for the "Around the team" strip. */
+export type DeskHolidays = { gb: NextHoliday; pk: NextHoliday };
+
 export const DESK_TABS = ["TODAY", "TASKS", "MEETINGS", "INBOX"] as const;
 export type DeskTab = (typeof DESK_TABS)[number];
 

@@ -6,9 +6,13 @@ import { useAccount } from "@/hooks/use-account";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useMyDay, useTaskAttention } from "@/hooks/use-tasks";
 import { useClientList } from "@/hooks/use-proposals";
-import { useDeskCalendar } from "@/hooks/use-desk";
+import { useStaffingAlerts } from "@/hooks/use-backstage";
+import { useDeskCalendar, useDeskHolidays } from "@/hooks/use-desk";
 import { cn } from "@/lib/format";
+import type { StaffingAlert } from "@/types/backstage";
+import type { NextHoliday } from "@/types/desk";
 import { EditorialRow, Stamp, DeskTaskRow, DeskEmpty, DeskSkeleton, RevealList } from "./desk-shared";
+import { WorldClocks, TeamOverlap, HQ_TZ, TEAM_TZ } from "./desk-time";
 
 function greeting(hour: number): string {
   if (hour < 12) return "Good morning";
@@ -31,9 +35,10 @@ export function DeskToday() {
   const dateStr = now
     .toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })
     .toUpperCase();
-  const timeStr = now
-    .toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
-    .toUpperCase();
+  // The "other hub": admins/super-admins (Dan) see Islamabad; devs/staff see London (HQ).
+  const counterpart = isAdminOrAbove
+    ? { tz: TEAM_TZ, label: "Islamabad" }
+    : { tz: HQ_TZ, label: "London" };
 
   const amPushed = Boolean(myDay.data?.update.amPushedAt);
   const pmPushed = Boolean(myDay.data?.update.pmPushedAt);
@@ -53,12 +58,14 @@ export function DeskToday() {
     <div>
       {/* Masthead */}
       <div className="mb-2">
-        <div
-          className="flex items-center justify-between text-[11px] uppercase tracking-[1.6px] text-[var(--text-4)]"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          <span>{dateStr}</span>
-          <span>{timeStr}</span>
+        <div className="flex items-center justify-between gap-3">
+          <span
+            className="text-[11px] uppercase tracking-[1.6px] text-[var(--text-4)]"
+            style={{ fontFamily: "var(--font-mono)" }}
+          >
+            {dateStr}
+          </span>
+          <WorldClocks counterpartTz={counterpart.tz} counterpartLabel={counterpart.label} />
         </div>
         <h2
           className="mt-3 text-[40px] leading-[1.05] tracking-[-0.01em] text-[var(--text-1)]"
@@ -139,11 +146,85 @@ export function DeskToday() {
         </div>
       </EditorialRow>
 
+      {/* Around the team — who's off + next UK/PK holiday + working-hours overlap. */}
+      <AroundTheTeam />
+
       {/* Client cash flow — gated by canViewClientFinancials (which includes the
           workspace showDevRates toggle — off by default, set in Settings → General). */}
       {canViewClientFinancials ? <CashFlowRow /> : null}
     </div>
   );
+}
+
+function AroundTheTeam() {
+  const alerts = useStaffingAlerts();
+  const holidays = useDeskHolidays();
+
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const leaves = (alerts.data?.alerts ?? []).filter(
+    (a): a is Extract<StaffingAlert, { kind: "leave" }> => a.kind === "leave",
+  );
+  const offTodayNames = [
+    ...new Set(
+      leaves.filter((l) => l.startDate <= todayStr && todayStr <= l.endDate).map((l) => l.user.name),
+    ),
+  ];
+  const { weekStart, weekEnd } = isoWeekRange(now);
+  const offThisWeek = new Set(
+    leaves.filter((l) => l.startDate <= weekEnd && l.endDate >= weekStart).map((l) => l.user.id),
+  ).size;
+
+  return (
+    <EditorialRow title="Around the team" caption="Who's about, and what's coming up.">
+      <p className="text-sm text-[var(--text-2)]">
+        {alerts.isPending ? (
+          <span className="text-[var(--text-4)]">Checking who&apos;s around…</span>
+        ) : offTodayNames.length === 0 ? (
+          <>Everyone&apos;s in today.</>
+        ) : (
+          <>
+            <span className="text-[var(--text-4)]">Off today — </span>
+            {offTodayNames.join(", ")}
+          </>
+        )}
+        {offThisWeek > 0 ? (
+          <span className="text-[var(--text-4)]"> · {offThisWeek} off this week</span>
+        ) : null}
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <HolidayChip cc="UK" h={holidays.data?.gb} />
+        <HolidayChip cc="PK" h={holidays.data?.pk} />
+        <TeamOverlap />
+      </div>
+    </EditorialRow>
+  );
+}
+
+function HolidayChip({ cc, h }: { cc: string; h?: NextHoliday }) {
+  if (!h) return null;
+  const when = h.inDays === 0 ? "today" : h.inDays === 1 ? "tomorrow" : `${h.inDays}d`;
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2.5 py-1 text-[11px] text-[var(--text-3)]"
+      style={{ fontFamily: "var(--font-mono)" }}
+    >
+      <span className="font-semibold text-[var(--text-2)]">{cc}</span>
+      <span className="max-w-[180px] truncate">{h.name}</span>
+      <span className="text-[var(--text-4)]">· {when}</span>
+    </span>
+  );
+}
+
+/** Mon–Sun ISO-date range containing `d` (UTC). */
+function isoWeekRange(d: Date): { weekStart: string; weekEnd: string } {
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dow = (date.getUTCDay() + 6) % 7; // 0 = Monday
+  const start = new Date(date);
+  start.setUTCDate(date.getUTCDate() - dow);
+  const end = new Date(start);
+  end.setUTCDate(start.getUTCDate() + 6);
+  return { weekStart: start.toISOString().slice(0, 10), weekEnd: end.toISOString().slice(0, 10) };
 }
 
 function CashFlowRow() {

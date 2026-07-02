@@ -11,7 +11,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { getCalendarEvents, getGmailMessages, getDeskActionItems, getDeskSlack } from "@/lib/api";
+import {
+  getCalendarEvents,
+  getGmailMessages,
+  getDeskActionItems,
+  getDeskSlack,
+  getDeskHolidays,
+} from "@/lib/api";
 
 export function useDeskCalendar(opts: { enabled?: boolean } = {}) {
   return useQuery({
@@ -49,6 +55,16 @@ export function useDeskSlack(opts: { enabled?: boolean } = {}) {
     queryFn: getDeskSlack,
     enabled: opts.enabled ?? true,
     staleTime: 120_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useDeskHolidays() {
+  return useQuery({
+    queryKey: ["desk", "holidays"] as const,
+    queryFn: getDeskHolidays,
+    // Holidays barely change — cache hard for the session.
+    staleTime: 6 * 60 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 }
