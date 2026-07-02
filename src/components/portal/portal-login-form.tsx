@@ -28,7 +28,7 @@ interface PortalWiki {
 }
 
 const inputCls =
-  "w-full rounded-[14px] border bg-[#ffffff] px-4 py-3.5 text-[16px] outline-none transition placeholder:text-[#9b958a] focus:border-[#6C5CE7] focus:ring-2 focus:ring-[#6C5CE7]/25";
+  "w-full rounded-[12px] border bg-[#ffffff] px-3.5 py-3 text-[15px] outline-none transition placeholder:text-[#9b958a] focus:border-[#6C5CE7] focus:ring-2 focus:ring-[#6C5CE7]/25";
 
 // ── Right-panel sample preview (decorative) ──────────────────────────────────
 type Tone = "done" | "progress" | "upcoming";
@@ -48,7 +48,7 @@ function StatusPill({ tone }: { tone: Tone }) {
   const t = TONE[tone];
   return (
     <span
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-semibold"
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold"
       style={{ background: t.bg, color: t.text }}
     >
       <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: t.dot }} />
@@ -59,38 +59,38 @@ function StatusPill({ tone }: { tone: Tone }) {
 
 function PreviewPanel() {
   return (
-    <div className="hidden flex-col justify-center px-10 py-14 md:flex lg:px-16">
-      <h2 className="text-[36px] leading-[1.1] tracking-[-0.01em]" style={{ fontFamily: SERIF, color: INK }}>
+    <div className="hidden flex-col justify-center px-10 py-12 md:flex lg:px-12">
+      <h2 className="text-[26px] leading-[1.15] tracking-[-0.01em]" style={{ fontFamily: SERIF, color: INK }}>
         See your project the moment you sign in.
       </h2>
-      <p className="mt-4 max-w-md text-[16px] leading-relaxed" style={{ color: MUTED }}>
+      <p className="mt-3 max-w-md text-[15px] leading-relaxed" style={{ color: MUTED }}>
         Live timelines, your team, and updates, all in one place.
       </p>
 
-      <p className="mt-9 text-[12px] font-semibold uppercase tracking-[0.14em]" style={{ color: FAINT }}>
+      <p className="mt-8 text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: FAINT }}>
         Milestones
       </p>
-      <ul className="mt-4 space-y-3">
+      <ul className="mt-3 space-y-2.5">
         {SAMPLE_MILESTONES.map((m) => (
           <li
             key={m.name}
-            className="flex items-center justify-between gap-3 rounded-[14px] bg-[#ffffff] px-5 py-4"
+            className="flex items-center justify-between gap-3 rounded-[12px] bg-[#ffffff] px-4 py-3"
             style={{
               border: m.tone === "progress" ? `1.5px solid ${PURPLE}` : `1px solid ${BORDER}`,
               boxShadow:
                 m.tone === "progress"
-                  ? "0 4px 14px -6px rgba(108,92,231,0.35)"
+                  ? "0 4px 12px -6px rgba(108,92,231,0.35)"
                   : "0 1px 2px rgba(0,0,0,0.04)",
             }}
           >
-            <span className="truncate text-[16px] font-medium" style={{ color: INK }}>
+            <span className="truncate text-[15px] font-medium" style={{ color: INK }}>
               {m.name}
             </span>
             <StatusPill tone={m.tone} />
           </li>
         ))}
       </ul>
-      <p className="mt-5 text-[13px]" style={{ color: FAINT }}>
+      <p className="mt-4 text-[12px]" style={{ color: FAINT }}>
         Sample preview
       </p>
     </div>
@@ -162,40 +162,40 @@ export function PortalLoginForm({ next }: { next: string | null }) {
       style={{ background: PAGE_BG, colorScheme: "light" }}
     >
       <div
-        className="grid w-full max-w-5xl overflow-hidden rounded-[32px] shadow-[0_40px_90px_-35px_rgba(0,0,0,0.32)] md:grid-cols-2"
+        className="grid w-full max-w-4xl overflow-hidden rounded-[28px] shadow-[0_30px_70px_-30px_rgba(0,0,0,0.30)] md:grid-cols-2"
         style={{ background: CARD_BG }}
       >
         {/* ── Left: sign in ── */}
         <div
-          className="flex flex-col justify-center px-10 py-14 md:px-14"
+          className="flex flex-col justify-center px-10 py-12 md:px-12"
           style={{ borderRight: `1px solid ${BORDER}` }}
         >
           <div>
-            <p className="text-[30px] leading-none" style={{ fontFamily: SERIF, color: INK }}>
+            <p className="text-[24px] leading-none" style={{ fontFamily: SERIF, color: INK }}>
               Gitwork<span style={{ color: PURPLE }}>.</span>
             </p>
-            <p className="mt-2.5 text-[12px] font-semibold uppercase tracking-[0.2em]" style={{ color: FAINT }}>
+            <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: FAINT }}>
               Portal
             </p>
           </div>
 
           {choices ? (
-            <div className="mt-11">
-              <h1 className="text-[38px] leading-[1.05]" style={{ fontFamily: SERIF, color: INK }}>
+            <div className="mt-9">
+              <h1 className="text-[30px] leading-[1.05]" style={{ fontFamily: SERIF, color: INK }}>
                 Choose a workspace
               </h1>
-              <p className="mt-3 text-[16px]" style={{ color: MUTED }}>
+              <p className="mt-2.5 text-[15px]" style={{ color: MUTED }}>
                 Your account has access to more than one. Pick where to go.
               </p>
-              <ul className="mt-7 space-y-3">
+              <ul className="mt-6 space-y-2.5">
                 {choices.map((w) => (
                   <li key={w.slug}>
                     <a
                       href={w.url}
-                      className="group flex items-center justify-between gap-3 rounded-[14px] bg-[#ffffff] px-5 py-4 transition hover:border-[#6C5CE7]"
+                      className="group flex items-center justify-between gap-3 rounded-[12px] bg-[#ffffff] px-4 py-3 transition hover:border-[#6C5CE7]"
                       style={{ border: `1px solid ${BORDER}` }}
                     >
-                      <span className="truncate text-[16px] font-medium" style={{ color: INK }}>
+                      <span className="truncate text-[15px] font-medium" style={{ color: INK }}>
                         {w.clientName}
                       </span>
                       <ArrowRightIcon
@@ -210,18 +210,18 @@ export function PortalLoginForm({ next }: { next: string | null }) {
           ) : (
             <>
               <h1
-                className="mt-11 text-[46px] leading-[1.02] tracking-[-0.01em]"
+                className="mt-9 text-[34px] leading-[1.05] tracking-[-0.01em]"
                 style={{ fontFamily: SERIF, color: INK }}
               >
                 Welcome back
               </h1>
-              <p className="mt-3 text-[16px]" style={{ color: MUTED }}>
+              <p className="mt-2.5 text-[15px]" style={{ color: MUTED }}>
                 Sign in to your Gitwork Portal.
               </p>
 
-              <form onSubmit={handleSubmit} className="mt-9">
+              <form onSubmit={handleSubmit} className="mt-7">
                 <div>
-                  <label className="mb-2 block text-[15px] font-medium" style={{ color: LABEL }}>
+                  <label className="mb-1.5 block text-[13px] font-medium" style={{ color: LABEL }}>
                     Email
                   </label>
                   <input
@@ -235,8 +235,8 @@ export function PortalLoginForm({ next }: { next: string | null }) {
                     style={{ borderColor: BORDER, color: INK }}
                   />
                 </div>
-                <div className="mt-5">
-                  <label className="mb-2 block text-[15px] font-medium" style={{ color: LABEL }}>
+                <div className="mt-4">
+                  <label className="mb-1.5 block text-[13px] font-medium" style={{ color: LABEL }}>
                     Password
                   </label>
                   <input
@@ -251,25 +251,25 @@ export function PortalLoginForm({ next }: { next: string | null }) {
                   />
                 </div>
 
-                {error && <p className="mt-4 text-[14px] text-rose-600">{error}</p>}
+                {error && <p className="mt-3.5 text-[13px] text-rose-600">{error}</p>}
 
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="mt-7 w-full rounded-full px-4 py-4 text-[16px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                  className="mt-6 w-full rounded-full px-4 py-3 text-[15px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
                   style={{ background: PURPLE }}
                 >
                   {submitting ? "Signing in…" : "Sign in"}
                 </button>
               </form>
 
-              <p className="mt-5 text-center text-[14px]" style={{ color: FAINT }}>
+              <p className="mt-4 text-center text-[13px]" style={{ color: FAINT }}>
                 Trouble signing in? Contact your product management team.
               </p>
 
-              <div className="my-6 flex items-center gap-4">
+              <div className="my-5 flex items-center gap-4">
                 <span className="h-px flex-1" style={{ background: BORDER }} />
-                <span className="text-[14px]" style={{ color: FAINT }}>
+                <span className="text-[13px]" style={{ color: FAINT }}>
                   or
                 </span>
                 <span className="h-px flex-1" style={{ background: BORDER }} />
@@ -277,7 +277,7 @@ export function PortalLoginForm({ next }: { next: string | null }) {
 
               <a
                 href={PORTAL_OVERVIEW_URL}
-                className="flex w-full items-center justify-center gap-2 rounded-full bg-transparent px-4 py-4 text-[16px] font-medium transition hover:bg-[#ffffff]"
+                className="flex w-full items-center justify-center gap-2 rounded-full bg-transparent px-4 py-3 text-[15px] font-medium transition hover:bg-[#ffffff]"
                 style={{ border: `1px solid ${BORDER}`, color: INK }}
               >
                 <ArrowLeftIcon className="h-4 w-4" />
