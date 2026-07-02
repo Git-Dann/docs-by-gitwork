@@ -643,6 +643,23 @@ function buildCalendarMonth() {
 
 const demoCalendarMonth = buildCalendarMonth();
 
+// Desk "around the team" holidays + staffing alerts (added when On Your Desk gained
+// the dual-clocks / around-the-team strip + staffing overview).
+const demoDeskHolidays = {
+  gb: { name: "Summer bank holiday", date: atDays(20), inDays: 20 },
+  pk: { name: "Independence Day", date: atDays(12), inDays: 12 },
+};
+
+const demoStaffingAlerts = {
+  windowDays: 30,
+  generatedAt: atDays(0),
+  alerts: [
+    { kind: "leave", startDate: atDays(7), endDate: atDays(9), type: "ANNUAL", user: { id: "user-marco", name: "Marco Bianchi" } },
+    { kind: "holiday", date: atDays(12), name: "Independence Day", country: "PK", affectedMembers: [{ id: "user-sam", name: "Sam Okafor" }] },
+    { kind: "conflict", date: atDays(14), users: [{ id: "user-sam", name: "Sam Okafor" }, { id: "user-alex", name: "Alex Rivera" }] },
+  ],
+};
+
 // ─── Resolver used by the fetch interceptor ─────────────────────────────────────
 
 /**
@@ -667,6 +684,8 @@ export function resolveDemoApi(pathname: string): unknown {
       return demoActionItems;
     case "/api/desk/slack":
       return demoSlack;
+    case "/api/desk/holidays":
+      return demoDeskHolidays;
     case "/api/auth/session":
       return demoSession;
   }
@@ -707,6 +726,7 @@ export function resolveDemoApi(pathname: string): unknown {
   if (pathname === "/api/backstage/calendar/team-events") return { events: [] };
   if (pathname === "/api/backstage/calendar/timeline") return { blocks: [], milestones: [] };
   if (pathname === "/api/backstage/leave") return [];
+  if (pathname === "/api/backstage/alerts") return demoStaffingAlerts;
 
   // `/api/tasks` (list) — after the more specific /api/tasks/* cases above.
   if (pathname === "/api/tasks" || pathname.startsWith("/api/tasks?")) {
