@@ -160,6 +160,44 @@ export interface DesignTokens {
   confidence?: Record<string, DesignTokenConfidence>;
 }
 
+// ── Editable guidelines narrative ─────────────────────────────────────────────
+//
+// `generateGuidelinesContent(tokens)` (src/lib/design-system/guidelines-content.ts)
+// seeds this from the tokens so the brand guidelines read well with zero manual
+// writing. Every field is a DEFAULT the user can later override — the renderer and
+// a future editable-content UI share this one shape.
+
+/** One short lead paragraph per section that exists in the tokens. */
+export interface GuidelinesSectionBlurbs {
+  logo?: string;
+  colour?: string;
+  typography?: string;
+  gridSpacing?: string;
+  cornerRadius?: string;
+  /** Reserved for parity with the editable UI; not emitted (no icon token group). */
+  iconography?: string;
+  components?: string;
+}
+
+export interface GuidelinesDosAndDonts {
+  dos: string[];
+  donts: string[];
+}
+
+export interface GuidelinesContent {
+  brandName: string;
+  /** From `brandVoice`; omitted when absent (never invented). */
+  tagline?: string;
+  /** 2–3 sentences: what this document is and how to use it. */
+  intro: string;
+  sectionBlurbs: GuidelinesSectionBlurbs;
+  /** Bullet-style do's for the logo; empty when the brand documents no logo rules. */
+  logoRulesText: string[];
+  dosAndDonts: GuidelinesDosAndDonts;
+  /** `brandVoice` if present, else `"${brandName} — Brand Guidelines"`. */
+  closingLine: string;
+}
+
 // ── DTOs shared by the API layer, hooks, and the public page ──────────────────
 
 export type DesignSystemStatus = "DRAFT" | "ACTIVE" | "ARCHIVED";
@@ -174,6 +212,8 @@ export interface DesignSystemDTO {
   exists: boolean;
   /** Whether the per-client design-system page/entry is enabled (Edit client toggle). */
   enabled: boolean;
+  /** Show Foundry masthead/footer branding on the guidelines. Default true. */
+  showFoundryBranding: boolean;
   tokens: DesignTokens | null;
   status: DesignSystemStatus;
   updatedAt: string | null;
@@ -187,4 +227,6 @@ export interface PublicDesignSystemDTO {
   generatedAt: string;
   /** The client's uploaded logo (shown in the hero + logo section). */
   logoUrl: string | null;
+  /** Show Foundry masthead/footer branding on the public guidelines. Default true. */
+  showFoundryBranding: boolean;
 }

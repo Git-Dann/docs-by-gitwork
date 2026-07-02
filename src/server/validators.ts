@@ -1316,6 +1316,10 @@ export const designSystemEnabledSchema = z.object({
   enabled: z.boolean(),
 });
 
+export const designSystemFoundryBrandingSchema = z.object({
+  enabled: z.boolean(),
+});
+
 
 export const notificationListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(30),

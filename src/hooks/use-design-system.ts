@@ -6,6 +6,7 @@ import {
   saveClientDesignSystem,
   setClientDesignSystemShare,
   setClientDesignSystemEnabled,
+  setClientDesignSystemFoundryBranding,
 } from "@/lib/api";
 import type { DesignSystemStatus, DesignTokens } from "@/types/design-tokens";
 
@@ -43,6 +44,14 @@ export function useSetClientDesignSystemEnabled(slug: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (enabled: boolean) => setClientDesignSystemEnabled(slug, enabled),
+    onSuccess: (data) => qc.setQueryData(QK.ds(slug), data),
+  });
+}
+
+export function useSetClientDesignSystemFoundryBranding(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setClientDesignSystemFoundryBranding(slug, enabled),
     onSuccess: (data) => qc.setQueryData(QK.ds(slug), data),
   });
 }

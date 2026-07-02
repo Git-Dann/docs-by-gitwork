@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { getPublicDesignSystem } from "@/server/design-system";
 import { DesignSystemViewer } from "@/components/clients/design-system/design-system-viewer";
-import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -26,16 +25,11 @@ export default async function PublicBrandPage({
   return (
     <main className="min-h-[100dvh] bg-[#FAFAF9] px-4 py-10 sm:px-8">
       <div className="mx-auto max-w-5xl">
-        <DesignSystemViewer tokens={ds.tokens} clientLogoUrl={ds.logoUrl} />
-        <footer className="mt-8 flex items-center justify-center gap-1.5 text-xs text-[var(--text-4)]">
-          <span style={{ fontFamily: "var(--font-mono), monospace" }}>
-            Updated {formatDate(ds.generatedAt)}
-          </span>
-          <span aria-hidden>·</span>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/foundry-logo.svg" alt="" className="h-4 w-auto opacity-60" />
-          <span>Powered by Gitwork</span>
-        </footer>
+        <DesignSystemViewer
+          tokens={ds.tokens}
+          clientLogoUrl={ds.logoUrl}
+          showFoundryBranding={ds.showFoundryBranding}
+        />
       </div>
     </main>
   );

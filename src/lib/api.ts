@@ -2931,6 +2931,17 @@ export async function setClientDesignSystemEnabled(
   });
 }
 
+export async function setClientDesignSystemFoundryBranding(
+  slug: string,
+  enabled: boolean,
+): Promise<DesignSystemDTO> {
+  return apiFetch<DesignSystemDTO>(`/api/clients/${slug}/design-system/foundry-branding`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 // ─── Client Wiki ──────────────────────────────────────────────────────────────
 
 import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiUserSummary } from "@/server/wiki";

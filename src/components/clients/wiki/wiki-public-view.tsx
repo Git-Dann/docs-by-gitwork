@@ -187,6 +187,7 @@ export function WikiPublicView({
         <DesignSystemViewer
           tokens={wiki.designSystem.tokens}
           clientLogoUrl={wiki.designSystem.logoUrl}
+          showFoundryBranding={wiki.designSystem.showFoundryBranding}
         />
       );
     }

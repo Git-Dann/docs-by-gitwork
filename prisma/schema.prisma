@@ -1124,6 +1124,8 @@ model ClientDesignSystem {
   /// Per-client page toggle (set in Edit client). Tri-state: null = unset, so the
   /// page defaults to visible when tokens exist; true/false is an explicit override.
   enabled      Boolean?
+  /// Show the Foundry masthead/footer branding on the guidelines. Off = clean own-brand doc.
+  showFoundryBranding Boolean       @default(true)
   shareToken   String?
   shareEnabled Boolean            @default(false)
   updatedById  String?

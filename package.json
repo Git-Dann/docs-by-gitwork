@@ -10,6 +10,8 @@
     "build": "prisma generate && (prisma db push || echo 'DB push skipped — set DATABASE_URL + DIRECT_URL in Vercel') && next build",
     "start": "next start",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "proof:setup": "node scripts/proof-setup.mjs",
     "proof:run": "node scripts/proof-run.mjs",
     "db:generate": "prisma generate",
@@ -61,7 +63,8 @@
     "prisma": "^6.16.2",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.4"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

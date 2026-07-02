@@ -6,6 +6,7 @@ import { useClientDetail } from "@/hooks/use-proposals";
 import {
   useClientDesignSystem,
   useSetClientDesignSystemShare,
+  useSetClientDesignSystemFoundryBranding,
 } from "@/hooks/use-design-system";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
@@ -142,6 +143,8 @@ export function DesignSystemWorkspace({
   const client = clientData?.client;
   const { data: ds, isPending } = useClientDesignSystem(slug);
   const share = useSetClientDesignSystemShare(slug);
+  const foundryBranding = useSetClientDesignSystemFoundryBranding(slug);
+  const showFoundryBranding = ds?.showFoundryBranding ?? true;
 
   const [importOpen, setImportOpen] = useState(false);
   const [logoOpen, setLogoOpen] = useState(false);
@@ -322,6 +325,16 @@ export function DesignSystemWorkspace({
                     Manage logos…
                   </button>
                 </MenuItem>
+                <MenuItem>
+                  <button
+                    type="button"
+                    onClick={() => foundryBranding.mutate(!showFoundryBranding)}
+                    disabled={foundryBranding.isPending}
+                    className={menuItem}
+                  >
+                    {showFoundryBranding ? "Hide Foundry branding" : "Show Foundry branding"}
+                  </button>
+                </MenuItem>
               </MenuItems>
             </Menu>
           </div>
@@ -354,7 +367,11 @@ export function DesignSystemWorkspace({
           </div>
         </section>
       ) : (
-        <DesignSystemViewer tokens={tokens} clientLogoUrl={client?.logoUrl ?? null} />
+        <DesignSystemViewer
+          tokens={tokens}
+          clientLogoUrl={client?.logoUrl ?? null}
+          showFoundryBranding={showFoundryBranding}
+        />
       )}
 
       {importOpen && <ImportModal slug={slug} onClose={() => setImportOpen(false)} />}

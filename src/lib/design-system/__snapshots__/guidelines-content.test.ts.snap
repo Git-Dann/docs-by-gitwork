@@ -1,0 +1,74 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`generateGuidelinesContent > adapts copy to a dark/serif brand (snapshot) 1`] = `
+{
+  "brandName": "Obsidian Press",
+  "closingLine": "Considered words, built to last.",
+  "dosAndDonts": {
+    "donts": [
+      "Do not recolour, stretch or add effects to the logo.",
+      "Do not introduce colours from outside the palette.",
+      "Do not mix in typefaces other than Canela and Söhne.",
+      "Do not drop text below AA contrast.",
+      "Do not crowd screens by breaking the spacing scale.",
+    ],
+    "dos": [
+      "Lead with ink black, the primary colour.",
+      "Use Canela for headings and numbers.",
+      "Keep the standard corner radius across a screen.",
+      "Give the logo clear space and strong contrast.",
+      "Keep to the spacing scale so screens stay uncrowded.",
+    ],
+  },
+  "intro": "This is the brand guide for Obsidian Press. It covers the logo, colour, typography, spacing and UI foundations that keep the brand consistent wherever it appears. Use it as the reference whenever you design or build anything in the Obsidian Press name.",
+  "logoRulesText": [
+    "Give the logo clear space of half the logomark height on every side.",
+    "Place the logo on a background with strong contrast so it stays legible.",
+    "On light surfaces, use the full-colour logo.",
+    "On dark surfaces, use the white logo.",
+    "Never place the logo below its minimum size (horizontal at 24px and logomark at 16px).",
+    "Do not rotate the logo.",
+    "Do not add a drop shadow.",
+  ],
+  "sectionBlurbs": {
+    "colour": "The palette leads with ink black, the primary brand colour. Supporting colours cover the rest: bronze for accents and links; slate for body text and borders; fog for backgrounds and cards. As a rough split, lead with the primary colour across about 60% of a screen, neutrals 30%, and an accent the final 10%.",
+    "components": "Buttons and cards inherit the corner radius and use Canela for their labels. The Primary style leads the main action, with the Ghost style for lower-priority actions.",
+    "cornerRadius": "The default corner radius is 4px. Keep it consistent within a screen so components feel part of one system.",
+    "gridSpacing": "Spacing follows an 8-point rhythm, so sizes and gaps step in multiples of 8px. Keeping to the scale holds the layout even.",
+    "logo": "The logo is the primary expression of the brand. Give it clear space and strong contrast, and never redraw, recolour or restyle it. Keep clear space of half the logomark height around it. Do not place it below its minimum size (horizontal at 24px and logomark at 16px).",
+    "typography": "Canela sets headings and numbers, and Söhne carries body copy and UI text. Söhne Mono is reserved for captions, labels and code.",
+  },
+  "tagline": "Considered words, built to last.",
+}
+`;
+
+exports[`generateGuidelinesContent > adapts copy to a light/sans brand (snapshot) 1`] = `
+{
+  "brandName": "Sunlite",
+  "closingLine": "Bright, friendly, effortless.",
+  "dosAndDonts": {
+    "donts": [
+      "Do not introduce colours from outside the palette.",
+      "Do not mix in typefaces other than Poppins and Inter.",
+      "Do not drop text below AA contrast.",
+      "Do not crowd screens by breaking the spacing scale.",
+    ],
+    "dos": [
+      "Lead with sky blue, the primary colour.",
+      "Use Poppins for headings and numbers.",
+      "Keep the standard corner radius across a screen.",
+      "Keep to the spacing scale so screens stay uncrowded.",
+    ],
+  },
+  "intro": "This is the brand guide for Sunlite. It covers the logo, colour, typography, spacing and UI foundations that keep the brand consistent wherever it appears. Use it as the reference whenever you design or build anything in the Sunlite name.",
+  "logoRulesText": [],
+  "sectionBlurbs": {
+    "colour": "The palette leads with sky blue, the primary brand colour. Supporting colours cover the rest: coral for playful accents; cloud for page backgrounds; graphite for body text. As a rough split, lead with the primary colour across about 60% of a screen, neutrals 30%, and an accent the final 10%.",
+    "components": "Buttons and cards inherit the corner radius and use Poppins for their labels. The Primary style is the main action.",
+    "cornerRadius": "The default corner radius is 8px. Keep it consistent within a screen so components feel part of one system.",
+    "gridSpacing": "Spacing follows a 4-point rhythm, so sizes and gaps step in multiples of 4px. Keeping to the scale holds the layout even.",
+    "typography": "Poppins sets headings and numbers, and Inter carries body copy and UI text.",
+  },
+  "tagline": "Bright, friendly, effortless.",
+}
+`;

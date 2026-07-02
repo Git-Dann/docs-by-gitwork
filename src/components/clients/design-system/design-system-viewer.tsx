@@ -13,6 +13,8 @@ import type {
   DesignTokens,
   TypographyToken,
 } from "@/types/design-tokens";
+import { generateGuidelinesContent } from "@/lib/design-system/guidelines-content";
+import { formatDate } from "@/lib/format";
 
 // ── colour helpers ────────────────────────────────────────────────────────────
 
@@ -130,6 +132,36 @@ function GroupLabel({ children }: { children: ReactNode }) {
     <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
       {children}
     </p>
+  );
+}
+
+/** Simple bulleted list of narrative guidance lines. */
+function BulletList({ items }: { items: string[] }) {
+  return (
+    <ul className="flex flex-col gap-1.5">
+      {items.map((item, i) => (
+        <li key={i} className="flex gap-2 text-[13px] leading-relaxed text-[var(--text-2)]">
+          <span aria-hidden className="mt-[7px] h-[5px] w-[5px] shrink-0 rounded-full bg-[var(--brand-600)]" />
+          <span>{item}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Two-column Do / Don't lists rendered from the generated guidelines content. */
+function DosAndDontsSection({ content }: { content: { dos: string[]; donts: string[] } }) {
+  return (
+    <div className="grid gap-6 sm:grid-cols-2">
+      <div>
+        <GroupLabel>Do</GroupLabel>
+        <BulletList items={content.dos} />
+      </div>
+      <div>
+        <GroupLabel>Don&apos;t</GroupLabel>
+        <BulletList items={content.donts} />
+      </div>
+    </div>
   );
 }
 
@@ -1024,10 +1056,12 @@ function Hero({
   tokens,
   gradientCss,
   clientLogoUrl,
+  intro,
 }: {
   tokens: DesignTokens;
   gradientCss: string;
   clientLogoUrl?: string | null;
+  intro?: string;
 }) {
   const heroInk = readable(tokens.colours.primary[0]?.hex ?? "#0F172A");
   const onDark = heroInk === "#FFFFFF";
@@ -1082,7 +1116,71 @@ function Hero({
           </p>
         )}
       </div>
+      {intro && (
+        <div className="px-8 py-5">
+          <p
+            className="max-w-2xl text-[14px] leading-relaxed text-[var(--text-2)]"
+            style={{ fontFamily: `${tokens.typography.bodyFont}, ${tokens.typography.systemFallback}` }}
+          >
+            {intro}
+          </p>
+        </div>
+      )}
     </section>
+  );
+}
+
+/** Foundry-branded masthead. Doc meta is always in mono; the Foundry eyebrow drops when off. */
+function GuidelinesHeader({
+  tokens,
+  showFoundryBranding,
+}: {
+  tokens: DesignTokens;
+  showFoundryBranding: boolean;
+}) {
+  return (
+    <section className="widget-card">
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5"
+        style={{ fontFamily: mono }}
+      >
+        <span className="text-[11px] uppercase tracking-[0.14em] text-[var(--text-3)]">
+          {tokens.clientName} · Brand Guidelines
+        </span>
+        <span className="flex items-center gap-3 text-[10px] uppercase tracking-[0.12em] text-[var(--text-4)]">
+          <span>v{tokens.version}</span>
+          {tokens.generatedAt ? <span>{formatDate(tokens.generatedAt)}</span> : null}
+          {showFoundryBranding ? (
+            <span className="font-medium text-[var(--brand-700)]">Foundry</span>
+          ) : null}
+        </span>
+      </div>
+    </section>
+  );
+}
+
+/** Foundry-branded footer in mono. Renders nothing when branding is off. */
+function GuidelinesFooter({
+  tokens,
+  showFoundryBranding,
+}: {
+  tokens: DesignTokens;
+  showFoundryBranding: boolean;
+}) {
+  if (!showFoundryBranding) return null;
+  return (
+    <footer
+      className="flex items-center justify-center gap-1.5 py-2 text-[11px] uppercase tracking-[0.12em] text-[var(--text-4)]"
+      style={{ fontFamily: mono }}
+    >
+      {tokens.generatedAt ? (
+        <>
+          <span>Updated {formatDate(tokens.generatedAt)}</span>
+          <span aria-hidden>·</span>
+        </>
+      ) : null}
+      <span>Powered by Gitwork</span>
+    </footer>
   );
 }
 
@@ -1091,12 +1189,16 @@ function Hero({
 export function DesignSystemViewer({
   tokens,
   clientLogoUrl = null,
+  showFoundryBranding = true,
 }: {
   tokens: DesignTokens;
   clientLogoUrl?: string | null;
+  showFoundryBranding?: boolean;
 }) {
   const [fontDownloading, setFontDownloading] = useState(false);
   const [logoDownloading, setLogoDownloading] = useState(false);
+  // Default editable narrative, seeded from the tokens (overridable in a later UI).
+  const content = useMemo(() => generateGuidelinesContent(tokens), [tokens]);
   const allColours = [
     ...tokens.colours.primary,
     ...tokens.colours.secondary,
@@ -1168,11 +1270,15 @@ export function DesignSystemViewer({
     </button>
   ) : undefined;
 
+  const blurbs = content.sectionBlurbs;
+  // Combine the grid-spacing and corner-radius blurbs for the merged section.
+  const spacingIntro = [blurbs.gridSpacing, blurbs.cornerRadius].filter(Boolean).join(" ");
+
   // Build numbered sections in order; only include ones with data.
   const sections: Array<{ title: string; intro?: string; status?: ReactNode; node: ReactNode }> = [];
   sections.push({
     title: "COLOURS",
-    intro: "The brand palette — primary, secondary, and neutral roles, each with the hex and where to use it.",
+    intro: blurbs.colour ?? "The brand palette — primary, secondary, and neutral roles, each with the hex and where to use it.",
     node: <ColoursSection tokens={tokens} />,
   });
   if (tokens.gradients.length)
@@ -1183,19 +1289,19 @@ export function DesignSystemViewer({
     });
   sections.push({
     title: "TYPOGRAPHY",
-    intro: `Type system — ${fontList}. Each role with its spec and a live specimen.`,
+    intro: blurbs.typography ?? `Type system — ${fontList}. Each role with its spec and a live specimen.`,
     status: fontPackStatus,
     node: <TypographySection tokens={tokens} />,
   });
   sections.push({
     title: "SPACING & RADIUS",
-    intro: "The spacing scale and corner radii that set the rhythm and geometry.",
+    intro: spacingIntro || "The spacing scale and corner radii that set the rhythm and geometry.",
     node: <SpacingRadiusSection tokens={tokens} />,
   });
   if (tokens.buttons.length)
     sections.push({
       title: "BUTTONS",
-      intro: "Button variants and the surfaces — light, dark, gradient — they're built for.",
+      intro: blurbs.components ?? "Button variants and the surfaces — light, dark, gradient — they're built for.",
       node: <ButtonsSection tokens={tokens} darkSurface={darkSurface} gradientCss={gradientCss} />,
     });
   sections.push({
@@ -1224,10 +1330,25 @@ export function DesignSystemViewer({
   if (tokens.logoRules || clientLogoUrl)
     sections.push({
       title: "LOGO",
-      intro: "Logo lockups on light and dark surfaces, plus sizing and usage rules.",
+      intro: blurbs.logo ?? "Logo lockups on light and dark surfaces, plus sizing and usage rules.",
       status: logoPackStatus,
-      node: <LogoSection tokens={tokens} clientLogoUrl={clientLogoUrl} darkSurface={darkSurface} />,
+      node: (
+        <div className="flex flex-col gap-6">
+          {content.logoRulesText.length > 0 && (
+            <div>
+              <GroupLabel>Do&apos;s</GroupLabel>
+              <BulletList items={content.logoRulesText} />
+            </div>
+          )}
+          <LogoSection tokens={tokens} clientLogoUrl={clientLogoUrl} darkSurface={darkSurface} />
+        </div>
+      ),
     });
+  sections.push({
+    title: "USAGE",
+    intro: "The short version — what to do, and what to avoid.",
+    node: <DosAndDontsSection content={content.dosAndDonts} />,
+  });
   sections.push({
     title: "CSS TOKENS",
     intro: "The complete :root {} block and a Tailwind config snippet — select a format and copy.",
@@ -1239,7 +1360,8 @@ export function DesignSystemViewer({
 
   return (
     <div className="flex flex-col gap-4">
-      <Hero tokens={tokens} gradientCss={gradientCss} clientLogoUrl={clientLogoUrl} />
+      <GuidelinesHeader tokens={tokens} showFoundryBranding={showFoundryBranding} />
+      <Hero tokens={tokens} gradientCss={gradientCss} clientLogoUrl={clientLogoUrl} intro={content.intro} />
       {/* Jump nav — sticks under the page band while you scroll. Near-opaque
           surface + elevation shadow so it stays legible over the colour swatches. */}
       <nav className="sticky top-2 z-20 flex flex-wrap items-center gap-1 rounded-[10px] border border-[rgba(0,0,0,0.1)] bg-[rgba(250,250,249,0.97)] px-2 py-1.5 shadow-[0_8px_24px_-10px_rgba(0,0,0,0.3)] backdrop-blur-md">
@@ -1259,6 +1381,13 @@ export function DesignSystemViewer({
           {s.node}
         </Section>
       ))}
+      <p
+        className="mt-1 text-center text-[13px] leading-relaxed text-[var(--text-3)]"
+        style={{ fontFamily: `${tokens.typography.bodyFont}, ${tokens.typography.systemFallback}` }}
+      >
+        {content.closingLine}
+      </p>
+      <GuidelinesFooter tokens={tokens} showFoundryBranding={showFoundryBranding} />
     </div>
   );
 }
