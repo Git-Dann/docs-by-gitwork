@@ -1,13 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { LockClosedIcon, ArrowRightIcon } from "@heroicons/react/24/outline";
+import { ArrowRightIcon, ArrowLeftIcon } from "@heroicons/react/24/outline";
 
-const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
+// The boss's bespoke design: warm cream, violet accent (NOT the Foundry blue
+// brand token) and DM Serif Display headings. This page is theme-LOCKED to light —
+// it must look identical for clients whose OS is in dark mode, so every colour is
+// a fixed hex (the app's --text-*/bg-white tokens invert under dark mode).
+const SERIF = "var(--font-display), 'Times New Roman', Georgia, serif";
+const PURPLE = "#6C5CE7";
+const PAGE_BG = "#EDE8E1";
+const CARD_BG = "#FBF9F6";
+const INK = "#1A1A1A"; // headings / labels
+const MUTED = "#57534E"; // body copy
+const FAINT = "#8A8577"; // eyebrows / hints
+const BORDER = "rgba(0,0,0,0.10)";
 
-const inputCls =
-  "w-full rounded-[8px] border border-[rgba(0,0,0,0.12)] bg-white px-3 py-2.5 text-[16px] text-[var(--text-1)] outline-none transition focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-100)]";
+/** Where the "Back to portal overview" link points (public portal landing). */
+const PORTAL_OVERVIEW_URL = "https://gitwork.co.uk/portal";
 
 interface PortalWiki {
   clientName: string;
@@ -15,11 +25,77 @@ interface PortalWiki {
   url: string;
 }
 
+const inputCls =
+  "w-full rounded-[12px] border bg-[#ffffff] px-4 py-3 text-[15px] outline-none transition focus:border-[#6C5CE7] focus:ring-2 focus:ring-[#6C5CE7]/25";
+
+// ── Right-panel sample preview (decorative) ──────────────────────────────────
+type Tone = "done" | "progress" | "upcoming";
+const TONE: Record<Tone, { label: string; dot: string; text: string; bg: string }> = {
+  done: { label: "Done", dot: "#10b981", text: "#059669", bg: "rgba(16,185,129,0.14)" },
+  progress: { label: "In progress", dot: PURPLE, text: "#5646d6", bg: "rgba(108,92,231,0.12)" },
+  upcoming: { label: "Upcoming", dot: "#9b958a", text: "#7c766a", bg: "rgba(0,0,0,0.05)" },
+};
+const SAMPLE_MILESTONES: Array<{ name: string; tone: Tone }> = [
+  { name: "Discovery", tone: "done" },
+  { name: "Build Sprint 1", tone: "done" },
+  { name: "Build Sprint 2", tone: "progress" },
+  { name: "Launch", tone: "upcoming" },
+];
+
+function StatusPill({ tone }: { tone: Tone }) {
+  const t = TONE[tone];
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold"
+      style={{ background: t.bg, color: t.text }}
+    >
+      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: t.dot }} />
+      {t.label}
+    </span>
+  );
+}
+
+function PreviewPanel() {
+  return (
+    <div className="hidden flex-col justify-center px-10 py-12 md:flex lg:px-14">
+      <h2 className="text-[30px] leading-[1.15] tracking-[-0.01em]" style={{ fontFamily: SERIF, color: INK }}>
+        See your project the moment you sign in.
+      </h2>
+      <p className="mt-3 max-w-md text-[15px] leading-relaxed" style={{ color: MUTED }}>
+        Live timelines, your team, and updates, all in one place.
+      </p>
+
+      <p className="mt-8 text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: FAINT }}>
+        Milestones
+      </p>
+      <ul className="mt-3 space-y-2.5">
+        {SAMPLE_MILESTONES.map((m) => (
+          <li
+            key={m.name}
+            className="flex items-center justify-between gap-3 rounded-[12px] bg-[#ffffff] px-4 py-3.5"
+            style={{
+              border: m.tone === "progress" ? `1px solid ${PURPLE}` : `1px solid ${BORDER}`,
+              boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+            }}
+          >
+            <span className="truncate text-[15px] font-medium" style={{ color: INK }}>
+              {m.name}
+            </span>
+            <StatusPill tone={m.tone} />
+          </li>
+        ))}
+      </ul>
+      <p className="mt-4 text-[12px]" style={{ color: FAINT }}>
+        Sample preview
+      </p>
+    </div>
+  );
+}
+
 /**
  * Central client portal login. Authenticates by email + password (no wiki token),
  * then routes: one workspace → straight in (honouring ?next when it's the same
- * workspace); several → a chooser. Placeholder on-brand design pending the final
- * design from Dan's boss.
+ * workspace), several → a chooser.
  */
 export function PortalLoginForm({ next }: { next: string | null }) {
   const [email, setEmail] = useState("");
@@ -68,7 +144,6 @@ export function PortalLoginForm({ next }: { next: string | null }) {
       }
       const data = (await res.json()) as { wikis: PortalWiki[] };
       routeTo(data.wikis ?? []);
-      // Leave submitting true — we're navigating away (or showing the chooser).
       if ((data.wikis?.length ?? 0) > 1) setSubmitting(false);
     } catch {
       setError("Something went wrong. Please try again.");
@@ -77,119 +152,139 @@ export function PortalLoginForm({ next }: { next: string | null }) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--surface-0)]">
-      <main className="flex flex-1 items-center justify-center px-4 py-12">
-        <div className="w-full max-w-sm">
-          <div className="rounded-[16px] border border-[rgba(0,0,0,0.08)] bg-white p-8 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.25)]">
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-[10px] bg-[var(--brand-50)] text-[var(--brand-700)]">
-              <LockClosedIcon className="h-6 w-6" />
-            </span>
-            <p
-              className="mt-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-4)]"
-              style={{ fontFamily: MONO }}
-            >
-              Client Portal
+    <div
+      className="flex min-h-screen items-center justify-center p-4 sm:p-8"
+      style={{ background: PAGE_BG, colorScheme: "light" }}
+    >
+      <div
+        className="grid w-full max-w-5xl overflow-hidden rounded-[28px] shadow-[0_30px_80px_-30px_rgba(0,0,0,0.30)] md:grid-cols-2"
+        style={{ background: CARD_BG }}
+      >
+        {/* ── Left: sign in ── */}
+        <div
+          className="flex flex-col justify-center px-8 py-12 md:px-12"
+          style={{ borderRight: `1px solid ${BORDER}` }}
+        >
+          <div>
+            <p className="text-[28px] leading-none" style={{ fontFamily: SERIF, color: INK }}>
+              Gitwork<span style={{ color: PURPLE }}>.</span>
             </p>
-
-            {choices ? (
-              <>
-                <h1
-                  className="mt-1 text-xl text-[var(--text-1)]"
-                  style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
-                >
-                  Choose a workspace
-                </h1>
-                <p className="mt-1.5 text-[13px] text-[var(--text-3)]">
-                  Your account has access to more than one. Pick where to go.
-                </p>
-                <ul className="mt-6 space-y-2">
-                  {choices.map((w) => (
-                    <li key={w.slug}>
-                      <a
-                        href={w.url}
-                        className="group flex items-center justify-between gap-3 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3 text-left transition hover:border-[var(--brand-500)] hover:bg-[var(--surface-1)]"
-                      >
-                        <span className="truncate text-[14px] font-medium text-[var(--text-1)]">
-                          {w.clientName}
-                        </span>
-                        <ArrowRightIcon className="h-4 w-4 shrink-0 text-[var(--text-4)] transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-700)]" />
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <>
-                <h1
-                  className="mt-1 text-xl text-[var(--text-1)]"
-                  style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
-                >
-                  Sign in
-                </h1>
-                <p className="mt-1.5 text-[13px] text-[var(--text-3)]">
-                  Enter the email and password you were given to view your workspace.
-                </p>
-
-                <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-                  <div>
-                    <label
-                      className="mb-1.5 block text-[11px] uppercase tracking-[0.06em] text-[var(--text-4)]"
-                      style={{ fontFamily: MONO }}
-                    >
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      autoComplete="email"
-                      required
-                      className={inputCls}
-                    />
-                  </div>
-                  <div>
-                    <label
-                      className="mb-1.5 block text-[11px] uppercase tracking-[0.06em] text-[var(--text-4)]"
-                      style={{ fontFamily: MONO }}
-                    >
-                      Password
-                    </label>
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      autoComplete="current-password"
-                      required
-                      className={inputCls}
-                    />
-                  </div>
-
-                  {error && <p className="text-[13px] text-rose-600">{error}</p>}
-
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="w-full rounded-[8px] bg-[var(--brand-600)] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[var(--brand-700)] disabled:opacity-50"
-                  >
-                    {submitting ? "Signing in…" : "Sign in"}
-                  </button>
-                </form>
-              </>
-            )}
+            <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: FAINT }}>
+              Portal
+            </p>
           </div>
 
-          <p className="mt-6 text-center text-xs text-[var(--text-4)]">
-            <Link
-              href="https://gitwork.co.uk"
-              target="_blank"
-              rel="noreferrer"
-              className="hover:text-[var(--text-2)]"
-            >
-              Powered by Gitwork
-            </Link>
-          </p>
+          {choices ? (
+            <div className="mt-8">
+              <h1 className="text-[34px] leading-none" style={{ fontFamily: SERIF, color: INK }}>
+                Choose a workspace
+              </h1>
+              <p className="mt-3 text-[15px]" style={{ color: MUTED }}>
+                Your account has access to more than one. Pick where to go.
+              </p>
+              <ul className="mt-7 space-y-2.5">
+                {choices.map((w) => (
+                  <li key={w.slug}>
+                    <a
+                      href={w.url}
+                      className="group flex items-center justify-between gap-3 rounded-[12px] bg-[#ffffff] px-4 py-3.5 transition hover:border-[#6C5CE7]"
+                      style={{ border: `1px solid ${BORDER}` }}
+                    >
+                      <span className="truncate text-[15px] font-medium" style={{ color: INK }}>
+                        {w.clientName}
+                      </span>
+                      <ArrowRightIcon
+                        className="h-4 w-4 shrink-0 transition group-hover:translate-x-0.5"
+                        style={{ color: PURPLE }}
+                      />
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <>
+              <h1
+                className="mt-8 text-[40px] leading-none tracking-[-0.01em]"
+                style={{ fontFamily: SERIF, color: INK }}
+              >
+                Welcome back
+              </h1>
+              <p className="mt-3 text-[15px]" style={{ color: MUTED }}>
+                Sign in to your Gitwork Portal.
+              </p>
+
+              <form onSubmit={handleSubmit} className="mt-8">
+                <div>
+                  <label className="mb-2 block text-[13px] font-medium" style={{ color: INK }}>
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                    required
+                    className={inputCls}
+                    style={{ borderColor: BORDER, color: INK }}
+                  />
+                </div>
+                <div className="mt-5">
+                  <label className="mb-2 block text-[13px] font-medium" style={{ color: INK }}>
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    autoComplete="current-password"
+                    required
+                    className={inputCls}
+                    style={{ borderColor: BORDER, color: INK }}
+                  />
+                </div>
+
+                {error && <p className="mt-4 text-[13px] text-rose-600">{error}</p>}
+
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="mt-6 w-full rounded-full px-4 py-3.5 text-[15px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                  style={{ background: PURPLE }}
+                >
+                  {submitting ? "Signing in…" : "Sign in"}
+                </button>
+              </form>
+
+              <p className="mt-4 text-center text-[13px]" style={{ color: FAINT }}>
+                Trouble signing in? Contact your product management team.
+              </p>
+
+              <div className="my-5 flex items-center gap-4">
+                <span className="h-px flex-1" style={{ background: BORDER }} />
+                <span className="text-[13px]" style={{ color: FAINT }}>
+                  or
+                </span>
+                <span className="h-px flex-1" style={{ background: BORDER }} />
+              </div>
+
+              <a
+                href={PORTAL_OVERVIEW_URL}
+                className="flex w-full items-center justify-center gap-2 rounded-full bg-transparent px-4 py-3.5 text-[15px] font-medium transition hover:bg-[#ffffff]"
+                style={{ border: `1px solid ${BORDER}`, color: INK }}
+              >
+                <ArrowLeftIcon className="h-4 w-4" />
+                Back to portal overview
+              </a>
+            </>
+          )}
         </div>
-      </main>
+
+        {/* ── Right: sample preview ── */}
+        <PreviewPanel />
+      </div>
     </div>
   );
 }
