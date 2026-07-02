@@ -91,9 +91,10 @@ export interface PortalWikiAccess {
 /**
  * Central portal login: authenticate an email + password against ClientWikiUser
  * rows across ALL wikis (email is unique per-wiki, so the same address can appear
- * on several). Returns every whole-wiki-shared wiki whose stored password matches
- * — the caller sets each cookie and routes the user (one → straight in, many →
- * chooser). No token needed; this is the tokenless entry point.
+ * on several). Returns every wiki whose stored password matches AND that has a
+ * shared surface to land on — either a whole-wiki share OR any shared section
+ * (e.g. Design System). The caller sets each cookie and routes the user (one →
+ * straight in, many → chooser). No token needed; this is the tokenless entry.
  */
 export async function loginPortalUser(
   email: string,
@@ -112,6 +113,7 @@ export async function loginPortalUser(
           id: true,
           shareToken: true,
           shareEnabled: true,
+          pageShareTokens: true,
           client: { select: { name: true, slug: true } },
         },
       },
@@ -120,15 +122,19 @@ export async function loginPortalUser(
 
   const out: PortalWikiAccess[] = [];
   for (const u of users) {
-    // Can only route to a wiki that's publicly shared with a whole-wiki token.
-    if (!u.wiki.shareEnabled || !u.wiki.shareToken) continue;
+    // Prefer the whole-wiki share; otherwise land them on a shared section
+    // (per-section share, e.g. Design System only). No shared surface → skip.
+    const wholeWiki = u.wiki.shareEnabled && u.wiki.shareToken ? u.wiki.shareToken : null;
+    const sectionToken = u.wiki.pageShareTokens?.[0] ?? null;
+    const token = wholeWiki ?? sectionToken;
+    if (!token) continue;
     const passOk = await bcrypt.compare(password, u.passwordHash);
     if (!passOk) continue;
     out.push({
       wikiId: u.wiki.id,
       clientName: u.wiki.client.name,
       slug: u.wiki.client.slug,
-      url: `/wiki/${u.wiki.client.slug}/${u.wiki.shareToken}`,
+      url: `/wiki/${u.wiki.client.slug}/${token}`,
       cookieName: wikiAccessCookieName(u.wiki.id),
       cookieValue: signWikiUserAccess(u.wiki.id, { id: u.id, passwordHash: u.passwordHash }),
     });
