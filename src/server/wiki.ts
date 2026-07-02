@@ -409,7 +409,6 @@ const PAGE_TYPE_TO_SECTION: Partial<Record<WikiPageType, string>> = {
   ARCHITECTURE: "architecture",
   RUNBOOK: "runbook",
   DATA_MODEL: "data-model",
-  SYSTEM_STATUS: "system-status",
 };
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -953,7 +952,6 @@ export async function deleteWikiUser(clientId: string, userId: string): Promise<
 /** Sections that can be individually shared (Design System has its own share). */
 const SHAREABLE_SECTIONS = [
   "timeline",
-  "system-status",
   "monitors",
   "design-system",
   "ia",

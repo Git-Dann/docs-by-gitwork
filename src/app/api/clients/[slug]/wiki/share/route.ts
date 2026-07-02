@@ -11,7 +11,6 @@ const bodySchema = z.object({
   section: z
     .enum([
       "timeline",
-      "system-status",
       "monitors",
       "design-system",
       "ia",

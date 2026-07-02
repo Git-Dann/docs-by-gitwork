@@ -148,7 +148,6 @@ export function loadClientBySlug(slug: string): Promise<ClientCardData | null> {
 // in lockstep with the page itself.
 const WIKI_SECTION_LABEL: Record<string, string> = {
   timeline: "Timeline",
-  "system-status": "System Status",
   monitors: "Monitors",
   ia: "IA",
   "dev-guide": "Dev Guide",
