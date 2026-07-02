@@ -21,10 +21,20 @@ It serves two audiences simultaneously:
 
 ## 2. Repo & Deployment
 
+> **⚠️ INFRASTRUCTURE MIGRATED — July 2026.** Production **no longer runs on Vercel/Neon**. It now
+> runs on a **Fasthosts VPS** (`194.164.127.222`) via **Docker Compose** — the Next.js app container
+> + a self-hosted **PostgreSQL** container (with pgvector), behind a reverse proxy with a **Let's
+> Encrypt** cert. `foundry.gitwork.co.uk` points at the VPS by an **A record** (managed in
+> **Squarespace** DNS). There is **no auto-deploy** — deploying is a Docker Compose step on the VPS.
+> The Vercel-specific details in this section (auto-deploy on push, `vercel.json` build, Neon URLs)
+> are **historical/rollback context** — Vercel + Neon are kept live read-only as a fallback until
+> decommissioned. **See §23 for the current setup.**
+
 | Item | Value |
 |---|---|
 | GitHub repo | `Git-Dann/docs-by-gitwork` |
-| Production branch | `main` — Vercel auto-deploys on every push |
+| Production host | **Fasthosts VPS `194.164.127.222`** — Docker Compose (app + Postgres). See §23 |
+| Production branch | `main` — **no auto-deploy**; deploy is a manual Docker step on the VPS (historically Vercel auto-deployed) |
 | Merge policy | **Squash-merge only** · merge & rebase-merge disabled · branches auto-delete on merge |
 | Production URL | `foundry.gitwork.co.uk` |
 | Vercel team | `dans-projects-7462374f` |
@@ -35,8 +45,10 @@ It serves two audiences simultaneously:
 
 ### Branch, merge & deploy workflow
 
-**`main` is the production branch — every push auto-deploys to production.** The goal is that
-**one merge = one clear, readable production deploy.** GitHub is configured to enforce this:
+**`main` is the mainline branch.** *(Historically every push auto-deployed to Vercel; since the
+July 2026 migration production runs on the Fasthosts VPS and is deployed via Docker Compose — see
+§23 — so a merge to `main` does **not** auto-deploy: someone must deploy on the VPS.)* The
+squash-merge discipline below is still worth keeping for a clean, readable history:
 
 - **Squash-merge only** — merge commits and rebase-merge are disabled. Each PR lands as a
   single commit on `main`, titled with the PR title (which becomes the Vercel deploy label).
@@ -113,7 +125,13 @@ fastest fix — it took ~10 seconds during the PR #189 incident.
 
 ## 3. Environment Variables
 
-Set in Vercel project settings. For local dev, create `.env.local`:
+> Since the July 2026 migration (§23), production env lives in the **VPS `.env`** (loaded by Docker
+> Compose), **not** Vercel. `DATABASE_URL`/`DIRECT_URL` both point at the compose-internal Postgres
+> (`…@db:5432/foundry?sslmode=disable`). The **VPS `.env`** is the source of truth for live values;
+> `docs/fasthosts-secrets-recovery.md` documents where each secret comes from (no live values). The
+> block below is the original per-var reference (Neon URL examples are historical).
+
+For local dev, create `.env.local`:
 
 ```bash
 # Neon PostgreSQL — two URLs required (Vercel connection pooling)
@@ -186,13 +204,13 @@ The sidebar uses different labels from the URL routes — mapping below:
 |---|---|
 | Framework | Next.js 15, App Router, React 19, TypeScript |
 | Styling | Tailwind CSS v4 (CSS-first, no tailwind.config.js) |
-| Database | Neon PostgreSQL · Prisma ORM (pooled + direct URL) |
+| Database | Self-hosted **PostgreSQL** (Docker container, pgvector) · Prisma ORM. *Was Neon — migrated July 2026, §23; Neon kept for rollback* |
 | AI | Anthropic SDK (`@anthropic-ai/sdk`) + OpenAI-compatible SDK for multi-provider |
 | Data fetching | TanStack React Query v5 — hooks in `src/hooks/` |
 | Validation | Zod — all schemas in `src/server/validators.ts` |
 | Drag & drop | @dnd-kit/core + @dnd-kit/sortable |
 | PDF | pdf-lib |
-| Deploy | Vercel (Next.js preset, buildCommand in vercel.json) |
+| Deploy | **Docker Compose on a Fasthosts VPS** (§23). *Was Vercel — kept live read-only for rollback* |
 
 ---
 
@@ -870,3 +888,47 @@ brand (blue, never Dia's yellow).
     Slack scopes, **no Slack↔Foundry user mapping** — it surfaces channel activity, not @mentions/DMs.
 - **Deferred:** true Slack @mentions/DMs (needs user mapping + scopes); revenue/margin cash flow
   (only dev *cost* is wired today); an optional cached morning digest if narrative is ever wanted.
+
+## 23. Recent Changes (July 2026) — Migrated off Vercel/Neon to a Fasthosts VPS
+
+Production was moved from **Vercel** (app) + **Neon** (database) to a **single Fasthosts Cloud VPS**
+running **Docker Compose**. **No application code changed** — it was an infrastructure + data move.
+This supersedes the Vercel/Neon assumptions throughout §2, §3, §5.
+
+- **Host & DNS** — VPS at `194.164.127.222`. `foundry.gitwork.co.uk` resolves via an **A record →
+  `194.164.127.222`** (was a Vercel CNAME `…vercel-dns-017.com`), managed in **Squarespace** DNS
+  (`gitwork.co.uk` is Squarespace-managed). **Only the `foundry` host was changed** — root `@`
+  (ALIAS → `site-dns.bolt.host`), `www`, email (SendGrid CNAMEs, SPF/DKIM/DMARC TXT), and `docs`
+  (→ betterproposals) were left untouched. HTTPS via an auto-renewing **Let's Encrypt** cert.
+- **Runtime** — Docker Compose: the Next.js app container + a self-hosted **PostgreSQL** container
+  (compose service name **`db`** — hence `DATABASE_URL=postgresql://foundry:…@db:5432/foundry?sslmode=disable`;
+  SSL disabled is fine on the compose-internal network), behind a reverse proxy terminating TLS.
+- **pgvector is required** — the Postgres image must ship the `vector` extension. `bootstrap.ts`
+  runs `CREATE EXTENSION IF NOT EXISTS vector` + the `SupportConversation.embedding vector(1536)`
+  column + HNSW index on boot (Care semantic search). Without it, boot/Care search fail.
+- **Data** — migrated by `pg_dump`/`pg_restore` from Neon into the VPS Postgres. `DATABASE_URL` and
+  `DIRECT_URL` both point at the local `db` container (single long-running server → no PgBouncer).
+- **Deploy — NO auto-deploy.** Vercel's push-to-deploy is gone; deploying is a Docker Compose step
+  on the VPS (rebuild image + restart). The image build still runs `prisma db push` (never with
+  `--accept-data-loss`).
+- **Secrets / env** — production secrets live in the **VPS `.env`** (loaded by Compose), not Vercel.
+  All Vercel "Sensitive" vars were **write-only and could not be exported** (`vercel env pull`
+  returns them blank), so each was re-sourced: Google OAuth from Cloud Console (two web clients —
+  "Foundry Login" → `AUTH_GOOGLE_*`, "Foundry Care" → `GOOGLE_CLIENT_*`; iOS server client →
+  `GOOGLE_IOS_SERVER_CLIENT_ID`), APNs `.p8` from the Apple key, `ENCRYPTION_KEY` recovered from a
+  local worktree `.env.local` (confirmed matching prod — **must** match or encrypted onboarding bank
+  data is unreadable), Anthropic key regenerated. Live values live only in the VPS `.env`. Docs:
+  `docs/neon-to-fasthosts-migration.md` (DB runbook) + `docs/fasthosts-secrets-recovery.md`.
+- **Now self-managed (Vercel/Neon did these before):**
+  - **Crons** — Vercel cron jobs do NOT run on the VPS. `/api/cron/*` (`meet-transcripts`,
+    `pulse-reconcile`, `support-sync`, `docs-gdrive-backup`) must be triggered by host cron/systemd
+    timers hitting them with the `CRON_SECRET` header.
+  - **DB backups** — schedule `pg_dump` off-box (Neon auto-backed-up before).
+  - **Cert renewal** — ensure the Let's Encrypt renewer is in place (~90-day cert).
+- **Rollback** — **Vercel + Neon are kept live, read-only**, as a fallback until the VPS is proven,
+  then decommissioned. To roll back: repoint the `foundry` A record to the Vercel CNAME and switch
+  `DATABASE_URL`/`DIRECT_URL` back to the Neon URLs.
+- **Post-cutover follow-ups:** rotate the DB password (the initial one was weak and passed through
+  Slack) + other Slack-exposed secrets; verify Google login (redirect URI added for the domain),
+  Care semantic search (pgvector canary), AI (`ANTHROPIC_ADMIN_KEY` or the workspace DB key), and an
+  onboarding bank-detail decrypt.

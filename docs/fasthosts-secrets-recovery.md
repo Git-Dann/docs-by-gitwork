@@ -14,7 +14,7 @@ Legend: 🔴 must recover intact (breakage/data loss if wrong) · 🟡 re-source
 
 | Var | Value / source |
 |---|---|
-| `NEXT_PUBLIC_API_KEY` | `haTLXszFJ5GMYEvMNbzNeRqQQyxzSHEPRrBHowXlaqM=` (came back populated — it's not marked sensitive) |
+| `NEXT_PUBLIC_API_KEY` | *(value redacted — see the VPS `.env`)* — a `NEXT_PUBLIC_*` var, so it's already inlined into the client JS bundle; not a server secret. Rotate as part of post-live rotation. |
 | `DATABASE_URL` / `DIRECT_URL` | Recovered from the Neon integration vars — **but these are replaced by the new Fasthosts Postgres strings anyway** (see the DB migration runbook). |
 
 > Note: the app reads `API_KEY` and falls back to `NEXT_PUBLIC_API_KEY` (`src/middleware.ts`). You
