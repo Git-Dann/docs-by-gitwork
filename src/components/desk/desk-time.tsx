@@ -15,6 +15,12 @@ const MONO = { fontFamily: "var(--font-mono)" } as const;
 export const HQ_TZ = "Europe/London";
 export const TEAM_TZ = "Asia/Karachi"; // Islamabad
 
+/** Friendly hub names — Gitwork HQ is Manchester (Europe/London tz). */
+const HUB_LABELS: Record<string, string> = {
+  "Europe/London": "Manchester",
+  "Asia/Karachi": "Islamabad",
+};
+
 /** A ticking clock — re-renders every `ms` so times/overlap stay live. */
 export function useNow(ms = 30_000): Date {
   const [now, setNow] = useState(() => new Date());
@@ -63,7 +69,15 @@ function tzOffsetHours(date: Date, tz: string): number {
 }
 
 function cityLabel(tz: string): string {
-  return (tz.split("/").pop() ?? tz).replace(/_/g, " ");
+  return HUB_LABELS[tz] ?? (tz.split("/").pop() ?? tz).replace(/_/g, " ");
+}
+
+/** Friendly 12-hour label for an hour-of-day (can be negative / >24 — wraps). */
+function label12(h: number): string {
+  const hh = ((Math.round(h) % 24) + 24) % 24;
+  const ap = hh < 12 ? "am" : "pm";
+  const h12 = hh % 12 === 0 ? 12 : hh % 12;
+  return `${h12}${ap}`;
 }
 
 /** Two inline mono clocks: the viewer's local time + a counterpart hub. */
@@ -98,39 +112,89 @@ export function WorldClocks({
   );
 }
 
-/** UTC instants for a hub's `startH`–`endH` local workday on today's date. */
-function hubWorkday(now: Date, tz: string, startH = 9, endH = 17): { start: number; end: number } {
-  const off = tzOffsetHours(now, tz);
-  const y = now.getUTCFullYear();
-  const m = now.getUTCMonth();
-  const d = now.getUTCDate();
-  // local wall-clock W ⇒ UTC = W − offset (Date.UTC normalises hour over/underflow)
-  return {
-    start: Date.UTC(y, m, d, startH - off),
-    end: Date.UTC(y, m, d, endH - off),
-  };
-}
-
-/** The daily London↔Karachi 09:00–17:00 overlap, rendered in the viewer's local time. */
-export function TeamOverlap() {
+/**
+ * Visual overlap: two 09:00–17:00 lanes (you + the other hub) on a shared local-time
+ * axis, with the overlap column highlighted — so "your 9am = their 1pm" is obvious.
+ */
+export function TeamOverlap({
+  counterpartTz,
+  counterpartLabel,
+}: {
+  counterpartTz: string;
+  counterpartLabel: string;
+}) {
   const now = useNow(60_000);
   const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const ldn = hubWorkday(now, HQ_TZ);
-  const khi = hubWorkday(now, TEAM_TZ);
-  const start = Math.max(ldn.start, khi.start);
-  const end = Math.min(ldn.end, khi.end);
+  const youLabel = cityLabel(localTz);
 
-  const label =
-    end - start < 30 * 60_000
-      ? "Limited overlap"
-      : `Overlap ${fmtTime(new Date(start), localTz)}–${fmtTime(new Date(end), localTz)}`;
+  // How many hours the counterpart is ahead of the viewer (DST-aware).
+  const diff = tzOffsetHours(now, counterpartTz) - tzOffsetHours(now, localTz);
+  const you = { start: 9, end: 17 };
+  const them = { start: 9 - diff, end: 17 - diff }; // their workday expressed in your local hours
+  const ovStart = Math.max(you.start, them.start);
+  const ovEnd = Math.min(you.end, them.end);
+  const hasOverlap = ovEnd - ovStart >= 0.5;
+
+  const domStart = Math.min(you.start, them.start) - 1;
+  const domEnd = Math.max(you.end, them.end) + 1;
+  const span = domEnd - domStart || 1;
+  const pos = (h: number) => ((h - domStart) / span) * 100;
 
   return (
-    <span
-      className="inline-flex items-center rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2.5 py-1 text-[11px] uppercase tracking-[0.8px] text-[var(--text-3)]"
-      style={MONO}
-    >
-      {label}
-    </span>
+    <div className="w-full rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] p-3.5">
+      <p className="text-sm text-[var(--text-2)]">
+        Your <span className="font-semibold text-[var(--text-1)]">9am</span> is{" "}
+        <span className="font-semibold text-[var(--brand-700)]">{label12(9 + diff)}</span> in{" "}
+        {counterpartLabel}
+      </p>
+
+      <div className="relative mt-3 h-10">
+        {hasOverlap ? (
+          <div
+            className="absolute inset-y-0 rounded-[4px] bg-[var(--surface-brand)] ring-1 ring-inset ring-[var(--brand-400)]"
+            style={{ left: `${pos(ovStart)}%`, width: `${pos(ovEnd) - pos(ovStart)}%` }}
+          />
+        ) : null}
+        <Lane label={youLabel} start={you.start} end={you.end} pos={pos} top />
+        <Lane label={counterpartLabel} start={them.start} end={them.end} pos={pos} />
+      </div>
+
+      <p
+        className="mt-2.5 text-[11px] uppercase tracking-[0.8px] text-[var(--text-4)]"
+        style={MONO}
+      >
+        {hasOverlap ? `Overlap ${label12(ovStart)}–${label12(ovEnd)} your time` : "Little daily overlap"}
+      </p>
+    </div>
+  );
+}
+
+function Lane({
+  label,
+  start,
+  end,
+  pos,
+  top,
+}: {
+  label: string;
+  start: number;
+  end: number;
+  pos: (h: number) => number;
+  top?: boolean;
+}) {
+  return (
+    <div className={`absolute left-0 right-0 h-4 ${top ? "top-0" : "bottom-0"}`}>
+      <div
+        className="absolute inset-y-0 flex items-center overflow-hidden rounded-[4px] bg-[var(--surface-1)] ring-1 ring-inset ring-[var(--border-2)]"
+        style={{ left: `${pos(start)}%`, width: `${pos(end) - pos(start)}%` }}
+      >
+        <span
+          className="truncate pl-1.5 text-[9px] uppercase tracking-[0.5px] text-[var(--text-4)]"
+          style={MONO}
+        >
+          {label}
+        </span>
+      </div>
+    </div>
   );
 }

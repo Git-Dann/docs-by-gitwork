@@ -10,9 +10,20 @@ import { useStaffingAlerts } from "@/hooks/use-backstage";
 import { useDeskCalendar, useDeskHolidays } from "@/hooks/use-desk";
 import { cn } from "@/lib/format";
 import type { StaffingAlert } from "@/types/backstage";
-import type { NextHoliday } from "@/types/desk";
-import { EditorialRow, Stamp, DeskTaskRow, DeskEmpty, DeskSkeleton, RevealList } from "./desk-shared";
+import type { NextHoliday, DeskTab } from "@/types/desk";
+import type { CalendarEvent } from "@/lib/api";
+import {
+  EditorialRow,
+  Stamp,
+  DeskTaskRow,
+  DeskEmpty,
+  DeskSkeleton,
+  DeskConnectGoogle,
+  RevealList,
+} from "./desk-shared";
 import { WorldClocks, TeamOverlap, HQ_TZ, TEAM_TZ } from "./desk-time";
+
+type Counterpart = { tz: string; label: string };
 
 function greeting(hour: number): string {
   if (hour < 12) return "Good morning";
@@ -22,7 +33,7 @@ function greeting(hour: number): string {
 
 /** Editorial "Today" tab — Dia-style masthead (mono rails + serif greeting) then
  *  two-column rows. On brand: blue, not yellow. */
-export function DeskToday() {
+export function DeskToday({ onNavigate }: { onNavigate?: (tab: DeskTab) => void }) {
   const account = useAccount();
   const { isAdminOrAbove, canViewClientFinancials } = usePermissions();
   const showStandup = !isAdminOrAbove; // devs/staff push standups; admins & super-admins don't
@@ -35,10 +46,10 @@ export function DeskToday() {
   const dateStr = now
     .toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })
     .toUpperCase();
-  // The "other hub": admins/super-admins (Dan) see Islamabad; devs/staff see London (HQ).
-  const counterpart = isAdminOrAbove
+  // The "other hub": admins/super-admins (Dan) see Islamabad; devs/staff see Manchester (HQ).
+  const counterpart: Counterpart = isAdminOrAbove
     ? { tz: TEAM_TZ, label: "Islamabad" }
-    : { tz: HQ_TZ, label: "London" };
+    : { tz: HQ_TZ, label: "Manchester" };
 
   const amPushed = Boolean(myDay.data?.update.amPushedAt);
   const pmPushed = Boolean(myDay.data?.update.pmPushedAt);
@@ -47,12 +58,11 @@ export function DeskToday() {
   const todaysEvents = (calendar.data?.events ?? []).filter(
     (ev) => ev.start && new Date(ev.start).toDateString() === now.toDateString(),
   );
-  const nextMeeting =
-    todaysEvents.find((ev) => new Date(ev.start) >= now) ?? todaysEvents[0] ?? null;
 
   const overdueCount = attention.data?.overdueCount ?? 0;
   const doingCount = attention.data?.doingCount ?? 0;
   const dueSoonCount = attention.data?.dueSoonCount ?? 0;
+  const doneToday = myDay.data?.done.length ?? 0;
 
   return (
     <div>
@@ -102,52 +112,36 @@ export function DeskToday() {
         </div>
       </EditorialRow>
 
-      {/* Your day */}
-      <EditorialRow title="Your day" caption="At a glance, and what's next.">
-        <div className="grid grid-cols-3 gap-3">
-          <Stat n={overdueCount} label="Overdue" danger />
-          <Stat n={doingCount} label="Doing" />
-          <Stat n={dueSoonCount} label="Due soon" />
+      {/* Your day — clickable stats + today's agenda */}
+      <EditorialRow
+        title="Your day"
+        caption="Your numbers and today's agenda."
+        stamp={<Stamp label="My tasks" href="/app" />}
+      >
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          <Stat n={overdueCount} label="Overdue" danger onClick={() => onNavigate?.("TASKS")} />
+          <Stat n={doingCount} label="Doing" onClick={() => onNavigate?.("TASKS")} />
+          <Stat n={dueSoonCount} label="Due soon" onClick={() => onNavigate?.("TASKS")} />
+          <Stat n={doneToday} label="Done today" good onClick={() => onNavigate?.("TASKS")} />
         </div>
         <div className="mt-4">
-          {calendar.isPending ? (
-            <DeskSkeleton />
-          ) : nextMeeting ? (
-            <div className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-4 py-3">
-              <div className="flex items-center justify-between">
-                <span
-                  className="text-[11px] uppercase tracking-[1px] text-[var(--text-4)]"
-                  style={{ fontFamily: "var(--font-mono)" }}
-                >
-                  Next up ·{" "}
-                  {new Date(nextMeeting.start).toLocaleTimeString(undefined, {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-                </span>
-                {nextMeeting.meetLink ? (
-                  <a
-                    href={nextMeeting.meetLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-medium text-[var(--brand-700)] hover:underline"
-                  >
-                    Join →
-                  </a>
-                ) : null}
-              </div>
-              <p className="mt-1 truncate text-sm font-medium text-[var(--text-1)]">
-                {nextMeeting.summary}
-              </p>
-            </div>
-          ) : (
-            <DeskEmpty>No more meetings today — clear runway.</DeskEmpty>
-          )}
+          <p
+            className="mb-2 text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]"
+            style={{ fontFamily: "var(--font-mono)" }}
+          >
+            Today&apos;s agenda
+          </p>
+          <Agenda
+            events={todaysEvents}
+            now={now}
+            pending={calendar.isPending}
+            connected={calendar.data?.connected}
+          />
         </div>
       </EditorialRow>
 
       {/* Around the team — who's off + next UK/PK holiday + working-hours overlap. */}
-      <AroundTheTeam />
+      <AroundTheTeam counterpart={counterpart} />
 
       {/* Client cash flow — gated by canViewClientFinancials (which includes the
           workspace showDevRates toggle — off by default, set in Settings → General). */}
@@ -156,7 +150,7 @@ export function DeskToday() {
   );
 }
 
-function AroundTheTeam() {
+function AroundTheTeam({ counterpart }: { counterpart: Counterpart }) {
   const alerts = useStaffingAlerts();
   const holidays = useDeskHolidays();
 
@@ -195,7 +189,9 @@ function AroundTheTeam() {
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <HolidayChip cc="UK" h={holidays.data?.gb} />
         <HolidayChip cc="PK" h={holidays.data?.pk} />
-        <TeamOverlap />
+      </div>
+      <div className="mt-3">
+        <TeamOverlap counterpartTz={counterpart.tz} counterpartLabel={counterpart.label} />
       </div>
     </EditorialRow>
   );
@@ -328,16 +324,32 @@ function StandupPill({ label, done }: { label: string; done: boolean }) {
   );
 }
 
-function Stat({ n, label, danger }: { n: number; label: string; danger?: boolean }) {
+function Stat({
+  n,
+  label,
+  danger,
+  good,
+  onClick,
+}: {
+  n: number;
+  label: string;
+  danger?: boolean;
+  good?: boolean;
+  onClick?: () => void;
+}) {
+  const color =
+    danger && n > 0
+      ? "text-[var(--danger-500)]"
+      : good && n > 0
+        ? "text-[var(--success-500)]"
+        : "text-[var(--text-1)]";
   return (
-    <div className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-3 text-center">
-      <p
-        className={cn(
-          "text-[34px] leading-none",
-          danger && n > 0 ? "text-[var(--danger-500)]" : "text-[var(--text-1)]",
-        )}
-        style={{ fontFamily: "var(--font-display)" }}
-      >
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-3 text-center transition hover:border-[var(--brand-300)] hover:shadow-[var(--shadow-xs)]"
+    >
+      <p className={cn("text-[34px] leading-none", color)} style={{ fontFamily: "var(--font-display)" }}>
         {n}
       </p>
       <p
@@ -346,6 +358,87 @@ function Stat({ n, label, danger }: { n: number; label: string; danger?: boolean
       >
         {label}
       </p>
-    </div>
+    </button>
   );
+}
+
+/** Dia-style time-rail of today's meetings. */
+function Agenda({
+  events,
+  now,
+  pending,
+  connected,
+}: {
+  events: CalendarEvent[];
+  now: Date;
+  pending: boolean;
+  connected?: boolean;
+}) {
+  if (pending) return <DeskSkeleton />;
+  if (connected === false) return <DeskConnectGoogle what="your calendar" />;
+  if (events.length === 0) return <DeskEmpty>No meetings today — clear runway.</DeskEmpty>;
+
+  const nextStart = events.find((e) => new Date(e.start) >= now)?.start ?? null;
+
+  return (
+    <RevealList
+      items={events}
+      initial={4}
+      renderItem={(ev) => {
+        const start = new Date(ev.start);
+        const end = new Date(ev.end || ev.start);
+        const current = start <= now && now < end;
+        const isNext = ev.start === nextStart;
+        const upcoming = start >= now;
+        return (
+          <div
+            key={ev.id}
+            className={cn(
+              "flex items-center gap-3 rounded-[8px] px-3 py-2 transition",
+              current
+                ? "bg-[var(--surface-brand)] ring-1 ring-inset ring-[var(--brand-400)]"
+                : isNext
+                  ? "bg-[var(--surface-1)]"
+                  : "",
+            )}
+          >
+            <span
+              className="w-14 shrink-0 text-[11px] text-[var(--text-4)]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              {fmtAgendaTime(start)}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text-1)]">
+              {ev.summary}
+            </span>
+            {current ? (
+              <span
+                className="shrink-0 text-[10px] uppercase tracking-[1px] text-[var(--brand-700)]"
+                style={{ fontFamily: "var(--font-mono)" }}
+              >
+                Now
+              </span>
+            ) : upcoming && ev.meetLink ? (
+              <a
+                href={ev.meetLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 text-xs font-medium text-[var(--brand-700)] hover:underline"
+              >
+                Join →
+              </a>
+            ) : null}
+          </div>
+        );
+      }}
+    />
+  );
+}
+
+/** "9:15a" compact time label. */
+function fmtAgendaTime(d: Date): string {
+  return d
+    .toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+    .replace(" AM", "a")
+    .replace(" PM", "p");
 }

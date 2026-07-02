@@ -157,7 +157,7 @@ export function DeskDrawer() {
           <DeskHeader tab={tab} onSelect={setTab} onClose={() => setOpen(false)} />
           <div className="min-h-0 flex-1 overflow-auto">
             <div className="mx-auto max-w-5xl px-6 py-2">
-              <DeskBody tab={tab} />
+              <DeskBody tab={tab} onNavigate={setTab} />
               <DeskFooter />
             </div>
           </div>
@@ -179,7 +179,7 @@ export function DeskDrawer() {
           titleId="desk-sheet-title"
         />
         <div className="min-h-0 flex-1 overflow-auto px-4 py-2">
-          <DeskBody tab={tab} />
+          <DeskBody tab={tab} onNavigate={setTab} />
           <DeskFooter />
         </div>
       </Modal>
@@ -257,10 +257,10 @@ function DeskFooter() {
   );
 }
 
-function DeskBody({ tab }: { tab: DeskTab }) {
+function DeskBody({ tab, onNavigate }: { tab: DeskTab; onNavigate: (t: DeskTab) => void }) {
   switch (tab) {
     case "TODAY":
-      return <DeskToday />;
+      return <DeskToday onNavigate={onNavigate} />;
     case "TASKS":
       return <DeskTasks />;
     case "MEETINGS":
