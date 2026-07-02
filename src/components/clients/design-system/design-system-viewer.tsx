@@ -1130,7 +1130,7 @@ export function DesignSystemViewer({
   };
 
   const hasLogoDownloads =
-    !!clientLogoUrl || (tokens.logoRules?.assets ?? []).some((a) => a.downloadUrl);
+    !!clientLogoUrl || (tokens.logoRules?.assets ?? []).length > 0;
 
   const handleLogoDownload = async () => {
     setLogoDownloading(true);
