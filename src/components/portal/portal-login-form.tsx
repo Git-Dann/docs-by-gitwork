@@ -59,7 +59,7 @@ function StatusPill({ tone }: { tone: Tone }) {
 
 function PreviewPanel() {
   return (
-    <div className="hidden flex-col justify-center px-10 py-12 md:flex lg:px-12">
+    <div className="hidden flex-col justify-center px-10 py-12 lg:flex lg:px-12">
       <h2 className="text-[26px] leading-[1.15] tracking-[-0.01em]" style={{ fontFamily: SERIF, color: INK }}>
         See your project the moment you sign in.
       </h2>
@@ -158,19 +158,20 @@ export function PortalLoginForm({ next }: { next: string | null }) {
 
   return (
     <div
-      className="flex min-h-screen items-center justify-center p-4 sm:p-8"
-      // 100dvh tracks the visible viewport on iOS Safari (min-h-screen/100vh
-      // overshoots behind the toolbar → dark body shows on overscroll).
+      // Full-bleed login on phones/tablets (the card fills the screen); the
+      // framed floating card — matching the reference — only kicks in on lg+.
+      // 100dvh tracks the visible viewport on iOS Safari (100vh overshoots
+      // behind the toolbar → dark body shows on overscroll).
+      className="flex min-h-screen items-stretch justify-center p-0 lg:items-center lg:p-8"
       style={{ background: PAGE_BG, colorScheme: "light", minHeight: "100dvh" }}
     >
       <div
-        className="grid w-full max-w-4xl overflow-hidden rounded-[28px] shadow-[0_30px_70px_-30px_rgba(0,0,0,0.30)] md:grid-cols-2"
+        className="grid w-full max-w-none overflow-hidden rounded-none shadow-none lg:max-w-4xl lg:grid-cols-2 lg:rounded-[28px] lg:shadow-[0_30px_70px_-30px_rgba(0,0,0,0.30)]"
         style={{ background: CARD_BG }}
       >
         {/* ── Left: sign in ── */}
         <div
-          className="flex flex-col justify-center px-10 py-12 md:px-12"
-          style={{ borderRight: `1px solid ${BORDER}` }}
+          className="flex flex-col justify-center px-6 py-12 sm:px-10 lg:border-r lg:border-black/10 lg:px-12"
         >
           <div>
             <p className="text-[24px] leading-none" style={{ fontFamily: SERIF, color: INK }}>
