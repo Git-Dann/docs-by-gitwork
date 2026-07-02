@@ -15,8 +15,11 @@ const LABEL = "#403D38"; // field labels
 const MUTED = "#57534E"; // body copy
 const FAINT = "#8A8577"; // eyebrows / hints
 const BORDER = "rgba(0,0,0,0.10)";
-// Warm cream page backdrop with a faint vignette, matching the design.
-const PAGE_BG = "radial-gradient(130% 120% at 50% 0%, #F1ECE6 0%, #E9E3DC 100%)";
+// Single flat cream page backdrop — the SAME colour is painted on html/body
+// (see the login page), so there's one continuous surface with no seam for the
+// card's drop shadow to clip against (an earlier gradient-vs-solid mismatch left
+// a hard line across the shadow at the iOS toolbar boundary).
+const PAGE_BG = "#EDE8E1";
 
 /** Where the "Back to portal overview" link points. */
 const PORTAL_OVERVIEW_URL = "https://gitwork.co.uk";
