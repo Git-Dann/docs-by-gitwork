@@ -330,6 +330,8 @@ model Workspace {
   /// Cached id of the "Foundry Docs Backup" Drive folder (created by the backup account). All
   /// backed-up Google Docs live under it. Null until the first backup run creates the folder.
   docsBackupFolderId          String?
+  /// Hide developer rates across the platform (On Your Desk cashflow, client cards). Off by default = rates hidden.
+  showDevRates                Boolean                    @default(false)
   createdAt                   DateTime                   @default(now())
   updatedAt                   DateTime                   @updatedAt
   members                     WorkspaceMember[]

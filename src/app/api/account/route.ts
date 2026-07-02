@@ -27,25 +27,32 @@ export async function GET() {
     // Look up the User row. If it's missing for any reason (e.g. the DB was reset after the
     // JWT was issued), we still return something useful so the UI doesn't break — and we
     // upsert behind the scenes so subsequent requests are consistent.
-    let user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        avatarUrl: true,
-        memberships: {
-          where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
-          take: 1,
-          select: { role: true, permissions: true },
+    const [user, workspace] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          avatarUrl: true,
+          memberships: {
+            where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
+            take: 1,
+            select: { role: true, permissions: true },
+          },
         },
-      },
-    });
+      }),
+      prisma.workspace.findFirst({
+        where: { slug: DEFAULT_WORKSPACE_SLUG },
+        select: { showDevRates: true },
+      }),
+    ]);
 
-    if (!user && sessionEmail) {
+    let mutableUser = user;
+    if (!mutableUser && sessionEmail) {
       // Lazy re-provision from session — same shape as the auth.ts JWT callback uses on
       // first sign-in. Falling back to email-prefix is harmless and short-lived.
-      user = await prisma.user.upsert({
+      mutableUser = await prisma.user.upsert({
         where: { email: sessionEmail },
         create: {
           id: session.user.id,
@@ -67,28 +74,29 @@ export async function GET() {
       });
     }
 
-    if (!user) return apiError("User not found", 404);
+    if (!mutableUser) return apiError("User not found", 404);
 
     // Keep DB name in sync with the live Google profile name. We only update when something
     // changed — most reads are no-ops.
-    if (sessionName && sessionName !== (user.name ?? "")) {
+    if (sessionName && sessionName !== (mutableUser.name ?? "")) {
       await prisma.user.update({
-        where: { id: user.id },
+        where: { id: mutableUser.id },
         data: { name: sessionName },
       });
-      user.name = sessionName;
+      mutableUser.name = sessionName;
     }
 
-    const membership = user.memberships[0];
+    const membership = mutableUser.memberships[0];
     return apiOk({
       account: {
-        id: user.id,
-        email: user.email,
-        name: user.name ?? "",
-        avatarUrl: user.avatarUrl ?? "",
+        id: mutableUser.id,
+        email: mutableUser.email,
+        name: mutableUser.name ?? "",
+        avatarUrl: mutableUser.avatarUrl ?? "",
         role: membership?.role ?? (session.user.role ?? "STAFF"),
         permissions:
           (membership?.permissions as string[] | null) ?? session.user.permissions ?? [],
+        showDevRates: workspace?.showDevRates ?? false,
       },
     });
   } catch (error) {
