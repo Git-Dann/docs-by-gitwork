@@ -1173,16 +1173,50 @@ model ClientWiki {
   /// Whether the Monitors (uptime) section is enabled for this wiki. The section
   /// appears once enabled; individual monitors live in WikiMonitor.
   monitorsEnabled   Boolean                @default(false)
+  /// Whether the Documents section is enabled. Entries live in WikiDocument.
+  documentsEnabled  Boolean                @default(false)
   pages             ClientWikiPage[]
   changelog         ClientChangelogEntry[]
   courseRequests    ClientCourseRequest[]
   wikiUsers         ClientWikiUser[]
   monitors          WikiMonitor[]
+  documents         WikiDocument[]
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
 
   @@index([shareToken])
   @@map("ClientWiki")
+}
+
+/// A document surfaced in a wiki's Documents section — a Foundry doc, an external
+/// link (Google Docs, etc.), or an uploaded file (stored inline as bytea). Shown
+/// as a clean titled card; raw URLs are never exposed to clients.
+model WikiDocument {
+  id        String           @id @default(cuid())
+  wikiId    String
+  wiki      ClientWiki       @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  title     String
+  kind      WikiDocumentKind @default(LINK)
+  /// External URL (LINK) or the Foundry doc share URL (FOUNDRY). Null for FILE.
+  url       String?
+  /// Uploaded file bytes (FILE only). Kept inline — volume is low; migrate to
+  /// object storage if it grows (same trade-off as Backstage receipts).
+  fileData  Bytes?
+  fileName  String?
+  fileMime  String?
+  fileSize  Int?
+  sortOrder Int              @default(0)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([wikiId])
+  @@map("WikiDocument")
+}
+
+enum WikiDocumentKind {
+  FOUNDRY
+  LINK
+  FILE
 }
 
 /// A single uptime/health monitor within a wiki's Monitors section. Probed on a

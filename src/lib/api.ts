@@ -3104,6 +3104,56 @@ export async function setWikiMonitorsEnabledApi(slug: string, enabled: boolean):
   });
 }
 
+// ─── Wiki documents ─────────────────────────────────────────────────────────
+import type { WikiDocumentDTO } from "@/server/wiki-documents";
+export type { WikiDocumentDTO, WikiDocumentsSection } from "@/server/wiki-documents";
+
+export async function createWikiLinkDocApi(
+  slug: string,
+  input: { title: string; url: string },
+): Promise<WikiDocumentDTO> {
+  return apiFetch<WikiDocumentDTO>(`/api/clients/${slug}/wiki/documents`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function uploadWikiFileDocApi(slug: string, form: FormData): Promise<WikiDocumentDTO> {
+  // No Content-Type header — the browser sets the multipart boundary.
+  return apiFetch<WikiDocumentDTO>(`/api/clients/${slug}/wiki/documents`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+export async function updateWikiDocApi(
+  slug: string,
+  id: string,
+  input: { title?: string; url?: string },
+): Promise<WikiDocumentDTO> {
+  return apiFetch<WikiDocumentDTO>(`/api/clients/${slug}/wiki/documents/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteWikiDocApi(slug: string, id: string): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/documents/${id}`, { method: "DELETE" });
+}
+
+export async function setWikiDocumentsEnabledApi(
+  slug: string,
+  enabled: boolean,
+): Promise<{ enabled: boolean }> {
+  return apiFetch<{ enabled: boolean }>(`/api/clients/${slug}/wiki/documents`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 export async function getPublicWikiApi(token: string): Promise<WikiDTO> {
   return apiFetch<WikiDTO>(`/api/wiki/${token}`);
 }

@@ -28,6 +28,11 @@ import {
   deleteWikiMonitorApi,
   runWikiMonitorApi,
   setWikiMonitorsEnabledApi,
+  createWikiLinkDocApi,
+  uploadWikiFileDocApi,
+  updateWikiDocApi,
+  deleteWikiDocApi,
+  setWikiDocumentsEnabledApi,
 } from "@/lib/api";
 import type { CourseImportInput, BigWedgeSyncResult, MonitorInput } from "@/lib/api";
 
@@ -327,6 +332,49 @@ export function useSetWikiMonitorsEnabled(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (enabled: boolean) => setWikiMonitorsEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+// ─── Documents ────────────────────────────────────────────────────────────────
+
+export function useCreateWikiLinkDoc(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { title: string; url: string }) => createWikiLinkDocApi(slug, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useUploadWikiFileDoc(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (form: FormData) => uploadWikiFileDocApi(slug, form),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useUpdateWikiDoc(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: { title?: string; url?: string } }) =>
+      updateWikiDocApi(slug, id, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useDeleteWikiDoc(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteWikiDocApi(slug, id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useSetWikiDocumentsEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiDocumentsEnabledApi(slug, enabled),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });
 }

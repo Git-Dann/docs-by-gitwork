@@ -18,6 +18,7 @@ import type {
 } from "@prisma/client";
 import type { DesignTokens } from "@/types/design-tokens";
 import { loadWikiMonitors, type WikiMonitorsSection } from "./wiki-monitors";
+import { loadWikiDocuments, type WikiDocumentsSection } from "./wiki-documents";
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -122,6 +123,8 @@ export interface WikiDTO {
   monitors: WikiMonitorsSection;
   /** Active delivery team (devs) on the project — for the dashboard hero stack. */
   team: WikiTeamMember[];
+  /** Documents section — whether it's enabled + the doc list (links/files/Foundry). */
+  documents: WikiDocumentsSection;
   /**
    * Client login accounts for the public link (email + name; password never
    * exposed). Populated only for the internal editor — the public payload omits
@@ -408,6 +411,7 @@ async function buildDTO(
     designSystem: await loadWikiDesignSystem(wiki.clientId),
     monitors: await loadWikiMonitors(wiki.clientId),
     team: await loadWikiTeam(wiki.clientId),
+    documents: await loadWikiDocuments(wiki.clientId),
     users: opts?.includeUsers
       ? (wiki.wikiUsers ?? [])
           .slice()
@@ -993,6 +997,7 @@ export async function deleteWikiUser(clientId: string, userId: string): Promise<
 const SHAREABLE_SECTIONS = [
   "timeline",
   "monitors",
+  "documents",
   "design-system",
   "ia",
   "dev-guide",

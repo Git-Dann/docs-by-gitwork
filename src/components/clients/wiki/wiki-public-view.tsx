@@ -11,6 +11,7 @@ import { WikiTimelineSection } from "./wiki-timeline-section";
 import { WikiDashboard } from "./wiki-dashboard";
 import { DesignSystemViewer } from "@/components/clients/design-system/design-system-viewer";
 import { MonitorStatusBoard } from "./monitors-section";
+import { DocumentsList } from "./documents-section";
 import { apiFetch } from "@/lib/api";
 
 type WikiPageType =
@@ -45,6 +46,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   settings: "Settings",
   timeline: "Timeline",
   monitors: "Monitors",
+  documents: "Documents",
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
@@ -92,6 +94,9 @@ export function WikiPublicView({
     ...(hasTimeline ? (["timeline"] as const) : []),
     ...(wiki.monitors.enabled && wiki.monitors.monitors.some((m) => m.enabled)
       ? (["monitors"] as const)
+      : []),
+    ...(wiki.documents.enabled && wiki.documents.documents.length > 0
+      ? (["documents"] as const)
       : []),
     ...(wiki.designSystem ? (["design-system"] as const) : []),
     ...existingDocSections,
@@ -165,6 +170,10 @@ export function WikiPublicView({
 
     if (activeSection === "monitors") {
       return <MonitorStatusBoard monitors={wiki.monitors.monitors} />;
+    }
+
+    if (activeSection === "documents") {
+      return <DocumentsList documents={wiki.documents.documents} fileBase={`/api/wiki/${token}`} />;
     }
 
     if (activeSection === "design-system") {

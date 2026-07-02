@@ -12,6 +12,7 @@ import {
   FlagIcon,
   ServerStackIcon,
   BoltIcon,
+  DocumentDuplicateIcon,
   WrenchScrewdriverIcon,
   ArrowRightIcon,
   Squares2X2Icon,
@@ -34,6 +35,7 @@ const SECTION_META: Record<
 > = {
   timeline: { label: "Timeline", icon: CalendarDaysIcon },
   monitors: { label: "Monitors", icon: BoltIcon },
+  documents: { label: "Documents", icon: DocumentDuplicateIcon },
   "design-system": { label: "Brand", icon: CubeTransparentIcon },
   ia: { label: "Information Architecture", icon: BookOpenIcon },
   "dev-guide": { label: "Developer Guide", icon: CodeBracketIcon },
@@ -226,7 +228,8 @@ export function WikiDashboard({
     )
     // The status card only appears once at least one system is tracked — no
     // page/content means the button stays hidden.
-    .filter((s) => s !== "monitors" || activeMonitors.length > 0);
+    .filter((s) => s !== "monitors" || activeMonitors.length > 0)
+    .filter((s) => s !== "documents" || wiki.documents.documents.length > 0);
 
   const pct = overallProgress(wiki);
   const phase = activePhase(wiki);
@@ -365,6 +368,17 @@ export function WikiDashboard({
               {up}/{activeMonitors.length} up · {activeMonitors.length} monitor
               {activeMonitors.length === 1 ? "" : "s"}
             </p>
+          </div>
+        );
+      }
+      case "documents": {
+        const docs = wiki.documents.documents;
+        return (
+          <div className="space-y-1.5">
+            <Metric value={String(docs.length)} label={docs.length === 1 ? "Document" : "Documents"} />
+            {docs[0] && (
+              <p className="truncate text-[12px] text-[var(--text-4)]">Latest: {docs[0].title}</p>
+            )}
           </div>
         );
       }
