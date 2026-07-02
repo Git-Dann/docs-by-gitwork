@@ -97,6 +97,10 @@ const PUBLIC_API_PATHS = [
   "/api/oauth",
   // MCP transport — its own bearer auth, never API_KEY. See src/server/mcp/auth.ts.
   "/api/mcp",
+  // Scheduled jobs — each /api/cron/* route self-authenticates via the
+  // `Authorization: Bearer ${CRON_SECRET}` header (checked in the handler), so
+  // it must bypass the workspace API_KEY gate. Invoked by the VPS system crontab.
+  "/api/cron",
 ];
 
 const API_AUTH_COOKIE = "gitwork_api_session";
