@@ -139,6 +139,7 @@ const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
   { prefix: "/app/support", module: "support" }, // legacy
   { prefix: "/app/study", module: "study" },
   { prefix: "/app/backstage", module: "backstage" },
+  { prefix: "/app/studio", module: "studio" }, // Admin/Super Admin only (studio is a default-off feature perm)
 ];
 
 function configuredApiKey() {

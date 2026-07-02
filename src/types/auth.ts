@@ -311,6 +311,23 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
     ],
   },
   {
+    product: "Studio",
+    permissions: [
+      {
+        // Deliberately a `feature`, not a `module`: STAFF auto-inherits every module id
+        // (…MODULE_IDS in DEFAULT_ROLE_PERMISSIONS), which would leak Studio to Staff.
+        // As a feature it defaults OFF for everyone except ADMIN (all ids) + SUPER_ADMIN,
+        // yet the nav item / middleware still gate on the string "studio". Grantable to
+        // Staff later via the matrix if wanted.
+        id: "studio",
+        category: "feature",
+        label: "Studio",
+        description:
+          "Create branded social assets — carousels, banners, posts and avatars — and batch-export them. Admin/Super Admin only by default.",
+      },
+    ],
+  },
+  {
     // Settings sub-sections — each gates one area of Settings. (Team is gated by role,
     // and the Roles & Permissions editor is always Super-Admin-only, so neither appears
     // here.) Default: ADMIN gets all of these, STAFF/DEVELOPER none — matching the old

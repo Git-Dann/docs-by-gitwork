@@ -10,6 +10,7 @@ import {
   DocumentTextIcon,
   HomeModernIcon,
   LifebuoyIcon,
+  PhotoIcon,
   SignalIcon,
   UserGroupIcon,
   WrenchScrewdriverIcon,
@@ -119,6 +120,13 @@ export function AppShell({
         description: "Leave, public holidays and team availability",
         icon: WrenchScrewdriverIcon,
         module: "backstage",
+      },
+      {
+        href: "/app/studio",
+        label: "Studio",
+        description: "Brand social assets — carousels, banners, posts",
+        icon: PhotoIcon,
+        module: "studio",
       },
     ];
     if (account.isPending) return all;

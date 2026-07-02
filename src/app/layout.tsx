@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, DM_Serif_Display, JetBrains_Mono, Caveat, Dancing_Script, Great_Vibes } from "next/font/google";
+import { Inter, DM_Serif_Display, JetBrains_Mono, Caveat, Dancing_Script, Great_Vibes, Fraunces, Playfair_Display } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AppProviders } from "@/components/providers/app-providers";
 import "./globals.css";
@@ -31,6 +31,13 @@ const caveat = Caveat({ subsets: ["latin"], weight: ["400", "500"], variable: "-
 const dancingScript = Dancing_Script({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-dancing-script", display: "swap" });
 const greatVibes = Great_Vibes({ subsets: ["latin"], weight: ["400"], variable: "--font-great-vibes", display: "swap" });
 
+// Studio marketing-brand fonts — used only by the /app/studio social-asset templates
+// (Cream/Purple style preset). Bound to CSS vars; browsers only fetch them once a
+// `font-family: var(--font-fraunces|--font-playfair)` rule actually matches, so they
+// add no weight to the rest of the app.
+const fraunces = Fraunces({ subsets: ["latin"], weight: ["400", "600", "700"], style: ["normal", "italic"], variable: "--font-fraunces", display: "swap" });
+const playfairDisplay = Playfair_Display({ subsets: ["latin"], weight: ["400", "700"], style: ["normal", "italic"], variable: "--font-playfair", display: "swap" });
+
 export const metadata: Metadata = {
   // Resolves relative OpenGraph/Twitter image URLs (incl. generated og-images)
   // to absolute ones so link previews work when shared off-site.
@@ -50,7 +57,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${dmSerifDisplay.variable} ${jetbrainsMono.variable} ${caveat.variable} ${dancingScript.variable} ${greatVibes.variable}`}
+      className={`${inter.variable} ${dmSerifDisplay.variable} ${jetbrainsMono.variable} ${caveat.variable} ${dancingScript.variable} ${greatVibes.variable} ${fraunces.variable} ${playfairDisplay.variable}`}
       suppressHydrationWarning
     >
       <head>
@@ -64,7 +71,21 @@ export default function RootLayout({
         */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var p=location.pathname,force=/^\\/(docs|report|sign|wiki|timeline|brand|onboarding|preview|embed)\\//.test(p);var m=localStorage.getItem('gitwork.theme.v1')||'system';var dark=!force&&(m==='dark'||(m==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches));document.documentElement.setAttribute('data-theme',dark?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();`,
+            __html: `(function(){try{var p=location.pathname,force=/^\\/(docs|report|sign|wiki|timeline|brand|onboarding|preview|embed|demo)\\//.test(p);var m=localStorage.getItem('gitwork.theme.v1')||'system';var dark=!force&&(m==='dark'||(m==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches));document.documentElement.setAttribute('data-theme',dark?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();`,
+          }}
+        />
+        {/*
+          Demo fetch guard — the standalone /demo/* walkthroughs run with no auth or
+          database; every /api/* call is answered client-side by an interceptor in
+          the demo page. This synchronous shim runs BEFORE hydration (and before
+          NextAuth's SessionProvider first probes /api/auth/session), short-circuiting
+          the session endpoint so the demo never logs an auth "server configuration"
+          error during the startup race. Full /api interception takes over once the
+          page bundle loads. No-op on every non-/demo route.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{if(!/^\\/demo\\//.test(location.pathname))return;var of=window.fetch;window.fetch=function(i){try{var u=typeof i==='string'?i:(i&&i.url)||String(i);var p=u.indexOf('http')===0?new URL(u).pathname:u.split('?')[0];if(p.indexOf('/api/auth')===0)return Promise.resolve(new Response('{}',{status:200,headers:{'Content-Type':'application/json'}}));}catch(e){}return of.apply(this,arguments);};}catch(e){}})();`,
           }}
         />
       </head>
