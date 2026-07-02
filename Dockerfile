@@ -32,6 +32,12 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Deploy provenance (passed by the deploy workflow) — surfaced at /api/health
+ARG COMMIT_SHA=""
+ARG BUILD_TIME=""
+ENV COMMIT_SHA=$COMMIT_SHA
+ENV BUILD_TIME=$BUILD_TIME
+
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
