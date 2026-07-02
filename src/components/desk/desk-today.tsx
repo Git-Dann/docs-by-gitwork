@@ -139,8 +139,9 @@ export function DeskToday() {
         </div>
       </EditorialRow>
 
-      {/* Client cash flow — admins/super-admins who may see financials (e.g. Harry). */}
-      {canViewClientFinancials ? <CashFlowRow /> : null}
+      {/* Client cash flow — gated by both the per-user financials permission AND the
+          workspace showDevRates flag (off by default — toggle in Settings → General). */}
+      {canViewClientFinancials && account.data?.showDevRates ? <CashFlowRow /> : null}
     </div>
   );
 }

@@ -28,6 +28,7 @@ import {
 import { cn, formatDate } from "@/lib/format";
 import { useUpdateWorkspaceBranding, useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import { useUpdateWorkspaceDefaults, useWorkspaceDefaults } from "@/hooks/use-workspace-defaults";
+import { useAccount, useToggleDevRates } from "@/hooks/use-account";
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
 import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card";
@@ -170,6 +171,8 @@ export function GeneralTab() {
   const updateDefaults = useUpdateWorkspaceDefaults();
   const brandingQuery = useWorkspaceBranding();
   const updateBranding = useUpdateWorkspaceBranding();
+  const account = useAccount();
+  const toggleDevRates = useToggleDevRates();
 
   const defaults = defaultsQuery.data;
   const branding = brandingQuery.data;
@@ -340,6 +343,39 @@ export function GeneralTab() {
         ) : (
           <p className="mt-4 text-sm text-[var(--text-3)]">No snippets configured yet.</p>
         )}
+      </SettingsCard>
+
+      <SettingsCard number="05" title="Developer rates">
+        <p className="text-sm leading-6 text-[var(--text-3)]">
+          When off, developer rates and the cashflow summary in On Your Desk are hidden for
+          everyone — useful when sharing your screen or running demos with the team.
+        </p>
+        <div className="mt-5 flex items-center justify-between rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+          <div>
+            <p className="text-sm font-medium text-[var(--text-1)]">Show developer rates</p>
+            <p className="text-xs text-[var(--text-4)]">
+              {account.data?.showDevRates ? "Rates visible across the platform" : "Rates hidden — safe for demos"}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={account.data?.showDevRates ?? false}
+            disabled={toggleDevRates.isPending}
+            onClick={() => toggleDevRates.mutate(!(account.data?.showDevRates ?? false))}
+            className={cn(
+              "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-700)] disabled:opacity-50",
+              account.data?.showDevRates ? "bg-[var(--brand-700)]" : "bg-[var(--border-1)]",
+            )}
+          >
+            <span
+              className={cn(
+                "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
+                account.data?.showDevRates ? "translate-x-5" : "translate-x-0",
+              )}
+            />
+          </button>
+        </div>
       </SettingsCard>
     </div>
   );

@@ -17,6 +17,7 @@ export interface AccountProfile {
   avatarUrl: string;
   role: string;
   permissions: string[];
+  showDevRates: boolean;
 }
 
 const ACCOUNT_KEY = ["account", "me"] as const;
@@ -32,6 +33,24 @@ export function useAccount() {
     // and we never re-fetch unless the user pauses for ages or explicitly invalidates.
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
+  });
+}
+
+export function useToggleDevRates() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (showDevRates: boolean): Promise<void> => {
+      await apiFetch("/api/settings/dev-rates", {
+        method: "PATCH",
+        body: JSON.stringify({ showDevRates }),
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+    onSuccess: (_data, showDevRates) => {
+      queryClient.setQueryData<AccountProfile>(ACCOUNT_KEY, (prev) =>
+        prev ? { ...prev, showDevRates } : prev,
+      );
+    },
   });
 }
 
