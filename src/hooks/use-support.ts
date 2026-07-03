@@ -13,6 +13,7 @@ import {
   deleteSupportTicket,
   deleteSupportWorkflowRule,
   generateAiDraft,
+  generateSupportReportDoc,
   getSupportClient,
   getSupportReport,
   listSupportAuditLogs,
@@ -552,6 +553,13 @@ export function useCreateSupportReport(clientId: string | null) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["support", "reports", clientId] });
     },
+  });
+}
+
+export function useGenerateSupportReportDoc(clientId: string | null) {
+  return useMutation({
+    mutationFn: (data: { periodStart: string; periodEnd: string; periodLabel: string; author?: string; force?: boolean }) =>
+      generateSupportReportDoc(clientId as string, data),
   });
 }
 

@@ -33,6 +33,7 @@ import {
   ListBulletIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useDeferredValue, useEffect, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { cn } from "@/lib/format";
@@ -57,6 +58,7 @@ import {
   useUpdateWorkflowRule,
   useDeleteConnection,
   useDeleteSupportReport,
+  useGenerateSupportReportDoc,
   useDeleteWorkflowRule,
   useSeedDefaultRules,
   useSupportClients,
@@ -3301,11 +3303,34 @@ function ReportBuilder({
 }
 
 function ReportsView({ client }: { client: SupportClient }) {
+  const router = useRouter();
   const { data: reportsData, isLoading } = useSupportReports(client.id);
   const deleteReport = useDeleteSupportReport(client.id);
+  const generateDoc = useGenerateSupportReportDoc(client.id);
   const reports = reportsData?.reports ?? [];
 
   const [editing, setEditing] = useState<SupportReport | null | "new">(null);
+  const [genError, setGenError] = useState<string | null>(null);
+
+  // One-click: pull last month's live data and open a shareable Docs report.
+  async function handleGenerateDoc() {
+    setGenError(null);
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    const start = new Date(d.getFullYear(), d.getMonth(), 1);
+    const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    const periodLabel = start.toLocaleString("en-GB", { month: "long", year: "numeric" });
+    try {
+      const { documentId } = await generateDoc.mutateAsync({
+        periodStart: start.toISOString().slice(0, 10),
+        periodEnd: end.toISOString().slice(0, 10),
+        periodLabel,
+      });
+      router.push(`/app/docs/${documentId}`);
+    } catch (err) {
+      setGenError(err instanceof Error ? err.message : "Failed to generate report");
+    }
+  }
 
   const hasAllocation = client.supportDaysPerMonth != null;
   const used = client.supportDaysUsed ?? 0;
@@ -3362,18 +3387,40 @@ function ReportsView({ client }: { client: SupportClient }) {
         </div>
       )}
 
+      {/* One-click customer report — pulls live data into a shareable Docs document. */}
+      <div className="app-card overflow-hidden p-0">
+        <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[var(--text-1)]">Customer report</p>
+            <p className="mt-0.5 text-xs text-[var(--text-4)]">
+              Pulls last month&apos;s tickets &amp; analytics into a branded, shareable document in the Docs builder — edit, share a link, or export PDF.
+            </p>
+            {genError && <p className="mt-1.5 text-xs text-red-500">{genError}</p>}
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleGenerateDoc()}
+            disabled={generateDoc.isPending}
+            className="flex shrink-0 items-center justify-center gap-1.5 rounded-[8px] bg-[var(--brand-700)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-800)] disabled:opacity-60"
+          >
+            <DocumentTextIcon className="h-4 w-4" />
+            {generateDoc.isPending ? "Generating…" : "Generate customer report"}
+          </button>
+        </div>
+      </div>
+
       <div className="app-card overflow-hidden p-0">
         <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
           <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
-            02 // MONTHLY REPORTS
+            02 // SAVED REPORTS (LEGACY)
           </span>
           <button
             type="button"
             onClick={() => setEditing("new")}
-            className="flex items-center gap-1 rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--brand-700)] transition hover:bg-[var(--mist)]"
+            className="flex items-center gap-1 rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)] transition hover:bg-[var(--mist)] hover:text-[var(--brand-700)]"
           >
             <PlusIcon className="h-3 w-3" />
-            New report
+            New (old builder)
           </button>
         </div>
         {isLoading && <div className="h-20 animate-pulse bg-[var(--surface-1)]" />}
