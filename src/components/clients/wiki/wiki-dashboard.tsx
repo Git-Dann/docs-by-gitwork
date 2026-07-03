@@ -592,7 +592,9 @@ function TeamStack({ label, members }: { label: string; members: WikiDTO["team"]
         {members.slice(0, 6).map((m, i) => (
           <div key={i} className="group relative">
             <TeamAvatar name={m.name} initials={m.initials} avatarUrl={m.avatarUrl} />
-            <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--text-1)] px-2.5 py-1.5 text-center shadow-lg group-hover:block">
+            {/* Right-anchored so the tooltip opens inward (leftward) and never
+                overflows the card's right edge, where these stacks sit. */}
+            <span className="pointer-events-none absolute bottom-full right-0 z-50 mb-1.5 hidden whitespace-nowrap rounded-md bg-[var(--text-1)] px-2.5 py-1.5 text-left shadow-lg group-hover:block">
               <span className="block text-[11px] font-medium text-white">{m.name}</span>
               {m.bio && (
                 <span className="mt-0.5 block text-[10px] italic text-white/70">{m.bio}</span>
