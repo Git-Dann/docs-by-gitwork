@@ -5056,6 +5056,25 @@ export function SupportDashboard() {
     try { localStorage.setItem("care-active-client", id); } catch { /* ignore */ }
   }
 
+  // Deep-link support: the Care cockpit (/app/care) links here with
+  // ?client=<id>&panel=connectors|settings or &tab=reports so an operator lands
+  // directly on the right client + panel instead of the client list. Read once on mount
+  // (window.location avoids the useSearchParams Suspense/CSR-bailout requirement).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const c = params.get("client");
+    const panel = params.get("panel");
+    const tab = params.get("tab");
+    if (c) selectClient(c);
+    if (tab === "reports" || tab === "tickets" || tab === "inbox") {
+      setActiveTab(tab);
+      setActivePanel(null);
+    }
+    if (panel === "connectors" || panel === "settings") setActivePanel(panel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Set first client when data loads (or if stored ID no longer exists)
   useEffect(() => {
     if (clients.length > 0 && (!activeClientId || !clients.find((c) => c.id === activeClientId))) {

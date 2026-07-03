@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useDeferredValue } from "react";
-import { ArrowPathIcon, ArrowLeftIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, ArrowLeftIcon, BoltIcon, Cog8ToothIcon, DocumentChartBarIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import type { Conversation, SupportClient } from "@/types/support";
 import {
@@ -173,7 +173,7 @@ export function ClientCockpit({
             </button>
           ))}
         </nav>
-        <div className="border-t border-[var(--border-2)] p-2">
+        <div className="space-y-1.5 border-t border-[var(--border-2)] p-2">
           <button
             onClick={() => sync.mutate()}
             disabled={sync.isPending}
@@ -182,12 +182,34 @@ export function ClientCockpit({
             <ArrowPathIcon className={cn("h-3.5 w-3.5", sync.isPending && "animate-spin")} />
             {sync.isPending ? "Syncing…" : "Sync now"}
           </button>
-          <a
-            href="/app/support"
-            className="mt-1.5 block rounded-[6px] px-2 py-1.5 text-center text-[11px] text-[var(--text-4)] hover:bg-[var(--surface-1)]"
-          >
-            Connectors & reports →
-          </a>
+          {canManageSupport && (
+            <div className="mb-1 px-2 pt-1 font-mono text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]">03 // Manage</div>
+          )}
+          {canManageSupport && (
+            <div className="grid grid-cols-1 gap-1">
+              <a
+                href={`/app/support?client=${client.id}&tab=reports`}
+                className="flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+              >
+                <DocumentChartBarIcon className="h-4 w-4 text-[var(--text-4)]" />
+                Reports
+              </a>
+              <a
+                href={`/app/support?client=${client.id}&panel=connectors`}
+                className="flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+              >
+                <BoltIcon className="h-4 w-4 text-[var(--text-4)]" />
+                Connectors
+              </a>
+              <a
+                href={`/app/support?client=${client.id}&panel=settings`}
+                className="flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+              >
+                <Cog8ToothIcon className="h-4 w-4 text-[var(--text-4)]" />
+                Settings
+              </a>
+            </div>
+          )}
         </div>
       </aside>
 
