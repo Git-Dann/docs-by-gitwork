@@ -5188,32 +5188,34 @@ export function SupportDashboard() {
               Live
             </span>
             {health && <HealthBadge health={health} />}
-            <div className="ml-auto flex items-center gap-1">
+            <div className="ml-auto flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => togglePanel("connectors")}
-                title="Connectors"
+                title="Connectors — connect Gmail, analytics & other sources"
                 className={cn(
-                  "flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition",
+                  "flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1.5 text-xs font-medium transition",
                   activePanel === "connectors"
-                    ? "bg-[var(--mist)] text-[var(--brand-700)]"
-                    : "hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]",
+                    ? "border-[var(--brand-700)] bg-[var(--mist)] text-[var(--brand-700)]"
+                    : "border-[var(--border-2)] text-[var(--text-2)] hover:bg-[var(--surface-1)]",
                 )}
               >
                 <BoltIcon className="h-4 w-4" />
+                Connectors
               </button>
               <button
                 type="button"
                 onClick={() => togglePanel("settings")}
-                title="Settings"
+                title="Settings — agents, workflow rules & portal link"
                 className={cn(
-                  "flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition",
+                  "flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1.5 text-xs font-medium transition",
                   activePanel === "settings"
-                    ? "bg-[var(--mist)] text-[var(--brand-700)]"
-                    : "hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]",
+                    ? "border-[var(--brand-700)] bg-[var(--mist)] text-[var(--brand-700)]"
+                    : "border-[var(--border-2)] text-[var(--text-2)] hover:bg-[var(--surface-1)]",
                 )}
               >
                 <Cog8ToothIcon className="h-4 w-4" />
+                Settings
               </button>
             </div>
           </div>
@@ -5253,8 +5255,8 @@ export function SupportDashboard() {
           </nav>
         </div>
 
-        {/* tab content / panel */}
-        <div className="flex-1 overflow-auto px-6 pb-8 pt-5 sm:px-8">
+        {/* tab content / panel — pb clears the fixed 48px "On Your Desk" dock */}
+        <div className="flex-1 overflow-auto px-6 pb-20 pt-5 sm:px-8">
           {activePanel === "connectors" && <ConnectorsView clientId={activeClientId} clientSlug={client?.slug ?? ""} />}
           {activePanel === "settings" && <SettingsView clientId={activeClientId} />}
           {!activePanel && activeTab === "inbox" && <InboxView clientId={activeClientId} />}
