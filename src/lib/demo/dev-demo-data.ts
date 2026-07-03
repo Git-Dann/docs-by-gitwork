@@ -535,8 +535,79 @@ const demoClientDetail = {
   touchpoints: [],
 };
 
-// Empty-but-valid shapes for the client detail's secondary sections.
-const demoClientMeetings = { meetings: [], candidates: [], calendarConnected: false, query: null };
+// Scribe — dummy meeting notes for the client detail's "Meeting notes" panel.
+const demoClientMeetings = {
+  calendarConnected: true,
+  candidates: [],
+  query: null,
+  meetings: [
+    {
+      id: "mtg1",
+      clientId: WIKI_CLIENT.id,
+      calendarEventId: "ev-north-1",
+      meetingCode: "abc-defg-hij",
+      conferenceRecordName: null,
+      title: "Northwind × Gitwork — Sprint planning",
+      startedAt: atDays(-1),
+      endedAt: atDays(-1),
+      attendees: ["priya@northwind.co", "alex@gitwork.co.uk", "marco@gitwork.co.uk"],
+      status: "SUMMARISED",
+      summary:
+        "Reviewed sprint progress. Search & discovery is on track for beta; the webhook retry work needs one more day. Agreed to prioritise the analytics endpoint next so the client dashboard can go live alongside beta.",
+      decisions: [
+        "Ship search behind a feature flag for the beta cohort first.",
+        "Analytics endpoint moves ahead of mobile polish in priority.",
+      ],
+      modelUsed: "gemini",
+      createdAt: atDays(-1),
+      updatedAt: atDays(-1),
+      actionItems: [
+        { id: "ai-1", title: "Send Priya the updated webhook flow diagram", text: "Send Priya the updated webhook flow diagram after standup.", owner: "Alex Rivera", done: false, taskId: null },
+        { id: "ai-2", title: "Spec the rounds-played analytics endpoint", text: "Write a short spec for the analytics endpoint and share for review.", owner: "Marco Bianchi", done: false, taskId: null },
+      ],
+    },
+    {
+      id: "mtg2",
+      clientId: WIKI_CLIENT.id,
+      calendarEventId: "ev-north-2",
+      meetingCode: "klm-nopq-rst",
+      conferenceRecordName: null,
+      title: "Northwind — Design review",
+      startedAt: atDays(-4),
+      endedAt: atDays(-4),
+      attendees: ["priya@northwind.co", "marco@gitwork.co.uk"],
+      status: "SUMMARISED",
+      summary:
+        "Walked through the new browse and search screens. Client happy with the direction; minor tweaks to the filter chips and empty states. Dark-mode audit to follow.",
+      decisions: ["Adopt the new filter-chip pattern across the app.", "Empty states get an illustration + a primary action."],
+      modelUsed: "gemini",
+      createdAt: atDays(-4),
+      updatedAt: atDays(-4),
+      actionItems: [
+        { id: "ai-3", title: "Apply filter-chip tweaks", text: "Update the filter chips per the review notes.", owner: "Marco Bianchi", done: true, taskId: null },
+      ],
+    },
+    {
+      id: "mtg3",
+      clientId: WIKI_CLIENT.id,
+      calendarEventId: "ev-north-3",
+      meetingCode: "uvw-xyz-123",
+      conferenceRecordName: null,
+      title: "Northwind — Weekly sync",
+      startedAt: atDays(-8),
+      endedAt: atDays(-8),
+      attendees: ["priya@northwind.co", "ops@northwind.co", "alex@gitwork.co.uk"],
+      status: "SUMMARISED",
+      summary:
+        "Status update across all workstreams. Foundations complete; payments phase renamed to search & discovery after scope change. No blockers.",
+      decisions: ["Weekly syncs move to Thursdays."],
+      modelUsed: "gemini",
+      createdAt: atDays(-8),
+      updatedAt: atDays(-8),
+      actionItems: [],
+    },
+  ],
+};
 const demoSlackActivity = {
   configured: true,
   channelName: "northwind-internal",
@@ -623,9 +694,23 @@ const demoDocsById: Record<string, unknown> = Object.fromEntries(
   demoProposals.proposals.map((p) => [p.id, buildDemoDoc(p)]),
 );
 
-/** Full renderable document for the Docs preview page, by id (null if unknown). */
+/** Full renderable document for the Docs preview page, by id (falls back to d1). */
 export function getDemoDoc(id: string): unknown {
-  return demoDocsById[id] ?? null;
+  return demoDocsById[id] ?? demoDocsById["d1"] ?? null;
+}
+
+/** Collab snapshot stub for the doc editor (`/api/documents/{id}/snapshot`). */
+function demoDocSnapshot(id: string): unknown {
+  const doc = demoDocsById[id] as { title?: string; documentType?: string; documentNumber?: string | null } | undefined;
+  return {
+    document: { id, title: doc?.title ?? "Document", documentType: doc?.documentType ?? "HANDOVER", documentNumber: doc?.documentNumber ?? null },
+    comments: [],
+    versions: [],
+    presence: [],
+    relations: { parent: null, children: [] },
+    activity: [],
+    summary: { totalViews: 0, lastViewedAt: null, totalComments: 0, totalVersions: 0, activeEditors: 0 },
+  };
 }
 
 // ─── Tasks: feature blocks + milestones (per-client tasks page) ──────────────────
@@ -805,6 +890,15 @@ export function resolveDemoApi(pathname: string): unknown {
   // Docs.
   if (pathname === "/api/proposals") return demoProposals;
   if (pathname === "/api/templates") return { templates: [] };
+  if (pathname === "/api/snippets") return { snippets: [] };
+  {
+    const pm = pathname.match(/^\/api\/proposals\/([^/?#]+)$/);
+    if (pm) return { proposal: getDemoDoc(pm[1]) };
+  }
+  {
+    const sm = pathname.match(/^\/api\/documents\/([^/?#]+)\/snapshot$/);
+    if (sm) return demoDocSnapshot(sm[1]);
+  }
 
   // Tasks — feature blocks + milestones (per-client tasks page).
   if (pathname === "/api/feature-blocks") return demoFeatureBlocks;

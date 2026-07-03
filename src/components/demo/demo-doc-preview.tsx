@@ -1,15 +1,18 @@
 "use client";
 
 /**
- * Standalone Foundry document preview (`/demo/docs/[id]`). Renders the real
- * `ProposalPreview` — the built document a client sees — with a canned document.
- * Reached by clicking a card on the demo Docs list (DemoShell reroutes the
- * card's /app/docs/{id} link here). No auth, no database.
+ * Standalone Foundry document builder (`/demo/docs/[id]`). Renders the REAL
+ * `ProposalEditorLayout` (the full doc builder + split-screen live preview) with
+ * a canned document, so it can be SEEN in the demo. If the editor throws (it's a
+ * heavy, evolving component fed by mock data), it falls back to the read-only
+ * `ProposalPreview` of the same document — never a white-screen. No auth, no DB.
  */
 
+import { ProposalEditorLayout } from "@/components/proposals/proposal-editor-layout";
 import { ProposalPreview } from "@/components/proposals/proposal-preview";
 import type { ProposalDocument } from "@/types/proposal";
 import { DemoShell } from "@/components/demo/demo-shell";
+import { DemoErrorBoundary } from "@/components/demo/demo-error-boundary";
 import { getDemoDoc } from "@/lib/demo/dev-demo-data";
 
 export function DemoDocPreview({ id }: { id: string }) {
@@ -18,17 +21,19 @@ export function DemoDocPreview({ id }: { id: string }) {
     <DemoShell
       active="Docs"
       title="Docs"
-      subtitle={doc ? `Preview — ${doc.title}` : "Document preview"}
+      subtitle={doc ? `Editing — ${doc.title}` : "Document builder"}
     >
-      {doc ? (
-        <div className="mx-auto w-full max-w-[920px]">
-          <ProposalPreview proposal={doc} showTableOfContents={false} frame />
-        </div>
-      ) : (
-        <p className="py-12 text-center text-sm text-[var(--text-4)]">
-          That document isn&apos;t part of the demo.
-        </p>
-      )}
+      <DemoErrorBoundary
+        fallback={
+          doc ? (
+            <div className="mx-auto w-full max-w-[920px]">
+              <ProposalPreview proposal={doc} showTableOfContents={false} frame />
+            </div>
+          ) : undefined
+        }
+      >
+        <ProposalEditorLayout proposalId={id} />
+      </DemoErrorBoundary>
     </DemoShell>
   );
 }

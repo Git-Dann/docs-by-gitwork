@@ -24,6 +24,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { DeskDrawer } from "@/components/desk/desk-drawer";
+import { DemoErrorBoundary } from "@/components/demo/demo-error-boundary";
 import { demoSession, resolveDemoApi } from "@/lib/demo/dev-demo-data";
 
 // ── Install the /api/* fetch interceptor once, at module load (client only) ──────
@@ -208,7 +209,7 @@ export function DemoShell({
 
             <main className="min-h-0 flex-1 overflow-auto px-6 pb-24 pt-6 sm:px-8">
               {mounted ? (
-                children
+                <DemoErrorBoundary>{children}</DemoErrorBoundary>
               ) : (
                 <div className="space-y-4">
                   <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
@@ -219,7 +220,11 @@ export function DemoShell({
           </div>
         </div>
 
-        {mounted ? <DeskDrawer /> : null}
+        {mounted ? (
+          <DemoErrorBoundary fallback={null}>
+            <DeskDrawer />
+          </DemoErrorBoundary>
+        ) : null}
       </div>
     </SessionProvider>
   );
