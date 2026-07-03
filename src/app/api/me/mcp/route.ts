@@ -5,7 +5,7 @@
 // so dev / preview / prod all return correct URLs without an env-var dance.
 
 import { apiOk, fromError } from "@/lib/api-response";
-import { requireAuthedUser, assertAtLeastAdmin } from "@/server/auth/effective-user";
+import { requireAuthedUser, assertCan, canConnectMcp } from "@/server/auth/effective-user";
 import {
   buildSetupContext,
   getMcpAdminState,
@@ -17,9 +17,10 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
     const user = await requireAuthedUser(req);
-    // Restricted to Admin / Super Admin for now (matches the UI gate in the
-    // settings shell). Loosen this when STAFF / DEVELOPER should self-connect.
-    assertAtLeastAdmin(user);
+    // Gated on the mcp.connect permission — Admins/Super Admins hold it by
+    // default; Staff/Developers can be granted it via the matrix. Same gate the
+    // OAuth consent + authorize flow enforces, and the settings-shell nav.
+    assertCan(user, canConnectMcp, "connect Claude (MCP)");
     const { enabled } = await getMcpAdminState();
     const origin = new URL(req.url).origin;
     const setup = buildSetupContext(origin, enabled);

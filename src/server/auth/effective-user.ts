@@ -285,6 +285,15 @@ export function canManageSupport(user: EffectiveUser): boolean {
 export function canManageStudy(user: EffectiveUser): boolean {
   return can(user, "study.manage");
 }
+/**
+ * Authorize Claude (or any MCP client) to act on the user's behalf. This is the
+ * real gate for the whole MCP/OAuth flow — the consent screen, the authorize
+ * endpoint, and the self-service settings panel all check it. Admins hold it by
+ * default (ALL_PERMISSION_IDS); grant it to Staff/Developers via the matrix.
+ */
+export function canConnectMcp(user: EffectiveUser): boolean {
+  return can(user, "mcp.connect");
+}
 
 /**
  * Gate a mutation route by an action permission. No-ops for trusted API_KEY-only

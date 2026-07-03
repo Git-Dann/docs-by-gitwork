@@ -90,7 +90,7 @@ const GROUPS: SectionGroup[] = [
         label: "Connected apps",
         description: "Claude and other MCP clients.",
         icon: CommandLineIcon,
-        adminOnly: true,
+        permission: "mcp.connect",
       },
     ],
   },

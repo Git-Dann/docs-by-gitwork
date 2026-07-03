@@ -24,6 +24,8 @@ import {
   formatScope,
   OAuthError,
 } from "@/server/oauth";
+import { resolveEffectiveUserById } from "@/server/mcp/auth";
+import { canConnectMcp } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 
@@ -239,6 +241,19 @@ export async function POST(request: Request) {
       v.params.redirectUri,
       "access_denied",
       "User denied the authorization.",
+      v.params.state,
+    );
+  }
+
+  // Permission gate — the real one. Even if a user reaches this POST directly,
+  // they can only mint a code if they hold mcp.connect (Admins by default;
+  // Staff/Developers via the matrix). Mirrors the consent screen's check.
+  const actor = await resolveEffectiveUserById(session.user.id);
+  if (!actor || !canConnectMcp(actor)) {
+    return redirectWithError(
+      v.params.redirectUri,
+      "access_denied",
+      "Your Foundry account isn't permitted to connect Claude. Ask an admin to grant the 'Connect Claude (MCP)' permission.",
       v.params.state,
     );
   }
