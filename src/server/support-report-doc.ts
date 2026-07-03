@@ -293,39 +293,64 @@ export async function pullSupportDataIntoDocument(input: {
 
   const doc = await prisma.document.findUnique({
     where: { id: documentId },
-    select: { id: true, sections: { select: { id: true, key: true, title: true } } },
+    select: { id: true, sections: { select: { id: true, key: true, title: true, sortOrder: true } } },
   });
   if (!doc) throw new Error("Document not found");
 
   const data = await buildSupportReportData({ clientId, periodStart, periodEnd, periodLabel });
   const T = SUPPORT_REPORT_SECTION_TITLES;
 
-  // Map a section title → the fresh data payload for it (undefined = leave untouched).
-  function payloadFor(title: string): Record<string, unknown> | undefined {
-    const t = title.trim().toLowerCase();
-    if (t === T.performance.toLowerCase()) return { items: data.performanceItems };
-    if (t === T.ticketVolume.toLowerCase()) return data.ticketVolume;
-    if (t === T.priority.toLowerCase()) return data.priority;
-    if (t === T.analytics.toLowerCase()) return data.analytics ?? undefined;
-    return undefined;
+  // The data sections this pull owns, in render order. Each is matched to an existing section by
+  // title (case-insensitive) and updated in place; if the report has no such section yet (e.g. it
+  // was created from the generic Status-report template, or a blank doc), it's appended instead —
+  // so the pull is seamless on ANY report doc, not just Care-generated ones. Analytics is only
+  // included when the client has an analytics connection returning metrics.
+  const targets: Array<{ key: string; title: string; description: string; data: Record<string, unknown> }> = [
+    { key: "kpi_strip", title: T.performance, description: "Key service metrics for the period.", data: { items: data.performanceItems } },
+    { key: "data_table", title: T.ticketVolume, description: "Breakdown of conversations by type.", data: data.ticketVolume },
+    { key: "data_table", title: T.priority, description: "Conversations by priority.", data: data.priority },
+  ];
+  if (data.analytics) {
+    targets.push({ key: "data_table", title: T.analytics, description: "Product analytics for the period.", data: data.analytics });
   }
 
-  const updates = doc.sections
-    .map((s) => ({ id: s.id, payload: payloadFor(s.title) }))
-    .filter((u): u is { id: string; payload: Record<string, unknown> } => u.payload !== undefined);
+  const byTitle = new Map(doc.sections.map((s) => [s.title.trim().toLowerCase(), s]));
+  let nextOrder = doc.sections.reduce((max, s) => Math.max(max, s.sortOrder), -1) + 1;
 
-  if (updates.length > 0) {
-    await prisma.$transaction(
-      updates.map((u) =>
+  let updated = 0;
+  let created = 0;
+  const ops: Prisma.PrismaPromise<unknown>[] = [];
+  for (const target of targets) {
+    const existing = byTitle.get(target.title.toLowerCase());
+    if (existing) {
+      updated += 1;
+      ops.push(
         prisma.documentSection.update({
-          where: { id: u.id },
-          data: { data: u.payload as unknown as Prisma.InputJsonValue },
+          where: { id: existing.id },
+          data: { data: target.data as unknown as Prisma.InputJsonValue },
         }),
-      ),
-    );
+      );
+    } else {
+      created += 1;
+      ops.push(
+        prisma.documentSection.create({
+          data: {
+            document: { connect: { id: documentId } },
+            key: target.key,
+            title: target.title,
+            description: target.description,
+            sortOrder: nextOrder++,
+            isVisible: true,
+            data: target.data as unknown as Prisma.InputJsonValue,
+          },
+        }),
+      );
+    }
   }
 
-  return { updated: updates.length, analyticsFound: data.analytics != null };
+  if (ops.length > 0) await prisma.$transaction(ops);
+
+  return { updated: updated + created, analyticsFound: data.analytics != null };
 }
 
 function buildReportSections(
