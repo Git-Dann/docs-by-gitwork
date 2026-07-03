@@ -182,16 +182,60 @@ export interface SupportReportData {
   ticketVolume: { columns: string[]; rows: string[][]; caption: string };
   /** data_table payload for "By priority". */
   priority: { columns: string[]; rows: string[][] };
-  /** data_table payload for "Product analytics" — null when no analytics connection. */
-  analytics: { columns: string[]; rows: string[][]; caption: string } | null;
+  /**
+   * One data_table per analytics group (Revenue / Subscription activity / Top countries / …),
+   * titled by the metric group. Empty when there's no analytics connection. Split out (rather
+   * than one big table) so the report reads as distinct, scannable sections.
+   */
+  analyticsTables: Array<{ title: string; columns: string[]; rows: string[][]; caption: string }>;
 }
 
-/** Section titles are the join key between template, generator and pull-refresh. */
+/** Format one metric as a [label, value, trend] row for an analytics data_table. */
+function formatMetricRow(m: AnalyticsMetric): string[] {
+  const unit = m.unit ?? "";
+  const value = `${unit}${m.value.toLocaleString("en-GB")}`;
+  let trend = "—";
+  if (typeof m.previous === "number") {
+    const delta = m.value - m.previous;
+    const pct = m.previous !== 0 ? Math.round((delta / m.previous) * 100) : null;
+    const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "→";
+    trend = pct != null ? `${arrow} ${Math.abs(pct)}%` : arrow;
+  }
+  return [m.label, value, trend];
+}
+
+/** Group metrics by their `group` (first-seen order) → one titled data_table each. */
+function buildAnalyticsTables(
+  metrics: AnalyticsMetric[],
+  periodLabel: string,
+): SupportReportData["analyticsTables"] {
+  const order: string[] = [];
+  const byGroup = new Map<string, AnalyticsMetric[]>();
+  for (const m of metrics) {
+    const group = m.group?.trim() || "Product analytics";
+    if (!byGroup.has(group)) {
+      byGroup.set(group, []);
+      order.push(group);
+    }
+    byGroup.get(group)!.push(m);
+  }
+  return order.map((group) => ({
+    title: group,
+    columns: ["Metric", "Value", "vs last month"],
+    rows: (byGroup.get(group) ?? []).map(formatMetricRow),
+    caption: periodLabel,
+  }));
+}
+
+/**
+ * Fixed section titles that are the join key between template, generator and pull-refresh for the
+ * Care (non-analytics) sections. Analytics sections are titled dynamically by their metric group
+ * (Revenue / Subscription activity / Top countries / …), so they aren't listed here.
+ */
 export const SUPPORT_REPORT_SECTION_TITLES = {
   performance: "Support performance",
   ticketVolume: "Ticket volume",
   priority: "By priority",
-  analytics: "Product analytics",
 } as const;
 
 /** Pull the live figures for a client/period into the report-ready shape. */
@@ -223,27 +267,9 @@ export async function buildSupportReportData(input: {
     performanceItems.push({ value: `${perf.avgCsatScore}/5`, label: "Avg CSAT" });
   }
 
-  // Single combined analytics table (across all groups) — kept consistent with the template
-  // skeleton and the pull-refresh matcher.
-  const analytics =
-    metrics.length > 0
-      ? {
-          columns: ["Metric", "Value", "vs last month"],
-          rows: metrics.map((m) => {
-            const unit = m.unit ?? "";
-            const value = `${unit}${m.value.toLocaleString("en-GB")}`;
-            let trend = "—";
-            if (typeof m.previous === "number") {
-              const delta = m.value - m.previous;
-              const pct = m.previous !== 0 ? Math.round((delta / m.previous) * 100) : null;
-              const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "→";
-              trend = pct != null ? `${arrow} ${Math.abs(pct)}%` : arrow;
-            }
-            return [m.label, value, trend];
-          }),
-          caption: `${periodLabel}`,
-        }
-      : null;
+  // One data_table per analytics group (Revenue / Subscription activity / Top countries / …)
+  // rather than a single wall-of-numbers table.
+  const analyticsTables = buildAnalyticsTables(metrics, periodLabel);
 
   return {
     periodLabel,
@@ -272,7 +298,7 @@ export async function buildSupportReportData(input: {
         ["Low", `${stats.prioLow}`],
       ],
     },
-    analytics,
+    analyticsTables,
   };
 }
 
@@ -310,8 +336,15 @@ export async function pullSupportDataIntoDocument(input: {
     { key: "data_table", title: T.ticketVolume, description: "Breakdown of conversations by type.", data: data.ticketVolume },
     { key: "data_table", title: T.priority, description: "Conversations by priority.", data: data.priority },
   ];
-  if (data.analytics) {
-    targets.push({ key: "data_table", title: T.analytics, description: "Product analytics for the period.", data: data.analytics });
+  // One data_table per analytics group — matched/created by the group title so a re-pull updates
+  // the same tables in place.
+  for (const table of data.analyticsTables) {
+    targets.push({
+      key: "data_table",
+      title: table.title,
+      description: `${table.title} for the period.`,
+      data: { columns: table.columns, rows: table.rows, caption: table.caption },
+    });
   }
 
   const byTitle = new Map(doc.sections.map((s) => [s.title.trim().toLowerCase(), s]));
@@ -350,7 +383,7 @@ export async function pullSupportDataIntoDocument(input: {
 
   if (ops.length > 0) await prisma.$transaction(ops);
 
-  return { updated: updated + created, analyticsFound: data.analytics != null };
+  return { updated: updated + created, analyticsFound: data.analyticsTables.length > 0 };
 }
 
 function buildReportSections(
@@ -385,8 +418,13 @@ function buildReportSections(
   push("kpi_strip", T.performance, { items: data.performanceItems }, "Key service metrics for the period.");
   push("data_table", T.ticketVolume, data.ticketVolume, "Breakdown of conversations by type.");
   push("data_table", T.priority, data.priority, "Conversations by priority.");
-  if (data.analytics) {
-    push("data_table", T.analytics, data.analytics, "Product analytics for the period.");
+  for (const table of data.analyticsTables) {
+    push(
+      "data_table",
+      table.title,
+      { columns: table.columns, rows: table.rows, caption: table.caption },
+      `${table.title} for the period.`,
+    );
   }
 
   push("callout", "Summary", {
