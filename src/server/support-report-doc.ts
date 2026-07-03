@@ -418,6 +418,20 @@ function buildReportSections(
   push("kpi_strip", T.performance, { items: data.performanceItems }, "Key service metrics for the period.");
   push("data_table", T.ticketVolume, data.ticketVolume, "Breakdown of conversations by type.");
   push("data_table", T.priority, data.priority, "Conversations by priority.");
+
+  // Hand-written narrative scaffold — a place for the qualitative wins / notable resolutions that
+  // don't come from data. Pre-seeded with examples to replace. "Pull in client data" never touches
+  // this section (it only refreshes the performance / ticket / priority / analytics data tables).
+  push("checklist", "Support highlights", {
+    polarity: "INCLUDE",
+    intro: "Wins worth calling out from this period (replace with specifics):",
+    items: [
+      "Every user got a clear, actionable response",
+      "Consistent tone and policy application across the batch",
+      "Genuine issues surfaced to the dev team and resolved",
+    ],
+  }, "Qualitative wins and notable resolutions — written by hand, not pulled.");
+
   for (const table of data.analyticsTables) {
     push(
       "data_table",
