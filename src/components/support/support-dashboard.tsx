@@ -4053,6 +4053,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const deleteConn = useDeleteConnection(clientId);
   const syncConn = useSyncConnection(clientId);
+  const updateConn = useUpdateConnection(clientId);
   const [syncResults, setSyncResults] = useState<Record<string, { fetched?: number; ingested?: number; filtered?: number; errors: string[] }>>({});
   const [expandedErrors, setExpandedErrors] = useState<Set<string>>(new Set());
   const { data: logsData } = useSupportAuditLogs(clientId);
@@ -4366,6 +4367,26 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                       <BoltIcon className={cn("h-3 w-3", isSyncPending && "animate-spin")} />
                       {isSyncPending ? "Syncing…" : isResyncPending ? "Re-syncing…" : "Sync now"}
                     </button>
+                  ) : null}
+                  {canManageSupport ? (
+                    <select
+                      value={String((conn.scraperConfig as { syncIntervalMinutes?: number } | null)?.syncIntervalMinutes ?? 60)}
+                      onChange={(e) => {
+                        const next = Number(e.target.value);
+                        // Server merges into the existing config, so send just this key.
+                        updateConn.mutate({
+                          connId: conn.id,
+                          data: { scraperConfig: { syncIntervalMinutes: next } as Connection["scraperConfig"] },
+                        });
+                      }}
+                      title="How often this connector auto-fetches on the background sync"
+                      className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-1.5 py-1 text-[11px] text-[var(--text-2)]"
+                    >
+                      <option value="60">Hourly</option>
+                      <option value="360">Every 6h</option>
+                      <option value="1440">Daily</option>
+                      <option value="0">Manual only</option>
+                    </select>
                   ) : null}
                   <div className="ml-auto">
                     {canManageSupport ? (

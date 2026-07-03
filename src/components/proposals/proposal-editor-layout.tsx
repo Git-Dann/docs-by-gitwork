@@ -46,6 +46,7 @@ import { DocumentAnalyticsPanel } from "@/components/proposals/document-analytic
 import { ProposalPreview } from "@/components/proposals/proposal-preview";
 import { AiChatPanel } from "@/components/proposals/ai-chat-panel";
 import { AiDraftModal } from "@/components/proposals/ai-draft-modal";
+import { PullSupportDataModal } from "@/components/proposals/pull-support-data-modal";
 import { BlockPalette } from "@/components/proposals/block-palette";
 import { CollabPanel } from "@/components/proposals/collab-panel";
 import { DocumentRelationsPanel } from "@/components/proposals/document-relations-panel";
@@ -175,6 +176,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [copied, setCopied] = useState(false);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
+  const [pullDataOpen, setPullDataOpen] = useState(false);
   const [aiChatOpen, setAiChatOpen] = useState(false);
   const [templateSavedAt, setTemplateSavedAt] = useState<string | null>(null);
   const [presenting, setPresenting] = useState(false);
@@ -976,6 +978,17 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 </div>
               )}
             </div>
+            {draft.documentType === "REPORT" && (
+              <button
+                type="button"
+                onClick={() => setPullDataOpen(true)}
+                className={buttonStyles({ variant: "secondary", size: "md", className: "gap-1.5" })}
+                title="Fill this report's data sections from a Care client's live tickets & analytics"
+              >
+                <ArrowDownTrayIcon className="h-4 w-4" />
+                Pull client data
+              </button>
+            )}
             <button
               ref={approvalButtonRef}
               type="button"
@@ -1307,6 +1320,17 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
         onClose={() => setAiChatOpen(false)}
         documentId={proposalId}
         onAfterApply={(proposal) => {
+          setLocalDraft(proposal);
+          baselineRef.current = JSON.stringify(proposal);
+        }}
+      />
+
+      <PullSupportDataModal
+        open={pullDataOpen}
+        onClose={() => setPullDataOpen(false)}
+        documentId={proposalId}
+        defaultClientName={draft.clientName}
+        onApplied={(proposal) => {
           setLocalDraft(proposal);
           baselineRef.current = JSON.stringify(proposal);
         }}

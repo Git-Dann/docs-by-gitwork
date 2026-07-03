@@ -1376,6 +1376,22 @@ export async function updateConnection(
     scraperConfig: Connection["scraperConfig"];
   }>,
 ): Promise<Connection> {
+  // scraperConfig updates MERGE into the existing (decrypted) config rather than replace it.
+  // The client never receives sensitive keys (serializeConnection strips them), so a partial
+  // update — e.g. just changing syncIntervalMinutes — must not wipe the stored token/JSON.
+  let scraperConfigUpdate: object | undefined;
+  if (data.scraperConfig !== undefined) {
+    const existing = await prisma.accountConnection.findUnique({
+      where: { id: connId },
+      select: { scraperConfig: true },
+    });
+    const merged = {
+      ...(decryptScraperConfig(existing?.scraperConfig as Record<string, unknown> | null) ?? {}),
+      ...(data.scraperConfig as Record<string, unknown>),
+    };
+    scraperConfigUpdate = encryptScraperConfig(merged) as object;
+  }
+
   const row = await prisma.accountConnection.update({
     where: { id: connId },
     data: {
@@ -1384,9 +1400,7 @@ export async function updateConnection(
       ...(data.health !== undefined ? { health: toDbHealth(data.health) } : {}),
       ...(data.secretRef !== undefined ? { secretRef: data.secretRef } : {}),
       ...(data.nextStep !== undefined ? { nextStep: data.nextStep } : {}),
-      ...(data.scraperConfig !== undefined
-        ? { scraperConfig: encryptScraperConfig(data.scraperConfig as Record<string, unknown>) as object }
-        : {}),
+      ...(scraperConfigUpdate !== undefined ? { scraperConfig: scraperConfigUpdate } : {}),
     },
   });
   return serializeConnection(row);

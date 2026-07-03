@@ -40,12 +40,25 @@ export async function GET(request: NextRequest) {
 
     if (!workspace) return apiError("Workspace not found", 404);
 
-    const connections = await prisma.accountConnection.findMany({
+    const allConnections = await prisma.accountConnection.findMany({
       where: { health: "CONNECTED", client: { workspaceId: workspace.id } },
       include: {
         channelTokens: true,
         client: { select: { id: true, name: true, slug: true } },
       },
+    });
+
+    // Per-connector frequency: only sync a connection whose configured interval has elapsed
+    // since its last sync. Interval lives on scraperConfig.syncIntervalMinutes (default 60 =
+    // hourly; 0 = manual-only, never auto-synced). This lets the cron fire often (e.g. hourly)
+    // while each connector keeps its own cadence.
+    const now = Date.now();
+    const connections = allConnections.filter((conn) => {
+      const cfg = (conn.scraperConfig ?? {}) as { syncIntervalMinutes?: number };
+      const interval = typeof cfg.syncIntervalMinutes === "number" ? cfg.syncIntervalMinutes : 60;
+      if (interval <= 0) return false; // manual-only
+      if (!conn.lastSyncedAt) return true; // never synced → due
+      return now - new Date(conn.lastSyncedAt).getTime() >= interval * 60_000;
     });
 
     let totalIngested = 0;

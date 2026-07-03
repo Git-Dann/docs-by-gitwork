@@ -123,12 +123,7 @@ export async function generateSupportReportDocument(
 
   const { workspace, user, template } = await ensureBaseRecords();
 
-  // Gather the same live data the bespoke report builder uses.
-  const [stats, perf, metrics] = await Promise.all([
-    getTicketStatsForPeriod(clientId, periodStart, periodEnd),
-    getPerformanceMetricsForPeriod(clientId, periodStart, periodEnd),
-    loadAnalyticsMetrics(clientId, year, month),
-  ]);
+  const data = await buildSupportReportData({ clientId, periodStart, periodEnd, periodLabel });
 
   const reportTemplate = await prisma.documentTemplate.findFirst({
     where: { slug: TEMPLATE_SLUG_BY_TYPE.REPORT },
@@ -137,14 +132,7 @@ export async function generateSupportReportDocument(
 
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 
-  const sections = buildReportSections({
-    clientName: client.name,
-    periodLabel,
-    today,
-    stats,
-    perf,
-    metrics,
-  });
+  const sections = buildReportSections(client.name, periodLabel, today, data);
 
   const document = await prisma.document.create({
     data: {
@@ -179,34 +167,180 @@ export async function generateSupportReportDocument(
   return document.id;
 }
 
-function buildReportSections(args: {
-  clientName: string;
+/**
+ * The live data for one client's support report, shaped for direct use in section payloads.
+ * Section titles below are the single source of truth shared by three surfaces: the REPORT
+ * template blueprint (src/lib/templates/report.ts), the generator, and the in-builder
+ * "Pull in client data" endpoint (which matches existing sections by these titles).
+ */
+export interface SupportReportData {
   periodLabel: string;
-  today: string;
-  stats: Awaited<ReturnType<typeof getTicketStatsForPeriod>>;
-  perf: Awaited<ReturnType<typeof getPerformanceMetricsForPeriod>>;
-  metrics: AnalyticsMetric[];
-}): Prisma.DocumentSectionCreateWithoutDocumentInput[] {
-  const { clientName, periodLabel, today, stats, perf, metrics } = args;
+  overviewText: string;
+  /** kpi_strip items for "Support performance". */
+  performanceItems: Array<{ value: string; label: string; context?: string }>;
+  /** data_table payload for "Ticket volume". */
+  ticketVolume: { columns: string[]; rows: string[][]; caption: string };
+  /** data_table payload for "By priority". */
+  priority: { columns: string[]; rows: string[][] };
+  /** data_table payload for "Product analytics" — null when no analytics connection. */
+  analytics: { columns: string[]; rows: string[][]; caption: string } | null;
+}
+
+/** Section titles are the join key between template, generator and pull-refresh. */
+export const SUPPORT_REPORT_SECTION_TITLES = {
+  performance: "Support performance",
+  ticketVolume: "Ticket volume",
+  priority: "By priority",
+  analytics: "Product analytics",
+} as const;
+
+/** Pull the live figures for a client/period into the report-ready shape. */
+export async function buildSupportReportData(input: {
+  clientId: string;
+  periodStart: string;
+  periodEnd: string;
+  periodLabel: string;
+}): Promise<SupportReportData> {
+  const { clientId, periodStart, periodEnd, periodLabel } = input;
+  const [year, month] = periodStart.split("-").map(Number);
+
+  const [stats, perf, metrics] = await Promise.all([
+    getTicketStatsForPeriod(clientId, periodStart, periodEnd),
+    getPerformanceMetricsForPeriod(clientId, periodStart, periodEnd),
+    loadAnalyticsMetrics(clientId, year, month),
+  ]);
+
+  const performanceItems: SupportReportData["performanceItems"] = [
+    { value: `${stats.totalTickets}`, label: "Conversations" },
+    { value: `${perf.resolvedCount}`, label: "Resolved", context: `${perf.resolutionRate}% resolution rate` },
+    { value: fmtDuration(perf.avgFirstResponseMs), label: "Avg first response" },
+    { value: fmtDuration(perf.avgResolutionMs), label: "Avg resolution time" },
+  ];
+  if (perf.slaFrtCompliancePct != null) {
+    performanceItems.push({ value: `${perf.slaFrtCompliancePct}%`, label: "Within SLA", context: `${perf.slaTargetHours}h target` });
+  }
+  if (perf.avgCsatScore != null) {
+    performanceItems.push({ value: `${perf.avgCsatScore}/5`, label: "Avg CSAT" });
+  }
+
+  // Single combined analytics table (across all groups) — kept consistent with the template
+  // skeleton and the pull-refresh matcher.
+  const analytics =
+    metrics.length > 0
+      ? {
+          columns: ["Metric", "Value", "vs last month"],
+          rows: metrics.map((m) => {
+            const unit = m.unit ?? "";
+            const value = `${unit}${m.value.toLocaleString("en-GB")}`;
+            let trend = "—";
+            if (typeof m.previous === "number") {
+              const delta = m.value - m.previous;
+              const pct = m.previous !== 0 ? Math.round((delta / m.previous) * 100) : null;
+              const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "→";
+              trend = pct != null ? `${arrow} ${Math.abs(pct)}%` : arrow;
+            }
+            return [m.label, value, trend];
+          }),
+          caption: `${periodLabel}`,
+        }
+      : null;
+
+  return {
+    periodLabel,
+    overviewText:
+      `This report summarises the support activity during ${periodLabel}. ` +
+      `Our team handled ${stats.totalTickets} conversation${stats.totalTickets === 1 ? "" : "s"} across all connected channels, ` +
+      `resolving ${perf.resolvedCount} (${perf.resolutionRate}%) within the period.`,
+    performanceItems,
+    ticketVolume: {
+      columns: ["Category", "Count"],
+      rows: [
+        ["Cancellations / churn", `${stats.catCancellations}`],
+        ["Billing / refunds", `${stats.catRefunds}`],
+        ["Account queries", `${stats.catAccountQueries}`],
+        ["Technical issues", `${stats.catTechIssues}`],
+        ["Other", `${stats.catOther}`],
+      ],
+      caption: `By category · ${stats.totalTickets} total`,
+    },
+    priority: {
+      columns: ["Priority", "Count"],
+      rows: [
+        ["Urgent", `${stats.prioUrgent}`],
+        ["High", `${stats.prioHigh}`],
+        ["Normal", `${stats.prioMedium}`],
+        ["Low", `${stats.prioLow}`],
+      ],
+    },
+    analytics,
+  };
+}
+
+/**
+ * Fill an EXISTING report Document's data sections from live client data, without touching
+ * the narrative (cover / overview prose / closing callout). Matches sections by the shared
+ * titles in SUPPORT_REPORT_SECTION_TITLES, so it works on both generated docs and blank docs
+ * created from the REPORT template. Returns how many sections were updated.
+ */
+export async function pullSupportDataIntoDocument(input: {
+  documentId: string;
+  clientId: string;
+  periodStart: string;
+  periodEnd: string;
+  periodLabel: string;
+}): Promise<{ updated: number; analyticsFound: boolean }> {
+  const { documentId, clientId, periodStart, periodEnd, periodLabel } = input;
+
+  const doc = await prisma.document.findUnique({
+    where: { id: documentId },
+    select: { id: true, sections: { select: { id: true, key: true, title: true } } },
+  });
+  if (!doc) throw new Error("Document not found");
+
+  const data = await buildSupportReportData({ clientId, periodStart, periodEnd, periodLabel });
+  const T = SUPPORT_REPORT_SECTION_TITLES;
+
+  // Map a section title → the fresh data payload for it (undefined = leave untouched).
+  function payloadFor(title: string): Record<string, unknown> | undefined {
+    const t = title.trim().toLowerCase();
+    if (t === T.performance.toLowerCase()) return { items: data.performanceItems };
+    if (t === T.ticketVolume.toLowerCase()) return data.ticketVolume;
+    if (t === T.priority.toLowerCase()) return data.priority;
+    if (t === T.analytics.toLowerCase()) return data.analytics ?? undefined;
+    return undefined;
+  }
+
+  const updates = doc.sections
+    .map((s) => ({ id: s.id, payload: payloadFor(s.title) }))
+    .filter((u): u is { id: string; payload: Record<string, unknown> } => u.payload !== undefined);
+
+  if (updates.length > 0) {
+    await prisma.$transaction(
+      updates.map((u) =>
+        prisma.documentSection.update({
+          where: { id: u.id },
+          data: { data: u.payload as unknown as Prisma.InputJsonValue },
+        }),
+      ),
+    );
+  }
+
+  return { updated: updates.length, analyticsFound: data.analytics != null };
+}
+
+function buildReportSections(
+  clientName: string,
+  periodLabel: string,
+  today: string,
+  data: SupportReportData,
+): Prisma.DocumentSectionCreateWithoutDocumentInput[] {
+  const T = SUPPORT_REPORT_SECTION_TITLES;
   const sections: Prisma.DocumentSectionCreateWithoutDocumentInput[] = [];
   let order = 0;
-  const push = (
-    key: string,
-    title: string,
-    data: Record<string, unknown>,
-    description?: string,
-  ) => {
-    sections.push({
-      key,
-      title,
-      description: description ?? null,
-      sortOrder: order++,
-      isVisible: true,
-      data: data as unknown as Prisma.InputJsonValue,
-    });
+  const push = (key: string, title: string, d: Record<string, unknown>, description?: string) => {
+    sections.push({ key, title, description: description ?? null, sortOrder: order++, isVisible: true, data: d as unknown as Prisma.InputJsonValue });
   };
 
-  // ── Cover ──
   push("cover", "Cover", {
     proposalTitle: `Support Report — ${periodLabel}`,
     productName: clientName,
@@ -219,92 +353,17 @@ function buildReportSections(args: {
     brandLockup: "CLIENT_X_GITWORK",
   });
 
-  // ── Overview (editable prose; the Docs AI can rewrite it) ──
-  push(
-    "prose",
-    "Overview",
-    {
-      content:
-        `This report summarises the support activity for ${clientName} during ${periodLabel}. ` +
-        `Our team handled ${stats.totalTickets} conversation${stats.totalTickets === 1 ? "" : "s"} across all connected channels, ` +
-        `resolving ${perf.resolvedCount} (${perf.resolutionRate}%) within the period.\n\n` +
-        `Use the toolbar to refine this narrative, or let the AI writer expand it.`,
-    },
-    "Summary of the month's support activity.",
-  );
+  push("prose", "Overview", {
+    content: `${data.overviewText}\n\nUse the toolbar to refine this narrative, or let the AI writer expand it.`,
+  }, "Summary of the month's support activity.");
 
-  // ── Performance KPIs ──
-  const kpiItems: Array<{ value: string; label: string; context?: string }> = [
-    { value: `${stats.totalTickets}`, label: "Conversations" },
-    { value: `${perf.resolvedCount}`, label: "Resolved", context: `${perf.resolutionRate}% resolution rate` },
-    { value: fmtDuration(perf.avgFirstResponseMs), label: "Avg first response" },
-    { value: fmtDuration(perf.avgResolutionMs), label: "Avg resolution time" },
-  ];
-  if (perf.slaFrtCompliancePct != null) {
-    kpiItems.push({ value: `${perf.slaFrtCompliancePct}%`, label: "Within SLA", context: `${perf.slaTargetHours}h target` });
-  }
-  if (perf.avgCsatScore != null) {
-    kpiItems.push({ value: `${perf.avgCsatScore}/5`, label: "Avg CSAT" });
-  }
-  push("kpi_strip", "Support Performance", { items: kpiItems }, "Key service metrics for the period.");
-
-  // ── Ticket volume by category ──
-  const catRows: string[][] = [
-    ["Cancellations / churn", `${stats.catCancellations}`],
-    ["Billing / refunds", `${stats.catRefunds}`],
-    ["Account queries", `${stats.catAccountQueries}`],
-    ["Technical issues", `${stats.catTechIssues}`],
-    ["Other", `${stats.catOther}`],
-  ];
-  push(
-    "data_table",
-    "Ticket Volume",
-    { columns: ["Category", "Count"], rows: catRows, caption: `By category · ${stats.totalTickets} total` },
-    "Breakdown of conversations by type.",
-  );
-
-  // ── Priority breakdown ──
-  push("data_table", "By Priority", {
-    columns: ["Priority", "Count"],
-    rows: [
-      ["Urgent", `${stats.prioUrgent}`],
-      ["High", `${stats.prioHigh}`],
-      ["Normal", `${stats.prioMedium}`],
-      ["Low", `${stats.prioLow}`],
-    ],
-  });
-
-  // ── Analytics metrics (grouped) — only when the client has an analytics connection ──
-  if (metrics.length > 0) {
-    // Group metrics; render each group as its own data table with a trend column.
-    const groups = new Map<string, AnalyticsMetric[]>();
-    for (const m of metrics) {
-      const g = m.group ?? "Product analytics";
-      if (!groups.has(g)) groups.set(g, []);
-      groups.get(g)!.push(m);
-    }
-    for (const [group, items] of groups) {
-      const rows = items.map((m) => {
-        const unit = m.unit ?? "";
-        const value = `${unit}${m.value.toLocaleString("en-GB")}`;
-        let trend = "—";
-        if (typeof m.previous === "number") {
-          const delta = m.value - m.previous;
-          const pct = m.previous !== 0 ? Math.round((delta / m.previous) * 100) : null;
-          const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "→";
-          trend = pct != null ? `${arrow} ${Math.abs(pct)}%` : arrow;
-        }
-        return [m.label, value, trend];
-      });
-      push("data_table", group, {
-        columns: ["Metric", "Value", "vs last month"],
-        rows,
-        caption: `${group} · ${periodLabel}`,
-      });
-    }
+  push("kpi_strip", T.performance, { items: data.performanceItems }, "Key service metrics for the period.");
+  push("data_table", T.ticketVolume, data.ticketVolume, "Breakdown of conversations by type.");
+  push("data_table", T.priority, data.priority, "Conversations by priority.");
+  if (data.analytics) {
+    push("data_table", T.analytics, data.analytics, "Product analytics for the period.");
   }
 
-  // ── Closing note ──
   push("callout", "Summary", {
     tone: "info",
     headline: "Looking ahead",
