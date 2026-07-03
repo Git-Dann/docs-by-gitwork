@@ -499,6 +499,7 @@ export function DesignSystemWorkspace({
           tokens={tokens}
           clientLogoUrl={client?.logoUrl ?? null}
           showFoundryBranding={showFoundryBranding}
+          downloadable={false}
         />
       )}
 

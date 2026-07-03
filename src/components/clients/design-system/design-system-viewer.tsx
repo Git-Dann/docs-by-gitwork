@@ -1134,9 +1134,11 @@ function Hero({
 function GuidelinesHeader({
   tokens,
   showFoundryBranding,
+  action,
 }: {
   tokens: DesignTokens;
   showFoundryBranding: boolean;
+  action?: ReactNode;
 }) {
   return (
     <section className="widget-card">
@@ -1147,13 +1149,16 @@ function GuidelinesHeader({
         <span className="text-[11px] uppercase tracking-[0.14em] text-[var(--text-3)]">
           {tokens.clientName} · Brand Guidelines
         </span>
-        <span className="flex items-center gap-3 text-[10px] uppercase tracking-[0.12em] text-[var(--text-4)]">
-          <span>v{tokens.version}</span>
-          {tokens.generatedAt ? <span>{formatDate(tokens.generatedAt)}</span> : null}
-          {showFoundryBranding ? (
-            <span className="font-medium text-[var(--brand-700)]">Foundry</span>
-          ) : null}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-3 text-[10px] uppercase tracking-[0.12em] text-[var(--text-4)]">
+            <span>v{tokens.version}</span>
+            {tokens.generatedAt ? <span>{formatDate(tokens.generatedAt)}</span> : null}
+            {showFoundryBranding ? (
+              <span className="font-medium text-[var(--brand-700)]">Foundry</span>
+            ) : null}
+          </span>
+          {action}
+        </div>
       </div>
     </section>
   );
@@ -1190,13 +1195,18 @@ export function DesignSystemViewer({
   tokens,
   clientLogoUrl = null,
   showFoundryBranding = true,
+  downloadable = true,
 }: {
   tokens: DesignTokens;
   clientLogoUrl?: string | null;
   showFoundryBranding?: boolean;
+  /** Show the "Download design system" button in the header. Off inside the
+   *  internal workspace, which already exposes its own Download in the action bar. */
+  downloadable?: boolean;
 }) {
   const [fontDownloading, setFontDownloading] = useState(false);
   const [logoDownloading, setLogoDownloading] = useState(false);
+  const [systemDownloading, setSystemDownloading] = useState(false);
   // Default editable narrative, seeded from the tokens (overridable in a later UI).
   const content = useMemo(() => generateGuidelinesContent(tokens), [tokens]);
   const allColours = [
@@ -1247,6 +1257,32 @@ export function DesignSystemViewer({
       setLogoDownloading(false);
     }
   };
+
+  // Full design-system pack — tokens + fonts + logos, organised into folders.
+  const handleSystemDownload = async () => {
+    setSystemDownloading(true);
+    try {
+      const { buildDesignSystemPack, triggerDownload } = await import("@/lib/design-system-zip");
+      const zip = await buildDesignSystemPack(tokens, { clientLogoUrl });
+      const slug = tokens.clientName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      triggerDownload(zip, `${slug}-design-system.zip`);
+    } catch {
+      /* silently fail */
+    } finally {
+      setSystemDownloading(false);
+    }
+  };
+
+  const systemDownloadBtn = downloadable ? (
+    <button
+      type="button"
+      onClick={() => void handleSystemDownload()}
+      disabled={systemDownloading}
+      className="inline-flex items-center gap-1.5 rounded-[7px] bg-[var(--brand-600)] px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-50"
+    >
+      {systemDownloading ? "Packaging…" : "↓ Download design system"}
+    </button>
+  ) : undefined;
 
   const fontPackStatus = (
     <button
@@ -1360,7 +1396,7 @@ export function DesignSystemViewer({
 
   return (
     <div className="flex flex-col gap-4">
-      <GuidelinesHeader tokens={tokens} showFoundryBranding={showFoundryBranding} />
+      <GuidelinesHeader tokens={tokens} showFoundryBranding={showFoundryBranding} action={systemDownloadBtn} />
       <Hero tokens={tokens} gradientCss={gradientCss} clientLogoUrl={clientLogoUrl} intro={content.intro} />
       {/* Jump nav — sticks under the page band while you scroll. Near-opaque
           surface + elevation shadow so it stays legible over the colour swatches. */}
