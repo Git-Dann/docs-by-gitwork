@@ -121,13 +121,13 @@ export function ProposalSectionPreview({
   const sectionAssets = proposal.assets.filter((asset) => asset.placement === section.key);
 
   return wrapSelectable(
-    <section id={sectionId} className="proposal-block-avoid space-y-5">
-      <header className="max-w-3xl space-y-2">
-        <h2 className="text-[24px] leading-[1.2] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]">
+    <section id={sectionId} className="proposal-block-avoid space-y-4">
+      <header className="max-w-3xl space-y-1.5">
+        <h2 className="text-[24px] leading-[1.15] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]">
           {section.title}
         </h2>
         {section.description ? (
-          <p className="max-w-2xl text-[13px] leading-6 text-[var(--doc-muted)]">
+          <p className="font-[var(--font-mono),'JetBrains_Mono',monospace] text-[10px] font-semibold uppercase leading-5 tracking-[0.12em] text-[var(--doc-muted)]">
             {section.description}
           </p>
         ) : null}

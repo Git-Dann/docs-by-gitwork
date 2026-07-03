@@ -48,7 +48,7 @@ export function ProposalPreview({
           : "proposal-document mx-auto w-full max-w-[860px] rounded-[10px] border border-[var(--doc-line-soft)] p-8 sm:p-12 print:max-w-none print:rounded-none print:border-0 print:p-0"
       }
     >
-      <div className="space-y-10 print:space-y-8">
+      <div className="space-y-8 print:space-y-7">
         {visibleSections.map((section, index) =>
           trackSections ? (
             <div
