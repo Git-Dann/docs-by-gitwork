@@ -122,6 +122,21 @@ export function TemplateGallery({
     (chip) => chip === "ALL" || availableTypes.has(chip as DocumentType),
   );
 
+  // Clicking a type chip filters the gallery AND selects that type's template — so the create
+  // form's documentType follows the chip even when the operator doesn't also click the row below.
+  // (Previously the chip only filtered; hitting Create without an explicit row click silently fell
+  // back to PROPOSAL — e.g. filtering to REPORT still produced a proposal.) Prefer the type's
+  // default template, else the first available for that type. "ALL" is a pure filter, no auto-pick.
+  function handleChipClick(chip: DocumentType | "ALL") {
+    setFilter(chip);
+    if (chip === "ALL") return;
+    const forType = templates.filter(
+      (t) => allowedTypeSet.has(t.documentType) && t.documentType === chip,
+    );
+    const pick = forType.find((t) => t.isDefault) ?? forType[0];
+    if (pick) onPick({ id: pick.id, documentType: pick.documentType });
+  }
+
   return (
     <div>
       {/* Filter chips — sticky to the top of the gallery scroll container. The chip row owns
@@ -130,7 +145,7 @@ export function TemplateGallery({
           content bleeding through above it. */}
       <div className="sticky top-0 z-10 flex flex-wrap gap-1.5 border-b border-[var(--border-2)] bg-[var(--surface-canvas)] px-3 py-2.5">
         {visibleChips.map((chip) => (
-          <FilterChip key={chip} active={effectiveFilter === chip} onClick={() => setFilter(chip)}>
+          <FilterChip key={chip} active={effectiveFilter === chip} onClick={() => handleChipClick(chip)}>
             {CHIP_LABEL[chip]}
           </FilterChip>
         ))}
