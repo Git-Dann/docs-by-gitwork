@@ -27,6 +27,7 @@ export type McpConnection = {
 export type McpAdminPayload = {
   state: { enabled: boolean; connectionCount: number };
   connections: McpConnection[];
+  setup: McpSetupContext;
 };
 
 export type McpSetupContext = {

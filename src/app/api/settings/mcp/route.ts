@@ -6,6 +6,7 @@ import { z } from "zod";
 import { apiOk, fromError } from "@/lib/api-response";
 import { requireAuthedUser } from "@/server/auth/effective-user";
 import {
+  buildSetupContext,
   getMcpAdminState,
   listConnectionsForWorkspace,
   setMcpEnabled,
@@ -18,7 +19,10 @@ export async function GET(req: Request) {
     const user = await requireAuthedUser(req);
     const state = await getMcpAdminState();
     const connections = await listConnectionsForWorkspace(user);
-    return apiOk({ state, connections });
+    // Include the connect snippets so an admin can wire up their own Claude
+    // right from Settings → MCP (same context the per-user panel uses).
+    const setup = buildSetupContext(new URL(req.url).origin, state.enabled);
+    return apiOk({ state, connections, setup });
   } catch (e) {
     return fromError(e);
   }

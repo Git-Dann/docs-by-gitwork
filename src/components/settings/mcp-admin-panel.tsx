@@ -20,6 +20,7 @@ import {
   type McpConnection,
 } from "@/hooks/use-mcp";
 import { McpToolsCatalog } from "@/components/settings/mcp-tools-catalog";
+import { McpQuickStart } from "@/components/settings/mcp-quick-start";
 
 export function McpAdminPanel() {
   const { data, isLoading, error } = useMcpAdmin();
@@ -74,12 +75,31 @@ export function McpAdminPanel() {
         </div>
       </SettingsCard>
 
-      <SettingsCard number="02" title="What Claude can do">
+      <SettingsCard
+        number="02"
+        title="Connect your Claude"
+        right={
+          <span className="text-[11px] uppercase tracking-wide text-[var(--text-3)]">
+            {data.state.enabled ? "Admins only" : "Enable above"}
+          </span>
+        }
+      >
+        {data.state.enabled ? (
+          <McpQuickStart setup={data.setup} />
+        ) : (
+          <p className="text-sm text-[var(--text-3)]">
+            Turn MCP on above, then follow the steps here to connect Claude to your own account.
+            Connecting is restricted to workspace admins.
+          </p>
+        )}
+      </SettingsCard>
+
+      <SettingsCard number="03" title="What Claude can do">
         <McpToolsCatalog variant="admin" />
       </SettingsCard>
 
       <SettingsCard
-        number="03"
+        number="04"
         title="Connections"
         right={
           <span className="text-[11px] uppercase tracking-wide text-[var(--text-3)]">

@@ -86,15 +86,14 @@ export default async function ConsentPage({
     );
   }
 
-  // Permission gate — the user must hold mcp.connect (Admins by default;
-  // Staff/Developers via the matrix). Show a friendly message rather than
-  // letting them approve and hit an access_denied on the POST.
+  // Role gate — MCP is restricted to Admins/Super Admins. Show a friendly
+  // message rather than letting them approve and hit an access_denied on POST.
   const actor = await resolveEffectiveUserById(session.user.id);
   if (!actor || !canConnectMcp(actor)) {
     return (
       <ErrorScreen
         title="Not permitted"
-        body="Your Foundry account isn't permitted to connect Claude. Ask an admin to grant you the 'Connect Claude (MCP)' permission in Settings → People & access."
+        body="Connecting Claude is restricted to workspace admins. If you need access, ask a workspace admin."
       />
     );
   }

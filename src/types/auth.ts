@@ -295,22 +295,9 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
       },
     ],
   },
-  {
-    product: "Integrations",
-    permissions: [
-      {
-        id: "mcp.connect",
-        category: "feature",
-        label: "Connect Claude (MCP)",
-        description:
-          "Authorize Claude (or any MCP-compatible client) to act on your behalf in Foundry. " +
-          "Each connection is per-user and bound by your existing permissions — Claude can't do " +
-          "more than you can. Admins and Super Admins hold this by default; grant it to Staff or " +
-          "Developers here to let them connect their own Claude. Enforced on the consent screen, " +
-          "the OAuth authorize endpoint, and the Connected apps settings.",
-      },
-    ],
-  },
+  // NOTE: MCP (Connect Claude) is intentionally NOT a matrix permission — it's
+  // restricted to Admins/Super Admins by role (canConnectMcp), so there's no
+  // per-role toggle to expose here.
   {
     product: "Studio",
     permissions: [
