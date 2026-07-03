@@ -554,7 +554,7 @@ export async function createPulseScanRecord(input: {
     model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o") :
            p === "GEMINI" ? (workspace.geminiModel ?? "gemini-2.0-flash") :
            p === "LOCAL" ? (workspace.localLlmModel ?? "llama3.1") :
-           (workspace.anthropicModel ?? "claude-sonnet-4-6"),
+           (workspace.anthropicModel ?? "claude-sonnet-5"),
     baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/" :
              p === "LOCAL" ? (workspace.localLlmUrl ?? "http://localhost:11434/v1") :
              null,
@@ -634,7 +634,7 @@ export async function retryPulseScan(scanId: string): Promise<{
     model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o") :
            p === "GEMINI" ? (workspace.geminiModel ?? "gemini-2.0-flash") :
            p === "LOCAL" ? (workspace.localLlmModel ?? "llama3.1") :
-           (workspace.anthropicModel ?? "claude-sonnet-4-6"),
+           (workspace.anthropicModel ?? "claude-sonnet-5"),
     baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/" :
              p === "LOCAL" ? (workspace.localLlmUrl ?? "http://localhost:11434/v1") :
              null,
@@ -696,7 +696,7 @@ export async function reanalysePulseScan(
     model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o")
          : p === "GEMINI" ? (workspace.geminiModel ?? "gemini-2.0-flash")
          : p === "LOCAL"  ? (workspace.localLlmModel ?? "llama3.1")
-         : (workspace.anthropicModel ?? "claude-sonnet-4-6"),
+         : (workspace.anthropicModel ?? "claude-sonnet-5"),
     baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/"
            : p === "LOCAL"  ? (workspace.localLlmUrl ?? "http://localhost:11434/v1")
            : null,

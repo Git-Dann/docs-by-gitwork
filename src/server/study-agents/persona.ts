@@ -9,9 +9,12 @@ async function callAI(config: AiConfig, system: string, user: string): Promise<s
     const msg = await client.messages.create({
       model: config.model,
       max_tokens: 1024,
-      system,
+      // The persona system prompt is identical across every question + follow-up in a session
+      // (15–40 calls) — cache it so the repeated prefix bills at cache-read rates.
+      system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: user }],
     });
+    if (msg.stop_reason === "refusal") throw new Error("AI request declined (stop_reason: refusal).");
     const block = msg.content.find((b) => b.type === "text");
     if (!block || block.type !== "text") throw new Error("No text in Anthropic response");
     return block.text;

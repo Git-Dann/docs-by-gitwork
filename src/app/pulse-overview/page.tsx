@@ -320,7 +320,7 @@ export default function PulseOverviewPage() {
             </div>
             <div style={{ flex: "1 1 480px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               {[
-                { name: "Claude", model: "claude-opus-4-6", note: "Default. Best for structured gap analysis.", bg: "#fff7ed", border: "#fed7aa", badge: "#ea580c" },
+                { name: "Claude", model: "claude-opus-4-8", note: "Default. Best for structured gap analysis.", bg: "#fff7ed", border: "#fed7aa", badge: "#ea580c" },
                 { name: "GPT-4o (OpenAI)", model: "gpt-4o", note: "Any OpenAI model. Model name is configurable.", bg: "#f0fdf4", border: "#bbf7d0", badge: "#16a34a" },
                 { name: "Gemini (Google)", model: "gemini-2.0-flash", note: "Via OpenAI-compatible endpoint. No extra SDK needed.", bg: "#eff6ff", border: "#bfdbfe", badge: "#2563eb" },
                 { name: "Local LLM", model: "Ollama / LM Studio", note: "Point at any OpenAI-compatible server. Zero API cost.", bg: "#f8fafc", border: "#e2e8f0", badge: "#475569" },

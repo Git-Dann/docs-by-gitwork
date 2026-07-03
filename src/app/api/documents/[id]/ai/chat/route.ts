@@ -41,7 +41,7 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-const DEFAULT_MODEL = "claude-sonnet-4-5-20250929";
+const DEFAULT_MODEL = "claude-sonnet-5";
 
 const chatSchema = z.object({
   messages: z

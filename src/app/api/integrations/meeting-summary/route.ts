@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
       baseUrl = workspace.localLlmUrl ?? "http://localhost:11434/v1";
     } else {
       apiKey = process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
-      model = workspace.anthropicModel ?? "claude-sonnet-4-6";
+      model = workspace.anthropicModel ?? "claude-sonnet-5";
     }
 
     if (!apiKey) {

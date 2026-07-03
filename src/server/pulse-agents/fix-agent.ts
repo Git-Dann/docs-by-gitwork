@@ -139,6 +139,29 @@ async function executeTool(
 
 // ── Anthropic agent loop ──────────────────────────────────────────────────────
 
+/**
+ * Return a view of `messages` with a single cache breakpoint on the last block of the most-recent
+ * turn, so each loop iteration reads the growing tool_use/tool_result prefix from cache instead of
+ * re-billing it at full input rates. Stored messages stay clean (no accumulating breakpoints);
+ * combined with the static system breakpoint that's 2 total, within the 4-breakpoint limit.
+ */
+function withPrefixCache(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  if (messages.length === 0) return messages;
+  const cc = { type: "ephemeral" as const };
+  const out = [...messages];
+  const last = out[out.length - 1];
+  if (typeof last.content === "string") {
+    out[out.length - 1] = { ...last, content: [{ type: "text", text: last.content, cache_control: cc }] };
+  } else {
+    const blocks = [...last.content];
+    // The last block here is always tool_result / text / tool_use (never a thinking block),
+    // all of which carry optional cache_control — the cast narrows the param union.
+    blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: cc } as Anthropic.ContentBlockParam;
+    out[out.length - 1] = { ...last, content: blocks };
+  }
+  return out;
+}
+
 async function runAnthropicLoop(
   client: Anthropic,
   model: string,
@@ -158,7 +181,7 @@ async function runAnthropicLoop(
     max_tokens: 4096,
     tools: ANTHROPIC_TOOLS,
     system: cachedSystem,
-    messages,
+    messages: withPrefixCache(messages),
   });
 
   let iterations = 0;
@@ -190,7 +213,7 @@ async function runAnthropicLoop(
       max_tokens: 4096,
       tools: ANTHROPIC_TOOLS,
       system: cachedSystem,
-      messages,
+      messages: withPrefixCache(messages),
     });
   }
 }

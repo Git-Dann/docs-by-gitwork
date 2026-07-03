@@ -76,7 +76,7 @@ export async function GET() {
       aiProvider: workspace?.aiProvider ?? "ANTHROPIC",
       anthropicKeyMasked: anthropicKey ? maskKey(anthropicKey) : null,
       anthropicKeySource: process.env.ANTHROPIC_API_KEY ? "env" : workspace?.anthropicApiKey ? "database" : null,
-      anthropicModel: workspace?.anthropicModel ?? "claude-sonnet-4-6",
+      anthropicModel: workspace?.anthropicModel ?? "claude-sonnet-5",
       openaiKeyMasked: openaiKey ? maskKey(openaiKey) : null,
       openaiKeySource: process.env.OPENAI_API_KEY ? "env" : workspace?.openaiApiKey ? "database" : null,
       openaiModel: workspace?.openaiModel ?? "gpt-4o",

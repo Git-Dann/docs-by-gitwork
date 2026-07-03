@@ -9,9 +9,11 @@ async function callAI(config: AiConfig, system: string, user: string, maxTokens 
     const msg = await client.messages.create({
       model: config.model,
       max_tokens: maxTokens,
-      system,
+      // Synthesis instructions are a stable prefix reused across every turn/session in a run.
+      system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: user }],
     });
+    if (msg.stop_reason === "refusal") throw new Error("AI request declined (stop_reason: refusal).");
     const block = msg.content.find((b) => b.type === "text");
     if (!block || block.type !== "text") throw new Error("No text in Anthropic response");
     return block.text;
