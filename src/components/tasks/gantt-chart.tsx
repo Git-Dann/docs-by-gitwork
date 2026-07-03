@@ -22,10 +22,14 @@ export type GanttMilestone = {
 };
 
 const DAY = 86_400_000;
-/** Total left rail width — block name column + "Due" column. */
-const RAIL_W = 360;
+/** Left rail width — wide (desktop) fits the block name + "Due" columns; narrow
+ *  (mobile) drops the Due column and shrinks so the chart itself stays on screen. */
+const RAIL_W_WIDE = 360;
+const RAIL_W_NARROW = 150;
 /** Width of the "Due" date column inside the rail (fits "27 May 2026" on one line). */
 const DUE_COL_W = 96;
+/** Below this container width we switch to the compact mobile rail. */
+const NARROW_BREAKPOINT = 560;
 /** Row height (min). */
 const ROW_MIN_H = 52;
 /** Heights of the two header rows. */
@@ -120,6 +124,14 @@ export function GanttChart({
     return () => ro.disconnect();
   }, []);
 
+  // Compact rail on narrow viewports (phones): drop the "Due" column and shrink
+  // the name column so the chart itself is visible without scrolling past a
+  // 360px rail first. Defaults to the wide rail until measured.
+  const narrow = containerW > 0 && containerW < NARROW_BREAKPOINT;
+  const RAIL_W = narrow ? RAIL_W_NARROW : RAIL_W_WIDE;
+  const dueColW = narrow ? 0 : DUE_COL_W;
+  const showDue = !narrow;
+
   // Date domain — independent of zoom, so "Fit" can size px/day to it.
   const domain = useMemo(() => {
     const stamps: number[] = [today.getTime()];
@@ -143,7 +155,7 @@ export function GanttChart({
     const avail = containerW - RAIL_W;
     if (avail <= 0) return PX_PER_DAY.half; // pre-measure fallback
     return Math.min(Math.max(avail / domain.totalDays, 1.2), 40);
-  }, [scale, containerW, domain.totalDays]);
+  }, [scale, containerW, domain.totalDays, RAIL_W]);
 
   const model = useMemo(() => {
     const { domainStart, domainEnd, totalDays } = domain;
@@ -290,12 +302,14 @@ export function GanttChart({
                   style={{ width: RAIL_W, height: HEADER_H, top: 0, fontFamily: "var(--font-mono)" }}
                 >
                   <div className="flex flex-1 items-center px-3">Feature blocks</div>
-                  <div
-                    className="flex shrink-0 items-center justify-end border-l border-[rgba(0,0,0,0.08)] px-2"
-                    style={{ width: DUE_COL_W }}
-                  >
-                    Due
-                  </div>
+                  {showDue && (
+                    <div
+                      className="flex shrink-0 items-center justify-end border-l border-[rgba(0,0,0,0.08)] px-2"
+                      style={{ width: dueColW }}
+                    >
+                      Due
+                    </div>
+                  )}
                 </div>
 
                 {/* Quarter bands */}
@@ -420,6 +434,7 @@ export function GanttChart({
                               style={{ fontFamily: "var(--font-mono)" }}
                             >
                               {b.progress}% · {b.tasks.length} task{b.tasks.length === 1 ? "" : "s"}
+                              {!showDue ? ` · ${dueFmt}` : ""}
                             </p>
                           </div>
                         </div>
@@ -445,13 +460,16 @@ export function GanttChart({
                         ) : null}
                       </div>
 
-                      {/* Due date column */}
-                      <div
-                        className="flex shrink-0 items-start justify-end whitespace-nowrap border-l border-[rgba(0,0,0,0.06)] px-2 py-2 text-right text-[10px] leading-tight text-[var(--text-4)]"
-                        style={{ width: DUE_COL_W, fontFamily: "var(--font-mono)" }}
-                      >
-                        {dueFmt}
-                      </div>
+                      {/* Due date column — hidden on the compact mobile rail
+                          (the due date still shows in the bar tooltip). */}
+                      {showDue && (
+                        <div
+                          className="flex shrink-0 items-start justify-end whitespace-nowrap border-l border-[rgba(0,0,0,0.06)] px-2 py-2 text-right text-[10px] leading-tight text-[var(--text-4)]"
+                          style={{ width: dueColW, fontFamily: "var(--font-mono)" }}
+                        >
+                          {dueFmt}
+                        </div>
+                      )}
                     </div>
 
                     {/* Track */}

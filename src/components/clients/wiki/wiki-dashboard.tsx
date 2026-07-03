@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import {
   BookOpenIcon,
@@ -517,18 +518,7 @@ export function WikiDashboard({
               <div className="flex -space-x-2">
                 {wiki.team.slice(0, 6).map((m, i) => (
                   <div key={i} className="group relative">
-                    {m.avatarUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={m.avatarUrl}
-                        alt={m.name}
-                        className="h-8 w-8 rounded-full object-cover ring-2 ring-white"
-                      />
-                    ) : (
-                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--brand-50)] text-[11px] font-semibold text-[var(--brand-700)] ring-2 ring-white">
-                        {m.initials}
-                      </span>
-                    )}
+                    <TeamAvatar name={m.name} initials={m.initials} avatarUrl={m.avatarUrl} />
                     <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--text-1)] px-2 py-1 text-[11px] font-medium text-white shadow-lg group-hover:block">
                       {m.name}
                     </span>
@@ -566,5 +556,38 @@ export function WikiDashboard({
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * Stacked team avatar. Falls back to initials when the avatar URL is missing OR
+ * fails to load — some dev avatars are auth-gated (Google/Drive) or stale URLs
+ * that 404 for anonymous public viewers, which otherwise renders a broken image.
+ */
+function TeamAvatar({
+  name,
+  initials,
+  avatarUrl,
+}: {
+  name: string;
+  initials: string;
+  avatarUrl: string | null;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (avatarUrl && !failed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={avatarUrl}
+        alt={name}
+        onError={() => setFailed(true)}
+        className="h-8 w-8 rounded-full object-cover ring-2 ring-white"
+      />
+    );
+  }
+  return (
+    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--brand-50)] text-[11px] font-semibold text-[var(--brand-700)] ring-2 ring-white">
+      {initials}
+    </span>
   );
 }

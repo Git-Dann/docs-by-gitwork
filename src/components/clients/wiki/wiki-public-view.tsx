@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import type { WikiDTO } from "@/lib/api";
 import { WikiSidebar, COURSE_REQUESTS_SLUGS, type WikiSection } from "./wiki-sidebar";
+import { WikiMobileNav } from "./wiki-mobile-nav";
 import { WikiPageEditor } from "./wiki-page-editor";
 import { ApiDocsReference, normalizeApiDocsContent } from "./api-docs-page-editor";
 import { ChangelogSection } from "./changelog-section";
@@ -249,7 +250,17 @@ export function WikiPublicView({
   return (
     // flex-1 lets this row fill the <main> height so the sidebar divider spans fully.
     <div className="flex flex-1 flex-col md:flex-row">
-      <div className="shrink-0 border-b border-[rgba(0,0,0,0.08)] px-2 md:border-b-0 md:border-r">
+      {/* Mobile: a single menu button + popover (replaces the old carousel). */}
+      <div className="shrink-0 border-b border-[rgba(0,0,0,0.08)] px-3 md:hidden">
+        <WikiMobileNav
+          sections={availableSections}
+          active={activeSection}
+          titles={SECTION_TITLES}
+          onSelect={setActiveSection}
+        />
+      </div>
+      {/* Desktop: the vertical sidebar. */}
+      <div className="hidden shrink-0 px-2 md:block md:border-r md:border-[rgba(0,0,0,0.08)]">
         <WikiSidebar
           slug={wiki.clientSlug}
           active={activeSection}
