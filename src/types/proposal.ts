@@ -59,7 +59,8 @@ export type SectionKey =
   | "comparison_table" // us vs them with checkmarks
   | "video_embed"      // YouTube / Loom / Vimeo with caption
   | "code_snippet"     // monospace code block with language label
-  | "checklist";       // polarity-aware list (include / exclude) — P4.16 consolidation
+  | "checklist"        // polarity-aware list (include / exclude) — P4.16 consolidation
+  | "breakdown";       // labelled breakdown list (label · count · description, hairline rules)
 
 export type CostKind = "ONE_OFF" | "RECURRING";
 
@@ -397,10 +398,26 @@ export interface KpiStripItem {
   label: string;
   /** Optional context line above the value (e.g. "Q2 result"). */
   context?: string;
+  /** Render this card inverted (dark background, light text) to make one stat stand out. */
+  emphasis?: boolean;
 }
 
 export interface KpiStripSectionData {
   items: KpiStripItem[];
+}
+
+/** One row of a `breakdown` block — a bold label, an optional accent count, and a description. */
+export interface BreakdownItem {
+  /** Bold label, e.g. "Subscription confusion (Stripe vs App Store)". */
+  label: string;
+  /** Optional short count/metric shown in the accent colour after the label, e.g. "6". */
+  count?: string;
+  /** Explanatory sentence beneath the label. */
+  description: string;
+}
+
+export interface BreakdownSectionData {
+  items: BreakdownItem[];
 }
 
 export interface FaqItem {
@@ -488,7 +505,8 @@ export type ProposalSectionData =
   | ComparisonTableSectionData
   | VideoEmbedSectionData
   | CodeSnippetSectionData
-  | ChecklistSectionData;
+  | ChecklistSectionData
+  | BreakdownSectionData;
 
 export interface ProposalSection {
   id?: string;

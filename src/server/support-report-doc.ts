@@ -177,7 +177,7 @@ export interface SupportReportData {
   periodLabel: string;
   overviewText: string;
   /** kpi_strip items for "Support performance". */
-  performanceItems: Array<{ value: string; label: string; context?: string }>;
+  performanceItems: Array<{ value: string; label: string; context?: string; emphasis?: boolean }>;
   /** data_table payload for "Ticket volume". */
   ticketVolume: { columns: string[]; rows: string[][]; caption: string };
   /** data_table payload for "By priority". */
@@ -256,7 +256,7 @@ export async function buildSupportReportData(input: {
 
   const performanceItems: SupportReportData["performanceItems"] = [
     { value: `${stats.totalTickets}`, label: "Conversations" },
-    { value: `${perf.resolvedCount}`, label: "Resolved", context: `${perf.resolutionRate}% resolution rate` },
+    { value: `${perf.resolvedCount}`, label: "Resolved", context: `${perf.resolutionRate}% resolution rate`, emphasis: true },
     { value: fmtDuration(perf.avgFirstResponseMs), label: "Avg first response" },
     { value: fmtDuration(perf.avgResolutionMs), label: "Avg resolution time" },
   ];
@@ -416,6 +416,18 @@ function buildReportSections(
   }, "Summary of the month's support activity.");
 
   push("kpi_strip", T.performance, { items: data.performanceItems }, "Key service metrics for the period.");
+
+  // Narrative breakdown scaffold (hand-written, like Support highlights) — a place for the
+  // "conversations by request type" write-up with a short note per type. Pre-seeded with examples
+  // to replace; "Pull in client data" never touches it.
+  push("breakdown", "Request breakdown", {
+    items: [
+      { label: "Subscription confusion (Stripe vs App Store)", count: "0", description: "Users who signed up on one platform but tried to cancel on another. Replace with this period's specifics." },
+      { label: "Billing & refund requests", count: "0", description: "Trial-to-paid conversions and duplicate-charge queries, handled per policy. Replace with specifics." },
+      { label: "Access & login issues", count: "0", description: "Password resets, verification, and access on active accounts. Replace with specifics." },
+    ],
+  }, "Conversations by request type.");
+
   push("data_table", T.ticketVolume, data.ticketVolume, "Breakdown of conversations by type.");
   push("data_table", T.priority, data.priority, "Conversations by priority.");
 

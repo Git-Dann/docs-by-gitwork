@@ -5,7 +5,7 @@
  * Pulse's stat tiles).
  */
 
-import { PlusIcon, TrashIcon, ChartBarSquareIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, TrashIcon, ChartBarSquareIcon, MoonIcon } from "@heroicons/react/24/outline";
 import { SimpleForm, FormInput } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
 import { InlineAddButton, InlineRemoveButton, InlineTextArea } from "@/lib/sections/inline-text";
@@ -52,15 +52,30 @@ export const kpiStripSection = defineSection<KpiStripSectionData>({
               <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
                 KPI {i + 1}
               </span>
-              <button
-                type="button"
-                onClick={() => remove(i)}
-                disabled={items.length <= 1}
-                aria-label="Remove KPI"
-                className="text-rose-600 hover:text-rose-700 disabled:opacity-30"
-              >
-                <TrashIcon className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => update(i, { emphasis: !item.emphasis })}
+                  aria-pressed={Boolean(item.emphasis)}
+                  title="Emphasise (dark card)"
+                  className={`inline-flex items-center gap-1 rounded-[6px] border px-1.5 py-0.5 text-[11px] font-medium transition ${
+                    item.emphasis
+                      ? "border-[var(--doc-panel-dark)] bg-[var(--doc-panel-dark)] text-white"
+                      : "border-[var(--border-2)] text-[var(--text-4)] hover:text-[var(--brand-700)]"
+                  }`}
+                >
+                  <MoonIcon className="h-3 w-3" /> Dark
+                </button>
+                <button
+                  type="button"
+                  onClick={() => remove(i)}
+                  disabled={items.length <= 1}
+                  aria-label="Remove KPI"
+                  className="text-rose-600 hover:text-rose-700 disabled:opacity-30"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                </button>
+              </div>
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
               <FormInput label="Value" value={item.value} onChange={(value) => update(i, { value })} placeholder="85%" />
@@ -93,9 +108,27 @@ export const kpiStripSection = defineSection<KpiStripSectionData>({
             className="grid gap-3"
             style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(items.length, 1), 6)}, minmax(0, 1fr))` }}
           >
-            {items.map((item, i) => (
-              <div key={i} className="group/row relative rounded-[10px] border border-[var(--border-2)] bg-white p-4">
-                <span className="absolute right-1 top-1">
+            {items.map((item, i) => {
+              const dark = Boolean(item.emphasis);
+              return (
+              <div
+                key={i}
+                className={`group/row relative rounded-[10px] border p-4 ${
+                  dark ? "border-[var(--doc-panel-dark)] bg-[var(--doc-panel-dark)]" : "border-[var(--border-2)] bg-white"
+                }`}
+              >
+                <span className="absolute right-1 top-1 flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => update(i, { emphasis: !dark })}
+                    aria-label="Toggle dark card"
+                    title="Toggle dark card"
+                    className={`inline-flex h-5 w-5 items-center justify-center rounded-[5px] transition ${
+                      dark ? "text-white/70 hover:text-white" : "text-[var(--text-4)] hover:text-[var(--brand-700)]"
+                    }`}
+                  >
+                    <MoonIcon className="h-3.5 w-3.5" />
+                  </button>
                   <InlineRemoveButton onClick={() => onChange({ ...data, items: items.filter((_, j) => j !== i) })} />
                 </span>
                 <InlineTextArea
@@ -103,7 +136,7 @@ export const kpiStripSection = defineSection<KpiStripSectionData>({
                   onChange={(context) => update(i, { context })}
                   placeholder="Context"
                   ariaLabel="KPI context"
-                  className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]"
+                  className={`font-mono text-[10px] font-semibold uppercase tracking-[0.12em] ${dark ? "text-white/55" : "text-[var(--text-4)]"}`}
                 />
                 <div className="mt-1.5">
                   <InlineTextArea
@@ -111,7 +144,7 @@ export const kpiStripSection = defineSection<KpiStripSectionData>({
                     onChange={(value) => update(i, { value })}
                     placeholder="85%"
                     ariaLabel="KPI value"
-                    className="font-[family-name:var(--font-display)] text-[32px] font-normal leading-none text-[var(--text-1)]"
+                    className={`font-[family-name:var(--font-display)] text-[32px] font-normal leading-none ${dark ? "text-white" : "text-[var(--text-1)]"}`}
                   />
                 </div>
                 <div className="mt-2">
@@ -120,11 +153,12 @@ export const kpiStripSection = defineSection<KpiStripSectionData>({
                     onChange={(label) => update(i, { label })}
                     placeholder="Retention"
                     ariaLabel="KPI label"
-                    className="text-sm text-[var(--text-3)]"
+                    className={`text-sm ${dark ? "text-white/70" : "text-[var(--text-3)]"}`}
                   />
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
           {items.length < 6 ? (
             <InlineAddButton label="Add KPI" onClick={() => onChange({ ...data, items: [...items, newKpi()] })} />
@@ -141,22 +175,27 @@ export const kpiStripSection = defineSection<KpiStripSectionData>({
         className="proposal-block-avoid grid gap-3"
         style={{ gridTemplateColumns: `repeat(${Math.min(items.length, 6)}, minmax(0, 1fr))` }}
       >
-        {items.map((item, i) => (
+        {items.map((item, i) => {
+          const dark = Boolean(item.emphasis);
+          return (
           <div
             key={i}
-            className="rounded-[10px] border border-[var(--border-2)] bg-white p-4"
+            className={`rounded-[10px] border p-4 ${
+              dark ? "border-[var(--doc-panel-dark)] bg-[var(--doc-panel-dark)]" : "border-[var(--border-2)] bg-white"
+            }`}
           >
             {item.context ? (
-              <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+              <p className={`font-mono text-[10px] font-semibold uppercase tracking-[0.12em] ${dark ? "text-white/55" : "text-[var(--text-4)]"}`}>
                 {item.context}
               </p>
             ) : null}
-            <p className={`font-[family-name:var(--font-display)] text-[32px] font-normal leading-none text-[var(--text-1)] ${item.context ? "mt-1.5" : ""}`}>
+            <p className={`font-[family-name:var(--font-display)] text-[32px] font-normal leading-none ${dark ? "text-white" : "text-[var(--text-1)]"} ${item.context ? "mt-1.5" : ""}`}>
               {item.value || "—"}
             </p>
-            <p className="mt-2 text-sm text-[var(--text-3)]">{item.label || "—"}</p>
+            <p className={`mt-2 text-sm ${dark ? "text-white/70" : "text-[var(--text-3)]"}`}>{item.label || "—"}</p>
           </div>
-        ))}
+          );
+        })}
       </div>
     );
   },

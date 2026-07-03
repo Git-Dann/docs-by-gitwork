@@ -14,6 +14,7 @@
  */
 
 import { assumptionsSection } from "@/lib/sections/assumptions";
+import { breakdownSection } from "@/lib/sections/breakdown";
 import { calloutSection } from "@/lib/sections/callout";
 import { checklistSection } from "@/lib/sections/checklist";
 import { codeSnippetSection } from "@/lib/sections/code-snippet";
@@ -70,6 +71,7 @@ export const SECTION_REGISTRY: Record<SectionKey, SectionType> = {
   assumptions: assumptionsSection,
   out_of_scope: outOfScopeSection,
   checklist: checklistSection,
+  breakdown: breakdownSection,
   data_table: dataTableSection,
   comparison_table: comparisonTableSection,
   faq: faqSection,

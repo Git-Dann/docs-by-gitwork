@@ -1661,6 +1661,7 @@ const SECTION_BLOCK_LABEL: Partial<Record<SectionKey, string>> = {
   product_overview: "Written sections",
   callout: "Callouts",
   checklist: "Checklists",
+  breakdown: "Breakdowns",
   data_table: "Tables",
   comparison_table: "Tables",
   faq: "FAQs",
