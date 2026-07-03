@@ -34,7 +34,7 @@ async function getPageData() {
   const configuredProviders: Provider[] = [];
 
   if (process.env.ANTHROPIC_API_KEY || workspace?.anthropicApiKey) {
-    configuredProviders.push({ id: "ANTHROPIC", label: "Claude", model: workspace?.anthropicModel ?? "claude-sonnet-4-6" });
+    configuredProviders.push({ id: "ANTHROPIC", label: "Claude", model: workspace?.anthropicModel ?? "claude-sonnet-5" });
   }
   if (process.env.OPENAI_API_KEY || workspace?.openaiApiKey) {
     configuredProviders.push({ id: "OPENAI", label: "OpenAI", model: workspace?.openaiModel ?? "gpt-4o" });

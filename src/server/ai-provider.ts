@@ -32,6 +32,19 @@ export interface ResolvedAiConfig {
   baseUrl: string | null;
 }
 
+/**
+ * Current-generation default model per provider — the single source of truth for
+ * fallback models when a workspace hasn't pinned its own. Every resolver (here,
+ * study.ts, pulse agents, route handlers) must read from this, never inline a literal.
+ * Within-tier generation is cost-neutral (Sonnet 5 = Sonnet 4.6 pricing, etc.).
+ */
+export const DEFAULT_MODELS: Record<AiProvider, string> = {
+  ANTHROPIC: "claude-sonnet-5",
+  OPENAI: "gpt-4o",
+  GEMINI: "gemini-2.0-flash",
+  LOCAL: "llama3.1",
+};
+
 /** Resolve the active provider, API key, model and (OpenAI-compatible) base URL. */
 export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
   const provider = (ws.aiProvider || "ANTHROPIC") as AiProvider;
@@ -40,7 +53,7 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
     return {
       provider,
       apiKey: process.env.OPENAI_API_KEY ?? ws.openaiApiKey ?? null,
-      model: ws.openaiModel ?? "gpt-4o",
+      model: ws.openaiModel ?? DEFAULT_MODELS.OPENAI,
       baseUrl: null,
     };
   }
@@ -48,7 +61,7 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
     return {
       provider,
       apiKey: process.env.GEMINI_API_KEY ?? ws.geminiApiKey ?? null,
-      model: ws.geminiModel ?? "gemini-2.0-flash",
+      model: ws.geminiModel ?? DEFAULT_MODELS.GEMINI,
       baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
     };
   }
@@ -56,14 +69,14 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
     return {
       provider,
       apiKey: ws.openaiApiKey ?? "local",
-      model: ws.localLlmModel ?? "llama3.1",
+      model: ws.localLlmModel ?? DEFAULT_MODELS.LOCAL,
       baseUrl: ws.localLlmUrl ?? "http://localhost:11434/v1",
     };
   }
   return {
     provider: "ANTHROPIC",
     apiKey: process.env.ANTHROPIC_API_KEY ?? ws.anthropicApiKey ?? null,
-    model: ws.anthropicModel ?? "claude-sonnet-4-6",
+    model: ws.anthropicModel ?? DEFAULT_MODELS.ANTHROPIC,
     baseUrl: null,
   };
 }
@@ -74,7 +87,7 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
  * ~3.75× cheaper than Sonnet on both input and output.
  */
 const LIGHT_MODELS: Partial<Record<AiProvider, string>> = {
-  ANTHROPIC: "claude-haiku-4-5-20251001",
+  ANTHROPIC: "claude-haiku-4-5",
   OPENAI: "gpt-4o-mini",
   // GEMINI: gemini-2.0-flash is already the cheapest tier — no change needed
   // LOCAL: no cost either way — keep workspace model
@@ -116,7 +129,12 @@ export async function completeText({ config, system, user, maxTokens = 1024, tie
       system: [{ type: "text" as const, text: system, cache_control: { type: "ephemeral" as const } }],
       messages: [{ role: "user", content: user }],
     });
-    const block = res.content[0];
+    // Current models return HTTP 200 with stop_reason "refusal" (empty/partial content) when a
+    // safety classifier declines — surface it rather than returning silent empty text.
+    if (res.stop_reason === "refusal") {
+      throw new Error("AI request was declined by a safety classifier (stop_reason: refusal).");
+    }
+    const block = res.content.find((b) => b.type === "text");
     return block && block.type === "text" ? block.text.trim() : "";
   }
 

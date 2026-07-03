@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
+import { DEFAULT_MODELS } from "@/server/ai-provider";
 
 export const dynamic = "force-dynamic";
 
@@ -53,10 +54,11 @@ Extract the following fields:
 - confidence: Your confidence in the extraction quality — "HIGH" if the brief is detailed and clear, "MEDIUM" if some information is vague or missing, "LOW" if the brief is very sparse or unclear`;
 
 export async function POST(request: Request) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const { workspace } = await ensureBaseRecords();
+  const apiKey = process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey;
   if (!apiKey) {
     return NextResponse.json(
-      { error: "AI key is not configured. Add ANTHROPIC_API_KEY to your environment variables to enable brief analysis." },
+      { error: "AI key is not configured. Add an Anthropic key in Settings → Integrations (or ANTHROPIC_API_KEY) to enable brief analysis." },
       { status: 503 },
     );
   }
@@ -77,8 +79,9 @@ export async function POST(request: Request) {
   }
 
   const { brief } = parsed.data;
-  const { workspace } = await ensureBaseRecords();
-  const MODEL = "claude-opus-4-6";
+  // Resolve from workspace settings (tunable, honors the no-hardcoded-model rule); a brief is a
+  // structured-extraction task, so the Sonnet-tier default is the right fit — no Opus needed.
+  const MODEL = workspace.anthropicModel ?? DEFAULT_MODELS.ANTHROPIC;
 
   // Workspace-cached: if any teammate already analysed this exact brief text, return the
   // cached structured analysis instead of paying for another Opus call. The brief content
@@ -98,7 +101,10 @@ export async function POST(request: Request) {
           system: SYSTEM_PROMPT,
           messages: [{ role: "user", content: brief }],
         });
-        const block = message.content[0];
+        if (message.stop_reason === "refusal") {
+          throw new Error("AI declined to analyse this brief (safety refusal).");
+        }
+        const block = message.content.find((b) => b.type === "text");
         if (!block || block.type !== "text") {
           throw new Error("Unexpected response format from AI.");
         }

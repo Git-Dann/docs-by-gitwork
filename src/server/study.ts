@@ -6,6 +6,7 @@ import { conductInterview } from "@/server/study-agents/persona";
 import { synthesizeTurn, synthesizeSession, generateReport } from "@/server/study-agents/synthesizer";
 import type { StudyTurn, SessionTranscript, SessionSynthesis, ResearchPlanOutput } from "@/server/study-agents/types";
 import type { AiConfig } from "@/server/pulse-ai";
+import { resolveAiConfig as resolveWorkspaceAiConfig } from "@/server/ai-provider";
 
 // ── Serialization ─────────────────────────────────────────────────────────────
 
@@ -119,18 +120,10 @@ async function getWorkspace() {
   return workspace;
 }
 
+// Delegate to the shared resolver (single source of truth for defaults) — the returned
+// ResolvedAiConfig is structurally the AiConfig this module uses.
 function resolveAiConfig(workspace: Awaited<ReturnType<typeof getWorkspace>>): AiConfig {
-  const provider = (workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
-  if (provider === "OPENAI") {
-    return { provider, apiKey: process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null, model: workspace.openaiModel ?? "gpt-4o", baseUrl: null };
-  }
-  if (provider === "GEMINI") {
-    return { provider, apiKey: process.env.GEMINI_API_KEY ?? workspace.geminiApiKey ?? null, model: workspace.geminiModel ?? "gemini-2.0-flash", baseUrl: `https://generativelanguage.googleapis.com/v1beta/openai` };
-  }
-  if (provider === "LOCAL") {
-    return { provider, apiKey: workspace.openaiApiKey ?? "local", model: workspace.localLlmModel ?? "llama3.1", baseUrl: workspace.localLlmUrl ?? "http://localhost:11434/v1" };
-  }
-  return { provider: "ANTHROPIC", apiKey: process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null, model: workspace.anthropicModel ?? "claude-sonnet-4-6", baseUrl: null };
+  return resolveWorkspaceAiConfig(workspace);
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────

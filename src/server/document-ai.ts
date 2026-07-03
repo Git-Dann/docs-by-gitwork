@@ -29,7 +29,7 @@ import { prisma } from "@/lib/prisma";
 import { SECTION_REGISTRY } from "@/lib/sections/registry";
 import type { ProposalDocument, ProposalSection, SectionKey } from "@/types/proposal";
 
-const DEFAULT_MODEL = "claude-sonnet-4-5-20250929";
+const DEFAULT_MODEL = "claude-sonnet-5";
 
 // ── Errors ────────────────────────────────────────────────────────────────
 
@@ -295,6 +295,9 @@ export async function draftDocument(input: DraftDocumentInput): Promise<DraftDoc
     messages: [{ role: "user", content: userMessage }],
   });
 
+  if (response.stop_reason === "refusal") {
+    throw new Error("AI declined this draft (safety refusal).");
+  }
   const toolUse = response.content.find((block) => block.type === "tool_use");
   if (!toolUse || toolUse.type !== "tool_use") {
     throw new Error("AI did not return a structured draft. Try again with a clearer brief.");
@@ -406,7 +409,8 @@ export async function expandSection(input: ExpandSectionInput): Promise<ExpandSe
   const response = await client.messages.create({
     model,
     max_tokens: 4096,
-    system: systemPrompt,
+    // Cache the (large, reused) system prompt for parity with the full-draft call above.
+    system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
     tools: [
       {
         name: "submit_section",
@@ -428,6 +432,9 @@ export async function expandSection(input: ExpandSectionInput): Promise<ExpandSe
     messages: [{ role: "user", content: userMessage }],
   });
 
+  if (response.stop_reason === "refusal") {
+    throw new Error("AI declined this rewrite (safety refusal).");
+  }
   const toolUse = response.content.find((block) => block.type === "tool_use");
   if (!toolUse || toolUse.type !== "tool_use") {
     throw new Error("AI did not return a structured section. Try again.");
