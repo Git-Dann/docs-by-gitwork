@@ -101,8 +101,14 @@ function fontFilename(face: FontFace): string {
 
 // ── font pack ─────────────────────────────────────────────────────────────────
 
-/** Fetches and bundles actual woff2 font files from Google Fonts. */
-export async function buildFontPack(tokens: DesignTokens): Promise<Uint8Array> {
+/**
+ * Fetches woff2 files from Google Fonts and returns the file map (fonts/*.woff2,
+ * fonts.css, tailwind.js) plus the family list — shared by the font-only pack and
+ * the full design-system pack.
+ */
+async function collectFontFiles(
+  tokens: DesignTokens,
+): Promise<{ files: Record<string, Uint8Array>; families: string[] }> {
   const gfUrl = googleFontsUrl(tokens);
   const families = collectFamilies(tokens);
 
@@ -179,14 +185,20 @@ export async function buildFontPack(tokens: DesignTokens): Promise<Uint8Array> {
     .filter((l) => l !== null)
     .join("\n");
 
+  files["fonts.css"] = strToU8(fontsCss);
+  files["tailwind.js"] = strToU8(tailwindLines);
+
+  return { files, families };
+}
+
+function fontReadme(tokens: DesignTokens, families: string[]): string {
   const scaleRows = tokens.typography.scale
     .map(
       (t) =>
         `| ${t.role.padEnd(18)} | ${t.fontFamily.padEnd(22)} | ${String(t.fontWeight).padEnd(6)} | ${t.fontSize.padEnd(7)} | ${String(t.lineHeight).padEnd(4)} |`,
     )
     .join("\n");
-
-  const readme = [
+  return [
     `# ${tokens.clientName} — Font Pack`,
     "",
     "## Families",
@@ -208,11 +220,12 @@ export async function buildFontPack(tokens: DesignTokens): Promise<Uint8Array> {
     "2. Add `@import './fonts.css';` at the top of your global stylesheet.",
     "3. Use the CSS variables (`var(--font-body)` etc.) or the Tailwind snippet.",
   ].join("\n");
+}
 
-  files["fonts.css"] = strToU8(fontsCss);
-  files["tailwind.js"] = strToU8(tailwindLines);
-  files["README.md"] = strToU8(readme);
-
+/** Fetches and bundles actual woff2 font files from Google Fonts. */
+export async function buildFontPack(tokens: DesignTokens): Promise<Uint8Array> {
+  const { files, families } = await collectFontFiles(tokens);
+  files["README.md"] = strToU8(fontReadme(tokens, families));
   return zipSync(files);
 }
 
@@ -260,14 +273,11 @@ async function fetchAsBytes(url: string): Promise<Uint8Array | null> {
   }
 }
 
-/**
- * Fetches the client's uploaded logo and any logoRules assets with a downloadUrl,
- * then bundles them into a ZIP with usage rules in README.md.
- */
-export async function buildLogoPack(
+/** Fetch the client logo + any logoRules assets → { "logos/*": bytes } file map. */
+async function collectLogoFiles(
   tokens: DesignTokens,
   clientLogoUrl?: string | null,
-): Promise<Uint8Array> {
+): Promise<Record<string, Uint8Array>> {
   const files: Record<string, Uint8Array> = {};
 
   // Client's uploaded logo
@@ -297,6 +307,11 @@ export async function buildLogoPack(
     }),
   );
 
+  return files;
+}
+
+function logoReadme(tokens: DesignTokens, clientLogoUrl?: string | null): string {
+  const assets = tokens.logoRules?.assets ?? [];
   const lr = tokens.logoRules;
   const readmeParts = [`# ${tokens.clientName} — Logo Pack`, ""];
 
@@ -329,9 +344,116 @@ export async function buildLogoPack(
 
   if (lr?.notes) readmeParts.push(`## Notes\n${lr.notes}`, "");
 
-  files["README.md"] = strToU8(readmeParts.join("\n"));
+  return readmeParts.join("\n");
+}
 
+/**
+ * Fetches the client's uploaded logo and any logoRules assets with a downloadUrl,
+ * then bundles them into a ZIP with usage rules in README.md.
+ */
+export async function buildLogoPack(
+  tokens: DesignTokens,
+  clientLogoUrl?: string | null,
+): Promise<Uint8Array> {
+  const files = await collectLogoFiles(tokens, clientLogoUrl);
+  files["README.md"] = strToU8(logoReadme(tokens, clientLogoUrl));
   return zipSync(files);
+}
+
+// ── full design-system pack ─────────────────────────────────────────────────────
+
+/** Slugify a client name for the download folder/filename. */
+function slugify(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "design-system"
+  );
+}
+
+/**
+ * The whole design system, one organised folder:
+ *   <slug>-design-system/
+ *     README.md
+ *     tokens/    tokens.json · tokens.css · colours.json
+ *     fonts/     *.woff2 · fonts.css · tailwind.js
+ *     logos/     logo files + LOGO-USAGE.md
+ *     brand-guidelines.pdf   (when the guidelines PDF is supplied)
+ * Fonts/logos are fetched best-effort; a missing asset just omits that file.
+ */
+export async function buildDesignSystemPack(
+  tokens: DesignTokens,
+  opts?: { clientLogoUrl?: string | null; guidelinesPdf?: Uint8Array | null },
+): Promise<Uint8Array> {
+  const root = `${slugify(tokens.clientName)}-design-system`;
+  const out: Record<string, Uint8Array> = {};
+  const put = (path: string, data: Uint8Array) => {
+    out[`${root}/${path}`] = data;
+  };
+
+  // Fonts (best-effort — network fetch from Google Fonts).
+  try {
+    const { files } = await collectFontFiles(tokens);
+    for (const [name, data] of Object.entries(files)) {
+      // Nest everything under fonts/: "fonts/x.woff2" → fonts/x.woff2, "fonts.css" → fonts/fonts.css.
+      put(`fonts/${name.replace(/^fonts\//, "")}`, data);
+    }
+  } catch {
+    /* skip fonts on failure */
+  }
+
+  // Logos (best-effort).
+  try {
+    const logoFiles = await collectLogoFiles(tokens, opts?.clientLogoUrl);
+    for (const [name, data] of Object.entries(logoFiles)) {
+      put(name, data); // already keyed "logos/…"
+    }
+    put("logos/LOGO-USAGE.md", strToU8(logoReadme(tokens, opts?.clientLogoUrl)));
+  } catch {
+    /* skip logos on failure */
+  }
+
+  // Tokens — machine-readable JSON, the ready-to-paste :root CSS, and colours.
+  put("tokens/tokens.json", strToU8(JSON.stringify(tokens, null, 2)));
+  if (tokens.cssVariables?.trim()) put("tokens/tokens.css", strToU8(tokens.cssVariables));
+  const colours = {
+    primary: tokens.colours.primary,
+    secondary: tokens.colours.secondary,
+    neutrals: tokens.colours.neutrals,
+  };
+  put("tokens/colours.json", strToU8(JSON.stringify(colours, null, 2)));
+
+  // Brand guidelines PDF, when provided.
+  if (opts?.guidelinesPdf) put("brand-guidelines.pdf", opts.guidelinesPdf);
+
+  put(
+    "README.md",
+    strToU8(
+      [
+        `# ${tokens.clientName} — Design System`,
+        "",
+        "Everything needed to build on-brand, organised in one folder.",
+        "",
+        "## Contents",
+        "- `tokens/tokens.json` — every design token (colours, type, spacing, radius, shadows)",
+        "- `tokens/tokens.css` — the complete `:root {}` custom properties, ready to paste",
+        "- `tokens/colours.json` — the colour palette on its own",
+        "- `fonts/` — self-hosted woff2 files + `fonts.css` (`@font-face`) + a Tailwind snippet",
+        "- `logos/` — logo files + `LOGO-USAGE.md` (clear space, min sizes, do's & don'ts)",
+        opts?.guidelinesPdf ? "- `brand-guidelines.pdf` — the full branded guidelines deck" : null,
+        "",
+        "## Quick start",
+        "1. Copy `fonts/` + `fonts.css` into your project and `@import './fonts.css'`.",
+        "2. Paste `tokens/tokens.css` into your global stylesheet (or import it).",
+        "3. Reference tokens via CSS variables, e.g. `color: var(--color-primary)`.",
+      ]
+        .filter((l): l is string => l !== null)
+        .join("\n"),
+    ),
+  );
+
+  return zipSync(out);
 }
 
 // ── download trigger ──────────────────────────────────────────────────────────

@@ -161,6 +161,7 @@ export function DesignSystemWorkspace({
   // Tokens is always the default view; Guidelines only when the client opts in.
   const [view, setView] = useState<"tokens" | "guidelines">("tokens");
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [systemBusy, setSystemBusy] = useState(false);
   const deckRef = useRef<HTMLDivElement>(null);
   const activeView = guidelinesEnabled ? view : "tokens";
 
@@ -180,6 +181,25 @@ export function DesignSystemWorkspace({
       /* export failed — surface nothing; the deck stays on screen */
     } finally {
       setPdfBusy(false);
+    }
+  }
+
+  /** Download the whole design system as one organised folder (tokens, fonts, logos). */
+  async function handleDownloadSystem() {
+    if (!tokens) return;
+    setSystemBusy(true);
+    try {
+      const { buildDesignSystemPack, triggerDownload } = await import("@/lib/design-system-zip");
+      const zip = await buildDesignSystemPack(tokens, { clientLogoUrl: client?.logoUrl ?? null });
+      const base = (tokens.clientName ?? client?.name ?? slug)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      triggerDownload(zip, `${base}-design-system.zip`);
+    } catch {
+      /* swallow — network/asset fetch can fail; nothing to surface inline */
+    } finally {
+      setSystemBusy(false);
     }
   }
 
@@ -373,6 +393,18 @@ export function DesignSystemWorkspace({
               </MenuItems>
             </Menu>
             )}
+
+            {/* Download the whole design system — organised folder (tokens, fonts, logos). */}
+            <button
+              type="button"
+              onClick={() => void handleDownloadSystem()}
+              disabled={systemBusy}
+              className={chipBtn}
+              title="Download the full design system — tokens, fonts & logos in one folder"
+            >
+              <ArrowDownTrayIcon className="h-4 w-4" />
+              {systemBusy ? "Packaging…" : "Download"}
+            </button>
 
             {/* Maintenance — Copy CSS / Update / Logos */}
             <Menu as="div" className="relative">
