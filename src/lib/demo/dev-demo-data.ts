@@ -332,6 +332,84 @@ export const demoGanttMilestones: GanttMilestone[] = [
   { id: "ms2", name: "Public launch", date: atDays(52), color: "rose" },
 ];
 
+// ─── Design system (Northwind brand tokens) ─────────────────────────────────────
+
+const demoDesignTokens = {
+  clientName: "Northwind Studio",
+  version: "1.0",
+  generatedAt: atDays(-6),
+  brandVoice: "Stories worth staying in for.",
+  colours: {
+    primary: [
+      { name: "Midnight", hex: "#0B1020", rgb: "rgb(11, 16, 32)", role: "primary", usage: "Primary surfaces, headers and key emphasis." },
+      { name: "Aurora Teal", hex: "#14B8A6", rgb: "rgb(20, 184, 166)", role: "primary", usage: "Primary actions, links and highlights." },
+    ],
+    secondary: [
+      { name: "Signal Coral", hex: "#FF5D5D", rgb: "rgb(255, 93, 93)", role: "accent", usage: "Playful accents and 'live' indicators." },
+      { name: "Amber", hex: "#F59E0B", rgb: "rgb(245, 158, 11)", role: "accent", usage: "Badges and warnings." },
+    ],
+    neutrals: [
+      { name: "Ink", hex: "#0F172A", role: "neutral", usage: "Body text on light surfaces." },
+      { name: "Slate", hex: "#475569", role: "neutral", usage: "Secondary text and borders." },
+      { name: "Mist", hex: "#E2E8F0", role: "neutral", usage: "Dividers and card borders." },
+      { name: "Cloud", hex: "#F8FAFC", role: "neutral", usage: "Page and card backgrounds." },
+    ],
+  },
+  gradients: [
+    { name: "Aurora", css: "linear-gradient(135deg, #14B8A6 0%, #0B1020 100%)", usage: "Hero bands and feature spots." },
+  ],
+  typography: {
+    displayFont: "Clash Display",
+    bodyFont: "Inter",
+    systemFallback: "system-ui, -apple-system, sans-serif",
+    monoFont: "JetBrains Mono",
+    scale: [
+      { role: "display", fontFamily: "Clash Display", fontWeight: 600, fontSize: "44px", lineHeight: 1.05, letterSpacing: "-0.02em", usage: "Hero headlines.", sample: "Watch what moves you" },
+      { role: "h1", fontFamily: "Clash Display", fontWeight: 600, fontSize: "32px", lineHeight: 1.1, usage: "Page titles." },
+      { role: "h2", fontFamily: "Clash Display", fontWeight: 500, fontSize: "24px", lineHeight: 1.2, usage: "Section headings." },
+      { role: "body", fontFamily: "Inter", fontWeight: 400, fontSize: "16px", lineHeight: 1.5, usage: "Body copy." },
+      { role: "label", fontFamily: "Inter", fontWeight: 500, fontSize: "13px", lineHeight: 1.3, textTransform: "uppercase", letterSpacing: "0.06em", usage: "Labels and eyebrows." },
+      { role: "caption", fontFamily: "Inter", fontWeight: 400, fontSize: "12px", lineHeight: 1.4, usage: "Captions and metadata." },
+    ],
+  },
+  spacing: { base: 8, scale: { "1": "8px", "2": "16px", "3": "24px", "4": "32px", "6": "48px", "8": "64px" } },
+  radius: { none: "0px", sm: "6px", md: "10px", lg: "16px", xl: "24px", full: "9999px" },
+  shadows: [
+    { name: "sm", css: "0 1px 2px rgba(11,16,32,0.08)", usage: "Cards at rest." },
+    { name: "md", css: "0 6px 20px -8px rgba(11,16,32,0.18)", usage: "Raised cards and menus." },
+    { name: "lg", css: "0 20px 40px -12px rgba(11,16,32,0.28)", usage: "Modals and overlays." },
+  ],
+  buttons: [
+    { name: "Primary", background: "#14B8A6", textColour: "#04231F", hoverBackground: "#0E9488", surfaces: ["light", "dark"], usage: "Primary action, one per view." },
+    { name: "Secondary", background: "transparent", textColour: "#0F172A", border: "1px solid #CBD5E1", surfaces: ["light"], usage: "Secondary actions." },
+    { name: "Ghost", background: "transparent", textColour: "#14B8A6", surfaces: ["light", "dark"], usage: "Low-emphasis / inline actions." },
+  ],
+  badges: [
+    { label: "Live", background: "#FF5D5D", textColour: "#FFFFFF", group: "status" },
+    { label: "New", background: "#14B8A6", textColour: "#04231F", group: "status" },
+    { label: "Beta", background: "#F59E0B", textColour: "#241703", group: "status" },
+  ],
+  logoRules: {
+    clearSpace: "Keep clear space equal to the height of the 'N' logomark on all sides.",
+    minSizes: { horizontal: "120px", logomark: "24px" },
+    rules: ["Don't recolour the logomark", "Don't stretch or rotate", "Don't place on low-contrast imagery without the scrim"],
+  },
+  cssVariables:
+    ":root {\n  --colour-primary: #14B8A6;\n  --colour-ink: #0F172A;\n  --colour-midnight: #0B1020;\n  --radius-md: 10px;\n  --font-display: 'Clash Display';\n  --font-body: 'Inter';\n}",
+};
+
+const demoDesignSystem = {
+  exists: true,
+  enabled: true,
+  showFoundryBranding: true,
+  guidelinesEnabled: true,
+  tokens: demoDesignTokens,
+  status: "ACTIVE",
+  updatedAt: atDays(-3),
+  updatedBy: "Alex Rivera",
+  share: { enabled: false, token: null, url: null },
+};
+
 // ─── Client wiki (WikiDTO) ───────────────────────────────────────────────────────
 
 /** Build a plausible monitor history strip: mostly UP, a couple of blips. */
@@ -417,7 +495,7 @@ const demoWiki = {
   ],
   courseRequests: [],
   timeline: { blocks: demoGanttBlocks, milestones: demoGanttMilestones },
-  designSystem: null,
+  designSystem: { tokens: demoDesignTokens, logoUrl: null, showFoundryBranding: true, guidelinesEnabled: true },
   monitors: {
     enabled: true,
     monitors: [
@@ -599,7 +677,7 @@ const demoClientMeetings = {
       attendees: ["priya@northwind.co", "ops@northwind.co", "alex@gitwork.co.uk"],
       status: "SUMMARISED",
       summary:
-        "Status update across all workstreams. Foundations complete; payments phase renamed to search & discovery after scope change. No blockers.",
+        "Status update across all workstreams. Foundations complete; search & discovery is the current focus after a scope change. No blockers.",
       decisions: ["Weekly syncs move to Thursdays."],
       modelUsed: "gemini",
       createdAt: atDays(-8),
@@ -690,8 +768,111 @@ function buildDemoDoc(item: (typeof demoProposals.proposals)[number]) {
   };
 }
 
+/** A full, realistic API-handover document (the demo's flagship doc). */
+function buildApiHandoverDoc(item: (typeof demoProposals.proposals)[number]) {
+  return {
+    id: item.id,
+    workspaceId: "demo-ws",
+    ownerId: "demo-dev",
+    documentType: item.documentType,
+    status: item.status,
+    title: item.title,
+    clientName: item.clientName,
+    clientId: null,
+    version: "v1.0",
+    documentNumber: item.documentNumber ?? "HAND-014",
+    isShared: true,
+    labels: ["api", "handover"],
+    metadata: { client: item.clientName, owner: item.ownerName ?? "Alex Rivera", version: "v1.0", productSignOff: true, techSignOff: true, approvalChecked: true },
+    exportSettings: {},
+    updatedAt: item.updatedAt,
+    createdAt: atDays(-14),
+    sections: [
+      {
+        key: "introduction", title: "Overview", description: "What this document covers.", sortOrder: 0, isVisible: true,
+        data: {
+          statement: "This document hands over the Northwind public API — everything your team needs to run against it, integrate with it, and operate it without a call.",
+          summary: "It covers environments, authentication, the core endpoints, webhooks, rate limits and the common gotchas, plus a handover checklist.",
+          graphic: "",
+        },
+      },
+      {
+        key: "heading", title: "Getting started", sortOrder: 1, isVisible: true,
+        data: { eyebrow: "Reference", text: "Getting started", level: 2 },
+      },
+      {
+        key: "prose", title: "Base URLs & environments", sortOrder: 2, isVisible: true,
+        data: {
+          content:
+            "The API is versioned under `/v1`. There are two environments:\n\n- **Production** — `https://api.northwind.co/v1`\n- **Staging** — `https://api.staging.northwind.co/v1`\n\nAll requests and responses are JSON (`Content-Type: application/json`). Timestamps are ISO-8601 in UTC. Use **staging** for integration testing — it's reset nightly and safe to hammer.",
+        },
+      },
+      {
+        key: "prose", title: "Authentication", sortOrder: 3, isVisible: true,
+        data: {
+          content:
+            "Authenticate with a **bearer token** in the `Authorization` header:\n\n`Authorization: Bearer nw_live_xxx`\n\nTokens are issued per-integration from the Northwind dashboard (Settings → API keys). Live keys are prefixed `nw_live_`, test keys `nw_test_`. **Never** ship a live key in a mobile or web client — proxy through your backend.",
+        },
+      },
+      {
+        key: "callout", title: "Rate limits", sortOrder: 4, isVisible: true,
+        data: {
+          tone: "info",
+          headline: "Rate limits",
+          body: "600 requests/min per token. When you exceed it you'll get a 429 with a Retry-After header (seconds) — back off and retry. Bulk reads should page rather than poll tightly.",
+        },
+      },
+      {
+        key: "prose", title: "Core endpoints", sortOrder: 5, isVisible: true,
+        data: {
+          content:
+            "The resources you'll use most:\n\n- `GET /v1/titles` — list catalogue titles (paginated, `?cursor=` + `?limit=`)\n- `GET /v1/titles/{id}` — a single title with credits and artwork\n- `GET /v1/collections` — curated rails (New releases, Because you watched…)\n- `GET /v1/search?q=` — full-text search across titles, people and collections\n- `POST /v1/watch-events` — record a playback position (powers continue-watching)\n\nList endpoints are **cursor-paginated**: follow `next_cursor` until it's null.",
+        },
+      },
+      {
+        key: "prose", title: "Webhooks", sortOrder: 6, isVisible: true,
+        data: {
+          content:
+            "Subscribe to events in the dashboard. We POST a signed JSON payload to your endpoint:\n\n- `title.published` · `title.updated` · `title.removed`\n- `collection.updated`\n\nEvery delivery includes an `X-Northwind-Signature` header (HMAC-SHA256 of the raw body with your signing secret) — **verify it** before trusting the payload. We retry failed deliveries with exponential backoff for 24h.",
+        },
+      },
+      {
+        key: "faq", title: "Gotchas & FAQ", sortOrder: 7, isVisible: true,
+        data: {
+          intro: "The things that trip people up.",
+          items: [
+            { question: "Why am I getting 404s on staging for a title that exists in prod?", answer: "Staging is reset nightly from a curated subset — not every prod title exists there. Use the staging catalogue for test IDs." },
+            { question: "How do I handle a 429?", answer: "Read the Retry-After header (seconds) and retry after that delay. Don't retry immediately in a tight loop." },
+            { question: "Webhook signatures don't match — why?", answer: "You must HMAC the RAW request body, before any JSON parsing/re-serialisation. Re-serialised bodies change whitespace and break the signature." },
+            { question: "Are IDs stable?", answer: "Yes — title and collection IDs are stable and safe to store. Slugs can change, so key off IDs." },
+          ],
+        },
+      },
+      {
+        key: "prose", title: "Handover checklist", sortOrder: 8, isVisible: true,
+        data: {
+          content:
+            "Before we close this out, confirm:\n\n- [x] Staging API key issued to your team\n- [x] Postman collection shared in **#northwind-dev**\n- [x] Webhook endpoint registered + signature verification tested\n- [ ] Production key issued (on go-live)\n- [ ] On-call rota confirmed for launch week",
+        },
+      },
+      {
+        key: "cta_next_steps", title: "Handover complete", sortOrder: 9, isVisible: true,
+        data: {
+          headline: "Questions after today?",
+          body: "Post in #northwind-dev or ping Alex Rivera — this doc stays the source of truth and is kept up to date.",
+        },
+      },
+    ],
+    costLineItems: [],
+    timelinePhases: [],
+    assets: [],
+    links: [],
+    ctas: [],
+  };
+}
+
 const demoDocsById: Record<string, unknown> = Object.fromEntries(
-  demoProposals.proposals.map((p) => [p.id, buildDemoDoc(p)]),
+  demoProposals.proposals.map((p) => [p.id, p.id === "d1" ? buildApiHandoverDoc(p) : buildDemoDoc(p)]),
 );
 
 /** Full renderable document for the Docs preview page, by id (falls back to d1). */
@@ -881,6 +1062,9 @@ export function resolveDemoApi(pathname: string): unknown {
   }
   if (/^\/api\/clients\/[^/]+\/meetings$/.test(pathname)) {
     return demoClientMeetings;
+  }
+  if (/^\/api\/clients\/[^/]+\/design-system$/.test(pathname)) {
+    return demoDesignSystem;
   }
   // Single client — GET /api/clients/{slug} (exact; not a sub-resource).
   if (/^\/api\/clients\/[^/]+$/.test(pathname)) {

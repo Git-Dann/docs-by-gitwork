@@ -23,7 +23,9 @@ export function useDemoLinkReroute() {
     if (/^\/app\/portal\/[^/]+\/wiki/.test(href)) router.push("/demo/wiki");
     else if (/^\/app\/portal\/[^/]+\/tasks/.test(href)) router.push("/demo/tasks");
     else if (/^\/app\/portal\/[^/]+$/.test(href)) router.push("/demo/portal");
-    else if (docMatch && docMatch[1] !== "analytics") router.push(`/demo/docs/${docMatch[1]}`);
+    else if (docMatch && docMatch[1] !== "analytics")
+      // Open on the Builder tab so the rich section content shows (not the empty Overview summary).
+      router.push(`/demo/docs/${docMatch[1]}?tab=builder`);
     // else: swallow — don't leave the demo into the gated app.
   };
 }
