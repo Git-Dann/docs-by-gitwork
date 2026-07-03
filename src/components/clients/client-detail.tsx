@@ -30,15 +30,13 @@ import {
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { LogoImagePicker } from "@/components/ui/logo-image-picker";
 import { CountrySelect, PhoneInput, WebsiteInput } from "@/components/ui/contact-fields";
 import { ClientDesignFormModal } from "@/components/clients/client-design-form";
 import { ClientPlatformFormModal } from "@/components/clients/client-platform-form";
-import { ProductTeamCard } from "@/components/clients/product-team-card";
-import { usePermissions } from "@/hooks/use-permissions";
 import { StatusBadge } from "@/components/status-badge";
 import {
   useClientDetail,
@@ -57,6 +55,8 @@ import {
   useUpdateClient,
   useUpdateClientDesign,
   useUpdateClientPlatform,
+  useTeamMembers,
+  useUpdateClientProductTeam,
 } from "@/hooks/use-proposals";
 import { useCreateTask, useDeleteTask, useTasks } from "@/hooks/use-tasks";
 import { cn, formatDate, taskRef } from "@/lib/format";
@@ -94,6 +94,8 @@ type EditFormState = {
   slackExternalChannelId: string;
   retainerDays: string;
   retainerDaysUsed: string;
+  /** Gitwork product/account leads shown on the wiki header (User ids, in order). */
+  productTeamUserIds: string[];
 };
 
 /** Field-type validation for the edit-client form. Returns the first error, or null if valid. */
@@ -279,7 +281,6 @@ function LeadWorkspace({
 
 export function ClientDetail({ slug }: { slug: string }) {
   const router = useRouter();
-  const { canManageClients } = usePermissions();
   const { data, isPending, error } = useClientDetail(slug);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
@@ -300,6 +301,7 @@ export function ClientDetail({ slug }: { slug: string }) {
   const [deletingDesignId, setDeletingDesignId] = useState<string | null>(null);
 
   const updateClientMutation = useUpdateClient(slug);
+  const productTeamMutation = useUpdateClientProductTeam(slug);
   const createPlatformMutation = useCreateClientPlatform(slug);
   const createDesignMutation = useCreateClientDesign(slug);
   const slackActivity = useClientSlackActivity(slug);
@@ -375,6 +377,7 @@ export function ClientDetail({ slug }: { slug: string }) {
       slackExternalChannelId: client.slackExternalChannelId ?? "",
       retainerDays: client.retainerDays != null ? String(client.retainerDays) : "",
       retainerDaysUsed: client.retainerDaysUsed != null ? String(client.retainerDaysUsed) : "",
+      productTeamUserIds: client.productTeamUserIds ?? [],
     });
     setEditing(true);
   }
@@ -409,6 +412,15 @@ export function ClientDetail({ slug }: { slug: string }) {
         retainerDays: editForm.retainerDays.trim() === "" ? null : Number(editForm.retainerDays),
         retainerDaysUsed: editForm.retainerDaysUsed.trim() === "" ? null : Number(editForm.retainerDaysUsed),
       });
+      // Product team saves via its own endpoint (String[] doesn't fit the contact
+      // update path). Only write when it actually changed.
+      const prevTeam = client.productTeamUserIds ?? [];
+      const nextTeam = editForm.productTeamUserIds;
+      const teamChanged =
+        prevTeam.length !== nextTeam.length || prevTeam.some((id, i) => id !== nextTeam[i]);
+      if (teamChanged) {
+        await productTeamMutation.mutateAsync(nextTeam);
+      }
       setEditing(false);
       setEditForm(null);
       // Renaming changes the slug; the current route (/app/portal/[oldSlug]) would 404
@@ -705,11 +717,6 @@ export function ClientDetail({ slug }: { slug: string }) {
           }
         />
       </div>
-
-      {/* ── PRODUCT TEAM (wiki header) — managers only ── */}
-      {canManageClients && (
-        <ProductTeamCard slug={slug} initialUserIds={client.productTeamUserIds} />
-      )}
 
       {/* ── 07 // SLACK ACTIVITY ── */}
       <section className="widget-card">
@@ -3095,6 +3102,116 @@ function SlackProvisionRetry({
   );
 }
 
+/**
+ * Product-team multi-select for the Edit-client modal. Shows the chosen Gitwork
+ * leads as removable chips + a searchable "+ Add" dropdown (not a wall of every
+ * member). Selection order is preserved. These surface as the "Product" avatars
+ * on the client wiki header.
+ */
+function ProductTeamField({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const membersQuery = useTeamMembers();
+  const members = membersQuery.data?.members ?? [];
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const byId = new Map(members.map((m) => [m.userId, m] as const));
+  const label = (id: string) => {
+    const m = byId.get(id);
+    return m ? m.name?.trim() || m.email : id;
+  };
+  const q = query.trim().toLowerCase();
+  const available = members.filter(
+    (m) => !value.includes(m.userId) && (!q || (m.name ?? m.email).toLowerCase().includes(q)),
+  );
+
+  return (
+    <div>
+      <span className="app-field-label">Product team (wiki)</span>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {value.map((id) => (
+          <span
+            key={id}
+            className="inline-flex items-center gap-1 rounded-full bg-[var(--brand-50)] py-1 pl-2.5 pr-1.5 text-[12px] font-medium text-[var(--brand-700)]"
+          >
+            {label(id)}
+            <button
+              type="button"
+              onClick={() => onChange(value.filter((x) => x !== id))}
+              aria-label={`Remove ${label(id)}`}
+              className="leading-none text-[var(--brand-700)]/60 transition hover:text-[var(--brand-700)]"
+            >
+              <XMarkIcon className="h-3.5 w-3.5" />
+            </button>
+          </span>
+        ))}
+        <div ref={ref} className="relative">
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="inline-flex items-center gap-1 rounded-full border border-dashed border-[var(--border-2)] px-2.5 py-1 text-[12px] text-[var(--text-3)] transition hover:border-[var(--brand-500)] hover:text-[var(--text-1)]"
+          >
+            <PlusIcon className="h-3.5 w-3.5" />
+            Add
+          </button>
+          {open && (
+            <div className="absolute left-0 top-full z-50 mt-1.5 w-60 overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.1)] bg-white shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)]">
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search members…"
+                className="w-full border-b border-[var(--border-1)] px-3 py-2 text-[13px] outline-none"
+              />
+              <div className="max-h-56 overflow-y-auto py-1">
+                {membersQuery.isLoading ? (
+                  <p className="px-3 py-2 text-[12px] text-[var(--text-4)]">Loading…</p>
+                ) : available.length === 0 ? (
+                  <p className="px-3 py-2 text-[12px] text-[var(--text-4)]">
+                    {q ? "No matches." : "Everyone's added."}
+                  </p>
+                ) : (
+                  available.map((m) => (
+                    <button
+                      key={m.userId}
+                      type="button"
+                      onClick={() => {
+                        onChange([...value, m.userId]);
+                        setQuery("");
+                      }}
+                      className="block w-full px-3 py-2 text-left text-[13px] text-[var(--text-2)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+                    >
+                      {m.name?.trim() || m.email}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      <p className="mt-1.5 text-[11px] text-[var(--text-4)]">
+        Shown as the &ldquo;Product&rdquo; avatars on this client&apos;s wiki header. Order preserved.
+      </p>
+    </div>
+  );
+}
+
 function ClientEditModal({
   form,
   onChange,
@@ -3302,6 +3419,12 @@ function ClientEditModal({
                       </div>
                     )}
                   </div>
+
+                  {/* Product team — Gitwork leads shown on the client wiki header. */}
+                  <ProductTeamField
+                    value={form.productTeamUserIds}
+                    onChange={(ids) => onChange({ ...form, productTeamUserIds: ids })}
+                  />
                 </div>
 
                 {/* RIGHT — primary contact & address */}
