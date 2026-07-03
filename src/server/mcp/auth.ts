@@ -32,14 +32,30 @@ export async function validateMcpBearer(req: Request): Promise<EffectiveUser | n
   const validated = await validateAccessToken(token);
   if (!validated) return null;
 
+  return resolveEffectiveUserById(validated.user.id);
+}
+
+/**
+ * Resolve a user id (from a bearer token or a NextAuth session) to the same
+ * EffectiveUser shape every server module understands — membership in the
+ * default workspace + role + matrix/override-resolved permissions. Returns null
+ * when the user has no membership. Shared by the MCP bearer path and the OAuth
+ * consent/authorize flow so both apply identical per-user scoping.
+ */
+export async function resolveEffectiveUserById(
+  userId: string,
+): Promise<EffectiveUser | null> {
   // Resolve the user's membership in the default workspace. Mirrors
   // requireAuthedUser's lookup — same field-gating math, same role.
   const membership = await prisma.workspaceMember.findFirst({
     where: {
-      userId: validated.user.id,
+      userId,
       workspace: { slug: DEFAULT_WORKSPACE_SLUG },
     },
-    include: { workspace: { select: { rolePermissions: true } } },
+    include: {
+      workspace: { select: { rolePermissions: true } },
+      user: { select: { id: true, email: true, name: true, avatarUrl: true } },
+    },
   });
   if (!membership) return null;
 
@@ -48,10 +64,10 @@ export async function validateMcpBearer(req: Request): Promise<EffectiveUser | n
   const permissions = resolveEffectivePermissions(membership.role, matrix, overrides);
 
   return {
-    id: validated.user.id,
-    email: validated.user.email,
-    name: validated.user.name,
-    avatarUrl: validated.user.avatarUrl,
+    id: membership.user.id,
+    email: membership.user.email,
+    name: membership.user.name,
+    avatarUrl: membership.user.avatarUrl,
     role: membership.role,
     permissions,
     workspaceId: membership.workspaceId,

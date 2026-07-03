@@ -1,8 +1,9 @@
-// Shared display of the 6 MCP tools — rendered on both the admin and the
+// Shared display of the MCP tools — rendered on both the admin and the
 // per-user panels so each audience sees exactly what Claude can do before
 // they enable / connect. Source of truth lives next to the tool registry
 // (src/server/mcp/handler.ts); duplicate copy here is intentional — these
-// strings are user-facing prose, not API metadata.
+// strings are user-facing prose, not API metadata. Keep this list in step
+// with TOOLS in handler.ts (the mcp-smoke test guards the count there).
 
 "use client";
 
@@ -75,6 +76,21 @@ const TOOLS: Tool[] = [
       "Create a new proposal called 'Speakify Phase 2' for Speakify.",
       "Start an SOW titled 'Big Wedge analytics revamp' for Big Wedge.",
     ],
+  },
+  {
+    name: "pulse_scan",
+    blurb:
+      "Run a Pulse production-readiness + security scan on a URL and get a compact verdict — health score, confirmed issues, security/TLS/accessibility grades, and top fixes. Requires the 'Manage Pulse' permission.",
+    examples: [
+      "Run a Pulse scan on https://speakify.com and summarise the risks.",
+      "Is app.bigwedge.golf ready to ship? Scan it for EU + UK.",
+    ],
+  },
+  {
+    name: "pulse_scan_result",
+    blurb:
+      "Fetch the verdict for an existing Pulse scan by its id — handy to pull an in-app scan's findings into a chat.",
+    examples: ["Summarise Pulse scan clx123 for me."],
   },
 ];
 

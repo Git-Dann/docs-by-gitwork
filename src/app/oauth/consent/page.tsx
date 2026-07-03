@@ -10,6 +10,8 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { findClientById, isAllowedRedirectUri, parseScope } from "@/server/oauth";
+import { resolveEffectiveUserById } from "@/server/mcp/auth";
+import { canConnectMcp } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -80,6 +82,19 @@ export default async function ConsentPage({
       <ErrorScreen
         title="MCP is disabled"
         body="A Super Admin needs to enable MCP in Settings → MCP before Claude can connect."
+      />
+    );
+  }
+
+  // Permission gate — the user must hold mcp.connect (Admins by default;
+  // Staff/Developers via the matrix). Show a friendly message rather than
+  // letting them approve and hit an access_denied on the POST.
+  const actor = await resolveEffectiveUserById(session.user.id);
+  if (!actor || !canConnectMcp(actor)) {
+    return (
+      <ErrorScreen
+        title="Not permitted"
+        body="Your Foundry account isn't permitted to connect Claude. Ask an admin to grant you the 'Connect Claude (MCP)' permission in Settings → People & access."
       />
     );
   }

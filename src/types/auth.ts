@@ -305,8 +305,9 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
         description:
           "Authorize Claude (or any MCP-compatible client) to act on your behalf in Foundry. " +
           "Each connection is per-user and bound by your existing permissions — Claude can't do " +
-          "more than you can. Restricted to Admin and Super Admin for now (additionally gated " +
-          "structurally) — flip via the matrix once you want to open it to Staff or Developers.",
+          "more than you can. Admins and Super Admins hold this by default; grant it to Staff or " +
+          "Developers here to let them connect their own Claude. Enforced on the consent screen, " +
+          "the OAuth authorize endpoint, and the Connected apps settings.",
       },
     ],
   },

@@ -35,9 +35,28 @@ export function ConnectedAppsPanel() {
     );
   }
 
+  const isConnected = data.connections.length > 0;
+
   return (
     <div className="space-y-4">
-      <SettingsCard number="01" title="Connect Claude">
+      <SettingsCard
+        number="01"
+        title="Quick start"
+        right={
+          data.setup.enabled ? (
+            <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-[var(--text-3)]">
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  isConnected ? "bg-[var(--success-500)]" : "bg-[var(--border-3)]"
+                }`}
+              />
+              {isConnected ? "Connected" : "Not connected"}
+            </span>
+          ) : (
+            <span className="text-[11px] uppercase tracking-wide text-[var(--text-3)]">Disabled</span>
+          )
+        }
+      >
         {!data.setup.enabled ? (
           <div className="rounded-md border border-[var(--border-1)] bg-[var(--surface-2)] p-4 text-sm text-[var(--text-2)]">
             <p>
@@ -46,7 +65,7 @@ export function ConnectedAppsPanel() {
             </p>
           </div>
         ) : (
-          <ConnectInstructions setup={data.setup} />
+          <QuickStart setup={data.setup} />
         )}
       </SettingsCard>
 
@@ -90,14 +109,45 @@ export function ConnectedAppsPanel() {
   );
 }
 
-function ConnectInstructions({ setup }: { setup: { mcpUrl: string; claudeCodeSnippet: string; claudeDesktopSnippet: string } }) {
+const CLAUDE_CONNECTORS_URL = "https://claude.ai/settings/connectors";
+
+function QuickStart({
+  setup,
+}: {
+  setup: { mcpUrl: string; claudeCodeSnippet: string; claudeDesktopSnippet: string };
+}) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-[var(--text-2)]">
-        In <strong>claude.ai</strong> (or the desktop app), open{" "}
-        <em>Settings → Connectors → Add custom connector</em> and paste:
+        Connect once and Claude can drive Foundry for you — everything it does runs as you and
+        respects your permissions. Takes about a minute.
       </p>
-      <CopyBlock label="MCP URL" value={setup.mcpUrl} />
+
+      <ol className="space-y-3">
+        <Step n="1" title="Open Claude connectors">
+          <p className="text-sm text-[var(--text-2)]">
+            In claude.ai, go to Settings → Connectors and choose{" "}
+            <strong>Add custom connector</strong>.
+          </p>
+          <a href={CLAUDE_CONNECTORS_URL} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block">
+            <Button variant="primary" size="sm">
+              Open Claude connectors ↗
+            </Button>
+          </a>
+        </Step>
+
+        <Step n="2" title="Paste this connector URL">
+          <CopyBlock label="" value={setup.mcpUrl} />
+        </Step>
+
+        <Step n="3" title="Authorize with Foundry">
+          <p className="text-sm text-[var(--text-2)]">
+            Claude opens a Foundry sign-in — approve it and the connection appears below. Then just
+            ask Claude to do something (see the examples in the next section).
+          </p>
+        </Step>
+      </ol>
+
       <details className="rounded-md border border-[var(--border-1)] p-3">
         <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-[var(--text-3)]">
           Claude Desktop / Claude Code (advanced)
@@ -114,6 +164,20 @@ function ConnectInstructions({ setup }: { setup: { mcpUrl: string; claudeCodeSni
         </div>
       </details>
     </div>
+  );
+}
+
+function Step({ n, title, children }: { n: string; title: string; children: React.ReactNode }) {
+  return (
+    <li className="flex gap-3">
+      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--brand-50)] font-mono text-[11px] font-medium text-[var(--brand-700)]">
+        {n}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-[var(--text-1)]">{title}</p>
+        <div className="mt-1">{children}</div>
+      </div>
+    </li>
   );
 }
 
