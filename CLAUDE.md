@@ -178,12 +178,12 @@ The sidebar uses different labels from the URL routes — mapping below:
 | Sidebar label | Route | Server module | Description |
 |---|---|---|---|
 | **Foundry HQ** | `/app` | — | Dashboard overview |
-| **Pulse** | `/app/pulse` | `src/server/pulse*.ts` + `pulse-agents/` | AI project validation — 150+ automated checks, gap analysis, GitHub fix-agent, continuous monitors |
+| **Pulse** | `/app/pulse` | `src/server/pulse*.ts` + `pulse-agents/` | AI project validation — 150+ automated checks, gap analysis, GitHub fix-agent, continuous monitors. Also hosts the optional **Study** research tool (no longer a top-level module — see §26) |
 | **Code** | `/app/codeclear` | `src/server/codeclear*.ts` | Developer hiring pipeline — GitHub analysis, scoring, candidate management |
 | **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). **Canonical route is `/app/docs`**; `/app/proposals/*` are redirect stubs (see §16) |
 | **Portal** | `/app/clients` | `src/server/clients.ts` · `meetings.ts` | Client management + detail pages, incl. **Scribe** AI meeting notes per-client (no sidebar item — see §14) |
 | **Care** | `/app/support` | `src/server/support.ts` | Client support ops — conversations, tickets, workflow rules, audit log |
-| **Study** | `/app/study` | `src/server/study*.ts` + `study-agents/` | AI-powered user research — multi-agent persona interviews, synthesis, reports |
+| **Study** (tool) | `/app/study` | `src/server/study*.ts` + `study-agents/` | AI user research — multi-agent persona interviews, synthesis, reports. **No sidebar item** — surfaced as an optional tool inside Pulse (see §26). Routes/API/models unchanged at `/app/study` · `/api/study` |
 | **Backstage** | `/app/backstage` | `src/server/backstage.ts` + `backstage-holidays.ts` | Internal Gitwork ops umbrella — v1 covers staff leave booking + expenses tracking + staffing alerts on HQ. Future tools slot in as `/app/backstage/<slug>` |
 | **Settings** | `/app/settings` | — | AI provider config, rate card, workspace branding |
 | **Proof** | `/app/proof` | `src/server/proof.ts` | Document sign-off workflow — currently **hidden from nav** (commented out in app-shell.tsx) |
@@ -961,3 +961,45 @@ This supersedes the Vercel/Neon assumptions throughout §2, §3, §5.
   Slack) + other Slack-exposed secrets; verify Google login (redirect URI added for the domain),
   Care semantic search (pgvector canary), AI (`ANTHROPIC_ADMIN_KEY` or the workspace DB key), and an
   onboarding bank-detail decrypt.
+
+## 26. Recent Changes (July 2026) — Study demoted from a top-level module to an admin-only Pulse tool
+
+**Study** (AI user research — multi-agent persona interviews) was a first-class module: its own
+sidebar item, its own permission product, an (unused) HQ widget, and a `/context` module-map row.
+It's now an **optional, admin-only tool inside Pulse** — "one you *could* reach for", not automatic.
+**No routes/files were moved** — the change is UX re-parenting + permission tightening + a scan↔study
+link. Everything Study did still works.
+
+- **Removed from the top level:** deleted the Study **sidebar item** (`app-shell.tsx`), the **dead**
+  `src/components/dashboard/study-widget.tsx` (imported nowhere), and reframed the `/context`
+  module-map row under Pulse. `FOUNDRY_MODULE_KEYS` still lists `"study"` — that's the **demo/mock**
+  workspace-model typing, not nav/permissions, so it was left untouched.
+- **Permissions — admin/super-admin only:** the old `study` **module** id + `study.manage` **action**
+  were removed and replaced with a single **admin-only `feature`** perm `study` in `PERMISSION_CATALOG`
+  (`src/types/auth.ts`) — the studio pattern (default-off, `category: "feature"` so STAFF doesn't
+  auto-inherit it; ADMIN holds all ids, SUPER_ADMIN bypasses). The stray `"study"` id was removed from
+  the view-as STAFF preset (`src/lib/view-as.ts`). `canManageStudy()` (server `effective-user.ts` +
+  client `use-permissions.ts`) now checks **`study`** — view and manage collapse to one admin-only
+  gate. Middleware `MODULE_PATHS` gates `/app/study` on **`study`**. **Result: only Admin + Super Admin
+  see or use Study.** Grantable to Staff/Developers later via the Settings → Team matrix.
+- **Gated at every layer** (not just hidden): middleware blocks the `/app/study` pages; the
+  `PulseStudiesPanel` + the scan `AgentPanel` "Research study" slot render only when `canManageStudy`
+  (and `useStudyList(enabled)` skips the fetch for non-admins); and **every `/api/study/studies*`
+  route** asserts `canManageStudy` (GET/POST/PATCH/DELETE + plan + run + stream — the SSE route returns
+  a clean 403). Only `/api/study/personas` (static built-in persona catalog, no workspace data) is open.
+- **Surfaced inside Pulse (2 entry points, admin-only):** a new **`PulseStudiesPanel`**
+  (`src/components/pulse/pulse-studies-panel.tsx`) on the Pulse landing page (`/app/pulse`) lists
+  studies + a "New research study" button; and a **"Research study" slot** in the scan-results
+  **AgentPanel** (`pulse-scan-results.tsx`) — "Start research study" → `/app/study/new?scanId=…`
+  when unlinked, "View study" when linked.
+- **Scan ↔ Study link (additive schema → applies via the build's `prisma db push`):**
+  `Study.linkedScanId` (+ `@@index`) and `PulseScan.linkedStudyId`, both nullable loose ids (no FK,
+  matching the cross-module convention). `createStudy()` validates the scan is in-workspace, persists
+  the link, and **mirrors `linkedStudyId` back onto the scan**. `serializePulseScan` + `PulseScanRecord`
+  carry `linkedStudyId`; `StudyRecord` carries `linkedScanId`. The wizard (`study-wizard.tsx`) reads
+  `?scanId=` (mirrors the existing `?clientId=`), **pre-fills** the brief from the scan's `projectName`
+  + top `criticalGaps`/`buildOpportunities` (soft defaults, never clobbers edits), and passes
+  `linkedScanId` through the create hook/route.
+- **Deferred:** Study code/routes/API were deliberately **not** relocated under `/app/pulse/*` (kept
+  at `/app/study`, no redirect stubs); no back-link chip rendered *on* the study detail page yet
+  (the link is stored + surfaced from the Pulse side). Verified via `tsc` + `eslint`.

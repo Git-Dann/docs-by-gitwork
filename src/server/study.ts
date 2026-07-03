@@ -81,6 +81,7 @@ export interface StudyRecord {
   workspaceClientId: string | null;
   workspaceClientName: string | null;
   workspaceClientSlug: string | null;
+  linkedScanId: string | null;
 }
 
 function serializeListItem(s: {
@@ -187,6 +188,7 @@ export async function getStudy(studyId: string): Promise<StudyRecord | null> {
     workspaceClientId: record.workspaceClientId,
     workspaceClientName: record.workspaceClient?.name ?? null,
     workspaceClientSlug: record.workspaceClient?.slug ?? null,
+    linkedScanId: record.linkedScanId,
     plan: record.plan
       ? {
           id: record.plan.id,
@@ -223,8 +225,19 @@ export async function createStudy(data: {
   sessionMode: string;
   selectedPersonaIds: string[];
   workspaceClientId?: string | null;
+  linkedScanId?: string | null;
 }): Promise<StudyRecord> {
   const workspace = await getWorkspace();
+  // Only honour a linkedScanId that points at a scan in this workspace, so the back-link
+  // can't be pointed at another workspace's scan.
+  const linkedScanId =
+    data.linkedScanId &&
+    (await prisma.pulseScan.findFirst({
+      where: { id: data.linkedScanId, workspaceId: workspace.id },
+      select: { id: true },
+    }))
+      ? data.linkedScanId
+      : null;
   const study = await prisma.study.create({
     data: {
       workspaceId: workspace.id,
@@ -234,9 +247,17 @@ export async function createStudy(data: {
       sessionMode: data.sessionMode as "ONE_ON_ONE" | "GROUP",
       selectedPersonaIds: data.selectedPersonaIds,
       workspaceClientId: data.workspaceClientId ?? null,
+      linkedScanId,
     },
     include: { plan: { include: { questions: true } }, sessions: true, report: true },
   });
+  // Mirror the link back onto the scan so the Pulse scan view can surface "View study".
+  if (linkedScanId) {
+    await prisma.pulseScan.update({
+      where: { id: linkedScanId },
+      data: { linkedStudyId: study.id },
+    });
+  }
   return getStudy(study.id) as Promise<StudyRecord>;
 }
 

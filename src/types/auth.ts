@@ -230,7 +230,7 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
         category: "feature",
         label: "See all clients",
         description:
-          "Off scopes Portal/Pulse/Care/Study and the task board to clients this user is explicitly assigned.",
+          "Off scopes Portal/Pulse/Care and the task board to clients this user is explicitly assigned.",
       },
       {
         id: "clients.viewFinancials",
@@ -256,12 +256,18 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
   {
     product: "Study",
     permissions: [
-      { id: "study", category: "module", label: "Study", description: "AI-powered user research." },
       {
-        id: "study.manage",
-        category: "action",
-        label: "Create & run studies",
-        description: "Create studies and launch interview runs. Without it, Study is view-only.",
+        // Deliberately a `feature`, not a `module`: STAFF auto-inherits every module id
+        // (…MODULE_IDS in DEFAULT_ROLE_PERMISSIONS), which would leak Study to Staff. As a
+        // feature it defaults OFF for everyone except ADMIN (all ids) + SUPER_ADMIN. Study is
+        // an optional research tool reached from within Pulse (no sidebar item); middleware
+        // still gates /app/study on the string "study". Grantable to Staff/Developers later
+        // via the matrix if wanted.
+        id: "study",
+        category: "feature",
+        label: "Study (research tool)",
+        description:
+          "AI persona-interview research, launched from within Pulse to validate a project's assumptions. Admin/Super Admin only by default.",
       },
     ],
   },
@@ -442,8 +448,8 @@ const MODULE_IDS = MODULE_PERMISSIONS.map((m) => m.id);
  * effective access until a Super Admin edits it.
  *  • ADMIN: everything (the "most" tier — only the matrix editor itself is reserved to Super Admin).
  *  • STAFF: every module, sees rates/costs/rate-card, sees all clients. No approve/expenses/publish.
- *  • DEVELOPER: very little — their clients (Portal), Care, Pulse, personal Backstage. No Code/Docs/Study,
- *    no rate or cost visibility, no seeAllClients.
+ *  • DEVELOPER: very little — their clients (Portal), Care, Pulse, personal Backstage. No Code/Docs,
+ *    no Study (admin-only feature perm), no rate or cost visibility, no seeAllClients.
  */
 export const DEFAULT_ROLE_PERMISSIONS: RoleMatrix = {
   ADMIN: [...ALL_PERMISSION_IDS],
@@ -461,7 +467,6 @@ export const DEFAULT_ROLE_PERMISSIONS: RoleMatrix = {
     "docs.manage",
     "clients.manage",
     "support.manage",
-    "study.manage",
   ],
   // DEVELOPER also gets the Docs module + manage, but WITHOUT docs.viewAdminTypes — so they can
   // create/edit the lightweight docs (handover, status report, brief, blank) and never see or open

@@ -281,9 +281,13 @@ export function canShareClientTimeline(user: EffectiveUser): boolean {
 export function canManageSupport(user: EffectiveUser): boolean {
   return can(user, "support.manage");
 }
-/** Create + run studies in Study. */
+/**
+ * View + create + run studies. The Study research tool lives under Pulse and is gated by the
+ * admin-only `study` feature permission (default-off; Admins hold all ids, Super Admins bypass),
+ * so view and manage collapse to one gate.
+ */
 export function canManageStudy(user: EffectiveUser): boolean {
-  return can(user, "study.manage");
+  return can(user, "study");
 }
 /**
  * Authorize Claude (or any MCP client) to act on the user's behalf. This is the

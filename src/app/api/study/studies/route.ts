@@ -5,8 +5,10 @@ import { assertCan, canManageStudy, getEffectiveUserOrNull } from "@/server/auth
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Study is an admin-only tool (gated by the `study` feature perm) — view == manage.
+    assertCan(await getEffectiveUserOrNull(request), canManageStudy, "view studies");
     const studies = await listStudies();
     return apiOk({ studies });
   } catch (error) {
@@ -19,6 +21,7 @@ export async function POST(request: NextRequest) {
     assertCan(await getEffectiveUserOrNull(request), canManageStudy, "create studies");
     const body = await request.json();
     const rawClientId = typeof body.workspaceClientId === "string" ? body.workspaceClientId.trim() : null;
+    const rawScanId = typeof body.linkedScanId === "string" ? body.linkedScanId.trim() : null;
     const study = await createStudy({
       title: String(body.title ?? "").trim() || "Untitled Study",
       problemStatement: String(body.problemStatement ?? "").trim(),
@@ -26,6 +29,7 @@ export async function POST(request: NextRequest) {
       sessionMode: body.sessionMode === "GROUP" ? "GROUP" : "ONE_ON_ONE",
       selectedPersonaIds: Array.isArray(body.selectedPersonaIds) ? body.selectedPersonaIds : [],
       workspaceClientId: rawClientId || null,
+      linkedScanId: rawScanId || null,
     });
     return apiOk({ study }, { status: 201 });
   } catch (error) {

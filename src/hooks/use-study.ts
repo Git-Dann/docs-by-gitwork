@@ -17,10 +17,11 @@ async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
 
 // ── Queries ───────────────────────────────────────────────────────────────────
 
-export function useStudyList() {
+export function useStudyList(enabled = true) {
   return useQuery({
     queryKey: ["study", "list"],
     queryFn: () => apiFetch<{ studies: StudyListItem[] }>("/api/study/studies").then((r) => r.studies),
+    enabled,
     staleTime: 1000 * 10,
     refetchInterval: (query) => {
       const studies = query.state.data;
@@ -63,6 +64,7 @@ export function useCreateStudy() {
       sessionMode: string;
       selectedPersonaIds: string[];
       workspaceClientId?: string | null;
+      linkedScanId?: string | null;
     }) =>
       apiFetch<{ study: StudyRecord }>("/api/study/studies", {
         method: "POST",

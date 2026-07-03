@@ -104,6 +104,7 @@ export function serializePulseScan(record: PulseScanDbRecord): PulseScanRecord {
     errorCode: record.errorCode,
     errorMessage: record.errorMessage,
     generatedProposalId: record.generatedProposalId,
+    linkedStudyId: record.linkedStudyId,
     checks: record.checks.map((check: typeof record.checks[number]) => ({
       id: check.id,
       scanId: check.scanId,

@@ -2020,6 +2020,10 @@ model PulseScan {
   errorCode           String?
   errorMessage        String?
   generatedProposalId String?
+  // Optional link to a Study launched to validate this scan's assumptions (Study is now
+  // an optional tool under Pulse). Loose nullable id, not an FK — matches the cross-module
+  // convention here; kept in sync with Study.linkedScanId on study creation.
+  linkedStudyId       String?
   checks              PulseScanCheck[]
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
@@ -2515,6 +2519,9 @@ model Study {
   status             StudyStatus        @default(DRAFT)
   sessionMode        StudySessionMode   @default(ONE_ON_ONE)
   selectedPersonaIds String[]           @default([])
+  // Optional back-link to the PulseScan this study was launched from (Study is an optional
+  // Pulse tool). Loose nullable id, not an FK — mirrored by PulseScan.linkedStudyId.
+  linkedScanId       String?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   plan               StudyResearchPlan?
@@ -2523,6 +2530,7 @@ model Study {
 
   @@index([workspaceId, createdAt])
   @@index([workspaceClientId])
+  @@index([linkedScanId])
 }
 
 model StudyResearchPlan {

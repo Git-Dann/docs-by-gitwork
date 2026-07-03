@@ -41,6 +41,8 @@ export function usePermissions() {
     canManageClients: can("clients.manage"),
     canShareClientTimeline: can("clients.shareTimeline"),
     canManageSupport: can("support.manage"),
-    canManageStudy: can("study.manage"),
+    // Study is an optional tool under Pulse, gated by the admin-only `study` feature perm
+    // (default-off). View and manage collapse to one gate — Admins/Super Admins only.
+    canManageStudy: can("study"),
   };
 }
