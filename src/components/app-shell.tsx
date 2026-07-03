@@ -223,7 +223,9 @@ export function AppShell({
         </aside>
 
         {/* ── Content column ── */}
-        <div className="flex min-h-0 flex-col bg-[var(--surface-canvas)]">
+        {/* pb-12 reserves the 48px height of the fixed "On Your Desk" dock so page
+            content (and any bottom pagination bars) never sits underneath it. */}
+        <div className="flex min-h-0 flex-col bg-[var(--surface-canvas)] pb-12">
           {/* View-as preview banner */}
           {isAdmin && viewAs && previewLabel && (
             <div className="flex items-center justify-between gap-4 border-b border-amber-200 bg-amber-50 px-6 py-2">
