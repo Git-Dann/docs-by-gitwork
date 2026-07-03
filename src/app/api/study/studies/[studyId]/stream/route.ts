@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStudy } from "@/server/study";
+import { canManageStudy, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 90;
@@ -11,9 +12,15 @@ function sseEvent(type: string, data: unknown): Uint8Array {
 }
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ studyId: string }> },
 ) {
+  // Study is an admin-only tool (gated by the `study` feature perm). This route returns a raw
+  // SSE Response (no fromError), so check inline and return a clean 403 rather than throwing.
+  const user = await getEffectiveUserOrNull(request);
+  if (user && !canManageStudy(user)) {
+    return new Response("Forbidden", { status: 403 });
+  }
   const { studyId } = await params;
 
   const initial = await getStudy(studyId);

@@ -805,6 +805,7 @@ function AgentPanel({
 }) {
   const { mutateAsync: runBrowser, isPending: runningBrowser } = useRunBrowserAgent();
   const { mutateAsync: runDiscovery, isPending: runningDiscovery } = useRunDiscoveryKit();
+  const { canManageStudy } = usePermissions();
   const [browserError, setBrowserError] = useState<string | null>(null);
   const [discoveryError, setDiscoveryError] = useState<string | null>(null);
   const [agentsOpen, setAgentsOpen] = useState(false);
@@ -966,10 +967,29 @@ function AgentPanel({
       onAction: onMonitor,
       loading: creatingMonitor,
     },
+    // Research study (optional, admin-only) — interview AI personas to validate this scan's
+    // assumptions. The slot itself is filtered out below unless the viewer can use Study.
+    {
+      id: "study",
+      label: "Research study",
+      description: "AI persona interviews to test assumptions this scan raised — optional, not automatic",
+      status: scan.linkedStudyId ? "completed" : "available",
+      summary: scan.linkedStudyId
+        ? "A research study is linked to this scan"
+        : "Launch a study, pre-filled from this scan's gaps and opportunities",
+      actionLabel: scan.linkedStudyId ? "View study" : "Start research study",
+      onAction: scan.linkedStudyId
+        ? () => { window.location.href = `/app/study/${scan.linkedStudyId}`; }
+        : () => { window.location.href = `/app/study/new?scanId=${scan.id}`; },
+    },
   ];
 
   // High-risk: the fix-agent opens GitHub PRs — hide that slot unless the role holds pulse.fixAgent.
-  const visibleSlots = slots.filter((slot) => slot.id !== "fix" || canRunFixAgent);
+  // Study is an admin-only tool — hide its slot from everyone else.
+  const visibleSlots = slots.filter(
+    (slot) =>
+      (slot.id !== "fix" || canRunFixAgent) && (slot.id !== "study" || canManageStudy),
+  );
 
   return (
     <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-5 py-4">

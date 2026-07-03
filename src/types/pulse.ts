@@ -297,6 +297,8 @@ export interface PulseScanRecord {
   errorCode: string | null;
   errorMessage: string | null;
   generatedProposalId: string | null;
+  /** Optional Study launched to validate this scan's assumptions (Study is a Pulse tool). */
+  linkedStudyId: string | null;
   checks: PulseScanCheckRecord[];
   createdAt: string;
   updatedAt: string;

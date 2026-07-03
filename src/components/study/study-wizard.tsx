@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckIcon, BuildingOffice2Icon } from "@heroicons/react/24/outline";
 import { useCreateStudy, useStudyPersonas } from "@/hooks/use-study";
+import { usePulseScan } from "@/hooks/use-pulse";
 import { useClientList } from "@/hooks/use-proposals";
 import { PERSONA_COLORS } from "@/config/study-personas";
 import { cn } from "@/lib/format";
@@ -43,6 +44,12 @@ export function StudyWizard() {
   const { data: clientsData } = useClientList();
   const { mutateAsync: createStudy, isPending } = useCreateStudy();
 
+  // Launched from a Pulse scan? Pre-fill the brief from that scan's context and keep the
+  // link so the study attaches back to the scan (Study is an optional Pulse tool).
+  const scanId = searchParams.get("scanId");
+  const { data: scanData } = usePulseScan(scanId ?? "");
+  const scan = scanId ? scanData?.scan ?? null : null;
+
   const manualClients = (clientsData?.clients ?? []).filter((c) => c.source === "MANUAL");
 
   const [step, setStep] = useState(0);
@@ -67,6 +74,30 @@ export function StudyWizard() {
     prefilledRef.current = true;
   }, [urlClientId, manualClients]);
 
+  // Seed the brief from the linked scan once it resolves. Only fills empty fields, so the
+  // user's edits are never clobbered; runs once.
+  const scanPrefilledRef = useRef(false);
+  useEffect(() => {
+    if (scanPrefilledRef.current || !scan) return;
+    const project = scan.projectName || "this project";
+    setTitle((prev) => prev || `Research: ${project}`);
+    const topGap = scan.llmAnalysis?.criticalGaps?.[0]?.gap;
+    setProblemStatement(
+      (prev) =>
+        prev ||
+        `Validate the key assumptions surfaced by the Pulse scan of ${project}.` +
+          (topGap ? ` In particular, understand user impact of: ${topGap}` : ""),
+    );
+    const seededGoals = [
+      ...(scan.llmAnalysis?.criticalGaps ?? []).slice(0, 2).map((g) => `Understand the impact of: ${g.gap}`),
+      ...(scan.llmAnalysis?.buildOpportunities ?? []).slice(0, 1).map((o) => `Gauge appetite for: ${o.title}`),
+    ].filter(Boolean);
+    if (seededGoals.length > 0) {
+      setGoals((prev) => (prev.some((g) => g.trim()) ? prev : [...seededGoals, "", ""].slice(0, 3)));
+    }
+    scanPrefilledRef.current = true;
+  }, [scan]);
+
   const filledGoals = goals.filter((g) => g.trim());
 
   const canAdvance = [
@@ -89,6 +120,7 @@ export function StudyWizard() {
       sessionMode,
       selectedPersonaIds,
       workspaceClientId,
+      linkedScanId: scanId,
     });
     router.push(`/app/study/${study.id}`);
   }

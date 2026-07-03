@@ -14,7 +14,7 @@ const USER_KEY = "foundry_view_as_user"; // JSON: { name, permissions }
 
 // Preset permissions for Staff and Developer roles
 export const VIEW_AS_PERMISSIONS: Record<"STAFF" | "DEVELOPER", string[]> = {
-  STAFF: ["pulse", "codeclear", "study", "support", "clients", "proposals", "backstage"],
+  STAFF: ["pulse", "codeclear", "support", "clients", "proposals", "backstage"],
   DEVELOPER: ["backstage", "clients"],
 };
 

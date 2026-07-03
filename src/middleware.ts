@@ -137,7 +137,7 @@ const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
   { prefix: "/app/clients", module: "clients" }, // legacy
   { prefix: "/app/care", module: "support" }, // canonical
   { prefix: "/app/support", module: "support" }, // legacy
-  { prefix: "/app/study", module: "study" },
+  { prefix: "/app/study", module: "study" }, // Study is an optional Pulse tool — admin-only feature perm (default-off)
   { prefix: "/app/backstage", module: "backstage" },
   { prefix: "/app/studio", module: "studio" }, // Admin/Super Admin only (studio is a default-off feature perm)
 ];
