@@ -5,7 +5,7 @@
 // (PNG/JPEG · 1x/2x). All state is client-side and autosaved to localStorage; export is fully
 // client-side (html-to-image + fflate). Admin/Super-Admin gated at the route/nav/middleware layer.
 
-import { ArrowDownTrayIcon, CheckIcon, MinusIcon, PlusIcon } from "@heroicons/react/24/outline";
+import { ArrowDownTrayIcon, CheckIcon, ChevronDownIcon, MinusIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ASSET_TYPES,
@@ -95,6 +95,7 @@ export function StudioWorkspace() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [editingSlide, setEditingSlide] = useState(0);
   const nodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   useEffect(() => {
@@ -122,10 +123,12 @@ export function StudioWorkspace() {
     setState((s) => ({ ...s, content: { ...s.content, slides: s.content.slides.map((sl, i) => (i === index ? { ...sl, ...p } : sl)) } }));
   }, []);
   const addSlide = useCallback(() => {
+    setEditingSlide(content.slides.length); // open the new slide
     setState((s) => ({ ...s, content: { ...s.content, slides: [...s.content.slides, { headline: "New slide", accent: "", body: "" }] } }));
-  }, []);
+  }, [content.slides.length]);
   const removeSlide = useCallback((index: number) => {
     setState((s) => (s.content.slides.length <= 1 ? s : { ...s, content: { ...s.content, slides: s.content.slides.filter((_, i) => i !== index) } }));
+    setEditingSlide((cur) => (cur === index ? -1 : cur > index ? cur - 1 : cur));
   }, []);
   const toggleIn = useCallback(<T,>(arr: T[], v: T): T[] => {
     const next = arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
@@ -229,6 +232,15 @@ export function StudioWorkspace() {
       <aside className="widget-card flex w-full shrink-0 flex-col overflow-hidden lg:w-[360px]">
         <PanelHeader label="01 // CONTROLS" />
         <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5">
+          <Field label="Platforms" hint={state.custom.enabled ? "custom size on" : "one or more"}>
+            <PlatformDropdown
+              assetType={assetType}
+              selected={state.platforms}
+              disabled={state.custom.enabled}
+              onToggle={(id) => patch({ platforms: toggleIn(state.platforms, id) })}
+            />
+          </Field>
+
           <Field label="Asset type">
             <Segmented
               full
@@ -243,25 +255,6 @@ export function StudioWorkspace() {
               {ALL_STYLES.map((p) => (
                 <StyleCard key={p.id} preset={p} active={state.styles.includes(p.id)} onClick={() => patch({ styles: toggleIn(state.styles, p.id) })} />
               ))}
-            </div>
-          </Field>
-
-          <Field label="Platforms" hint={state.custom.enabled ? "off · custom size on" : "one or more"}>
-            <div className="grid grid-cols-2 gap-2.5">
-              {PLATFORMS.map((p) => {
-                const sz = SIZES[assetType][p.id];
-                const active = !state.custom.enabled && state.platforms.includes(p.id);
-                return (
-                  <SelectTile
-                    key={p.id}
-                    active={active}
-                    disabled={state.custom.enabled}
-                    onClick={() => patch({ platforms: toggleIn(state.platforms, p.id) })}
-                    title={p.label}
-                    subtitle={`${sz.w}×${sz.h}`}
-                  />
-                );
-              })}
             </div>
           </Field>
 
@@ -323,20 +316,20 @@ export function StudioWorkspace() {
           ) : null}
 
           {assetType === "carousel" ? (
-            <Field label="Slides">
-              <div className="space-y-2.5">
+            <Field label="Slides" hint={`${content.slides.length}`}>
+              <div className="space-y-2">
                 {content.slides.map((sl, i) => (
-                  <div key={i} className="rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-0)] p-3">
-                    <div className="mb-2.5 flex items-center justify-between">
-                      <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">Slide {i + 1}</span>
-                      {content.slides.length > 1 ? (
-                        <button type="button" className="text-[11px] font-medium text-[var(--danger-500)] hover:underline" onClick={() => removeSlide(i)}>
-                          Remove
-                        </button>
-                      ) : null}
-                    </div>
-                    <SlideFields slide={sl} onChange={(p) => updateSlide(i, p)} />
-                  </div>
+                  <SlideCard
+                    key={i}
+                    index={i}
+                    slide={sl}
+                    preset={STYLE_PRESETS[state.styles[0]]}
+                    open={editingSlide === i}
+                    canRemove={content.slides.length > 1}
+                    onToggle={() => setEditingSlide(editingSlide === i ? -1 : i)}
+                    onChange={(p) => updateSlide(i, p)}
+                    onRemove={() => removeSlide(i)}
+                  />
                 ))}
                 <button type="button" className={btnSecondary + " w-full"} onClick={addSlide}>
                   <PlusIcon className="h-4 w-4" /> Add slide
@@ -509,23 +502,115 @@ function StyleCard({ preset, active, onClick }: { preset: StylePreset; active: b
   );
 }
 
-function SelectTile({ active, disabled, onClick, title, subtitle }: { active: boolean; disabled?: boolean; onClick: () => void; title: string; subtitle: string }) {
+function PlatformDropdown({
+  assetType,
+  selected,
+  disabled,
+  onToggle,
+}: {
+  assetType: AssetTypeId;
+  selected: PlatformId[];
+  disabled?: boolean;
+  onToggle: (id: PlatformId) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const summary =
+    selected.length === 0
+      ? "None"
+      : selected.length === PLATFORMS.length
+        ? "All platforms"
+        : PLATFORMS.filter((p) => selected.includes(p.id)).map((p) => p.label).join(", ");
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
+    <div>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between gap-2 rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-0)] px-3 py-2.5 text-[13px] text-[var(--text-1)] transition hover:border-[var(--text-4)] disabled:opacity-40"
+      >
+        <span className="truncate text-left">{disabled ? "Custom size active" : summary}</span>
+        <ChevronDownIcon className={"h-4 w-4 shrink-0 text-[var(--text-4)] transition " + (open ? "rotate-180" : "")} />
+      </button>
+      {open && !disabled ? (
+        <div className="mt-1.5 overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)]">
+          {PLATFORMS.map((p) => {
+            const active = selected.includes(p.id);
+            const sz = SIZES[assetType][p.id];
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => onToggle(p.id)}
+                className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition hover:bg-[var(--surface-1)]"
+              >
+                <span
+                  className={
+                    "flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border " +
+                    (active ? "border-[var(--brand-700)] bg-[var(--brand-700)] text-white" : "border-[var(--border-1)]")
+                  }
+                >
+                  {active ? <CheckIcon className="h-3 w-3" strokeWidth={3} /> : null}
+                </span>
+                <span className="flex-1 text-[13px] text-[var(--text-1)]">{p.label}</span>
+                <span className="font-mono text-[10px] text-[var(--text-4)]">
+                  {sz.w}×{sz.h}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SlideCard({
+  index,
+  slide,
+  preset,
+  open,
+  canRemove,
+  onToggle,
+  onChange,
+  onRemove,
+}: {
+  index: number;
+  slide: Slide;
+  preset: StylePreset;
+  open: boolean;
+  canRemove: boolean;
+  onToggle: () => void;
+  onChange: (p: Partial<Slide>) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div
       className={
-        "flex flex-col items-start gap-0.5 rounded-[10px] border px-3 py-2.5 text-left transition disabled:opacity-40 " +
-        (active ? "border-[var(--brand-300)] bg-[var(--surface-brand)]" : "border-[var(--border-2)] bg-[var(--surface-0)] hover:border-[var(--border-1)]")
+        "overflow-hidden rounded-[12px] border bg-[var(--surface-0)] transition " +
+        (open ? "border-[var(--brand-300)]" : "border-[var(--border-2)] hover:border-[var(--border-1)]")
       }
     >
-      <span className="flex w-full items-center justify-between">
-        <span className={"text-[12px] font-medium " + (active ? "text-[var(--brand-800)]" : "text-[var(--text-2)]")}>{title}</span>
-        {active ? <CheckIcon className="h-3.5 w-3.5 text-[var(--brand-700)]" strokeWidth={2.5} /> : null}
-      </span>
-      <span className="font-mono text-[10px] tracking-wide text-[var(--text-4)]">{subtitle}</span>
-    </button>
+      <button type="button" onClick={onToggle} className="flex w-full items-center gap-3 px-3 py-2.5 text-left">
+        <span className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+          S{index + 1}
+        </span>
+        <span className="min-w-0 flex-1 truncate" style={{ fontFamily: preset.serif, fontSize: 13, color: "var(--text-1)" }}>
+          {slide.headline || "Untitled"}
+          {slide.accent ? <span style={{ color: preset.accent }}> {slide.accent}</span> : null}
+        </span>
+        <ChevronDownIcon className={"h-4 w-4 shrink-0 text-[var(--text-4)] transition " + (open ? "rotate-180" : "")} />
+      </button>
+      {open ? (
+        <div className="border-t border-[var(--border-2)] p-3">
+          <SlideFields slide={slide} onChange={onChange} />
+          {canRemove ? (
+            <button type="button" onClick={onRemove} className="mt-3 text-[11px] font-medium text-[var(--danger-500)] hover:underline">
+              Remove slide
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
