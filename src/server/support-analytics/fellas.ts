@@ -56,8 +56,10 @@ async function fetchMonth(ctx: AnalyticsFetchContext): Promise<AnalyticsSnapshot
     { key: "active_ios_yearly", label: "iOS yearly", value: active("ios", "yearly_subscription"), group: "Active subscriptions" },
     { key: "active_android_monthly", label: "Android monthly", value: active("android", "monthly_subscription"), group: "Active subscriptions" },
     { key: "active_android_yearly", label: "Android yearly", value: active("android", "yearly_subscription"), group: "Active subscriptions" },
-    { key: "active_stripe_monthly", label: "Stripe monthly", value: active("stripe", "monthly_subscription"), group: "Active subscriptions" },
-    { key: "active_stripe_yearly", label: "Stripe yearly", value: active("stripe", "yearly_subscription"), group: "Active subscriptions" },
+    // Stripe reports a single "stripe_subscription" type (no monthly/yearly split like the app
+    // stores), so sum the platform instead of querying monthly/yearly rows that never match — the
+    // old split always returned 0 even when Stripe had thousands of active subs.
+    { key: "active_stripe", label: "Stripe", value: platformTotal("stripe"), group: "Active subscriptions" },
 
     { key: "events_total", label: "Total events", value: rows.reduce((s, r) => s + r.transaction_count, 0), group: "Subscription events" },
     { key: "events_new", label: "New subscriptions", value: rows.reduce((s, r) => s + r.new_subscriptions, 0), group: "Subscription events" },
@@ -78,7 +80,9 @@ export const fellasAdapter: AnalyticsAdapter = {
   key: "fellas",
   label: "Fellas Loaded",
   defaultBaseUrl: "https://api.fellasloaded.com",
-  requiresToken: true,
-  hint: "Subscription & user analytics — paste the Fellas API JWT.",
+  // The Fellas analytics endpoints are public (Optional JWT), so a token isn't required — the
+  // connector works with just the base URL. A JWT is still sent when one is provided.
+  requiresToken: false,
+  hint: "Subscription & user analytics. Base URL only — the API is public; a JWT is optional.",
   fetchMonth,
 };
