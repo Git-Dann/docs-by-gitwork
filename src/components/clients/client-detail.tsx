@@ -37,6 +37,8 @@ import { LogoImagePicker } from "@/components/ui/logo-image-picker";
 import { CountrySelect, PhoneInput, WebsiteInput } from "@/components/ui/contact-fields";
 import { ClientDesignFormModal } from "@/components/clients/client-design-form";
 import { ClientPlatformFormModal } from "@/components/clients/client-platform-form";
+import { ProductTeamCard } from "@/components/clients/product-team-card";
+import { usePermissions } from "@/hooks/use-permissions";
 import { StatusBadge } from "@/components/status-badge";
 import {
   useClientDetail,
@@ -277,6 +279,7 @@ function LeadWorkspace({
 
 export function ClientDetail({ slug }: { slug: string }) {
   const router = useRouter();
+  const { canManageClients } = usePermissions();
   const { data, isPending, error } = useClientDetail(slug);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
@@ -702,6 +705,11 @@ export function ClientDetail({ slug }: { slug: string }) {
           }
         />
       </div>
+
+      {/* ── PRODUCT TEAM (wiki header) — managers only ── */}
+      {canManageClients && (
+        <ProductTeamCard slug={slug} initialUserIds={client.productTeamUserIds} />
+      )}
 
       {/* ── 07 // SLACK ACTIVITY ── */}
       <section className="widget-card">

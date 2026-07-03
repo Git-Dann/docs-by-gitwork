@@ -179,6 +179,8 @@ export interface ClientDetailFields extends ClientLeadFields {
   /** Monthly retainer-day allowance + days used this month (manual). */
   retainerDays: number | null;
   retainerDaysUsed: number | null;
+  /** Gitwork product/account leads shown on the wiki header (User ids, in order). */
+  productTeamUserIds: string[];
 }
 
 export interface ClientPlatformRecord {

@@ -647,6 +647,17 @@ export async function getClientDetail(slug: string): Promise<ClientDetailRecord>
   return apiFetch<ClientDetailRecord>(`/api/clients/${slug}`);
 }
 
+export async function updateClientProductTeam(
+  slug: string,
+  userIds: string[],
+): Promise<{ productTeamUserIds: string[] }> {
+  return apiFetch(`/api/clients/${slug}/product-team`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userIds }),
+  });
+}
+
 export async function createClientPlatform(
   slug: string,
   input: {

@@ -112,6 +112,7 @@ type ManualClientRecord = {
   name: string;
   slug: string;
   logoUrl: string | null;
+  productTeamUserIds: string[];
   website: string | null;
   addressLine1: string | null;
   addressLine2: string | null;
@@ -229,6 +230,7 @@ function emptyContactFields(): ClientDetailFields {
     billingCountry: null,
     retainerDays: null,
     retainerDaysUsed: null,
+    productTeamUserIds: [],
     leadSource: null,
     leadStage: null,
     leadFollowUpAt: null,
@@ -287,6 +289,7 @@ function contactFieldsFromRecord(
     pauseNote: record.pauseNote,
     bank: extras.bank,
     onboardingId: extras.onboardingId,
+    productTeamUserIds: record.productTeamUserIds ?? [],
   };
 }
 
@@ -894,6 +897,7 @@ export async function updateClientRecord(
             name: persisted.name,
             slug: persisted.slug,
             logoUrl: persisted.logoUrl,
+            productTeamUserIds: (persisted as typeof persisted & { productTeamUserIds?: string[] }).productTeamUserIds ?? [],
             website: null,
             addressLine1: null,
             addressLine2: null,
@@ -958,6 +962,36 @@ export async function updateClientRecord(
       clickupUrl: persisted.clickupUrl,
     },
   );
+}
+
+/**
+ * Set a client's product team (Gitwork account leads) — the ordered list of
+ * User ids surfaced on the wiki header. Validates the ids are real workspace
+ * members before persisting; returns the stored list. Null client → null.
+ */
+export async function setClientProductTeam(
+  slug: string,
+  userIds: string[],
+): Promise<string[] | null> {
+  const { workspace } = await ensureBaseRecords();
+  const client = await workspaceClients.findUnique({
+    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+    select: { id: true },
+  });
+  if (!client) return null;
+  // Keep only ids that are members of this workspace, de-duped, in submitted order.
+  const members = await prisma.workspaceMember.findMany({
+    where: { workspaceId: workspace.id, userId: { in: userIds } },
+    select: { userId: true },
+  });
+  const valid = new Set(members.map((m) => m.userId));
+  const clean = [...new Set(userIds)].filter((id) => valid.has(id));
+  await workspaceClients.update({
+    where: { id: client.id },
+    data: { productTeamUserIds: clean },
+  });
+  revalidateTag("client-collections");
+  return clean;
 }
 
 export async function deleteClientRecord(slug: string): Promise<boolean> {
