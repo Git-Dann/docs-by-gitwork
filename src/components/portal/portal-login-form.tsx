@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { signIn } from "next-auth/react";
 import { ArrowRightIcon, ArrowLeftIcon } from "@heroicons/react/24/outline";
 
 // The boss's bespoke design: warm cream, violet accent (NOT the Foundry blue
@@ -288,6 +289,19 @@ export function PortalLoginForm({ next }: { next: string | null }) {
                 <ArrowLeftIcon className="h-4 w-4" />
                 Back to portal overview
               </a>
+
+              {/* Discreet Gitwork-team entrance. Kept low-key so clients skim
+                  past it. Enforcement is server-side: the Google signIn callback
+                  (auth.ts) rejects any account that isn't @gitwork.co.uk, so a
+                  client who clicks it can never actually get in. */}
+              <button
+                type="button"
+                onClick={() => void signIn("google", { callbackUrl: "/app" })}
+                className="mt-5 block w-full text-center text-[12px] transition hover:opacity-70"
+                style={{ color: FAINT }}
+              >
+                Gitwork team? Sign in →
+              </button>
             </>
           )}
         </div>
