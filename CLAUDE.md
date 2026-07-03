@@ -3,6 +3,10 @@
 > **New session?** Read this file top-to-bottom before doing anything. It has everything
 > needed to pick up the project without re-exploring the codebase.
 
+> **Doing any mobile / responsive / layout work?** Read [`docs/mobile-playbook.md`](docs/mobile-playbook.md)
+> first — it is the mandatory operating standard for responsive fixes (breakpoints, shared
+> primitives, blast-radius discipline, and how to verify). Don't silo a fix to one screen.
+
 ---
 
 ## 1. Project Overview
