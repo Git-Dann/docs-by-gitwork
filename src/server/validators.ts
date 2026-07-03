@@ -262,6 +262,7 @@ export const clientPlatformCreateSchema = z.object({
   password: z.string().optional(),
   notes: z.string().trim().optional(),
   previewImageUrl: z.string().optional(),
+  featuredInWiki: z.boolean().optional(),
 });
 
 export const clientPlatformUpdateSchema = clientPlatformCreateSchema
@@ -367,6 +368,7 @@ export const candidateCreateSchema = z.object({
   signalSources: z.array(candidateSignalSourceSchema).min(1).optional(),
   location: optionalTrimmedString,
   bio: optionalTrimmedString,
+  wikiBio: z.string().trim().max(25, "Wiki bio must be 25 characters or fewer").nullable().optional(),
   // Allow admin to set tier on create (will be overwritten by the derived
   // value once a score lands unless tierManualOverride is also set).
   tier: codeClearTierSchema.default("TIER_3"),
@@ -401,6 +403,7 @@ export const candidateUpdateSchema = z
     signalSources: z.array(candidateSignalSourceSchema).optional(),
     location: optionalTrimmedString,
     bio: optionalTrimmedString,
+    wikiBio: z.string().trim().max(25, "Wiki bio must be 25 characters or fewer").nullable().optional(),
     status: pipelineStatusSchema.optional(),
     tier: codeClearTierSchema.optional(),
     tierManualOverride: codeClearTierSchema.nullable().optional(),

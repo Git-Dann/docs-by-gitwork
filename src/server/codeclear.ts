@@ -429,6 +429,7 @@ function commonCandidateFields(
   signalSources: string[];
   location: string | null;
   bio: string | null;
+  wikiBio?: string | null;
   status: PipelineStatus;
   tier: "TIER_1" | "TIER_2" | "TIER_3";
   tierManualOverride: "TIER_1" | "TIER_2" | "TIER_3" | null;
@@ -465,6 +466,7 @@ function commonCandidateFields(
       : ["GITHUB" as CandidateSignalSource],
     location: candidate.location ?? null,
     bio: candidate.bio ?? null,
+    wikiBio: candidate.wikiBio ?? null,
     status: candidate.status,
     tier: candidate.tier,
     tierManualOverride: candidate.tierManualOverride ?? null,

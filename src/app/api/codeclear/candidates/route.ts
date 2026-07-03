@@ -267,6 +267,7 @@ export async function POST(request: NextRequest) {
         signalSources: body.signalSources?.length ? body.signalSources : ["GITHUB"],
         location: body.location ?? null,
         bio: body.bio ?? null,
+        wikiBio: body.wikiBio ?? null,
         tier: body.tier,
         tierManualOverride: body.tierManualOverride ?? null,
         origin: body.origin,

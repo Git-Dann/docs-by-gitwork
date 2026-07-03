@@ -85,6 +85,15 @@ export interface WikiTeamMember {
   name: string;
   initials: string;
   avatarUrl: string | null;
+  /** Short tagline (≤25 chars) shown under the name on avatar hover. */
+  bio: string | null;
+}
+
+/** Production + staging links surfaced in the wiki header (from the featured platform). */
+export interface WikiHeaderLinks {
+  platformName: string;
+  productionUrl: string | null;
+  stagingUrl: string | null;
 }
 
 /** The client's design system, surfaced inside the wiki when it exists. */
@@ -123,6 +132,8 @@ export interface WikiDTO {
   monitors: WikiMonitorsSection;
   /** Active delivery team (devs) on the project — for the dashboard hero stack. */
   team: WikiTeamMember[];
+  /** Prod/staging links for the wiki header, from the client's featured platform (null when none). */
+  headerLinks: WikiHeaderLinks | null;
   /** Documents section — whether it's enabled + the doc list (links/files/Foundry). */
   documents: WikiDocumentsSection;
   /**
@@ -233,7 +244,7 @@ async function loadWikiTeam(clientId: string): Promise<WikiTeamMember[]> {
   const placements = await prisma.placement.findMany({
     where: { clientId, endDate: null, candidate: { devGroup: { not: "PRO_BONO" } } },
     orderBy: { startDate: "asc" },
-    select: { candidate: { select: { id: true, name: true, avatarUrl: true } } },
+    select: { candidate: { select: { id: true, name: true, avatarUrl: true, wikiBio: true } } },
   });
   const seen = new Set<string>();
   const team: WikiTeamMember[] = [];
@@ -241,9 +252,24 @@ async function loadWikiTeam(clientId: string): Promise<WikiTeamMember[]> {
     const c = p.candidate;
     if (!c || seen.has(c.id)) continue;
     seen.add(c.id);
-    team.push({ name: c.name, initials: initialsOf(c.name), avatarUrl: c.avatarUrl });
+    team.push({ name: c.name, initials: initialsOf(c.name), avatarUrl: c.avatarUrl, bio: c.wikiBio ?? null });
   }
   return team;
+}
+
+/**
+ * The client's featured platform's prod/staging URLs, for the wiki header
+ * buttons. Uses the first platform flagged `featuredInWiki` that has at least
+ * one URL; returns null when none is featured (or the featured one has no URLs).
+ */
+async function loadWikiHeaderLinks(clientId: string): Promise<WikiHeaderLinks | null> {
+  const platform = await prisma.clientPlatform.findFirst({
+    where: { clientId, featuredInWiki: true, OR: [{ url: { not: null } }, { stagingUrl: { not: null } }] },
+    orderBy: { createdAt: "asc" },
+    select: { name: true, url: true, stagingUrl: true },
+  });
+  if (!platform) return null;
+  return { platformName: platform.name, productionUrl: platform.url, stagingUrl: platform.stagingUrl };
 }
 
 async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
@@ -411,6 +437,7 @@ async function buildDTO(
     designSystem: await loadWikiDesignSystem(wiki.clientId),
     monitors: await loadWikiMonitors(wiki.clientId),
     team: await loadWikiTeam(wiki.clientId),
+    headerLinks: await loadWikiHeaderLinks(wiki.clientId),
     documents: await loadWikiDocuments(wiki.clientId),
     users: opts?.includeUsers
       ? (wiki.wikiUsers ?? [])

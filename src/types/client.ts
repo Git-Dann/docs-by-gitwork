@@ -198,6 +198,8 @@ export interface ClientPlatformRecord {
   logins: ClientPlatformLoginSummary[];
   notes: string | null;
   previewImageUrl: string | null;
+  /** When true, this platform's prod + staging URLs surface as buttons in the wiki header. */
+  featuredInWiki: boolean;
   createdAt: string;
   updatedAt: string;
 }
