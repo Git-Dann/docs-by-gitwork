@@ -698,7 +698,7 @@ export function ClientDetail({ slug }: { slug: string }) {
       {!isLead && (
         <>
       {/* ── 02-06 // STATS ── */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
         <StatCard number="02" label="DOCS" value={proposals.length} />
         <StatCard number="03" label="PLATFORMS" value={platforms.length} />
         <StatCard number="04" label="DESIGNS" value={designs.length} />
@@ -981,7 +981,7 @@ export function ClientDetail({ slug }: { slug: string }) {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {platforms.map((platform) => (
                 <PlatformCard
                   key={platform.id}
@@ -996,8 +996,8 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* ── 11 // DESIGNS + 12 // MEETING NOTES (side by side) ── */}
-      <div className="grid grid-cols-2 gap-4">
+      {/* ── 11 // DESIGNS + 12 // MEETING NOTES (side by side on desktop, stacked on mobile) ── */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       {/* 11 // DESIGNS */}
       <section className="widget-card flex flex-col">
         <div className="widget-header">
@@ -1077,9 +1077,9 @@ export function ClientDetail({ slug }: { slug: string }) {
 
       {!isLead && (
         <>
-      {/* ── ACTIVITY — 2×2 grid ── */}
+      {/* ── ACTIVITY — 2×2 grid on desktop, stacked on mobile ── */}
       {/* Row 1: Documents + Pulse */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 
         {/* 14 // DOCUMENTS */}
         <section className="widget-card">
@@ -1220,7 +1220,7 @@ export function ClientDetail({ slug }: { slug: string }) {
       </div>
 
       {/* Row 2: Developers + Studies */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* 16 // DEVELOPERS */}
         <section className="widget-card">
           <div className="widget-header">
@@ -2501,7 +2501,7 @@ function StatCard({
       </div>
       <div className="widget-body--compact">
         <p
-          className="text-5xl leading-none tracking-tight text-[var(--text-1)]"
+          className="text-4xl leading-none tracking-tight text-[var(--text-1)] sm:text-5xl"
           style={{ fontFamily: "var(--font-display)" }}
         >
           {value}
@@ -2640,7 +2640,7 @@ function SlackActivityBody({
   const is24hView = recentMessages.length > 0;
 
   return (
-    <div className="grid h-[360px] grid-cols-[2fr_3fr] divide-x divide-[rgba(0,0,0,0.06)] overflow-hidden">
+    <div className="grid h-[360px] grid-cols-1 overflow-hidden sm:grid-cols-[2fr_3fr] sm:divide-x sm:divide-[rgba(0,0,0,0.06)]">
 
       {/* ── Left: AI summary — min-h-0 lets the grid item shrink + scroll ── */}
       <div className="relative min-h-0">
@@ -2690,8 +2690,8 @@ function SlackActivityBody({
         />
       </div>
 
-      {/* ── Right: Messages ── */}
-      <div className="min-h-0 overflow-y-auto divide-y divide-[rgba(0,0,0,0.05)]">
+      {/* ── Right: Messages — hidden on mobile (the digest is enough on a small screen) ── */}
+      <div className="hidden min-h-0 divide-y divide-[rgba(0,0,0,0.05)] overflow-y-auto sm:block">
         {!is24hView && (
           <div className="px-4 py-2 bg-[var(--surface-1)]">
             <p className="widget-data-label">No messages in last 24 h — showing recent</p>
