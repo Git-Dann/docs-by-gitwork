@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import {
   BookOpenIcon,
@@ -579,6 +580,76 @@ export function WikiDashboard({
 }
 
 /** A labelled hero avatar stack (name + italic bio on hover). */
+/**
+ * Avatar + hover tooltip. The tooltip is rendered in a portal to document.body
+ * (position: fixed) so it escapes the wiki card's `overflow: hidden` and never
+ * clips — the stacks sit at the card's top-right corner. Centred above the
+ * avatar, then clamped to the viewport so long names never run off-screen.
+ */
+function AvatarWithTooltip({ member }: { member: WikiDTO["team"][number] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = useState<{ cx: number; top: number } | null>(null);
+
+  const show = () => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setAnchor({ cx: r.left + r.width / 2, top: r.top });
+  };
+  const hide = () => setAnchor(null);
+
+  return (
+    <div
+      ref={ref}
+      className="relative"
+      tabIndex={0}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+    >
+      <TeamAvatar name={member.name} initials={member.initials} avatarUrl={member.avatarUrl} />
+      {anchor && <MemberTooltip anchor={anchor} name={member.name} bio={member.bio} />}
+    </div>
+  );
+}
+
+function MemberTooltip({
+  anchor,
+  name,
+  bio,
+}: {
+  anchor: { cx: number; top: number };
+  name: string;
+  bio: string | null;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [left, setLeft] = useState(anchor.cx);
+
+  // Keep the centred tooltip fully on-screen (clamp its half-width to the viewport).
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const half = el.offsetWidth / 2;
+    const margin = 8;
+    setLeft(Math.max(margin + half, Math.min(anchor.cx, window.innerWidth - margin - half)));
+  }, [anchor.cx]);
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      ref={ref}
+      style={{ position: "fixed", left, top: anchor.top - 8, transform: "translate(-50%, -100%)" }}
+      className="pointer-events-none z-[100] rounded-md bg-[var(--text-1)] px-2.5 py-1.5 text-center shadow-lg"
+    >
+      <span className="block whitespace-nowrap text-[11px] font-medium text-white">{name}</span>
+      {bio && <span className="mt-0.5 block text-[10px] italic text-white/70">{bio}</span>}
+    </div>,
+    document.body,
+  );
+}
+
 function TeamStack({ label, members }: { label: string; members: WikiDTO["team"] }) {
   return (
     <div className="flex items-center gap-2">
@@ -590,17 +661,7 @@ function TeamStack({ label, members }: { label: string; members: WikiDTO["team"]
       </span>
       <div className="flex -space-x-2">
         {members.slice(0, 6).map((m, i) => (
-          <div key={i} className="group relative">
-            <TeamAvatar name={m.name} initials={m.initials} avatarUrl={m.avatarUrl} />
-            {/* Right-anchored so the tooltip opens inward (leftward) and never
-                overflows the card's right edge, where these stacks sit. */}
-            <span className="pointer-events-none absolute bottom-full right-0 z-50 mb-1.5 hidden whitespace-nowrap rounded-md bg-[var(--text-1)] px-2.5 py-1.5 text-left shadow-lg group-hover:block">
-              <span className="block text-[11px] font-medium text-white">{m.name}</span>
-              {m.bio && (
-                <span className="mt-0.5 block text-[10px] italic text-white/70">{m.bio}</span>
-              )}
-            </span>
-          </div>
+          <AvatarWithTooltip key={i} member={m} />
         ))}
         {members.length > 6 && (
           <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-1)] text-[11px] font-semibold text-[var(--text-3)] ring-2 ring-white">
