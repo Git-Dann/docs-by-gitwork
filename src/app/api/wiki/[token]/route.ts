@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { getPublicWiki } from "@/server/wiki";
+import { resolvePublicWiki } from "@/server/wiki";
 import { auth } from "@/auth";
 import { verifyWikiAccessCookie, wikiAccessCookieName } from "@/server/wiki-access";
 
@@ -13,8 +13,11 @@ export async function GET(
 ) {
   try {
     const { token } = await params;
-    const wiki = await getPublicWiki(token);
-    if (!wiki) return apiError("Not found", 404);
+    // Resolve BOTH whole-wiki share tokens and per-section pageShare tokens
+    // (getPublicWiki only matched whole-wiki, 404-ing section-only clients).
+    const resolved = await resolvePublicWiki(token);
+    if (!resolved) return apiError("Not found", 404);
+    const wiki = resolved.wiki;
 
     const session = await auth();
     const isStaff = Boolean(session?.user?.id);
