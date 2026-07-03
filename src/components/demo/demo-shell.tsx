@@ -10,9 +10,8 @@
  * `src/lib/demo/dev-demo-data.ts` for the canned data. No auth, no database.
  */
 
-import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { SessionProvider } from "next-auth/react";
 import {
   HomeIcon,
@@ -25,39 +24,9 @@ import {
 import { cn } from "@/lib/format";
 import { DeskDrawer } from "@/components/desk/desk-drawer";
 import { DemoErrorBoundary } from "@/components/demo/demo-error-boundary";
-import { demoSession, resolveDemoApi } from "@/lib/demo/dev-demo-data";
-
-// ── Install the /api/* fetch interceptor once, at module load (client only) ──────
-// Runs before React renders the demo, so the first query already sees canned data.
-declare global {
-  var __foundryDemoFetchPatched: boolean | undefined;
-}
-if (typeof window !== "undefined" && !globalThis.__foundryDemoFetchPatched) {
-  globalThis.__foundryDemoFetchPatched = true;
-  const originalFetch = window.fetch.bind(window);
-  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    let rawUrl: string;
-    if (typeof input === "string") rawUrl = input;
-    else if (input instanceof URL) rawUrl = input.href;
-    else rawUrl = input.url;
-
-    let pathname: string;
-    try {
-      pathname = rawUrl.startsWith("http") ? new URL(rawUrl).pathname : rawUrl.split("?")[0];
-    } catch {
-      pathname = rawUrl.split("?")[0];
-    }
-
-    if (pathname.startsWith("/api/")) {
-      const body = resolveDemoApi(pathname);
-      return new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    return originalFetch(input as RequestInfo, init);
-  };
-}
+import "@/lib/demo/demo-fetch";
+import { demoSession } from "@/lib/demo/dev-demo-data";
+import { useDemoLinkReroute } from "@/lib/demo/use-demo-nav";
 
 type NavEntry = { label: string; icon: typeof HomeIcon; href?: string };
 
@@ -101,24 +70,8 @@ export function DemoShell({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  // The reused production components hardcode real `/app/*` links (e.g. the client
-  // header's "Wiki →" pill → /app/portal/{slug}/wiki, and the wiki's back-link →
-  // /app/portal/{slug}). Those are auth-gated and would bounce to /login. Capture
-  // clicks and reroute the ones the demo covers to their /demo equivalents; swallow
-  // any other /app link so the demo stays self-contained.
-  const router = useRouter();
-  function handleDemoNav(e: MouseEvent<HTMLDivElement>) {
-    const anchor = (e.target as HTMLElement).closest("a");
-    const href = anchor?.getAttribute("href") ?? "";
-    if (!href.startsWith("/app/")) return;
-    e.preventDefault();
-    const docMatch = href.match(/^\/app\/docs\/([^/?#]+)/);
-    if (/^\/app\/portal\/[^/]+\/wiki/.test(href)) router.push("/demo/wiki");
-    else if (/^\/app\/portal\/[^/]+\/tasks/.test(href)) router.push("/demo/tasks");
-    else if (/^\/app\/portal\/[^/]+$/.test(href)) router.push("/demo/portal");
-    else if (docMatch && docMatch[1] !== "analytics") router.push(`/demo/docs/${docMatch[1]}`);
-    // else: swallow — don't leave the demo into the gated app.
-  }
+  // Reroute the reused components' hardcoded /app/* links to their /demo equivalents.
+  const handleDemoNav = useDemoLinkReroute();
 
   return (
     <SessionProvider session={demoSession as never}>

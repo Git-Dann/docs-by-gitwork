@@ -903,6 +903,9 @@ export function resolveDemoApi(pathname: string): unknown {
   // Tasks — feature blocks + milestones (per-client tasks page).
   if (pathname === "/api/feature-blocks") return demoFeatureBlocks;
   if (pathname === "/api/milestones") return demoMilestones;
+  // Push-to-Slack composer prefs (so the modal renders with sensible defaults).
+  if (pathname === "/api/tasks/push-prefs")
+    return { detail: "TITLES", statusGroups: ["DOING", "DONE"], excludedCategoryIds: [], defaultNote: null };
 
   // Care (support triage).
   if (pathname === "/api/support/clients") return demoSupportClients;

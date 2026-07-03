@@ -2,13 +2,14 @@
 
 /**
  * Standalone Foundry client-wiki demo (`/demo/wiki`). Renders the real internal
- * `WikiWorkspace` for a sample client, fed by the demo fetch interceptor in
- * `DemoShell` (GET /api/clients/{slug}/wiki → canned WikiDTO). No auth, no
- * database. See `src/lib/demo/dev-demo-data.ts`.
+ * `WikiWorkspace` FULL-SCREEN — exactly as production does (the real wiki page
+ * renders <WikiWorkspace> directly, NOT inside the app sidebar). So we use the
+ * chrome-less `DemoProviders`, not `DemoShell`. Fed by the demo fetch interceptor
+ * (GET /api/clients/{slug}/wiki → canned WikiDTO). No auth, no database.
  */
 
 import { WikiWorkspace } from "@/components/clients/wiki/wiki-workspace";
-import { DemoShell } from "@/components/demo/demo-shell";
+import { DemoProviders } from "@/components/demo/demo-providers";
 
 // Must match the wiki client seeded in dev-demo-data.ts (Northwind Studio).
 const DEMO_SLUG = "northwind";
@@ -16,12 +17,8 @@ const DEMO_CLIENT = "Northwind Studio";
 
 export function DemoWikiExperience() {
   return (
-    <DemoShell
-      active="Portal"
-      title={DEMO_CLIENT}
-      subtitle="Client wiki — docs, changelog, timeline, monitors & status."
-    >
+    <DemoProviders>
       <WikiWorkspace slug={DEMO_SLUG} clientName={DEMO_CLIENT} />
-    </DemoShell>
+    </DemoProviders>
   );
 }
