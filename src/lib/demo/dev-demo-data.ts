@@ -441,6 +441,12 @@ const demoWiki = {
       },
     ],
   },
+  team: [
+    { name: "Alex Rivera", initials: "AR", avatarUrl: null },
+    { name: "Marco Bianchi", initials: "MB", avatarUrl: null },
+    { name: "Sam Okafor", initials: "SO", avatarUrl: null },
+  ],
+  documents: { enabled: false, documents: [] },
   users: [],
   updatedAt: atDays(0),
 };
