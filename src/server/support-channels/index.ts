@@ -6,10 +6,11 @@ import { redditAdapter } from "./reddit";
 import { gmailAdapter } from "./gmail";
 import { appReviewsAdapter } from "./app-reviews";
 import { webhookAdapter } from "./webhook";
+import { analyticsAdapter } from "./analytics";
 
 // Register a channel = add it here. New connectors implement `fetchItems` (or
 // `run` for self-contained flows) and ride the shared ingest core below.
-const ADAPTERS: ChannelAdapter[] = [discordAdapter, redditAdapter, gmailAdapter, appReviewsAdapter, webhookAdapter];
+const ADAPTERS: ChannelAdapter[] = [discordAdapter, redditAdapter, gmailAdapter, appReviewsAdapter, webhookAdapter, analyticsAdapter];
 
 export function getChannelAdapter(source: string): ChannelAdapter | null {
   return ADAPTERS.find((a) => a.key === source) ?? null;
