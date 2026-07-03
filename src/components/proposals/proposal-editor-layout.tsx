@@ -1823,7 +1823,14 @@ function OverviewCanvas({
   const proseSections = sections.filter(
     (section) => section.key === "prose" || section.key === "introduction",
   );
-  const headlineCallout = calloutSections[0]?.data as { headline?: string; tone?: string } | undefined;
+  // Only a callout near the top reads as a period-status signal — report templates lead with a
+  // "this period at a glance" callout. A closing sign-off callout (e.g. the Care report's
+  // "Looking ahead") sits at the end and must NOT be promoted to the STATUS hero figure.
+  const firstCalloutIndex = sections.findIndex((section) => section.key === "callout");
+  const headlineCallout =
+    firstCalloutIndex >= 0 && firstCalloutIndex <= 2
+      ? (sections[firstCalloutIndex].data as { headline?: string; tone?: string } | undefined)
+      : undefined;
   const checklistItemCount = checklistSections.reduce((sum, section) => {
     const items = (section.data as { items?: unknown[] } | undefined)?.items ?? [];
     return sum + items.filter(Boolean).length;
