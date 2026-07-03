@@ -257,7 +257,7 @@ const SOURCE_TAGLINE: Partial<Record<SupportSource, string>> = {
 
 // Mirrors the server-side registry in src/server/support-analytics/index.ts
 const ANALYTICS_ADAPTERS: { key: string; label: string; defaultBaseUrl: string; requiresToken: boolean; hint: string }[] = [
-  { key: "fellas", label: "Fellas Loaded", defaultBaseUrl: "https://api.fellasloaded.com", requiresToken: true, hint: "Subscription & user analytics — paste the Fellas API JWT." },
+  { key: "fellas", label: "Fellas Loaded", defaultBaseUrl: "https://api.fellasloaded.com", requiresToken: false, hint: "Revenue, subscriptions, trials & audience. Base URL only — the API is public; a JWT is optional." },
   { key: "bigwedge", label: "Big Wedge Golf", defaultBaseUrl: "https://apiv1.bigwedgegolf.com", requiresToken: true, hint: "Golf analytics — paste an admin JWT. Rounds played is month-scoped for trends." },
   { key: "firebase", label: "Firebase / Firestore", defaultBaseUrl: "", requiresToken: false, hint: "Paste a service-account JSON (from Firebase Console → Project settings → Service accounts). Then add collections to count per month in the metric specs below." },
   { key: "generic", label: "Generic JSON API", defaultBaseUrl: "", requiresToken: false, hint: "Enter the full endpoint URL — every numeric field becomes a metric." },
