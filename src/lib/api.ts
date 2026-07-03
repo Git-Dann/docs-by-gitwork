@@ -1650,6 +1650,17 @@ export async function createSupportReport(
   });
 }
 
+export async function generateSupportReportDoc(
+  clientId: string,
+  data: { periodStart: string; periodEnd: string; periodLabel: string; author?: string; force?: boolean },
+): Promise<{ documentId: string }> {
+  return apiFetch(`/api/support/clients/${clientId}/reports/generate-doc`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
 export async function updateSupportReport(
   clientId: string,
   reportId: string,
