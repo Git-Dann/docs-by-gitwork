@@ -25,7 +25,8 @@ import { DeskTasks } from "./desk-tasks";
 import { DeskMeetings } from "./desk-meetings";
 import { DeskInbox } from "./desk-inbox";
 
-const STORAGE_KEY = "gitwork.desk.v1";
+const STORAGE_KEY = "gitwork.desk.v1"; // localStorage: remembers the last tab long-term
+const OPEN_KEY = "gitwork.desk.open.v1"; // sessionStorage: open state, per browser session
 const WORDMARK = "On Your Desk";
 
 function useDeskState() {
@@ -35,14 +36,17 @@ function useDeskState() {
 
   useEffect(() => {
     try {
+      // Tab preference persists long-term.
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const p = JSON.parse(raw) as { open?: boolean; tab?: string };
-        if (typeof p.open === "boolean") setOpen(p.open);
+        const p = JSON.parse(raw) as { tab?: string };
         if (p.tab && (DESK_TABS as readonly string[]).includes(p.tab)) setTab(p.tab as DeskTab);
       }
+      // Open state is per-session (sessionStorage), so a fresh visit to Foundry always
+      // starts CLOSED — it only stays open while you move around within one session.
+      if (sessionStorage.getItem(OPEN_KEY) === "1") setOpen(true);
     } catch {
-      /* ignore malformed storage */
+      /* ignore malformed / unavailable storage */
     }
     setReady(true);
   }, []);
@@ -50,7 +54,8 @@ function useDeskState() {
   useEffect(() => {
     if (!ready) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ open, tab }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ tab }));
+      sessionStorage.setItem(OPEN_KEY, open ? "1" : "0");
     } catch {
       /* storage full / unavailable — non-fatal */
     }
