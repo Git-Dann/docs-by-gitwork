@@ -66,7 +66,7 @@ import { cn, formatCurrency, formatDate, statusLabel } from "@/lib/format";
 import { deriveProposalStatus } from "@/lib/proposal-workflow";
 import { approvalTrackApplies } from "@/lib/templates";
 import { createTemplateFromDocument } from "@/lib/api";
-import type { ProposalDocument, ProposalSection, SectionKey } from "@/types/proposal";
+import type { DocumentType, ProposalDocument, ProposalSection, SectionKey } from "@/types/proposal";
 
 type EditorTab = "overview" | "builder";
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -1624,6 +1624,77 @@ function GrabberHandle() {
   );
 }
 
+// The overview is no longer proposal-only — Docs builds SOWs, agreements, reports, briefs, etc.
+// This noun genericises the commercial/scope figure labels so an SLA reads "AGREEMENT VALUE" and a
+// report reads "REPORT COVERAGE" rather than always saying "PROPOSAL".
+const DOC_TYPE_NOUN: Record<DocumentType, string> = {
+  PROPOSAL: "PROPOSAL",
+  SLA: "AGREEMENT",
+  SOW: "STATEMENT",
+  MSA: "AGREEMENT",
+  NDA: "AGREEMENT",
+  CO: "CHANGE ORDER",
+  DSA: "AGREEMENT",
+  HANDOVER: "HANDOVER",
+  REPORT: "REPORT",
+  BRIEF: "BRIEF",
+  OTHER: "DOCUMENT",
+};
+
+type OverviewCardDef = {
+  name: string;
+  rightSlot: string;
+  figure: string;
+  figureLabel: string;
+  figureLong?: boolean;
+  rows: Array<{ label: string; value: ReactNode }>;
+};
+
+// Friendly plural labels for the document's building blocks. Drives the generic CONTENT card so
+// any doc type — including structured contracts like the SLA (service tiers, response targets,
+// escalation, credits) that carry no costing/timeline/scope — gets a summary that reflects its
+// actual template instead of collapsing to a lone stakeholders card. Grouped, so prose + intro
+// read as one "Written sections" line and both table types read as "Tables".
+const SECTION_BLOCK_LABEL: Partial<Record<SectionKey, string>> = {
+  introduction: "Written sections",
+  prose: "Written sections",
+  product_overview: "Written sections",
+  callout: "Callouts",
+  checklist: "Checklists",
+  data_table: "Tables",
+  comparison_table: "Tables",
+  faq: "FAQs",
+  kpi_strip: "KPI strips",
+  parties: "Parties",
+  service_tiers: "Service tiers",
+  response_times: "Response targets",
+  escalation: "Escalation paths",
+  exclusions: "Exclusions",
+  penalties: "Credits / penalties",
+  pricing_tiers: "Pricing tiers",
+  term: "Terms",
+  signatures: "Signature blocks",
+  objectives: "Objectives",
+  touchpoints: "Scope items",
+  image: "Images",
+  video_embed: "Videos",
+  supporting_links_assets: "Links & assets",
+  code_snippet: "Code snippets",
+  heading: "Headings",
+};
+
+// Count the items within a section (tiers, priorities, rows, parties…), falling back to 1 for a
+// plain prose/heading block. Lets the CONTENT card surface "Response targets 4" rather than "1".
+function sectionBlockItemCount(section: ProposalSection): number {
+  const data = section.data as unknown as Record<string, unknown> | undefined;
+  if (!data) return 1;
+  for (const key of ["items", "tiers", "priorities", "levels", "rows", "parties", "blocks", "faqs", "questions"]) {
+    const value = data[key];
+    if (Array.isArray(value)) return value.filter(Boolean).length || 1;
+  }
+  return 1;
+}
+
 function OverviewCanvas({
   proposal,
   sections,
@@ -1745,6 +1816,42 @@ function OverviewCanvas({
   const ctaCount = proposal.ctas.filter((cta) => cta.label.trim().length > 0).length;
   const primaryCta = proposal.ctas.find((cta) => cta.role === "PRIMARY");
 
+  // Generic narrative blocks — the building blocks lightweight docs (reports, briefs, handovers)
+  // lean on instead of costing/timeline/scope. Counted so their overview isn't a wall of zeroes.
+  const calloutSections = sections.filter((section) => section.key === "callout");
+  const checklistSections = sections.filter((section) => section.key === "checklist");
+  const proseSections = sections.filter(
+    (section) => section.key === "prose" || section.key === "introduction",
+  );
+  const headlineCallout = calloutSections[0]?.data as { headline?: string; tone?: string } | undefined;
+  const checklistItemCount = checklistSections.reduce((sum, section) => {
+    const items = (section.data as { items?: unknown[] } | undefined)?.items ?? [];
+    return sum + items.filter(Boolean).length;
+  }, 0);
+
+  const noun = DOC_TYPE_NOUN[proposal.documentType] ?? "DOCUMENT";
+  const hasCommercials = proposal.costLineItems.length > 0;
+  const hasDelivery = phasesCount > 0;
+  const hasScope = objectiveCount > 0 || touchpointCount > 0 || assumptionCount > 0 || outOfScopeCount > 0;
+
+  // Generic content summary — every visible block that isn't the cover or sign-off footer, grouped
+  // by friendly label and summed by item count. This is what lets non-costed types (contracts,
+  // reports, briefs) reflect their real structure. Top groups become the CONTENT card's rows.
+  const contentSections = sections.filter(
+    (section) => section.isVisible && section.key !== "cover" && section.key !== "signoff_footer",
+  );
+  const blockGroups = new Map<string, number>();
+  for (const section of contentSections) {
+    const label = SECTION_BLOCK_LABEL[section.key];
+    if (!label) continue;
+    blockGroups.set(label, (blockGroups.get(label) ?? 0) + sectionBlockItemCount(section));
+  }
+  const contentRows = [...blockGroups.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([label, value]) => ({ label, value }));
+  const hasContent = contentSections.length > 0;
+
   const clientName = proposal.clientName || proposal.metadata.client || cover?.clientName || "";
   const owner = proposal.metadata.owner || "";
   // Mirror the cover's author-line resolution exactly so the overview can't disagree with the
@@ -1769,7 +1876,8 @@ function OverviewCanvas({
     !touchpointCount &&
     !linksCount &&
     !assetsCount &&
-    !ctaCount;
+    !ctaCount &&
+    !hasContent;
 
   if (isEmptyProposal) {
     return (
@@ -1783,73 +1891,131 @@ function OverviewCanvas({
             Nothing to summarise yet
           </h4>
           <p className="mt-2 max-w-2xl text-sm leading-7 text-[var(--text-3)]">
-            New proposals start blank. Use Builder to add client details, scope, timeline, and pricing. The overview will stay empty until there is something real to summarise.
+            New documents start blank. Use Builder to add content. The overview will stay empty until there is something real to summarise.
           </p>
         </div>
       </section>
     );
   }
 
+  const titleCase = (value: string) =>
+    value.toLowerCase().replace(/^\w/, (char) => char.toUpperCase());
+
+  // Build the card set from what the document actually carries, rather than assuming a proposal's
+  // shape. Costed docs lead with commercials/delivery/scope; lightweight docs (reports, briefs)
+  // lead with their status + narrative content. Every doc closes on stakeholders.
+  const cards: OverviewCardDef[] = [];
+
+  if (hasCommercials) {
+    cards.push({
+      name: "COMMERCIAL",
+      rightSlot: "VALUE",
+      figure: formatCurrency(grandTotal, currency),
+      figureLabel: `CURRENT ${noun} VALUE`,
+      rows: [
+        { label: "Billable people", value: billableTeamCount },
+        { label: "One-off", value: formatCurrency(oneOffTotal, currency) },
+        { label: "Recurring", value: formatCurrency(recurringTotal, currency) },
+        { label: `Discount (${discount}%)`, value: formatCurrency(discountAmount, currency) },
+        { label: `VAT (${taxRate}%)`, value: formatCurrency(taxAmount, currency) },
+      ],
+    });
+  }
+
+  if (hasDelivery) {
+    cards.push({
+      name: "DELIVERY",
+      rightSlot: "SHAPE",
+      figure: String(phasesCount),
+      figureLabel: "PHASES · IMPLEMENTATION SHAPE",
+      rows: [
+        { label: "Deliverables", value: deliverablesCount },
+        { label: "Workstreams", value: workstreamCount },
+        { label: "Milestones", value: paymentMilestoneCount },
+        { label: "Timeline mode", value: titleCase(timeline?.viewMode ?? "LIST") },
+        { label: "Last updated", value: formatDate(proposal.updatedAt) },
+      ],
+    });
+  }
+
+  if (hasScope) {
+    cards.push({
+      name: "SCOPE",
+      rightSlot: "COVERAGE",
+      figure: String(touchpointCount || objectiveCount),
+      figureLabel: `${touchpointCount ? "TOUCHPOINTS" : "OBJECTIVES"} · ${noun} COVERAGE`,
+      rows: [
+        { label: "Objectives", value: objectiveCount },
+        { label: "Features", value: featureCount },
+        { label: "Visible modules", value: visibleSectionsCount },
+        { label: "Assumptions", value: assumptionCount },
+        { label: "Out of scope", value: outOfScopeCount },
+      ],
+    });
+  }
+
+  // Status + content cards for non-costed docs (contracts, reports, briefs, handovers). A headline
+  // callout (reports/handovers) leads with a STATUS signal; the CONTENT card summarises the real
+  // building blocks and only appears when SCOPE hasn't already covered the doc's structure.
+  if (!hasCommercials) {
+    if (proposal.documentType === "REPORT" && headlineCallout?.headline) {
+      cards.push({
+        name: "STATUS",
+        rightSlot: "SIGNAL",
+        figure: headlineCallout.headline,
+        figureLabel: `${noun} · THIS PERIOD`,
+        figureLong: true,
+        rows: [
+          { label: "Highlights", value: calloutSections.length },
+          { label: "Checklist items", value: checklistItemCount },
+          { label: "Written updates", value: proseSections.length },
+          { label: "Last updated", value: formatDate(proposal.updatedAt) },
+        ],
+      });
+    }
+
+    if (!hasScope && contentRows.length > 0) {
+      cards.push({
+        name: "CONTENT",
+        rightSlot: "STRUCTURE",
+        figure: String(contentSections.length),
+        figureLabel: `SECTIONS · ${noun} STRUCTURE`,
+        rows: contentRows,
+      });
+    }
+  }
+
+  cards.push({
+    name: "STAKEHOLDERS",
+    rightSlot: "OWNERSHIP",
+    figure: clientName || "—",
+    figureLabel: "CLIENT · OWNERSHIP",
+    figureLong: true,
+    rows: [
+      { label: "Prepared by", value: preparedByLine || "Not set" },
+      { label: "Primary CTA", value: primaryCta?.label || "Not set" },
+      { label: "Status", value: <StatusBadge status={proposal.status} /> },
+      { label: "Expiry", value: formatDate(expiryDate) },
+    ],
+  });
+
   return (
     <section className="grid gap-3 xl:grid-cols-2">
-      <OverviewWidget
-        number="02"
-        name="COMMERCIAL"
-        rightSlot="VALUE"
-        figure={formatCurrency(grandTotal, currency)}
-        figureLabel="CURRENT PROPOSAL VALUE"
-      >
-        <OverviewStatRow label="Billable people" value={billableTeamCount} />
-        <OverviewStatRow label="One-off" value={formatCurrency(oneOffTotal, currency)} />
-        <OverviewStatRow label="Recurring" value={formatCurrency(recurringTotal, currency)} />
-        <OverviewStatRow label={`Discount (${discount}%)`} value={formatCurrency(discountAmount, currency)} />
-        <OverviewStatRow label={`VAT (${taxRate}%)`} value={formatCurrency(taxAmount, currency)} />
-      </OverviewWidget>
-
-      <OverviewWidget
-        number="03"
-        name="DELIVERY"
-        rightSlot="SHAPE"
-        figure={String(phasesCount)}
-        figureLabel="PHASES · IMPLEMENTATION SHAPE"
-      >
-        <OverviewStatRow label="Deliverables" value={deliverablesCount} />
-        <OverviewStatRow label="Workstreams" value={workstreamCount} />
-        <OverviewStatRow label="Milestones" value={paymentMilestoneCount} />
-        <OverviewStatRow
-          label="Timeline mode"
-          value={(timeline?.viewMode ?? "LIST").toLowerCase().replace(/^\w/, (char) => char.toUpperCase())}
-        />
-        <OverviewStatRow label="Last updated" value={formatDate(proposal.updatedAt)} />
-      </OverviewWidget>
-
-      <OverviewWidget
-        number="04"
-        name="SCOPE"
-        rightSlot="COVERAGE"
-        figure={String(touchpointCount)}
-        figureLabel="TOUCHPOINTS · PROPOSAL COVERAGE"
-      >
-        <OverviewStatRow label="Objectives" value={objectiveCount} />
-        <OverviewStatRow label="Features" value={featureCount} />
-        <OverviewStatRow label="Visible modules" value={visibleSectionsCount} />
-        <OverviewStatRow label="Assumptions" value={assumptionCount} />
-        <OverviewStatRow label="Out of scope" value={outOfScopeCount} />
-      </OverviewWidget>
-
-      <OverviewWidget
-        number="05"
-        name="STAKEHOLDERS"
-        rightSlot="OWNERSHIP"
-        figure={clientName || "—"}
-        figureLabel="CLIENT · OWNERSHIP"
-        figureLong
-      >
-        <OverviewStatRow label="Prepared by" value={preparedByLine || "Not set"} />
-        <OverviewStatRow label="Primary CTA" value={primaryCta?.label || "Not set"} />
-        <OverviewStatRow label="Status" value={<StatusBadge status={proposal.status} />} />
-        <OverviewStatRow label="Expiry" value={formatDate(expiryDate)} />
-      </OverviewWidget>
+      {cards.map((card, index) => (
+        <OverviewWidget
+          key={card.name}
+          number={String(index + 2).padStart(2, "0")}
+          name={card.name}
+          rightSlot={card.rightSlot}
+          figure={card.figure}
+          figureLabel={card.figureLabel}
+          figureLong={card.figureLong}
+        >
+          {card.rows.map((row) => (
+            <OverviewStatRow key={row.label} label={row.label} value={row.value} />
+          ))}
+        </OverviewWidget>
+      ))}
     </section>
   );
 }
