@@ -108,6 +108,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           : {}),
         ...(body.location !== undefined ? { location: body.location } : {}),
         ...(body.bio !== undefined ? { bio: body.bio } : {}),
+        ...(body.wikiBio !== undefined ? { wikiBio: body.wikiBio } : {}),
         ...(body.status !== undefined ? { status: body.status } : {}),
         ...(body.tier !== undefined ? { tier: body.tier } : {}),
         ...(body.tierManualOverride !== undefined

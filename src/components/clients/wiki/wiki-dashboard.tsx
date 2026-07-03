@@ -16,6 +16,7 @@ import {
   DocumentDuplicateIcon,
   WrenchScrewdriverIcon,
   ArrowRightIcon,
+  ArrowTopRightOnSquareIcon,
   Squares2X2Icon,
   GlobeAltIcon,
   UserIcon,
@@ -436,33 +437,58 @@ export function WikiDashboard({
       {/* Hero — overflow visible so the team avatars' name tooltips aren't clipped. */}
       <section className="widget-card">
         <div className="flex flex-col gap-5 p-6 md:p-8">
-          <div className="flex items-center gap-4">
-            {wiki.designSystem?.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={wiki.designSystem.logoUrl}
-                alt={`${wiki.clientName} logo`}
-                className="h-14 w-14 shrink-0 rounded-[10px] border border-[var(--border-1)] bg-white object-contain p-1.5"
-              />
-            ) : (
-              <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-[10px] border border-[var(--border-1)] bg-[var(--brand-50)] text-[var(--brand-700)]">
-                <Squares2X2Icon className="h-6 w-6" />
-              </span>
-            )}
-            <div className="min-w-0">
-              <p
-                className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-4)]"
-                style={{ fontFamily: MONO }}
-              >
-                Knowledge Wiki
-              </p>
-              <h1
-                className="mt-1 truncate text-2xl text-[var(--text-1)] md:text-3xl"
-                style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
-              >
-                {wiki.clientName}
-              </h1>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-4">
+              {wiki.designSystem?.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={wiki.designSystem.logoUrl}
+                  alt={`${wiki.clientName} logo`}
+                  className="h-14 w-14 shrink-0 overflow-hidden rounded-[10px] border border-[var(--border-1)] bg-white object-cover"
+                />
+              ) : (
+                <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-[10px] border border-[var(--border-1)] bg-[var(--brand-50)] text-[var(--brand-700)]">
+                  <Squares2X2Icon className="h-6 w-6" />
+                </span>
+              )}
+              <div className="min-w-0">
+                <p
+                  className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-4)]"
+                  style={{ fontFamily: MONO }}
+                >
+                  Knowledge Wiki
+                </p>
+                <h1
+                  className="mt-1 truncate text-2xl text-[var(--text-1)] md:text-3xl"
+                  style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+                >
+                  {wiki.clientName}
+                </h1>
+              </div>
             </div>
+
+            {/* Delivery team — moved to the right; stacked avatars with a
+                name + italic-bio tooltip on hover. */}
+            {wiki.team.length > 0 && (
+              <div className="flex shrink-0 -space-x-2">
+                {wiki.team.slice(0, 6).map((m, i) => (
+                  <div key={i} className="group relative">
+                    <TeamAvatar name={m.name} initials={m.initials} avatarUrl={m.avatarUrl} />
+                    <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--text-1)] px-2.5 py-1.5 text-center shadow-lg group-hover:block">
+                      <span className="block text-[11px] font-medium text-white">{m.name}</span>
+                      {m.bio && (
+                        <span className="mt-0.5 block text-[10px] italic text-white/70">{m.bio}</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+                {wiki.team.length > 6 && (
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-1)] text-[11px] font-semibold text-[var(--text-3)] ring-2 ring-white">
+                    +{wiki.team.length - 6}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Portal client info — website + primary contact */}
@@ -506,32 +532,34 @@ export function WikiDashboard({
             </div>
           )}
 
-          {/* Delivery team — stacked dev avatars with an (unclipped) name tooltip. */}
-          {wiki.team.length > 0 && (
-            <div className="flex items-center gap-3">
-              <span
-                className="text-[11px] font-medium uppercase tracking-[0.1em] text-[var(--text-4)]"
-                style={{ fontFamily: MONO }}
-              >
-                Your team
-              </span>
-              <div className="flex -space-x-2">
-                {wiki.team.slice(0, 6).map((m, i) => (
-                  <div key={i} className="group relative">
-                    <TeamAvatar name={m.name} initials={m.initials} avatarUrl={m.avatarUrl} />
-                    <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--text-1)] px-2 py-1 text-[11px] font-medium text-white shadow-lg group-hover:block">
-                      {m.name}
-                    </span>
-                  </div>
-                ))}
-                {wiki.team.length > 6 && (
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-1)] text-[11px] font-semibold text-[var(--text-3)] ring-2 ring-white">
-                    +{wiki.team.length - 6}
-                  </span>
+          {/* Quick links — the featured platform's production + staging URLs. */}
+          {wiki.headerLinks &&
+            (wiki.headerLinks.productionUrl || wiki.headerLinks.stagingUrl) && (
+              <div className="flex flex-wrap items-center gap-2">
+                {wiki.headerLinks.productionUrl && (
+                  <a
+                    href={normalizeUrl(wiki.headerLinks.productionUrl)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-[8px] bg-[var(--brand-600)] px-3.5 py-2 text-[13px] font-medium text-white transition hover:bg-[var(--brand-700)]"
+                  >
+                    <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+                    Production
+                  </a>
+                )}
+                {wiki.headerLinks.stagingUrl && (
+                  <a
+                    href={normalizeUrl(wiki.headerLinks.stagingUrl)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] bg-white px-3.5 py-2 text-[13px] font-medium text-[var(--text-1)] transition hover:bg-[var(--surface-1)]"
+                  >
+                    <ArrowTopRightOnSquareIcon className="h-4 w-4 text-[var(--text-4)]" />
+                    Staging
+                  </a>
                 )}
               </div>
-            </div>
-          )}
+            )}
 
         </div>
       </section>

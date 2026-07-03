@@ -658,6 +658,7 @@ export async function createClientPlatform(
     username?: string;
     password?: string;
     notes?: string;
+    featuredInWiki?: boolean;
   },
 ): Promise<{ platform: ClientPlatformRecord }> {
   return apiFetch<{ platform: ClientPlatformRecord }>(`/api/clients/${slug}/platforms`, {
@@ -679,6 +680,8 @@ export async function updateClientPlatform(
     username?: string;
     password?: string;
     notes?: string;
+    previewImageUrl?: string;
+    featuredInWiki?: boolean;
   },
 ): Promise<{ platform: ClientPlatformRecord }> {
   return apiFetch<{ platform: ClientPlatformRecord }>(
@@ -827,6 +830,7 @@ export async function createCodeClearCandidate(input: {
   signalSources?: CandidateSignalSource[];
   location?: string | null;
   bio?: string | null;
+  wikiBio?: string | null;
   tier?: CodeClearTier;
   rateCardPersonId?: string | null;
   linkedinUrl?: string | null;
@@ -888,6 +892,7 @@ export async function updateCodeClearCandidate(
     signalSources: CandidateSignalSource[];
     location: string | null;
     bio: string | null;
+    wikiBio: string | null;
     status: PipelineStatus;
     tier: CodeClearTier;
     tierManualOverride: CodeClearTier | null;

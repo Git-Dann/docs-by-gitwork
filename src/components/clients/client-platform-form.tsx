@@ -15,6 +15,7 @@ type PlatformInput = {
   repoUrl: string;
   notes: string;
   previewImageUrl: string;
+  featuredInWiki: boolean;
 };
 
 const PLATFORM_TYPES = [
@@ -445,6 +446,7 @@ export function ClientPlatformFormModal({
     repoUrl: platform?.repoUrl ?? "",
     notes: isAppStore ? "" : (platform?.notes ?? ""),
     previewImageUrl: platform?.previewImageUrl ?? "",
+    featuredInWiki: platform?.featuredInWiki ?? false,
   });
 
   // App store listing fields — parsed from notes JSON on edit
@@ -627,6 +629,25 @@ export function ClientPlatformFormModal({
                         className="app-input min-h-[72px] resize-y"
                         placeholder="Deployment notes, gotchas, client contacts…"
                       />
+                    </label>
+
+                    {/* Feature-in-wiki toggle — surfaces this platform's prod +
+                        staging URLs as buttons in the client wiki header. */}
+                    <label className="flex cursor-pointer items-start gap-2.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2.5">
+                      <input
+                        type="checkbox"
+                        checked={form.featuredInWiki}
+                        onChange={(e) => setForm((prev) => ({ ...prev, featuredInWiki: e.target.checked }))}
+                        className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--brand-600)]"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-[var(--text-1)]">
+                          Feature in wiki header
+                        </span>
+                        <span className="mt-0.5 block text-[12px] text-[var(--text-4)]">
+                          Surfaces this platform&apos;s Production &amp; Staging URLs as buttons at the top of the client wiki.
+                        </span>
+                      </span>
                     </label>
                   </>
                 )}

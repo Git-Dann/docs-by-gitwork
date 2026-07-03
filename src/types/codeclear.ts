@@ -77,6 +77,8 @@ export interface CodeClearCandidateRecord {
   signalSources: CandidateSignalSource[];
   location: string | null;
   bio: string | null;
+  /** Short wiki tagline (≤25 chars) shown on the client wiki team-avatar hover. */
+  wikiBio: string | null;
   status: PipelineStatus;
   /** Derived tier snapshot — recomputed when score changes. */
   tier: CodeClearTier;

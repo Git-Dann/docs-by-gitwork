@@ -1055,6 +1055,9 @@ model ClientPlatform {
   url             String?
   stagingUrl      String?
   repoUrl         String?
+  /// When true, this platform's production + staging URLs surface as buttons in
+  /// the client wiki header. Only the first featured platform is used.
+  featuredInWiki  Boolean         @default(false)
   credentials     String?         @db.Text // LEGACY plaintext — migrated into passwordCipher then nulled (see /api/dev/encrypt-platform-credentials)
   usernameCipher  String?         @db.Text // AES-256-GCM envelope (src/lib/encryption.ts)
   passwordCipher  String?         @db.Text // AES-256-GCM envelope
@@ -1552,6 +1555,9 @@ model Candidate {
   signalSources      String[]               @default([])
   location           String?
   bio                String?
+  /// Short tagline (≤25 chars) shown under the dev's name on the client wiki
+  /// team-avatar hover. Distinct from `bio` (the longer GitHub/CodeClear bio).
+  wikiBio            String?
   status             PipelineStatus         @default(SOURCED)
   /// Derived tier (see codeclear-scoring.ts deriveTier). Persisted as a
   /// snapshot for cheap reads / SQL filters; rebuilt whenever the score

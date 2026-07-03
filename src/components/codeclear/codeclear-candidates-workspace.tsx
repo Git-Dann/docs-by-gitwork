@@ -448,6 +448,7 @@ export function CodeClearCandidatesWorkspace() {
                       email: createForm.email || null,
                       location: createForm.location || null,
                       bio: createForm.bio || null,
+                      wikiBio: createForm.wikiBio || null,
                       linkedinUrl: createForm.linkedinUrl || null,
                       cvUrl: createForm.cvUrl || null,
                       portfolioUrl: createForm.portfolioUrl || null,

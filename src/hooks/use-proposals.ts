@@ -299,6 +299,7 @@ type PlatformInput = {
   password?: string;
   notes?: string;
   previewImageUrl?: string;
+  featuredInWiki?: boolean;
 };
 
 export function useCreateClientPlatform(slug: string) {

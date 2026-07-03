@@ -517,6 +517,7 @@ function serializeClientPlatform(platform: {
   logins?: Array<{ id: string; label: string | null; usernameCipher: string | null; passwordCipher: string | null; orderKey: number; createdAt: Date }> | null;
   notes: string | null;
   previewImageUrl?: string | null;
+  featuredInWiki?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }): ClientPlatformRecord {
@@ -544,6 +545,7 @@ function serializeClientPlatform(platform: {
     logins,
     notes: platform.notes,
     previewImageUrl: platform.previewImageUrl ?? null,
+    featuredInWiki: platform.featuredInWiki ?? false,
     createdAt: platform.createdAt.toISOString(),
     updatedAt: platform.updatedAt.toISOString(),
   };
@@ -1322,6 +1324,7 @@ export async function createClientPlatform(
     username?: string;
     password?: string;
     notes?: string;
+    featuredInWiki?: boolean;
   },
 ): Promise<ClientPlatformRecord> {
   const platform = await clientPlatforms.create({
@@ -1335,6 +1338,7 @@ export async function createClientPlatform(
       usernameCipher: encryptNullable(input.username),
       passwordCipher: encryptNullable(input.password),
       notes: input.notes?.trim() || null,
+      featuredInWiki: input.featuredInWiki ?? false,
     },
   });
 
@@ -1353,6 +1357,7 @@ export async function updateClientPlatform(
     password?: string;
     notes?: string;
     previewImageUrl?: string;
+    featuredInWiki?: boolean;
   },
 ): Promise<ClientPlatformRecord | null> {
   const platform = await clientPlatforms.update({
@@ -1371,6 +1376,7 @@ export async function updateClientPlatform(
       ...(input.password !== undefined ? { passwordCipher: encryptNullable(input.password), credentials: null } : {}),
       ...(input.notes !== undefined ? { notes: input.notes.trim() || null } : {}),
       ...(input.previewImageUrl !== undefined ? { previewImageUrl: input.previewImageUrl || null } : {}),
+      ...(input.featuredInWiki !== undefined ? { featuredInWiki: input.featuredInWiki } : {}),
     },
   });
 

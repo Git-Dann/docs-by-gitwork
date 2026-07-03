@@ -520,10 +520,15 @@ const demoWiki = {
     ],
   },
   team: [
-    { name: "Alex Rivera", initials: "AR", avatarUrl: null },
-    { name: "Marco Bianchi", initials: "MB", avatarUrl: null },
-    { name: "Sam Okafor", initials: "SO", avatarUrl: null },
+    { name: "Alex Rivera", initials: "AR", avatarUrl: null, bio: "Frontend & design system" },
+    { name: "Marco Bianchi", initials: "MB", avatarUrl: null, bio: "Backend & infra" },
+    { name: "Sam Okafor", initials: "SO", avatarUrl: null, bio: "iOS lead" },
   ],
+  headerLinks: {
+    platformName: "Web app",
+    productionUrl: "https://app.northwind.co",
+    stagingUrl: "https://staging.northwind.co",
+  },
   documents: { enabled: false, documents: [] },
   users: [],
   updatedAt: atDays(0),

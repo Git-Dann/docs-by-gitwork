@@ -45,6 +45,7 @@ export interface CandidateProfileValue {
   techStacks: string[];
   location: string;
   bio: string;
+  wikiBio: string;
   linkedinUrl: string;
   cvUrl: string;
   portfolioUrl: string;
@@ -66,6 +67,7 @@ export const emptyCandidateProfile: CandidateProfileValue = {
   techStacks: [],
   location: "",
   bio: "",
+  wikiBio: "",
   linkedinUrl: "",
   cvUrl: "",
   portfolioUrl: "",
@@ -281,6 +283,19 @@ export function CandidateProfileForm({
             className="app-input min-h-[96px] resize-y py-2.5 leading-relaxed"
             placeholder="A short note about this dev — strengths, focus areas, anything worth remembering."
           />
+        </Field>
+        <Field label="Wiki bio" span="full">
+          <input
+            type="text"
+            value={value.wikiBio}
+            maxLength={25}
+            onChange={(event) => patch("wikiBio", event.target.value)}
+            className="app-input"
+            placeholder="e.g. iOS & backend lead"
+          />
+          <span className="mt-1 block text-[11px] text-[var(--text-4)]">
+            Shown under their name when a client hovers their avatar on the wiki. {value.wikiBio.length}/25
+          </span>
         </Field>
       </Section>
 
