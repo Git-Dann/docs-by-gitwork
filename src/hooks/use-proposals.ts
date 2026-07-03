@@ -7,6 +7,8 @@ import {
   createClient,
   createClientDesign,
   createClientPlatform,
+  updateClientProductTeam,
+  listTeamMembers,
   createOnboardingLink,
   createProposal,
   addMeetingDecisionApi,
@@ -328,6 +330,25 @@ export function useUpdateClientPlatform(slug: string, platformId: string) {
 export function useRevealClientPlatform(slug: string) {
   return useMutation({
     mutationFn: (platformId: string) => revealClientPlatformApi(slug, platformId),
+  });
+}
+
+/** Workspace members — for the product-team picker. */
+export function useTeamMembers() {
+  return useQuery({
+    queryKey: ["team", "members"],
+    queryFn: () => listTeamMembers(),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useUpdateClientProductTeam(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userIds: string[]) => updateClientProductTeam(slug, userIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client", slug] });
+    },
   });
 }
 

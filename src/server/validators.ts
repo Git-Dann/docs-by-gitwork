@@ -265,6 +265,11 @@ export const clientPlatformCreateSchema = z.object({
   featuredInWiki: z.boolean().optional(),
 });
 
+// Product team = ordered list of workspace-member User ids shown on the wiki header.
+export const clientProductTeamSchema = z.object({
+  userIds: z.array(z.string().cuid()).max(20),
+});
+
 export const clientPlatformUpdateSchema = clientPlatformCreateSchema
   .partial()
   .refine((value) => Object.keys(value).length > 0, {

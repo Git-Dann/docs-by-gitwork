@@ -524,6 +524,11 @@ const demoWiki = {
     { name: "Marco Bianchi", initials: "MB", avatarUrl: null, bio: "Backend & infra" },
     { name: "Sam Okafor", initials: "SO", avatarUrl: null, bio: "iOS lead" },
   ],
+  productTeam: [
+    { name: "Dan Lindsay", initials: "DL", avatarUrl: null, bio: null },
+    { name: "Harry Brown", initials: "HB", avatarUrl: null, bio: null },
+    { name: "Syed Ali", initials: "SA", avatarUrl: null, bio: null },
+  ],
   headerLinks: {
     platformName: "Web app",
     productionUrl: "https://app.northwind.co",

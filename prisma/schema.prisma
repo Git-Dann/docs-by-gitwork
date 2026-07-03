@@ -922,6 +922,9 @@ model WorkspaceClient {
   name                 String
   slug                 String
   logoUrl              String?
+  /// Gitwork product/account leads shown on the client wiki header (User ids,
+  /// display order preserved). Distinct from the delivery team (devs via placements).
+  productTeamUserIds   String[]              @default([])
   website              String?
   addressLine1         String?
   addressLine2         String?
