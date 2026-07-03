@@ -13,6 +13,8 @@ import { parseWorkspaceBranding } from "@/server/documents";
 import { DocumentCover, HealthScoreRing } from "@/components/document-cover";
 import { cn, formatDate } from "@/lib/format";
 import type { PulseScanRecord } from "@/types/pulse";
+// Report-view domain groupings are derived from the single source of truth.
+import { DOMAIN_DEFS } from "@/server/pulse-checks/categories";
 
 // A shared report is immutable once the scan completes, so it's cached per token
 // (tag `pulse-report-<token>`). The share/unshare route revalidates that tag, and
@@ -30,22 +32,6 @@ const loadSharedReport = (token: string): Promise<PulseScanRecord | null> =>
     ["pulse-report", token],
     { tags: [`pulse-report-${token}`], revalidate: 300 },
   )();
-
-// ─── Domain groupings ────────────────────────────────────────────────────────
-
-const DOMAIN_DEFS = [
-  { label: "Infrastructure & DevOps",   categories: ["Infrastructure", "Observability", "Performance"] },
-  { label: "Security & Authentication", categories: ["Security", "Authentication", "Payments"] },
-  { label: "Code Quality",              categories: ["Code Quality"] },
-  { label: "Legal & Compliance",        categories: ["Legal & Compliance"] },
-  { label: "Production Readiness",      categories: ["SaaS Readiness", "Missing Pages"] },
-  { label: "SEO & Presence",            categories: ["SEO", "Store Listing", "Trust & Brand", "Global Distribution"] },
-  { label: "Mobile & Accessibility",    categories: ["Mobile & Accessibility", "App Store & Mobile", "Accessibility"] },
-  { label: "Roles & Permissions",       categories: ["Roles & Permissions"] },
-  { label: "Email Deliverability",      categories: ["Email Deliverability"] },
-  { label: "Business Operations",       categories: ["Business Operations"] },
-  { label: "API Quality",               categories: ["API Quality"] },
-];
 
 // ─── Metadata ───────────────────────────────────────────────────────────────
 

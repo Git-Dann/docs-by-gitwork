@@ -3,30 +3,10 @@ import { getPulseScan } from "@/server/pulse";
 import { DocumentCover, HealthScoreRing } from "@/components/document-cover";
 import { PrintButton } from "./print-button";
 import type { PulseScanCheckRecord } from "@/types/pulse";
+// Report-view domain groupings are derived from the single source of truth.
+import { DOMAIN_DEFS } from "@/server/pulse-checks/categories";
 
 export const dynamic = "force-dynamic";
-
-// ─── Domain groupings ────────────────────────────────────────────────────────
-
-interface DomainDef {
-  label: string;
-  categories: string[];
-  color: string;
-}
-
-const DOMAIN_DEFS: DomainDef[] = [
-  { label: "Infrastructure & DevOps",      categories: ["Infrastructure", "Observability", "Performance"],                       color: "#4f46e5" },
-  { label: "Security & Authentication",    categories: ["Security", "Authentication", "Payments"],                               color: "#dc2626" },
-  { label: "Code Quality",                 categories: ["Code Quality"],                                                         color: "#0891b2" },
-  { label: "Legal & Compliance",           categories: ["Legal & Compliance"],                                                   color: "#7c3aed" },
-  { label: "Production Readiness",         categories: ["SaaS Readiness", "Missing Pages"],                                      color: "#d97706" },
-  { label: "SEO & Presence",               categories: ["SEO", "Store Listing", "Trust & Brand", "Global Distribution"],        color: "#059669" },
-  { label: "Mobile & Accessibility",       categories: ["Mobile & Accessibility", "App Store & Mobile", "Accessibility"],       color: "#db2777" },
-  { label: "Roles & Permissions",          categories: ["Roles & Permissions"],                                                  color: "#7c3aed" },
-  { label: "Email Deliverability",         categories: ["Email Deliverability"],                                                 color: "#0891b2" },
-  { label: "Business Operations",          categories: ["Business Operations"],                                                  color: "#d97706" },
-  { label: "API Quality",                  categories: ["API Quality"],                                                          color: "#059669" },
-];
 
 interface DomainEntry {
   label: string;

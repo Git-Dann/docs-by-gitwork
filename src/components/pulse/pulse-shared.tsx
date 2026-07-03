@@ -23,12 +23,12 @@ const THEME_BY_NAME: Record<string, FrameworkTheme> = {
   "Roles & Permissions": "Security & compliance",
   "Business Operations": "Security & compliance",
   Performance: "Performance & quality",
-  "Accessibility (WCAG)": "Performance & quality",
+  Accessibility: "Performance & quality",
+  "Mobile & Accessibility": "Performance & quality",
   SEO: "Performance & quality",
   "API Quality": "Performance & quality",
   Observability: "Performance & quality",
   "Code Quality": "Performance & quality",
-  "Code Intelligence": "Performance & quality",
 };
 
 function themeFor(cat: PulseFrameworkCategory): FrameworkTheme {

@@ -1,3 +1,4 @@
+import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, fetchWithTimeout, skip, platformIs } from "./_types";
 
 // Live security probes for AI-built ("vibe-coded") apps — the differentiator.
@@ -15,7 +16,7 @@ import { type ExtendedCheckContext, type PulseScanCheckInput, fetchWithTimeout, 
 // a redacted key prefix — NEVER row contents. This is exactly what an authorised
 // audit does (and what an attacker does trivially). AI-free; deterministic core.
 
-const CATEGORY = "Security";
+const CATEGORY = CATEGORIES.SECURITY;
 
 const ALL_CHECKS: Array<[string, string]> = [
   ["supabase_rls_enforced", "Supabase Row-Level Security enforced"],

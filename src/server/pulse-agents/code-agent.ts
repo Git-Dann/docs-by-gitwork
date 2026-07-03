@@ -1,3 +1,4 @@
+import { CATEGORIES } from "../pulse-checks/categories";
 import { githubGraphQL, parseGithubRepo } from "@/lib/github";
 import type { PulseScanCheckInput, CodeAgentInsights } from "@/types/pulse";
 import { scanRepoSecrets, type SecretFinding } from "./secret-scanner";
@@ -151,7 +152,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
   ).length ?? 0;
 
   checks.push({
-    category: "Code Quality",
+    category: CATEGORIES.CODE_QUALITY,
     checkKey: "dependency_vulnerabilities",
     label: "Known dependency vulnerabilities",
     status: vulnAlerts === null
@@ -180,7 +181,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
   const requiresChecks = branchRule?.requiresStatusChecks ?? false;
 
   checks.push({
-    category: "Code Quality",
+    category: CATEGORIES.CODE_QUALITY,
     checkKey: "branch_protection",
     label: "Branch protection on default branch",
     status: !branchProtected ? "FAIL" : !requiresReviews ? "WARN" : "PASS",
@@ -198,7 +199,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
 
   if (prs.length > 0) {
     checks.push({
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "pr_review_culture",
       label: "Pull request review culture",
       status: prReviewRate === null
@@ -231,7 +232,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
     uniqueContributors = names.size;
 
     checks.push({
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "commit_velocity",
       label: "Active development velocity",
       status: commitVelocity >= 3 ? "PASS" : commitVelocity >= 1 ? "WARN" : "FAIL",
@@ -242,7 +243,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
   // ── Releases / versioning ─────────────────────────────────────────────────
   const releaseCount = repo.releases?.totalCount ?? 0;
   checks.push({
-    category: "Code Quality",
+    category: CATEGORIES.CODE_QUALITY,
     checkKey: "has_releases",
     label: "GitHub releases / version tags",
     status: releaseCount >= 3 ? "PASS" : releaseCount >= 1 ? "WARN" : "FAIL",
@@ -257,7 +258,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
   const totalIssues = openIssues + closedIssues;
   const issueCloseRate = totalIssues > 0 ? closedIssues / totalIssues : null;
   checks.push({
-    category: "Code Quality",
+    category: CATEGORIES.CODE_QUALITY,
     checkKey: "issue_close_rate",
     label: "Issue closure rate",
     status: issueCloseRate === null ? "WARN"
@@ -272,7 +273,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
   // ── Repo vitals ────────────────────────────────────────────────────────────
   const stars = repo.stargazerCount ?? 0;
   checks.push({
-    category: "Trust & Brand",
+    category: CATEGORIES.TRUST_BRAND,
     checkKey: "github_stars",
     label: "GitHub stars (social proof)",
     status: stars >= 100 ? "PASS" : stars >= 10 ? "WARN" : "FAIL",
@@ -281,7 +282,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
 
   // ── Archived check ─────────────────────────────────────────────────────────
   checks.push({
-    category: "Code Quality",
+    category: CATEGORIES.CODE_QUALITY,
     checkKey: "repo_not_archived",
     label: "Repository is not archived",
     status: repo.isArchived ? "FAIL" : "PASS",
@@ -295,7 +296,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
   const languages = repo.languages?.nodes?.map((l) => l.name) ?? [];
   if (primaryLang) {
     checks.push({
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "primary_language",
       label: "Primary language detected",
       status: "PASS",
@@ -306,7 +307,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
   // ── License (via GraphQL) ──────────────────────────────────────────────────
   const license = repo.licenseInfo;
   checks.push({
-    category: "Code Quality",
+    category: CATEGORIES.CODE_QUALITY,
     checkKey: "has_license_graphql",
     label: "License (via GitHub)",
     status: license ? "PASS" : "WARN",

@@ -3,6 +3,7 @@
 // how sure we are (confidence/trustBucket), category weight, and a hard-critical set.
 
 import type { PulseScanCheckInput, PulseScanCheckRecord } from "@/types/pulse";
+import { WEIGHTED_CATEGORIES } from "./categories";
 
 export type PriorityTier = "P1" | "P2" | "P3" | null;
 export interface CheckPriority {
@@ -12,8 +13,8 @@ export interface CheckPriority {
 
 type AnyCheck = PulseScanCheckInput | PulseScanCheckRecord;
 
-// Production-critical categories carry double weight (mirrors score-breakdown).
-const WEIGHTED_CATEGORIES = new Set(["Security", "Infrastructure", "Legal & Compliance", "AI Safety"]);
+// Production-critical categories carry double weight — imported from the SoT
+// (categories.ts), the same set score-breakdown uses.
 
 // Findings that are launch-blocking on their own — bumped to the top.
 const HARD_CRITICAL = new Set([

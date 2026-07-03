@@ -1,3 +1,4 @@
+import { CATEGORIES, type CheckCategory } from "./pulse-checks/categories";
 import { safeGithubRequest, parseGithubRepo } from "@/lib/github";
 import type { PulseScanCheckInput, PulseScanInputType } from "@/types/pulse";
 import { runExtendedChecks } from "./pulse-scan-extended";
@@ -228,7 +229,7 @@ function detectProjectContext(html: string, headers: Record<string, string>): Pr
 
 function skipChecks(
   checks: PulseScanCheckInput[],
-  category: string,
+  category: CheckCategory,
   entries: Array<[string, string]>,
   reason: string,
 ): void {
@@ -248,7 +249,7 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
 
   // App listed + reachable
   checks.push({
-    category: "Store Listing",
+    category: CATEGORIES.STORE_LISTING,
     checkKey: "store_page_live",
     label: `${storeLabel} listing is live`,
     status: pageResult && pageResult.status < 400 ? "PASS" : "FAIL",
@@ -266,7 +267,7 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
     ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i)?.[1];
   const hasTitle = Boolean(ogTitle && ogTitle.length > 2);
   checks.push({
-    category: "Store Listing",
+    category: CATEGORIES.STORE_LISTING,
     checkKey: "store_app_title",
     label: "App name / title",
     status: hasTitle ? "PASS" : "WARN",
@@ -279,7 +280,7 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
     ?? html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']{20,})["']/i)?.[1];
   const descLength = ogDesc?.length ?? 0;
   checks.push({
-    category: "Store Listing",
+    category: CATEGORIES.STORE_LISTING,
     checkKey: "store_description",
     label: "App description",
     status: descLength > 200 ? "PASS" : descLength > 50 ? "WARN" : "FAIL",
@@ -296,7 +297,7 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
     ? lower.includes("screenshot") || lower.includes("preview") || ogImages >= 1
     : lower.includes("screenshot") || ogImages >= 1;
   checks.push({
-    category: "Store Listing",
+    category: CATEGORIES.STORE_LISTING,
     checkKey: "store_screenshots",
     label: "Screenshots / preview assets",
     status: hasScreenshots ? "PASS" : "FAIL",
@@ -309,7 +310,7 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
   const hasRating = lower.includes("rating") || lower.includes("stars") || lower.includes("reviews")
     || lower.includes("rated") || /\d+(\.\d)?\s*(out of|\/)\s*5/i.test(html);
   checks.push({
-    category: "Store Listing",
+    category: CATEGORIES.STORE_LISTING,
     checkKey: "store_ratings",
     label: "Ratings & reviews",
     status: hasRating ? "PASS" : "WARN",
@@ -323,7 +324,7 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
     || lower.includes("privacypolicy") || lower.includes("privacy_policy")
     || /privacy/i.test(html) && /policy/i.test(html);
   checks.push({
-    category: "Store Listing",
+    category: CATEGORIES.STORE_LISTING,
     checkKey: "store_privacy_policy",
     label: "Privacy policy linked",
     status: hasPrivacy ? "PASS" : "FAIL",
@@ -337,7 +338,7 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
     ? lower.includes("rated") || lower.includes("age") || lower.includes("4+") || lower.includes("17+") || lower.includes("12+")
     : lower.includes("pegi") || lower.includes("rated for") || lower.includes("content rating") || lower.includes("everyone");
   checks.push({
-    category: "Store Listing",
+    category: CATEGORIES.STORE_LISTING,
     checkKey: "store_age_rating",
     label: "Age / content rating",
     status: hasAgeRating ? "PASS" : "WARN",
@@ -350,7 +351,7 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
   const hasIAP = lower.includes("in-app purchase") || lower.includes("in app purchase")
     || lower.includes("subscription") || lower.includes("offers in-app");
   checks.push({
-    category: "Store Listing",
+    category: CATEGORIES.STORE_LISTING,
     checkKey: "store_iap_disclosed",
     label: "In-app purchases disclosed",
     status: "PASS", // presence or absence are both valid; just noting the state
@@ -363,7 +364,7 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
   const hasVideo = lower.includes("preview") && (lower.includes("video") || lower.includes("mp4"))
     || lower.includes("app preview") || lower.includes("promo video");
   checks.push({
-    category: "Store Listing",
+    category: CATEGORIES.STORE_LISTING,
     checkKey: "store_preview_video",
     label: isAppStore ? "App preview video" : "Promo video",
     status: hasVideo ? "PASS" : "WARN",
@@ -376,7 +377,7 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
     // App Store: subtitle (shown under title in search)
     const hasSubtitle = lower.includes("subtitle") || (ogTitle && ogTitle.includes(" - "));
     checks.push({
-      category: "Store Listing",
+      category: CATEGORIES.STORE_LISTING,
       checkKey: "appstore_subtitle",
       label: "App subtitle (keyword field)",
       status: hasSubtitle ? "PASS" : "WARN",
@@ -389,7 +390,7 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
     const hasNutritionLabel = lower.includes("data used") || lower.includes("data not collected")
       || lower.includes("privacy practices") || lower.includes("data linked to you");
     checks.push({
-      category: "Store Listing",
+      category: CATEGORIES.STORE_LISTING,
       checkKey: "appstore_privacy_label",
       label: "Apple privacy nutrition label",
       status: hasNutritionLabel ? "PASS" : "FAIL",
@@ -402,7 +403,7 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
     const hasDataSafety = lower.includes("data safety") || lower.includes("data shared")
       || lower.includes("data collected") || lower.includes("safety section");
     checks.push({
-      category: "Store Listing",
+      category: CATEGORIES.STORE_LISTING,
       checkKey: "playstore_data_safety",
       label: "Data Safety section",
       status: hasDataSafety ? "PASS" : "FAIL",
@@ -415,7 +416,7 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
     const hasIARC = lower.includes("iarc") || lower.includes("everyone") || lower.includes("teen")
       || lower.includes("mature 17+") || lower.includes("rated for 3+");
     checks.push({
-      category: "Store Listing",
+      category: CATEGORIES.STORE_LISTING,
       checkKey: "playstore_content_rating",
       label: "IARC content rating",
       status: hasIARC ? "PASS" : "WARN",
@@ -454,77 +455,77 @@ function getSkippedCategoriesForPlatform(platform: string): Array<{ category: st
 
   if (p === "IOS_APP" || p === "ANDROID_APP") {
     return [
-      { category: "SEO", reason: "Not applicable — native mobile apps are not indexed by web search engines." },
-      { category: "SaaS Readiness", reason: "Not applicable — web SaaS UI patterns (billing portals, pricing pages) do not apply to native mobile apps." },
-      { category: "Missing Pages", reason: "Not applicable — native mobile apps do not have marketing web pages." },
-      { category: "Global Distribution", reason: "Not applicable — hreflang, language switchers, and international web routing do not apply to native apps." },
-      { category: "API Quality", reason: "Not applicable — API quality checks are for API backends and developer platforms, not native mobile apps." },
+      { category: CATEGORIES.SEO, reason: "Not applicable — native mobile apps are not indexed by web search engines." },
+      { category: CATEGORIES.SAAS, reason: "Not applicable — web SaaS UI patterns (billing portals, pricing pages) do not apply to native mobile apps." },
+      { category: CATEGORIES.MISSING_PAGES, reason: "Not applicable — native mobile apps do not have marketing web pages." },
+      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — hreflang, language switchers, and international web routing do not apply to native apps." },
+      { category: CATEGORIES.API_QUALITY, reason: "Not applicable — API quality checks are for API backends and developer platforms, not native mobile apps." },
     ];
   }
 
   if (p === "CROSS_PLATFORM_MOBILE") {
     return [
-      { category: "SEO", reason: "Lower relevance — cross-platform mobile apps are primarily distributed through app stores, not web search." },
-      { category: "Global Distribution", reason: "Not applicable — web routing internationalisation does not apply to mobile app bundles." },
+      { category: CATEGORIES.SEO, reason: "Lower relevance — cross-platform mobile apps are primarily distributed through app stores, not web search." },
+      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — web routing internationalisation does not apply to mobile app bundles." },
     ];
   }
 
   if (p === "API_BACKEND") {
     return [
-      { category: "SEO", reason: "Not applicable — APIs are not web pages and are not indexed by search engines." },
-      { category: "SaaS Readiness", reason: "Not applicable — web UI SaaS patterns (billing portals, live chat, pricing pages) do not apply to API backends." },
-      { category: "Missing Pages", reason: "Not applicable — APIs do not have About/Contact/FAQ pages." },
-      { category: "Trust & Brand", reason: "Not applicable — social proof, testimonials, and press sections are not relevant for API backends." },
-      { category: "App Store & Mobile", reason: "Not applicable — this is a backend API, not a mobile app." },
-      { category: "Mobile & Accessibility", reason: "Not applicable — APIs are not user-facing web interfaces." },
-      { category: "Global Distribution", reason: "Not applicable — web internationalisation (hreflang, language switchers) does not apply to APIs." },
-      { category: "Payments", reason: "Lower relevance — API backends typically do not host their own payment UI." },
-      { category: "Roles & Permissions", reason: "Lower relevance — role management UI checks are for web app interfaces, not raw API backends." },
-      { category: "Business Operations", reason: "Not applicable — business operations compliance is managed through web presence, not raw API backends." },
+      { category: CATEGORIES.SEO, reason: "Not applicable — APIs are not web pages and are not indexed by search engines." },
+      { category: CATEGORIES.SAAS, reason: "Not applicable — web UI SaaS patterns (billing portals, live chat, pricing pages) do not apply to API backends." },
+      { category: CATEGORIES.MISSING_PAGES, reason: "Not applicable — APIs do not have About/Contact/FAQ pages." },
+      { category: CATEGORIES.TRUST_BRAND, reason: "Not applicable — social proof, testimonials, and press sections are not relevant for API backends." },
+      { category: CATEGORIES.APP_STORE, reason: "Not applicable — this is a backend API, not a mobile app." },
+      { category: CATEGORIES.MOBILE, reason: "Not applicable — APIs are not user-facing web interfaces." },
+      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — web internationalisation (hreflang, language switchers) does not apply to APIs." },
+      { category: CATEGORIES.PAYMENTS, reason: "Lower relevance — API backends typically do not host their own payment UI." },
+      { category: CATEGORIES.ROLES, reason: "Lower relevance — role management UI checks are for web app interfaces, not raw API backends." },
+      { category: CATEGORIES.BUSINESS_OPS, reason: "Not applicable — business operations compliance is managed through web presence, not raw API backends." },
     ];
   }
 
   if (p === "CLI_TOOL") {
     return [
-      { category: "SEO", reason: "Not applicable — CLI tools are distributed via package registries, not web search." },
-      { category: "SaaS Readiness", reason: "Not applicable — web SaaS conversion patterns do not apply to command-line tools." },
-      { category: "Missing Pages", reason: "Not applicable — CLI tools do not have marketing web pages." },
-      { category: "Trust & Brand", reason: "Not applicable — social proof and press coverage sections are not relevant for CLI tools." },
-      { category: "App Store & Mobile", reason: "Not applicable — CLI tools are not distributed through app stores." },
-      { category: "Mobile & Accessibility", reason: "Not applicable — CLI tools are not web interfaces." },
-      { category: "Global Distribution", reason: "Not applicable — web internationalisation does not apply to CLI tools." },
-      { category: "Payments", reason: "Not applicable — CLI tools typically use package managers or separate billing systems." },
-      { category: "Roles & Permissions", reason: "Not applicable — roles and permissions UI is not relevant for CLI tools." },
-      { category: "Email Deliverability", reason: "Not applicable — CLI tools do not send email directly." },
-      { category: "Business Operations", reason: "Not applicable — business operations compliance is not relevant for CLI tools." },
-      { category: "API Quality", reason: "Not applicable — API quality checks are for API backends, not CLI tools." },
+      { category: CATEGORIES.SEO, reason: "Not applicable — CLI tools are distributed via package registries, not web search." },
+      { category: CATEGORIES.SAAS, reason: "Not applicable — web SaaS conversion patterns do not apply to command-line tools." },
+      { category: CATEGORIES.MISSING_PAGES, reason: "Not applicable — CLI tools do not have marketing web pages." },
+      { category: CATEGORIES.TRUST_BRAND, reason: "Not applicable — social proof and press coverage sections are not relevant for CLI tools." },
+      { category: CATEGORIES.APP_STORE, reason: "Not applicable — CLI tools are not distributed through app stores." },
+      { category: CATEGORIES.MOBILE, reason: "Not applicable — CLI tools are not web interfaces." },
+      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — web internationalisation does not apply to CLI tools." },
+      { category: CATEGORIES.PAYMENTS, reason: "Not applicable — CLI tools typically use package managers or separate billing systems." },
+      { category: CATEGORIES.ROLES, reason: "Not applicable — roles and permissions UI is not relevant for CLI tools." },
+      { category: CATEGORIES.EMAIL, reason: "Not applicable — CLI tools do not send email directly." },
+      { category: CATEGORIES.BUSINESS_OPS, reason: "Not applicable — business operations compliance is not relevant for CLI tools." },
+      { category: CATEGORIES.API_QUALITY, reason: "Not applicable — API quality checks are for API backends, not CLI tools." },
     ];
   }
 
   if (p === "DESKTOP_APP") {
     return [
-      { category: "SEO", reason: "Lower relevance — desktop apps are distributed via installers, not web search." },
-      { category: "App Store & Mobile", reason: "Not applicable — iOS/Android app store checks do not apply to desktop applications." },
-      { category: "Global Distribution", reason: "Not applicable — web routing internationalisation does not apply to desktop app installers." },
+      { category: CATEGORIES.SEO, reason: "Lower relevance — desktop apps are distributed via installers, not web search." },
+      { category: CATEGORIES.APP_STORE, reason: "Not applicable — iOS/Android app store checks do not apply to desktop applications." },
+      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — web routing internationalisation does not apply to desktop app installers." },
     ];
   }
 
   if (p === "CHROME_EXTENSION") {
     return [
-      { category: "App Store & Mobile", reason: "Not applicable — iOS/Android app store checks do not apply to browser extensions." },
-      { category: "Mobile & Accessibility", reason: "Not applicable — browser extensions do not have responsive mobile web layouts." },
-      { category: "Global Distribution", reason: "Not applicable — web internationalisation does not apply to browser extensions." },
-      { category: "SaaS Readiness", reason: "Lower relevance — standard web SaaS conversion patterns do not apply to browser extension UX." },
+      { category: CATEGORIES.APP_STORE, reason: "Not applicable — iOS/Android app store checks do not apply to browser extensions." },
+      { category: CATEGORIES.MOBILE, reason: "Not applicable — browser extensions do not have responsive mobile web layouts." },
+      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — web internationalisation does not apply to browser extensions." },
+      { category: CATEGORIES.SAAS, reason: "Lower relevance — standard web SaaS conversion patterns do not apply to browser extension UX." },
     ];
   }
 
   if (p === "MARKETING_SITE") {
     return [
-      { category: "Authentication", reason: "Lower relevance — pure marketing sites typically do not have user login flows." },
-      { category: "Payments", reason: "Lower relevance — pure marketing sites typically do not have embedded checkout." },
-      { category: "App Store & Mobile", reason: "Not applicable — this is a marketing website, not a mobile app listing." },
-      { category: "Roles & Permissions", reason: "Not applicable — roles and permissions checks are not relevant for marketing websites." },
-      { category: "API Quality", reason: "Not applicable — API quality checks are for API backends and developer platforms." },
+      { category: CATEGORIES.AUTHENTICATION, reason: "Lower relevance — pure marketing sites typically do not have user login flows." },
+      { category: CATEGORIES.PAYMENTS, reason: "Lower relevance — pure marketing sites typically do not have embedded checkout." },
+      { category: CATEGORIES.APP_STORE, reason: "Not applicable — this is a marketing website, not a mobile app listing." },
+      { category: CATEGORIES.ROLES, reason: "Not applicable — roles and permissions checks are not relevant for marketing websites." },
+      { category: CATEGORIES.API_QUALITY, reason: "Not applicable — API quality checks are for API backends and developer platforms." },
     ];
   }
 
@@ -606,7 +607,7 @@ export async function runUrlChecks(
 
   // Infrastructure
   checks.push({
-    category: "Infrastructure",
+    category: CATEGORIES.INFRASTRUCTURE,
     checkKey: "ssl_valid",
     label: "HTTPS / SSL certificate",
     status: pageResult ? "PASS" : "FAIL",
@@ -628,7 +629,7 @@ export async function runUrlChecks(
     // catch-all soft-200 are both HTML, so on a catch-all host presence can't be
     // determined — report SKIPPED rather than a false PASS (or a false WARN).
     const routePageCheck = (
-      category: string,
+      category: CheckCategory,
       checkKey: string,
       label: string,
       present: boolean,
@@ -664,7 +665,7 @@ export async function runUrlChecks(
     const httpRefused = redir.status === 0;
     const enforcesHttps = redirectsToHttps || httpRefused;
     checks.push({
-      category: "Infrastructure",
+      category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "http_redirect",
       label: "HTTP → HTTPS redirect",
       status: enforcesHttps ? "PASS" : "WARN",
@@ -680,7 +681,7 @@ export async function runUrlChecks(
 
     const rt = pageResult.responseTimeMs;
     checks.push({
-      category: "Infrastructure",
+      category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "response_time",
       label: "Response time",
       status: rt < 2000 ? "PASS" : rt < 5000 ? "WARN" : "FAIL",
@@ -689,7 +690,7 @@ export async function runUrlChecks(
     });
 
     checks.push({
-      category: "Infrastructure",
+      category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "status_200",
       label: "Returns 200 OK",
       status: pageResult.status === 200 ? "PASS" : pageResult.status < 400 ? "WARN" : "FAIL",
@@ -701,7 +702,7 @@ export async function runUrlChecks(
     const platformSuffixes = [".vercel.app", ".netlify.app", ".railway.app", ".render.com", ".fly.dev", ".pages.dev", ".onrender.com"];
     const hasCustomDomain = !platformSuffixes.some((suffix) => hostname.endsWith(suffix));
     checks.push({
-      category: "Infrastructure",
+      category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "custom_domain",
       label: "Custom domain",
       status: hasCustomDomain ? "PASS" : "WARN",
@@ -712,7 +713,7 @@ export async function runUrlChecks(
     const cdnHeaders = ["x-vercel-id", "cf-ray", "x-amz-cf-id", "x-cache", "x-fastly-request-id"];
     const cdnDetected = cdnHeaders.find((h) => pageResult.headers[h]);
     checks.push({
-      category: "Infrastructure",
+      category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "cdn_detected",
       label: "CDN present",
       status: cdnDetected ? "PASS" : "WARN",
@@ -723,7 +724,7 @@ export async function runUrlChecks(
     // SEO
     const title = pageResult.html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim();
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "meta_title",
       label: "<title> tag",
       status: title ? "PASS" : "FAIL",
@@ -734,7 +735,7 @@ export async function runUrlChecks(
     const metaDesc = pageResult.html.match(/<meta\s+name=["']description["'][^>]*content=["']([^"']*)["']/i)?.[1]?.trim()
       ?? pageResult.html.match(/<meta\s+content=["']([^"']*)["'][^>]*name=["']description["']/i)?.[1]?.trim();
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "meta_description",
       label: "Meta description",
       status: metaDesc ? "PASS" : "WARN",
@@ -747,7 +748,7 @@ export async function runUrlChecks(
     const ogTitle = pageResult.html.match(/property=["']og:title["'][^>]*content=["']([^"']{1,200})["']/i)?.[1]?.trim()
       ?? pageResult.html.match(/content=["']([^"']{1,200})["'][^>]*property=["']og:title["']/i)?.[1]?.trim();
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "og_tags",
       label: "Open Graph tags",
       status: hasOg ? "PASS" : "WARN",
@@ -760,7 +761,7 @@ export async function runUrlChecks(
 
     const hasCanonical = pageResult.html.includes('rel="canonical"') || pageResult.html.includes("rel='canonical'");
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "canonical_url",
       label: "Canonical URL",
       status: hasCanonical ? "PASS" : "WARN",
@@ -769,7 +770,7 @@ export async function runUrlChecks(
 
     const hasH1 = /<h1[\s>]/i.test(pageResult.html);
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "h1_present",
       label: "H1 heading",
       status: hasH1 ? "PASS" : "WARN",
@@ -783,7 +784,7 @@ export async function runUrlChecks(
       (body, ct) => ct.includes("text/plain") || /user-agent:|disallow:|sitemap:/i.test(body),
     );
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "has_robots_txt",
       label: "robots.txt",
       status: robotsFound ? "PASS" : "WARN",
@@ -796,7 +797,7 @@ export async function runUrlChecks(
       (body, ct) => ct.includes("xml") || /<\?xml|<urlset|<sitemapindex/i.test(body),
     );
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "has_sitemap",
       label: "sitemap.xml",
       status: sitemapFound ? "PASS" : "WARN",
@@ -807,7 +808,7 @@ export async function runUrlChecks(
     // Security
     const csp = pageResult.headers["content-security-policy"];
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "csp_header",
       label: "Content-Security-Policy",
       status: csp ? "PASS" : "WARN",
@@ -816,7 +817,7 @@ export async function runUrlChecks(
 
     const hsts = pageResult.headers["strict-transport-security"];
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "hsts_header",
       label: "HSTS header",
       status: hsts ? "PASS" : "WARN",
@@ -826,7 +827,7 @@ export async function runUrlChecks(
 
     const xfo = pageResult.headers["x-frame-options"];
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "x_frame_options",
       label: "Clickjacking protection",
       status: xfo ? "PASS" : "WARN",
@@ -840,7 +841,7 @@ export async function runUrlChecks(
     const envIsShell = isHtmlShell(envProbe.contentType, envProbe.body);
     const envRealExposure = envProbe.status === 200 && !envIsShell && /^\s*(export\s+)?[A-Z0-9_]+\s*=/m.test(envProbe.body);
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_env",
       label: ".env not public",
       status: envRealExposure ? "FAIL" : "PASS",
@@ -856,7 +857,7 @@ export async function runUrlChecks(
     const gitProbe = await probePath(`${httpsUrl.replace(/\/$/, "")}/.git/HEAD`);
     const gitRealExposure = gitProbe.status === 200 && !isHtmlShell(gitProbe.contentType, gitProbe.body) && /^(ref:\s|[0-9a-f]{40})/m.test(gitProbe.body.trim());
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_git",
       label: ".git directory not public",
       status: gitRealExposure ? "FAIL" : "PASS",
@@ -871,7 +872,7 @@ export async function runUrlChecks(
     // Performance
     const encoding = pageResult.headers["content-encoding"];
     checks.push({
-      category: "Performance",
+      category: CATEGORIES.PERFORMANCE,
       checkKey: "compression",
       label: "Gzip/Brotli compression",
       status: encoding ? "PASS" : "WARN",
@@ -881,7 +882,7 @@ export async function runUrlChecks(
 
     const cacheControl = pageResult.headers["cache-control"];
     checks.push({
-      category: "Performance",
+      category: CATEGORIES.PERFORMANCE,
       checkKey: "caching_headers",
       label: "Cache-Control headers",
       status: cacheControl ? "PASS" : "WARN",
@@ -892,7 +893,7 @@ export async function runUrlChecks(
     // Payments & Auth
     const hasStripe = pageResult.html.includes("js.stripe.com") || pageResult.html.includes("stripe");
     checks.push({
-      category: "Payments",
+      category: CATEGORIES.PAYMENTS,
       checkKey: "stripe_signals",
       label: "Stripe integration",
       status: hasStripe ? "PASS" : "WARN",
@@ -905,7 +906,7 @@ export async function runUrlChecks(
       pageResult.html.toLowerCase().includes(`href='${path}`),
     );
     checks.push({
-      category: "Payments",
+      category: CATEGORIES.PAYMENTS,
       checkKey: "pricing_page",
       label: "Pricing/billing UI",
       status: hasPricingPage ? "PASS" : "WARN",
@@ -918,7 +919,7 @@ export async function runUrlChecks(
       pageResult.html.toLowerCase().includes(`href='${path}`),
     );
     checks.push({
-      category: "Authentication",
+      category: CATEGORIES.AUTHENTICATION,
       checkKey: "auth_ui_signals",
       label: "Login/signup UI",
       status: hasAuth ? "PASS" : "WARN",
@@ -928,7 +929,7 @@ export async function runUrlChecks(
     const authProviders = ["clerk", "next-auth", "nextauth", "supabase", "auth0", "lucia", "kinde"];
     const hasOAuthSignals = authProviders.some((p) => pageResult.html.toLowerCase().includes(p));
     checks.push({
-      category: "Authentication",
+      category: CATEGORIES.AUTHENTICATION,
       checkKey: "oauth_signals",
       label: "Auth provider",
       status: hasOAuthSignals ? "PASS" : "WARN",
@@ -939,7 +940,7 @@ export async function runUrlChecks(
     const errorTools = ["sentry", "bugsnag", "logrocket", "rollbar", "datadog"];
     const hasErrorMonitoring = errorTools.some((t) => pageResult.html.toLowerCase().includes(t));
     checks.push({
-      category: "Observability",
+      category: CATEGORIES.OBSERVABILITY,
       checkKey: "error_monitoring",
       label: "Error monitoring",
       status: hasErrorMonitoring ? "PASS" : "WARN",
@@ -949,7 +950,7 @@ export async function runUrlChecks(
     const analyticsTools = ["gtag", "plausible.io", "posthog", "mixpanel", "amplitude", "_ga"];
     const hasAnalytics = analyticsTools.some((t) => pageResult.html.toLowerCase().includes(t));
     checks.push({
-      category: "Observability",
+      category: CATEGORIES.OBSERVABILITY,
       checkKey: "analytics_present",
       label: "Analytics",
       status: hasAnalytics ? "PASS" : "WARN",
@@ -962,7 +963,7 @@ export async function runUrlChecks(
     const healthFound =
       (await fileServed(`${base}/api/health`)) || (await fileServed(`${base}/health`));
     checks.push({
-      category: "Observability",
+      category: CATEGORIES.OBSERVABILITY,
       checkKey: "health_endpoint",
       label: "/health endpoint",
       status: healthFound ? "PASS" : "WARN",
@@ -986,7 +987,7 @@ export async function runUrlChecks(
       htmlLower.includes(`href="${p} `) || htmlLower.includes(`href="${p}>`),
     );
     checks.push({
-      category: "Legal & Compliance",
+      category: CATEGORIES.LEGAL,
       checkKey: "privacy_policy",
       label: "Privacy Policy",
       status: hasPrivacy ? "PASS" : "FAIL",
@@ -1000,7 +1001,7 @@ export async function runUrlChecks(
       htmlLower.includes(`href="${p} `) || htmlLower.includes(`href="${p}>`),
     );
     checks.push({
-      category: "Legal & Compliance",
+      category: CATEGORIES.LEGAL,
       checkKey: "terms_of_service",
       label: "Terms of Service",
       status: hasToS ? "PASS" : "FAIL",
@@ -1016,7 +1017,7 @@ export async function runUrlChecks(
       htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
     );
     checks.push({
-      category: "Legal & Compliance",
+      category: CATEGORIES.LEGAL,
       checkKey: "cookie_consent",
       label: "Cookie consent / GDPR",
       status: hasCookieBanner || hasCookieLink ? "PASS" : "WARN",
@@ -1029,7 +1030,7 @@ export async function runUrlChecks(
       htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
     );
     checks.push({
-      category: "Legal & Compliance",
+      category: CATEGORIES.LEGAL,
       checkKey: "refund_policy",
       label: "Refund / Cancellation policy",
       status: hasRefundPolicy ? "PASS" : "WARN",
@@ -1075,7 +1076,7 @@ export async function runUrlChecks(
       htmlLower.includes("betteruptime") || htmlLower.includes("uptimerobot");
     const hasStatusPage = hasStatusSignals || (!catchAll200 && statusPageStatus === 200);
     checks.push({
-      category: "Missing Pages",
+      category: CATEGORIES.MISSING_PAGES,
       checkKey: "status_page",
       label: "Status / uptime page",
       status: hasStatusPage ? "PASS" : "WARN",
@@ -1096,7 +1097,7 @@ export async function runUrlChecks(
       htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
     );
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "billing_portal",
       label: "Billing / subscription management",
       status: hasBillingPortal ? "PASS" : "WARN",
@@ -1109,7 +1110,7 @@ export async function runUrlChecks(
       htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
     );
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "account_settings",
       label: "Account settings",
       status: hasAccountSettings ? "PASS" : "WARN",
@@ -1122,7 +1123,7 @@ export async function runUrlChecks(
       htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
     );
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "password_reset",
       label: "Password reset",
       status: hasPasswordReset ? "PASS" : "WARN",
@@ -1138,7 +1139,7 @@ export async function runUrlChecks(
       htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
     );
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "support_channel",
       label: "Support channel",
       status: hasSupportWidget || hasSupportLink ? "PASS" : "WARN",
@@ -1151,7 +1152,7 @@ export async function runUrlChecks(
       htmlLower.includes(s),
     );
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "social_proof",
       label: "Social proof / testimonials",
       status: hasSocialProof ? "PASS" : "WARN",
@@ -1164,7 +1165,7 @@ export async function runUrlChecks(
       htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
     );
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "onboarding_flow",
       label: "Onboarding flow",
       status: hasOnboarding ? "PASS" : "WARN",
@@ -1176,7 +1177,7 @@ export async function runUrlChecks(
     // Mobile & Accessibility
     const hasViewport = /name=["']viewport["']/i.test(pageResult.html);
     checks.push({
-      category: "Mobile & Accessibility",
+      category: CATEGORIES.MOBILE,
       checkKey: "viewport_meta",
       label: "Viewport meta tag",
       status: hasViewport ? "PASS" : "FAIL",
@@ -1187,7 +1188,7 @@ export async function runUrlChecks(
 
     const hasHtmlLang = /<html[^>]+lang=/i.test(pageResult.html);
     checks.push({
-      category: "Mobile & Accessibility",
+      category: CATEGORIES.MOBILE,
       checkKey: "html_lang",
       label: "HTML language attribute",
       status: hasHtmlLang ? "PASS" : "WARN",
@@ -1198,7 +1199,7 @@ export async function runUrlChecks(
 
     const hasAriaAttributes = /aria-[a-z]+=/i.test(pageResult.html);
     checks.push({
-      category: "Mobile & Accessibility",
+      category: CATEGORIES.MOBILE,
       checkKey: "aria_attributes",
       label: "ARIA accessibility attributes",
       status: hasAriaAttributes ? "PASS" : "WARN",
@@ -1210,7 +1211,7 @@ export async function runUrlChecks(
     const hasResponsiveImages = pageResult.html.includes("srcset") || pageResult.html.includes("<picture") ||
       pageResult.html.includes('loading="lazy"') || pageResult.html.includes("loading='lazy'");
     checks.push({
-      category: "Mobile & Accessibility",
+      category: CATEGORIES.MOBILE,
       checkKey: "responsive_images",
       label: "Responsive / optimised images",
       status: hasResponsiveImages ? "PASS" : "WARN",
@@ -1222,7 +1223,7 @@ export async function runUrlChecks(
     // Social sharing SEO
     const hasOgImage = /property=["']og:image["']/i.test(pageResult.html);
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "og_image",
       label: "og:image (social preview)",
       status: hasOgImage ? "PASS" : "WARN",
@@ -1233,7 +1234,7 @@ export async function runUrlChecks(
 
     const hasTwitterCard = /name=["']twitter:card["']/i.test(pageResult.html);
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "twitter_card",
       label: "Twitter / X Card",
       status: hasTwitterCard ? "PASS" : "WARN",
@@ -1245,7 +1246,7 @@ export async function runUrlChecks(
     // Additional security headers
     const xCto = pageResult.headers["x-content-type-options"];
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "x_content_type_options",
       label: "X-Content-Type-Options",
       status: xCto ? "PASS" : "WARN",
@@ -1257,7 +1258,7 @@ export async function runUrlChecks(
 
     const permissionsPolicy = pageResult.headers["permissions-policy"];
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "permissions_policy",
       label: "Permissions-Policy",
       status: permissionsPolicy ? "PASS" : "WARN",
@@ -1268,7 +1269,7 @@ export async function runUrlChecks(
 
     const referrerPolicy = pageResult.headers["referrer-policy"];
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "referrer_policy",
       label: "Referrer-Policy",
       status: referrerPolicy ? "PASS" : "WARN",
@@ -1282,7 +1283,7 @@ export async function runUrlChecks(
     const emailProviderSignals = ["resend.com", "sendgrid.net", "mailgun.com", "postmarkapp.com", "sparkpostmail", "mandrillapp", "ses.amazonaws.com"];
     const hasEmailProvider = emailProviderSignals.some((p) => htmlLower.includes(p));
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "email_provider",
       label: "Transactional email provider",
       status: hasEmailProvider ? "PASS" : "WARN",
@@ -1295,7 +1296,7 @@ export async function runUrlChecks(
     const aiWatermarks = ["built with lovable", "made with lovable", "lovable.dev", "bolt.new", "created with bolt", "created with v0", "generated by v0", "v0.dev", "replit.com/badge"];
     const hasAiWatermark = aiWatermarks.some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "ai_platform_origin",
       label: "AI platform watermark",
       status: hasAiWatermark ? "WARN" : "PASS",
@@ -1315,7 +1316,7 @@ export async function runUrlChecks(
     const hasFaviconLink = /rel=["'](shortcut icon|icon)["']/i.test(pageResult.html);
     const hasFavicon = hasFaviconLink || faviconFound;
     checks.push({
-      category: "Mobile & Accessibility",
+      category: CATEGORIES.MOBILE,
       checkKey: "favicon",
       label: "Favicon / app icon",
       status: hasFavicon ? "PASS" : "WARN",
@@ -1327,7 +1328,7 @@ export async function runUrlChecks(
     const hasManifestLink = /rel=["']manifest["']/i.test(pageResult.html);
     const hasManifest = hasManifestLink || manifestFound;
     checks.push({
-      category: "Mobile & Accessibility",
+      category: CATEGORIES.MOBILE,
       checkKey: "pwa_manifest",
       label: "Web App Manifest (PWA)",
       status: hasManifest ? "PASS" : "WARN",
@@ -1338,12 +1339,12 @@ export async function runUrlChecks(
 
     if (ctx.isPaymentEnabled && catchAll200) {
       // Can't probe a webhook route on a catch-all host (every path 200s).
-      checks.push({ category: "Payments", checkKey: "stripe_webhook", label: "Stripe webhook endpoint", status: "SKIPPED", detail: "Host serves catch-all 200s — webhook route presence can't be probed reliably." });
+      checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "stripe_webhook", label: "Stripe webhook endpoint", status: "SKIPPED", detail: "Host serves catch-all 200s — webhook route presence can't be probed reliably." });
     } else if (ctx.isPaymentEnabled) {
       const stripeWebhookStatus = await headRequest(`${baseUrl}/api/webhooks/stripe`);
       const stripeWebhookExists = stripeWebhookStatus > 0 && stripeWebhookStatus < 500;
       checks.push({
-        category: "Payments",
+        category: CATEGORIES.PAYMENTS,
         checkKey: "stripe_webhook",
         label: "Stripe webhook endpoint",
         status: stripeWebhookExists ? "PASS" : "WARN",
@@ -1353,7 +1354,7 @@ export async function runUrlChecks(
         evidence: stripeWebhookStatus ? `Status: ${stripeWebhookStatus}` : undefined,
       });
     } else {
-      checks.push({ category: "Payments", checkKey: "stripe_webhook", label: "Stripe webhook endpoint", status: "SKIPPED", detail: "Skipped — no payment integration detected on this project." });
+      checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "stripe_webhook", label: "Stripe webhook endpoint", status: "SKIPPED", detail: "Skipped — no payment integration detected on this project." });
     }
 
     // App Store & Mobile Distribution — skip entirely (including the .well-known/ HEAD requests) if no mobile signals
@@ -1378,7 +1379,7 @@ export async function runUrlChecks(
 
     const hasAppleTouchIcon = /rel=["']apple-touch-icon["']/i.test(pageResult.html);
     checks.push({
-      category: "App Store & Mobile",
+      category: CATEGORIES.APP_STORE,
       checkKey: "apple_touch_icon",
       label: "Apple touch icon",
       status: hasAppleTouchIcon ? "PASS" : "WARN",
@@ -1389,7 +1390,7 @@ export async function runUrlChecks(
 
     const hasAppStoreLink = htmlLower.includes("apps.apple.com") || htmlLower.includes("itunes.apple.com");
     checks.push({
-      category: "App Store & Mobile",
+      category: CATEGORIES.APP_STORE,
       checkKey: "apple_app_store",
       label: "Apple App Store presence",
       status: hasAppleSmartBanner || hasAppStoreLink ? "PASS" : "WARN",
@@ -1400,7 +1401,7 @@ export async function runUrlChecks(
 
     const hasGooglePlayLink = htmlLower.includes("play.google.com/store/apps");
     checks.push({
-      category: "App Store & Mobile",
+      category: CATEGORIES.APP_STORE,
       checkKey: "google_play_store",
       label: "Google Play Store presence",
       status: hasGooglePlayLink ? "PASS" : "WARN",
@@ -1410,7 +1411,7 @@ export async function runUrlChecks(
     });
 
     checks.push({
-      category: "App Store & Mobile",
+      category: CATEGORIES.APP_STORE,
       checkKey: "universal_links",
       label: "Universal Links (iOS deep linking)",
       status: aasaFound ? "PASS" : "WARN",
@@ -1420,7 +1421,7 @@ export async function runUrlChecks(
     });
 
     checks.push({
-      category: "App Store & Mobile",
+      category: CATEGORIES.APP_STORE,
       checkKey: "android_asset_links",
       label: "Android App Links (deep linking)",
       status: assetLinksFound ? "PASS" : "WARN",
@@ -1435,7 +1436,7 @@ export async function runUrlChecks(
     const hasWalletPayments = hasApplePaySignals || hasGooglePaySignals || hasAmazonPaySignals;
     const walletNames = [hasApplePaySignals && "Apple Pay", hasGooglePaySignals && "Google Pay", hasAmazonPaySignals && "Amazon Pay"].filter(Boolean).join(", ");
     checks.push({
-      category: "App Store & Mobile",
+      category: CATEGORIES.APP_STORE,
       checkKey: "wallet_payments",
       label: "Apple Pay / Google Pay / Amazon Pay",
       status: hasWalletPayments ? "PASS" : "WARN",
@@ -1448,7 +1449,7 @@ export async function runUrlChecks(
     // Global Distribution & Localisation
     const hasHreflang = htmlLower.includes("hreflang");
     checks.push({
-      category: "Global Distribution",
+      category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "hreflang_tags",
       label: "hreflang tags (multi-region SEO)",
       status: hasHreflang ? "PASS" : "WARN",
@@ -1459,7 +1460,7 @@ export async function runUrlChecks(
 
     const hasCharsetUtf8 = /charset=["']?utf-8/i.test(pageResult.html) || pageResult.headers["content-type"]?.toLowerCase().includes("utf-8");
     checks.push({
-      category: "Global Distribution",
+      category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "charset_utf8",
       label: "UTF-8 character encoding",
       status: hasCharsetUtf8 ? "PASS" : "WARN",
@@ -1470,7 +1471,7 @@ export async function runUrlChecks(
 
     const hasCcpaSignal = htmlLower.includes("do not sell") || htmlLower.includes("your privacy choices") || htmlLower.includes("opt-out of sale") || htmlLower.includes("ccpa");
     checks.push({
-      category: "Global Distribution",
+      category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "ccpa_compliance",
       label: "CCPA (California privacy rights)",
       status: hasCcpaSignal ? "PASS" : "WARN",
@@ -1482,7 +1483,7 @@ export async function runUrlChecks(
     const currencySymbols = ["€", "£", "¥", "₹", "kr ", "chf", "sgd", "aud", "cad", "r$"];
     const hasMultiCurrency = currencySymbols.some((s) => pageResult.html.toLowerCase().includes(s));
     checks.push({
-      category: "Global Distribution",
+      category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "multi_currency",
       label: "Multi-currency pricing",
       status: hasMultiCurrency ? "PASS" : "WARN",
@@ -1493,7 +1494,7 @@ export async function runUrlChecks(
 
     const hasRtlSupport = /dir=["']rtl["']/i.test(pageResult.html) || htmlLower.includes(":dir(rtl)") || htmlLower.includes("[dir=rtl]");
     checks.push({
-      category: "Global Distribution",
+      category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "rtl_support",
       label: "RTL language support",
       status: hasRtlSupport ? "PASS" : "WARN",
@@ -1508,7 +1509,7 @@ export async function runUrlChecks(
       htmlLower.includes("lang-switcher") ||
       htmlLower.includes("locale-switcher");
     checks.push({
-      category: "Global Distribution",
+      category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "language_switcher",
       label: "Language / region switcher",
       status: hasLanguageSwitcher ? "PASS" : "WARN",
@@ -1522,7 +1523,7 @@ export async function runUrlChecks(
       htmlLower.includes("alipay") || htmlLower.includes("wechat pay") || htmlLower.includes("paytm") ||
       htmlLower.includes("upi") || htmlLower.includes("sepa");
     checks.push({
-      category: "Global Distribution",
+      category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "international_payments",
       label: "International payment methods",
       status: hasInternationalPayments ? "PASS" : "WARN",
@@ -1533,7 +1534,7 @@ export async function runUrlChecks(
 
     const hasEuVatSignal = htmlLower.includes(" vat") || htmlLower.includes("value added tax") || htmlLower.includes("tax invoice") || htmlLower.includes("ust-idnr") || htmlLower.includes("mwst");
     checks.push({
-      category: "Global Distribution",
+      category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "eu_vat",
       label: "EU VAT / tax handling",
       status: hasEuVatSignal ? "PASS" : "WARN",
@@ -1545,7 +1546,7 @@ export async function runUrlChecks(
     // ─── Additional SEO ────────────────────────────────────────────────────────
     const hasStructuredData = /<script[^>]+type=["']application\/ld\+json["']/i.test(pageResult.html);
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "structured_data",
       label: "JSON-LD structured data",
       status: hasStructuredData ? "PASS" : "WARN",
@@ -1556,7 +1557,7 @@ export async function runUrlChecks(
 
     const hasPreloadLinks = /<link[^>]+rel=["']preload["']/i.test(pageResult.html);
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "preload_hints",
       label: "Resource preload hints",
       status: hasPreloadLinks ? "PASS" : "WARN",
@@ -1567,7 +1568,7 @@ export async function runUrlChecks(
 
     const hasVerificationMeta = /name=["'](google-site-verification|msvalidate\.01|yandex-verification)["']/i.test(pageResult.html);
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "search_engine_verified",
       label: "Search engine verification",
       status: hasVerificationMeta ? "PASS" : "WARN",
@@ -1579,7 +1580,7 @@ export async function runUrlChecks(
     const hasMetaRobots = /name=["']robots["']/i.test(pageResult.html);
     const blocksIndexing = hasMetaRobots && /content=["'][^"']*noindex/i.test(pageResult.html);
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "meta_robots",
       label: "Robots meta tag",
       status: blocksIndexing ? "FAIL" : hasMetaRobots ? "PASS" : "WARN",
@@ -1592,7 +1593,7 @@ export async function runUrlChecks(
 
     const hasOgSiteName = /property=["']og:site_name["']/i.test(pageResult.html);
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "og_site_name",
       label: "og:site_name (brand in shares)",
       status: hasOgSiteName ? "PASS" : "WARN",
@@ -1604,7 +1605,7 @@ export async function runUrlChecks(
     // ─── Additional Security ───────────────────────────────────────────────────
     const hasSri = /integrity=["'][a-z0-9+/=\-]+["']/i.test(pageResult.html);
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "subresource_integrity",
       label: "Subresource Integrity (SRI)",
       status: hasSri ? "PASS" : "WARN",
@@ -1616,7 +1617,7 @@ export async function runUrlChecks(
     const setCookieHeader = pageResult.headers["set-cookie"] ?? "";
     const hasSecureCookieAttrs = setCookieHeader.toLowerCase().includes("secure") && setCookieHeader.toLowerCase().includes("samesite");
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "secure_cookie_attributes",
       label: "Secure cookie attributes",
       status: hasSecureCookieAttrs ? "PASS" : setCookieHeader ? "WARN" : "WARN",
@@ -1628,7 +1629,7 @@ export async function runUrlChecks(
     const corsHeader = pageResult.headers["access-control-allow-origin"];
     const hasWildcardCors = corsHeader === "*";
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "cors_policy",
       label: "CORS policy",
       status: hasWildcardCors ? "WARN" : corsHeader ? "PASS" : "WARN",
@@ -1646,7 +1647,7 @@ export async function runUrlChecks(
       (body, ct) => ct.includes("text/plain") || /contact:|expires:|encryption:/i.test(body),
     );
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "security_txt",
       label: "security.txt (responsible disclosure)",
       status: securityTxtFound ? "PASS" : "WARN",
@@ -1658,7 +1659,7 @@ export async function runUrlChecks(
     const serverHeader = pageResult.headers["server"] ?? "";
     const exposesVersion = /\d+\.\d+/.test(serverHeader) && serverHeader.length > 3;
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "server_header_leakage",
       label: "Server version not exposed",
       status: exposesVersion ? "WARN" : "PASS",
@@ -1669,7 +1670,7 @@ export async function runUrlChecks(
 
     const hasMixedContent = /http:\/\/[^"'\s>]+\.(js|css|woff2?|svg)/i.test(pageResult.html);
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "no_mixed_content",
       label: "No mixed HTTP/HTTPS content",
       status: hasMixedContent ? "WARN" : "PASS",
@@ -1681,7 +1682,7 @@ export async function runUrlChecks(
     // ─── Additional Performance ─────────────────────────────────────────────────
     const hasPreconnect = /<link[^>]+rel=["']preconnect["']/i.test(pageResult.html);
     checks.push({
-      category: "Performance",
+      category: CATEGORIES.PERFORMANCE,
       checkKey: "preconnect_hints",
       label: "Preconnect / DNS prefetch hints",
       status: hasPreconnect ? "PASS" : "WARN",
@@ -1692,7 +1693,7 @@ export async function runUrlChecks(
 
     const hasNativeLazy = /loading=["']lazy["']/i.test(pageResult.html);
     checks.push({
-      category: "Performance",
+      category: CATEGORIES.PERFORMANCE,
       checkKey: "native_lazy_loading",
       label: "Native image lazy loading",
       status: hasNativeLazy ? "PASS" : "WARN",
@@ -1703,7 +1704,7 @@ export async function runUrlChecks(
 
     const hasFontDisplaySwap = /font-display:\s*swap/i.test(pageResult.html);
     checks.push({
-      category: "Performance",
+      category: CATEGORIES.PERFORMANCE,
       checkKey: "font_display_swap",
       label: "Font display optimisation",
       status: hasFontDisplaySwap ? "PASS" : "WARN",
@@ -1714,7 +1715,7 @@ export async function runUrlChecks(
 
     const varyHeader = pageResult.headers["vary"];
     checks.push({
-      category: "Performance",
+      category: CATEGORIES.PERFORMANCE,
       checkKey: "vary_header",
       label: "Vary header (content negotiation)",
       status: varyHeader ? "PASS" : "WARN",
@@ -1725,7 +1726,7 @@ export async function runUrlChecks(
 
     const serverTimingHeader = pageResult.headers["server-timing"];
     checks.push({
-      category: "Performance",
+      category: CATEGORIES.PERFORMANCE,
       checkKey: "server_timing",
       label: "Server-Timing header",
       status: serverTimingHeader ? "PASS" : "WARN",
@@ -1745,7 +1746,7 @@ export async function runUrlChecks(
     } else {
     const hasMfa = ["two-factor", "2fa", "authenticator app", "totp", "multi-factor", "mfa"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Authentication",
+      category: CATEGORIES.AUTHENTICATION,
       checkKey: "mfa_signals",
       label: "Multi-factor authentication (MFA)",
       status: hasMfa ? "PASS" : "WARN",
@@ -1756,7 +1757,7 @@ export async function runUrlChecks(
 
     const hasEmailVerification = ["verify your email", "confirm your email", "email verification", "activate your account", "check your inbox"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Authentication",
+      category: CATEGORIES.AUTHENTICATION,
       checkKey: "email_verification_flow",
       label: "Email verification flow",
       status: hasEmailVerification ? "PASS" : "WARN",
@@ -1767,7 +1768,7 @@ export async function runUrlChecks(
 
     const hasMagicLink = ["magic link", "passwordless", "sign in with email", "email link", "one-time link"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Authentication",
+      category: CATEGORIES.AUTHENTICATION,
       checkKey: "magic_link_auth",
       label: "Magic link / passwordless login",
       status: hasMagicLink ? "PASS" : "WARN",
@@ -1778,7 +1779,7 @@ export async function runUrlChecks(
 
     const hasSso = ["single sign-on", "saml", "okta", "azure ad", "active directory", "enterprise sso", "sso login"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Authentication",
+      category: CATEGORIES.AUTHENTICATION,
       checkKey: "enterprise_sso",
       label: "Enterprise SSO / SAML",
       status: hasSso ? "PASS" : "WARN",
@@ -1791,7 +1792,7 @@ export async function runUrlChecks(
     // ─── Additional Legal & Compliance ──────────────────────────────────────────
     const hasDataDeletion = ["delete my account", "delete account", "right to erasure", "delete your data", "close account", "request deletion"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Legal & Compliance",
+      category: CATEGORIES.LEGAL,
       checkKey: "data_deletion_right",
       label: "Data deletion / right to erasure (GDPR Art. 17)",
       status: hasDataDeletion ? "PASS" : "WARN",
@@ -1818,7 +1819,7 @@ export async function runUrlChecks(
 
     const hasCoppaSignals = ["under 13", "13 years", "children's privacy", "coppa", "child-directed", "parental consent", "age gate", "age verification"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Legal & Compliance",
+      category: CATEGORIES.LEGAL,
       checkKey: "coppa_signals",
       label: "COPPA / children's privacy",
       status: hasCoppaSignals ? "PASS" : "WARN",
@@ -1836,7 +1837,7 @@ export async function runUrlChecks(
 
     const hasIcpLicense = htmlLower.includes("icp备") || htmlLower.includes("备案号") || htmlLower.includes("icp证") || /[京沪粤]icp/i.test(pageResult.html);
     checks.push({
-      category: "Legal & Compliance",
+      category: CATEGORIES.LEGAL,
       checkKey: "icp_license",
       label: "China ICP license (for CN market)",
       status: hasIcpLicense ? "PASS" : "WARN",
@@ -1847,7 +1848,7 @@ export async function runUrlChecks(
 
     const hasPrivacyLastUpdated = htmlLower.includes("last updated") || htmlLower.includes("last revised") || htmlLower.includes("effective date") || htmlLower.includes("last modified");
     checks.push({
-      category: "Legal & Compliance",
+      category: CATEGORIES.LEGAL,
       checkKey: "privacy_last_updated",
       label: "Privacy policy maintenance date",
       status: hasPrivacyLastUpdated ? "PASS" : "WARN",
@@ -1865,7 +1866,7 @@ export async function runUrlChecks(
 
     const hasDpoContact = htmlLower.includes("dpo@") || htmlLower.includes("privacy@") || htmlLower.includes("data protection officer") || htmlLower.includes("data-protection@");
     checks.push({
-      category: "Legal & Compliance",
+      category: CATEGORIES.LEGAL,
       checkKey: "gdpr_dpo_contact",
       label: "GDPR privacy contact (DPO)",
       status: hasDpoContact ? "PASS" : "WARN",
@@ -1944,7 +1945,7 @@ export async function runUrlChecks(
       }
     }
     checks.push({
-      category: "Missing Pages",
+      category: CATEGORIES.MISSING_PAGES,
       checkKey: "custom_404_page",
       label: "Custom 404 error page",
       status: has404Page ? "PASS" : "WARN",
@@ -1968,7 +1969,7 @@ export async function runUrlChecks(
     } else {
     const hasDemoBooking = ["book a demo", "schedule a demo", "request a demo", "calendly.com", "savvycal.com", "cal.com"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "demo_booking",
       label: "Demo booking / discovery call",
       status: hasDemoBooking ? "PASS" : "WARN",
@@ -1979,7 +1980,7 @@ export async function runUrlChecks(
 
     const hasFreeTrial = ["free trial", "start for free", "get started free", "try for free", "free plan", "no credit card required"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "free_trial_cta",
       label: "Free trial / free plan CTA",
       status: hasFreeTrial ? "PASS" : "WARN",
@@ -2021,7 +2022,7 @@ export async function runUrlChecks(
     const hasNotificationSignals = ["notification-center", "notification bell", "unread messages", "inbox notifications"].some((s) => htmlLower.includes(s)) ||
       /class=["'][^"']*notif[^"']*["']/i.test(pageResult.html);
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "in_app_notifications",
       label: "In-app notification system",
       status: hasNotificationSignals ? "PASS" : "WARN",
@@ -2042,7 +2043,7 @@ export async function runUrlChecks(
     } else {
     const uptimeSignals = ["statuspage.io", "betteruptime.com", "uptimerobot", "pingdom", "freshping", "checkly", "hyperping"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Observability",
+      category: CATEGORIES.OBSERVABILITY,
       checkKey: "uptime_monitoring",
       label: "External uptime monitoring",
       status: uptimeSignals ? "PASS" : "WARN",
@@ -2053,7 +2054,7 @@ export async function runUrlChecks(
 
     const logAggregationSignals = ["papertrail", "logtail", "logflare", "axiom", "betterstack", "baselime"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Observability",
+      category: CATEGORIES.OBSERVABILITY,
       checkKey: "log_aggregation",
       label: "Centralised log aggregation",
       status: logAggregationSignals ? "PASS" : "WARN",
@@ -2064,7 +2065,7 @@ export async function runUrlChecks(
 
     const apmSignals = ["newrelic", "dynatrace", "appdynamics", "elastic apm", "scout apm", "sentry performance"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Observability",
+      category: CATEGORIES.OBSERVABILITY,
       checkKey: "apm_signals",
       label: "Application Performance Monitoring (APM)",
       status: apmSignals ? "PASS" : "WARN",
@@ -2075,7 +2076,7 @@ export async function runUrlChecks(
 
     const rumSignals = ["speedcurve", "web-vitals", "lux.speedcurve", "perfume.js"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Observability",
+      category: CATEGORIES.OBSERVABILITY,
       checkKey: "real_user_monitoring",
       label: "Real User Monitoring (RUM)",
       status: rumSignals ? "PASS" : "WARN",
@@ -2095,7 +2096,7 @@ export async function runUrlChecks(
     } else {
     const hasPciTrustBadge = ["pci dss", "pci-dss", "payment security", "256-bit encryption", "ssl secured checkout"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Payments",
+      category: CATEGORIES.PAYMENTS,
       checkKey: "payment_trust_badges",
       label: "Payment trust badges",
       status: hasPciTrustBadge ? "PASS" : "WARN",
@@ -2106,7 +2107,7 @@ export async function runUrlChecks(
 
     const hasBnpl = ["klarna", "afterpay", "affirm", "clearpay", "laybuy", "zip pay", "sezzle", "buy now pay later"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Payments",
+      category: CATEGORIES.PAYMENTS,
       checkKey: "bnpl_options",
       label: "Buy Now Pay Later (BNPL)",
       status: hasBnpl ? "PASS" : "WARN",
@@ -2117,7 +2118,7 @@ export async function runUrlChecks(
 
     const hasCryptoPayments = ["bitcoin", "ethereum", " usdc", "coinbase commerce", "bitpay", "nowpayments", "crypto payment"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Payments",
+      category: CATEGORIES.PAYMENTS,
       checkKey: "crypto_payments",
       label: "Cryptocurrency payment option",
       status: hasCryptoPayments ? "PASS" : "WARN",
@@ -2137,7 +2138,7 @@ export async function runUrlChecks(
       ], "Skipped — no mobile app signals detected on this project.");
     } else {
     checks.push({
-      category: "App Store & Mobile",
+      category: CATEGORIES.APP_STORE,
       checkKey: "smart_app_banner_meta",
       label: "Smart App Banner (iOS web-to-app)",
       status: hasAppleSmartBanner ? "PASS" : "WARN",
@@ -2148,7 +2149,7 @@ export async function runUrlChecks(
 
     const hasAmazonAppStore = htmlLower.includes("amazon.com/apps") || htmlLower.includes("amazon appstore") || htmlLower.includes("amazon underground");
     checks.push({
-      category: "App Store & Mobile",
+      category: CATEGORIES.APP_STORE,
       checkKey: "amazon_app_store",
       label: "Amazon Appstore / Fire TV presence",
       status: hasAmazonAppStore ? "PASS" : "WARN",
@@ -2160,7 +2161,7 @@ export async function runUrlChecks(
     const multipleOgImages = (pageResult.html.match(/property=["']og:image["']/gi) ?? []).length > 1;
     const hasScreenshotAssets = multipleOgImages || htmlLower.includes("app-screenshot") || /class=["'][^"']*screenshot[^"']*["']/i.test(pageResult.html);
     checks.push({
-      category: "App Store & Mobile",
+      category: CATEGORIES.APP_STORE,
       checkKey: "app_listing_screenshots",
       label: "App screenshots / listing assets",
       status: hasScreenshotAssets ? "PASS" : "WARN",
@@ -2171,7 +2172,7 @@ export async function runUrlChecks(
 
     const appleTouchIconCount = (pageResult.html.match(/apple-touch-icon/gi) ?? []).length;
     checks.push({
-      category: "App Store & Mobile",
+      category: CATEGORIES.APP_STORE,
       checkKey: "app_icon_sizes",
       label: "App icon multiple resolutions",
       status: appleTouchIconCount >= 2 ? "PASS" : appleTouchIconCount === 1 ? "WARN" : "WARN",
@@ -2186,7 +2187,7 @@ export async function runUrlChecks(
     // ─── Additional Global Distribution ────────────────────────────────────────
     const hasCountrySelector = /country[\s-]?selector|region[\s-]?selector|select[\s\S]{0,200}country/i.test(pageResult.html) || htmlLower.includes("country-dropdown");
     checks.push({
-      category: "Global Distribution",
+      category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "country_region_selector",
       label: "Country / region selector",
       status: hasCountrySelector ? "PASS" : "WARN",
@@ -2197,7 +2198,7 @@ export async function runUrlChecks(
 
     const hasComplianceBadge = ["soc 2", "soc2", "iso 27001", "iso27001", "gdpr compliant", "hipaa compliant", "pci dss certified"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Global Distribution",
+      category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "compliance_certifications",
       label: "Compliance certifications (SOC 2, ISO 27001)",
       status: hasComplianceBadge ? "PASS" : "WARN",
@@ -2208,7 +2209,7 @@ export async function runUrlChecks(
 
     const hasEuHostingSignal = htmlLower.includes("eu-west") || htmlLower.includes("eu-central") || htmlLower.includes("europe-west") || (htmlLower.includes("gdpr") && htmlLower.includes("eu data"));
     checks.push({
-      category: "Global Distribution",
+      category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "eu_data_residency",
       label: "EU data residency signals",
       status: hasEuHostingSignal ? "PASS" : "WARN",
@@ -2219,7 +2220,7 @@ export async function runUrlChecks(
 
     const hasCompanyRegistration = /company (number|reg|registration)|registered in|vat number|registered company|\b(ltd|llc|inc|gmbh|bv|ab)\b/i.test(pageResult.html);
     checks.push({
-      category: "Global Distribution",
+      category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "company_registration_info",
       label: "Company registration info",
       status: hasCompanyRegistration ? "PASS" : "WARN",
@@ -2230,7 +2231,7 @@ export async function runUrlChecks(
 
     const hasTimezoneAware = ["timezone", "time zone", "local time", "utc offset", "intl.datetimeformat"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Global Distribution",
+      category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "timezone_locale_support",
       label: "Timezone / locale-aware content",
       status: hasTimezoneAware ? "PASS" : "WARN",
@@ -2242,7 +2243,7 @@ export async function runUrlChecks(
     // ─── Trust & Brand ─────────────────────────────────────────────────────────
     const hasSocialLinks = ["twitter.com/", "x.com/", "linkedin.com/company", "github.com/", "instagram.com/", "youtube.com/"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Trust & Brand",
+      category: CATEGORIES.TRUST_BRAND,
       checkKey: "social_media_links",
       label: "Social media presence",
       status: hasSocialLinks ? "PASS" : "WARN",
@@ -2253,7 +2254,7 @@ export async function runUrlChecks(
 
     const hasThirdPartyReviews = ["trustpilot", "g2.com", "capterra", "producthunt.com", "getapp.com", "software advice"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Trust & Brand",
+      category: CATEGORIES.TRUST_BRAND,
       checkKey: "third_party_reviews",
       label: "Third-party review platform",
       status: hasThirdPartyReviews ? "PASS" : "WARN",
@@ -2264,7 +2265,7 @@ export async function runUrlChecks(
 
     const hasPressCoverage = ["as seen in", "featured in", "as featured in", "press coverage", "in the press", "media coverage"].some((s) => htmlLower.includes(s));
     checks.push({
-      category: "Trust & Brand",
+      category: CATEGORIES.TRUST_BRAND,
       checkKey: "press_coverage",
       label: "Press / media coverage section",
       status: hasPressCoverage ? "PASS" : "WARN",
@@ -2276,7 +2277,7 @@ export async function runUrlChecks(
     const hasTeamPresence = (["founder", "our team", "meet the team", "co-founder"].some((s) => htmlLower.includes(s))) &&
       /<img[^>]+src=["'][^"']+["'][^>]*>/i.test(pageResult.html);
     checks.push({
-      category: "Trust & Brand",
+      category: CATEGORIES.TRUST_BRAND,
       checkKey: "team_presence",
       label: "Founder / team bio with photo",
       status: hasTeamPresence ? "PASS" : "WARN",
@@ -2287,7 +2288,7 @@ export async function runUrlChecks(
 
     const hasProductHunt = htmlLower.includes("producthunt.com") || htmlLower.includes("product hunt") || htmlLower.includes("ph-badge");
     checks.push({
-      category: "Trust & Brand",
+      category: CATEGORIES.TRUST_BRAND,
       checkKey: "product_hunt_badge",
       label: "Product Hunt launch presence",
       status: hasProductHunt ? "PASS" : "WARN",
@@ -2306,7 +2307,7 @@ export async function runUrlChecks(
     // ─── Code Quality (URL-detectable) ─────────────────────────────────────────
     const hasPlaceholderText = pageResult.html.toLowerCase().includes("lorem ipsum") || pageResult.html.toLowerCase().includes("placeholder text here");
     checks.push({
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "no_placeholder_text",
       label: "No placeholder / lorem ipsum content",
       status: hasPlaceholderText ? "FAIL" : "PASS",
@@ -2317,7 +2318,7 @@ export async function runUrlChecks(
 
     const hasHashRouting = /#\/[a-z]/i.test(pageResult.html) || htmlLower.includes("hashrouter") || htmlLower.includes("hash-router");
     checks.push({
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "no_hash_routing",
       label: "Clean URL routing (no hash routes)",
       status: hasHashRouting ? "WARN" : "PASS",
@@ -2350,7 +2351,7 @@ export async function runUrlChecks(
 
       const hasSpf = spfRecords.some((r) => r.includes("v=spf1"));
       checks.push({
-        category: "Security",
+        category: CATEGORIES.SECURITY,
         checkKey: "spf_record",
         label: "SPF record (email spoofing protection)",
         status: hasSpf ? "PASS" : "WARN",
@@ -2361,7 +2362,7 @@ export async function runUrlChecks(
 
       const hasDmarc = dmarcRecords.some((r) => r.includes("v=DMARC1"));
       checks.push({
-        category: "Security",
+        category: CATEGORIES.SECURITY,
         checkKey: "dmarc_record",
         label: "DMARC record (email impersonation protection)",
         status: hasDmarc ? "PASS" : "WARN",
@@ -2372,7 +2373,7 @@ export async function runUrlChecks(
 
       const hasMx = mxRecords.length > 0;
       checks.push({
-        category: "Infrastructure",
+        category: CATEGORIES.INFRASTRUCTURE,
         checkKey: "mx_record",
         label: "MX records (email infrastructure)",
         status: hasMx ? "PASS" : "WARN",
@@ -2382,9 +2383,9 @@ export async function runUrlChecks(
       });
     } catch {
       checks.push(
-        { category: "Security", checkKey: "spf_record", label: "SPF record (email spoofing protection)", status: "WARN", detail: "Could not verify SPF record — DNS lookup failed." },
-        { category: "Security", checkKey: "dmarc_record", label: "DMARC record (email impersonation protection)", status: "WARN", detail: "Could not verify DMARC record — DNS lookup failed." },
-        { category: "Infrastructure", checkKey: "mx_record", label: "MX records (email infrastructure)", status: "WARN", detail: "Could not verify MX records — DNS lookup failed." },
+        { category: CATEGORIES.SECURITY, checkKey: "spf_record", label: "SPF record (email spoofing protection)", status: "WARN", detail: "Could not verify SPF record — DNS lookup failed." },
+        { category: CATEGORIES.SECURITY, checkKey: "dmarc_record", label: "DMARC record (email impersonation protection)", status: "WARN", detail: "Could not verify DMARC record — DNS lookup failed." },
+        { category: CATEGORIES.INFRASTRUCTURE, checkKey: "mx_record", label: "MX records (email infrastructure)", status: "WARN", detail: "Could not verify MX records — DNS lookup failed." },
       );
     }
 
@@ -2420,7 +2421,7 @@ export async function runUrlChecks(
 
     const adminExposed = !catchAll200 && adminStatuses.some((s) => s === 200);
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_admin",
       label: "Admin panel not publicly accessible",
       status: adminExposed ? "WARN" : "PASS",
@@ -2431,7 +2432,7 @@ export async function runUrlChecks(
 
     const phpInfoExposed = !catchAll200 && phpInfoStatuses.some((s) => s === 200);
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_phpinfo",
       label: "PHP info page not exposed",
       status: phpInfoExposed ? "FAIL" : "PASS",
@@ -2442,7 +2443,7 @@ export async function runUrlChecks(
 
     const gitConfigExposed = !catchAll200 && gitConfigStatus === 200;
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_git_config",
       label: "Git config not publicly accessible",
       status: gitConfigExposed ? "FAIL" : "PASS",
@@ -2453,7 +2454,7 @@ export async function runUrlChecks(
 
     const debugExposed = !catchAll200 && debugStatuses.some((s) => s === 200);
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "no_debug_endpoints",
       label: "Debug/monitoring endpoints not public",
       status: debugExposed ? "WARN" : "PASS",
@@ -2464,7 +2465,7 @@ export async function runUrlChecks(
 
     const backupExposed = !catchAll200 && backupStatuses.some((s) => s === 200);
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_backup",
       label: "Database backup files not exposed",
       status: backupExposed ? "FAIL" : "PASS",
@@ -2477,7 +2478,7 @@ export async function runUrlChecks(
     const altSvcHeader = pageResult.headers["alt-svc"] ?? "";
     const http2Detected = altSvcHeader.includes("h2") || pageResult.headers["x-firefox-spdy"] === "h2";
     checks.push({
-      category: "Performance",
+      category: CATEGORIES.PERFORMANCE,
       checkKey: "http2_enabled",
       label: "HTTP/2 protocol",
       status: http2Detected ? "PASS" : "WARN",
@@ -2488,7 +2489,7 @@ export async function runUrlChecks(
 
     const xPoweredBy = pageResult.headers["x-powered-by"];
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "no_x_powered_by",
       label: "X-Powered-By header absent",
       status: xPoweredBy ? "FAIL" : "PASS",
@@ -2500,7 +2501,7 @@ export async function runUrlChecks(
     const a3ServerHeader = pageResult.headers["server"] ?? "";
     const serverHasVersion = /[\/]\d+\.\d+/.test(a3ServerHeader);
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "no_server_version",
       label: "Server version not disclosed",
       status: serverHasVersion ? "FAIL" : "PASS",
@@ -2513,7 +2514,7 @@ export async function runUrlChecks(
 
     const a3CorsHeader = pageResult.headers["access-control-allow-origin"] ?? "";
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "cors_not_wildcard",
       label: "CORS not open to all origins",
       status: a3CorsHeader === "*" ? "FAIL" : "PASS",
@@ -2532,7 +2533,7 @@ export async function runUrlChecks(
       .trim();
     const wordCount = strippedText.split(/\s+/).filter((w) => w.length > 0).length;
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "has_word_count",
       label: "Sufficient page content",
       status: wordCount >= 300 ? "PASS" : wordCount >= 100 ? "WARN" : "FAIL",
@@ -2546,7 +2547,7 @@ export async function runUrlChecks(
     const a4HasH1 = /<h1[\s>]/i.test(pageResult.html);
     const hasH2orH3 = /<h[23][\s>]/i.test(pageResult.html);
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "has_heading_hierarchy",
       label: "Heading hierarchy (H1→H2→H3)",
       status: a4HasH1 && hasH2orH3 ? "PASS" : a4HasH1 ? "WARN" : "FAIL",
@@ -2561,7 +2562,7 @@ export async function runUrlChecks(
     const imgsWithAlt = imgTags.filter((img) => /\balt=/i.test(img)).length;
     const altCoverage = imgTags.length > 0 ? imgsWithAlt / imgTags.length : 1;
     checks.push({
-      category: "Accessibility",
+      category: CATEGORIES.ACCESSIBILITY,
       checkKey: "image_alt_coverage",
       label: "Image alt text coverage",
       status: imgTags.length === 0 ? "PASS" : altCoverage >= 0.8 ? "PASS" : altCoverage >= 0.5 ? "WARN" : "FAIL",
@@ -2574,7 +2575,7 @@ export async function runUrlChecks(
     const internalLinkMatches = pageResult.html.match(internalLinkPattern) ?? [];
     const internalLinkCount = internalLinkMatches.length;
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "internal_links_present",
       label: "Internal linking",
       status: internalLinkCount > 5 ? "PASS" : internalLinkCount >= 1 ? "WARN" : "FAIL",
@@ -2587,7 +2588,7 @@ export async function runUrlChecks(
 
     const hasConsoleLogs = /console\.log\s*\(/.test(pageResult.html);
     checks.push({
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "no_broken_inline_scripts",
       label: "No console.log in production HTML",
       status: hasConsoleLogs ? "WARN" : "PASS",
@@ -2599,7 +2600,7 @@ export async function runUrlChecks(
     // ─── A5: PWA & Offline Readiness ──────────────────────────────────────────
     const hasServiceWorker = /navigator\.serviceWorker|registerServiceWorker|["']sw\.js["']|service[-_]worker/i.test(pageResult.html);
     checks.push({
-      category: "Performance",
+      category: CATEGORIES.PERFORMANCE,
       checkKey: "service_worker_present",
       label: "Service worker (offline/caching)",
       status: hasServiceWorker ? "PASS" : "WARN",
@@ -2610,7 +2611,7 @@ export async function runUrlChecks(
 
     const a5HasManifestLink = /<link[^>]+rel=["']manifest["']/i.test(pageResult.html);
     checks.push({
-      category: "Performance",
+      category: CATEGORIES.PERFORMANCE,
       checkKey: "web_app_manifest_linked",
       label: "Web app manifest linked",
       status: a5HasManifestLink ? "PASS" : "WARN",
@@ -2621,7 +2622,7 @@ export async function runUrlChecks(
 
     const hasThemeColor = /<meta[^>]+name=["']theme-color["']/i.test(pageResult.html);
     checks.push({
-      category: "Performance",
+      category: CATEGORIES.PERFORMANCE,
       checkKey: "theme_color_defined",
       label: "Theme colour meta tag",
       status: hasThemeColor ? "PASS" : "WARN",
@@ -2651,7 +2652,7 @@ export async function runUrlChecks(
     }
     const thirdPartyDomainCount = externalScriptDomains.size;
     checks.push({
-      category: "Performance",
+      category: CATEGORIES.PERFORMANCE,
       checkKey: "third_party_script_count",
       label: "Third-party script load",
       status: thirdPartyDomainCount <= 5 ? "PASS" : thirdPartyDomainCount <= 12 ? "WARN" : "FAIL",
@@ -2662,7 +2663,7 @@ export async function runUrlChecks(
     });
 
     checks.push({
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "no_jquery_old",
       label: "No outdated jQuery",
       status: oldJqueryFound.length > 0 ? "FAIL" : "PASS",
@@ -2674,7 +2675,7 @@ export async function runUrlChecks(
     // ─── A7: SaaS / Business Signals ──────────────────────────────────────────
     const hasAnnualBilling = /annual|yearly|per year|save\s+\d|\bsave\b.*year|year.*save/i.test(pageResult.html);
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "annual_billing_signal",
       label: "Annual billing option",
       status: hasAnnualBilling ? "PASS" : "WARN",
@@ -2685,7 +2686,7 @@ export async function runUrlChecks(
 
     const hasMoneyBack = /money[\s-]back|30[\s-]day|14[\s-]day|7[\s-]day|\brefund\b/i.test(pageResult.html);
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "money_back_signal",
       label: "Money-back guarantee signal",
       status: hasMoneyBack ? "PASS" : "WARN",
@@ -2696,7 +2697,7 @@ export async function runUrlChecks(
 
     const hasLiveChat = /\b(intercom|crisp|tidio|drift|hubspot|freshchat|zendesk|tawk|liveagent|chatra|helpscout)\b/i.test(pageResult.html);
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "live_chat_signal",
       label: "Live chat / support widget",
       status: hasLiveChat ? "PASS" : "WARN",
@@ -2707,7 +2708,7 @@ export async function runUrlChecks(
 
     const hasDemoBooking = /book\s+a\s+demo|schedule\s+a\s+demo|book\s+a\s+call|calendly\.com|cal\.com|book\s+demo/i.test(pageResult.html);
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "demo_booking_signal",
       label: "Demo booking or discovery call",
       status: hasDemoBooking ? "PASS" : "WARN",
@@ -2718,7 +2719,7 @@ export async function runUrlChecks(
 
     const hasSocialProofNumbers = /\b\d[\d,]*\s*[k+]\s*(users?|customers?|teams?|companies|businesses)|\b\d[\d,]*\+\s*(users?|customers?|teams?)|\b(users?|customers?|teams?|companies)\s*\d[\d,]*[k+]?/i.test(pageResult.html);
     checks.push({
-      category: "Trust & Brand",
+      category: CATEGORIES.TRUST_BRAND,
       checkKey: "social_proof_numbers",
       label: "Quantified social proof",
       status: hasSocialProofNumbers ? "PASS" : "WARN",
@@ -2729,7 +2730,7 @@ export async function runUrlChecks(
 
     const hasVideoEmbed = /youtube\.com\/embed|loom\.com\/embed|vimeo\.com\/video|wistia\.com|mux\.com/i.test(pageResult.html);
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "video_embed_present",
       label: "Product demo video",
       status: hasVideoEmbed ? "PASS" : "WARN",
@@ -2742,7 +2743,7 @@ export async function runUrlChecks(
     const hasApiDocsSignal = /api\s+docs|api\s+reference|developer\s+docs?\b/i.test(pageResult.html) ||
       /href=["'][^"']*\/(docs|api-docs|developers|api\/docs)[^"']*["']/i.test(pageResult.html);
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "api_docs_signal",
       label: "API documentation",
       status: hasApiDocsSignal ? "PASS" : "WARN",
@@ -2756,7 +2757,7 @@ export async function runUrlChecks(
     ]);
     const hasOpenApiEndpoint = openApiStatuses.some((s) => s === 200);
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "openapi_endpoint",
       label: "OpenAPI spec endpoint",
       status: hasOpenApiEndpoint ? "PASS" : "WARN",
@@ -2769,7 +2770,7 @@ export async function runUrlChecks(
     const graphqlPathStatus = await checkPaths(httpsUrl, ["/graphql"]).then((s) => s[0]);
     const hasGraphql = hasGraphqlInHtml || graphqlPathStatus === 200;
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "graphql_signal",
       label: "GraphQL API",
       status: hasGraphql ? "PASS" : "WARN",
@@ -2784,7 +2785,7 @@ export async function runUrlChecks(
       /placeholder=["'][^"']*search[^"']*["']/i.test(pageResult.html) ||
       /\b(algolia|typesense|fuse\.js)\b/i.test(pageResult.html);
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "search_functionality",
       label: "Search functionality",
       status: hasSearch ? "PASS" : "WARN",
@@ -2796,7 +2797,7 @@ export async function runUrlChecks(
     const hasGranularConsent = /accept\s+all|reject\s+all|manage\s+(cookies|preferences)/i.test(pageResult.html);
     const hasBasicConsent = /cookie\s*(consent|banner|notice)|we\s+use\s+cookies|this\s+site\s+uses\s+cookies/i.test(pageResult.html);
     checks.push({
-      category: "Legal & Compliance",
+      category: CATEGORIES.LEGAL,
       checkKey: "cookie_consent_granular",
       label: "Granular cookie consent (accept/reject all)",
       status: hasGranularConsent ? "PASS" : hasBasicConsent ? "WARN" : "FAIL",
@@ -2809,7 +2810,7 @@ export async function runUrlChecks(
 
     const hasNewsletter = /newsletter|\bsubscribe\b|mailing\s+list|email\s+updates/i.test(pageResult.html);
     checks.push({
-      category: "SaaS Readiness",
+      category: CATEGORIES.SAAS,
       checkKey: "newsletter_signup",
       label: "Newsletter / email list capture",
       status: hasNewsletter ? "PASS" : "WARN",
@@ -2843,7 +2844,7 @@ export async function runUrlChecks(
 
   } else {
     // Site unreachable — mark remaining checks as FAIL
-    const failedChecks: Array<[string, string, string]> = [
+    const failedChecks: Array<[CheckCategory, string, string]> = [
       ["Infrastructure", "http_redirect", "HTTP → HTTPS redirect"],
       ["Infrastructure", "response_time", "Response time"],
       ["Infrastructure", "status_200", "Returns 200 OK"],
@@ -3338,7 +3339,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
     return {
       checks: [
         {
-          category: "Code Quality",
+          category: CATEGORIES.CODE_QUALITY,
           checkKey: "repo_parse",
           label: "Repository URL",
           status: "FAIL",
@@ -3376,65 +3377,98 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
   const hasManifest = hasPackageJson || hasPyProject || names.includes("cargo.toml") || names.includes("go.mod");
   const hasDockerfile = names.includes("dockerfile") || names.includes("docker-compose.yml") || names.includes("docker-compose.yaml");
 
+  // AEO & AI Discoverability (repo side) — is the codebase built to be worked on by
+  // AI coding agents? An agent-instructions contract (CLAUDE.md / AGENTS.md / editor
+  // rules) and a published llms.txt are the AI-first-repo signals.
+  const hasAgentInstructions =
+    names.includes("claude.md") ||
+    names.includes("agents.md") ||
+    names.includes(".cursorrules") ||
+    names.includes(".windsurfrules") ||
+    names.includes(".aider.conf.yml") ||
+    names.some((n) => n.startsWith("agent") && n.endsWith(".md"));
+  const hasRepoLlmsTxt = names.includes("llms.txt") || names.includes("llms-full.txt");
+
   checks.push(
     {
-      category: "Code Quality",
+      category: CATEGORIES.AEO,
+      checkKey: "aeo_agent_instructions",
+      label: "AI agent instructions (CLAUDE.md / AGENTS.md)",
+      status: hasAgentInstructions ? "PASS" : "WARN",
+      detail: hasAgentInstructions
+        ? "Agent-instructions file found — the repo gives AI coding agents an explicit contract (conventions, component APIs, anti-patterns), so they compose from known vocabulary instead of guessing."
+        : "No CLAUDE.md / AGENTS.md / editor-rules file. Adding an agent-instructions contract makes the codebase far more productive to build with AI coding agents (one-pass changes, fewer invented patterns).",
+    },
+    {
+      category: CATEGORIES.AEO,
+      checkKey: "aeo_repo_llms_txt",
+      label: "llms.txt published in repo",
+      status: hasRepoLlmsTxt ? "PASS" : "WARN",
+      detail: hasRepoLlmsTxt
+        ? "llms.txt present in the repo — machine-readable guidance for LLMs is version-controlled alongside the code."
+        : "No llms.txt in the repo root. Publishing one (served at the site root) tells AI answer engines what the product is and which docs matter.",
+    },
+  );
+
+  checks.push(
+    {
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_readme",
       label: "README.md",
       status: hasReadme ? "PASS" : "FAIL",
       detail: hasReadme ? "README.md present." : "No README.md found.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_tests",
       label: "Test suite",
       status: hasTests ? "PASS" : "WARN",
       detail: hasTests ? "Test directory found." : "No test directory detected.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_linter",
       label: "Linter config",
       status: hasLinter ? "PASS" : "WARN",
       detail: hasLinter ? "Linting configuration found." : "No ESLint/Biome/Prettier config found.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_typescript",
       label: "TypeScript",
       status: hasTs ? "PASS" : "WARN",
       detail: hasTs ? "TypeScript configured (tsconfig.json found)." : "No TypeScript configuration found.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_env_example",
       label: ".env.example",
       status: hasEnvExample ? "PASS" : "WARN",
       detail: hasEnvExample ? ".env.example found." : "No .env.example file — environment setup is undocumented.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "ci_cd_present",
       label: "CI/CD pipeline",
       status: hasCi ? "PASS" : "WARN",
       detail: hasCi ? "CI/CD configuration found." : "No CI/CD configuration detected.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_license",
       label: "License file",
       status: hasLicense ? "PASS" : "WARN",
       detail: hasLicense ? "License file present." : "No license file found.",
     },
     {
-      category: "Infrastructure",
+      category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "has_manifest",
       label: "Dependency manifest",
       status: hasManifest ? "PASS" : "WARN",
       detail: hasManifest ? "Dependency manifest found." : "No dependency manifest detected.",
     },
     {
-      category: "Infrastructure",
+      category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "dockerfile_present",
       label: "Dockerfile / Docker Compose",
       status: hasDockerfile ? "PASS" : "WARN",
@@ -3457,56 +3491,56 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
 
   checks.push(
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_contributing",
       label: "CONTRIBUTING.md",
       status: hasContributing ? "PASS" : "WARN",
       detail: hasContributing ? "CONTRIBUTING.md found — contributor guidelines documented." : "No CONTRIBUTING.md — makes open-source contributions and team onboarding harder.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_code_of_conduct",
       label: "Code of Conduct",
       status: hasCodeOfConduct ? "PASS" : "WARN",
       detail: hasCodeOfConduct ? "Code of Conduct found." : "No Code of Conduct — required for GitHub marketplace listings and professional open-source projects.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_security_md",
       label: "SECURITY.md (vulnerability disclosure)",
       status: hasSecurityMd ? "PASS" : "WARN",
       detail: hasSecurityMd ? "SECURITY.md found — responsible disclosure policy documented." : "No SECURITY.md — GitHub recommends this for all repos to guide vulnerability reporting.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_dependabot",
       label: "Dependabot / automated dependency updates",
       status: hasDependabot ? "PASS" : "WARN",
       detail: hasDependabot ? ".github directory found — check for dependabot.yml for automated updates." : "No Dependabot configuration — unpatched dependencies are the #1 source of supply-chain vulnerabilities.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_changelog_file",
       label: "CHANGELOG.md",
       status: hasChangelogFile ? "PASS" : "WARN",
       detail: hasChangelogFile ? "CHANGELOG.md found — release history documented." : "No CHANGELOG.md — users and contributors can't track what changed between versions.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_openapi_spec",
       label: "OpenAPI / Swagger spec",
       status: hasOpenApiSpec ? "PASS" : "WARN",
       detail: hasOpenApiSpec ? "OpenAPI/Swagger spec found — API is documented and machine-readable." : "No OpenAPI spec — an openapi.yaml enables auto-generated SDKs, Postman collections, and API docs.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_editorconfig",
       label: ".editorconfig (consistent formatting)",
       status: hasEditorConfig ? "PASS" : "WARN",
       detail: hasEditorConfig ? ".editorconfig found — consistent code style across editors." : "No .editorconfig — without it, tabs vs spaces and line endings vary by contributor.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_gitignore",
       label: ".gitignore",
       status: hasGitignore ? "PASS" : "FAIL",
@@ -3541,7 +3575,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
 
   checks.push(
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_e2e_tests",
       label: "E2E test suite (Playwright / Cypress)",
       status: hasE2eTests ? "PASS" : "WARN",
@@ -3550,7 +3584,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
         : "No E2E tests detected — Playwright or Cypress would catch regressions that unit tests miss.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_unit_test_config",
       label: "Unit test framework (Jest / Vitest)",
       status: hasVitest || hasJest ? "PASS" : "WARN",
@@ -3559,7 +3593,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
         : "No Jest/Vitest config found — unit tests are the fastest feedback loop for catching bugs.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_git_hooks",
       label: "Git hooks (Husky / lefthook)",
       status: hasHuskyConfig || names.includes("lefthook.yml") || names.includes(".lefthook.yml") ? "PASS" : "WARN",
@@ -3568,7 +3602,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
         : "No pre-commit hooks — lint errors and test failures can reach the main branch undetected.",
     },
     {
-      category: "Infrastructure",
+      category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "has_orm_config",
       label: "ORM / database configuration",
       status: hasOrmConfig ? "PASS" : "WARN",
@@ -3577,7 +3611,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
         : "No ORM config detected — consider Prisma or Drizzle for type-safe database access and migration management.",
     },
     {
-      category: "Infrastructure",
+      category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "has_migrations",
       label: "Database migrations",
       status: hasMigrations ? "PASS" : "WARN",
@@ -3586,7 +3620,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
         : "No migrations folder detected — schema changes without migrations make deployments risky and rollbacks difficult.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_renovate",
       label: "Renovate / automated dependency updates",
       status: hasRenovate ? "PASS" : "WARN",
@@ -3595,7 +3629,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
         : "No Renovate config — dependencies gradually drift out of date, accumulating security debt.",
     },
     {
-      category: "Infrastructure",
+      category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "has_devcontainer",
       label: "Dev container (.devcontainer)",
       status: hasDevContainer ? "PASS" : "WARN",
@@ -3604,7 +3638,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
         : "No devcontainer — onboarding a new developer requires manual environment setup, which is error-prone.",
     },
     {
-      category: "Infrastructure",
+      category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "has_infra_code",
       label: "Infrastructure as Code (Terraform / Helm / K8s)",
       status: hasInfraCode ? "PASS" : "WARN",
@@ -3613,7 +3647,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
         : "No IaC detected — infrastructure managed manually means deployments are harder to reproduce and audit.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_makefile",
       label: "Makefile / task runner",
       status: hasMakefile ? "PASS" : "WARN",
@@ -3622,7 +3656,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
         : "No Makefile — developers must remember or document common commands (build, test, deploy) separately.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "is_monorepo",
       label: "Monorepo tooling (Turbo / Nx / pnpm workspaces)",
       status: hasMonorepo ? "PASS" : "WARN",
@@ -3631,7 +3665,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
         : "Single package repository — fine for smaller projects, but consider a monorepo as the product grows.",
     },
     {
-      category: "Code Quality",
+      category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_coverage_config",
       label: "Code coverage reporting",
       status: hasCoverage ? "PASS" : "WARN",
@@ -3702,7 +3736,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
             deps["@arizeai/openinference-core"]
           );
           checks.push({
-            category: "AI Readiness",
+            category: CATEGORIES.AI_READINESS,
             checkKey: "ai_has_monitoring_dep",
             label: "AI observability / LLM tracing dependency",
             status: hasAiMonitoring ? "PASS" : "WARN",
@@ -3719,7 +3753,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
             deps["@sinclair/typebox"]
           );
           checks.push({
-            category: "AI Readiness",
+            category: CATEGORIES.AI_READINESS,
             checkKey: "ai_has_validation_dep",
             label: "Output validation library for AI responses",
             status: hasValidation ? "PASS" : "WARN",
@@ -3737,7 +3771,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
             deps["cockatiel"]
           );
           checks.push({
-            category: "AI Readiness",
+            category: CATEGORIES.AI_READINESS,
             checkKey: "ai_has_retry_dep",
             label: "Retry / resilience library for AI API calls",
             status: hasRetry ? "PASS" : "WARN",
@@ -3754,7 +3788,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
             deps["vitest"] && (deps["@anthropic-ai/sdk"] || deps["openai"])
           );
           checks.push({
-            category: "AI Readiness",
+            category: CATEGORIES.AI_READINESS,
             checkKey: "ai_has_evals",
             label: "AI evaluation / testing framework",
             status: hasEvals ? "PASS" : "WARN",
@@ -3772,7 +3806,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
   // Vibe Code Hygiene checks (GitHub root tree source)
   const envCommitted = names.includes(".env") || names.includes(".env.production") || names.includes(".env.local");
   checks.push({
-    category: "Vibe Code Hygiene",
+    category: CATEGORIES.VIBE_HYGIENE,
     checkKey: "vibe_env_not_committed",
     label: ".env file not committed to repo",
     status: envCommitted ? "FAIL" : "PASS",
@@ -3783,7 +3817,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
 
   const nodeModulesCommitted = names.includes("node_modules");
   checks.push({
-    category: "Vibe Code Hygiene",
+    category: CATEGORIES.VIBE_HYGIENE,
     checkKey: "vibe_node_modules_not_committed",
     label: "node_modules/ not committed to repo",
     status: nodeModulesCommitted ? "FAIL" : "PASS",
@@ -3803,7 +3837,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
 export function skipAllChecks(inputType: PulseScanInputType): PulseScanCheckInput[] {
   if (inputType !== "FREE_TEXT") return [];
 
-  const skippedChecks = [
+  const skippedChecks: Array<[CheckCategory, string, string]> = [
     ["Infrastructure", "ssl_valid", "HTTPS / SSL certificate"],
     ["Infrastructure", "http_redirect", "HTTP → HTTPS redirect"],
     ["Infrastructure", "response_time", "Response time"],

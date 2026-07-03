@@ -1,6 +1,7 @@
+import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, skip, platformIs } from "./_types";
 
-const CATEGORY = "Roles & Permissions";
+const CATEGORY = CATEGORIES.ROLES;
 
 const ALL_CHECKS: Array<[string, string]> = [
   ["rbac_signals", "Role-based access control (RBAC) UI"],

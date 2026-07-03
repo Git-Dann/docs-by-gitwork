@@ -1,6 +1,7 @@
+import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, checkDnsRecord, skip, platformIs } from "./_types";
 
-const CATEGORY = "Email Deliverability";
+const CATEGORY = CATEGORIES.EMAIL;
 
 const ALL_CHECKS: Array<[string, string]> = [
   ["dkim_record_present", "DKIM record configured"],

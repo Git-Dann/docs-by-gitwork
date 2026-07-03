@@ -1,8 +1,9 @@
+import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { ExtendedCheckContext } from "./_types";
 import { headRequest } from "./_types";
 
-const CATEGORY = "Vibe Code Hygiene";
+const CATEGORY = CATEGORIES.VIBE_HYGIENE;
 
 /** Detect the AI/no-code builder a prototype was made with, from host + HTML signatures. */
 export function detectAiBuilder(hostname: string, htmlLower: string): string | null {

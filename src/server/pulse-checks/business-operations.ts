@@ -1,6 +1,7 @@
+import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, platformIs, skip } from "./_types";
 
-const CATEGORY = "Business Operations";
+const CATEGORY = CATEGORIES.BUSINESS_OPS;
 
 const ALL_CHECKS: Array<[string, string]> = [
   ["physical_address_footer", "Physical address in footer"],

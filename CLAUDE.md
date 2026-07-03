@@ -405,6 +405,26 @@ Core domains:
   `workspace.aiProvider` + `workspace.*ApiKey` + `workspace.*Model`
 - `getModelForTask()` in `src/server/pulse-ai.ts` is the canonical resolver
 
+**Pulse checks & categories — SINGLE SOURCE OF TRUTH (mandatory)**
+- **Categories live in ONE place: `src/server/pulse-checks/categories.ts`** (`CATEGORIES` +
+  `CATEGORY_META`). Everything derives from it — the settings-panel category list
+  (`CHECK_CATEGORIES`), scoring/priority weights (`WEIGHTED_CATEGORIES`), both report
+  `DOMAIN_DEFS`, and the framework counts (`pulse-framework.ts` reads the registry). Do **not**
+  hand-maintain any of those derived lists, and never re-introduce a duplicate category list.
+- **`PulseScanCheckInput.category` is the typed union `CheckCategory`** — a check that emits a
+  raw/typo'd category is a **compile error**. Always tag checks with `CATEGORIES.<X>`, never a
+  string literal. This applies in `pulse-checks/*`, `pulse-agents/*`, and `pulse-scan.ts`.
+- **To ADD A CHECK:** emit it with `category: CATEGORIES.<X>` **and** add its `{ key, category,
+  label }` row to `src/server/checks-registry.ts`. That's the catalogue the Settings → Checks
+  panel + per-workspace `PulseCheckConfig` overrides + framework counts are built from.
+- **To ADD A CATEGORY:** add one entry to `CATEGORIES` + one row to `CATEGORY_META` (pick a
+  domain + weight + blurb). Nothing else needs editing.
+- **Enforced by `src/server/pulse-checks/__tests__/categories.reconcile.test.ts`** (`npm test`):
+  every emitted `checkKey` must be in the registry, every category must have metadata + one
+  domain, no duplicate keys. If it fails, the catalogue drifted — fix the source, not the test.
+- Runtime stats are already automatic: all scan-results UI derives pass/warn/fail, category
+  cards, score and priority live from the persisted `scan.checks` — nothing to wire per check.
+
 **Logos**
 - Marketing homepage (`src/app/page.tsx`): uses `/gitwork-logo-home-page.png`
 - App sidebar (`src/components/app-shell.tsx`): uses `/foundry-logo.png`

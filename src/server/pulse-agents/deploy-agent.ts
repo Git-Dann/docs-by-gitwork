@@ -1,3 +1,4 @@
+import { CATEGORIES } from "../pulse-checks/categories";
 import type { PulseScanCheckInput, DeployAgentInsights } from "@/types/pulse";
 
 const VERCEL_API = "https://api.vercel.com";
@@ -155,7 +156,7 @@ export async function runDeployAgent(
   if (recentDeployments > 0) {
     const successRate = (recentDeployments - failedDeployments) / recentDeployments;
     checks.push({
-      category: "Infrastructure",
+      category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "deployment_success_rate",
       label: "Deployment success rate",
       status: successRate >= 0.9 ? "PASS" : successRate >= 0.7 ? "WARN" : "FAIL",
@@ -167,7 +168,7 @@ export async function runDeployAgent(
   if (avgBuildMs !== null) {
     const avgBuildSec = avgBuildMs / 1000;
     checks.push({
-      category: "Infrastructure",
+      category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "build_time",
       label: "Average build time",
       status: avgBuildSec < 60 ? "PASS" : avgBuildSec < 180 ? "WARN" : "FAIL",
@@ -189,7 +190,7 @@ export async function runDeployAgent(
 
     if (buildWarnings.length > 0) {
       checks.push({
-        category: "Code Quality",
+        category: CATEGORIES.CODE_QUALITY,
         checkKey: "build_warnings",
         label: "Build warnings in latest deployment",
         status: buildWarnings.length > 10 ? "FAIL" : "WARN",

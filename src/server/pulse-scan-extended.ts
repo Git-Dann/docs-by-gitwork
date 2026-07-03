@@ -27,6 +27,7 @@ import { runMobileExtended } from "./pulse-checks/mobile-extended";
 import { runBusinessOperationsChecks } from "./pulse-checks/business-operations";
 import { runApiQualityChecks } from "./pulse-checks/api-quality";
 import { runAiReadinessChecks } from "./pulse-checks/ai-readiness";
+import { runAiAeoChecks } from "./pulse-checks/ai-aeo";
 import { runVibeCodeHygieneChecks } from "./pulse-checks/vibe-code-hygiene";
 import { runUsPrivacyExtended } from "./pulse-checks/us-privacy-extended";
 import { runVibeSecurityChecks } from "./pulse-checks/vibe-security";
@@ -67,6 +68,7 @@ export async function runExtendedChecks(
     runBusinessOperationsChecks,
     runApiQualityChecks,
     runAiReadinessChecks,
+    runAiAeoChecks,
     runVibeCodeHygieneChecks,
     runUsPrivacyExtended,
     runVibeSecurityChecks,

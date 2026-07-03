@@ -1,8 +1,9 @@
+import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { ExtendedCheckContext } from "./_types";
 import { skip } from "./_types";
 
-const CATEGORY = "AI Readiness";
+const CATEGORY = CATEGORIES.AI_READINESS;
 
 const ALL_CHECKS: Array<[string, string]> = [
   ["ai_feedback_ui", "User feedback loop on AI outputs"],

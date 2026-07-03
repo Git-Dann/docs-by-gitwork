@@ -1,4 +1,5 @@
 import type { PulseScanCheckInput } from "@/types/pulse";
+import type { CheckCategory } from "./categories";
 import type { JurisdictionCode } from "./jurisdictions";
 
 export type { PulseScanCheckInput };
@@ -129,7 +130,7 @@ export async function checkDnsRecord(name: string, type: string): Promise<string
 }
 
 export function skip(
-  category: string,
+  category: CheckCategory,
   checks: Array<[string, string]>,
   reason: string,
 ): PulseScanCheckInput[] {

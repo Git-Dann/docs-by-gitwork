@@ -1,3 +1,6 @@
+import type { CheckCategory } from "@/server/pulse-checks/categories";
+export type { CheckCategory };
+
 export type PulseScanStatus = "RUNNING" | "COMPLETED" | "FAILED";
 export type PulseScanInputType = "URL" | "GITHUB_REPO" | "FREE_TEXT";
 export type PulseCheckStatus = "PASS" | "WARN" | "FAIL" | "SKIPPED";
@@ -365,7 +368,9 @@ export interface PulseScanDiff {
 }
 
 export interface PulseScanCheckInput {
-  category: string;
+  // Typed to the canonical union so a typo'd / unregistered category is a compile
+  // error. The single source of truth is src/server/pulse-checks/categories.ts.
+  category: CheckCategory;
   checkKey: string;
   label: string;
   status: PulseCheckStatus;

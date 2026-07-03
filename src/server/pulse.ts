@@ -43,6 +43,7 @@ import type {
   PricingBand,
   PulseScanDiff,
   ScanDiffItem,
+  CheckCategory,
 } from "@/types/pulse";
 import { runVisualAgent } from "@/server/pulse-agents/visual-agent";
 
@@ -704,7 +705,8 @@ export async function reanalysePulseScan(
   const healthScore = existing.healthScore ?? 0;
   const techStack = asJson<string[]>(existing.techStack, []);
   const checks: PulseScanCheckInput[] = existing.checks.map((c) => ({
-    category: c.category,
+    // Persisted rows carry historical category strings — cast to the current union.
+    category: c.category as CheckCategory,
     checkKey: c.checkKey,
     label: c.label,
     status: c.status as PulseScanCheckInput["status"],

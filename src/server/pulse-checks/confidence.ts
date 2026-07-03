@@ -63,6 +63,10 @@ export function deriveConfidence(check: PulseScanCheckInput): { confidence: Chec
   if (key.startsWith("no_exposed_")) return { confidence: "HIGH", reason: "Content-verified exposure probe." };
   if (key.startsWith("has_") || key.startsWith("branch_") || key.startsWith("secret_scanning") || key.startsWith("ai_has_"))
     return { confidence: "HIGH", reason: "Repository / configuration fact." };
+  // AEO / AI-discoverability checks are all directly observed — fetched files
+  // (llms.txt, robots.txt, feed) or parsed markup (JSON-LD, semantic tags, server text).
+  if (key.startsWith("aeo_"))
+    return { confidence: "HIGH", reason: "Directly observed (fetched file / parsed markup)." };
   return { confidence: "MEDIUM", reason: "Inferred from page content (heuristic)." };
 }
 

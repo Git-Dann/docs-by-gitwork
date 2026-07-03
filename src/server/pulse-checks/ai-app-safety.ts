@@ -1,3 +1,4 @@
+import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, skip, platformIs } from "./_types";
 import { fetchBundleText } from "./vibe-security";
 
@@ -6,7 +7,7 @@ import { fetchBundleText } from "./vibe-security";
 // most-exploited class in production. Heuristic + bundle-observed (AI-free here);
 // only runs when the app shows LLM signals, else SKIPPED.
 
-const CATEGORY = "AI Safety";
+const CATEGORY = CATEGORIES.AI_SAFETY;
 
 const ALL_CHECKS: Array<[string, string]> = [
   ["ai_system_prompt_not_client_exposed", "System prompt not shipped to the client"],

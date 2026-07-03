@@ -1,3 +1,4 @@
+import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, platformIs, skip } from "./_types";
 
 // US state privacy-law checks (CCPA/CPRA + the VCDPA/CPA/CTDPA/UCPA family).
@@ -8,7 +9,7 @@ import { type ExtendedCheckContext, type PulseScanCheckInput, platformIs, skip }
 // (ccpa_* → US-CA; us_privacy_rights_request / us_state_optout_signals → the state
 // privacy-law family) so non-US scans skip these via the shared filter.
 
-const CATEGORY = "Legal & Compliance";
+const CATEGORY = CATEGORIES.LEGAL;
 
 const ALL_CHECKS: Array<[string, string]> = [
   ["ccpa_do_not_sell", "“Do Not Sell or Share My Personal Information” link (CCPA/CPRA)"],

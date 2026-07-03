@@ -1,3 +1,4 @@
+import { CATEGORIES } from "../pulse-checks/categories";
 import type { PulseScanCheckInput, BrowserAgentInsights } from "@/types/pulse";
 
 const PSI_TIMEOUT_MS = 35_000;
@@ -66,7 +67,7 @@ export async function runBrowserAgent(
     const perfScore = cats.performance?.score ?? null;
     const perfPct = perfScore !== null ? Math.round(perfScore * 100) : null;
     checks.push({
-      category: "Performance",
+      category: CATEGORIES.PERFORMANCE,
       checkKey: "psi_performance",
       label: "Lighthouse performance score (mobile)",
       status: scoreStatus(perfScore, 0.9, 0.5),
@@ -81,7 +82,7 @@ export async function runBrowserAgent(
     if (lcp !== undefined) {
       const s = lcp / 1000;
       checks.push({
-        category: "Performance",
+        category: CATEGORIES.PERFORMANCE,
         checkKey: "psi_lcp",
         label: "Largest Contentful Paint (LCP)",
         status: s <= 2.5 ? "PASS" : s <= 4 ? "WARN" : "FAIL",
@@ -93,7 +94,7 @@ export async function runBrowserAgent(
     const cls = audits["cumulative-layout-shift"]?.numericValue;
     if (cls !== undefined) {
       checks.push({
-        category: "Performance",
+        category: CATEGORIES.PERFORMANCE,
         checkKey: "psi_cls",
         label: "Cumulative Layout Shift (CLS)",
         status: cls <= 0.1 ? "PASS" : cls <= 0.25 ? "WARN" : "FAIL",
@@ -106,7 +107,7 @@ export async function runBrowserAgent(
     if (fcp !== undefined) {
       const s = fcp / 1000;
       checks.push({
-        category: "Performance",
+        category: CATEGORIES.PERFORMANCE,
         checkKey: "psi_fcp",
         label: "First Contentful Paint (FCP)",
         status: s <= 1.8 ? "PASS" : s <= 3 ? "WARN" : "FAIL",
@@ -118,7 +119,7 @@ export async function runBrowserAgent(
     const tbt = audits["total-blocking-time"]?.numericValue;
     if (tbt !== undefined) {
       checks.push({
-        category: "Performance",
+        category: CATEGORIES.PERFORMANCE,
         checkKey: "psi_tbt",
         label: "Total Blocking Time (TBT)",
         status: tbt <= 200 ? "PASS" : tbt <= 600 ? "WARN" : "FAIL",
@@ -130,7 +131,7 @@ export async function runBrowserAgent(
     const a11yScore = cats.accessibility?.score ?? null;
     const a11yPct = a11yScore !== null ? Math.round(a11yScore * 100) : null;
     checks.push({
-      category: "Accessibility",
+      category: CATEGORIES.ACCESSIBILITY,
       checkKey: "psi_accessibility",
       label: "Lighthouse accessibility score",
       status: scoreStatus(a11yScore, 0.9, 0.7),
@@ -144,7 +145,7 @@ export async function runBrowserAgent(
     const seoScore = cats.seo?.score ?? null;
     const seoPct = seoScore !== null ? Math.round(seoScore * 100) : null;
     checks.push({
-      category: "SEO",
+      category: CATEGORIES.SEO,
       checkKey: "psi_seo",
       label: "Lighthouse SEO score",
       status: scoreStatus(seoScore, 0.9, 0.7),
@@ -158,7 +159,7 @@ export async function runBrowserAgent(
     const bpScore = cats["best-practices"]?.score ?? null;
     const bpPct = bpScore !== null ? Math.round(bpScore * 100) : null;
     checks.push({
-      category: "Security",
+      category: CATEGORIES.SECURITY,
       checkKey: "psi_best_practices",
       label: "Lighthouse best practices score",
       status: scoreStatus(bpScore, 0.9, 0.75),
@@ -173,7 +174,7 @@ export async function runBrowserAgent(
       const isFast = cruxCategory === "FAST";
       const isAvg = cruxCategory === "AVERAGE";
       checks.push({
-        category: "Performance",
+        category: CATEGORIES.PERFORMANCE,
         checkKey: "crux_overall",
         label: "Real-user experience (Chrome UX Report)",
         status: isFast ? "PASS" : isAvg ? "WARN" : "FAIL",

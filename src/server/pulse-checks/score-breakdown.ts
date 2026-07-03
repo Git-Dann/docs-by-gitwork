@@ -6,8 +6,8 @@ import type {
 } from "@/types/pulse";
 
 // Categories that count double toward the health score — the production-critical
-// ones. MUST stay in sync with calculateHealthScore (which now delegates here).
-const WEIGHTED_CATEGORIES = new Set(["Infrastructure", "Security", "Legal & Compliance", "AI Safety"]);
+// ones. Derived from the SoT (categories.ts `weighted` flag); shared with priority.ts.
+import { WEIGHTED_CATEGORIES } from "./categories";
 
 /**
  * The single source of truth for the health score AND its human explanation.

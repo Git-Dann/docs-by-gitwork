@@ -27,6 +27,7 @@ import {
 } from "@/server/auth/effective-user";
 import { runAgentScan, buildAgentVerdict } from "@/server/pulse-agent";
 import { getPulseScan } from "@/server/pulse";
+import type { CheckCategory } from "@/server/pulse-checks/categories";
 import { listDerivedClients, createClientRecord } from "@/server/clients";
 import { assignedClientIds, listTasks, createTask, updateTask } from "@/server/tasks";
 import { listMembers } from "@/server/team";
@@ -655,7 +656,7 @@ const TOOLS: ToolDef[] = [
         status: scan.status === "COMPLETED" ? "COMPLETED" : "FAILED",
         healthScore: scan.healthScore ?? 0,
         techStack: scan.techStack ?? [],
-        checks: scan.checks.map((c) => ({ ...c, detail: c.detail ?? undefined, evidence: c.evidence ?? undefined, confidence: c.confidence ?? undefined, confidenceReason: c.confidenceReason ?? undefined, trustBucket: c.trustBucket ?? undefined })),
+        checks: scan.checks.map((c) => ({ ...c, category: c.category as CheckCategory, detail: c.detail ?? undefined, evidence: c.evidence ?? undefined, confidence: c.confidence ?? undefined, confidenceReason: c.confidenceReason ?? undefined, trustBucket: c.trustBucket ?? undefined })),
         targetMarkets: scan.targetMarkets ?? undefined,
         detectedMarkets: (scan.detectedMarkets ?? undefined) as undefined | import("@/server/pulse-checks/jurisdictions").JurisdictionCode[],
       });

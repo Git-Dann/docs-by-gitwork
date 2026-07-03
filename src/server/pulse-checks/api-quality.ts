@@ -1,6 +1,7 @@
+import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, verifyFileExposure, platformIs, skip } from "./_types";
 
-const CATEGORY = "API Quality";
+const CATEGORY = CATEGORIES.API_QUALITY;
 
 const ALL_CHECKS: Array<[string, string]> = [
   ["api_versioning_present", "API versioning (/v1/, /v2/ pattern)"],
