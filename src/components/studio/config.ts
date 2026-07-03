@@ -134,6 +134,7 @@ export interface StudioContent {
   tag: string; // banner pill, e.g. "SUPPORTING THE PROMPTWARE BUILDERS"
   footnote: string; // banner footnote, e.g. "GLOBAL BUILD CAPACITY. UK QUALITY CONTROL."
   showDivider: boolean;
+  showTopBar: boolean; // optional accent bar across the top of carousel/post slides
   slides: Slide[]; // carousel uses all; post/banner/avatar use slides[0]
   logoDataUrl: string | null; // optional uploaded custom logo (renders top-right)
 }
@@ -150,6 +151,7 @@ export const DEFAULT_CONTENT: StudioContent = {
   tag: "SUPPORTING THE PROMPTWARE BUILDERS",
   footnote: "GLOBAL BUILD CAPACITY. UK QUALITY CONTROL.",
   showDivider: true,
+  showTopBar: true,
   logoDataUrl: null,
   slides: [
     {
