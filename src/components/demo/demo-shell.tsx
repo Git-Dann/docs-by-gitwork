@@ -111,8 +111,11 @@ export function DemoShell({
     const href = anchor?.getAttribute("href") ?? "";
     if (!href.startsWith("/app/")) return;
     e.preventDefault();
+    const docMatch = href.match(/^\/app\/docs\/([^/?#]+)/);
     if (/^\/app\/portal\/[^/]+\/wiki/.test(href)) router.push("/demo/wiki");
+    else if (/^\/app\/portal\/[^/]+\/tasks/.test(href)) router.push("/demo/tasks");
     else if (/^\/app\/portal\/[^/]+$/.test(href)) router.push("/demo/portal");
+    else if (docMatch && docMatch[1] !== "analytics") router.push(`/demo/docs/${docMatch[1]}`);
     // else: swallow — don't leave the demo into the gated app.
   }
 

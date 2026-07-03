@@ -556,6 +556,97 @@ const demoProposals = {
   ],
 };
 
+/** Build a full, renderable document (for the Docs preview) from a list item.
+ *  Uses only non-financial section types (dev docs: handovers/reports/briefs/notes). */
+function buildDemoDoc(item: (typeof demoProposals.proposals)[number]) {
+  const t = item.documentType;
+  const statement =
+    t === "HANDOVER"
+      ? `This handover covers everything the team needs to run and maintain ${item.title.replace(/^.*—\s*/, "")}.`
+      : t === "REPORT"
+        ? `This report summarises delivery progress and outcomes for ${item.clientName}.`
+        : t === "BRIEF"
+          ? "This brief scopes the upcoming work and the outcomes we're targeting."
+          : "Working notes and reference material for the team.";
+  return {
+    id: item.id,
+    workspaceId: "demo-ws",
+    ownerId: "demo-dev",
+    documentType: t,
+    status: item.status,
+    title: item.title,
+    clientName: item.clientName,
+    clientId: null,
+    version: "v1.0",
+    documentNumber: item.documentNumber ?? null,
+    isShared: true,
+    labels: [],
+    metadata: { client: item.clientName, owner: item.ownerName ?? "Alex Rivera", version: "v1.0", productSignOff: false, techSignOff: false, approvalChecked: false },
+    exportSettings: {},
+    updatedAt: item.updatedAt,
+    createdAt: atDays(-30),
+    sections: [
+      {
+        key: "introduction", title: "Overview", sortOrder: 0, isVisible: true,
+        data: { statement, summary: "Structured so anyone on the team can pick this up without a handover call.", graphic: "" },
+      },
+      {
+        key: "objectives", title: "What's covered", sortOrder: 1, isVisible: true,
+        data: {
+          items: [
+            { id: "o1", title: "Architecture & setup", description: "How the system fits together and how to run it locally.", icon: "bolt" },
+            { id: "o2", title: "Key workflows", description: "The main flows, where the code lives, and the gotchas.", icon: "shield" },
+            { id: "o3", title: "Operations", description: "Deploys, monitoring, and what to do when something breaks.", icon: "cog" },
+          ],
+        },
+      },
+      {
+        key: "cta_next_steps", title: "Next steps", sortOrder: 2, isVisible: true,
+        data: { headline: "Questions?", body: "Ping the team in Slack — everything here is a living document." },
+      },
+    ],
+    costLineItems: [],
+    timelinePhases: [],
+    assets: [],
+    links: [],
+    ctas: [],
+  };
+}
+
+const demoDocsById: Record<string, unknown> = Object.fromEntries(
+  demoProposals.proposals.map((p) => [p.id, buildDemoDoc(p)]),
+);
+
+/** Full renderable document for the Docs preview page, by id (null if unknown). */
+export function getDemoDoc(id: string): unknown {
+  return demoDocsById[id] ?? null;
+}
+
+// ─── Tasks: feature blocks + milestones (per-client tasks page) ──────────────────
+
+const demoFeatureBlocks = demoGanttBlocks.map((b, i) => ({
+  id: b.id,
+  clientId: WIKI_CLIENT.id,
+  name: b.name,
+  description: null,
+  startDate: b.startDate,
+  endDate: b.endDate,
+  orderKey: (i + 1) * 100,
+  color: b.color ?? null,
+  taskCount: b.tasks.length,
+  doneCount: b.tasks.filter((t) => t.done).length,
+  progress: b.progress,
+}));
+
+const demoMilestones = demoGanttMilestones.map((m) => ({
+  id: m.id,
+  clientId: WIKI_CLIENT.id,
+  name: m.name,
+  date: m.date,
+  description: null,
+  color: m.color ?? null,
+}));
+
 // ─── Care (support triage) ───────────────────────────────────────────────────────
 
 const demoSupportClients = {
@@ -708,6 +799,10 @@ export function resolveDemoApi(pathname: string): unknown {
   // Docs.
   if (pathname === "/api/proposals") return demoProposals;
   if (pathname === "/api/templates") return { templates: [] };
+
+  // Tasks — feature blocks + milestones (per-client tasks page).
+  if (pathname === "/api/feature-blocks") return demoFeatureBlocks;
+  if (pathname === "/api/milestones") return demoMilestones;
 
   // Care (support triage).
   if (pathname === "/api/support/clients") return demoSupportClients;
