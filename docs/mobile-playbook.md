@@ -55,23 +55,33 @@ Grep every usage before editing any of these; a change here is never local:
 3. **Implement to the house style.** Mobile-first, responsive Tailwind, reuse tokens/primitives,
    match the surrounding code's idiom.
 4. **Verify — not "it looks right in the diff":**
+   - **There are no per-branch preview deploys.** Production runs on the **Fasthosts VPS** and only
+     `main` is deployed — there is **no hosted preview of a branch** to look at before merge. (Vercel
+     is not used; do not reach for a "preview URL".) So pre-merge verification is entirely local +
+     reasoning:
    - Fresh clones have **no `node_modules`** — run `npm install` once, then **`npx tsc --noEmit`
      and `npm run build`** so real breakage is caught, not eyeballed. If you can only static-check,
      say so explicitly in the report.
-   - **`/app` pages are auth-gated**, so the Vercel preview can't be screenshotted without
-     credentials. Where a page **is** publicly reachable (marketing `/`, `/pulse-overview`,
-     `/embed/*`, `/docs/[token]`, `/timeline/[token]`, `/report/[token]`), drive **Playwright
-     (Chromium is preinstalled at `/opt/pw-browsers/chromium`) at real mobile viewports**
-     (e.g. 390×844, 768×1024) and screenshot it. For gated pages, hand the user the exact preview
-     URL + the 2–3 viewports/elements worth a glance — precise, never "please check everything."
+   - Reason through every responsive change at **both** ends (base < 640, and `lg` ≥ 1024) — the
+     desktop split is at `lg`, so also sanity-check the 640–1023 tablet band.
+   - **Visual confirmation:**
+     - **Public pages** (marketing `/`, `/pulse-overview`, `/embed/*`, `/docs/[token]`,
+       `/timeline/[token]`, `/report/[token]`) can be driven with **Playwright — Chromium is
+       preinstalled at `/opt/pw-browsers/chromium`** — at real mobile viewports (e.g. 390×844,
+       768×1024) and screenshotted.
+     - **`/app` pages are auth-gated (Google OAuth only — no password/bypass), and there is no
+       preview env**, so they **can't be self-screenshotted today**. Until the planned **staging
+       environment** exists, hand the user a precise, minimal capture list — the exact page,
+       the 2–3 viewports, and the specific elements to check — never "please check everything."
+       Once staging is available, drive Playwright against it for gated pages too.
 5. **Report the blast radius, not just the fix**: what changed, every place that shares the code
    and why it's safe, desktop-regression status, and the verification actually run (with output).
 
 ## 4. Standing rules
 
 - Branch → PR → **squash-merge to `main`** (merge/rebase disabled). `main` **auto-deploys to the
-  Fasthosts VPS** via GitHub Actions (`.github/workflows/deploy.yml`, ~6 min). Vercel still builds
-  previews but is **vestigial** (DNS points at the VPS). See `CLAUDE.md` §23.
+  Fasthosts VPS** via GitHub Actions (`.github/workflows/deploy.yml`, ~6 min). This is the only
+  deployed environment — **there are no branch previews**. See `CLAUDE.md` §23.
 - Never declare something "done and verified" unless it was actually exercised. If it was only
   static-checked, say exactly that.
 - Purely presentational Tailwind changes are low-risk, but still get the blast-radius check —
