@@ -1,0 +1,34 @@
+{
+  "destRepo": "Git-Dann/starter-library",
+  "description": "Source-of-truth for the Gitwork-owned starter library. `mirror` entries are permissively licensed (MIT/Apache-2.0) and safe to vendor with their LICENSE retained. `excluded` entries are NOT mirrored for the stated licence reason and are rewritten Gitwork-native instead. `noSource` starters have no single upstream. Keyed by starter slug; a slug may map to several repos (subfoldered under the slug).",
+  "mirror": [
+    { "slug": "humanizer", "repo": "danielclindsay/humanizer", "licence": "MIT" },
+    { "slug": "launch-kit", "repo": "TheDecipherist/claude-code-mastery-project-starter-kit", "licence": "MIT" },
+    { "slug": "design-system", "repo": "oalanicolas/claude-design-premium", "licence": "MIT" },
+    { "slug": "sites", "repo": "corebunch/instatic", "licence": "MIT" },
+    { "slug": "taste", "repo": "Leonxlnx/taste-skill", "licence": "MIT" },
+    { "slug": "planner", "repo": "OthmanAdi/planning-with-files", "licence": "MIT" },
+    { "slug": "flow", "repo": "gmickel/flow-next", "licence": "MIT" },
+    { "slug": "agents", "repo": "wshobson/agents", "licence": "MIT" },
+    { "slug": "security", "repo": "mukul975/Anthropic-Cybersecurity-Skills", "licence": "Apache-2.0" },
+    { "slug": "marketing", "repo": "coreyhaines31/marketingskills", "licence": "MIT" },
+    { "slug": "testing", "repo": "lackeyjb/playwright-skill", "licence": "MIT" },
+    { "slug": "analytics", "repo": "Kaelio/ktx", "licence": "Apache-2.0" },
+    { "slug": "mobile", "repo": "koshkinvv/ios-agent-skills", "licence": "MIT" },
+    { "slug": "mobile", "repo": "Meet-Miyani/compose-skill", "licence": "MIT" },
+    { "slug": "ship-it", "repo": "Farenhytee/database-sentinel", "licence": "MIT" },
+    { "slug": "ship-it", "repo": "yoanbernabeu/supabase-pentest-skills", "licence": "MIT" },
+    { "slug": "ship-it", "repo": "Rodrigotari1/supashield", "licence": "MIT" }
+  ],
+  "excluded": [
+    { "slug": "skills-library", "repo": "ComposioHQ/awesome-claude-skills", "licence": "Apache-2.0 (no root LICENSE file)", "reason": "Curated index of external links, not code; GitHub detects Apache but there's no LICENSE file to vendor. Low mirror value — keep link-only / curate our own." },
+    { "slug": "projects-index", "repo": "danielrosehill/Claude-Code-Projects-Index", "licence": "none", "reason": "No licence = all rights reserved; cannot redistribute. Rewrite Gitwork-native (it's just a curated index)." },
+    { "slug": "web-starter", "repo": "jclewis33/clcreative-AI-first-website-starter", "licence": "none", "reason": "No licence = all rights reserved; cannot redistribute. Rewrite Gitwork-native." },
+    { "slug": "product", "repo": "deanpeters/Product-Manager-Skills", "licence": "CC-BY-NC-SA-4.0", "reason": "Non-commercial licence; Foundry is commercial. Rewrite Gitwork-native." },
+    { "slug": "ship-it", "repo": "ironsightscyber/vibe-security", "licence": "GPL-3.0", "reason": "Copyleft; incompatible with proprietary use. Dropped — Ship It's other three sources are MIT." }
+  ],
+  "noSource": [
+    { "slug": "devops", "reason": "Authored in-house by Gitwork — nothing to mirror." },
+    { "slug": "integrations", "reason": "Official Claude Code marketplace partners (Figma/Playwright/Vercel/Supabase/Linear/Sentry/Stripe) — no single repo." }
+  ]
+}
