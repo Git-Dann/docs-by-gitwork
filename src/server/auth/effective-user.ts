@@ -290,12 +290,12 @@ export function canManageStudy(user: EffectiveUser): boolean {
   return can(user, "study");
 }
 /**
- * View + create + adopt starters. The Starters library (Prompt→Production building blocks) lives
- * under Pulse and is gated by the admin-only `starters` feature permission (default-off; Admins
- * hold all ids, Super Admins bypass), so view and manage collapse to one gate.
+ * View + create + adopt starters. The Starters library (Prompt→Production building blocks) is
+ * **Super-Admin-ONLY** — the tools are Foundry-internal and the GitHub repo merely stores the
+ * sources. Not a grantable feature perm; enforced by role so Admins don't get it.
  */
 export function canManageStarters(user: EffectiveUser): boolean {
-  return can(user, "starters");
+  return isSuperAdmin(user.role);
 }
 /**
  * Authorize Claude (or any MCP client) to act on the user's behalf. This is the
