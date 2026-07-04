@@ -222,14 +222,14 @@ function DeskHeader({
           {WORDMARK}
         </span>
       </span>
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+      <div className="flex min-w-0 flex-1 items-center justify-between gap-0.5 sm:justify-start sm:gap-1">
         {DESK_TABS.map((t) => (
           <button
             key={t}
             type="button"
             onClick={() => onSelect(t)}
             className={cn(
-              "relative shrink-0 px-2.5 py-1 text-[11px] uppercase tracking-[1px] transition",
+              "relative shrink-0 px-1 py-1 text-[11px] uppercase tracking-normal transition sm:px-2.5 sm:tracking-[1px]",
               tab === t ? "text-[var(--text-1)]" : "text-[var(--text-4)] hover:text-[var(--text-2)]",
             )}
             style={{ fontFamily: "var(--font-mono)" }}

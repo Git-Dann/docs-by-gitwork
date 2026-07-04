@@ -46,6 +46,12 @@ export function DeskToday({ onNavigate }: { onNavigate?: (tab: DeskTab) => void 
   const dateStr = now
     .toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })
     .toUpperCase();
+  // Mobile: numeric date (e.g. 04/07/2026) so it stays on one line beside the world clocks.
+  const dateStrNumeric = now.toLocaleDateString(undefined, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
   // The "other hub": admins/super-admins (Dan) see Islamabad; devs/staff see Manchester (HQ).
   const counterpart: Counterpart = isAdminOrAbove
     ? { tz: TEAM_TZ, label: "Islamabad" }
@@ -70,10 +76,11 @@ export function DeskToday({ onNavigate }: { onNavigate?: (tab: DeskTab) => void 
       <div className="mb-2">
         <div className="flex items-center justify-between gap-3">
           <span
-            className="text-[11px] uppercase tracking-[1.6px] text-[var(--text-4)]"
+            className="shrink-0 whitespace-nowrap text-[11px] uppercase tracking-[1.6px] text-[var(--text-4)]"
             style={{ fontFamily: "var(--font-mono)" }}
           >
-            {dateStr}
+            <span className="sm:hidden">{dateStrNumeric}</span>
+            <span className="hidden sm:inline">{dateStr}</span>
           </span>
           <WorldClocks counterpartTz={counterpart.tz} counterpartLabel={counterpart.label} />
         </div>
