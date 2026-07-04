@@ -36,7 +36,7 @@ export function PulseStudiesPanel() {
   const list = studies ?? [];
 
   return (
-    <div className="app-card p-5">
+    <div className="app-card flex h-full flex-col p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-[var(--text-1)]">
