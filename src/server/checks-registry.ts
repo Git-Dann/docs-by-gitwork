@@ -624,6 +624,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "vibe_node_modules_not_committed", category: CATEGORIES.VIBE_HYGIENE, label: "node_modules/ not committed to repo" },
   { key: "vibe_placeholder_content", category: CATEGORIES.VIBE_HYGIENE, label: "No placeholder / filler content in production" },
   { key: "vibe_placeholder_images", category: CATEGORIES.VIBE_HYGIENE, label: "No placeholder / stock filler images" },
+  { key: "spa_client_rendered", category: CATEGORIES.VIBE_HYGIENE, label: "Content is server-rendered (not a JS-only shell)" },
   { key: "wcag22_consistent_help", category: CATEGORIES.ACCESSIBILITY, label: "Consistent help mechanism (WCAG 3.3.6)" },
   { key: "wcag22_dragging_alternative", category: CATEGORIES.ACCESSIBILITY, label: "Dragging movements have an alternative (WCAG 2.5.7)" },
 

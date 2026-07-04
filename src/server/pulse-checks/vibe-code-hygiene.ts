@@ -2,6 +2,7 @@ import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { ExtendedCheckContext } from "./_types";
 import { headRequest } from "./_types";
+import { detectSpaContext } from "@/server/pulse-lite/spa-detect";
 
 const CATEGORY = CATEGORIES.VIBE_HYGIENE;
 
@@ -9,7 +10,7 @@ const CATEGORY = CATEGORIES.VIBE_HYGIENE;
 export function detectAiBuilder(hostname: string, htmlLower: string): string | null {
   const h = hostname.toLowerCase();
   const sig: Array<[string, boolean]> = [
-    ["Lovable", h.endsWith(".lovable.app") || h.endsWith(".lovable.dev") || htmlLower.includes("lovable-tagger") || htmlLower.includes("gptengineer") || htmlLower.includes("gpteng.co")],
+    ["Lovable", h.endsWith(".lovable.app") || h.endsWith(".lovable.dev") || h.endsWith(".lovableproject.com") || htmlLower.includes("lovable-tagger") || htmlLower.includes("gptengineer") || htmlLower.includes("gpteng.co")],
     ["Bolt (StackBlitz)", h.endsWith(".bolt.new") || h.endsWith(".bolt.host") || h.includes("stackblitz")],
     ["v0 (Vercel)", h.endsWith(".v0.dev") || htmlLower.includes("built with v0") || htmlLower.includes("data-v0-")],
     ["Replit", h.endsWith(".repl.co") || h.endsWith(".replit.app") || h.endsWith(".replit.dev")],
@@ -39,7 +40,7 @@ export async function runVibeCodeHygieneChecks(
   const builder = detectAiBuilder(hostname, htmlLower);
   const onBuilderHost = builder !== null && PROTOTYPE_HOSTS.includes(builder) &&
     (hostname.toLowerCase().includes(builder.split(" ")[0].toLowerCase()) ||
-     /\.(lovable\.app|lovable\.dev|bolt\.new|bolt\.host|v0\.dev|repl\.co|replit\.(app|dev)|bubbleapps\.io|softr\.app|glide\.page)$/i.test(hostname));
+     /\.(lovable\.app|lovable\.dev|lovableproject\.com|bolt\.new|bolt\.host|v0\.dev|repl\.co|replit\.(app|dev)|bubbleapps\.io|softr\.app|glide\.page)$/i.test(hostname));
   checks.push({
     category: CATEGORY,
     checkKey: "vibe_ai_builder",
@@ -51,6 +52,23 @@ export async function runVibeCodeHygieneChecks(
         : `Built with ${builder} (deployed to a custom domain).`
       : "No AI/no-code builder fingerprint detected — looks like a custom-coded product.",
     evidence: builder ?? undefined,
+  });
+
+  // 0b. Client-rendered SPA — the initial HTML is an empty shell; content only appears after JS
+  // runs. This is why static SEO/content checks are skipped for these sites (see spa-detect.ts).
+  const { isSpa } = detectSpaContext({
+    builder,
+    html: pageResult.html,
+    contentType: pageResult.headers["content-type"] ?? "",
+  });
+  checks.push({
+    category: CATEGORY,
+    checkKey: "spa_client_rendered",
+    label: "Content is server-rendered (not a JS-only shell)",
+    status: isSpa ? "WARN" : "PASS",
+    detail: isSpa
+      ? "This is a client-rendered SPA — the initial HTML is an empty shell and content only appears once JavaScript runs. That hurts SEO and answer-engine visibility, and means static scanners can't assess the real content (so the SEO/content checks here are marked not-applicable). Server-render the content and harden for production — see Starters → Ship It."
+      : "The initial HTML contains real server-rendered content.",
   });
 
   // 1. Placeholder / filler content
