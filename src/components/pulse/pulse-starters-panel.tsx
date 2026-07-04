@@ -46,7 +46,7 @@ export function PulseStartersPanel() {
   const list = starters ?? [];
 
   return (
-    <article className="widget-card h-full">
+    <article className="widget-card">
       <div className="widget-header">
         <span className="widget-header__label">
           <span className="widget-header__label--number">03</span>{" // STARTERS"}
@@ -56,19 +56,19 @@ export function PulseStartersPanel() {
         )}
       </div>
 
-      <div className="flex flex-1 flex-col p-4">
+      <div className="flex flex-col p-4">
         <p className="text-[12px] leading-snug text-[var(--text-4)]">
           Reusable building blocks — prompts, skills, plugins and kits. Browse or adopt one straight from a scan.
         </p>
 
-        <div className="mt-3 flex-1">
+        <div className="mt-3">
           {isLoading ? null : list.length === 0 ? (
-            <div className="flex h-full min-h-[80px] items-center justify-center rounded-[6px] border border-dashed border-[var(--border-2)] px-4 py-5 text-center text-xs text-[var(--text-4)]">
+            <div className="rounded-[6px] border border-dashed border-[var(--border-2)] px-4 py-4 text-center text-xs text-[var(--text-4)]">
               No starters yet — add one from the library.
             </div>
           ) : (
             <div className="divide-y divide-[var(--border-2)]">
-              {list.slice(0, 4).map((starter) => (
+              {list.slice(0, 3).map((starter) => (
                 <Link
                   key={starter.id}
                   href={`/app/starters/${starter.id}`}
