@@ -140,7 +140,7 @@ const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
   { prefix: "/app/study", module: "study" }, // Study is an optional Pulse tool — admin-only feature perm (default-off)
   { prefix: "/app/backstage", module: "backstage" },
   { prefix: "/app/studio", module: "studio" }, // Admin/Super Admin only (studio is a default-off feature perm)
-  { prefix: "/app/starters", module: "starters" }, // Starters library — optional Pulse tool, admin-only feature perm (default-off)
+  // Starters is NOT here — it's Super-Admin-ONLY, enforced by a dedicated role check below.
 ];
 
 function configuredApiKey() {
@@ -243,6 +243,12 @@ export default auth(async (req) => {
       // notice ("Please sign in again to keep your account secure").
       loginUrl.searchParams.set("reason", "session_expired");
       return NextResponse.redirect(loginUrl);
+    }
+
+    // Starters tools are Super-Admin-ONLY (Foundry-internal; the GitHub repo just stores the
+    // sources). This runs before the Admin-bypass module gate so Admins are excluded too.
+    if (pathname.startsWith("/app/starters") && !isAtLeast(req.auth.user.role, "SUPER_ADMIN")) {
+      return NextResponse.redirect(new URL("/app", req.url));
     }
 
     // Module gate — Admins and Super Admins reach every module (nav safety: never lock

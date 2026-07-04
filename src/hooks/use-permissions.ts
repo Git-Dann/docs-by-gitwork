@@ -44,8 +44,8 @@ export function usePermissions() {
     // Study is an optional tool under Pulse, gated by the admin-only `study` feature perm
     // (default-off). View and manage collapse to one gate — Admins/Super Admins only.
     canManageStudy: can("study"),
-    // Starters is an optional Prompt→Production library under Pulse, gated by the admin-only
-    // `starters` feature perm (default-off). View and manage collapse to one gate.
-    canManageStarters: can("starters"),
+    // Starters is Super-Admin-ONLY (Foundry-internal tools; the GitHub repo just stores the
+    // sources). Role-gated, not a grantable feature perm — so Admins don't get it either.
+    canManageStarters: isSuperAdmin(role),
   };
 }

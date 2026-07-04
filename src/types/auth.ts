@@ -334,24 +334,9 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
       },
     ],
   },
-  {
-    product: "Starters",
-    permissions: [
-      {
-        // Deliberately a `feature`, not a `module`: STAFF auto-inherits every module id
-        // (…MODULE_IDS in DEFAULT_ROLE_PERMISSIONS), which would leak Starters to Staff. As
-        // a feature it defaults OFF for everyone except ADMIN (all ids) + SUPER_ADMIN. Starters
-        // is an optional Prompt→Production library reached from within Pulse (no sidebar item);
-        // middleware still gates /app/starters on the string "starters". Grantable to
-        // Staff/Developers later via the matrix if wanted.
-        id: "starters",
-        category: "feature",
-        label: "Starters (Prompt→Production library)",
-        description:
-          "Gitwork's library of reusable building blocks (prompts, skills, plugins, kits), browsed and adopted from within Pulse. Admin/Super Admin only by default.",
-      },
-    ],
-  },
+  // NB: Starters has no permission entry — it's Super-Admin-ONLY and enforced by a role check
+  // (canManageStarters === isSuperAdmin), not a grantable feature perm. The GitHub repo just
+  // stores the sources; the tools are used inside Foundry by Super Admins only.
   {
     // Settings sub-sections — each gates one area of Settings. (Team is gated by role,
     // and the Roles & Permissions editor is always Super-Admin-only, so neither appears
