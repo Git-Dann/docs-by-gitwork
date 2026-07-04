@@ -13,8 +13,8 @@ function healthTone(score: number | null): string {
   return "text-red-600";
 }
 
-// One cell in the compact KPI grid.
-function Stat({
+// Small editorial stat — DM Serif figure over a mono data label, per DESIGN.md.
+function MiniStat({
   label,
   value,
   tone = "text-[var(--text-1)]",
@@ -27,19 +27,19 @@ function Stat({
 }) {
   return (
     <div className="min-w-0">
-      <p className="truncate text-[11px] font-medium text-[var(--text-4)]">{label}</p>
+      <p className="widget-data-label truncate">{label}</p>
       <p
-        className={cn("mt-0.5 text-2xl font-normal tracking-[-0.01em] tabular-nums", tone)}
+        className={cn("mt-1 text-[26px] font-normal leading-none tracking-[-0.01em] tabular-nums", tone)}
         style={{ fontFamily: "var(--font-display)" }}
       >
         {value}
       </p>
-      {sub && <p className="mt-0.5 text-[11px] leading-tight text-[var(--text-4)]">{sub}</p>}
+      {sub && <p className="mt-1 text-[11px] leading-tight text-[var(--text-4)]">{sub}</p>}
     </div>
   );
 }
 
-// Thin health-distribution bar, pinned to the bottom of the overview card.
+// Thin health-distribution bar with a mono legend beneath.
 function HealthSplit({ green, amber, red }: { green: number; amber: number; red: number }) {
   const total = green + amber + red;
   if (total === 0) return null;
@@ -47,15 +47,17 @@ function HealthSplit({ green, amber, red }: { green: number; amber: number; red:
   const a = Math.round((amber / total) * 100);
   const r = 100 - g - a;
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2">
       <div className="flex h-2 overflow-hidden rounded-full bg-[var(--surface-2)]">
         {g > 0 && <div className="bg-emerald-400" style={{ width: `${g}%` }} />}
         {a > 0 && <div className="bg-amber-400" style={{ width: `${a}%` }} />}
         {r > 0 && <div className="bg-red-400" style={{ width: `${r}%` }} />}
       </div>
-      <p className="text-[11px] text-[var(--text-4)]">
-        <span className="text-emerald-600">{green} healthy</span> ·{" "}
-        <span className="text-amber-600">{amber} moderate</span> ·{" "}
+      <p className="widget-data-label">
+        <span className="text-emerald-600">{green} healthy</span>
+        <span className="text-[var(--text-4)]"> · </span>
+        <span className="text-amber-600">{amber} moderate</span>
+        <span className="text-[var(--text-4)]"> · </span>
         <span className="text-red-600">{red} at risk</span>
       </p>
     </div>
@@ -63,9 +65,9 @@ function HealthSplit({ green, amber, red }: { green: number; amber: number; red:
 }
 
 /**
- * Portfolio KPI card — the dashboard summary as one column of the three-card top row on the
- * Pulse landing page (alongside Research studies + Starters). Equal-height via `h-full` + the
- * health bar pinned to the bottom with `mt-auto`.
+ * `01 // PORTFOLIO` — the Pulse KPI card, first of the three-card top row (alongside Research
+ * studies + Starters). Follows the DESIGN.md widget grammar: mono numbered header, an editorial
+ * DM Serif hero figure (avg health) over the health bar, then a 2×2 mono/serif stat grid.
  */
 export function PulseOverview() {
   const { data: stats, isLoading } = usePulseStats();
@@ -73,7 +75,7 @@ export function PulseOverview() {
   const { data: monitorsData } = useMonitors();
 
   if (isLoading) {
-    return <div className="app-card h-full min-h-[220px] animate-pulse" />;
+    return <div className="widget-card h-full min-h-[300px] animate-pulse" />;
   }
 
   if (!stats || stats.totalScans === 0) return null;
@@ -91,68 +93,78 @@ export function PulseOverview() {
   ).length;
 
   return (
-    <div className="app-card flex h-full flex-col p-5">
-      <div className="mb-4">
-        <p className="text-sm font-semibold text-[var(--text-1)]">
-          Portfolio <span className="font-normal text-[var(--text-4)]">· at a glance</span>
-        </p>
-        <p className="mt-0.5 text-xs text-[var(--text-4)]">
-          Health and follow-ups across every scanned project.
-        </p>
+    <article className="widget-card h-full">
+      <div className="widget-header">
+        <span className="widget-header__label">
+          <span className="widget-header__label--number">01</span>{" // PORTFOLIO"}
+        </span>
+        <span className="widget-header__status">
+          {stats.totalScans} scan{stats.totalScans !== 1 ? "s" : ""}
+        </span>
       </div>
 
-      <div className="grid grid-cols-3 gap-x-3 gap-y-4">
-        <Stat label="Total scans" value={String(stats.totalScans)} />
-        <Stat
-          label="Avg health"
-          value={stats.avgHealthScore !== null ? `${stats.avgHealthScore}` : "—"}
-          tone={healthTone(stats.avgHealthScore)}
-          sub={
-            improved + regressed > 0 ? (
-              <>
+      <div className="flex flex-1 flex-col gap-5 p-5">
+        {/* Hero figure — avg health over the distribution bar */}
+        <div>
+          <p className="widget-data-label">Avg health</p>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span
+              className={cn("text-5xl font-normal leading-none tracking-[-0.02em] tabular-nums", healthTone(stats.avgHealthScore))}
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              {stats.avgHealthScore !== null ? stats.avgHealthScore : "—"}
+            </span>
+            <span className="widget-data-label pb-1">/ 100</span>
+            {improved + regressed > 0 && (
+              <span className="widget-data-label ml-auto pb-1 normal-case tracking-normal">
                 {improved > 0 && <span className="text-emerald-600">↑{improved}</span>}
                 {improved > 0 && regressed > 0 && " "}
                 {regressed > 0 && <span className="text-red-600">↓{regressed}</span>}
-                <span className="ml-1">vs last</span>
-              </>
-            ) : undefined
-          }
-        />
-        <Stat
-          label="Follow-up"
-          value={String(stats.awaitingFollowUp)}
-          tone={stats.awaitingFollowUp > 0 ? "text-amber-600" : "text-[var(--text-1)]"}
-        />
-        <Stat
-          label="Regressed"
-          value={String(regressed)}
-          tone={regressed > 0 ? "text-red-600" : "text-[var(--text-1)]"}
-          sub={regressed > 0 ? "need a look" : "none"}
-        />
-        <Stat
-          label="Monitors"
-          value={String(activeMonitors)}
-          tone={alertingMonitors > 0 ? "text-red-600" : "text-[var(--text-1)]"}
-          sub={
-            alertingMonitors > 0 ? (
-              <span className="text-red-600">{alertingMonitors} alerting</span>
-            ) : activeMonitors > 0 ? (
-              "watching"
-            ) : (
-              "none active"
-            )
-          }
-        />
-      </div>
+                <span className="ml-1 text-[var(--text-4)]">vs last</span>
+              </span>
+            )}
+          </div>
+          <div className="mt-4">
+            <HealthSplit
+              green={stats.healthTiers.green}
+              amber={stats.healthTiers.amber}
+              red={stats.healthTiers.red}
+            />
+          </div>
+        </div>
 
-      <div className="mt-auto pt-5">
-        <HealthSplit
-          green={stats.healthTiers.green}
-          amber={stats.healthTiers.amber}
-          red={stats.healthTiers.red}
-        />
+        {/* 2×2 supporting stats, pinned to the bottom so cards line up */}
+        <div className="mt-auto grid grid-cols-2 gap-x-4 gap-y-4 border-t border-[var(--border-2)] pt-5">
+          <MiniStat label="Total scans" value={String(stats.totalScans)} />
+          <MiniStat
+            label="Follow-up"
+            value={String(stats.awaitingFollowUp)}
+            tone={stats.awaitingFollowUp > 0 ? "text-amber-600" : "text-[var(--text-1)]"}
+            sub={stats.awaitingFollowUp > 0 ? "awaiting review" : "clear"}
+          />
+          <MiniStat
+            label="Regressed"
+            value={String(regressed)}
+            tone={regressed > 0 ? "text-red-600" : "text-[var(--text-1)]"}
+            sub={regressed > 0 ? "need a look" : "none"}
+          />
+          <MiniStat
+            label="Monitors"
+            value={String(activeMonitors)}
+            tone={alertingMonitors > 0 ? "text-red-600" : "text-[var(--text-1)]"}
+            sub={
+              alertingMonitors > 0 ? (
+                <span className="text-red-600">{alertingMonitors} alerting</span>
+              ) : activeMonitors > 0 ? (
+                "watching"
+              ) : (
+                "none active"
+              )
+            }
+          />
+        </div>
       </div>
-    </div>
+    </article>
   );
 }
 
