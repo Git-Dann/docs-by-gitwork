@@ -16,6 +16,7 @@ import { usePulseScan } from "@/hooks/use-pulse";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate } from "@/lib/format";
 import { buttonStyles } from "@/components/ui/button";
+import { recommendStartersForScan } from "@/lib/starters-recommend";
 import type { StarterListItem, StarterType } from "@/server/starters";
 
 type Filter = "all" | StarterType;
@@ -58,6 +59,7 @@ function StarterCard({
   scanId,
   onAdopt,
   adopting,
+  reasons,
 }: {
   starter: StarterListItem;
   index: number;
@@ -66,6 +68,7 @@ function StarterCard({
   scanId: string | null;
   onAdopt: (id: string) => void;
   adopting: boolean;
+  reasons?: string[];
 }) {
   const numberLabel = String(index + 1).padStart(2, "0");
   const primaryTag = starter.tags[0];
@@ -86,12 +89,16 @@ function StarterCard({
         <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--text-3)]">{starter.summary}</p>
       </Link>
 
-      {primaryTag && (
+      {reasons && reasons.length > 0 ? (
+        <p className="mx-4 mt-2.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--brand-700)]">
+          Matches: {reasons.slice(0, 4).join(" · ")}
+        </p>
+      ) : primaryTag ? (
         <span className="mx-4 mt-2.5 inline-flex w-fit items-center gap-1.5 rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-3)]">
           <TagIcon className="h-3 w-3" />
           {primaryTag}
         </span>
-      )}
+      ) : null}
 
       <div className="mt-3 flex items-center justify-between border-t border-[var(--border-2)] px-4 py-2.5">
         <span className="widget-timestamp">
@@ -151,6 +158,8 @@ export function StarterList() {
   }
 
   const all = starters ?? [];
+  // Tag-based recommendations when arriving from a Pulse scan — top matches first.
+  const recommendations = scan ? recommendStartersForScan(scan, all).slice(0, 4) : [];
   const typeCount = (t: StarterType) => all.filter((s) => s.type === t).length;
 
   const filtered = all.filter((s) => (filter === "all" ? true : s.type === filter));
@@ -177,13 +186,43 @@ export function StarterList() {
                   Recommended for {scan.projectName || "this project"}
                 </p>
                 <p className="mt-0.5 text-xs text-[var(--text-3)]">
-                  Pick a starter to link it to this scan — hit <span className="font-mono uppercase">Use</span> on a card.
+                  {recommendations.length > 0
+                    ? "Top matches for this scan are below — hit "
+                    : "Pick a starter to link it to this scan — hit "}
+                  <span className="font-mono uppercase">Use</span> on a card.
                 </p>
               </div>
             </div>
             <Link href={`/app/pulse/${scan.id}`} className={buttonStyles({ variant: "secondary", size: "sm" })}>
               Back to scan
             </Link>
+          </div>
+        </section>
+      )}
+
+      {/* Ranked recommendations from the scan's gaps, opportunities and failing checks */}
+      {scan && recommendations.length > 0 && (
+        <section>
+          <div className="mb-2 flex items-center gap-2 px-0.5">
+            <SparklesIcon className="h-4 w-4 text-[var(--brand-700)]" />
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]">
+              Recommended · {recommendations.length}
+            </span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {recommendations.map((rec, i) => (
+              <StarterCard
+                key={rec.starter.id}
+                starter={rec.starter}
+                index={i}
+                reasons={rec.reasons}
+                onDelete={(id) => deleteStarter(id)}
+                canManage={canManageStarters}
+                scanId={scanId}
+                onAdopt={handleAdopt}
+                adopting={adopting}
+              />
+            ))}
           </div>
         </section>
       )}
