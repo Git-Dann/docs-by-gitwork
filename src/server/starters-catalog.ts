@@ -262,6 +262,60 @@ export const STARTER_BUILT_INS: BuiltInStarter[] = [
       _buildRef: "official Claude Code marketplace partners (Figma/Playwright/Vercel/Supabase/Linear/Sentry/Stripe)",
     },
   },
+  {
+    slug: "marketing",
+    name: "Marketing",
+    summary: "CRO, SEO, copywriting, analytics and growth engineering for client work.",
+    description:
+      "A **collection** of marketing skills covering the whole growth surface — conversion-rate optimisation, SEO, copywriting, analytics and growth engineering. The toolkit for taking a client's product to market once it's built.",
+    type: "COLLECTION",
+    tags: ["marketing", "seo", "copywriting", "growth"],
+    content: {
+      whatYouGet: [
+        "Conversion-rate optimisation and landing-page playbooks",
+        "SEO and content strategy",
+        "Copywriting across ads, email and site",
+        "Analytics and growth-engineering methods",
+      ],
+      _buildRef: "marketingskills",
+    },
+  },
+  {
+    slug: "product",
+    name: "Product",
+    summary: "PM frameworks for turning an idea into a buildable spec.",
+    description:
+      "A **collection** of product-management skills — discovery, prioritisation, specs and roadmaps — built on battle-tested methods. The front of Prompt→Production: it turns a rough idea into something a team can actually build.",
+    type: "COLLECTION",
+    tags: ["product", "discovery", "specs"],
+    content: {
+      whatYouGet: [
+        "Discovery and user-research framing",
+        "Prioritisation frameworks",
+        "Spec / PRD authoring",
+        "Roadmap and stakeholder alignment",
+      ],
+      _buildRef: "Product-Manager-Skills",
+    },
+  },
+  {
+    slug: "testing",
+    name: "Testing",
+    summary: "Model-invoked E2E / browser tests as a quality gate before shipping.",
+    description:
+      "A **skill** that autonomously writes and runs browser automation to test and validate a build — it drives the browser, exercises the key flows and reports what breaks. A production quality gate, not just unit tests.",
+    type: "SKILL",
+    tags: ["testing", "qa", "e2e"],
+    content: {
+      whatYouGet: [
+        "Model-invoked browser automation",
+        "End-to-end validation of the key user flows",
+        "Catches regressions before a deploy goes out",
+      ],
+      install: ["Add the skill", "Point it at the app and let it exercise the critical flows"],
+      _buildRef: "playwright-skill",
+    },
+  },
 ];
 
 /**
