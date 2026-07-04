@@ -242,6 +242,117 @@ async function fetchAllTasks(token: string, listId: string): Promise<CuTask[]> {
   return out;
 }
 
+// ── Live snapshot (for the audit — no DB writes) ─────────────────────────────
+//
+// Pulls the current ClickUp "Clients" tree into the same compact shape the committed
+// snapshot (src/data/clickup-import.json) uses, so the audit can diff Portal against
+// *live* ClickUp without a CSV re-export. Server-side fetch (reuses `cu`/`fetchAllTasks`)
+// — no MCP, no per-task calls, carries assignee names.
+
+export interface LiveSnapTask {
+  clickupId: string;
+  name: string;
+  description: string | null;
+  status: string | null;
+  priority: string | null;
+  dueMs: number | null;
+  startMs: number | null;
+  parentClickupId: string | null;
+  assigneeNames: string[];
+}
+export interface LiveSnapList {
+  clickupId: string;
+  name: string;
+  isMilestones: boolean;
+  tasks: LiveSnapTask[];
+}
+export interface LiveSnapFolder {
+  name: string;
+  lists: LiveSnapList[];
+}
+export interface LiveSnapshot {
+  generatedFrom: string;
+  space: string;
+  folders: LiveSnapFolder[];
+}
+
+/** Human-readable assignee names on a task: native usernames + the custom "Assignee"
+ *  label field's option names (the 28-name list team-roster aliases match). */
+function assigneeNamesOf(task: CuTask): string[] {
+  const names = new Set<string>();
+  for (const a of task.assignees ?? []) {
+    if (a.username) names.add(a.username);
+  }
+  const field = (task.custom_fields ?? []).find(
+    (f) => /assignee/i.test(f.name) && f.value != null && f.value !== "",
+  );
+  if (field) {
+    const options = field.type_config?.options ?? [];
+    const optionName = (id: string) => options.find((o) => o.id === id)?.name ?? options.find((o) => o.id === id)?.label;
+    const items: unknown[] = Array.isArray(field.value) ? field.value : [field.value];
+    for (const item of items) {
+      if (typeof item === "string") {
+        const n = optionName(item);
+        if (n) names.add(n);
+      } else if (item && typeof item === "object") {
+        const obj = item as { id?: unknown; name?: unknown; username?: unknown };
+        if (typeof obj.username === "string") names.add(obj.username);
+        if (typeof obj.name === "string") names.add(obj.name);
+        if (typeof obj.id === "string") {
+          const n = optionName(obj.id);
+          if (n) names.add(n);
+        }
+      }
+    }
+  }
+  return [...names];
+}
+
+export async function fetchLiveSnapshot(): Promise<LiveSnapshot> {
+  const token = process.env.CLICKUP_TOKEN;
+  if (!token) throw new Error("CLICKUP_TOKEN is not set");
+
+  const { teams } = await cu<{ teams: CuTeam[] }>(token, "/team");
+  if (!teams?.length) throw new Error("ClickUp: no teams visible to this token");
+  const teamId = teams[0].id;
+
+  const { spaces } = await cu<{ spaces: CuSpace[] }>(token, `/team/${teamId}/space?archived=false`);
+  const clientSpace = spaces.find((s) => /client/i.test(s.name)) ?? spaces[0];
+  if (!clientSpace) throw new Error("ClickUp: no spaces found");
+
+  const { folders } = await cu<{ folders: CuFolder[] }>(
+    token,
+    `/space/${clientSpace.id}/folder?archived=false`,
+  );
+
+  const out: LiveSnapFolder[] = [];
+  for (const folder of folders) {
+    const lists: LiveSnapList[] = [];
+    for (const list of folder.lists ?? []) {
+      const tasks = await fetchAllTasks(token, list.id);
+      lists.push({
+        clickupId: list.id,
+        name: list.name,
+        isMilestones: MILESTONE_LIST.test(list.name),
+        tasks: tasks.map((t) => ({
+          clickupId: t.id,
+          name: t.name,
+          description: cleanText(t),
+          status: t.status?.status ?? null,
+          priority: t.priority?.priority ?? null,
+          dueMs: t.due_date ? Number(t.due_date) : null,
+          startMs: t.start_date ? Number(t.start_date) : null,
+          parentClickupId: t.parent ?? null,
+          assigneeNames: assigneeNamesOf(t),
+        })),
+      });
+    }
+    out.push({ name: folder.name, lists });
+  }
+
+  return { generatedFrom: `live:${clientSpace.name}`, space: clientSpace.name, folders: out };
+}
+
 // ── Resolution context ──────────────────────────────────────────────────────
 interface Ctx {
   workspaceId: string;

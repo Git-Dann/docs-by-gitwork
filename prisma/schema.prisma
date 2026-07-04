@@ -3021,6 +3021,9 @@ model TaskComment {
   taskId    String
   authorId  String?
   body      String   @db.Text
+  /// User ids @mentioned in this note (resolved at write time). Drives the tag
+  /// notification + highlighted rendering. Additive/nullable — legacy rows stay null.
+  mentions  Json?
   createdAt DateTime @default(now())
   task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   author    User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)

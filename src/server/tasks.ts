@@ -13,6 +13,8 @@ import {
   canSeeAllClients,
 } from "@/server/auth/effective-user";
 import { placementClientIds } from "@/server/client-assignments";
+import { dispatchNotification } from "@/server/notifications";
+import { extractMentionIds, stripMentionTokens } from "@/lib/mentions";
 import type {
   TaskDTO,
   TaskDetailDTO,
@@ -194,6 +196,7 @@ function commentRowToDTO(row: CommentRow): TaskCommentDTO {
     taskId: row.taskId,
     author: userRef(row.author),
     body: row.body,
+    mentions: Array.isArray(row.mentions) ? (row.mentions as string[]) : [],
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -906,13 +909,47 @@ export async function addTaskComment(
 ): Promise<TaskCommentDTO> {
   const task = await prisma.task.findFirst({
     where: { id: taskId, workspaceId: user.workspaceId },
-    select: { clientId: true },
+    select: { clientId: true, title: true, client: { select: { slug: true } } },
   });
   if (!task) throw new ForbiddenError("Task not found");
   await assertClientInScope(user, task.clientId);
+
+  // Resolve @mentions to real workspace members before persisting/notifying — a bad or
+  // stale id in the token is silently dropped rather than trusted.
+  const rawIds = extractMentionIds(body);
+  let mentionIds: string[] = [];
+  if (rawIds.length > 0) {
+    const members = await prisma.workspaceMember.findMany({
+      where: { workspaceId: user.workspaceId, userId: { in: rawIds } },
+      select: { userId: true },
+    });
+    const valid = new Set(members.map((m) => m.userId));
+    mentionIds = rawIds.filter((id) => valid.has(id));
+  }
+
   const row = await prisma.taskComment.create({
-    data: { taskId, authorId: user.id, body },
+    data: { taskId, authorId: user.id, body, mentions: mentionIds },
     include: { author: { select: { id: true, name: true, email: true, avatarUrl: true } } },
   });
+
+  // Being @mentioned lands the note on that person's Desk (+ bell). Fire-and-forget:
+  // the dispatcher excludes the author and respects each recipient's preferences.
+  if (mentionIds.length > 0) {
+    const actor = user.name?.trim() ? user.name : user.email;
+    const preview = stripMentionTokens(body).trim().slice(0, 140);
+    dispatchNotification({
+      event: "tasks.mentioned",
+      workspaceId: user.workspaceId,
+      actorId: user.id,
+      target: { kind: "users", userIds: mentionIds },
+      title: `${actor} mentioned you on “${task.title}”`,
+      body: preview || null,
+      actionUrl: `/app/portal/${task.client.slug}/tasks?task=${taskId}`,
+      clientId: task.clientId,
+      groupKey: `task-mention:${taskId}`,
+      metadata: { taskId, commentId: row.id, actorId: user.id },
+    });
+  }
+
   return commentRowToDTO(row);
 }

@@ -47,7 +47,7 @@ export type NextHoliday = { name: string; date: string; inDays: number } | null;
 /** Next UK + Pakistan holidays for the "Around the team" strip. */
 export type DeskHolidays = { gb: NextHoliday; pk: NextHoliday };
 
-export const DESK_TABS = ["TODAY", "TASKS", "MEETINGS", "INBOX"] as const;
+export const DESK_TABS = ["TODAY", "TASKS", "MEETINGS", "INBOX", "ALERTS"] as const;
 export type DeskTab = (typeof DESK_TABS)[number];
 
 export const DESK_TAB_LABELS: Record<DeskTab, string> = {
@@ -55,4 +55,5 @@ export const DESK_TAB_LABELS: Record<DeskTab, string> = {
   TASKS: "Tasks",
   MEETINGS: "Meetings",
   INBOX: "Inbox",
+  ALERTS: "Alerts",
 };
