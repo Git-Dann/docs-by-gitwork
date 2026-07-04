@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/app-shell";
-import { PulseOverview } from "@/components/pulse/pulse-overview";
+import { PulseOverview, PulseChecksDisclosure } from "@/components/pulse/pulse-overview";
 import { PulseScanListView } from "@/components/pulse/pulse-scan-list";
 import { PulseLeadsPanel } from "@/components/pulse/pulse-leads-panel";
 import { PulseMonitorsPanel } from "@/components/pulse/pulse-monitors-panel";
@@ -13,11 +13,15 @@ export default function PulsePage() {
       subtitle="Validate and audit client projects — from prompt to production."
     >
       <div className="space-y-8">
-        <PulseOverview />
+        {/* Three equal-height cards across the top: portfolio KPIs · studies · starters */}
+        <div className="grid items-stretch gap-4 lg:grid-cols-3">
+          <PulseOverview />
+          <PulseStudiesPanel />
+          <PulseStartersPanel />
+        </div>
+        <PulseChecksDisclosure />
         <PulseLeadsPanel />
         <PulseMonitorsPanel />
-        <PulseStudiesPanel />
-        <PulseStartersPanel />
         <PulseScanListView />
       </div>
     </AppShell>
