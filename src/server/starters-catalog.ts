@@ -368,6 +368,30 @@ export const STARTER_BUILT_INS: BuiltInStarter[] = [
       _buildRef: "ios-agent-skills + compose-skill",
     },
   },
+  {
+    slug: "ship-it",
+    name: "Ship It",
+    summary: "Take a Lovable / Bolt / Replit build from prototype to production.",
+    description:
+      "A **kit** for hardening a vibe-coded app — Lovable, Bolt or Replit — into something you can actually ship. Enables Supabase Row-Level Security on every table, sweeps the bundle for exposed keys, moves authorisation server-side, ejects the code into a real repo with CI, and wires custom domain, SEO, analytics and error monitoring. The missing step between a prototype and production.",
+    type: "KIT",
+    tags: ["vibe-coding", "lovable", "bolt", "replit", "supabase", "rls", "security", "deploy"],
+    content: {
+      whatYouGet: [
+        "Row-Level Security enablement + owner-scoped policy templates for every Supabase table",
+        "Secret sweep — find exposed anon/API keys baked into the client bundle",
+        "Server-side authorisation to replace client-only auth checks",
+        "Eject to a real repo with CI/CD and a baseline test suite",
+        "Custom domain, SEO, analytics and error-monitoring wiring",
+      ],
+      install: [
+        "Point it at the exported Lovable / Bolt / Replit project",
+        "Run the hardening audit (RLS, secrets, auth)",
+        "Apply the fixes and eject to a production repo",
+      ],
+      _buildRef: "database-sentinel + supabase-pentest-skills + supashield + vibe-security",
+    },
+  },
 ];
 
 /**
