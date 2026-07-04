@@ -21,9 +21,8 @@ function statusTone(status: string): string {
 }
 
 /**
- * Optional Study research tool, surfaced from within Pulse. Study is no longer a top-level
- * module — it lives here as a tool you *can* reach for when validating a project. Lists the
- * workspace's studies and lets a pulse.manage holder start a new one.
+ * `02 // RESEARCH STUDIES` — optional Study research tool, second of the three-card top row.
+ * DESIGN.md widget grammar: mono numbered header + status chip, blurb, capped list, bottom CTA.
  */
 export function PulseStudiesPanel() {
   const { canManageStudy } = usePermissions();
@@ -36,55 +35,52 @@ export function PulseStudiesPanel() {
   const list = studies ?? [];
 
   return (
-    <div className="app-card flex h-full flex-col p-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-[var(--text-1)]">
-            Research studies <span className="font-normal text-[var(--text-4)]">· optional</span>
-          </p>
-          <p className="mt-0.5 text-xs text-[var(--text-4)]">
-            AI persona interviews to validate assumptions about a project. Not automatic — run one when a scan raises questions worth testing with users.
-          </p>
-        </div>
-        <Link href="/app/study/new" className="shrink-0">
-          <Button variant="secondary" size="sm">New research study</Button>
-        </Link>
+    <article className="widget-card h-full">
+      <div className="widget-header">
+        <span className="widget-header__label">
+          <span className="widget-header__label--number">02</span>{" // RESEARCH STUDIES"}
+        </span>
+        <span className="widget-header__status">Optional</span>
       </div>
 
-      {isLoading ? null : list.length === 0 ? (
-        <p className="rounded-[6px] border border-dashed border-[var(--border-2)] px-4 py-6 text-center text-xs text-[var(--text-4)]">
-          No studies yet. Start one to interview AI personas about a project.
+      <div className="flex flex-1 flex-col p-4">
+        <p className="text-[12px] leading-snug text-[var(--text-4)]">
+          AI persona interviews to validate assumptions — run one when a scan raises questions worth testing with users.
         </p>
-      ) : (
-        <div className="divide-y divide-[var(--border-2)]">
-          {list.slice(0, 6).map((study) => (
-            <Link
-              key={study.id}
-              href={`/app/study/${study.id}`}
-              className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5 transition hover:opacity-80"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-[var(--text-1)]">{study.title}</p>
-                <p className="truncate text-xs text-[var(--text-4)]">
-                  {study.workspaceClientName ? `${study.workspaceClientName} · ` : ""}
-                  {study.completedSessionCount}/{study.sessionCount} session{study.sessionCount !== 1 ? "s" : ""}
-                </p>
-              </div>
-              <span className={cn("font-mono text-[10px] font-semibold uppercase tracking-[0.08em]", statusTone(study.status))}>
-                {study.status.replace(/_/g, " ")}
-              </span>
-            </Link>
-          ))}
-          {list.length > 6 && (
-            <Link
-              href="/app/study"
-              className="block py-2.5 text-center text-xs font-medium text-[var(--brand-700)] hover:underline"
-            >
-              View all {list.length} studies →
-            </Link>
+
+        <div className="mt-3 flex-1">
+          {isLoading ? null : list.length === 0 ? (
+            <div className="flex h-full min-h-[80px] items-center justify-center rounded-[6px] border border-dashed border-[var(--border-2)] px-4 py-5 text-center text-xs text-[var(--text-4)]">
+              No studies yet — start one to interview AI personas.
+            </div>
+          ) : (
+            <div className="divide-y divide-[var(--border-2)]">
+              {list.slice(0, 4).map((study) => (
+                <Link
+                  key={study.id}
+                  href={`/app/study/${study.id}`}
+                  className="flex items-center gap-x-3 py-2 transition hover:opacity-80"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-medium text-[var(--text-1)]">{study.title}</p>
+                    <p className="widget-data-label mt-0.5 truncate normal-case tracking-normal">
+                      {study.workspaceClientName ? `${study.workspaceClientName} · ` : ""}
+                      {study.completedSessionCount}/{study.sessionCount} session{study.sessionCount !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <span className={cn("widget-data-label shrink-0", statusTone(study.status))}>
+                    {study.status.replace(/_/g, " ")}
+                  </span>
+                </Link>
+              ))}
+            </div>
           )}
         </div>
-      )}
-    </div>
+
+        <Link href="/app/study/new" className="mt-3 block">
+          <Button variant="secondary" size="sm" className="w-full">New research study</Button>
+        </Link>
+      </div>
+    </article>
   );
 }

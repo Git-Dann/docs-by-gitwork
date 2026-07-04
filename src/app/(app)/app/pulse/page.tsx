@@ -13,8 +13,9 @@ export default function PulsePage() {
       subtitle="Validate and audit client projects — from prompt to production."
     >
       <div className="space-y-8">
-        {/* Three equal-height cards across the top: portfolio KPIs · studies · starters */}
-        <div className="grid items-stretch gap-4 lg:grid-cols-3">
+        {/* Three equal-height widget cards across the top: portfolio · studies · starters.
+            Constrained to ~2/3 width so the summary row doesn't stretch full-bleed. */}
+        <div className="grid max-w-4xl items-stretch gap-3 md:grid-cols-3">
           <PulseOverview />
           <PulseStudiesPanel />
           <PulseStartersPanel />
