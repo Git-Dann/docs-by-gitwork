@@ -5,6 +5,7 @@ import { useStudyList } from "@/hooks/use-study";
 import { usePermissions } from "@/hooks/use-permissions";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
+import { CardHeader } from "@/components/pulse/pulse-overview";
 
 function statusTone(status: string): string {
   switch (status) {
@@ -21,10 +22,16 @@ function statusTone(status: string): string {
 }
 
 /**
- * `02 // RESEARCH STUDIES` — optional Study research tool, second of the three-card top row.
- * DESIGN.md widget grammar: mono numbered header + status chip, blurb, capped list, bottom CTA.
+ * `02 // RESEARCH STUDIES` — optional Study research tool. Collapsed (default): a one-line count
+ * + the "New research study" action. Expanded: blurb + capped list + CTA.
  */
-export function PulseStudiesPanel() {
+export function PulseStudiesPanel({
+  collapsed = false,
+  onToggle,
+}: {
+  collapsed?: boolean;
+  onToggle?: () => void;
+}) {
   const { canManageStudy } = usePermissions();
   // Study is an admin-only tool — hide the whole panel from everyone else, and don't even
   // fire the (now admin-gated) studies fetch for non-admins.
@@ -36,51 +43,59 @@ export function PulseStudiesPanel() {
 
   return (
     <article className="widget-card h-full">
-      <div className="widget-header">
-        <span className="widget-header__label">
-          <span className="widget-header__label--number">02</span>{" // RESEARCH STUDIES"}
-        </span>
-        <span className="widget-header__status">Optional</span>
-      </div>
+      <CardHeader number="02" title="RESEARCH STUDIES" status="Optional" collapsed={collapsed} onToggle={onToggle} />
 
-      <div className="flex flex-1 flex-col p-4">
-        <p className="text-[12px] leading-snug text-[var(--text-4)]">
-          AI persona interviews to validate assumptions — run one when a scan raises questions worth testing with users.
-        </p>
-
-        <div className="mt-3 flex-1">
-          {isLoading ? null : list.length === 0 ? (
-            <div className="rounded-[6px] border border-dashed border-[var(--border-2)] px-4 py-4 text-center text-xs text-[var(--text-4)]">
-              No studies yet — start one to interview AI personas.
-            </div>
-          ) : (
-            <div className="divide-y divide-[var(--border-2)]">
-              {list.slice(0, 3).map((study) => (
-                <Link
-                  key={study.id}
-                  href={`/app/study/${study.id}`}
-                  className="flex items-center gap-x-3 py-2 transition hover:opacity-80"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-medium text-[var(--text-1)]">{study.title}</p>
-                    <p className="widget-data-label mt-0.5 truncate normal-case tracking-normal">
-                      {study.workspaceClientName ? `${study.workspaceClientName} · ` : ""}
-                      {study.completedSessionCount}/{study.sessionCount} session{study.sessionCount !== 1 ? "s" : ""}
-                    </p>
-                  </div>
-                  <span className={cn("widget-data-label shrink-0", statusTone(study.status))}>
-                    {study.status.replace(/_/g, " ")}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          )}
+      {collapsed ? (
+        <div className="flex flex-1 items-center justify-between gap-3 p-4">
+          <span className="text-xs text-[var(--text-4)]">
+            {list.length > 0
+              ? `${list.length} stud${list.length === 1 ? "y" : "ies"}`
+              : "No studies yet"}
+          </span>
+          <Link href="/app/study/new" className="shrink-0">
+            <Button variant="secondary" size="sm">New research study</Button>
+          </Link>
         </div>
+      ) : (
+        <div className="flex flex-1 flex-col p-4">
+          <p className="text-[12px] leading-snug text-[var(--text-4)]">
+            AI persona interviews to validate assumptions — run one when a scan raises questions worth testing with users.
+          </p>
 
-        <Link href="/app/study/new" className="mt-3 block">
-          <Button variant="secondary" size="sm" className="w-full">New research study</Button>
-        </Link>
-      </div>
+          <div className="mt-3 flex-1">
+            {isLoading ? null : list.length === 0 ? (
+              <div className="rounded-[6px] border border-dashed border-[var(--border-2)] px-4 py-4 text-center text-xs text-[var(--text-4)]">
+                No studies yet — start one to interview AI personas.
+              </div>
+            ) : (
+              <div className="divide-y divide-[var(--border-2)]">
+                {list.slice(0, 3).map((study) => (
+                  <Link
+                    key={study.id}
+                    href={`/app/study/${study.id}`}
+                    className="flex items-center gap-x-3 py-2 transition hover:opacity-80"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-medium text-[var(--text-1)]">{study.title}</p>
+                      <p className="widget-data-label mt-0.5 truncate normal-case tracking-normal">
+                        {study.workspaceClientName ? `${study.workspaceClientName} · ` : ""}
+                        {study.completedSessionCount}/{study.sessionCount} session{study.sessionCount !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                    <span className={cn("widget-data-label shrink-0", statusTone(study.status))}>
+                      {study.status.replace(/_/g, " ")}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Link href="/app/study/new" className="mt-3 block">
+            <Button variant="secondary" size="sm" className="w-full">New research study</Button>
+          </Link>
+        </div>
+      )}
     </article>
   );
 }
