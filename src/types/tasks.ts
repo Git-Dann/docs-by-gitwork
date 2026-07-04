@@ -79,6 +79,8 @@ export type TaskCommentDTO = {
   taskId: string;
   author: TaskUserRef | null;
   body: string;
+  /** User ids @mentioned in the note body (`@[Name](id)` tokens). */
+  mentions: string[];
   createdAt: string;
 };
 

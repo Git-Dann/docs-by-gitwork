@@ -28,6 +28,7 @@ export const NOTIFICATION_EVENTS = [
   "tasks.assigned",
   "tasks.status_changed",
   "tasks.commented",
+  "tasks.mentioned",
   // Backstage
   "backstage.leave_submitted",
   "backstage.leave_decided",
@@ -64,6 +65,7 @@ export const DEFAULT_EVENT_ROUTING: Record<NotificationEvent, NotificationChanne
   "tasks.assigned": ["inApp"],
   "tasks.status_changed": ["inApp"],
   "tasks.commented": ["inApp"],
+  "tasks.mentioned": ["inApp"],
   "backstage.leave_submitted": ["inApp", "email"],
   "backstage.leave_decided": ["inApp"],
   "backstage.expense_submitted": ["inApp", "email"],

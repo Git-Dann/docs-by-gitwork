@@ -17,6 +17,7 @@ import { XMarkIcon } from "@heroicons/react/24/outline";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/format";
 import { useMyDay, useTaskAttention } from "@/hooks/use-tasks";
+import { useUnreadCount } from "@/hooks/use-notifications";
 import { usePermissions } from "@/hooks/use-permissions";
 import { DeskHandle } from "./desk-shared";
 import { DESK_TABS, DESK_TAB_LABELS, type DeskTab } from "@/types/desk";
@@ -24,6 +25,7 @@ import { DeskToday } from "./desk-today";
 import { DeskTasks } from "./desk-tasks";
 import { DeskMeetings } from "./desk-meetings";
 import { DeskInbox } from "./desk-inbox";
+import { DeskAlerts } from "./desk-alerts";
 
 const STORAGE_KEY = "gitwork.desk.v1"; // localStorage: remembers the last tab long-term
 const OPEN_KEY = "gitwork.desk.open.v1"; // sessionStorage: open state, per browser session
@@ -103,15 +105,18 @@ export function DeskDrawer() {
   // the tab bodies — no extra Google calls until the drawer is opened).
   const attention = useTaskAttention({ mine: true });
   const myDay = useMyDay(undefined, { enabled: showStandup });
+  const unread = useUnreadCount();
 
   const overdue = attention.data?.overdueCount ?? 0;
   const doing = attention.data?.doingCount ?? 0;
+  const unreadCount = unread.data ?? 0;
   const standupPending =
     showStandup &&
     myDay.data != null &&
     (!myDay.data.update.amPushedAt || !myDay.data.update.pmPushedAt);
 
   const summaryParts: string[] = [];
+  if (unreadCount > 0) summaryParts.push(`${unreadCount} UNREAD`);
   if (overdue > 0) summaryParts.push(`${overdue} OVERDUE`);
   summaryParts.push(`${doing} DOING`);
   if (standupPending) summaryParts.push("STANDUP PENDING");
@@ -272,6 +277,8 @@ function DeskBody({ tab, onNavigate }: { tab: DeskTab; onNavigate: (t: DeskTab) 
       return <DeskMeetings />;
     case "INBOX":
       return <DeskInbox />;
+    case "ALERTS":
+      return <DeskAlerts />;
     default:
       return null;
   }

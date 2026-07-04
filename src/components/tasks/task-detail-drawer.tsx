@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ArrowTopRightOnSquareIcon,
   PencilIcon,
@@ -33,7 +33,12 @@ import { TASK_STATUSES, TASK_STATUS_LABELS, type TaskDetailDTO, type TaskStatus 
 import { TaskAvatar, AssigneeStack } from "@/components/tasks/task-avatar";
 import { TaskPriorityBadge } from "@/components/tasks/task-badges";
 import { TaskFormModal } from "@/components/tasks/task-form";
+import { MentionInput, MentionText, type MentionCandidate } from "@/components/tasks/mention-input";
+import { useBackstageTeam } from "@/hooks/use-backstage";
+import { useAccount } from "@/hooks/use-account";
 import { getClientMeeting, type ScribeMeeting } from "@/lib/api";
+
+const ADMIN_ROLES = new Set(["ADMIN", "SUPER_ADMIN"]);
 
 const MONO = { fontFamily: "var(--font-mono)" } as const;
 
@@ -170,6 +175,19 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
   const del = useDeleteTask();
   const addComment = useAddTaskComment();
   const createSub = useCreateTask();
+  const team = useBackstageTeam();
+  const account = useAccount();
+  const selfId = account.data?.id ?? null;
+
+  // Who can be @mentioned on this task: the client's assigned devs + all admins (so a
+  // mention always resolves to someone who can actually open the client's board).
+  const mentionCandidates: MentionCandidate[] = useMemo(() => {
+    const members = team.data ?? [];
+    const clientId = task?.client.id;
+    return members
+      .filter((m) => ADMIN_ROLES.has(m.role) || (clientId ? m.assignedClientIds.includes(clientId) : false))
+      .map((m) => ({ id: m.id, name: m.name || m.email, email: m.email }));
+  }, [team.data, task?.client.id]);
 
   const [editing, setEditing] = useState(false);
   const [note, setNote] = useState("");
@@ -393,22 +411,21 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
                           <span className="text-xs font-medium text-[var(--text-1)]">{c.author?.name ?? "Someone"}</span>
                           <span className="text-[10px] text-[var(--text-4)]" style={MONO}>{formatDate(c.createdAt)}</span>
                         </div>
-                        <p className="mt-0.5 whitespace-pre-wrap text-sm text-[var(--text-2)]">{c.body}</p>
+                        <p className="mt-0.5 whitespace-pre-wrap text-sm text-[var(--text-2)]">
+                          <MentionText body={c.body} selfId={selfId} />
+                        </p>
                       </div>
                     </div>
                   ))}
                   {task.comments.length === 0 ? <p className="text-xs text-[var(--text-4)]">No notes yet.</p> : null}
                 </div>
                 <div className="mt-3 flex items-end gap-2">
-                  <textarea
-                    className="app-textarea flex-1"
-                    rows={2}
+                  <MentionInput
                     value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="Add a note…"
-                    onKeyDown={(e) => {
-                      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void submitNote();
-                    }}
+                    onChange={setNote}
+                    candidates={mentionCandidates}
+                    placeholder="Add a note… (@ to mention)"
+                    onSubmit={submitNote}
                   />
                   <Button type="button" variant="secondary" onClick={submitNote} loading={addComment.isPending} disabled={!note.trim()}>
                     Add
