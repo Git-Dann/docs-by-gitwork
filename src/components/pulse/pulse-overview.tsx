@@ -29,7 +29,7 @@ function MiniStat({
     <div className="min-w-0">
       <p className="widget-data-label truncate">{label}</p>
       <p
-        className={cn("mt-1 text-[26px] font-normal leading-none tracking-[-0.01em] tabular-nums", tone)}
+        className={cn("mt-1 text-[22px] font-normal leading-none tracking-[-0.01em] tabular-nums", tone)}
         style={{ fontFamily: "var(--font-display)" }}
       >
         {value}
@@ -133,34 +133,23 @@ export function PulseOverview() {
           </div>
         </div>
 
-        {/* 2×2 supporting stats, pinned to the bottom so cards line up */}
-        <div className="mt-auto grid grid-cols-2 gap-x-4 gap-y-4 border-t border-[var(--border-2)] pt-5">
-          <MiniStat label="Total scans" value={String(stats.totalScans)} />
+        {/* 1×4 supporting stats, pinned to the bottom so cards line up */}
+        <div className="mt-auto grid grid-cols-4 gap-x-2 border-t border-[var(--border-2)] pt-5">
+          <MiniStat label="Scans" value={String(stats.totalScans)} />
           <MiniStat
             label="Follow-up"
             value={String(stats.awaitingFollowUp)}
             tone={stats.awaitingFollowUp > 0 ? "text-amber-600" : "text-[var(--text-1)]"}
-            sub={stats.awaitingFollowUp > 0 ? "awaiting review" : "clear"}
           />
           <MiniStat
             label="Regressed"
             value={String(regressed)}
             tone={regressed > 0 ? "text-red-600" : "text-[var(--text-1)]"}
-            sub={regressed > 0 ? "need a look" : "none"}
           />
           <MiniStat
             label="Monitors"
             value={String(activeMonitors)}
             tone={alertingMonitors > 0 ? "text-red-600" : "text-[var(--text-1)]"}
-            sub={
-              alertingMonitors > 0 ? (
-                <span className="text-red-600">{alertingMonitors} alerting</span>
-              ) : activeMonitors > 0 ? (
-                "watching"
-              ) : (
-                "none active"
-              )
-            }
           />
         </div>
       </div>
