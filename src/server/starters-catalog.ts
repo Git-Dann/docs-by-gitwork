@@ -405,29 +405,38 @@ export const STARTER_BUILT_INS: BuiltInStarter[] = [
 // with no single upstream — authored in-house (devops), the official marketplace (integrations),
 // or built from several repos (mobile, ship-it) — are deliberately omitted → no "View & use"
 // button, rather than a misleading link.
+// Gitwork-owned mirror (Git-Dann/starter-library) — one folder per starter. These are OUR copies,
+// so the library no longer depends on an upstream staying online.
+const OWNED = "https://github.com/Git-Dann/starter-library/tree/main";
 const SOURCE_URLS: Record<string, string> = {
-  humanizer: "https://github.com/danielclindsay/humanizer",
+  // Mirrored into our own repo → point at the owned copy.
+  humanizer: `${OWNED}/humanizer`,
+  "launch-kit": `${OWNED}/launch-kit`,
+  "design-system": `${OWNED}/design-system`,
+  sites: `${OWNED}/sites`,
+  taste: `${OWNED}/taste`,
+  planner: `${OWNED}/planner`,
+  flow: `${OWNED}/flow`,
+  agents: `${OWNED}/agents`,
+  security: `${OWNED}/security`,
+  marketing: `${OWNED}/marketing`,
+  testing: `${OWNED}/testing`,
+  analytics: `${OWNED}/analytics`,
+  mobile: `${OWNED}/mobile`,
+  "ship-it": `${OWNED}/ship-it`,
+  // Not mirrored (licence-blocked) — link upstream until rewritten Gitwork-native.
   "skills-library": "https://github.com/ComposioHQ/awesome-claude-skills",
   "projects-index": "https://github.com/danielrosehill/Claude-Code-Projects-Index",
-  "launch-kit": "https://github.com/TheDecipherist/claude-code-mastery-project-starter-kit",
-  "design-system": "https://github.com/oalanicolas/claude-design-premium",
-  sites: "https://github.com/corebunch/instatic",
   "web-starter": "https://github.com/jclewis33/clcreative-AI-first-website-starter",
-  taste: "https://github.com/Leonxlnx/taste-skill",
-  planner: "https://github.com/OthmanAdi/planning-with-files",
-  flow: "https://github.com/gmickel/flow-next",
-  agents: "https://github.com/wshobson/agents",
-  security: "https://github.com/mukul975/Anthropic-Cybersecurity-Skills",
-  marketing: "https://github.com/coreyhaines31/marketingskills",
   product: "https://github.com/deanpeters/Product-Manager-Skills",
-  testing: "https://github.com/lackeyjb/playwright-skill",
-  analytics: "https://github.com/Kaelio/ktx",
 };
 
 function sourceFor(slug: string): { sourceLabel?: string; sourceUrl?: string } {
   const sourceUrl = SOURCE_URLS[slug];
   if (!sourceUrl) return {};
-  return { sourceUrl, sourceLabel: sourceUrl.replace(/^https:\/\/github\.com\//, "") };
+  const owned = sourceUrl.startsWith(OWNED);
+  const sourceLabel = owned ? "Gitwork starter library" : sourceUrl.replace(/^https:\/\/github\.com\//, "");
+  return { sourceUrl, sourceLabel };
 }
 
 /**
