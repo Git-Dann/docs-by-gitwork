@@ -299,6 +299,8 @@ export interface PulseScanRecord {
   generatedProposalId: string | null;
   /** Optional Study launched to validate this scan's assumptions (Study is a Pulse tool). */
   linkedStudyId: string | null;
+  /** Optional Starter (Prompt→Production building block) adopted from this scan. */
+  linkedStarterId: string | null;
   checks: PulseScanCheckRecord[];
   createdAt: string;
   updatedAt: string;

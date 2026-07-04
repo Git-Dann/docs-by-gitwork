@@ -805,7 +805,7 @@ function AgentPanel({
 }) {
   const { mutateAsync: runBrowser, isPending: runningBrowser } = useRunBrowserAgent();
   const { mutateAsync: runDiscovery, isPending: runningDiscovery } = useRunDiscoveryKit();
-  const { canManageStudy } = usePermissions();
+  const { canManageStudy, canManageStarters } = usePermissions();
   const [browserError, setBrowserError] = useState<string | null>(null);
   const [discoveryError, setDiscoveryError] = useState<string | null>(null);
   const [agentsOpen, setAgentsOpen] = useState(false);
@@ -982,13 +982,31 @@ function AgentPanel({
         ? () => { window.location.href = `/app/study/${scan.linkedStudyId}`; }
         : () => { window.location.href = `/app/study/new?scanId=${scan.id}`; },
     },
+    // Starters (optional, admin-only) — Gitwork's Prompt→Production library. Browse building
+    // blocks pre-filtered to this scan; adopting one links it back here. Filtered out below
+    // unless the viewer can use Starters.
+    {
+      id: "starters",
+      label: "Starters",
+      description: "Gitwork prompts, skills, plugins and kits to leap this project forward — optional",
+      status: scan.linkedStarterId ? "completed" : "available",
+      summary: scan.linkedStarterId
+        ? "A starter is linked to this scan"
+        : "Browse the Prompt→Production library, recommended for this project",
+      actionLabel: scan.linkedStarterId ? "View starter" : "Browse starters",
+      onAction: scan.linkedStarterId
+        ? () => { window.location.href = `/app/starters/${scan.linkedStarterId}`; }
+        : () => { window.location.href = `/app/starters?scanId=${scan.id}`; },
+    },
   ];
 
   // High-risk: the fix-agent opens GitHub PRs — hide that slot unless the role holds pulse.fixAgent.
-  // Study is an admin-only tool — hide its slot from everyone else.
+  // Study + Starters are admin-only tools — hide their slots from everyone else.
   const visibleSlots = slots.filter(
     (slot) =>
-      (slot.id !== "fix" || canRunFixAgent) && (slot.id !== "study" || canManageStudy),
+      (slot.id !== "fix" || canRunFixAgent) &&
+      (slot.id !== "study" || canManageStudy) &&
+      (slot.id !== "starters" || canManageStarters),
   );
 
   return (

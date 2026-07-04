@@ -140,6 +140,7 @@ const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
   { prefix: "/app/study", module: "study" }, // Study is an optional Pulse tool — admin-only feature perm (default-off)
   { prefix: "/app/backstage", module: "backstage" },
   { prefix: "/app/studio", module: "studio" }, // Admin/Super Admin only (studio is a default-off feature perm)
+  { prefix: "/app/starters", module: "starters" }, // Starters library — optional Pulse tool, admin-only feature perm (default-off)
 ];
 
 function configuredApiKey() {
