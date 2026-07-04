@@ -394,6 +394,37 @@ export const STARTER_BUILT_INS: BuiltInStarter[] = [
   },
 ];
 
+// ── Source references ("view & use") ─────────────────────────────────────────────
+// Each built-in is built on top of an upstream repo/skill (tracked internally in
+// content._buildRef). We surface a public source link so a starter can actually be viewed and
+// grabbed. Direct repo URLs for the ones we've pinned; everything else resolves to a GitHub
+// repository search seeded with the ref, so the "View & use" link is always valid (never a 404).
+// Refs that are our own / multi-source (no single upstream) get no link.
+
+const KNOWN_SOURCE_URLS: Record<string, string> = {
+  "wshobson/agents": "https://github.com/wshobson/agents",
+  "Anthropic-Cybersecurity-Skills (Apache-2.0)": "https://github.com/anthropics/skills",
+};
+
+/** Refs that are authored in-house or span many sources — no single repo to link out to. */
+const NO_SOURCE = [/gitwork-authored/i, /marketplace partners/i];
+
+function humanLabelFor(ref: string): string {
+  // Strip a trailing "(license)" note and a leading "owner/" for a compact label.
+  const noLicense = ref.replace(/\s*\(.*?\)\s*$/, "").trim();
+  return noLicense.includes("/") ? noLicense.split("/").pop()! : noLicense;
+}
+
+function sourceFor(ref?: string): { sourceLabel?: string; sourceUrl?: string } {
+  if (!ref) return {};
+  const label = humanLabelFor(ref);
+  if (NO_SOURCE.some((re) => re.test(ref))) return { sourceLabel: label };
+  const url =
+    KNOWN_SOURCE_URLS[ref] ??
+    `https://github.com/search?q=${encodeURIComponent(humanLabelFor(ref))}&type=repositories`;
+  return { sourceLabel: label, sourceUrl: url };
+}
+
 /**
  * Idempotently seed the built-in starters for a workspace. Upserts each by its stable slug
  * (so copy/name edits propagate on deploy and ids stay stable across boots), then removes any
@@ -402,7 +433,8 @@ export const STARTER_BUILT_INS: BuiltInStarter[] = [
 export async function seedBuiltInStarters(workspaceId: string): Promise<number> {
   const slugs = STARTER_BUILT_INS.map((s) => s.slug);
   for (const s of STARTER_BUILT_INS) {
-    const content = s.content as unknown as Prisma.InputJsonValue;
+    // Merge in the public source reference derived from the internal _buildRef.
+    const content = { ...s.content, ...sourceFor(s.content._buildRef) } as unknown as Prisma.InputJsonValue;
     await prisma.starter.upsert({
       where: { slug: s.slug },
       update: {

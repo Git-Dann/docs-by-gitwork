@@ -10,6 +10,7 @@ import {
   ArrowLeftIcon,
   CheckIcon,
   ArrowRightIcon,
+  ArrowTopRightOnSquareIcon,
 } from "@heroicons/react/24/outline";
 import {
   useStarter,
@@ -86,6 +87,8 @@ export function StarterDetail({ starterId }: { starterId: string }) {
   const whatYouGet = starter.content?.whatYouGet ?? [];
   const install = starter.content?.install ?? [];
   const techStack = starter.content?.techStack ?? [];
+  const sourceUrl = starter.content?.sourceUrl;
+  const sourceLabel = starter.content?.sourceLabel;
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
@@ -159,6 +162,25 @@ export function StarterDetail({ starterId }: { starterId: string }) {
             {starter.name}
           </h1>
           <p className="mt-2 text-sm text-[var(--text-3)]">{starter.summary}</p>
+
+          {sourceUrl && (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <a
+                href={sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className={cn(buttonStyles({ variant: "primary", size: "sm" }), "inline-flex items-center gap-1.5")}
+              >
+                View &amp; use
+                <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+              </a>
+              {sourceLabel && (
+                <span className="font-mono text-[11px] text-[var(--text-4)]">
+                  based on <span className="text-[var(--text-3)]">{sourceLabel}</span>
+                </span>
+              )}
+            </div>
+          )}
 
           {starter.tags.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-1.5">
