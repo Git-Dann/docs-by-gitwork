@@ -82,14 +82,16 @@ export function Modal({
 
   return (
     <div className="fixed inset-0 z-50">
-      <button
-        type="button"
-        aria-label="Close dialog"
-        tabIndex={-1}
-        className="app-dialog-backdrop absolute inset-0"
-        onClick={onClose}
-      />
-      <div className="absolute inset-0 flex items-start justify-center p-4 sm:items-center">
+      {/* Backdrop + centering layer in one element so taps on the dimmed area dismiss.
+          (A separate absolute backdrop underneath a transparent flex layer never received
+          the tap — the flex layer sat on top and swallowed it.) Only a click on the layer
+          itself closes; clicks inside the panel bubble up but are ignored via the target check. */}
+      <div
+        className="app-dialog-backdrop absolute inset-0 flex items-start justify-center p-4 sm:items-center"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
         <div
           ref={panelRef}
           role="dialog"

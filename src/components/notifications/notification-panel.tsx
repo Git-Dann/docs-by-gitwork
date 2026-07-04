@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { XMarkIcon } from "@heroicons/react/24/outline";
 import { useMarkAllRead, useMarkRead, useNotifications } from "@/hooks/use-notifications";
 import type { NotificationDTO } from "@/types/notifications";
 import { NotificationItem } from "./notification-item";
@@ -27,14 +28,25 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
         <span className="font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-3)]">
           01 // Notifications
         </span>
-        <button
-          type="button"
-          onClick={() => markAll.mutate()}
-          disabled={!hasUnread || markAll.isPending}
-          className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--brand-700)] transition disabled:cursor-default disabled:text-[var(--text-4)]"
-        >
-          Mark all read
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => markAll.mutate()}
+            disabled={!hasUnread || markAll.isPending}
+            className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--brand-700)] transition disabled:cursor-default disabled:text-[var(--text-4)]"
+          >
+            Mark all read
+          </button>
+          {/* Explicit close for the mobile sheet — desktop dismisses via click-outside. */}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close notifications"
+            className="-mr-1 rounded-[4px] p-1 text-[var(--text-4)] transition hover:text-[var(--text-1)] lg:hidden"
+          >
+            <XMarkIcon className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 divide-y divide-[var(--border-3)] overflow-y-auto">
