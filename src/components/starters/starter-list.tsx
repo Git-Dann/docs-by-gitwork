@@ -11,16 +11,11 @@ import {
   SparklesIcon,
   ArrowRightIcon,
 } from "@heroicons/react/24/outline";
-import {
-  useStarterList,
-  useDeleteStarter,
-  useLoadStartersDemo,
-  useAdoptStarter,
-} from "@/hooks/use-starters";
+import { useStarterList, useDeleteStarter, useAdoptStarter } from "@/hooks/use-starters";
 import { usePulseScan } from "@/hooks/use-pulse";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate } from "@/lib/format";
-import { Button, buttonStyles } from "@/components/ui/button";
+import { buttonStyles } from "@/components/ui/button";
 import type { StarterListItem, StarterType } from "@/server/starters";
 
 type Filter = "all" | StarterType;
@@ -84,21 +79,21 @@ function StarterCard({
         <TypeBadge type={starter.type} />
       </div>
 
-      <Link href={`/app/starters/${starter.id}`} className="block min-w-0 px-5 pt-5">
-        <h3 className="line-clamp-2 text-[15px] font-semibold leading-snug text-[var(--text-1)] group-hover:text-[var(--brand-700)]">
+      <Link href={`/app/starters/${starter.id}`} className="block min-w-0 px-4 pt-4">
+        <h3 className="line-clamp-1 text-sm font-semibold leading-snug text-[var(--text-1)] group-hover:text-[var(--brand-700)]">
           {starter.name}
         </h3>
-        <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-[var(--text-3)]">{starter.summary}</p>
+        <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--text-3)]">{starter.summary}</p>
       </Link>
 
       {primaryTag && (
-        <span className="mx-5 mt-3 inline-flex w-fit items-center gap-1.5 rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-3)]">
+        <span className="mx-4 mt-2.5 inline-flex w-fit items-center gap-1.5 rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-3)]">
           <TagIcon className="h-3 w-3" />
           {primaryTag}
         </span>
       )}
 
-      <div className="mt-4 flex items-center justify-between border-t border-[var(--border-2)] px-5 py-3">
+      <div className="mt-3 flex items-center justify-between border-t border-[var(--border-2)] px-4 py-2.5">
         <span className="widget-timestamp">
           {TYPE_LABEL[starter.type]}
           {starter.tags.length > 0 && ` · ${starter.tags.length} tag${starter.tags.length === 1 ? "" : "s"}`}
@@ -146,13 +141,8 @@ export function StarterList() {
   const { data: scanData } = usePulseScan(scanId ?? "");
   const scan = scanId ? scanData?.scan ?? null : null;
   const { mutate: deleteStarter } = useDeleteStarter();
-  const { mutateAsync: loadDemo, isPending: loadingDemo } = useLoadStartersDemo();
   const { mutateAsync: adopt, isPending: adopting } = useAdoptStarter();
   const [filter, setFilter] = useState<Filter>("all");
-
-  async function handleLoadDemo() {
-    await loadDemo();
-  }
 
   async function handleAdopt(starterId: string) {
     if (!scanId) return;
@@ -236,34 +226,22 @@ export function StarterList() {
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={handleLoadDemo}
-              loading={loadingDemo}
-              leadingIcon={!loadingDemo ? <RectangleStackIcon className="h-4 w-4" /> : null}
-            >
-              {loadingDemo ? "Loading…" : "Load demo"}
-            </Button>
-            {canManageStarters ? (
-              <Link href="/app/starters/new" className={buttonStyles({ variant: "primary", size: "sm" })}>
-                <PlusIcon className="h-4 w-4" />
-                New starter
-              </Link>
-            ) : null}
-          </div>
+          {canManageStarters ? (
+            <Link href="/app/starters/new" className={buttonStyles({ variant: "primary", size: "sm" })}>
+              <PlusIcon className="h-4 w-4" />
+              New starter
+            </Link>
+          ) : null}
         </div>
       </section>
 
       {/* Cards grid */}
       {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {[1, 2].map((i) => (
             <div
               key={i}
-              className="h-52 animate-pulse rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]"
+              className="h-40 animate-pulse rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]"
             />
           ))}
         </div>
@@ -283,36 +261,23 @@ export function StarterList() {
             >
               {filter === "all" ? "No starters yet" : `No ${TYPE_LABEL[filter as StarterType].toLowerCase()} starters`}
             </h3>
-            {filter === "all" && (
+            {filter === "all" && canManageStarters && (
               <>
                 <p className="mt-3 max-w-md text-sm text-[var(--text-3)]">
-                  Gitwork&apos;s Prompt→Production library — reusable prompts, skills, plugins and kits to leap a
-                  project forward. Load the built-ins to get started.
+                  The Prompt→Production library — reusable prompts, skills, plugins and kits to leap a project forward.
                 </p>
-                <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="md"
-                    onClick={handleLoadDemo}
-                    loading={loadingDemo}
-                    leadingIcon={!loadingDemo ? <RectangleStackIcon className="h-4 w-4" /> : null}
-                  >
-                    {loadingDemo ? "Loading…" : "Load Gitwork starters"}
-                  </Button>
-                  {canManageStarters ? (
-                    <Link href="/app/starters/new" className={buttonStyles({ variant: "primary", size: "md" })}>
-                      <PlusIcon className="h-4 w-4" />
-                      New starter
-                    </Link>
-                  ) : null}
+                <div className="mt-5">
+                  <Link href="/app/starters/new" className={buttonStyles({ variant: "primary", size: "md" })}>
+                    <PlusIcon className="h-4 w-4" />
+                    New starter
+                  </Link>
                 </div>
               </>
             )}
           </div>
         </section>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           {filtered.map((s, i) => (
             <StarterCard
               key={s.id}

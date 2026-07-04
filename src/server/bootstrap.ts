@@ -28,6 +28,7 @@ import {
 import { getDefaultRateCardPeoplePayload } from "@/server/rate-card";
 import { getDefaultCodeClearCandidatePayloads } from "@/server/codeclear";
 import { migratePermissionModel } from "@/server/permissions";
+import { seedBuiltInStarters } from "@/server/starters-catalog";
 
 // Adds columns/tables introduced by the Portal schema extension that
 // prisma db push may not apply reliably through a pooler connection.
@@ -361,6 +362,10 @@ async function _ensureBaseRecords() {
     data: getDefaultRateCardPeoplePayload(workspace.id),
     skipDuplicates: true,
   });
+
+  // Seed the built-in Starters library (Prompt→Production building blocks) so it's populated
+  // with no manual "load" step. Idempotent upsert by slug — see seedBuiltInStarters.
+  await seedBuiltInStarters(workspace.id);
 
   await ensureSampleProposal({ workspace, user, template });
   await ensureSampleCodeClearCandidates({ workspace });

@@ -51,7 +51,7 @@ export function PulseStartersPanel() {
             Starters <span className="font-normal text-[var(--text-4)]">· Prompt→Production library</span>
           </p>
           <p className="mt-0.5 text-xs text-[var(--text-4)]">
-            Gitwork building blocks — prompts, skills, plugins and kits to leap a project forward. Browse or adopt one straight from a scan.
+            Reusable building blocks — prompts, skills, plugins and kits to leap a project forward. Browse or adopt one straight from a scan.
           </p>
         </div>
         <Link href="/app/starters" className="shrink-0">
@@ -61,7 +61,7 @@ export function PulseStartersPanel() {
 
       {isLoading ? null : list.length === 0 ? (
         <p className="rounded-[6px] border border-dashed border-[var(--border-2)] px-4 py-6 text-center text-xs text-[var(--text-4)]">
-          No starters yet. Load the Gitwork built-ins from the library to get started.
+          No starters yet — add one from the library to get started.
         </p>
       ) : (
         <div className="divide-y divide-[var(--border-2)]">
