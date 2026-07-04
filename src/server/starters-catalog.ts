@@ -316,6 +316,58 @@ export const STARTER_BUILT_INS: BuiltInStarter[] = [
       _buildRef: "playwright-skill",
     },
   },
+  {
+    slug: "analytics",
+    name: "Analytics",
+    summary: "A context layer for querying a client's analytics data accurately.",
+    description:
+      "A **collection** that gives agents an executable context layer over a client's analytical databases — a semantic layer plus company context and query tooling — so data questions get answered accurately instead of hallucinated.",
+    type: "COLLECTION",
+    tags: ["data", "analytics", "sql"],
+    content: {
+      whatYouGet: [
+        "An executable context / semantic layer over analytical databases",
+        "Accurate natural-language querying with full company context",
+        "Data-engineering and BI groundwork",
+      ],
+      _buildRef: "ktx",
+    },
+  },
+  {
+    slug: "devops",
+    name: "DevOps",
+    summary: "CI/CD, containerisation, deploys and monitoring — the production side.",
+    description:
+      "A **collection** covering the production side of a build — CI/CD pipelines, containerisation, deploys and rollbacks, and monitoring — so a project ships and stays up. Authored in-house rather than sourced.",
+    type: "COLLECTION",
+    tags: ["devops", "ci-cd", "infra", "deploy"],
+    content: {
+      whatYouGet: [
+        "CI/CD pipeline patterns",
+        "Docker / containerisation",
+        "Deploy and rollback playbooks",
+        "Monitoring and alerting setup",
+      ],
+      _buildRef: "gitwork-authored",
+    },
+  },
+  {
+    slug: "mobile",
+    name: "Mobile",
+    summary: "iOS (SwiftUI) and Android (Compose) dev skills — architecture to shipping.",
+    description:
+      "A **collection** of mobile-development skills across iOS (SwiftUI) and Android (Jetpack Compose / Kotlin Multiplatform) — architecture, networking, data, concurrency, testing, accessibility and performance. Relevant to Foundry's own iOS app and to client mobile work.",
+    type: "COLLECTION",
+    tags: ["mobile", "ios", "android", "swiftui"],
+    content: {
+      whatYouGet: [
+        "SwiftUI + iOS architecture, networking and concurrency",
+        "Jetpack Compose / Kotlin Multiplatform patterns",
+        "Mobile testing, accessibility and performance",
+      ],
+      _buildRef: "ios-agent-skills + compose-skill",
+    },
+  },
 ];
 
 /**
