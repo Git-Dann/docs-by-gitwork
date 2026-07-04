@@ -9,6 +9,8 @@ import {
   detectMarketsFromPage,
 } from "./pulse-checks/jurisdictions";
 import { computeScoreBreakdown } from "./pulse-checks/score-breakdown";
+import { detectAiBuilder } from "./pulse-checks/vibe-code-hygiene";
+import { detectSpaContext, reclassifySpaChecks } from "./pulse-lite/spa-detect";
 
 export const SCAN_VERSION = "pulse-v2";
 
@@ -3325,7 +3327,26 @@ export async function runUrlChecks(
   const rawChecks = checks.map((check, i) => ({ ...check, sortOrder: i }));
   const platformFiltered = platform ? applyPlatformFilter(rawChecks, platform) : rawChecks;
   const filteredChecks = applyJurisdictionFilter(platformFiltered, effectiveMarkets);
-  return { checks: filteredChecks, techStack, detectedMarkets };
+  // Client-rendered SPA / vibe-code preview (Lovable/Bolt/Replit): the static HTML is an empty
+  // shell, so HTML-parse SEO/content checks fail falsely. Reclassify those to SKIPPED (excluded
+  // from the score) rather than letting them tank an otherwise-fine prototype. See spa-detect.ts.
+  const spaHostname = (() => {
+    try {
+      return new URL(pageResult?.finalUrl || httpsUrl).hostname.toLowerCase();
+    } catch {
+      return "";
+    }
+  })();
+  const spaAdjusted =
+    pageResult &&
+    detectSpaContext({
+      builder: detectAiBuilder(spaHostname, pageResult.html.toLowerCase()),
+      html: pageResult.html,
+      contentType: pageResult.headers["content-type"] ?? "",
+    }).isSpa
+      ? reclassifySpaChecks(filteredChecks)
+      : filteredChecks;
+  return { checks: spaAdjusted, techStack, detectedMarkets };
 }
 
 type GitHubContentsEntry = { name: string; type: "file" | "dir" };
