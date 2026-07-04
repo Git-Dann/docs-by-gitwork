@@ -1342,3 +1342,37 @@ export const notificationReadSchema = z.object({
   all: z.boolean().optional(),
   ids: z.array(z.string()).optional(),
 });
+
+// ── Starters (Prompt→Production library) ─────────────────────────────────────
+export const starterTypeSchema = z.enum(["PROMPT", "SKILL", "PLUGIN", "KIT", "COLLECTION"]);
+export const starterStatusSchema = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);
+
+// content is a loose payload ("what you get" bullets, install steps, prompt text, etc.).
+// Passed through untyped — the server strips the internal `_buildRef` before serialization.
+const starterContentSchema = z.record(z.string(), z.unknown());
+
+export const starterCreateSchema = z.object({
+  name: z.string().min(1).max(120),
+  summary: z.string().min(1).max(280),
+  description: z.string().max(20000).nullish(),
+  type: starterTypeSchema,
+  status: starterStatusSchema.optional(),
+  tags: z.array(z.string().min(1).max(40)).max(30).optional(),
+  content: starterContentSchema.nullish(),
+});
+
+export const starterUpdateSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  summary: z.string().min(1).max(280).optional(),
+  description: z.string().max(20000).nullish(),
+  type: starterTypeSchema.optional(),
+  status: starterStatusSchema.optional(),
+  tags: z.array(z.string().min(1).max(40)).max(30).optional(),
+  content: starterContentSchema.nullish(),
+  isArchived: z.boolean().optional(),
+});
+
+export const starterAdoptSchema = z.object({
+  scanId: z.string().min(1),
+  starterId: z.string().min(1),
+});

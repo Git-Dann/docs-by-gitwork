@@ -365,6 +365,7 @@ model Workspace {
   featureBlocks               FeatureBlock[]
   milestones                  Milestone[]
   contentSnippets             ContentSnippet[]
+  starters                    Starter[]
   mcpConnections              McpConnection[]
   slackMessageRefs            SlackMessageRef[]
   slackUpdateLogs             SlackUpdateLog[]
@@ -2024,6 +2025,11 @@ model PulseScan {
   // an optional tool under Pulse). Loose nullable id, not an FK — matches the cross-module
   // convention here; kept in sync with Study.linkedScanId on study creation.
   linkedStudyId       String?
+  // Optional link to a Starter (Prompt→Production building block) a user adopted from this
+  // scan. Loose nullable id, not an FK — one side only (a Starter is a reusable catalog item,
+  // so it is not back-linked to a single scan). Flips the scan-results "Starters" slot to
+  // "View starter". See src/server/starters.ts adoptStarterForScan().
+  linkedStarterId     String?
   checks              PulseScanCheck[]
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
@@ -2582,6 +2588,48 @@ model StudyReport {
   payload   Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ─── Starters (Prompt→Production library) ───────────────────────────────────
+// A Gitwork-branded catalog of reusable building blocks (prompts, skills, plugins, kits,
+// collections), surfaced as an admin-only tool inside Pulse. Mirrors the DocumentTemplate /
+// OnboardingForm catalog shape: nullable workspaceId (global built-in vs workspace-authored),
+// unique slug, Json payload, isDefault, status enum. Every catalog entry is presented under
+// the Gitwork name only — provenance lives in content._buildRef and is never serialized to any
+// UI surface (see serializeStarter in src/server/starters.ts).
+
+enum StarterType {
+  PROMPT
+  SKILL
+  PLUGIN
+  KIT
+  COLLECTION
+}
+
+enum StarterStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Starter {
+  id          String        @id @default(cuid())
+  workspaceId String? // nullable → global built-in vs workspace-authored
+  workspace   Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  name        String
+  slug        String        @unique
+  summary     String // one-line card subtitle
+  description String? // longer body (markdown)
+  type        StarterType   @default(KIT)
+  status      StarterStatus @default(PUBLISHED)
+  tags        String[]      @default([])
+  content     Json? // "what you get" bullets, install steps, prompt text, tech stack, + internal _buildRef
+  isDefault   Boolean       @default(false) // shipped Gitwork built-in library entry
+  isArchived  Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([workspaceId, createdAt])
 }
 
 // ─── Agent & Check Configuration ────────────────────────────────────────────

@@ -44,5 +44,8 @@ export function usePermissions() {
     // Study is an optional tool under Pulse, gated by the admin-only `study` feature perm
     // (default-off). View and manage collapse to one gate — Admins/Super Admins only.
     canManageStudy: can("study"),
+    // Starters is an optional Prompt→Production library under Pulse, gated by the admin-only
+    // `starters` feature perm (default-off). View and manage collapse to one gate.
+    canManageStarters: can("starters"),
   };
 }
