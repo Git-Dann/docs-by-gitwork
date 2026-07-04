@@ -64,18 +64,60 @@ function HealthSplit({ green, amber, red }: { green: number; amber: number; red:
   );
 }
 
+// Shared header strip with a collapse chevron — clicking anywhere on it toggles the row.
+export function CardHeader({
+  number,
+  title,
+  status,
+  collapsed,
+  onToggle,
+}: {
+  number: string;
+  title: string;
+  status?: ReactNode;
+  collapsed: boolean;
+  onToggle?: () => void;
+}) {
+  return (
+    <div
+      className={cn("widget-header select-none", onToggle && "cursor-pointer")}
+      onClick={onToggle}
+      role={onToggle ? "button" : undefined}
+      aria-expanded={onToggle ? !collapsed : undefined}
+    >
+      <span className="widget-header__label">
+        <span className="widget-header__label--number">{number}</span>
+        {` // ${title}`}
+      </span>
+      <div className="flex items-center gap-2">
+        {status && <span className="widget-header__status">{status}</span>}
+        {onToggle && (
+          <ChevronDownIcon
+            className={cn("h-4 w-4 text-[var(--text-4)] transition-transform", !collapsed && "rotate-180")}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
- * `01 // PORTFOLIO` — the Pulse KPI card, first of the three-card top row (alongside Research
- * studies + Starters). Follows the DESIGN.md widget grammar: mono numbered header, an editorial
- * DM Serif hero figure (avg health) over the health bar, then a 2×2 mono/serif stat grid.
+ * `01 // PORTFOLIO` — the Pulse KPI card. Collapsed (default): the health figure + distribution
+ * bar in a horizontal stack. Expanded: adds the 1×4 supporting-stat row.
  */
-export function PulseOverview() {
+export function PulseOverview({
+  collapsed = false,
+  onToggle,
+}: {
+  collapsed?: boolean;
+  onToggle?: () => void;
+}) {
   const { data: stats, isLoading } = usePulseStats();
   const { data: portfolioData } = usePulsePortfolio();
   const { data: monitorsData } = useMonitors();
 
   if (isLoading) {
-    return <div className="widget-card h-full min-h-[300px] animate-pulse" />;
+    return <div className="widget-card h-full min-h-[120px] animate-pulse" />;
   }
 
   if (!stats || stats.totalScans === 0) return null;
@@ -92,67 +134,84 @@ export function PulseOverview() {
     (m) => m.isActive && m.lastHealthScore !== null && m.lastHealthScore < 50,
   ).length;
 
+  const health = (
+    <HealthSplit
+      green={stats.healthTiers.green}
+      amber={stats.healthTiers.amber}
+      red={stats.healthTiers.red}
+    />
+  );
+
   return (
     <article className="widget-card h-full">
-      <div className="widget-header">
-        <span className="widget-header__label">
-          <span className="widget-header__label--number">01</span>{" // PORTFOLIO"}
-        </span>
-        <span className="widget-header__status">
-          {stats.totalScans} scan{stats.totalScans !== 1 ? "s" : ""}
-        </span>
-      </div>
+      <CardHeader
+        number="01"
+        title="PORTFOLIO"
+        status={`${stats.totalScans} scan${stats.totalScans !== 1 ? "s" : ""}`}
+        collapsed={collapsed}
+        onToggle={onToggle}
+      />
 
-      <div className="flex flex-1 flex-col gap-5 p-5">
-        {/* Hero figure — avg health over the distribution bar */}
-        <div>
-          <p className="widget-data-label">Avg health</p>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span
-              className={cn("text-5xl font-normal leading-none tracking-[-0.02em] tabular-nums", healthTone(stats.avgHealthScore))}
+      {collapsed ? (
+        <div className="flex flex-1 items-center gap-5 p-4">
+          <div className="shrink-0">
+            <p className="widget-data-label">Avg health</p>
+            <p
+              className={cn("mt-0.5 text-4xl font-normal leading-none tracking-[-0.02em] tabular-nums", healthTone(stats.avgHealthScore))}
               style={{ fontFamily: "var(--font-display)" }}
             >
               {stats.avgHealthScore !== null ? stats.avgHealthScore : "—"}
-            </span>
-            <span className="widget-data-label pb-1">/ 100</span>
-            {improved + regressed > 0 && (
-              <span className="widget-data-label ml-auto pb-1 normal-case tracking-normal">
-                {improved > 0 && <span className="text-emerald-600">↑{improved}</span>}
-                {improved > 0 && regressed > 0 && " "}
-                {regressed > 0 && <span className="text-red-600">↓{regressed}</span>}
-                <span className="ml-1 text-[var(--text-4)]">vs last</span>
-              </span>
-            )}
+              <span className="widget-data-label ml-1 align-top">/ 100</span>
+            </p>
           </div>
-          <div className="mt-4">
-            <HealthSplit
-              green={stats.healthTiers.green}
-              amber={stats.healthTiers.amber}
-              red={stats.healthTiers.red}
+          <div className="min-w-0 flex-1">{health}</div>
+        </div>
+      ) : (
+        <div className="flex flex-1 flex-col gap-5 p-5">
+          {/* Hero figure — avg health over the distribution bar */}
+          <div>
+            <p className="widget-data-label">Avg health</p>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span
+                className={cn("text-5xl font-normal leading-none tracking-[-0.02em] tabular-nums", healthTone(stats.avgHealthScore))}
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {stats.avgHealthScore !== null ? stats.avgHealthScore : "—"}
+              </span>
+              <span className="widget-data-label pb-1">/ 100</span>
+              {improved + regressed > 0 && (
+                <span className="widget-data-label ml-auto pb-1 normal-case tracking-normal">
+                  {improved > 0 && <span className="text-emerald-600">↑{improved}</span>}
+                  {improved > 0 && regressed > 0 && " "}
+                  {regressed > 0 && <span className="text-red-600">↓{regressed}</span>}
+                  <span className="ml-1 text-[var(--text-4)]">vs last</span>
+                </span>
+              )}
+            </div>
+            <div className="mt-4">{health}</div>
+          </div>
+
+          {/* 1×4 supporting stats, pinned to the bottom so cards line up */}
+          <div className="mt-auto grid grid-cols-4 gap-x-2 border-t border-[var(--border-2)] pt-5">
+            <MiniStat label="Scans" value={String(stats.totalScans)} />
+            <MiniStat
+              label="Follow-up"
+              value={String(stats.awaitingFollowUp)}
+              tone={stats.awaitingFollowUp > 0 ? "text-amber-600" : "text-[var(--text-1)]"}
+            />
+            <MiniStat
+              label="Regressed"
+              value={String(regressed)}
+              tone={regressed > 0 ? "text-red-600" : "text-[var(--text-1)]"}
+            />
+            <MiniStat
+              label="Monitors"
+              value={String(activeMonitors)}
+              tone={alertingMonitors > 0 ? "text-red-600" : "text-[var(--text-1)]"}
             />
           </div>
         </div>
-
-        {/* 1×4 supporting stats, pinned to the bottom so cards line up */}
-        <div className="mt-auto grid grid-cols-4 gap-x-2 border-t border-[var(--border-2)] pt-5">
-          <MiniStat label="Scans" value={String(stats.totalScans)} />
-          <MiniStat
-            label="Follow-up"
-            value={String(stats.awaitingFollowUp)}
-            tone={stats.awaitingFollowUp > 0 ? "text-amber-600" : "text-[var(--text-1)]"}
-          />
-          <MiniStat
-            label="Regressed"
-            value={String(regressed)}
-            tone={regressed > 0 ? "text-red-600" : "text-[var(--text-1)]"}
-          />
-          <MiniStat
-            label="Monitors"
-            value={String(activeMonitors)}
-            tone={alertingMonitors > 0 ? "text-red-600" : "text-[var(--text-1)]"}
-          />
-        </div>
-      </div>
+      )}
     </article>
   );
 }
