@@ -87,6 +87,7 @@ export function StarterDetail({ starterId }: { starterId: string }) {
   const whatYouGet = starter.content?.whatYouGet ?? [];
   const install = starter.content?.install ?? [];
   const techStack = starter.content?.techStack ?? [];
+  const promptText = starter.content?.promptText;
   const sourceUrl = starter.content?.sourceUrl;
   const sourceLabel = starter.content?.sourceLabel;
 
@@ -270,11 +271,25 @@ export function StarterDetail({ starterId }: { starterId: string }) {
         </section>
       )}
 
-      {techStack.length > 0 && (
+      {promptText && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
               <span className="widget-header__label--number">05</span>
+              {" // PROMPT"}
+            </span>
+          </div>
+          <div className="whitespace-pre-wrap px-6 py-5 font-mono text-[13px] leading-6 text-[var(--text-2)]">
+            {promptText}
+          </div>
+        </section>
+      )}
+
+      {techStack.length > 0 && (
+        <section className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header__label">
+              <span className="widget-header__label--number">06</span>
               {" // STACK"}
             </span>
           </div>

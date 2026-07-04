@@ -42,35 +42,39 @@ export const STARTER_BUILT_INS: BuiltInStarter[] = [
   {
     slug: "skills-library",
     name: "Skills Library",
-    summary: "A curated foundation of reusable skills — the pool we grow Skill starters from.",
+    summary: "Gitwork's index of reusable skills, grouped by where they help across a build.",
     description:
-      "A **collection**: a curated foundation of reusable skills spanning document processing, dev tooling, data & analysis, marketing, communication and automation. The pool we draw from (and productise) when adding new Skill starters to the library.",
+      "A **collection** — Gitwork's own catalogue of the reusable skills in this library, grouped by the stage of a build they serve:\n\n- **Content & copy** — Humanizer, Marketing\n- **Design & UI** — Design System, Taste\n- **Delivery & workflow** — Planner, Flow, Agents\n- **Quality & safety** — Testing, Security\n- **Data** — Analytics\n- **Platform** — Integrations, Ship It, Mobile\n\nIt's the map of what's in the library and how the pieces fit — the shortlist you reach for when a project needs a specific capability rather than a whole kit. Combine several: e.g. Design System (structure) + Taste (polish) + Humanizer (copy) for a whole surface that reads intentional.",
     type: "COLLECTION",
-    tags: ["skills", "directory", "source"],
+    tags: ["skills", "directory", "index"],
     content: {
       whatYouGet: [
-        "A broad, categorised pool of reusable skills",
-        "The source we curate individual Skill starters from",
-        "Coverage across docs, code, data, marketing and automation",
+        "A lifecycle-grouped index of every skill in the library",
+        "Guidance on which skill fits which stage of a build",
+        "Recommended combinations for common goals",
       ],
-      _buildRef: "awesome-claude-skills",
+      promptText:
+        "You are helping pick Gitwork skills for a project.\n\nGiven the project's stage and its top gaps, recommend which skills from the library to apply and in what order, and name one concrete combination that would move it forward fastest. Keep it to 3–5 picks with a one-line reason each.",
+      _buildRef: "gitwork-authored",
     },
   },
   {
     slug: "projects-index",
     name: "Projects Index",
-    summary: "A map of project blueprints and plugin clusters that structures the library.",
+    summary: "Gitwork's blueprint map — project archetypes and which starters each one needs.",
     description:
-      "A **collection** that maps project blueprints and plugin clusters by use case. The reference that shapes how the Starters library itself is organised, and a source of plugin building blocks.",
+      "A **collection** that maps a project to a blueprint, so you go from *\"what is this?\"* to *\"what do we grab?\"* fast. Gitwork's archetypes:\n\n- **SaaS app** — auth, billing, dashboard → Launch Kit · Design System · Security · Analytics · Ship It\n- **Marketing site** — brand, SEO, conversion → Web Starter · Design System · Marketing · Taste\n- **Marketplace** — two-sided, trust, payments → Launch Kit · Security · Analytics · Product\n- **Internal tool** — CRUD, roles, speed → Launch Kit · Flow · Agents\n- **API / service** — contracts, docs, limits → Launch Kit · Security · Testing\n- **Mobile app** — iOS/Android, native UX → Mobile · Design System · Testing\n- **E-commerce** — catalogue, checkout, ops → Web Starter · Marketing · Security · Analytics\n\nUse it at the start of an engagement to classify the build and assemble the right starter set.",
     type: "COLLECTION",
-    tags: ["projects", "plugins", "reference"],
+    tags: ["projects", "blueprints", "reference"],
     content: {
       whatYouGet: [
-        "A categorised index of project blueprints",
-        "Plugin clusters grouped by use case",
-        "The structural reference behind the Starters library",
+        "Seven project archetypes with the signals that identify each",
+        "The recommended starter set per archetype",
+        "A fast path from project type → what to grab",
       ],
-      _buildRef: "Claude-Code-Projects-Index",
+      promptText:
+        "Classify this project into one of the Gitwork archetypes (SaaS, marketing site, marketplace, internal tool, API/service, mobile app, e-commerce) and justify it in one line from the signals. Then list the starter set to grab for it and the single most important one to start with.",
+      _buildRef: "gitwork-authored",
     },
   },
   {
@@ -139,21 +143,27 @@ export const STARTER_BUILT_INS: BuiltInStarter[] = [
   {
     slug: "web-starter",
     name: "Web Starter",
-    summary: "AI-first marketing-site scaffold, ready to brand and ship.",
+    summary: "Gitwork's marketing-site build kit — conventions plus a first-pass build prompt.",
     description:
-      "A **kit** for standing up a marketing site quickly: an AI-first scaffold with centralised identity config, reusable components and a CMS integration, plus a rules file that lets an agent build pages correctly on the first pass. Brand it and ship.",
+      "A **kit** for standing up a branded marketing site fast, the Gitwork way. It's stack-flexible (Next.js + Tailwind by default) and built on a few conventions that let an agent build pages correctly on the first pass:\n\n- **One identity file** — brand name, colours, fonts, nav and footer live in a single config; every page reads from it.\n- **Section components, not pages** — hero, features, logos, pricing, FAQ, CTA as reusable blocks; pages are compositions.\n- **SEO by default** — per-page title/description, Open Graph, sitemap and robots wired from the start.\n- **CMS-optional** — start with typed content in the repo; swap in a headless CMS later without touching components.\n\nBrand it, compose the pages, ship.",
     type: "KIT",
-    tags: ["website", "marketing-site", "astro"],
+    tags: ["website", "marketing-site", "seo"],
     content: {
       whatYouGet: [
-        "A marketing-site scaffold with centralised identity config",
-        "Reusable components and a CSS-variable design system",
-        "A headless CMS integration for content",
-        "An agent-ready rules file for first-pass page builds",
+        "A centralised brand/identity config every page reads from",
+        "A set of composable section blocks (hero, features, pricing, FAQ, CTA)",
+        "SEO, Open Graph, sitemap and robots baked in",
+        "A CMS-optional content model you can upgrade later",
       ],
-      install: ["Fork the scaffold", "Set the identity + deployment config", "Wire the CMS and deploy"],
-      techStack: ["Astro", "Sanity", "Cloudflare"],
-      _buildRef: "clcreative-AI-first-website-starter",
+      install: [
+        "Set the identity config (brand, colours, fonts, nav, footer)",
+        "Compose pages from the section blocks",
+        "Fill content (in-repo or CMS) and deploy",
+      ],
+      techStack: ["Next.js", "Tailwind", "TypeScript"],
+      promptText:
+        "Build a branded marketing site using the Gitwork Web Starter conventions.\n\n1. Create a single identity config (brand name, colour tokens, fonts, nav items, footer) and make every component read from it.\n2. Implement reusable section blocks: hero, feature grid, logo strip, pricing, FAQ, CTA.\n3. Compose the home page from those blocks, then any extra pages.\n4. Add per-page SEO (title, description, Open Graph) plus sitemap.xml and robots.txt.\n5. Keep content typed and in-repo for now, structured so a headless CMS can replace it later without changing components.\n\nDefault stack: Next.js + Tailwind + TypeScript unless told otherwise.",
+      _buildRef: "gitwork-authored",
     },
   },
   {
@@ -283,19 +293,21 @@ export const STARTER_BUILT_INS: BuiltInStarter[] = [
   {
     slug: "product",
     name: "Product",
-    summary: "PM frameworks for turning an idea into a buildable spec.",
+    summary: "Gitwork's discovery→spec skill: turn a rough idea into a buildable brief.",
     description:
-      "A **collection** of product-management skills — discovery, prioritisation, specs and roadmaps — built on battle-tested methods. The front of Prompt→Production: it turns a rough idea into something a team can actually build.",
+      "A **skill** for the front of Prompt→Production — taking a vague idea and making it something a team can actually build. Gitwork's four-step method:\n\n1. **Frame** — who it's for, the job they're hiring it to do, and the one outcome that defines success.\n2. **Discover** — the sharpest open questions and assumptions to test before building (pair with a Study to test them with users).\n3. **Prioritise** — cut to a first slice by impact vs effort; name what's explicitly *not* in v1.\n4. **Spec** — a tight brief: problem, users, scope, out-of-scope, success metric, and the key flows.\n\nThe output feeds straight into Launch Kit and a Pulse scan.",
     type: "COLLECTION",
     tags: ["product", "discovery", "specs"],
     content: {
       whatYouGet: [
-        "Discovery and user-research framing",
-        "Prioritisation frameworks",
-        "Spec / PRD authoring",
-        "Roadmap and stakeholder alignment",
+        "A framing pass — user, job-to-be-done, single success outcome",
+        "Discovery questions + assumptions to test first",
+        "An impact/effort cut to a v1 slice (with explicit out-of-scope)",
+        "A tight PRD/brief ready to build from",
       ],
-      _buildRef: "Product-Manager-Skills",
+      promptText:
+        "Act as a Gitwork product lead. Turn the idea below into a buildable brief:\n\n1. FRAME — target user, job-to-be-done, and the single outcome that defines success.\n2. DISCOVER — the 5 sharpest questions/assumptions to validate before building.\n3. PRIORITISE — an impact vs effort cut to a v1 slice; list what is explicitly out of scope for v1.\n4. SPEC — problem, users, in-scope, out-of-scope, success metric, and the 3–5 key user flows.\n\nIdea: <describe the idea>",
+      _buildRef: "gitwork-authored",
     },
   },
   {
@@ -424,11 +436,8 @@ const SOURCE_URLS: Record<string, string> = {
   analytics: `${OWNED}/analytics`,
   mobile: `${OWNED}/mobile`,
   "ship-it": `${OWNED}/ship-it`,
-  // Not mirrored (licence-blocked) — link upstream until rewritten Gitwork-native.
-  "skills-library": "https://github.com/ComposioHQ/awesome-claude-skills",
-  "projects-index": "https://github.com/danielrosehill/Claude-Code-Projects-Index",
-  "web-starter": "https://github.com/jclewis33/clcreative-AI-first-website-starter",
-  product: "https://github.com/deanpeters/Product-Manager-Skills",
+  // Skills Library, Projects Index, Web Starter and Product are now Gitwork-authored content
+  // served in-app (no upstream, no external repo) — see their entries above. No source link.
 };
 
 function sourceFor(slug: string): { sourceLabel?: string; sourceUrl?: string } {
