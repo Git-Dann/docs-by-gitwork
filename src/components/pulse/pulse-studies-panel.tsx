@@ -35,7 +35,7 @@ export function PulseStudiesPanel() {
   const list = studies ?? [];
 
   return (
-    <article className="widget-card">
+    <article className="widget-card h-full">
       <div className="widget-header">
         <span className="widget-header__label">
           <span className="widget-header__label--number">02</span>{" // RESEARCH STUDIES"}
@@ -43,12 +43,12 @@ export function PulseStudiesPanel() {
         <span className="widget-header__status">Optional</span>
       </div>
 
-      <div className="flex flex-col p-4">
+      <div className="flex flex-1 flex-col p-4">
         <p className="text-[12px] leading-snug text-[var(--text-4)]">
           AI persona interviews to validate assumptions — run one when a scan raises questions worth testing with users.
         </p>
 
-        <div className="mt-3">
+        <div className="mt-3 flex-1">
           {isLoading ? null : list.length === 0 ? (
             <div className="rounded-[6px] border border-dashed border-[var(--border-2)] px-4 py-4 text-center text-xs text-[var(--text-4)]">
               No studies yet — start one to interview AI personas.
