@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowRightIcon } from "@heroicons/react/24/outline";
 import { useStarterList } from "@/hooks/use-starters";
 import { usePermissions } from "@/hooks/use-permissions";
 import { Button } from "@/components/ui/button";
@@ -71,7 +72,7 @@ export function PulseStartersPanel() {
                 <Link
                   key={starter.id}
                   href={`/app/starters/${starter.id}`}
-                  className="flex items-center gap-x-3 py-2 transition hover:opacity-80"
+                  className="group flex items-center gap-x-3 py-2 transition hover:opacity-80"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-medium text-[var(--text-1)]">{starter.name}</p>
@@ -80,6 +81,7 @@ export function PulseStartersPanel() {
                   <span className={cn("widget-data-label shrink-0", typeTone(starter.type))}>
                     {TYPE_LABEL[starter.type]}
                   </span>
+                  <ArrowRightIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)] opacity-0 transition group-hover:opacity-100" />
                 </Link>
               ))}
             </div>

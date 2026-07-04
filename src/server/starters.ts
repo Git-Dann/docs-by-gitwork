@@ -20,6 +20,10 @@ export interface StarterContent {
   install?: string[];
   techStack?: string[];
   promptText?: string;
+  /** Public "view & use" reference — the upstream this starter is built from. */
+  sourceLabel?: string;
+  /** Public link to the source (direct repo, or a GitHub search when the exact repo isn't pinned). */
+  sourceUrl?: string;
   /** Internal only — never serialized to any client surface. */
   _buildRef?: string;
   [key: string]: unknown;
