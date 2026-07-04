@@ -401,28 +401,33 @@ export const STARTER_BUILT_INS: BuiltInStarter[] = [
 // repository search seeded with the ref, so the "View & use" link is always valid (never a 404).
 // Refs that are our own / multi-source (no single upstream) get no link.
 
-const KNOWN_SOURCE_URLS: Record<string, string> = {
-  "wshobson/agents": "https://github.com/wshobson/agents",
-  "Anthropic-Cybersecurity-Skills (Apache-2.0)": "https://github.com/anthropics/skills",
+// Verified direct upstream repo per starter (audited to resolve, licence-checked). Starters
+// with no single upstream — authored in-house (devops), the official marketplace (integrations),
+// or built from several repos (mobile, ship-it) — are deliberately omitted → no "View & use"
+// button, rather than a misleading link.
+const SOURCE_URLS: Record<string, string> = {
+  humanizer: "https://github.com/danielclindsay/humanizer",
+  "skills-library": "https://github.com/ComposioHQ/awesome-claude-skills",
+  "projects-index": "https://github.com/danielrosehill/Claude-Code-Projects-Index",
+  "launch-kit": "https://github.com/TheDecipherist/claude-code-mastery-project-starter-kit",
+  "design-system": "https://github.com/oalanicolas/claude-design-premium",
+  sites: "https://github.com/corebunch/instatic",
+  "web-starter": "https://github.com/jclewis33/clcreative-AI-first-website-starter",
+  taste: "https://github.com/Leonxlnx/taste-skill",
+  planner: "https://github.com/OthmanAdi/planning-with-files",
+  flow: "https://github.com/gmickel/flow-next",
+  agents: "https://github.com/wshobson/agents",
+  security: "https://github.com/mukul975/Anthropic-Cybersecurity-Skills",
+  marketing: "https://github.com/coreyhaines31/marketingskills",
+  product: "https://github.com/deanpeters/Product-Manager-Skills",
+  testing: "https://github.com/lackeyjb/playwright-skill",
+  analytics: "https://github.com/Kaelio/ktx",
 };
 
-/** Refs that are authored in-house or span many sources — no single repo to link out to. */
-const NO_SOURCE = [/gitwork-authored/i, /marketplace partners/i];
-
-function humanLabelFor(ref: string): string {
-  // Strip a trailing "(license)" note and a leading "owner/" for a compact label.
-  const noLicense = ref.replace(/\s*\(.*?\)\s*$/, "").trim();
-  return noLicense.includes("/") ? noLicense.split("/").pop()! : noLicense;
-}
-
-function sourceFor(ref?: string): { sourceLabel?: string; sourceUrl?: string } {
-  if (!ref) return {};
-  const label = humanLabelFor(ref);
-  if (NO_SOURCE.some((re) => re.test(ref))) return { sourceLabel: label };
-  const url =
-    KNOWN_SOURCE_URLS[ref] ??
-    `https://github.com/search?q=${encodeURIComponent(humanLabelFor(ref))}&type=repositories`;
-  return { sourceLabel: label, sourceUrl: url };
+function sourceFor(slug: string): { sourceLabel?: string; sourceUrl?: string } {
+  const sourceUrl = SOURCE_URLS[slug];
+  if (!sourceUrl) return {};
+  return { sourceUrl, sourceLabel: sourceUrl.replace(/^https:\/\/github\.com\//, "") };
 }
 
 /**
@@ -434,7 +439,7 @@ export async function seedBuiltInStarters(workspaceId: string): Promise<number> 
   const slugs = STARTER_BUILT_INS.map((s) => s.slug);
   for (const s of STARTER_BUILT_INS) {
     // Merge in the public source reference derived from the internal _buildRef.
-    const content = { ...s.content, ...sourceFor(s.content._buildRef) } as unknown as Prisma.InputJsonValue;
+    const content = { ...s.content, ...sourceFor(s.slug) } as unknown as Prisma.InputJsonValue;
     await prisma.starter.upsert({
       where: { slug: s.slug },
       update: {
