@@ -118,24 +118,24 @@ function StudyCard({
         <StatusChip status={study.status} />
       </div>
 
-      <Link href={`/app/study/${study.id}`} className="block min-w-0 px-5 pt-5">
-        <h3 className="line-clamp-2 text-[15px] font-semibold leading-snug text-[var(--text-1)] group-hover:text-[var(--brand-700)]">
+      <Link href={`/app/study/${study.id}`} className="block min-w-0 px-4 pt-4">
+        <h3 className="line-clamp-1 text-sm font-semibold leading-snug text-[var(--text-1)] group-hover:text-[var(--brand-700)]">
           {study.title}
         </h3>
-        <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-[var(--text-3)]">{study.problemStatement}</p>
+        <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--text-3)]">{study.problemStatement}</p>
       </Link>
 
       {study.workspaceClientName && (
         <Link
           href={`/app/clients/${study.workspaceClientSlug}`}
-          className="mx-5 mt-3 inline-flex w-fit items-center gap-1.5 rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-3)] transition hover:border-[var(--brand-200)] hover:text-[var(--brand-700)]"
+          className="mx-4 mt-2.5 inline-flex w-fit items-center gap-1.5 rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-3)] transition hover:border-[var(--brand-200)] hover:text-[var(--brand-700)]"
         >
           <BuildingOffice2Icon className="h-3 w-3" />
           {study.workspaceClientName}
         </Link>
       )}
 
-      <div className="mt-4 flex items-center justify-between border-t border-[var(--border-2)] px-5 py-3">
+      <div className="mt-3 flex items-center justify-between border-t border-[var(--border-2)] px-4 py-2.5">
         <PersonaAvatars ids={study.selectedPersonaIds} personasById={personasById} />
         <div className="flex items-center gap-3">
           <span className="widget-timestamp">
@@ -267,9 +267,9 @@ export function StudyList() {
 
       {/* Cards grid */}
       {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-52 animate-pulse rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]" />
+        <div className="grid gap-3 sm:grid-cols-2">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-40 animate-pulse rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
@@ -319,7 +319,7 @@ export function StudyList() {
           </div>
         </section>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           {filtered.map((s, i) => (
             <StudyCard
               key={s.id}
