@@ -20,6 +20,8 @@ export interface StarterContent {
   install?: string[];
   techStack?: string[];
   promptText?: string;
+  /** Featured — pinned to the top of the library with a star. */
+  featured?: boolean;
   /** Public "view & use" reference — the upstream this starter is built from. */
   sourceLabel?: string;
   /** Public link to the source (direct repo, or a GitHub search when the exact repo isn't pinned). */
@@ -39,6 +41,7 @@ export interface StarterListItem {
   type: StarterType;
   status: StarterStatus;
   tags: string[];
+  featured: boolean;
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
@@ -65,6 +68,7 @@ type StarterRow = {
 };
 
 function serializeListItem(s: StarterRow): StarterListItem {
+  const content = s.content && typeof s.content === "object" ? (s.content as StarterContent) : null;
   return {
     id: s.id,
     name: s.name,
@@ -73,6 +77,7 @@ function serializeListItem(s: StarterRow): StarterListItem {
     type: s.type,
     status: s.status,
     tags: s.tags,
+    featured: Boolean(content?.featured),
     isDefault: s.isDefault,
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
@@ -147,7 +152,9 @@ export async function listStarters(filters?: {
     },
     orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
   });
-  return rows.map(serializeListItem);
+  const items = rows.map(serializeListItem);
+  // Featured starters lead the list (stable sort preserves the DB order within each group).
+  return items.sort((a, b) => Number(b.featured) - Number(a.featured));
 }
 
 export async function getStarter(id: string): Promise<StarterRecord | null> {

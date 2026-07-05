@@ -181,6 +181,7 @@ export const STARTER_BUILT_INS: BuiltInStarter[] = [
         "Complements Design System (structure) and Humanizer (copy)",
       ],
       install: ["Add the skill to the project's skill set", "Invoke it while building or reviewing UI"],
+      featured: true,
       _buildRef: "taste-skill",
     },
   },

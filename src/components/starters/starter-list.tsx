@@ -11,6 +11,7 @@ import {
   SparklesIcon,
   ArrowRightIcon,
 } from "@heroicons/react/24/outline";
+import { StarIcon } from "@heroicons/react/24/solid";
 import { useStarterList, useDeleteStarter, useAdoptStarter } from "@/hooks/use-starters";
 import { usePulseScan } from "@/hooks/use-pulse";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -79,7 +80,12 @@ function StarterCard({
           <span className="widget-header__label--number">{numberLabel}</span>
           {" // STARTER"}
         </span>
-        <TypeBadge type={starter.type} />
+        <span className="flex items-center gap-1.5">
+          {starter.featured && (
+            <StarIcon className="h-3.5 w-3.5 text-amber-500" aria-label="Featured" />
+          )}
+          <TypeBadge type={starter.type} />
+        </span>
       </div>
 
       <Link href={`/app/starters/${starter.id}`} className="block min-w-0 px-4 pt-4">
