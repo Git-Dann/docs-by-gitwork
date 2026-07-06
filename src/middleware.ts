@@ -107,6 +107,12 @@ const PUBLIC_API_PATHS = [
   "/api/cron",
 ];
 
+function isPublicApiPath(pathname: string): boolean {
+  // Anchor on a path-segment boundary so "/api/onboarding" can't make a sibling
+  // such as "/api/onboarding-forms" public. Exact match, or the entry followed by "/".
+  return PUBLIC_API_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+}
+
 const API_AUTH_COOKIE = "gitwork_api_session";
 
 // Server-internal headers used by route handlers to read the authenticated
@@ -124,6 +130,15 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
   "Access-Control-Max-Age": "86400",
 };
+
+// Wildcard CORS is only for the intentionally-cross-origin PUBLIC endpoints (the
+// embeddable Pulse widget, token-authed public pages, webhooks). Authenticated
+// /api routes are same-origin (web app) or native (iOS, no CORS) — sending them
+// `Access-Control-Allow-Origin: *` needlessly widened the CSRF surface. Empty
+// object → no CORS headers → the browser applies same-origin policy.
+function corsHeadersFor(pathname: string): Record<string, string> {
+  return isPublicApiPath(pathname) ? CORS_HEADERS : {};
+}
 
 // Maps /app/* path prefixes to the module permission that gates them. Listed as
 // pairs (not a module→path map) so a module can expose both its canonical route
@@ -201,7 +216,7 @@ export default auth(async (req) => {
 
   // CORS preflight for all API routes
   if (req.method === "OPTIONS" && pathname.startsWith("/api/")) {
-    return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+    return new NextResponse(null, { status: 204, headers: corsHeadersFor(pathname) });
   }
 
   // Already logged in + visiting /login → send straight to the dashboard. But not if their
@@ -294,7 +309,7 @@ export default auth(async (req) => {
 
     // Anchor on a path-segment boundary so an entry like "/api/onboarding" can't make a
     // sibling such as "/api/onboarding-forms" public. Exact match, or the entry followed by "/".
-    const isPublic = PUBLIC_API_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+    const isPublic = isPublicApiPath(pathname);
     let mobileClaims: MobileTokenClaims | null = null;
 
     if (!isPublic) {
@@ -322,7 +337,7 @@ export default auth(async (req) => {
         if (!authorized) {
           return new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
             status: 401,
-            headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+            headers: { ...corsHeadersFor(pathname), "Content-Type": "application/json" },
           });
         }
       }
@@ -340,7 +355,7 @@ export default auth(async (req) => {
     const response = NextResponse.next({
       request: { headers: forwardHeaders },
     });
-    for (const [key, value] of Object.entries(CORS_HEADERS)) {
+    for (const [key, value] of Object.entries(corsHeadersFor(pathname))) {
       response.headers.set(key, value);
     }
     return response;

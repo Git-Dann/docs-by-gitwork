@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { apiOk, apiError, fromError } from "@/lib/api-response";
+import { apiOk, fromError } from "@/lib/api-response";
+import { assertCron } from "@/server/auth/cron";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -22,11 +23,7 @@ const BATCH = 50;
 
 export async function GET(request: NextRequest) {
   try {
-    const secret = process.env.CRON_SECRET;
-    if (secret) {
-      const authHeader = request.headers.get("Authorization");
-      if (authHeader !== `Bearer ${secret}`) return apiError("Unauthorized", 401);
-    }
+    assertCron(request);
 
     const cutoff = new Date(Date.now() - STALE_AFTER_MS);
     const stale = await prisma.pulseScan.findMany({
