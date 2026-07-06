@@ -23,6 +23,8 @@ import {
   useDeleteWikiUser,
   useSetWikiShare,
   useSetWikiSectionShare,
+  useCourseIngest,
+  useSetCourseIngest,
 } from "@/hooks/use-wiki";
 import type { WikiSection } from "./wiki-sidebar";
 
@@ -206,6 +208,8 @@ export function WikiAccessSettings({
         </div>
       </section>
 
+      <WikiApiIntakeSettings slug={slug} />
+
       <WikiSharePanel wiki={wiki} slug={slug} availableSections={availableSections} />
 
       {editing && (
@@ -228,6 +232,142 @@ export function WikiAccessSettings({
         />
       )}
     </div>
+  );
+}
+
+
+function WikiApiIntakeSettings({ slug }: { slug: string }) {
+  const { data, isPending } = useCourseIngest(slug, true);
+  const setIngest = useSetCourseIngest(slug);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [confirmDisable, setConfirmDisable] = useState(false);
+
+  const token = data?.token ?? null;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const courseEndpoint = token ? `${origin}/api/public/course-requests/${token}` : "";
+  const wikiItemsEndpoint = token ? `${origin}/api/public/wiki-items/${token}` : "";
+  const example = token
+    ? `curl -X POST ${wikiItemsEndpoint} \\\n  -H "Content-Type: application/json" \\\n  -d '{"type":"BUG","title":"Scorecard total is incorrect","description":"Steps to reproduce...","requestedBy":"Big Wedge app","externalRef":"bug_123","priority":"HIGH"}'`
+    : "";
+  const busy = setIngest.isPending;
+
+  async function copy(key: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      setTimeout(() => setCopied((c) => (c === key ? null : c)), 1500);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
+  return (
+    <section className="widget-card mt-5">
+      <div className="widget-header">
+        <span className="widget-header__label" style={{ fontFamily: MONO }}>
+          <span className="widget-header__label--number">02</span>
+          {" // API INTAKE"}
+        </span>
+      </div>
+      <div className="space-y-5 p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-[var(--text-1)]">Client wiki intake API</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-4)]">
+              Give this client-scoped token to a trusted external system so it can push bugs,
+              feedback, tasks, or Wedge course requests into this wiki/client. The token resolves
+              to this wiki only, so submissions cannot create items for another client.
+            </p>
+          </div>
+          <ShareToggle
+            on={Boolean(token)}
+            disabled={busy || isPending}
+            onClick={() => {
+              if (token) setConfirmDisable(true);
+              else setIngest.mutate({ enabled: true });
+            }}
+          />
+        </div>
+
+        {isPending ? (
+          <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-8 text-center text-[13px] text-[var(--text-4)]">
+            Loading intake settings…
+          </p>
+        ) : !token ? (
+          <div className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-8 text-center">
+            <p className="mb-3 text-[13px] text-[var(--text-4)]">API intake is off.</p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setIngest.mutate({ enabled: true })}
+              className="inline-flex items-center rounded-[6px] bg-[var(--brand-700)] px-4 py-1.5 text-[13px] font-medium text-white transition hover:bg-[var(--brand-800)] disabled:opacity-60"
+            >
+              {busy ? "Enabling…" : "Enable API intake"}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {[
+              { key: "items", label: "Bugs / feedback / tasks", method: "POST", value: wikiItemsEndpoint },
+              { key: "courses", label: "Wedge course requests", method: "POST", value: courseEndpoint },
+              { key: "check", label: "Connectivity check", method: "GET", value: wikiItemsEndpoint },
+            ].map((row) => (
+              <div key={row.key}>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-4)]">
+                    {row.label}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void copy(row.key, row.value)}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand-700)] hover:text-[var(--brand-800)]"
+                  >
+                    {copied === row.key ? <CheckIcon className="h-3.5 w-3.5" /> : <ClipboardDocumentIcon className="h-3.5 w-3.5" />}
+                    {copied === row.key ? "Copied" : "Copy"}
+                  </button>
+                </div>
+                <div className="break-all rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)] px-3 py-2 text-[12px] text-[var(--text-2)]" style={{ fontFamily: MONO }}>
+                  <span className="text-[var(--text-4)]">{row.method} </span>{row.value}
+                </div>
+              </div>
+            ))}
+
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-4)]">Example bug push</span>
+                <button type="button" onClick={() => void copy("example", example)} className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand-700)] hover:text-[var(--brand-800)]">
+                  {copied === "example" ? <CheckIcon className="h-3.5 w-3.5" /> : <ClipboardDocumentIcon className="h-3.5 w-3.5" />}
+                  {copied === "example" ? "Copied" : "Copy"}
+                </button>
+              </div>
+              <pre className="overflow-x-auto rounded-[8px] border border-[rgba(0,0,0,0.1)] bg-[#0f1115] px-3 py-2.5 text-[11.5px] leading-5 text-[#d6deeb]" style={{ fontFamily: MONO }}>{example}</pre>
+              <p className="mt-1.5 text-[11px] leading-5 text-[var(--text-4)]">
+                Bugs, feedback, and tasks land in the Portal task backlog. Send one object or {`{"items":[…]}`} for a batch of up to 200.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-[var(--border-1)] pt-4">
+              {confirmDisable ? (
+                <>
+                  <span className="text-[12px] text-[var(--text-3)]">Disable intake? The current token stops working immediately.</span>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setConfirmDisable(false)} className="rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-[13px] font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)]">Keep</button>
+                    <button type="button" disabled={busy} onClick={() => { setIngest.mutate({ enabled: false }); setConfirmDisable(false); }} className="rounded-[6px] bg-red-600 px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-red-700 disabled:opacity-60">Disable</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={() => setConfirmDisable(true)} className="text-[12px] font-medium text-red-600 hover:text-red-700">Disable intake</button>
+                  <button type="button" disabled={busy} onClick={() => setIngest.mutate({ enabled: true, rotate: true })} className="rounded-[6px] border border-[var(--border-2)] bg-white px-3.5 py-1.5 text-[13px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-60">
+                    {busy ? "Working…" : "Rotate token"}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -343,7 +483,7 @@ function WikiSharePanel({
     <section className="widget-card mt-5">
       <div className="widget-header">
         <span className="widget-header__label" style={{ fontFamily: MONO }}>
-          <span className="widget-header__label--number">02</span>
+          <span className="widget-header__label--number">03</span>
           {" // SHARING"}
         </span>
       </div>

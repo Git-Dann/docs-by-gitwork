@@ -891,6 +891,130 @@ export async function ingestCourseRequestsByToken(
   return { created, skipped, count: created.length };
 }
 
+
+export interface WikiItemIngestItem {
+  type?: "BUG" | "FEEDBACK" | "TASK";
+  title: string;
+  description?: string | null;
+  priority?: "LOW" | "MEDIUM" | "HIGH";
+  requestedBy?: string | null;
+  externalRef?: string | null;
+}
+
+export interface WikiItemIngestResult {
+  client: { id: string; slug: string; name: string };
+  created: Array<{ id: string; title: string }>;
+  skipped: number;
+  count: number;
+}
+
+function wikiItemPrefix(type: "BUG" | "FEEDBACK" | "TASK"): string {
+  if (type === "BUG") return "[Bug]";
+  if (type === "TASK") return "[Task]";
+  return "[Feedback]";
+}
+
+/**
+ * Token-authenticated bug / feedback / task intake for a client wiki. The token
+ * resolves to one ClientWiki, so created Portal tasks are scoped to that wiki's
+ * client only. Dedupe is by externalRef first, then by open imported title.
+ */
+export async function ingestWikiItemsByToken(
+  token: string,
+  items: WikiItemIngestItem[],
+  opts: { dryRun?: boolean } = {},
+): Promise<WikiItemIngestResult | null> {
+  if (!token) return null;
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { courseIngestToken: token },
+    select: {
+      client: { select: { id: true, slug: true, name: true, workspaceId: true } },
+    },
+  });
+  if (!wiki) return null;
+
+  const client = { id: wiki.client.id, slug: wiki.client.slug, name: wiki.client.name };
+  if (opts.dryRun) return { client, created: [], skipped: 0, count: 0 };
+
+  const normalized = items
+    .map((item) => {
+      const type = item.type ?? "FEEDBACK";
+      const title = item.title.trim();
+      return {
+        ...item,
+        type,
+        title,
+        taskTitle: `${wikiItemPrefix(type)} ${title}`,
+        priority: item.priority ?? "MEDIUM",
+        description: item.description?.trim() || null,
+        requestedBy: item.requestedBy?.trim() || null,
+        externalRef: item.externalRef?.trim() || null,
+      };
+    })
+    .filter((item) => item.title.length > 0);
+
+  const refs = normalized.map((item) => item.externalRef).filter((ref): ref is string => Boolean(ref));
+  const titles = normalized.map((item) => item.taskTitle);
+  const existing = await prisma.task.findMany({
+    where: {
+      workspaceId: wiki.client.workspaceId,
+      clientId: wiki.client.id,
+      archivedAt: null,
+      OR: [
+        { title: { in: titles }, status: { not: "DONE" } },
+        ...(refs.length
+          ? refs.map((ref) => ({ metadata: { path: ["wikiIntake", "externalRef"], equals: ref } }))
+          : []),
+      ],
+    },
+    select: { title: true, metadata: true },
+  });
+
+  const seenTitles = new Set(existing.map((task) => task.title));
+  const seenRefs = new Set(
+    existing
+      .map((task) => {
+        const metadata = task.metadata as { wikiIntake?: { externalRef?: unknown } } | null;
+        const ref = metadata?.wikiIntake?.externalRef;
+        return typeof ref === "string" ? ref : null;
+      })
+      .filter((ref): ref is string => Boolean(ref)),
+  );
+
+  const created: WikiItemIngestResult["created"] = [];
+  let skipped = 0;
+  for (const item of normalized) {
+    if ((item.externalRef && seenRefs.has(item.externalRef)) || seenTitles.has(item.taskTitle)) {
+      skipped++;
+      continue;
+    }
+    const task = await prisma.task.create({
+      data: {
+        workspaceId: wiki.client.workspaceId,
+        clientId: wiki.client.id,
+        title: item.taskTitle,
+        description: item.description,
+        status: "BACKLOG",
+        priority: item.priority,
+        metadata: {
+          wikiIntake: {
+            type: item.type,
+            requestedBy: item.requestedBy,
+            externalRef: item.externalRef,
+            receivedAt: new Date().toISOString(),
+          },
+        },
+      },
+      select: { id: true, title: true },
+    });
+    created.push(task);
+    seenTitles.add(item.taskTitle);
+    if (item.externalRef) seenRefs.add(item.externalRef);
+  }
+
+  return { client, created, skipped, count: created.length };
+}
+
 /** Toggle public sharing. Mints a share token on first enable. */
 export async function setWikiShare(
   clientId: string,

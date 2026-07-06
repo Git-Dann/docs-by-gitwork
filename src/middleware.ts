@@ -86,6 +86,8 @@ const PUBLIC_API_PATHS = [
   "/api/portal",
   // Inbound course-request API — per-wiki token in the URL path is the auth.
   "/api/public/course-requests",
+  // Inbound wiki bug / feedback / task API — per-wiki token in the URL path is the auth.
+  "/api/public/wiki-items",
   // Public webhook ingest — per-connection token in the URL path is the auth.
   "/api/support/webhook",
   // Inbound GitHub webhook for Pulse monitors — per-monitor HMAC signature is the auth.
