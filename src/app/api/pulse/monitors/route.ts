@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { listMonitors, createMonitor } from "@/server/pulse-agents/monitor";
+import { assertCan, canManagePulse, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManagePulse, "create Pulse monitors");
     const body = createMonitorSchema.parse(await request.json());
     const monitor = await createMonitor(body, appUrl(request));
     return apiOk({ monitor }, { status: 201 });
