@@ -1377,3 +1377,29 @@ export const starterAdoptSchema = z.object({
   scanId: z.string().min(1),
   starterId: z.string().min(1),
 });
+
+// ─── On Your Desk: reminders + broadcasts ────────────────────────────────────
+
+export const deskReminderCreateSchema = z.object({
+  body: z.string().trim().min(1, "Reminder can't be empty").max(280),
+});
+
+export const deskReminderUpdateSchema = z
+  .object({
+    body: z.string().trim().min(1).max(280).optional(),
+    done: z.boolean().optional(),
+  })
+  .refine((v) => v.body !== undefined || v.done !== undefined, {
+    message: "Nothing to update",
+  });
+
+export const broadcastCreateSchema = z.object({
+  message: z.string().trim().min(1, "Message can't be empty").max(500),
+  durationDays: z.union([
+    z.literal(1),
+    z.literal(3),
+    z.literal(5),
+    z.literal(14),
+    z.literal(30),
+  ]),
+});

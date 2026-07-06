@@ -209,6 +209,8 @@ model User {
   oauthAuthCodes            OAuthAuthCode[]
   oauthTokens               OAuthToken[]
   mcpConnections            McpConnection[]
+  deskReminders             DeskReminder[]
+  broadcastsCreated         Broadcast[]             @relation("BroadcastCreator")
   // Per-user Google OAuth refresh token. Captured on sign-in. Drives the personal dashboard
   // widgets (Calendar, Gmail, Meeting summary) so each member sees only their own data.
   // Workspace-level `Workspace.googleOAuthRefreshToken` is separate and intended only for
@@ -369,6 +371,8 @@ model Workspace {
   mcpConnections              McpConnection[]
   slackMessageRefs            SlackMessageRef[]
   slackUpdateLogs             SlackUpdateLog[]
+  broadcasts                  Broadcast[]
+  deskReminders               DeskReminder[]
 }
 
 /**
@@ -3192,6 +3196,47 @@ model Milestone {
 
   @@index([clientId, date])
   @@index([clickupId])
+}
+
+// ── On Your Desk ─────────────────────────────────────────────────────────────
+
+/// A short personal reminder shown in the "On Your Desk" drawer. Deliberately
+/// ephemeral: surfaced only while young (the read query filters to the last 7
+/// days) and hard-deleted by an opportunistic purge thereafter. Not a task — no
+/// board, no status, no assignee. Per-user.
+model DeskReminder {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  body        String    @db.Text
+  done        Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId, createdAt])
+}
+
+/// A workspace-wide announcement banner shown in "On Your Desk" to everyone.
+/// Posted by admins/super-admins only. At most ONE active per workspace at a
+/// time — enforced in app logic (posting a new one deactivates the current in a
+/// single transaction). Auto-hidden past expiresAt (reads filter on it).
+model Broadcast {
+  id          String    @id @default(cuid())
+  workspaceId String
+  message     String    @db.Text
+  active      Boolean   @default(true)
+  expiresAt   DateTime
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("BroadcastCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, active, expiresAt])
 }
 
 // ════════════════════════════════════════════════════════════════════════════

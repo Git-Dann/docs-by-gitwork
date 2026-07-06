@@ -334,6 +334,17 @@ export default auth(async (req) => {
           }
         }
 
+        // (b) NextAuth web session. The `gitwork_api_session` cookie is minted on
+        // the /app response, but immediately after a Google sign-in the browser
+        // can fire the first /api/* fetch (e.g. /api/account) before that
+        // Set-Cookie has landed — a race that surfaced as a one-off 400/401 that
+        // "fixes itself on refresh". A valid session IS sufficient authorization
+        // (route handlers still enforce their own per-permission gates), so accept
+        // it directly and close the race.
+        if (!authorized && req.auth?.user) {
+          authorized = true;
+        }
+
         if (!authorized) {
           return new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
             status: 401,

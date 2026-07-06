@@ -40,6 +40,22 @@ type NavItem = {
   module?: string;
 };
 
+// Last-known set of module keys this viewer is allowed to see, cached so the
+// sidebar renders the CORRECT filtered nav on first paint — before /api/account
+// resolves — instead of flashing the full list then collapsing it.
+const NAV_CACHE_KEY = "gitwork.nav.modules.v1";
+// Every module key a nav item can gate on. Admins/super-admins with full access
+// cache this whole set. Keep in sync with the `module` fields in `primaryNav`.
+const ALL_NAV_MODULES = [
+  "pulse",
+  "codeclear",
+  "proposals",
+  "clients",
+  "support",
+  "backstage",
+  "studio",
+];
+
 export function AppShell({
   children,
   title,
@@ -78,6 +94,37 @@ export function AppShell({
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  // Hydrate the cached allowed-module list on mount so first paint filters the
+  // nav correctly (no full-list → filtered flash). SSR/first render is null →
+  // shows only always-on items, then this fills in, then /api/account confirms.
+  const [cachedModules, setCachedModules] = useState<string[] | null>(null);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(NAV_CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.every((m) => typeof m === "string")) {
+          setCachedModules(parsed as string[]);
+        }
+      }
+    } catch {
+      /* ignore malformed / unavailable storage */
+    }
+  }, []);
+
+  // Persist this viewer's OWN resolved modules once known (never a view-as
+  // preview set — that would poison the next real load).
+  useEffect(() => {
+    if (account.isPending) return;
+    if (effectivePermissions !== null) return; // previewing another role/user
+    const allowed = isFullAccessAdmin ? ALL_NAV_MODULES : realPermissions;
+    try {
+      localStorage.setItem(NAV_CACHE_KEY, JSON.stringify(allowed));
+    } catch {
+      /* storage full / unavailable — non-fatal */
+    }
+  }, [account.isPending, effectivePermissions, isFullAccessAdmin, realPermissions]);
 
   const primaryNav = useMemo<NavItem[]>(() => {
     const all: NavItem[] = [
@@ -136,7 +183,16 @@ export function AppShell({
         module: "studio",
       },
     ];
-    if (account.isPending) return all;
+    if (account.isPending) {
+      // Pre-/api/account first paint: render from the cached module list if we
+      // have one (returning users get their correct nav instantly), else show
+      // only the always-on items. Never render the full list then collapse it —
+      // that collapse is the flash. Progressive reveal reads clean.
+      if (cachedModules) {
+        return all.filter((item) => !item.module || cachedModules.includes(item.module));
+      }
+      return all.filter((item) => !item.module);
+    }
 
     // When previewing as another role/user, use the effective permissions from the hook.
     // Super Admin (isAdmin, no viewAs, empty permissions) → full access.
@@ -151,7 +207,7 @@ export function AppShell({
       if (item.module === "support" && hideCareForScopedUser) return false;
       return !item.module || realPermissions.includes(item.module);
     });
-  }, [isAdmin, effectivePermissions, account.isPending, realPermissions, hideCareForScopedUser]);
+  }, [isAdmin, effectivePermissions, account.isPending, realPermissions, hideCareForScopedUser, cachedModules]);
 
   const secondaryNav = useMemo<NavItem[]>(
     () => [

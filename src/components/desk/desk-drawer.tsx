@@ -12,7 +12,8 @@
  * sheet (the shared <Modal>). Open state + last tab persist to localStorage.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/format";
@@ -83,6 +84,19 @@ function useIsDesktop() {
 export function DeskDrawer() {
   const { open, setOpen, tab, setTab } = useDeskState();
   const isDesktop = useIsDesktop();
+
+  // Collapse the drawer whenever the user navigates to another section, so it
+  // never lingers open over an unrelated page. The first render is skipped so a
+  // refresh (same path) still honours the restored-open state from sessionStorage.
+  const pathname = usePathname();
+  const firstNav = useRef(true);
+  useEffect(() => {
+    if (firstNav.current) {
+      firstNav.current = false;
+      return;
+    }
+    setOpen(false);
+  }, [pathname, setOpen]);
 
   // ⌘J / Ctrl+J toggles the drawer from anywhere (⌘J is unused in macOS browsers).
   useEffect(() => {

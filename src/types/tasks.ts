@@ -97,6 +97,10 @@ export type DailyUpdateDTO = {
   pmPushedAt: string | null;
   weekPlan: string | null;
   note: string | null;
+  /** Only set on a push response: how many client channels the update actually
+   *  posted to. 0 means there was nothing to post (no matching tasks/channels),
+   *  so the UI can say so honestly instead of a blanket "Pushed to Slack". */
+  posted?: number;
 };
 
 /** The dev's "My Day" standup surface. */
