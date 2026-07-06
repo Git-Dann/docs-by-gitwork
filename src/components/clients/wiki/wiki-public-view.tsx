@@ -8,6 +8,7 @@ import { WikiPageEditor } from "./wiki-page-editor";
 import { ApiDocsReference, normalizeApiDocsContent } from "./api-docs-page-editor";
 import { ChangelogSection } from "./changelog-section";
 import { CourseRequestsSection } from "./course-requests-section";
+import { WikiIntakeSection } from "./wiki-intake-section";
 import { WikiTimelineSection } from "./wiki-timeline-section";
 import { WikiDashboard } from "./wiki-dashboard";
 import { DesignSystemViewer } from "@/components/clients/design-system/design-system-viewer";
@@ -48,6 +49,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   timeline: "Timeline",
   monitors: "Monitors",
   documents: "Documents",
+  intake: "Requests",
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
@@ -99,6 +101,7 @@ export function WikiPublicView({
     ...(wiki.documents.enabled && wiki.documents.documents.length > 0
       ? (["documents"] as const)
       : []),
+    "intake",
     ...(wiki.designSystem ? (["design-system"] as const) : []),
     ...existingDocSections,
     ...(wiki.changelog.length > 0 ? (["changelog"] as const) : []),
@@ -175,6 +178,10 @@ export function WikiPublicView({
 
     if (activeSection === "documents") {
       return <DocumentsList documents={wiki.documents.documents} fileBase={`/api/wiki/${token}`} />;
+    }
+
+    if (activeSection === "intake") {
+      return <WikiIntakeSection slug={wiki.clientSlug} token={token} items={wiki.intakeItems} mode="public" />;
     }
 
     if (activeSection === "design-system") {

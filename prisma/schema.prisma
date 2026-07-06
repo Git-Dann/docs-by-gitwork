@@ -1185,6 +1185,7 @@ model ClientWiki {
   pages             ClientWikiPage[]
   changelog         ClientChangelogEntry[]
   courseRequests    ClientCourseRequest[]
+  intakeItems       ClientWikiIntakeItem[]
   wikiUsers         ClientWikiUser[]
   monitors          WikiMonitor[]
   documents         WikiDocument[]
@@ -1328,6 +1329,43 @@ model ClientWikiPage {
   @@unique([wikiId, type])
   @@index([wikiId])
   @@map("ClientWikiPage")
+}
+
+
+/// Client-submitted bugs, feedback, and lightweight task requests kept inside
+/// the Wiki until a Gitwork admin/super-admin promotes one into Portal Tasks.
+model ClientWikiIntakeItem {
+  id          String               @id @default(cuid())
+  wikiId      String
+  wiki        ClientWiki           @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  type        WikiIntakeItemType    @default(FEEDBACK)
+  title       String
+  description String?              @db.Text
+  priority    TaskPriority         @default(MEDIUM)
+  status      WikiIntakeItemStatus  @default(NEW)
+  requestedBy String?
+  externalRef String?
+  source      String?
+  taskId      String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([wikiId])
+  @@index([wikiId, externalRef])
+  @@map("ClientWikiIntakeItem")
+}
+
+enum WikiIntakeItemType {
+  BUG
+  FEEDBACK
+  TASK
+}
+
+enum WikiIntakeItemStatus {
+  NEW
+  TRIAGED
+  PROMOTED
+  CLOSED
 }
 
 /// A single version-release entry in the client's changelog. Linked to a wiki.

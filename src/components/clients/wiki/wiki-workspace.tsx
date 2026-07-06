@@ -30,6 +30,7 @@ import { WikiPageEditor, type WikiPageEditorHandle } from "./wiki-page-editor";
 import { ChangelogSection } from "./changelog-section";
 import { ChangelogEntryForm } from "./changelog-entry-form";
 import { CourseRequestsSection } from "./course-requests-section";
+import { WikiIntakeSection } from "./wiki-intake-section";
 import { CourseRequestForm, type CourseRequestPayload } from "./course-request-form";
 import { CourseFeedbackImportModal } from "./course-feedback-import-modal";
 import { CourseApiIntakeModal } from "./course-api-intake-modal";
@@ -97,6 +98,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   timeline: "Timeline",
   monitors: "Monitors",
   documents: "Documents",
+  intake: "Requests",
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
@@ -878,6 +880,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     "timeline",
     ...(monitorsOn ? (["monitors"] as const) : []),
     ...(documentsOn ? (["documents"] as const) : []),
+    "intake",
     "design-system",
     ...OPTIONAL_DOC_SECTIONS.filter(
       (item) =>
@@ -1147,6 +1150,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     // ── Documents — clean list of links / Foundry docs / uploaded files.
     if (activeSection === "documents") {
       return <DocumentsManager slug={slug} documents={wiki!.documents.documents} />;
+    }
+
+    // ── Client intake — bugs/feedback/requests stay in Wiki until promoted by Admin+.
+    if (activeSection === "intake") {
+      return <WikiIntakeSection slug={slug} items={wiki!.intakeItems} mode="internal" />;
     }
 
     // ── Design System — embedded inline (has its own action bar)

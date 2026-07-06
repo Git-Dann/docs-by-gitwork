@@ -27,6 +27,7 @@ export type WikiSection =
   | "timeline"
   | "monitors"
   | "documents"
+  | "intake"
   | "design-system"
   | "ia"
   | "dev-guide"
@@ -101,6 +102,7 @@ export function WikiSidebar({
       "timeline",
       "monitors",
       "documents",
+      "intake",
       "design-system",
       "ia",
       "dev-guide",
@@ -194,6 +196,7 @@ export function WikiSidebar({
         {navItem("timeline", "Timeline", <CalendarDaysIcon />)}
         {navItem("monitors", "Monitors", <BoltIcon />)}
         {navItem("documents", "Documents", <DocumentDuplicateIcon />)}
+        {navItem("intake", "Requests", <FlagIcon />)}
         {navItem("design-system", "Design System", <CubeTransparentIcon />)}
         {navItem("ia", "Info Architecture", <BookOpenIcon />)}
         {navItem("dev-guide", "Developer Guide", <CodeBracketIcon />)}

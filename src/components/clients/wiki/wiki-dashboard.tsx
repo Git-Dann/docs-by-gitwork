@@ -39,6 +39,7 @@ const SECTION_META: Record<
   timeline: { label: "Timeline", icon: CalendarDaysIcon },
   monitors: { label: "Monitors", icon: BoltIcon },
   documents: { label: "Documents", icon: DocumentDuplicateIcon },
+  intake: { label: "Requests", icon: FlagIcon },
   "design-system": { label: "Brand", icon: CubeTransparentIcon },
   ia: { label: "Information Architecture", icon: BookOpenIcon },
   "dev-guide": { label: "Developer Guide", icon: CodeBracketIcon },

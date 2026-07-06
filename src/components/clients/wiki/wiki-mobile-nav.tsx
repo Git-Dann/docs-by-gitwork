@@ -28,6 +28,7 @@ const SECTION_ICON: Record<WikiSection, IconType> = {
   timeline: CalendarDaysIcon,
   monitors: BoltIcon,
   documents: DocumentDuplicateIcon,
+  intake: FlagIcon,
   "design-system": CubeTransparentIcon,
   ia: BookOpenIcon,
   "dev-guide": CodeBracketIcon,

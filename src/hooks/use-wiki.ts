@@ -33,8 +33,13 @@ import {
   updateWikiDocApi,
   deleteWikiDocApi,
   setWikiDocumentsEnabledApi,
+  createWikiIntakeItem,
+  createPublicWikiIntakeItem,
+  updateWikiIntakeItemApi,
+  deleteWikiIntakeItemApi,
+  promoteWikiIntakeItemApi,
 } from "@/lib/api";
-import type { CourseImportInput, BigWedgeSyncResult, MonitorInput } from "@/lib/api";
+import type { CourseImportInput, BigWedgeSyncResult, MonitorInput, WikiIntakeItemPayload } from "@/lib/api";
 
 export function useClientWiki(slug: string) {
   return useQuery({
@@ -237,6 +242,47 @@ export function useDeleteCourseRequest(slug: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
     },
+  });
+}
+
+
+export function useCreateWikiIntakeItem(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: WikiIntakeItemPayload) => createWikiIntakeItem(slug, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useCreatePublicWikiIntakeItem(token: string) {
+  return useMutation({
+    mutationFn: (input: WikiIntakeItemPayload) => createPublicWikiIntakeItem(token, input),
+  });
+}
+
+export function useUpdateWikiIntakeItem(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<WikiIntakeItemPayload> & { status?: "NEW" | "TRIAGED" | "PROMOTED" | "CLOSED" } }) =>
+      updateWikiIntakeItemApi(slug, id, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useDeleteWikiIntakeItem(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteWikiIntakeItemApi(slug, id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function usePromoteWikiIntakeItem(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, assigneeIds }: { id: string; assigneeIds?: string[] }) =>
+      promoteWikiIntakeItemApi(slug, id, { assigneeIds }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });
 }
 

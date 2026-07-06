@@ -15,6 +15,9 @@ import type {
   WikiPlatform,
   WikiEntryStatus,
   CourseRequestStatus,
+  WikiIntakeItemStatus,
+  WikiIntakeItemType,
+  TaskPriority,
 } from "@prisma/client";
 import type { DesignTokens } from "@/types/design-tokens";
 import { loadWikiMonitors, type WikiMonitorsSection } from "./wiki-monitors";
@@ -53,6 +56,21 @@ export interface CourseRequestRecord {
   sourceConversationId: string | null;
   /** ISO timestamp when status was last set to SENT; null for pre-existing rows. */
   sentAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WikiIntakeItemRecord {
+  id: string;
+  type: WikiIntakeItemType;
+  title: string;
+  description: string | null;
+  priority: TaskPriority;
+  status: WikiIntakeItemStatus;
+  requestedBy: string | null;
+  externalRef: string | null;
+  source: string | null;
+  taskId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -124,6 +142,7 @@ export interface WikiDTO {
   pages: WikiPageRecord[];
   changelog: ChangelogEntryRecord[];
   courseRequests: CourseRequestRecord[];
+  intakeItems: WikiIntakeItemRecord[];
   /** Project delivery timeline (feature blocks + milestones) — same source as /timeline/[token]. */
   timeline: WikiTimeline;
   /** The client's design system tokens, when one exists (null otherwise). */
@@ -218,6 +237,36 @@ function serializeCourseRequest(r: {
     sentAt: r.sentAt ? r.sentAt.toISOString() : null,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
+  };
+}
+
+function serializeWikiIntakeItem(item: {
+  id: string;
+  type: WikiIntakeItemType;
+  title: string;
+  description: string | null;
+  priority: TaskPriority;
+  status: WikiIntakeItemStatus;
+  requestedBy: string | null;
+  externalRef: string | null;
+  source: string | null;
+  taskId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): WikiIntakeItemRecord {
+  return {
+    id: item.id,
+    type: item.type,
+    title: item.title,
+    description: item.description,
+    priority: item.priority,
+    status: item.status,
+    requestedBy: item.requestedBy,
+    externalRef: item.externalRef,
+    source: item.source,
+    taskId: item.taskId,
+    createdAt: item.createdAt.toISOString(),
+    updatedAt: item.updatedAt.toISOString(),
   };
 }
 
@@ -419,6 +468,20 @@ async function buildDTO(
     createdAt: Date;
     updatedAt: Date;
   }>;
+  intakeItems?: Array<{
+    id: string;
+    type: WikiIntakeItemType;
+    title: string;
+    description: string | null;
+    priority: TaskPriority;
+    status: WikiIntakeItemStatus;
+    requestedBy: string | null;
+    externalRef: string | null;
+    source: string | null;
+    taskId: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }>;
   },
   opts?: { includeUsers?: boolean },
 ): Promise<WikiDTO> {
@@ -461,6 +524,10 @@ async function buildDTO(
       .slice()
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .map(serializeCourseRequest),
+    intakeItems: (wiki.intakeItems ?? [])
+      .slice()
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .map(serializeWikiIntakeItem),
     timeline: await loadWikiTimeline(wiki.clientId),
     designSystem: await loadWikiDesignSystem(wiki.clientId),
     monitors: await loadWikiMonitors(wiki.clientId),
@@ -497,6 +564,7 @@ const WIKI_INCLUDE = {
   pages: true,
   changelog: true,
   courseRequests: true,
+  intakeItems: true,
   wikiUsers: { select: { id: true, email: true, name: true, createdAt: true } },
   // platforms is a scalar Json field — included automatically via `include` on
   // the parent model, not via a relation. Listed here as a reminder.
@@ -903,7 +971,7 @@ export interface WikiItemIngestItem {
 
 export interface WikiItemIngestResult {
   client: { id: string; slug: string; name: string };
-  created: Array<{ id: string; title: string }>;
+  created: WikiIntakeItemRecord[];
   skipped: number;
   count: number;
 }
@@ -916,8 +984,8 @@ function wikiItemPrefix(type: "BUG" | "FEEDBACK" | "TASK"): string {
 
 /**
  * Token-authenticated bug / feedback / task intake for a client wiki. The token
- * resolves to one ClientWiki, so created Portal tasks are scoped to that wiki's
- * client only. Dedupe is by externalRef first, then by open imported title.
+ * resolves to one ClientWiki, so items stay inside that client's Wiki intake
+ * page until an Admin/Super Admin promotes them into Portal Tasks.
  */
 export async function ingestWikiItemsByToken(
   token: string,
@@ -928,7 +996,9 @@ export async function ingestWikiItemsByToken(
   const wiki = await prisma.clientWiki.findUnique({
     where: { courseIngestToken: token },
     select: {
-      client: { select: { id: true, slug: true, name: true, workspaceId: true } },
+      id: true,
+      client: { select: { id: true, slug: true, name: true } },
+      intakeItems: { select: { title: true, externalRef: true, status: true } },
     },
   });
   if (!wiki) return null;
@@ -936,83 +1006,158 @@ export async function ingestWikiItemsByToken(
   const client = { id: wiki.client.id, slug: wiki.client.slug, name: wiki.client.name };
   if (opts.dryRun) return { client, created: [], skipped: 0, count: 0 };
 
-  const normalized = items
-    .map((item) => {
-      const type = item.type ?? "FEEDBACK";
-      const title = item.title.trim();
-      return {
-        ...item,
-        type,
-        title,
-        taskTitle: `${wikiItemPrefix(type)} ${title}`,
-        priority: item.priority ?? "MEDIUM",
-        description: item.description?.trim() || null,
-        requestedBy: item.requestedBy?.trim() || null,
-        externalRef: item.externalRef?.trim() || null,
-      };
-    })
-    .filter((item) => item.title.length > 0);
-
-  const refs = normalized.map((item) => item.externalRef).filter((ref): ref is string => Boolean(ref));
-  const titles = normalized.map((item) => item.taskTitle);
-  const existing = await prisma.task.findMany({
-    where: {
-      workspaceId: wiki.client.workspaceId,
-      clientId: wiki.client.id,
-      archivedAt: null,
-      OR: [
-        { title: { in: titles }, status: { not: "DONE" } },
-        ...(refs.length
-          ? refs.map((ref) => ({ metadata: { path: ["wikiIntake", "externalRef"], equals: ref } }))
-          : []),
-      ],
-    },
-    select: { title: true, metadata: true },
-  });
-
-  const seenTitles = new Set(existing.map((task) => task.title));
   const seenRefs = new Set(
-    existing
-      .map((task) => {
-        const metadata = task.metadata as { wikiIntake?: { externalRef?: unknown } } | null;
-        const ref = metadata?.wikiIntake?.externalRef;
-        return typeof ref === "string" ? ref : null;
-      })
-      .filter((ref): ref is string => Boolean(ref)),
+    wiki.intakeItems.map((item) => item.externalRef).filter((ref): ref is string => Boolean(ref)),
+  );
+  const seenOpenTitles = new Set(
+    wiki.intakeItems
+      .filter((item) => item.status !== "CLOSED")
+      .map((item) => item.title.trim().toLowerCase())
+      .filter(Boolean),
   );
 
-  const created: WikiItemIngestResult["created"] = [];
+  const created: WikiIntakeItemRecord[] = [];
   let skipped = 0;
-  for (const item of normalized) {
-    if ((item.externalRef && seenRefs.has(item.externalRef)) || seenTitles.has(item.taskTitle)) {
+  for (const raw of items) {
+    const title = raw.title.trim();
+    if (!title) {
       skipped++;
       continue;
     }
-    const task = await prisma.task.create({
+    const externalRef = raw.externalRef?.trim() || null;
+    const titleKey = title.toLowerCase();
+    if ((externalRef && seenRefs.has(externalRef)) || seenOpenTitles.has(titleKey)) {
+      skipped++;
+      continue;
+    }
+
+    const item = await prisma.clientWikiIntakeItem.create({
       data: {
-        workspaceId: wiki.client.workspaceId,
-        clientId: wiki.client.id,
-        title: item.taskTitle,
-        description: item.description,
-        status: "BACKLOG",
-        priority: item.priority,
-        metadata: {
-          wikiIntake: {
-            type: item.type,
-            requestedBy: item.requestedBy,
-            externalRef: item.externalRef,
-            receivedAt: new Date().toISOString(),
-          },
-        },
+        wikiId: wiki.id,
+        type: raw.type ?? "FEEDBACK",
+        title,
+        description: raw.description?.trim() || null,
+        priority: raw.priority ?? "MEDIUM",
+        requestedBy: raw.requestedBy?.trim() || null,
+        externalRef,
+        source: "api",
       },
-      select: { id: true, title: true },
     });
-    created.push(task);
-    seenTitles.add(item.taskTitle);
-    if (item.externalRef) seenRefs.add(item.externalRef);
+    created.push(serializeWikiIntakeItem(item));
+    if (externalRef) seenRefs.add(externalRef);
+    seenOpenTitles.add(titleKey);
   }
 
   return { client, created, skipped, count: created.length };
+}
+
+export async function addWikiIntakeItemByToken(
+  token: string,
+  item: WikiItemIngestItem,
+): Promise<WikiIntakeItemRecord | null> {
+  const result = await ingestWikiItemsByToken(token, [{ ...item, requestedBy: item.requestedBy ?? "Client wiki" }]);
+  return result?.created[0] ?? null;
+}
+
+export async function addWikiIntakeItem(
+  clientId: string,
+  item: WikiItemIngestItem,
+): Promise<WikiIntakeItemRecord> {
+  const wiki = await prisma.clientWiki.upsert({
+    where: { clientId },
+    create: { clientId },
+    update: {},
+    select: { id: true },
+  });
+  const row = await prisma.clientWikiIntakeItem.create({
+    data: {
+      wikiId: wiki.id,
+      type: item.type ?? "FEEDBACK",
+      title: item.title.trim(),
+      description: item.description?.trim() || null,
+      priority: item.priority ?? "MEDIUM",
+      requestedBy: item.requestedBy?.trim() || null,
+      externalRef: item.externalRef?.trim() || null,
+      source: "manual",
+    },
+  });
+  return serializeWikiIntakeItem(row);
+}
+
+export async function updateWikiIntakeItem(
+  id: string,
+  data: Partial<WikiItemIngestItem> & { status?: WikiIntakeItemStatus },
+): Promise<WikiIntakeItemRecord> {
+  const row = await prisma.clientWikiIntakeItem.update({
+    where: { id },
+    data: {
+      ...(data.type ? { type: data.type } : {}),
+      ...(data.title !== undefined ? { title: data.title.trim() } : {}),
+      ...(data.description !== undefined ? { description: data.description?.trim() || null } : {}),
+      ...(data.priority ? { priority: data.priority } : {}),
+      ...(data.status ? { status: data.status } : {}),
+      ...(data.requestedBy !== undefined ? { requestedBy: data.requestedBy?.trim() || null } : {}),
+      ...(data.externalRef !== undefined ? { externalRef: data.externalRef?.trim() || null } : {}),
+    },
+  });
+  return serializeWikiIntakeItem(row);
+}
+
+export async function deleteWikiIntakeItem(id: string): Promise<void> {
+  await prisma.clientWikiIntakeItem.delete({ where: { id } });
+}
+
+async function nextWikiPromotedTaskOrderKey(workspaceId: string, clientId: string): Promise<number> {
+  const top = await prisma.task.findFirst({
+    where: { workspaceId, clientId, status: "BACKLOG" },
+    orderBy: { orderKey: "desc" },
+    select: { orderKey: true },
+  });
+  return (top?.orderKey ?? 0) + 1;
+}
+
+export async function promoteWikiIntakeItemToTask(
+  itemId: string,
+  userId: string,
+  opts: { assigneeIds?: string[] } = {},
+): Promise<{ item: WikiIntakeItemRecord; taskId: string }> {
+  const item = await prisma.clientWikiIntakeItem.findUnique({
+    where: { id: itemId },
+    include: { wiki: { include: { client: { select: { id: true, workspaceId: true } } } } },
+  });
+  if (!item) throw new Error("Wiki intake item not found");
+  if (item.taskId) return { item: serializeWikiIntakeItem(item), taskId: item.taskId };
+
+  const task = await prisma.task.create({
+    data: {
+      workspaceId: item.wiki.client.workspaceId,
+      clientId: item.wiki.client.id,
+      createdById: userId,
+      title: `${wikiItemPrefix(item.type)} ${item.title}`,
+      description: item.description,
+      status: "BACKLOG",
+      priority: item.priority,
+      orderKey: await nextWikiPromotedTaskOrderKey(item.wiki.client.workspaceId, item.wiki.client.id),
+      metadata: {
+        wikiIntake: {
+          itemId: item.id,
+          type: item.type,
+          requestedBy: item.requestedBy,
+          externalRef: item.externalRef,
+          promotedAt: new Date().toISOString(),
+        },
+      },
+      ...(opts.assigneeIds && opts.assigneeIds.length > 0
+        ? { assignees: { connect: opts.assigneeIds.map((id) => ({ id })) } }
+        : {}),
+    },
+    select: { id: true },
+  });
+  const updated = await prisma.clientWikiIntakeItem.update({
+    where: { id: item.id },
+    data: { status: "PROMOTED", taskId: task.id },
+  });
+  return { item: serializeWikiIntakeItem(updated), taskId: task.id };
 }
 
 /** Toggle public sharing. Mints a share token on first enable. */

@@ -246,7 +246,7 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const courseEndpoint = token ? `${origin}/api/public/course-requests/${token}` : "";
   const wikiItemsEndpoint = token ? `${origin}/api/public/wiki-items/${token}` : "";
-  const taskBacklogPath = `/app/portal/${slug}/tasks`;
+  const intakePagePath = `/app/portal/${slug}/wiki`;
   const example = token
     ? `curl -X POST ${wikiItemsEndpoint} \\\n  -H "Content-Type: application/json" \\\n  -d '{"type":"BUG","title":"Scorecard total is incorrect","description":"Steps to reproduce...","requestedBy":"Big Wedge app","externalRef":"bug_123","priority":"HIGH"}'`
     : "";
@@ -276,8 +276,8 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
             <p className="text-sm font-medium text-[var(--text-1)]">Client wiki intake API</p>
             <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-4)]">
               Give this client-scoped token to a trusted external system so it can push bugs,
-              feedback, tasks, or Wedge course requests into this wiki/client. The token resolves
-              to this wiki only, so submissions cannot create items for another client.
+              feedback, tasks, or Wedge course requests into this wiki/client. Bugs, feedback,
+              and task requests stay on the Wiki Requests page until an Admin promotes them.
             </p>
           </div>
           <ShareToggle
@@ -313,7 +313,7 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
                 {[
                   { label: "1 // CLIENT PUSHES", value: "Bug, feedback, or task JSON" },
                   { label: "2 // FOUNDRY ROUTES", value: "Token locks it to this Wiki" },
-                  { label: "3 // TEAM TRIAGES", value: "Portal Tasks → Backlog" },
+                  { label: "3 // TEAM TRIAGES", value: "Wiki Requests → promote later" },
                 ].map((step) => (
                   <div key={step.label} className="bg-white p-4">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)]" style={{ fontFamily: MONO }}>{step.label}</p>
@@ -325,14 +325,14 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
                 <div>
                   <p className="text-sm font-medium text-[var(--text-1)]">Where bugs, feedback, and tasks appear</p>
                   <p className="mt-0.5 text-[12px] text-[var(--text-4)]">
-                    Every accepted item becomes a Portal task in <strong>Backlog</strong> for this client, prefixed as <strong>[Bug]</strong>, <strong>[Feedback]</strong>, or <strong>[Task]</strong>.
+                    Every accepted item appears on the client Wiki <strong>Requests</strong> page first. Clients can add items, but only Admin/Super Admin users can promote them into Dev tasks later.
                   </p>
                 </div>
                 <a
-                  href={taskBacklogPath}
+                  href={intakePagePath}
                   className="inline-flex shrink-0 items-center gap-1.5 rounded-[7px] bg-[var(--brand-700)] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-800)]"
                 >
-                  Open task backlog
+                  Open Wiki requests
                   <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
                 </a>
               </div>
@@ -394,7 +394,7 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
             <div className="rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-1)] p-4">
               <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-4)]">Clean mapping</p>
               <dl className="mt-3 grid gap-3 text-[12px] md:grid-cols-2">
-                <div><dt className="font-semibold text-[var(--text-2)]">title</dt><dd className="text-[var(--text-4)]">Task title with the type prefix added automatically.</dd></div>
+                <div><dt className="font-semibold text-[var(--text-2)]">title</dt><dd className="text-[var(--text-4)]">Request title shown in the Wiki intake list; the type prefix is only added if promoted to a task.</dd></div>
                 <div><dt className="font-semibold text-[var(--text-2)]">description</dt><dd className="text-[var(--text-4)]">Task description for reproduction steps or context.</dd></div>
                 <div><dt className="font-semibold text-[var(--text-2)]">priority</dt><dd className="text-[var(--text-4)]">Maps to LOW, MEDIUM, or HIGH on the task.</dd></div>
                 <div><dt className="font-semibold text-[var(--text-2)]">externalRef</dt><dd className="text-[var(--text-4)]">Stored for dedupe so repeat pushes do not create duplicates.</dd></div>

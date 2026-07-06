@@ -2986,8 +2986,71 @@ export async function setClientDesignSystemGuidelinesEnabled(
 
 // ─── Client Wiki ──────────────────────────────────────────────────────────────
 
-import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiUserSummary } from "@/server/wiki";
-export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiUserSummary };
+import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiUserSummary } from "@/server/wiki";
+export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiUserSummary };
+
+
+export interface WikiIntakeItemPayload {
+  type?: "BUG" | "FEEDBACK" | "TASK";
+  title: string;
+  description?: string | null;
+  priority?: "LOW" | "MEDIUM" | "HIGH";
+  requestedBy?: string | null;
+  externalRef?: string | null;
+}
+
+export async function createWikiIntakeItem(
+  slug: string,
+  input: WikiIntakeItemPayload,
+): Promise<WikiIntakeItemRecord> {
+  return apiFetch<WikiIntakeItemRecord>(`/api/clients/${slug}/wiki/intake-items`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function createPublicWikiIntakeItem(
+  token: string,
+  input: WikiIntakeItemPayload,
+): Promise<WikiIntakeItemRecord> {
+  return apiFetch<WikiIntakeItemRecord>(`/api/wiki/${token}/intake-items`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateWikiIntakeItemApi(
+  slug: string,
+  id: string,
+  input: Partial<WikiIntakeItemPayload> & { status?: "NEW" | "TRIAGED" | "PROMOTED" | "CLOSED" },
+): Promise<WikiIntakeItemRecord> {
+  return apiFetch<WikiIntakeItemRecord>(`/api/clients/${slug}/wiki/intake-items/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteWikiIntakeItemApi(slug: string, id: string): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/intake-items/${id}`, { method: "DELETE" });
+}
+
+export async function promoteWikiIntakeItemApi(
+  slug: string,
+  id: string,
+  input: { assigneeIds?: string[] } = {},
+): Promise<{ item: WikiIntakeItemRecord; taskId: string }> {
+  return apiFetch<{ item: WikiIntakeItemRecord; taskId: string }>(
+    `/api/clients/${slug}/wiki/intake-items/${id}/promote`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
 
 export async function getClientWiki(slug: string): Promise<WikiDTO> {
   return apiFetch<WikiDTO>(`/api/clients/${slug}/wiki`);
