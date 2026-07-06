@@ -76,6 +76,8 @@ const PUBLIC_API_PATHS = [
   // Public client onboarding flow — the URL token in /api/onboarding/[token]
   // is its own auth.
   "/api/onboarding",
+  // Public DevSignal candidate flow — token in /api/vet/[token] is its own auth.
+  "/api/vet",
   "/api/internal/resolve-host",
   // Public Pulse lite scanner (embeddable widget). SSRF-guarded + rate-limited
   // inside the handlers; no API key. CORS '*' (below) lets it run cross-origin.

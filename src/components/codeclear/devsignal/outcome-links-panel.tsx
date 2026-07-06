@@ -1,0 +1,107 @@
+"use client";
+
+import { useState } from "react";
+import { useCodeClearCandidate } from "@/hooks/use-codeclear";
+import { useNotice } from "./notice";
+import { useCreateDevSignalOutcomeLink } from "@/hooks/use-devsignal";
+import type { DevSignalOutcomeLinkDTO } from "@/types/devsignal";
+
+/**
+ * Links an assessment to a real delivery Placement — the moat / future training
+ * label. Most vetting tools never see the outcome; Foundry does. We capture the
+ * linkage now; recalibration is deliberately NOT built yet.
+ */
+export function OutcomeLinksPanel({
+  assessmentId,
+  candidateId,
+  links,
+}: {
+  assessmentId: string;
+  candidateId: string;
+  links: DevSignalOutcomeLinkDTO[];
+}) {
+  const { showOk, showErr, noticeEl } = useNotice();
+  const candidate = useCodeClearCandidate(candidateId);
+  const create = useCreateDevSignalOutcomeLink(assessmentId);
+  const [placementId, setPlacementId] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const placements = candidate.data?.candidate.placements ?? [];
+
+  const submit = async () => {
+    try {
+      await create.mutateAsync({
+        assessmentId,
+        placementId: placementId || undefined,
+        source: "manual",
+        notes: notes || undefined,
+      });
+      showOk("Outcome linked", "Captured for future score validation.");
+      setNotes("");
+      setPlacementId("");
+    } catch (e) {
+      showErr("Could not link", e instanceof Error ? e.message : undefined);
+    }
+  };
+
+  const placementLabel = (id: string | null) => {
+    if (!id) return "General (no placement)";
+    const p = placements.find((x) => x.id === id);
+    return p ? `${p.clientName} · ${p.projectName}` : id;
+  };
+
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white p-5">
+      <p className="font-mono text-xs uppercase tracking-wider text-neutral-400">06 // Delivery outcomes</p>
+      <p className="mt-1 text-xs text-neutral-400">
+        Link this assessment to real project delivery. This is the data loop that lets the score be
+        validated later — recalibration itself is not built yet.
+      </p>
+
+      {links.length > 0 && (
+        <ul className="mt-3 space-y-2">
+          {links.map((l) => (
+            <li key={l.id} className="rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2 text-sm">
+              <p className="font-medium text-neutral-800">{placementLabel(l.placementId)}</p>
+              {l.notes && <p className="text-xs text-neutral-500">{l.notes}</p>}
+              <p className="font-mono text-[10px] uppercase tracking-wider text-neutral-400">
+                {l.source ?? "manual"}
+                {l.linkedAt ? ` · ${new Date(l.linkedAt).toLocaleDateString()}` : ""}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="mt-4 space-y-2 border-t border-neutral-100 pt-4">
+        <select
+          value={placementId}
+          onChange={(e) => setPlacementId(e.target.value)}
+          className="app-select w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+        >
+          <option value="">General (no specific placement)</option>
+          {placements.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.clientName} · {p.projectName}
+            </option>
+          ))}
+        </select>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={2}
+          placeholder="Delivery notes (e.g. retained, client-rated 5/5, shipped on time)…"
+          className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        />
+        <button
+          onClick={submit}
+          disabled={create.isPending}
+          className="w-full rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium hover:bg-neutral-50 disabled:opacity-50"
+        >
+          {create.isPending ? "Linking…" : "Link delivery outcome"}
+        </button>
+      </div>
+      {noticeEl}
+    </div>
+  );
+}

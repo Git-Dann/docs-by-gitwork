@@ -59,6 +59,8 @@ function buildCandidateWhere(
 
   return {
     workspaceId,
+    // DevSignal isolation: in-vetting EXTERNAL candidates never appear in Code.
+    NOT: { origin: "EXTERNAL", published: false },
     ...(status ? { status: status as PrismaPipelineStatus } : {}),
     ...(tier ? { tier: tier as PrismaCodeClearTier } : {}),
     ...(stack
