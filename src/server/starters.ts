@@ -20,8 +20,6 @@ export interface StarterContent {
   install?: string[];
   techStack?: string[];
   promptText?: string;
-  /** Featured — pinned to the top of the library with a star. */
-  featured?: boolean;
   /** Public "view & use" reference — the upstream this starter is built from. */
   sourceLabel?: string;
   /** Public link to the source (direct repo, or a GitHub search when the exact repo isn't pinned). */
@@ -62,13 +60,13 @@ type StarterRow = {
   status: StarterStatus;
   tags: string[];
   content: unknown;
+  featured: boolean;
   isDefault: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
 
 function serializeListItem(s: StarterRow): StarterListItem {
-  const content = s.content && typeof s.content === "object" ? (s.content as StarterContent) : null;
   return {
     id: s.id,
     name: s.name,
@@ -77,7 +75,7 @@ function serializeListItem(s: StarterRow): StarterListItem {
     type: s.type,
     status: s.status,
     tags: s.tags,
-    featured: Boolean(content?.featured),
+    featured: s.featured,
     isDefault: s.isDefault,
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
@@ -150,11 +148,9 @@ export async function listStarters(filters?: {
       ...(filters?.type && { type: filters.type }),
       ...(filters?.includeArchived ? {} : { isArchived: false }),
     },
-    orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
+    orderBy: [{ featured: "desc" }, { isDefault: "desc" }, { createdAt: "desc" }],
   });
-  const items = rows.map(serializeListItem);
-  // Featured starters lead the list (stable sort preserves the DB order within each group).
-  return items.sort((a, b) => Number(b.featured) - Number(a.featured));
+  return rows.map(serializeListItem);
 }
 
 export async function getStarter(id: string): Promise<StarterRecord | null> {
@@ -206,6 +202,7 @@ export async function updateStarter(
     status?: StarterStatus;
     tags?: string[];
     content?: StarterContent | null;
+    featured?: boolean;
     isArchived?: boolean;
   },
 ): Promise<StarterRecord | null> {
@@ -224,6 +221,7 @@ export async function updateStarter(
       ...(data.content !== undefined && {
         content: (data.content ?? Prisma.JsonNull) as Prisma.InputJsonValue | typeof Prisma.JsonNull,
       }),
+      ...(data.featured !== undefined && { featured: data.featured }),
       ...(data.isArchived !== undefined && { isArchived: data.isArchived }),
     },
   });

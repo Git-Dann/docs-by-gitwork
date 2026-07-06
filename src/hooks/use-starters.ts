@@ -89,6 +89,22 @@ export function useDeleteStarter() {
   });
 }
 
+export function useToggleStarterFeatured() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, featured }: { id: string; featured: boolean }) =>
+      apiFetch<{ starter: StarterRecord }>(`/api/starters/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ featured }),
+      }).then((r) => r.starter),
+    onSuccess: (s) => {
+      qc.invalidateQueries({ queryKey: ["starters", "list"] });
+      qc.invalidateQueries({ queryKey: ["starters", s.id] });
+    },
+  });
+}
+
 export function useDuplicateStarter() {
   const qc = useQueryClient();
   return useMutation({

@@ -230,7 +230,7 @@ export function StarterForm({ starter, onSaved }: { starter?: StarterRecord; onS
           type="button"
           variant="secondary"
           size="md"
-          onClick={() => router.push(starter ? `/app/starters/${starter.id}` : "/app/starters")}
+          onClick={() => router.push("/app/starters")}
         >
           Cancel
         </Button>
