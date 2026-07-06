@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
+import { assertCron } from "@/server/auth/cron";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { runAnalytics, type AnalyticsConnectionConfig } from "@/server/support-analytics";
@@ -11,11 +12,7 @@ export const maxDuration = 120;
 // report has reliable, historical month-over-month trends. CRON_SECRET-guarded.
 export async function GET(request: NextRequest) {
   try {
-    const secret = process.env.CRON_SECRET;
-    if (secret) {
-      const authHeader = request.headers.get("Authorization");
-      if (authHeader !== `Bearer ${secret}`) return apiError("Unauthorized", 401);
-    }
+    assertCron(request);
 
     const workspace = await prisma.workspace.findFirst({
       where: { slug: DEFAULT_WORKSPACE_SLUG },

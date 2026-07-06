@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { apiOk, apiError, fromError } from "@/lib/api-response";
+import { apiOk, fromError } from "@/lib/api-response";
+import { assertCron } from "@/server/auth/cron";
 import { listDueMonitorIds, triggerMonitorScan } from "@/server/pulse-agents/monitor";
 
 export const dynamic = "force-dynamic";
@@ -16,11 +17,7 @@ const MONITORS_PER_RUN = 3;
 
 export async function GET(request: NextRequest) {
   try {
-    const secret = process.env.CRON_SECRET;
-    if (secret) {
-      const authHeader = request.headers.get("Authorization");
-      if (authHeader !== `Bearer ${secret}`) return apiError("Unauthorized", 401);
-    }
+    assertCron(request);
 
     const due = await listDueMonitorIds(Date.now(), MONITORS_PER_RUN);
     // Run the due monitors concurrently within the function budget.

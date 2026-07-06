@@ -21,13 +21,18 @@ export function wikiAccessCookieName(wikiId: string): string {
 export const WIKI_ACCESS_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
 function accessSecret(): string {
-  return (
-    process.env.ENCRYPTION_KEY ??
-    process.env.NEXTAUTH_SECRET ??
-    process.env.API_KEY ??
-    process.env.NEXT_PUBLIC_API_KEY ??
-    "foundry-wiki-access-fallback-secret"
-  );
+  // Only real server secrets — never API_KEY / NEXT_PUBLIC_API_KEY (the latter is
+  // inlined into the client bundle, so signing with it would be forgeable). Fail
+  // CLOSED if neither is set: the old hardcoded string fallback
+  // ("foundry-wiki-access-fallback-secret") meant any misconfigured deploy signed
+  // wiki cookies with a public, guessable key → forgeable client-wiki sessions.
+  const secret = process.env.ENCRYPTION_KEY ?? process.env.NEXTAUTH_SECRET;
+  if (!secret) {
+    throw new Error(
+      "No signing secret for wiki access — set ENCRYPTION_KEY (or NEXTAUTH_SECRET).",
+    );
+  }
+  return secret;
 }
 
 function constantTimeEqual(a: string, b: string): boolean {
