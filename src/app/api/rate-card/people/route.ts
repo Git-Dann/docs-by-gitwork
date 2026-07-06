@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { serializeRateCardPerson } from "@/server/rate-card";
 import { rateCardPersonCreateSchema } from "@/server/validators";
-import { canViewRateCard, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertAtLeastAdmin, canViewRateCard, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    assertAtLeastAdmin(await getEffectiveUserOrNull(request));
     const body = rateCardPersonCreateSchema.parse(await request.json());
     const { workspace } = await ensureBaseRecords();
 

@@ -13,6 +13,7 @@ import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -36,6 +37,7 @@ const patchSchema = z.object({
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
+    assertAtLeastAdmin(await getEffectiveUserOrNull(request));
     const { workspace } = await ensureBaseRecords();
     const { id } = await context.params;
     const body = patchSchema.parse(await request.json());
@@ -73,8 +75,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 }
 
-export async function DELETE(_request: NextRequest, context: RouteContext) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
+    assertAtLeastAdmin(await getEffectiveUserOrNull(request));
     const { workspace } = await ensureBaseRecords();
     const { id } = await context.params;
 
