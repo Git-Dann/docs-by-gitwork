@@ -246,6 +246,7 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const courseEndpoint = token ? `${origin}/api/public/course-requests/${token}` : "";
   const wikiItemsEndpoint = token ? `${origin}/api/public/wiki-items/${token}` : "";
+  const taskBacklogPath = `/app/portal/${slug}/tasks`;
   const example = token
     ? `curl -X POST ${wikiItemsEndpoint} \\\n  -H "Content-Type: application/json" \\\n  -d '{"type":"BUG","title":"Scorecard total is incorrect","description":"Steps to reproduce...","requestedBy":"Big Wedge app","externalRef":"bug_123","priority":"HIGH"}'`
     : "";
@@ -306,7 +307,51 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
             </button>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-5">
+            <div className="overflow-hidden rounded-[12px] border border-[var(--border-1)] bg-[var(--surface-1)]">
+              <div className="grid gap-px bg-[var(--border-1)] md:grid-cols-3">
+                {[
+                  { label: "1 // CLIENT PUSHES", value: "Bug, feedback, or task JSON" },
+                  { label: "2 // FOUNDRY ROUTES", value: "Token locks it to this Wiki" },
+                  { label: "3 // TEAM TRIAGES", value: "Portal Tasks → Backlog" },
+                ].map((step) => (
+                  <div key={step.label} className="bg-white p-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)]" style={{ fontFamily: MONO }}>{step.label}</p>
+                    <p className="mt-1 text-[13px] font-medium text-[var(--text-1)]">{step.value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-1)] bg-white px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-[var(--text-1)]">Where bugs, feedback, and tasks appear</p>
+                  <p className="mt-0.5 text-[12px] text-[var(--text-4)]">
+                    Every accepted item becomes a Portal task in <strong>Backlog</strong> for this client, prefixed as <strong>[Bug]</strong>, <strong>[Feedback]</strong>, or <strong>[Task]</strong>.
+                  </p>
+                </div>
+                <a
+                  href={taskBacklogPath}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-[7px] bg-[var(--brand-700)] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-800)]"
+                >
+                  Open task backlog
+                  <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+                </a>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              {[
+                { label: "BUG", title: "Creates a bug card", copy: "Use for defects, regressions, or reproducible issues." },
+                { label: "FEEDBACK", title: "Creates a feedback card", copy: "Use for client/customer comments or product suggestions." },
+                { label: "TASK", title: "Creates a task card", copy: "Use for small requested work items that need triage." },
+              ].map((item) => (
+                <div key={item.label} className="rounded-[10px] border border-[var(--border-1)] bg-white p-4">
+                  <span className="rounded-full bg-[var(--brand-50)] px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-[var(--brand-700)]">{item.label}</span>
+                  <p className="mt-2 text-[13px] font-semibold text-[var(--text-1)]">{item.title}</p>
+                  <p className="mt-1 text-[12px] leading-5 text-[var(--text-4)]">{item.copy}</p>
+                </div>
+              ))}
+            </div>
+
             {[
               { key: "items", label: "Bugs / feedback / tasks", method: "POST", value: wikiItemsEndpoint },
               { key: "courses", label: "Wedge course requests", method: "POST", value: courseEndpoint },
@@ -342,8 +387,18 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
               </div>
               <pre className="overflow-x-auto rounded-[8px] border border-[rgba(0,0,0,0.1)] bg-[#0f1115] px-3 py-2.5 text-[11.5px] leading-5 text-[#d6deeb]" style={{ fontFamily: MONO }}>{example}</pre>
               <p className="mt-1.5 text-[11px] leading-5 text-[var(--text-4)]">
-                Bugs, feedback, and tasks land in the Portal task backlog. Send one object or {`{"items":[…]}`} for a batch of up to 200.
+                Required: <span style={{ fontFamily: MONO }}>title</span>. Optional: <span style={{ fontFamily: MONO }}>type</span>, <span style={{ fontFamily: MONO }}>description</span>, <span style={{ fontFamily: MONO }}>priority</span>, <span style={{ fontFamily: MONO }}>requestedBy</span>, and <span style={{ fontFamily: MONO }}>externalRef</span>. Send one object or {`{"items":[…]}`} for a batch of up to 200.
               </p>
+            </div>
+
+            <div className="rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-1)] p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-4)]">Clean mapping</p>
+              <dl className="mt-3 grid gap-3 text-[12px] md:grid-cols-2">
+                <div><dt className="font-semibold text-[var(--text-2)]">title</dt><dd className="text-[var(--text-4)]">Task title with the type prefix added automatically.</dd></div>
+                <div><dt className="font-semibold text-[var(--text-2)]">description</dt><dd className="text-[var(--text-4)]">Task description for reproduction steps or context.</dd></div>
+                <div><dt className="font-semibold text-[var(--text-2)]">priority</dt><dd className="text-[var(--text-4)]">Maps to LOW, MEDIUM, or HIGH on the task.</dd></div>
+                <div><dt className="font-semibold text-[var(--text-2)]">externalRef</dt><dd className="text-[var(--text-4)]">Stored for dedupe so repeat pushes do not create duplicates.</dd></div>
+              </dl>
             </div>
 
             <div className="flex items-center justify-between gap-3 border-t border-[var(--border-1)] pt-4">
