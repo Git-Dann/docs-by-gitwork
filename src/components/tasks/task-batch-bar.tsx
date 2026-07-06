@@ -5,6 +5,7 @@ import {
   UserPlusIcon,
   FlagIcon,
   Squares2X2Icon,
+  CalendarDaysIcon,
   TrashIcon,
   XMarkIcon,
   CheckIcon,
@@ -104,6 +105,7 @@ export function TaskBatchBar({
 
   const [assignSel, setAssignSel] = useState<Set<string>>(new Set());
   const [assignQuery, setAssignQuery] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const filteredMembers = assignQuery.trim()
     ? members.filter((m) => (m.name ?? "").toLowerCase().includes(assignQuery.trim().toLowerCase()))
@@ -130,6 +132,12 @@ export function TaskBatchBar({
     onClear();
   }
 
+  async function applyDueDate(close: () => void, value: string | null) {
+    await apply({ dueDate: value });
+    setDueDate("");
+    close();
+  }
+
   return (
     <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-[12px] border border-[var(--border-2)] bg-white px-3 py-2 shadow-[0_12px_36px_-6px_rgba(0,0,0,0.30)]">
       <span className="whitespace-nowrap text-sm font-semibold text-[var(--brand-800)]">{n} selected</span>
@@ -145,6 +153,10 @@ export function TaskBatchBar({
       <span className="mx-0.5 h-5 w-px bg-[var(--border-2)]" />
 
       <div className="flex items-center gap-1.5">
+        <span className="hidden text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)] md:inline">
+          Bulk edit
+        </span>
+
         {/* Assign */}
         <Pop label="Assign" icon={<UserPlusIcon className="h-3.5 w-3.5" />} disabled={busy}>
           {(close) => (
@@ -279,6 +291,41 @@ export function TaskBatchBar({
                   <span className="truncate">{b.name}</span>
                 </MenuButton>
               ))}
+            </div>
+          )}
+        </Pop>
+
+        {/* Due date */}
+        <Pop label="Due date" icon={<CalendarDaysIcon className="h-3.5 w-3.5" />} disabled={busy}>
+          {(close) => (
+            <div className="w-56 space-y-2 p-2">
+              <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">
+                Set due date
+              </label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-1.5 text-xs text-[var(--text-1)] outline-none focus:border-[var(--brand-700)]"
+              />
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void applyDueDate(close, null)}
+                  className="rounded-[6px] px-2 py-1 text-[11px] font-semibold text-[var(--text-3)] hover:bg-[var(--surface-1)] disabled:opacity-50"
+                >
+                  Clear date
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || !dueDate}
+                  onClick={() => void applyDueDate(close, dueDate)}
+                  className="rounded-[6px] bg-[var(--brand-700)] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[var(--brand-800)] disabled:opacity-50"
+                >
+                  Apply
+                </button>
+              </div>
             </div>
           )}
         </Pop>

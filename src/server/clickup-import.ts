@@ -128,6 +128,7 @@ export interface ImportReport {
     tasks: number;
     subtasks: number;
     assignments: number;
+    staleMarkedDone: number;
   };
   /** ClickUp folders we couldn't match to a WorkspaceClient (need an alias or rename). */
   unmatchedFolders: string[];
@@ -156,7 +157,9 @@ const MILESTONE_LIST = /milestone/i;
  * folder name doesn't normalize-match the client name. Populated after the first
  * dry-run surfaces any unmatched folders. Empty = pure name matching.
  */
-const FOLDER_ALIASES: Record<string, string> = {};
+const FOLDER_ALIASES: Record<string, string> = {
+  "big wedge": "wedge",
+};
 
 export function normalize(value: string): string {
   return value
@@ -566,6 +569,11 @@ export interface RunOptions {
   dryRun?: boolean;
   /** Limit the run to a single WorkspaceClient (by slug) — useful for piloting. */
   clientSlug?: string;
+  /**
+   * Mark active Portal tasks linked to ClickUp as DONE when they no longer exist
+   * in ClickUp's active task set (completed, closed, shipped, merged, deleted, etc.).
+   */
+  closeStale?: boolean;
 }
 
 export async function runClickupImport(opts: RunOptions = {}): Promise<ImportReport> {
@@ -620,12 +628,23 @@ export async function runClickupImport(opts: RunOptions = {}): Promise<ImportRep
     dryRun,
     workspace: DEFAULT_WORKSPACE_SLUG,
     spaceName: clientSpace.name,
-    totals: { foldersSeen: 0, clientsMatched: 0, blocks: 0, milestones: 0, tasks: 0, subtasks: 0, assignments: 0 },
+    totals: {
+      foldersSeen: 0,
+      clientsMatched: 0,
+      blocks: 0,
+      milestones: 0,
+      tasks: 0,
+      subtasks: 0,
+      assignments: 0,
+      staleMarkedDone: 0,
+    },
     unmatchedFolders: [],
     unmatchedAssignees: [],
     knownButMissingUsers: [],
     clients: [],
   };
+
+  const activeClickupIdsByClient = new Map<string, Set<string>>();
 
   for (const folder of folders) {
     report.totals.foldersSeen++;
@@ -642,6 +661,8 @@ export async function runClickupImport(opts: RunOptions = {}): Promise<ImportRep
     if (opts.clientSlug && matched.slug !== opts.clientSlug) continue;
 
     report.totals.clientsMatched++;
+    const activeClickupIds = new Set<string>();
+    activeClickupIdsByClient.set(matched.id, activeClickupIds);
     const cReport: ClientReport = {
       folderId: folder.id,
       folderName: folder.name,
@@ -707,6 +728,7 @@ export async function runClickupImport(opts: RunOptions = {}): Promise<ImportRep
             lReport.doneSkipped++;
             return false;
           }
+          activeClickupIds.add(x.t.id);
           return true;
         });
 
@@ -767,6 +789,37 @@ export async function runClickupImport(opts: RunOptions = {}): Promise<ImportRep
     report.totals.tasks += cReport.tasks;
     report.totals.subtasks += cReport.subtasks;
     report.totals.assignments += cReport.assignments;
+  }
+
+  if (opts.closeStale) {
+    for (const [clientId, activeClickupIds] of activeClickupIdsByClient) {
+      const stale = await prisma.task.findMany({
+        where: {
+          workspaceId: workspace.id,
+          clientId,
+          clickupId: { not: null },
+          archivedAt: null,
+          status: { not: TaskStatus.DONE },
+        },
+        select: { id: true, clickupId: true, startedAt: true },
+      });
+      const staleTasks = stale.filter((task) => task.clickupId && !activeClickupIds.has(task.clickupId));
+
+      report.totals.staleMarkedDone += staleTasks.length;
+      if (!dryRun && staleTasks.length) {
+        const now = new Date();
+        for (const task of staleTasks) {
+          await prisma.task.update({
+            where: { id: task.id },
+            data: {
+              status: TaskStatus.DONE,
+              startedAt: task.startedAt ?? now,
+              completedAt: now,
+            },
+          });
+        }
+      }
+    }
   }
 
   report.unmatchedAssignees = [...ctx.unmatchedAssignees].sort();

@@ -4,7 +4,7 @@
  * Requires the CLICKUP_TOKEN env var (a ClickUp personal token, `pk_…`).
  *
  * Body (all optional):
- *   { "dryRun": true,  "clientSlug": "ace-grading" }
+ *   { "dryRun": true,  "clientSlug": "ace-grading", "closeStale": true }
  *
  * dryRun DEFAULTS TO TRUE — the first call reads the whole ClickUp hierarchy and
  * returns per-client counts (blocks / milestones / active tasks / subtasks) plus
@@ -12,6 +12,8 @@
  * { "dryRun": false } to commit. Idempotent (keyed on clickupId) — safe to re-run.
  *
  * Optionally pass clientSlug to pilot a single client first.
+ * Pass closeStale:true to mark ClickUp-linked Portal tasks DONE when they no
+ * longer exist in ClickUp's active task set (completed/closed/deleted upstream).
  *
  * Prerequisite: run /api/dev/seed-team once so the dev roster exists as Foundry
  * Users — otherwise assignees resolve to "knownButMissingUsers" and tasks import
@@ -39,15 +41,17 @@ export async function POST(req: Request) {
       dryRun?: boolean;
       clientSlug?: string;
       source?: "csv" | "api";
+      closeStale?: boolean;
     };
 
     const dryRun = body.dryRun !== false; // default true unless explicitly false
     const clientSlug = typeof body.clientSlug === "string" ? body.clientSlug : undefined;
+    const closeStale = body.closeStale === true;
 
     // Default to the CSV-export path (no token). source:"api" uses CLICKUP_TOKEN.
     if (body.source === "api") {
       if (!process.env.CLICKUP_TOKEN) return apiError("CLICKUP_TOKEN env var is not set", 400);
-      return apiOk(await runClickupImport({ dryRun, clientSlug }));
+      return apiOk(await runClickupImport({ dryRun, clientSlug, closeStale }));
     }
 
     return apiOk(await runCsvImport({ dryRun, clientSlug }));
