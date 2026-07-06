@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDaysIcon,
   ChevronLeftIcon,
@@ -114,6 +114,10 @@ function readSelectedCalendars(): Set<string> {
   } catch {
     return new Set();
   }
+}
+
+function hasSelectedCalendarPreference(): boolean {
+  return typeof window !== "undefined" && window.localStorage.getItem(SELECTED_CALENDARS_KEY) !== null;
 }
 
 // Stable per-member colour for overlaid calendar events.
@@ -304,7 +308,21 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
 
   // ── Google Calendar overlay ──
   const connections = useCalendarConnections();
+  const connectionMembers = useMemo(() => connections.data?.members ?? [], [connections.data?.members]);
   const [selectedCalendars, setSelectedCalendars] = useState<Set<string>>(readSelectedCalendars);
+  useEffect(() => {
+    const self = connectionMembers.find((m) => m.isSelf);
+    if (!self || hasSelectedCalendarPreference()) return;
+    setSelectedCalendars((prev) => {
+      if (prev.has(self.id)) return prev;
+      const next = new Set(prev);
+      next.add(self.id);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(SELECTED_CALENDARS_KEY, JSON.stringify(Array.from(next)));
+      }
+      return next;
+    });
+  }, [connectionMembers]);
   const selectedIds = Array.from(selectedCalendars);
   const teamEvents = useTeamCalendarEvents(year, month, selectedIds);
 
@@ -371,8 +389,6 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
     );
   })();
   const visibleClientCount = timelineClients.filter((c) => !hiddenClients.has(c.id)).length;
-
-  const connectionMembers = connections.data?.members ?? [];
 
   const monthLabel = MONTH_FORMATTER.format(new Date(Date.UTC(year, month - 1, 1)));
 
