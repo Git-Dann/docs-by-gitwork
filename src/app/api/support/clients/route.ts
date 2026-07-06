@@ -1,14 +1,15 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
-import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertCan, canManageSupport, getEffectiveUserOrNull, requireAuthedUser } from "@/server/auth/effective-user";
 import { listSupportClients, createSupportClient, seedDefaultWorkflowRules } from "@/server/support";
 import { supportClientCreateSchema } from "@/server/validators";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const clients = await listSupportClients();
+    const user = await requireAuthedUser(request);
+    const clients = await listSupportClients(user);
     return apiOk({ clients });
   } catch (error) {
     return fromError(error);

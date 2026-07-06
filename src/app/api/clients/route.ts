@@ -37,13 +37,16 @@ export async function GET(request: NextRequest) {
     // (no per-user identity) → no financials, full unscoped list (as before).
     const user = await getEffectiveUserOrNull(request);
     const includeFinancials = user ? canViewClientFinancials(user) : false;
+    const includePulse = user
+      ? isSuperAdmin(user.role) || user.permissions.includes("pulse")
+      : true;
 
     // Leads are Super-Admin-only — never return them to anyone else, even by direct query.
     if (status === "LEAD" && !(user && isSuperAdmin(user.role))) {
       return apiOk({ clients: [] });
     }
 
-    const result = await listDerivedClients({ search, status, includeFinancials });
+    const result = await listDerivedClients({ search, status, includeFinancials, includePulse });
 
     if (user && !canSeeAllClients(user)) {
       const allowed = new Set(await assignedClientIds(user));

@@ -405,7 +405,7 @@ function ClientCard({
   onToggleSelect?: (slug: string) => void;
 }) {
   const router = useRouter();
-  const { canViewClientFinancials } = usePermissions();
+  const { canViewClientFinancials, canViewPulse } = usePermissions();
   const devCount = client.devCount ?? 0;
   // Retainer burn-down (gated) — a thin bar under the metrics strip; red once over allowance.
   const retainerAllowance = client.retainerDays ?? 0;
@@ -469,7 +469,7 @@ function ClientCard({
               }}
             />
           )}
-          {typeof client.pulseHealthScore === "number" && client.pulseScanId && (
+          {canViewPulse && typeof client.pulseHealthScore === "number" && client.pulseScanId && (
             <Link
               href={`/app/pulse/${client.pulseScanId}`}
               title={`Pulse health score: ${client.pulseHealthScore}/100`}

@@ -636,6 +636,9 @@ export async function listDerivedClients(filters?: {
   search?: string;
   /** Filter by client status. Default: ACTIVE only. Pass "ALL" to include every status. */
   status?: WorkspaceClientStatus | "ALL";
+  /** Include Pulse-derived health fields/cards. The caller should pass false when the
+   *  viewer lacks the Pulse module permission. */
+  includePulse?: boolean;
   /** Compute + include the sensitive monthlyCost/workingDays fields. The caller MUST have
    *  verified `clients.viewFinancials` (or Super Admin) first. Default false. */
   includeFinancials?: boolean;
@@ -643,6 +646,7 @@ export async function listDerivedClients(filters?: {
   const { workspace, manualClients, hiddenSlugs, proposals } = await loadClientCollections();
   const search = filters?.search?.trim().toLowerCase() ?? "";
   const statusFilter = filters?.status ?? "ACTIVE";
+  const includePulse = filters?.includePulse ?? true;
   const includeFinancials = filters?.includeFinancials ?? false;
 
   const merged = mergeClients(manualClients, proposals, hiddenSlugs);
@@ -665,8 +669,9 @@ export async function listDerivedClients(filters?: {
     }),
     // Assigned-dev count per client (always shown on cards).
     computeClientDevCounts(workspace.id, manualIds),
-    // Latest completed Pulse scan health per client (always shown — not financial).
-    computeClientPulseHealth(workspace.id, manualIds),
+    // Latest completed Pulse scan health per client. Hidden when the caller lacks
+    // the Pulse module permission, so Portal does not leak Pulse cards/links.
+    includePulse ? computeClientPulseHealth(workspace.id, manualIds) : Promise.resolve(new Map()),
     // Overdue open-task count per client — feeds the health roll-up (not financial).
     computeClientOverdueTaskCounts(workspace.id, manualIds),
     // Sensitive monthly cost + working days — only for authorized viewers.

@@ -21,6 +21,9 @@ import type {
 } from "@/types/support";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import type { EffectiveUser } from "@/server/auth/effective-user";
+import { canSeeAllClients, ForbiddenError } from "@/server/auth/effective-user";
+import { assignedClientIds } from "@/server/tasks";
 import { encrypt, decrypt } from "@/lib/encryption";
 import type {
   SupportClientStatus,
@@ -473,12 +476,29 @@ export async function getWorkspaceId(): Promise<string> {
   return workspace.id;
 }
 
+async function supportClientScopeWhere(user: EffectiveUser): Promise<Prisma.SupportClientWhereInput> {
+  if (canSeeAllClients(user)) return { workspaceId: user.workspaceId };
+  const clientIds = await assignedClientIds(user);
+  return {
+    workspaceId: user.workspaceId,
+    workspaceClientId: { in: clientIds.length ? clientIds : ["__none__"] },
+  };
+}
+
+async function assertSupportClientInScope(user: EffectiveUser, supportClientId: string): Promise<void> {
+  const row = await prisma.supportClient.findFirst({
+    where: { id: supportClientId, ...(await supportClientScopeWhere(user)) },
+    select: { id: true },
+  });
+  if (!row) throw new ForbiddenError("Care client not found or outside your assigned clients");
+}
+
 // ─── SupportClient CRUD ───────────────────────────────────────────────────────
 
-export async function listSupportClients(): Promise<SupportClient[]> {
+export async function listSupportClients(user?: EffectiveUser): Promise<SupportClient[]> {
   const workspaceId = await getWorkspaceId();
   const rows = await prisma.supportClient.findMany({
-    where: { workspaceId },
+    where: user ? await supportClientScopeWhere(user) : { workspaceId },
     orderBy: { name: "asc" },
     include: {
       _count: { select: { conversations: { where: { unread: true } } } },
@@ -533,7 +553,8 @@ export async function getSupportDashboardSummary(options?: {
   };
 }
 
-export async function getSupportClient(clientId: string): Promise<SupportClient> {
+export async function getSupportClient(clientId: string, user?: EffectiveUser): Promise<SupportClient> {
+  if (user) await assertSupportClientInScope(user, clientId);
   const row = await prisma.supportClient.findUniqueOrThrow({
     where: { id: clientId },
   });

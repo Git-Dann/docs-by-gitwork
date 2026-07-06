@@ -59,6 +59,7 @@ import {
   useUpdateClientProductTeam,
 } from "@/hooks/use-proposals";
 import { useCreateTask, useDeleteTask, useTasks } from "@/hooks/use-tasks";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import { detectPlatformIcon } from "@/lib/platform-icons";
 import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting, type ScribeCandidate, type ScribeActionItem } from "@/lib/api";
@@ -306,6 +307,7 @@ export function ClientDetail({ slug }: { slug: string }) {
   const createDesignMutation = useCreateClientDesign(slug);
   const slackActivity = useClientSlackActivity(slug);
   const setStatus = useSetClientStatus(slug);
+  const { canViewPulse } = usePermissions();
   // Pause (→ INACTIVE) modal state.
   const [pausing, setPausing] = useState(false);
   const [resumeAtInput, setResumeAtInput] = useState("");
@@ -698,11 +700,11 @@ export function ClientDetail({ slug }: { slug: string }) {
       {!isLead && (
         <>
       {/* ── 02-06 // STATS ── */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+      <div className={cn("grid grid-cols-2 gap-3 sm:gap-4", canViewPulse ? "lg:grid-cols-5" : "lg:grid-cols-4")}>
         <StatCard number="02" label="DOCS" value={proposals.length} />
         <StatCard number="03" label="PLATFORMS" value={platforms.length} />
         <StatCard number="04" label="DESIGNS" value={designs.length} />
-        <StatCard number="05" label="PULSE SCANS" value={pulseScans.length} />
+        {canViewPulse ? <StatCard number="05" label="PULSE SCANS" value={pulseScans.length} /> : null}
         <StatCard
           number="06"
           label="DEVS"
@@ -1139,6 +1141,7 @@ export function ClientDetail({ slug }: { slug: string }) {
 
 
         {/* 15 // PULSE SCANS */}
+        {canViewPulse ? (
         <section className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
@@ -1216,6 +1219,7 @@ export function ClientDetail({ slug }: { slug: string }) {
               </div>
             )}
           </section>
+        ) : null}
 
       </div>
 

@@ -23,7 +23,7 @@ import { cn } from "@/lib/format";
 import { useAccount } from "@/hooks/use-account";
 import { isAtLeast } from "@/types/auth";
 import { useViewAs, type ViewAsRole, type ViewAsUser } from "@/lib/view-as";
-import { listTeamMembers } from "@/lib/api";
+import { listSupportClients, listTeamMembers } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { AiSpendCard } from "@/components/ai-spend-card";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -59,6 +59,20 @@ export function AppShell({
   const account = useAccount();
   const isAdmin = isAtLeast(account.data?.role ?? "", "ADMIN");
   const { viewAs, viewAsUser, setViewAs, setViewAsUser, effectivePermissions, previewLabel } = useViewAs(isAdmin);
+  const realPermissions = useMemo(() => account.data?.permissions ?? [], [account.data?.permissions]);
+  const isFullAccessAdmin = isAdmin && realPermissions.length === 0;
+  const shouldScopeCareNav =
+    Boolean(account.data) &&
+    realPermissions.includes("support") &&
+    !realPermissions.includes("seeAllClients") &&
+    !isFullAccessAdmin;
+  const scopedCareClients = useQuery({
+    queryKey: ["support", "clients", "nav-scope"],
+    queryFn: () => listSupportClients(),
+    enabled: shouldScopeCareNav,
+    staleTime: 60_000,
+  });
+  const hideCareForScopedUser = shouldScopeCareNav && (scopedCareClients.data?.clients.length ?? 0) === 0;
 
   // Close drawer on route change
   useEffect(() => {
@@ -132,10 +146,12 @@ export function AppShell({
       // In preview mode — apply whatever permissions the preview role/user has
       return all.filter((item) => !item.module || effectivePermissions.includes(item.module));
     }
-    const realPermissions = account.data?.permissions ?? [];
     if (isAdmin && realPermissions.length === 0) return all; // Super Admin / full-access admin
-    return all.filter((item) => !item.module || realPermissions.includes(item.module));
-  }, [isAdmin, effectivePermissions, account.isPending, account.data]);
+    return all.filter((item) => {
+      if (item.module === "support" && hideCareForScopedUser) return false;
+      return !item.module || realPermissions.includes(item.module);
+    });
+  }, [isAdmin, effectivePermissions, account.isPending, realPermissions, hideCareForScopedUser]);
 
   const secondaryNav = useMemo<NavItem[]>(
     () => [

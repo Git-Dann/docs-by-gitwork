@@ -1,17 +1,18 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
-import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertCan, canManageSupport, getEffectiveUserOrNull, requireAuthedUser } from "@/server/auth/effective-user";
 import { getSupportClient, updateSupportClient, deleteSupportClient } from "@/server/support";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ clientId: string }> },
 ) {
   try {
+    const user = await requireAuthedUser(request);
     const { clientId } = await params;
-    const client = await getSupportClient(clientId);
+    const client = await getSupportClient(clientId, user);
     return apiOk({ client });
   } catch (error) {
     return fromError(error);
