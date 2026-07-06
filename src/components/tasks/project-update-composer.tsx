@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PaperAirplaneIcon, CheckCircleIcon } from "@heroicons/react/24/outline";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -72,6 +72,9 @@ export function ProjectUpdateComposer({
   const [toRollup, setToRollup] = useState(false);
   const [pushed, setPushed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Synchronous guard against duplicate submits — see my-day.tsx for why the
+  // Button's `loading`/`disabled` prop alone isn't enough to close the race.
+  const pushingRef = useRef(false);
 
   // Seed from the dev's saved defaults once they load. Excluded categories →
   // include everything else, so newly-created blocks are included by default.
@@ -121,6 +124,8 @@ export function ProjectUpdateComposer({
   const nothingToSay = previewCount === 0 && !note.trim();
 
   async function handlePush() {
+    if (pushingRef.current) return;
+    pushingRef.current = true;
     setError(null);
     const markPhases: ("AM" | "PM")[] = [];
     if (amChecked) markPhases.push("AM");
@@ -140,6 +145,7 @@ export function ProjectUpdateComposer({
       setTimeout(onClose, 1100);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Push failed");
+      pushingRef.current = false;
     }
   }
 

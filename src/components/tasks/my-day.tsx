@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowRightCircleIcon,
   CheckCircleIcon,
@@ -23,6 +23,10 @@ export function MyDay() {
   const [weekPlan, setWeekPlan] = useState("");
   const [note, setNote] = useState("");
   const [pushed, setPushed] = useState<null | "AM" | "PM">(null);
+  // Synchronous guard against duplicate submits — React's `disabled` prop only
+  // takes effect after a re-render commits, which leaves a window for a fast
+  // double-click (or a retried click after an error) to fire mutateAsync twice.
+  const pushingRef = useRef(false);
 
   // Seed the editable "This week" from the saved plan, falling back to the suggestion.
   useEffect(() => {
@@ -43,13 +47,19 @@ export function MyDay() {
   }
 
   async function pushUpdate(phase: "AM" | "PM") {
-    await push.mutateAsync({
-      phase,
-      weekPlan: data!.isMonday ? weekPlan : undefined,
-      note: note.trim() || undefined,
-    });
-    setPushed(phase);
-    setTimeout(() => setPushed(null), 2500);
+    if (pushingRef.current) return;
+    pushingRef.current = true;
+    try {
+      await push.mutateAsync({
+        phase,
+        weekPlan: data!.isMonday ? weekPlan : undefined,
+        note: note.trim() || undefined,
+      });
+      setPushed(phase);
+      setTimeout(() => setPushed(null), 2500);
+    } finally {
+      pushingRef.current = false;
+    }
   }
 
   const amTime = timeOf(data.update.amPushedAt);
