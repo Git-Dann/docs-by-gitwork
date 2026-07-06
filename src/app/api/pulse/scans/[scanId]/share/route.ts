@@ -3,15 +3,17 @@ import { randomUUID } from "crypto";
 import { revalidateTag } from "next/cache";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getPulseScan } from "@/server/pulse";
+import { assertCan, canManagePulse, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ scanId: string }> },
 ) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManagePulse, "share Pulse scans");
     const { scanId } = await params;
     const scan = await getPulseScan(scanId);
     if (!scan) return apiError("Scan not found.", 404);
@@ -35,10 +37,11 @@ export async function POST(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ scanId: string }> },
 ) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManagePulse, "unshare Pulse scans");
     const { scanId } = await params;
     const existing = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: { shareToken: true } });
     await prisma.pulseScan.update({

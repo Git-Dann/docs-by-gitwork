@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getPulseScan, deletePulseScan } from "@/server/pulse";
+import { assertCan, canManagePulse, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 
@@ -21,10 +22,11 @@ export async function GET(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ scanId: string }> },
 ) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManagePulse, "delete Pulse scans");
     const { scanId } = await params;
     const scan = await getPulseScan(scanId);
     if (!scan) {

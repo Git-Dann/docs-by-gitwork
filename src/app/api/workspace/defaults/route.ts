@@ -14,6 +14,7 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { recordAuditEntry } from "@/server/audit-log";
+import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import {
   EMPTY_PROPOSAL_DEFAULTS,
   parseWorkspaceProposalDefaults,
@@ -44,6 +45,7 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   try {
+    assertAtLeastAdmin(await getEffectiveUserOrNull(request));
     const { workspace } = await ensureBaseRecords();
 
     const body = await request.json().catch(() => null);
