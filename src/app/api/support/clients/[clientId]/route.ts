@@ -1,15 +1,19 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
-import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertCan, canManageSupport, getEffectiveUserOrNull, requireAuthedUser } from "@/server/auth/effective-user";
 import { getSupportClient, updateSupportClient, deleteSupportClient } from "@/server/support";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ clientId: string }> },
 ) {
   try {
+    // Match main's posture: require a real authenticated user (blocks the earlier
+    // no-gate regression) without over-restricting to support-managers, so Care
+    // view-only staff can still open a client. Mutations below stay manage-gated.
+    await requireAuthedUser(request);
     const { clientId } = await params;
     const client = await getSupportClient(clientId);
     return apiOk({ client });
