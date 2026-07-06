@@ -1369,6 +1369,7 @@ export const starterUpdateSchema = z.object({
   status: starterStatusSchema.optional(),
   tags: z.array(z.string().min(1).max(40)).max(30).optional(),
   content: starterContentSchema.nullish(),
+  featured: z.boolean().optional(),
   isArchived: z.boolean().optional(),
 });
 

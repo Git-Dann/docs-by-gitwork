@@ -18,6 +18,9 @@ export interface BuiltInStarter {
   type: StarterType;
   tags: string[];
   content: StarterContent;
+  /** Seed as featured (pinned to the top). Catalog featured is authoritative-on; users can
+   * favourite others via the UI and those persist (the seeder never un-features). */
+  featured?: boolean;
 }
 
 export const STARTER_BUILT_INS: BuiltInStarter[] = [
@@ -181,9 +184,9 @@ export const STARTER_BUILT_INS: BuiltInStarter[] = [
         "Complements Design System (structure) and Humanizer (copy)",
       ],
       install: ["Add the skill to the project's skill set", "Invoke it while building or reviewing UI"],
-      featured: true,
       _buildRef: "taste-skill",
     },
+    featured: true,
   },
   {
     slug: "planner",
@@ -468,6 +471,8 @@ export async function seedBuiltInStarters(workspaceId: string): Promise<number> 
         type: s.type,
         tags: s.tags,
         content,
+        // Only promote to featured from the catalog — never un-feature, so user favourites persist.
+        ...(s.featured ? { featured: true } : {}),
         isDefault: true,
         isArchived: false,
       },
@@ -481,6 +486,7 @@ export async function seedBuiltInStarters(workspaceId: string): Promise<number> 
         status: "PUBLISHED",
         tags: s.tags,
         content,
+        featured: s.featured ?? false,
         isDefault: true,
       },
     });

@@ -10,9 +10,10 @@ import {
   TrashIcon,
   SparklesIcon,
   ArrowRightIcon,
+  StarIcon as StarOutline,
 } from "@heroicons/react/24/outline";
-import { StarIcon } from "@heroicons/react/24/solid";
-import { useStarterList, useDeleteStarter, useAdoptStarter } from "@/hooks/use-starters";
+import { StarIcon as StarSolid } from "@heroicons/react/24/solid";
+import { useStarterList, useDeleteStarter, useAdoptStarter, useToggleStarterFeatured } from "@/hooks/use-starters";
 import { usePulseScan } from "@/hooks/use-pulse";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate } from "@/lib/format";
@@ -61,6 +62,7 @@ function StarterCard({
   onAdopt,
   adopting,
   reasons,
+  onToggleFeatured,
 }: {
   starter: StarterListItem;
   index: number;
@@ -70,6 +72,7 @@ function StarterCard({
   onAdopt: (id: string) => void;
   adopting: boolean;
   reasons?: string[];
+  onToggleFeatured: (id: string, featured: boolean) => void;
 }) {
   const numberLabel = String(index + 1).padStart(2, "0");
   const primaryTag = starter.tags[0];
@@ -81,8 +84,19 @@ function StarterCard({
           {" // STARTER"}
         </span>
         <span className="flex items-center gap-1.5">
-          {starter.featured && (
-            <StarIcon className="h-3.5 w-3.5 text-amber-500" aria-label="Featured" />
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => onToggleFeatured(starter.id, !starter.featured)}
+              className={cn(
+                "rounded-[6px] p-0.5 transition hover:bg-[var(--surface-1)]",
+                starter.featured ? "text-amber-500" : "text-[var(--text-4)] hover:text-amber-500",
+              )}
+              title={starter.featured ? "Unfeature" : "Feature"}
+              aria-label={starter.featured ? "Unfeature" : "Feature"}
+            >
+              {starter.featured ? <StarSolid className="h-4 w-4" /> : <StarOutline className="h-4 w-4" />}
+            </button>
           )}
           <TypeBadge type={starter.type} />
         </span>
@@ -154,6 +168,7 @@ export function StarterList() {
   const { data: scanData } = usePulseScan(scanId ?? "");
   const scan = scanId ? scanData?.scan ?? null : null;
   const { mutate: deleteStarter } = useDeleteStarter();
+  const { mutate: toggleFeatured } = useToggleStarterFeatured();
   const { mutateAsync: adopt, isPending: adopting } = useAdoptStarter();
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -227,6 +242,7 @@ export function StarterList() {
                 scanId={scanId}
                 onAdopt={handleAdopt}
                 adopting={adopting}
+                onToggleFeatured={(id, featured) => toggleFeatured({ id, featured })}
               />
             ))}
           </div>
@@ -333,6 +349,7 @@ export function StarterList() {
               scanId={scanId}
               onAdopt={handleAdopt}
               adopting={adopting}
+              onToggleFeatured={(id, featured) => toggleFeatured({ id, featured })}
             />
           ))}
         </div>
