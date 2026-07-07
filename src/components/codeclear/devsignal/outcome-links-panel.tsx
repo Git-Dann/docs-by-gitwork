@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { useCodeClearCandidate } from "@/hooks/use-codeclear";
 import { useNotice } from "./notice";
 import { useCreateDevSignalOutcomeLink } from "@/hooks/use-devsignal";
@@ -51,9 +53,8 @@ export function OutcomeLinksPanel({
   };
 
   return (
-    <div className="rounded-xl border border-[var(--border-2)] bg-[var(--surface-0)] p-5">
-      <p className="font-mono text-xs uppercase tracking-wider text-[var(--text-4)]">06 // Delivery outcomes</p>
-      <p className="mt-1 text-xs text-[var(--text-4)]">
+    <WidgetCard number="06" name="Delivery outcomes">
+      <p className="text-xs text-[var(--text-4)]">
         Link this assessment to real project delivery. This is the data loop that lets the score be
         validated later — recalibration itself is not built yet.
       </p>
@@ -93,15 +94,11 @@ export function OutcomeLinksPanel({
           placeholder="Delivery notes (e.g. retained, client-rated 5/5, shipped on time)…"
           className="app-textarea w-full"
         />
-        <button
-          onClick={submit}
-          disabled={create.isPending}
-          className="w-full rounded-md border border-[var(--border-1)] px-4 py-2 text-sm font-medium hover:bg-[var(--surface-1)] disabled:opacity-50"
-        >
+        <Button variant="secondary" className="w-full" onClick={submit} disabled={create.isPending}>
           {create.isPending ? "Linking…" : "Link delivery outcome"}
-        </button>
+        </Button>
       </div>
       {noticeEl}
-    </div>
+    </WidgetCard>
   );
 }
