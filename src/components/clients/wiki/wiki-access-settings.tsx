@@ -27,6 +27,7 @@ import {
   useSetCourseIngest,
 } from "@/hooks/use-wiki";
 import type { WikiSection } from "./wiki-sidebar";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
@@ -104,8 +105,10 @@ export function WikiAccessSettings({
     Object.keys(wiki.pageShares ?? {}).length > 0;
 
   return (
-    <div className="mx-auto w-full max-w-2xl">
-      <section className="widget-card">
+    <div className="mx-auto w-full max-w-5xl">
+      {/* Two-column masonry — cards flow into two balanced columns on lg+, single column below. */}
+      <div className="columns-1 gap-5 lg:columns-2 [&>*]:mb-5 [&>*]:break-inside-avoid">
+        <section className="widget-card">
         <div className="widget-header flex items-center justify-between">
           <span className="widget-header__label" style={{ fontFamily: MONO }}>
             <span className="widget-header__label--number">01</span>
@@ -208,9 +211,12 @@ export function WikiAccessSettings({
         </div>
       </section>
 
-      <WikiApiIntakeSettings slug={slug} />
+        <WikiApiIntakeSettings slug={slug} />
 
-      <WikiSharePanel wiki={wiki} slug={slug} availableSections={availableSections} />
+        <WikiSharePanel wiki={wiki} slug={slug} availableSections={availableSections} />
+
+        <WikiAppearanceCard />
+      </div>
 
       {editing && (
         <WikiUserModal
@@ -235,6 +241,28 @@ export function WikiAccessSettings({
   );
 }
 
+
+// Appearance — surfaces the shared Light/Dark/System control inside the wiki settings (the same
+// preference the header toggle and the rest of Foundry use; synced via localStorage + data-theme).
+function WikiAppearanceCard() {
+  return (
+    <section className="widget-card">
+      <div className="widget-header">
+        <span className="widget-header__label" style={{ fontFamily: MONO }}>
+          <span className="widget-header__label--number">04</span>
+          {" // APPEARANCE"}
+        </span>
+      </div>
+      <div className="space-y-4 p-6">
+        <p className="text-[13px] leading-relaxed text-[var(--text-3)]">
+          Switch the wiki between light and dark. This preference is shared across Foundry and the
+          public client wiki, and follows your device when set to System.
+        </p>
+        <ThemeToggle />
+      </div>
+    </section>
+  );
+}
 
 function WikiApiIntakeSettings({ slug }: { slug: string }) {
   const { data, isPending } = useCourseIngest(slug, true);
@@ -263,7 +291,7 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
   }
 
   return (
-    <section className="widget-card mt-5">
+    <section className="widget-card">
       <div className="widget-header">
         <span className="widget-header__label" style={{ fontFamily: MONO }}>
           <span className="widget-header__label--number">02</span>
@@ -535,7 +563,7 @@ function WikiSharePanel({
   }
 
   return (
-    <section className="widget-card mt-5">
+    <section className="widget-card">
       <div className="widget-header">
         <span className="widget-header__label" style={{ fontFamily: MONO }}>
           <span className="widget-header__label--number">03</span>
