@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { Button } from "@/components/ui/button";
+import { MarkdownField } from "@/components/proposals/markdown-field";
 import { useBackstageTeam } from "@/hooks/use-backstage";
 import { useClientList } from "@/hooks/use-proposals";
 import { useCreateTask, useUpdateTask, useFeatureBlocks } from "@/hooks/use-tasks";
@@ -211,11 +212,12 @@ export function TaskFormModal({
               <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">
                 Description <span className="text-[var(--text-4)]">(optional)</span>
               </label>
-              <textarea
-                className="app-textarea min-h-[156px] w-full resize-none"
+              <MarkdownField
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={setDescription}
+                rows={6}
                 placeholder="Add detail, links, context…"
+                showMergeVars={false}
               />
             </div>
 
@@ -223,11 +225,12 @@ export function TaskFormModal({
               <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">
                 Acceptance criteria <span className="text-[var(--text-4)]">(optional)</span>
               </label>
-              <textarea
-                className="app-textarea min-h-[132px] w-full resize-none"
+              <MarkdownField
                 value={acceptanceCriteria}
-                onChange={(e) => setAcceptanceCriteria(e.target.value)}
+                onChange={setAcceptanceCriteria}
+                rows={5}
                 placeholder="What does done look like?"
+                showMergeVars={false}
               />
             </div>
           </div>

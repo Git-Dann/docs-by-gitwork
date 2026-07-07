@@ -18,12 +18,16 @@ export function MarkdownField({
   onChange,
   rows = 8,
   placeholder,
+  showMergeVars = true,
 }: {
   label?: string;
   value: string;
   onChange: (value: string) => void;
   rows?: number;
   placeholder?: string;
+  /** Proposal merge-variable insert menu ({{client_name}} etc.). Off for
+   *  contexts that have no merge variables (e.g. the task form). */
+  showMergeVars?: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [varsOpen, setVarsOpen] = useState(false);
@@ -116,31 +120,35 @@ export function MarkdownField({
           <ToolbarButton label="Numbered list" onClick={() => linePrefix("1. ")}>
             <NumberedListIcon className="h-4 w-4" />
           </ToolbarButton>
-          <Divider />
-          <div className="relative">
-            <ToolbarButton label="Insert merge variable" onClick={() => setVarsOpen((v) => !v)}>
-              <span className="font-mono text-[11px] leading-none">{"{ }"}</span>
-            </ToolbarButton>
-            {varsOpen ? (
-              <div className="absolute left-0 top-9 z-20 w-60 overflow-hidden rounded-[8px] border border-[var(--border-2)] bg-white py-1 shadow-[var(--shadow-lg)]">
-                <p className="px-3 py-1.5 font-mono text-[9px] uppercase tracking-[1px] text-[var(--text-4)]">
-                  Insert variable
-                </p>
-                {MERGE_VARIABLES.map((variable) => (
-                  <button
-                    key={variable.token}
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => insertToken(variable.token)}
-                    className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-[var(--surface-1)]"
-                  >
-                    <span className="text-[var(--text-2)]">{variable.label}</span>
-                    <code className="font-mono text-[10px] text-[var(--text-4)]">{`{{${variable.token}}}`}</code>
-                  </button>
-                ))}
+          {showMergeVars ? (
+            <>
+              <Divider />
+              <div className="relative">
+                <ToolbarButton label="Insert merge variable" onClick={() => setVarsOpen((v) => !v)}>
+                  <span className="font-mono text-[11px] leading-none">{"{ }"}</span>
+                </ToolbarButton>
+                {varsOpen ? (
+                  <div className="absolute left-0 top-9 z-20 w-60 overflow-hidden rounded-[8px] border border-[var(--border-2)] bg-white py-1 shadow-[var(--shadow-lg)]">
+                    <p className="px-3 py-1.5 font-mono text-[9px] uppercase tracking-[1px] text-[var(--text-4)]">
+                      Insert variable
+                    </p>
+                    {MERGE_VARIABLES.map((variable) => (
+                      <button
+                        key={variable.token}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => insertToken(variable.token)}
+                        className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-[var(--surface-1)]"
+                      >
+                        <span className="text-[var(--text-2)]">{variable.label}</span>
+                        <code className="font-mono text-[10px] text-[var(--text-4)]">{`{{${variable.token}}}`}</code>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </div>
+            </>
+          ) : null}
           <span className="ml-auto pr-1 font-mono text-[9px] uppercase tracking-[1px] text-[var(--text-4)]">
             Markdown
           </span>

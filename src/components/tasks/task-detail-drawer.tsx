@@ -21,6 +21,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Markdown } from "@/lib/markdown";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import {
   useTask,
@@ -375,7 +376,9 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
               {task.description ? (
                 <div>
                   <p className="app-eyebrow mb-2">Description</p>
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-2)]">{task.description}</p>
+                  <Markdown className="text-sm leading-relaxed text-[var(--text-2)]">
+                    {task.description}
+                  </Markdown>
                 </div>
               ) : null}
 
@@ -383,7 +386,9 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
               {task.acceptanceCriteria ? (
                 <div>
                   <p className="app-eyebrow mb-2">Acceptance criteria</p>
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-2)]">{task.acceptanceCriteria}</p>
+                  <Markdown className="text-sm leading-relaxed text-[var(--text-2)]">
+                    {task.acceptanceCriteria}
+                  </Markdown>
                 </div>
               ) : null}
 
