@@ -118,11 +118,13 @@ export interface PostMessageResponse {
 }
 
 /** Square Foundry avatar served from the public site — Slack fetches it per-message
- *  when icon_url is set on chat.postMessage, and renders it in a SQUARE frame. The
- *  wide `/foundry-logo.png` wordmark (245×64) was getting squished into that square
- *  and looked broken; `/foundry-icon.png` is a 512×512 square (wordmark centred on
- *  white) so it renders cleanly. Falls back to the app's display image if unreachable. */
-const DEFAULT_ICON_URL = "https://foundry.gitwork.co.uk/foundry-icon.png";
+ *  when icon_url is set on chat.postMessage, and renders it in a SQUARE frame.
+ *  It's the "F." mark (serif F + indigo dot on white), 512×512, so it reads at
+ *  avatar size. NOTE: Slack caches the avatar by URL — changing the *content* of
+ *  an already-fetched URL won't refresh it, so this points at a fresh filename
+ *  (`foundry-mark.png`) to force Slack to refetch. Bump the filename again if the
+ *  mark ever changes. Falls back to the app's display image if unreachable. */
+const DEFAULT_ICON_URL = "https://foundry.gitwork.co.uk/foundry-mark.png";
 
 export function postMessage(token: string, input: PostMessageInput): Promise<SlackResponse<PostMessageResponse>> {
   return call<PostMessageResponse>(token, "chat.postMessage", {
