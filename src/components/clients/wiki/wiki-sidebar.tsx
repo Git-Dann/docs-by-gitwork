@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   BoltIcon,
   BookOpenIcon,
@@ -85,17 +86,34 @@ export function WikiSidebar({
   isDeletingSection = false,
 }: Props) {
   const [addOpen, setAddOpen] = useState(false);
-  const addMenuRef = useRef<HTMLDivElement>(null);
+  // Portal-positioned (fixed) so the menu escapes the sidebar's scroll/overflow
+  // clipping. Opens upward from the pinned "Add New" button.
+  const [addPos, setAddPos] = useState<{ bottom: number; left: number; width: number } | null>(null);
+  const addBtnRef = useRef<HTMLButtonElement>(null);
+  const addPanelRef = useRef<HTMLDivElement>(null);
+
+  function openAddMenu() {
+    const el = addBtnRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setAddPos({ bottom: window.innerHeight - r.top + 6, left: r.left, width: r.width });
+    setAddOpen(true);
+  }
 
   useEffect(() => {
     if (!addOpen) return;
     function handleClick(event: MouseEvent) {
-      if (addMenuRef.current && !addMenuRef.current.contains(event.target as Node)) {
-        setAddOpen(false);
-      }
+      const t = event.target as Node;
+      if (addBtnRef.current?.contains(t) || addPanelRef.current?.contains(t)) return;
+      setAddOpen(false);
     }
+    const onScroll = () => setAddOpen(false);
     document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      window.removeEventListener("scroll", onScroll, true);
+    };
   }, [addOpen]);
 
   const visibleSections = new Set<WikiSection>(
@@ -213,10 +231,11 @@ export function WikiSidebar({
           navItem("course-requests", "Course Requests", <FlagIcon />)}
 
         {hasAddItems && (
-          <div ref={addMenuRef} className="relative shrink-0 md:mt-2 md:border-t md:border-[var(--border-1)] md:pt-2">
+          <div className="relative shrink-0 md:mt-2 md:border-t md:border-[var(--border-1)] md:pt-2">
             <button
+              ref={addBtnRef}
               type="button"
-              onClick={() => setAddOpen((open) => !open)}
+              onClick={() => (addOpen ? setAddOpen(false) : openAddMenu())}
               disabled={isAddingSection}
               className={[
                 "flex w-auto shrink-0 items-center gap-2.5 whitespace-nowrap rounded-[6px] border border-dashed border-[var(--border-2)] px-3 py-2 text-left text-sm transition-colors md:w-full",
@@ -238,23 +257,29 @@ export function WikiSidebar({
               <ChevronDownIcon className="h-3 w-3 shrink-0 text-[var(--text-4)]" />
             </button>
 
-            {addOpen && (
-              <div className="absolute left-0 top-full z-30 mt-1.5 w-52 overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.10)] bg-white py-1.5 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)] md:bottom-full md:top-auto md:mb-1.5 md:mt-0">
-                {addableSections.map((item) => (
-                  <button
-                    key={item.section}
-                    type="button"
-                    onClick={() => {
-                      setAddOpen(false);
-                      onAddSection?.(item.section);
-                    }}
-                    className="flex w-full items-center px-3 py-2 text-left text-[13px] text-[var(--text-2)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            {addOpen && addPos && typeof document !== "undefined" &&
+              createPortal(
+                <div
+                  ref={addPanelRef}
+                  style={{ position: "fixed", bottom: addPos.bottom, left: addPos.left, width: Math.max(addPos.width, 200) }}
+                  className="z-[100] max-h-[60vh] overflow-auto rounded-[10px] border border-[rgba(0,0,0,0.10)] bg-[var(--surface-0)] py-1.5 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.24)]"
+                >
+                  {addableSections.map((item) => (
+                    <button
+                      key={item.section}
+                      type="button"
+                      onClick={() => {
+                        setAddOpen(false);
+                        onAddSection?.(item.section);
+                      }}
+                      className="flex w-full items-center px-3 py-2 text-left text-[13px] text-[var(--text-2)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>,
+                document.body,
+              )}
           </div>
         )}
       </div>
