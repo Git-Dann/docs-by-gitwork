@@ -71,7 +71,18 @@ const ERR_INVALID_PARAMS = -32602;
 const ERR_INTERNAL = -32603;
 
 const PROTOCOL_VERSION = "2025-06-18";
-const SERVER_INFO = { name: "foundry", version: "0.1.0" };
+// `name` is the stable machine id; `title` is the human-facing connector name Claude shows.
+const SERVER_INFO = { name: "foundry", title: "Foundry by Gitwork", version: "0.2.0" };
+
+// Server-level guidance Claude reads on connect (MCP `instructions`) — orients it to what the
+// Foundry connector offers so it reaches for the right tool/prompt without prompting.
+const SERVER_INSTRUCTIONS =
+  "Foundry by Gitwork — Gitwork's design-and-build agency platform. Use these tools to work with " +
+  "the workspace on the signed-in user's behalf (their permissions apply): list/create clients, " +
+  "list/create/update tasks, list members, search Scribe meeting notes, create documents " +
+  "(proposals/SOW/SLA/…), and run or fetch Pulse production-readiness scans. Foundry Starters " +
+  "(reusable prompts/skills/kits) are exposed as MCP prompts — list them with prompts/list and " +
+  "pull one in with prompts/get. Prefer resolving a client by slug; use list_members for assignee ids.";
 
 // ── tool shapes ────────────────────────────────────────────────────────────
 
@@ -696,6 +707,7 @@ export async function dispatch(
             prompts: { listChanged: false },
           },
           serverInfo: SERVER_INFO,
+          instructions: SERVER_INSTRUCTIONS,
         });
       case "notifications/initialized":
       case "notifications/cancelled":

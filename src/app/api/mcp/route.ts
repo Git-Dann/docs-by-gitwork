@@ -25,7 +25,9 @@ const COMMON_HEADERS = {
   "Content-Type": "application/json",
 } as const;
 
-function unauthorized() {
+function unauthorized(request: Request) {
+  const url = new URL(request.url);
+  const origin = `${url.protocol}//${url.host}`;
   return new NextResponse(
     JSON.stringify({
       jsonrpc: "2.0",
@@ -36,8 +38,9 @@ function unauthorized() {
       status: 401,
       headers: {
         ...COMMON_HEADERS,
-        // RFC 6750 §3 — point clients at the OAuth flow.
-        "WWW-Authenticate": 'Bearer realm="Foundry MCP", error="invalid_token"',
+        // RFC 6750 §3 + RFC 9728 §5.1 — point clients at the OAuth flow AND the protected-resource
+        // metadata so they can auto-discover the authorization server from this endpoint.
+        "WWW-Authenticate": `Bearer realm="Foundry MCP", error="invalid_token", resource_metadata="${origin}/.well-known/oauth-protected-resource"`,
       },
     },
   );
@@ -62,7 +65,7 @@ export async function POST(request: Request) {
   }
 
   const user = await validateMcpBearer(request);
-  if (!user) return unauthorized();
+  if (!user) return unauthorized(request);
 
   let body: unknown;
   try {
