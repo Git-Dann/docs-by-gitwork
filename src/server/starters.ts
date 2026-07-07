@@ -20,6 +20,9 @@ export interface StarterContent {
   install?: string[];
   techStack?: string[];
   promptText?: string;
+  /** Hidden search terms — functions, use-cases, synonyms. Powers smart search; never rendered
+   * as visible chips (folded into StarterListItem.searchText server-side). */
+  keywords?: string[];
   /** Public "view & use" reference — the upstream this starter is built from. */
   sourceLabel?: string;
   /** Public link to the source (direct repo, or a GitHub search when the exact repo isn't pinned). */
@@ -43,6 +46,9 @@ export interface StarterListItem {
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Lowercased blob of name + summary + description + tags + hidden keywords, for client-side
+   * search. Not shown anywhere — it's the search index, not display copy. */
+  searchText: string;
 }
 
 export interface StarterRecord extends StarterListItem {
@@ -67,6 +73,11 @@ type StarterRow = {
 };
 
 function serializeListItem(s: StarterRow): StarterListItem {
+  const content = s.content && typeof s.content === "object" ? (s.content as StarterContent) : null;
+  const keywords = Array.isArray(content?.keywords) ? content!.keywords! : [];
+  const searchText = [s.name, s.summary, s.description ?? "", ...s.tags, ...keywords]
+    .join(" ")
+    .toLowerCase();
   return {
     id: s.id,
     name: s.name,
@@ -79,6 +90,7 @@ function serializeListItem(s: StarterRow): StarterListItem {
     isDefault: s.isDefault,
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
+    searchText,
   };
 }
 
