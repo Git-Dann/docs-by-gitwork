@@ -55,21 +55,32 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  // Distinct, actionable messages so a single test pinpoints the gate.
+  if (!ws) {
+    return ephemeral("No workspace found. (reason: no-workspace)");
+  }
+  if (!ws.slackSigningSecretEncrypted) {
+    return ephemeral("No Slack signing secret is saved in Foundry. (reason: no-secret)");
+  }
   let signingSecret: string | null = null;
   try {
-    signingSecret = ws?.slackSigningSecretEncrypted
-      ? decryptNullable(ws.slackSigningSecretEncrypted)
-      : null;
+    signingSecret = decryptNullable(ws.slackSigningSecretEncrypted);
   } catch {
     signingSecret = null;
   }
-  if (!ws || !signingSecret) {
-    return ephemeral("Slack isn't connected to Foundry yet.");
+  if (!signingSecret) {
+    return ephemeral(
+      "Couldn't read the saved Slack signing secret — re-paste it in Settings → Integrations and Save. (reason: decrypt)",
+    );
   }
 
   const verdict = verifySlackSignature({ rawBody, signature, timestamp, signingSecret });
   if (!verdict.ok) {
-    return NextResponse.json({ error: `Invalid Slack signature (${verdict.reason}).` }, { status: 401 });
+    // Surface to the caller (ephemeral) instead of a bare 401 so it's debuggable.
+    // No action is taken on a bad signature, so this stays safe.
+    return ephemeral(
+      `Slack signature check failed (reason: ${verdict.reason}). If you just re-saved the secret, confirm it matches Slack → Basic Information → Signing Secret.`,
+    );
   }
 
   try {
