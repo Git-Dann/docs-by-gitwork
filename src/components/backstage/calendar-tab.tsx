@@ -145,7 +145,7 @@ const BLOCK_TONES: Record<string, { dot: string; pill: string }> = {
   emerald: { dot: "bg-emerald-500", pill: "border-emerald-200 bg-emerald-50 text-emerald-800" },
   amber: { dot: "bg-amber-500", pill: "border-amber-200 bg-amber-50 text-amber-800" },
   rose: { dot: "bg-rose-500", pill: "border-rose-200 bg-rose-50 text-rose-800" },
-  slate: { dot: "bg-slate-500", pill: "border-slate-200 bg-slate-100 text-slate-800" },
+  slate: { dot: "bg-[var(--text-4)]", pill: "border-[var(--border-2)] bg-[var(--surface-2)] text-[var(--text-2)]" },
 };
 
 function blockTone(color?: string | null) {
@@ -186,8 +186,8 @@ const LEAVE_COLOURS: Record<LeaveType, { bar: string; dot: string; label: string
     label: "Sick",
   },
   UNPAID: {
-    bar: "bg-zinc-100 text-zinc-700 border-zinc-300",
-    dot: "bg-zinc-500",
+    bar: "bg-[var(--surface-2)] text-[var(--text-2)] border-[var(--border-1)]",
+    dot: "bg-[var(--text-4)]",
     label: "Unpaid",
   },
   OTHER: {

@@ -56,7 +56,7 @@ const GanttChart = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-64 items-center justify-center text-sm text-neutral-400">
+      <div className="flex h-64 items-center justify-center text-sm text-[var(--text-4)]">
         Loading timeline…
       </div>
     ),

@@ -14,7 +14,7 @@ function isOverdue(task: TaskDTO): boolean {
 
 // Restrained, on-brand: one quiet labelled status dot per group (no rainbow fills).
 const STATUS_DOT: Record<TaskStatus, string> = {
-  BACKLOG: "bg-zinc-400",
+  BACKLOG: "bg-[var(--text-4)]",
   TODO: "bg-sky-500",
   DOING: "bg-amber-500",
   IN_REVIEW: "bg-blue-500",
@@ -24,7 +24,7 @@ const STATUS_DOT: Record<TaskStatus, string> = {
 const PRIORITY_FLAG: Record<TaskPriority, { color: string; label: string }> = {
   HIGH: { color: "text-red-500", label: "High" },
   MEDIUM: { color: "text-amber-400", label: "Medium" },
-  LOW: { color: "text-zinc-300", label: "Low" },
+  LOW: { color: "text-[var(--text-4)]", label: "Low" },
 };
 
 const VISIBLE_CAP = 8;

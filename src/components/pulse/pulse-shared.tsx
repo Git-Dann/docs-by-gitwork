@@ -134,7 +134,7 @@ export function TrendDelta({ delta }: { delta: number | null }) {
     <span
       className={cn(
         "inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
-        delta > 0 ? "bg-emerald-50 text-emerald-700" : delta < 0 ? "bg-red-50 text-red-700" : "bg-gray-100 text-gray-500",
+        delta > 0 ? "bg-emerald-50 text-emerald-700" : delta < 0 ? "bg-red-50 text-red-700" : "bg-[var(--surface-2)] text-[var(--text-3)]",
       )}
     >
       {delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : "→"}
@@ -260,7 +260,7 @@ export function PulseValueBadge({ value }: { value: PulseBusinessValue }) {
   const styles: Record<PulseBusinessValue, string> = {
     HIGH: "bg-emerald-50 text-emerald-700 border-emerald-200",
     MEDIUM: "bg-sky-50 text-sky-700 border-sky-200",
-    LOW: "bg-slate-50 text-slate-600 border-slate-200",
+    LOW: "bg-[var(--surface-1)] text-[var(--text-3)] border-[var(--border-2)]",
   };
   return (
     <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium", styles[value])}>

@@ -56,7 +56,7 @@ export function statusLabel(status: DocumentStatus): string {
 export function statusTone(status: DocumentStatus): string {
   switch (status) {
     case "DRAFT":
-      return "bg-slate-100 text-slate-700";
+      return "bg-[var(--surface-2)] text-[var(--text-2)]";
     case "PRODUCT_SIGN_OFF":
       return "bg-sky-100 text-sky-800";
     case "TECH_SIGN_OFF":
@@ -72,9 +72,9 @@ export function statusTone(status: DocumentStatus): string {
     case "DECLINED":
       return "bg-rose-100 text-rose-700";
     case "ARCHIVED":
-      return "bg-zinc-200 text-zinc-700";
+      return "bg-[var(--surface-2)] text-[var(--text-2)]";
     default:
-      return "bg-slate-100 text-slate-700";
+      return "bg-[var(--surface-2)] text-[var(--text-2)]";
   }
 }
 

@@ -288,7 +288,7 @@ function StackPriorityBadge({ priority }: { priority: TechStackRecommendation["p
       ? "bg-red-50 text-red-700"
       : priority === "MEDIUM"
         ? "bg-amber-50 text-amber-700"
-        : "bg-slate-50 text-slate-600";
+        : "bg-[var(--surface-1)] text-[var(--text-3)]";
   return (
     <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", styles)}>
       {priority}

@@ -28,8 +28,8 @@ const COLUMNS: { status: TicketStatus; label: string }[] = [
 const PRIORITY_TONE: Record<TicketPriority, string> = {
   urgent:  "bg-red-100 text-red-700 border-red-200",
   high:    "bg-orange-100 text-orange-700 border-orange-200",
-  normal:  "bg-stone-100 text-stone-600 border-stone-200",
-  low:     "bg-stone-50 text-stone-400 border-stone-200",
+  normal:  "bg-[var(--surface-2)] text-[var(--text-3)] border-[var(--border-2)]",
+  low:     "bg-[var(--surface-1)] text-[var(--text-4)] border-[var(--border-2)]",
 };
 
 const COLUMN_ACCENT: Record<TicketStatus, string> = {

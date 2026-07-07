@@ -4,7 +4,7 @@ import { TASK_STATUS_LABELS, TASK_PRIORITY_LABELS } from "@/types/tasks";
 
 // Status badge — modelled on the app-wide StatusBadge (rounded border + dot + label).
 const STATUS_TONE: Record<TaskStatus, { wrapper: string; dot: string }> = {
-  BACKLOG: { wrapper: "border-zinc-200 bg-white text-zinc-600", dot: "bg-zinc-400" },
+  BACKLOG: { wrapper: "border-[var(--border-2)] bg-white text-[var(--text-3)]", dot: "bg-[var(--text-4)]" },
   TODO: { wrapper: "border-sky-200 bg-white text-sky-700", dot: "bg-sky-500" },
   DOING: { wrapper: "border-amber-200 bg-white text-amber-800", dot: "bg-amber-500" },
   IN_REVIEW: { wrapper: "border-blue-200 bg-white text-blue-700", dot: "bg-blue-500" },
@@ -29,7 +29,7 @@ export function TaskStatusBadge({ status, className }: { status: TaskStatus; cla
 
 // Priority — a small dot (HIGH red, MEDIUM amber, LOW grey) with an accessible title.
 const PRIORITY_DOT: Record<TaskPriority, string> = {
-  LOW: "bg-zinc-300",
+  LOW: "bg-[var(--text-4)]",
   MEDIUM: "bg-amber-400",
   HIGH: "bg-red-500",
 };

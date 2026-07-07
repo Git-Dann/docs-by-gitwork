@@ -48,7 +48,7 @@ const DRAWER_KEYFRAMES =
   "@keyframes drawer-panel-in{from{transform:translateX(24px);opacity:0.4}to{transform:translateX(0);opacity:1}}";
 
 const STATUS_DOT: Record<TaskStatus, string> = {
-  BACKLOG: "bg-zinc-400",
+  BACKLOG: "bg-[var(--text-4)]",
   TODO: "bg-sky-500",
   DOING: "bg-amber-500",
   IN_REVIEW: "bg-blue-500",
@@ -57,7 +57,7 @@ const STATUS_DOT: Record<TaskStatus, string> = {
 
 // Active status chip takes the status colour; inactive stays quiet.
 const STATUS_ACTIVE: Record<TaskStatus, string> = {
-  BACKLOG: "border-zinc-300 bg-zinc-100 text-zinc-700",
+  BACKLOG: "border-[var(--border-1)] bg-[var(--surface-2)] text-[var(--text-2)]",
   TODO: "border-sky-300 bg-sky-50 text-sky-700",
   DOING: "border-amber-300 bg-amber-50 text-amber-700",
   IN_REVIEW: "border-blue-300 bg-blue-50 text-blue-700",

@@ -17,7 +17,7 @@ export default function ProofWidget({ size }: { size: WidgetSize }) {
   if (size === "sm") {
     return (
       <div className="flex h-full flex-col">
-        <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+        <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-2)] px-2 py-0.5 text-xs font-semibold text-[var(--text-3)]">
           <ClipboardDocumentCheckIcon className="h-2.5 w-2.5" />
           Proof
         </span>
@@ -38,7 +38,7 @@ export default function ProofWidget({ size }: { size: WidgetSize }) {
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+        <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-2)] px-2 py-0.5 text-xs font-semibold text-[var(--text-3)]">
           <ClipboardDocumentCheckIcon className="h-2.5 w-2.5" />
           Proof
         </span>

@@ -40,7 +40,7 @@ export function ReceiptViewer({
             <XMarkIcon className="h-5 w-5" />
           </button>
         </div>
-        <div className="bg-zinc-50 p-4">
+        <div className="bg-[var(--surface-1)] p-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={`/api/backstage/expenses/${expense.id}/receipt`}

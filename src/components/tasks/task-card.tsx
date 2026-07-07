@@ -14,7 +14,7 @@ function isOverdue(task: TaskDTO): boolean {
 const PRIORITY_FLAG: Record<string, { iconColor: string; label: string }> = {
   HIGH:   { iconColor: "text-red-500",   label: "High" },
   MEDIUM: { iconColor: "text-amber-400", label: "Medium" },
-  LOW:    { iconColor: "text-zinc-300",  label: "Low" },
+  LOW:    { iconColor: "text-[var(--text-4)]",  label: "Low" },
 };
 
 export function TaskCard({
