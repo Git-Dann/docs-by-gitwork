@@ -1,6 +1,7 @@
 "use client";
 
 import { CloudArrowUpIcon, CheckCircleIcon } from "@heroicons/react/24/outline";
+import type { ButtonHTMLAttributes, MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { useArchiveClientToDrive, useClientDriveArchiveStatus } from "@/hooks/use-proposals";
 
@@ -10,7 +11,16 @@ import { useArchiveClientToDrive, useClientDriveArchiveStatus } from "@/hooks/us
  * background job (BackgroundJob queue) — this only enqueues it, so the click returns instantly.
  * Auto-triggered on archive/delete; this is the manual / re-run path.
  */
-export function ClientDriveArchiveButton({ slug }: { slug: string }) {
+export function ClientDriveArchiveButton({
+  slug,
+  presentation = "button",
+  className,
+  onClick,
+  ...buttonProps
+}: {
+  slug: string;
+  presentation?: "button" | "menuItem";
+} & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "disabled">) {
   const status = useClientDriveArchiveStatus(slug);
   const archive = useArchiveClientToDrive(slug);
 
@@ -23,6 +33,27 @@ export function ClientDriveArchiveButton({ slug }: { slug: string }) {
       : archivedAt
         ? "Re-archive to Drive"
         : "Archive to Drive";
+
+  if (presentation === "menuItem") {
+    function handleMenuClick(event: MouseEvent<HTMLButtonElement>) {
+      onClick?.(event);
+      if (!event.defaultPrevented) archive.mutate();
+    }
+
+    return (
+      <button
+        {...buttonProps}
+        type="button"
+        onClick={handleMenuClick}
+        disabled={archive.isPending}
+        title="Export all of this client's data to Google Drive"
+        className={`flex w-full items-center gap-2 rounded-[6px] px-2.5 py-1.5 text-left text-[13px] font-medium text-[var(--text-2)] transition data-[focus]:bg-[var(--surface-1)] data-[focus]:text-[var(--text-1)] disabled:opacity-50 ${className ?? ""}`}
+      >
+        <CloudArrowUpIcon className="h-4 w-4 text-[var(--text-4)]" />
+        {label}
+      </button>
+    );
+  }
 
   return (
     <div className="flex items-center gap-1">

@@ -16,6 +16,7 @@ import {
   EyeSlashIcon,
   ArrowRightCircleIcon,
   ArrowUpRightIcon,
+  EllipsisHorizontalIcon,
   GlobeAltIcon,
   MagnifyingGlassIcon,
   PauseCircleIcon,
@@ -28,6 +29,7 @@ import {
   VideoCameraIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -161,6 +163,11 @@ const TOUCHPOINT_LABEL: Record<TouchpointType, string> = {
   MEETING: "Meeting",
   NOTE: "Note",
 };
+
+const actionMenuPanel =
+  "z-50 mt-1.5 w-56 rounded-[10px] border border-[rgba(0,0,0,0.10)] bg-white p-1.5 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)] focus:outline-none";
+const actionMenuItem =
+  "flex w-full items-center gap-2 rounded-[6px] px-2.5 py-1.5 text-left text-[13px] font-medium text-[var(--text-2)] transition data-[focus]:bg-[var(--surface-1)] data-[focus]:text-[var(--text-1)] disabled:opacity-50";
 
 /** Lead CRM workspace — editable stage/follow-up/source/value + a touchpoint activity log.
  *  Shown on the client detail only while the client's status is LEAD. */
@@ -559,23 +566,51 @@ export function ClientDetail({ slug }: { slug: string }) {
                 Convert to client
               </Button>
             )}
-            {!isSuggested && client.status === "ACTIVE" && (
-              <Button type="button" variant="secondary" size="xs" onClick={() => setPausing(true)}>
-                <PauseCircleIcon className="h-3 w-3" />
-                Pause
-              </Button>
-            )}
-            {!isSuggested && client.status === "INACTIVE" && (
-              <Button type="button" variant="primary" size="xs" onClick={() => changeStatus("ACTIVE")} disabled={setStatus.isPending}>
-                <PlayCircleIcon className="h-3 w-3" />
-                Reactivate
-              </Button>
-            )}
             <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
               <PencilIcon className="h-3 w-3" />
               Edit
             </Button>
-            {!isSuggested && <ClientDriveArchiveButton slug={slug} />}
+            {!isSuggested && !isLead && (
+              <Menu as="div" className="relative">
+                <MenuButton
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] border border-[var(--border-2)] bg-white text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+                  aria-label="More client actions"
+                  title="More client actions"
+                >
+                  <EllipsisHorizontalIcon className="h-4 w-4" />
+                </MenuButton>
+                <MenuItems anchor="bottom end" className={actionMenuPanel}>
+                  {client.status === "ACTIVE" && (
+                    <MenuItem>
+                      <button
+                        type="button"
+                        className={actionMenuItem}
+                        onClick={() => setPausing(true)}
+                      >
+                        <PauseCircleIcon className="h-4 w-4 text-[var(--text-4)]" />
+                        Pause client
+                      </button>
+                    </MenuItem>
+                  )}
+                  {client.status === "INACTIVE" && (
+                    <MenuItem>
+                      <button
+                        type="button"
+                        className={actionMenuItem}
+                        onClick={() => changeStatus("ACTIVE")}
+                        disabled={setStatus.isPending}
+                      >
+                        <PlayCircleIcon className="h-4 w-4 text-[var(--text-4)]" />
+                        Reactivate client
+                      </button>
+                    </MenuItem>
+                  )}
+                  <MenuItem>
+                    <ClientDriveArchiveButton slug={slug} presentation="menuItem" />
+                  </MenuItem>
+                </MenuItems>
+              </Menu>
+            )}
           </div>
         </div>
 
@@ -695,39 +730,24 @@ export function ClientDetail({ slug }: { slug: string }) {
 
       {!isLead && (
         <>
-      {/* ── 02-05 // STATS ── */}
-      <div className={cn("grid grid-cols-2 gap-3 sm:gap-4", canViewPulse ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
+      {/* ── 02-06 // STATS ── */}
+      <div className={cn("grid grid-cols-2 gap-3 sm:gap-4", canViewPulse ? "lg:grid-cols-5" : "lg:grid-cols-4")}>
         <StatCard number="02" label="DOCS" value={proposals.length} />
         <StatCard number="03" label="PLATFORMS" value={platforms.length} />
         <StatCard number="04" label="DESIGNS" value={designs.length} />
         {canViewPulse ? <StatCard number="05" label="PULSE SCANS" value={pulseScans.length} /> : null}
+        <StatCard
+          number="06"
+          label="DEVS"
+          value={activeDevCount}
+          href={`/app/portal/${slug}/tasks`}
+          action={<span className="text-[11px] font-medium text-[var(--brand-700)]">Tasks →</span>}
+        />
       </div>
 
-      {/* ── 06 // DEVS → the team's task board (dev count pinned in the title) ── */}
-      <section className="widget-card">
-        <div className="widget-header">
-          <span className="widget-header__label">
-            <span className="widget-header__label--number">06</span>
-            {" // DEVS"}
-          </span>
-          <span className="widget-data-label text-[var(--text-2)]">
-            {activeDevCount} {activeDevCount === 1 ? "Dev" : "Devs"}
-          </span>
-        </div>
-        <div className="p-5">
-          <Link
-            href={`/app/portal/${slug}/tasks`}
-            className="flex items-center justify-between rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3 text-sm font-medium text-[var(--text-1)] transition hover:border-[var(--brand-700)] hover:bg-[var(--surface-2)]"
-          >
-            Open task board
-            <span className="text-[var(--brand-700)]">Tasks →</span>
-          </Link>
-        </div>
-      </section>
-
       {/* ── 07 // SLACK ACTIVITY (digest) + 08 // CONTACT — compact 2-col ── */}
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-      <section className="widget-card">
+      <div className="grid items-stretch gap-4 lg:grid-cols-2">
+      <section className="widget-card flex h-full flex-col">
         <div className="widget-header">
           <span className="widget-header__label">
             <span className="widget-header__label--number">07</span>
@@ -2508,7 +2528,7 @@ function ContactCard({
   const hasPrimary = Boolean(client.primaryContactName || client.primaryContactEmail || client.primaryContactPhone);
   const anyInfo = hasPrimary || Boolean(client.website) || hasAddress;
   return (
-    <section className="widget-card">
+    <section className="widget-card flex h-full flex-col">
       <div className="widget-header">
         <span className="widget-header__label">
           <span className="widget-header__label--number">{number}</span>
@@ -2519,7 +2539,7 @@ function ContactCard({
           Edit
         </Button>
       </div>
-      <div className="p-6">
+      <div className="flex-1 p-6">
         {anyInfo ? (
           <div className="grid gap-6 sm:grid-cols-2">
             {hasPrimary && (
@@ -2577,15 +2597,23 @@ function StatCard({
   label,
   value,
   action,
+  href,
 }: {
   number: string;
   label: string;
   value: number;
   /** Optional small control pinned bottom-right (e.g. a jump link). */
   action?: React.ReactNode;
+  /** When provided, the whole metric card becomes a navigation target. */
+  href?: string;
 }) {
-  return (
-    <article className="widget-card relative">
+  const card = (
+    <article
+      className={cn(
+        "widget-card relative h-full",
+        href && "transition hover:border-[var(--brand-400)] hover:bg-[var(--surface-1)]",
+      )}
+    >
       <div className="widget-header">
         <span className="widget-header__label">
           <span className="widget-header__label--number">{number}</span>
@@ -2603,6 +2631,16 @@ function StatCard({
       </div>
       {action ? <div className="absolute bottom-3 right-3">{action}</div> : null}
     </article>
+  );
+
+  if (!href) return card;
+  return (
+    <Link
+      href={href}
+      className="block h-full rounded-[10px] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-500)] focus-visible:ring-offset-2"
+    >
+      {card}
+    </Link>
   );
 }
 
