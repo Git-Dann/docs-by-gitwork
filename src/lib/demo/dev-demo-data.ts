@@ -1392,6 +1392,54 @@ const demoDevSignalCandidate = {
   ],
 };
 
+// Candidate-facing /vet/[token] flow (the 8-step funnel) — served to the demo
+// so the full candidate experience is walkable. The coding challenge ships its
+// real hidden tests so the in-browser Web Worker runner actually executes.
+const demoVetSession = {
+  token: "demo-token-octocat",
+  status: "DRAFT",
+  submitted: false,
+  candidate: {
+    name: "Octavia Catelyn",
+    email: "octavia@example.com",
+    githubHandle: "octocat",
+    location: "Manchester, UK",
+    timezone: "Europe/London",
+    primaryStack: "React / TypeScript",
+    yearsExperience: 6,
+    linkedinUrl: null,
+    portfolioUrl: null,
+    availability: "Full-time",
+  },
+  githubConnected: true,
+  challenge: {
+    id: "js-normalise-invoices",
+    title: "Normalise invoice totals",
+    language: "javascript",
+    difficulty: "junior",
+    functionName: "invoiceTotal",
+    starterCode: "function invoiceTotal(lineItems) {\n  // your code here\n}\n",
+    timeLimitSec: 1500,
+    testCount: 4,
+    tests: [
+      { name: "empty", args: [[]], expected: 0, hidden: false },
+      { name: "single no tax", args: [[{ qty: 2, unitPrice: 10, taxRate: 0 }]], expected: 20, hidden: false },
+      { name: "single with tax", args: [[{ qty: 1, unitPrice: 100, taxRate: 0.2 }]], expected: 120, hidden: false },
+      {
+        name: "multi rounds",
+        args: [[{ qty: 3, unitPrice: 9.99, taxRate: 0.2 }, { qty: 1, unitPrice: 5, taxRate: 0.05 }]],
+        expected: 41.21,
+        hidden: true,
+      },
+    ],
+  },
+  challengeSubmitted: false,
+  videoQuestion:
+    "Tell us about a recent project you shipped: what problem it solved, the trickiest technical decision you made, and how you'd approach it differently next time.",
+  videoSubmitted: false,
+  expired: false,
+};
+
 // ─── Resolver used by the fetch interceptor ─────────────────────────────────────
 
 /**
@@ -1506,6 +1554,11 @@ export function resolveDemoApi(pathname: string): unknown {
   if (/^\/api\/codeclear\/candidates\/[^/]+$/.test(pathname)) {
     return { candidate: demoDevSignalCandidate };
   }
+
+  // Public candidate /vet flow (the 8-step funnel). Challenge/video submits are
+  // benign successes; session GET + intake/connect return the mock session.
+  if (/^\/api\/vet\/[^/]+\/(challenge|video)$/.test(pathname)) return { ok: true };
+  if (/^\/api\/vet\/[^/]+(\/connect)?$/.test(pathname)) return { session: demoVetSession };
 
   return {};
 }

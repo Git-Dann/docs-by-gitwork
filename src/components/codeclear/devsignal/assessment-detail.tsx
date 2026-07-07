@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { usePermissions } from "@/hooks/use-permissions";
+import { cn } from "@/lib/format";
 import { useNotice } from "./notice";
 import {
   useDevSignalAssessment,
@@ -14,14 +17,16 @@ import {
 import type { DevSignalAssessmentDTO, DevSignalStageResultDTO } from "@/types/devsignal";
 import { OutcomeLinksPanel } from "./outcome-links-panel";
 
+// Status label tone. Uses the semantic palette (emerald/amber/rose/sky) that
+// globals.css remaps for dark mode; neutral states use tokens.
 const STAGE_STATUS_STYLE: Record<string, string> = {
-  PASS: "text-green-600",
+  PASS: "text-emerald-600",
   WARN: "text-amber-600",
-  FAIL: "text-red-600",
-  ERROR: "text-red-600",
+  FAIL: "text-rose-600",
+  ERROR: "text-rose-600",
   PENDING_HUMAN: "text-amber-600",
   PENDING: "text-[var(--text-4)]",
-  RUNNING: "text-blue-600",
+  RUNNING: "text-sky-600",
   SKIPPED: "text-[var(--text-4)]",
 };
 
@@ -36,27 +41,23 @@ const INTERVIEW_DIMENSIONS = [
   ["risk_handling", "Risk handling"],
 ] as const;
 
-function Header({ n, label }: { n: string; label: string }) {
-  return <p className="font-mono text-xs uppercase tracking-wider text-[var(--text-4)]">{`${n} // ${label}`}</p>;
-}
-
 export function AssessmentDetail({ id }: { id: string }) {
   const { canManageDevSignal } = usePermissions();
   const { data, isLoading } = useDevSignalAssessment(id);
 
   if (!canManageDevSignal) return <p className="text-sm text-[var(--text-3)]">You don&apos;t have access to DevSignal.</p>;
   if (isLoading) return <p className="text-sm text-[var(--text-4)]">Loading…</p>;
-  if (!data?.assessment) return <p className="text-sm text-red-600">Assessment not found.</p>;
+  if (!data?.assessment) return <p className="text-sm text-rose-600">Assessment not found.</p>;
 
   const a = data.assessment;
 
   return (
     <div className="space-y-6">
-      <Link href="/app/codeclear/devsignal" className="text-xs text-[var(--text-4)] hover:text-[var(--text-3)]">
+      <Link href="/app/codeclear/devsignal" className="widget-data-label inline-block text-[var(--text-4)] transition hover:text-[var(--text-2)]">
         ← Back to queue
       </Link>
 
-      <TopBar a={a} />
+      <Masthead a={a} />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <StageTimeline stages={a.stageResults ?? []} />
@@ -73,65 +74,71 @@ export function AssessmentDetail({ id }: { id: string }) {
   );
 }
 
-function TopBar({ a }: { a: DevSignalAssessmentDTO }) {
+function Masthead({ a }: { a: DevSignalAssessmentDTO }) {
   const { showOk, showErr, noticeEl } = useNotice();
   const run = useRunDevSignalAssessment(a.id);
-  const inviteUrl = a.publicToken ? `${typeof window !== "undefined" ? window.location.origin : ""}/vet/${a.publicToken}` : null;
+  const inviteUrl = a.publicToken
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}/vet/${a.publicToken}`
+    : null;
 
   return (
-    <div className="rounded-xl border border-[var(--border-2)] bg-[var(--surface-0)] p-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-[var(--text-1)]">{a.candidateName}</h1>
-          <p className="font-mono text-xs text-[var(--text-4)]">
-            {a.candidateGithubHandle ?? "no handle"} · {a.status.replace("_", " ").toLowerCase()} · config {a.configVersion}
-          </p>
-        </div>
-        <button
-          onClick={async () => {
-            try {
-              await run.mutateAsync();
-              showOk("Assessment run", "Automated stages scored.");
-            } catch (e) {
-              showErr("Run failed", e instanceof Error ? e.message : undefined);
-            }
-          }}
-          disabled={run.isPending}
-          className="rounded-md border border-[var(--border-1)] bg-[var(--surface-0)] px-4 py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)] disabled:opacity-50"
-        >
-          {run.isPending ? "Running…" : "Run automated stages"}
-        </button>
-      </div>
-      {inviteUrl && (
-        <div className="mt-4 flex items-center gap-2">
-          <input readOnly value={inviteUrl} className="flex-1 rounded-md border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-1.5 font-mono text-xs text-[var(--text-3)]" />
-          <button
-            onClick={() => {
-              navigator.clipboard?.writeText(inviteUrl);
-              showOk("Copied", "Invite link copied.");
+    <section className="widget-card">
+      <div className="widget-body space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="font-serif text-3xl leading-tight tracking-[-0.02em] text-[var(--text-1)]">
+              {a.candidateName}
+            </h1>
+            <p className="widget-data-label mt-1 normal-case tracking-normal">
+              {a.candidateGithubHandle ?? "no handle"} · {a.status.replace("_", " ").toLowerCase()} · config {a.configVersion}
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            onClick={async () => {
+              try {
+                await run.mutateAsync();
+                showOk("Assessment run", "Automated stages scored.");
+              } catch (e) {
+                showErr("Run failed", e instanceof Error ? e.message : undefined);
+              }
             }}
-            className="rounded-md border border-[var(--border-1)] px-3 py-1.5 text-xs font-medium"
+            disabled={run.isPending}
           >
-            Copy invite link
-          </button>
+            {run.isPending ? "Running…" : "Run automated stages"}
+          </Button>
         </div>
-      )}
+        {inviteUrl && (
+          <div className="flex items-center gap-2">
+            <input readOnly value={inviteUrl} className="app-input flex-1 font-mono text-xs" />
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                navigator.clipboard?.writeText(inviteUrl);
+                showOk("Copied", "Invite link copied.");
+              }}
+            >
+              Copy invite link
+            </Button>
+          </div>
+        )}
+      </div>
       {noticeEl}
-    </div>
+    </section>
   );
 }
 
 function BestMatchCard({ a }: { a: DevSignalAssessmentDTO }) {
   const summary = a.bestMatchSummary;
   return (
-    <div className="rounded-xl border border-[var(--border-2)] bg-[var(--surface-0)] p-5">
-      <Header n="01" label="Best match" />
-      <p className="mt-3 text-xl font-semibold text-[var(--text-1)]">{summary?.labelDisplay ?? "Not scored yet"}</p>
+    <WidgetCard number="01" name="Best match">
+      <p className="text-xl font-semibold text-[var(--text-1)]">{summary?.labelDisplay ?? "Not scored yet"}</p>
       {typeof a.finalScore === "number" && (
-        <p className="mt-1 font-mono text-xs text-[var(--text-4)]">Internal score {a.finalScore}/100</p>
+        <p className="widget-data-label mt-1 normal-case tracking-normal">Internal score {a.finalScore}/100</p>
       )}
       {a.scoreBreakdown?.humanReviewRequired && (
-        <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">Human review required.</p>
+        <p className="mt-2 rounded-[6px] bg-amber-50 px-3 py-2 text-xs text-amber-700">Human review required.</p>
       )}
       {(summary?.strengths?.length ?? 0) > 0 && (
         <ul className="mt-3 space-y-1">
@@ -140,26 +147,27 @@ function BestMatchCard({ a }: { a: DevSignalAssessmentDTO }) {
           ))}
         </ul>
       )}
-      <p className="mt-3 font-mono text-[10px] uppercase tracking-wider text-[var(--text-4)]">
+      <p className="widget-data-label mt-3 text-[var(--text-4)]">
         Client-facing view shows this label only — never the number.
       </p>
-    </div>
+    </WidgetCard>
   );
 }
 
 function StageTimeline({ stages }: { stages: DevSignalStageResultDTO[] }) {
   return (
-    <div className="rounded-xl border border-[var(--border-2)] bg-[var(--surface-0)] p-5">
-      <Header n="02" label="Stage results" />
+    <WidgetCard number="02" name="Stage results">
       {stages.length === 0 ? (
-        <p className="mt-3 text-sm text-[var(--text-4)]">No stages run yet.</p>
+        <p className="text-sm text-[var(--text-4)]">No stages run yet.</p>
       ) : (
-        <ul className="mt-3 space-y-4">
+        <ul className="space-y-4">
           {stages.map((s) => (
             <li key={s.id} className="border-l-2 border-[var(--border-3)] pl-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-[var(--text-1)]">{s.stageName}</p>
-                <span className={`font-mono text-xs uppercase ${STAGE_STATUS_STYLE[s.status] ?? ""}`}>{s.status}</span>
+                <span className={cn("font-mono text-xs uppercase tracking-[0.08em]", STAGE_STATUS_STYLE[s.status] ?? "")}>
+                  {s.status}
+                </span>
               </div>
               {s.subScores.length > 0 && (
                 <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
@@ -173,7 +181,10 @@ function StageTimeline({ stages }: { stages: DevSignalStageResultDTO[] }) {
               {s.flags.map((f, i) => (
                 <p
                   key={i}
-                  className={`mt-1 text-xs ${f.severity === "block" ? "text-red-600" : f.severity === "warn" ? "text-amber-600" : "text-[var(--text-4)]"}`}
+                  className={cn(
+                    "mt-1 text-xs",
+                    f.severity === "block" ? "text-rose-600" : f.severity === "warn" ? "text-amber-600" : "text-[var(--text-4)]",
+                  )}
                 >
                   {f.severity === "info" ? "ℹ" : "⚠"} {f.message}
                 </p>
@@ -182,7 +193,7 @@ function StageTimeline({ stages }: { stages: DevSignalStageResultDTO[] }) {
           ))}
         </ul>
       )}
-    </div>
+    </WidgetCard>
   );
 }
 
@@ -190,9 +201,8 @@ function ScoreBreakdown({ a }: { a: DevSignalAssessmentDTO }) {
   const b = a.scoreBreakdown;
   if (!b) return null;
   return (
-    <div className="rounded-xl border border-[var(--border-2)] bg-[var(--surface-0)] p-5">
-      <Header n="03" label="Score breakdown" />
-      <p className="mt-2 font-mono text-xs text-[var(--text-4)]">
+    <WidgetCard number="03" name="Score breakdown">
+      <p className="widget-data-label normal-case tracking-normal">
         {b.formulaVersion} · weighted {b.weightedScore}
         {b.cap !== null ? ` · capped to ${b.cap} by ${b.cappedByStageId}` : ""}
       </p>
@@ -203,7 +213,9 @@ function ScoreBreakdown({ a }: { a: DevSignalAssessmentDTO }) {
             .map((s) => (
               <tr key={s.stageId} className="border-b border-[var(--border-3)]">
                 <td className="py-1 text-[var(--text-2)]">{s.stageId.replace(/_/g, " ")}</td>
-                <td className="py-1 text-right font-mono text-xs text-[var(--text-4)]">{s.rawStageScore} × {s.effectiveWeight}</td>
+                <td className="py-1 text-right font-mono text-xs text-[var(--text-4)]">
+                  {s.rawStageScore} × {s.effectiveWeight}
+                </td>
                 <td className="py-1 text-right font-mono text-[var(--text-2)]">+{s.contribution.toFixed(1)}</td>
               </tr>
             ))}
@@ -214,7 +226,7 @@ function ScoreBreakdown({ a }: { a: DevSignalAssessmentDTO }) {
           </tr>
         </tbody>
       </table>
-    </div>
+    </WidgetCard>
   );
 }
 
@@ -241,9 +253,8 @@ function InterviewScorecard({ id }: { id: string }) {
   };
 
   return (
-    <div className="rounded-xl border border-[var(--border-2)] bg-[var(--surface-0)] p-5">
-      <Header n="04" label="Leadership interview" />
-      <p className="mt-1 text-xs text-[var(--text-4)]">Human scorecard — supports the gate, doesn&apos;t replace your final audit.</p>
+    <WidgetCard number="04" name="Leadership interview">
+      <p className="text-xs text-[var(--text-4)]">Human scorecard — supports the gate, doesn&apos;t replace your final audit.</p>
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {INTERVIEW_DIMENSIONS.map(([key, label]) => (
           <label key={key} className="flex items-center justify-between gap-3">
@@ -267,26 +278,18 @@ function InterviewScorecard({ id }: { id: string }) {
         className="app-textarea mt-3 w-full"
       />
       <div className="mt-3 flex items-center gap-2">
-        <select
-          value={verdict}
-          onChange={(e) => setVerdict(e.target.value as typeof verdict)}
-          className="app-select"
-        >
+        <select value={verdict} onChange={(e) => setVerdict(e.target.value as typeof verdict)} className="app-select">
           <option value="PASS">Pass</option>
           <option value="WARN">Warn</option>
           <option value="FAIL">Fail</option>
           <option value="NEEDS_SECOND_REVIEW">Needs second review</option>
         </select>
-        <button
-          onClick={submit}
-          disabled={record.isPending}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
+        <Button variant="primary" onClick={submit} disabled={record.isPending}>
           {record.isPending ? "Saving…" : "Record interview"}
-        </button>
+        </Button>
       </div>
       {noticeEl}
-    </div>
+    </WidgetCard>
   );
 }
 
@@ -317,40 +320,43 @@ function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
   };
 
   return (
-    <div className="rounded-xl border border-[var(--border-2)] bg-[var(--surface-0)] p-5">
-      <Header n="05" label="Decision" />
-      <p className="mt-2 text-sm text-[var(--text-3)]">
+    <WidgetCard number="05" name="Decision">
+      <p className="text-sm text-[var(--text-3)]">
         Current: <span className="font-medium text-[var(--text-2)]">{a.decision.replace(/_/g, " ").toLowerCase()}</span>
       </p>
 
       {a.promotedToCode ? (
-        <p className="mt-3 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-700">
+        <p className="mt-3 rounded-[6px] bg-[var(--surface-brand)] px-3 py-2 text-sm text-[var(--brand-700)]">
           ✓ Promoted into Code{a.promotedToCodeAt ? ` on ${new Date(a.promotedToCodeAt).toLocaleDateString()}` : ""}.
         </p>
       ) : (
         <>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button onClick={() => setDecision("APPROVED_FOR_STAGING")} className="rounded-md border border-[var(--border-1)] px-3 py-1.5 text-sm hover:bg-[var(--surface-1)]">
+            <Button variant="secondary" size="sm" onClick={() => setDecision("APPROVED_FOR_STAGING")}>
               Approve for staging
-            </button>
-            <button onClick={() => setDecision("NEEDS_MORE_INFO")} className="rounded-md border border-[var(--border-1)] px-3 py-1.5 text-sm hover:bg-[var(--surface-1)]">
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setDecision("NEEDS_MORE_INFO")}>
               Needs more info
-            </button>
-            <button onClick={() => setDecision("REJECTED")} className="rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">
+            </Button>
+            <button
+              onClick={() => setDecision("REJECTED")}
+              className="rounded-[6px] border border-rose-200 px-3 py-1.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+            >
               Reject
             </button>
           </div>
 
           <div className="mt-4 border-t border-[var(--border-3)] pt-4">
-            <p className="font-mono text-xs uppercase tracking-wider text-[var(--text-4)]">The human gate</p>
+            <p className="widget-data-label text-[var(--text-4)]">The human gate</p>
             {!confirming ? (
-              <button
+              <Button
+                variant="primary"
+                className="mt-2 w-full"
                 onClick={() => setConfirming(true)}
                 disabled={a.decision === "REJECTED" || a.status === "DRAFT" || a.status === "RUNNING"}
-                className="mt-2 w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
                 Promote to Code →
-              </button>
+              </Button>
             ) : (
               <div className="mt-2 space-y-2">
                 <p className="text-sm text-[var(--text-3)]">
@@ -363,16 +369,12 @@ function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
                   className="app-input w-full"
                 />
                 <div className="flex gap-2">
-                  <button onClick={() => setConfirming(false)} className="rounded-md border border-[var(--border-1)] px-3 py-1.5 text-sm">
+                  <Button variant="secondary" size="sm" onClick={() => setConfirming(false)}>
                     Cancel
-                  </button>
-                  <button
-                    onClick={doPromote}
-                    disabled={promote.isPending}
-                    className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-                  >
+                  </Button>
+                  <Button variant="primary" size="sm" onClick={doPromote} disabled={promote.isPending}>
                     {promote.isPending ? "Promoting…" : "Confirm promotion"}
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
@@ -380,6 +382,6 @@ function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
         </>
       )}
       {noticeEl}
-    </div>
+    </WidgetCard>
   );
 }
