@@ -366,6 +366,9 @@ export function TeamSection() {
           }}
         />
       ) : null}
+
+      {/* Merge accounts — Super Admin only */}
+      {isSuperAdmin(sessionRole) ? <MergeAccountsCard onMerged={load} /> : null}
     </div>
   );
 }
@@ -852,5 +855,120 @@ function MemberAccessModal({
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Merge accounts (Super Admin only) ────────────────────────────────────────
+// Use when a dev had a placeholder/old email and now has a gitwork email.
+// Transfers all data from the old account into the new one, then deletes the old.
+
+function MergeAccountsCard({ onMerged }: { onMerged: () => void }) {
+  const [keepEmail, setKeepEmail] = useState("");
+  const [mergeEmail, setMergeEmail] = useState("");
+  const [confirm, setConfirm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    if (!confirm) { setConfirm(true); return; }
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await fetch("/api/dev/merge-accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keepEmail: keepEmail.trim(), mergeEmail: mergeEmail.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error ?? "Merge failed");
+      } else {
+        const r = json.data ?? json;
+        const t = r.transferred ?? {};
+        setResult(
+          `Merged. Transferred: ${t.clientAssignments ?? 0} client assignments, ` +
+          `${(t.tasks ?? 0) + (t.taskAssignees ?? 0)} task rows, ` +
+          `${t.leaveRequests ?? 0} leave requests, ` +
+          `${t.expenses ?? 0} expenses, ` +
+          `${t.dailyUpdates ?? 0} daily updates. ` +
+          `Candidate email updated: ${t.candidateEmailUpdated ? "yes" : "no"}. ` +
+          `Membership: ${r.membershipAction}.`,
+        );
+        setKeepEmail("");
+        setMergeEmail("");
+        setConfirm(false);
+        onMerged();
+      }
+    } catch {
+      setError("Network error — check console.");
+    }
+    setLoading(false);
+  }
+
+  return (
+    <SettingsCard number="05" title="Merge accounts">
+      <p className="text-sm leading-6 text-[var(--text-3)]">
+        Use when a team member previously had a placeholder email and has now logged in with their{" "}
+        <code className="rounded bg-[var(--surface-2)] px-1 py-0.5 text-xs">@gitwork.co.uk</code>{" "}
+        address — creating two accounts. All data (client assignments, tasks, leave, standup logs)
+        is transferred from the old account to the new one, then the old account is deleted.
+      </p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="app-eyebrow mb-1.5 block">Keep (new gitwork email)</label>
+          <input
+            type="email"
+            value={keepEmail}
+            onChange={(e) => { setKeepEmail(e.target.value); setConfirm(false); setResult(null); }}
+            placeholder="nasir@gitwork.co.uk"
+            className="app-input w-full"
+          />
+        </div>
+        <div>
+          <label className="app-eyebrow mb-1.5 block">Merge from (old / placeholder email)</label>
+          <input
+            type="email"
+            value={mergeEmail}
+            onChange={(e) => { setMergeEmail(e.target.value); setConfirm(false); setResult(null); }}
+            placeholder="nasir@gmail.com"
+            className="app-input w-full"
+          />
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-3">
+        <button
+          type="button"
+          disabled={loading || !keepEmail.trim() || !mergeEmail.trim()}
+          onClick={run}
+          className={cn(
+            "rounded-[8px] px-4 py-2 text-sm font-medium transition disabled:opacity-50",
+            confirm
+              ? "bg-[var(--danger-500)] text-white hover:bg-[var(--danger-600)]"
+              : "bg-[var(--brand-700)] text-white hover:bg-[var(--brand-800)]",
+          )}
+        >
+          {loading ? "Merging…" : confirm ? "Confirm merge — this is irreversible" : "Merge accounts"}
+        </button>
+        {confirm && !loading ? (
+          <button
+            type="button"
+            onClick={() => setConfirm(false)}
+            className="text-sm text-[var(--text-4)] hover:text-[var(--text-2)]"
+          >
+            Cancel
+          </button>
+        ) : null}
+      </div>
+      {result ? (
+        <p className="mt-3 rounded-[8px] border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+          {result}
+        </p>
+      ) : null}
+      {error ? (
+        <p className="mt-3 text-sm text-[var(--danger-500)]">{error}</p>
+      ) : null}
+    </SettingsCard>
   );
 }

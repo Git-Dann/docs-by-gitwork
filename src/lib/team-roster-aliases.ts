@@ -9,8 +9,9 @@
 // builds account-seeding + scope on top, so this stays the single source of truth.
 //
 // Confirmed with Dan (June 2026). People deliberately NOT added (left unassigned
-// in imports): Abdul/Abdur Rehman, Nasir, Muneeb, Waqas Ali, Gerry Carroll,
+// in imports): Abdul/Abdur Rehman, Muneeb, Waqas Ali, Gerry Carroll,
 // Nate Holland, Khizar Hayyat Khan, Mohammad Aashir. Role/duplicate accounts skipped.
+// Nasir added July 2026 once his gitwork email was provisioned.
 
 export type RosterKind = "dev" | "staff" | "admin";
 
@@ -49,6 +50,7 @@ export const TEAM_ROSTER: RosterEntry[] = [
   { name: "Syed Usama Bin Tahir", email: "syed@gitwork.co.uk", kind: "dev", aliases: ["Syed Usama"] },
   { name: "Zain Ali", email: "zain@gitwork.co.uk", kind: "dev", aliases: ["ZAIN ALI"] },
   { name: "Syed Arquam", email: "syedarquam@gitwork.co.uk", kind: "dev", aliases: ["Arquam"] },
+  { name: "Nasir", email: "nasir@gitwork.co.uk", kind: "dev" },
 
   // ── Admin / staff ──
   { name: "Harry Brown", email: "harry@gitwork.co.uk", kind: "admin" },
