@@ -35,7 +35,9 @@ export const demoSession = {
     email: DEV_EMAIL,
     image: null,
     role: "DEVELOPER",
-    permissions: ["clients", "proposals", "codeclear", "support", "backstage"],
+    // `devsignal` is admin-only in production; granted here so the DevSignal demo
+    // renders (demos showcase UI regardless of role). Harmless to other demos.
+    permissions: ["clients", "proposals", "codeclear", "devsignal", "support", "backstage"],
   },
   expires: "2099-01-01T00:00:00.000Z",
 };
@@ -1067,6 +1069,329 @@ const demoStaffingAlerts = {
   ],
 };
 
+// ─── DevSignal (developer vetting) demo data ────────────────────────────────────
+
+const demoDevSignalStageResults = [
+  {
+    id: "ds-st-1",
+    stageId: "application_intake",
+    stageName: "Application intake",
+    stageVersion: "intake-v1",
+    status: "PASS",
+    weight: 5,
+    subScores: [
+      { key: "completeness", label: "Data completeness", score: 90, maxScore: 100 },
+      { key: "eligibility", label: "Eligibility", score: 100, maxScore: 100 },
+    ],
+    rawSignals: null,
+    evidence: [{ type: "candidate", label: "Application record", sourceRef: "ds-cand-1" }],
+    flags: [{ severity: "info", code: "consent_not_captured", message: "Structured consent record not yet captured." }],
+    durationMs: 12,
+    humanOverride: false,
+    overrideReason: null,
+    startedAt: "2026-07-06T10:00:00.000Z",
+    finishedAt: "2026-07-06T10:00:00.000Z",
+  },
+  {
+    id: "ds-st-2",
+    stageId: "online_footprint",
+    stageName: "Online footprint analysis",
+    stageVersion: "gh-v3",
+    status: "PASS",
+    weight: 20,
+    subScores: [
+      { key: "technical_depth", label: "Technical depth", score: 82, maxScore: 100, rationale: "6 languages, avg health 71" },
+      { key: "code_quality", label: "Code quality", score: 74, maxScore: 100, rationale: "docs 55%, tests 60%, CI 48%" },
+      { key: "delivery_readiness", label: "Delivery readiness", score: 78, maxScore: 100, rationale: "recent activity 66%" },
+    ],
+    rawSignals: null,
+    evidence: [{ type: "github_profile", label: "GitHub profile", value: "octocat", url: "https://github.com/octocat", sourceRef: "github-analysis:gh-v3" }],
+    flags: [{ severity: "warn", code: "footprint_red_flag", message: "Limited visible CI coverage." }],
+    durationMs: 2400,
+    humanOverride: false,
+    overrideReason: null,
+    startedAt: "2026-07-06T10:00:03.000Z",
+    finishedAt: "2026-07-06T10:00:05.000Z",
+  },
+  {
+    id: "ds-st-3",
+    stageId: "coding_challenge",
+    stageName: "Timed coding challenge",
+    stageVersion: "challenge-v1",
+    status: "PASS",
+    weight: 30,
+    subScores: [
+      { key: "test_performance", label: "Test performance", score: 100, maxScore: 100, rationale: "4/4 tests passed" },
+      { key: "delivery_under_time", label: "Delivery under time", score: 88, maxScore: 100, rationale: "540s of 1500s" },
+      { key: "process", label: "Process", score: 75, maxScore: 100, rationale: "3 test runs, 0 focus losses" },
+    ],
+    rawSignals: null,
+    evidence: [{ type: "challenge", label: "Normalise invoice totals", sourceRef: "js-normalise-invoices" }],
+    flags: [{ severity: "info", code: "high_paste_ratio", message: "High paste ratio (82%) — expected with AI assistance; note for the live follow-up." }],
+    durationMs: 540000,
+    humanOverride: false,
+    overrideReason: null,
+    startedAt: "2026-07-06T10:05:00.000Z",
+    finishedAt: "2026-07-06T10:14:00.000Z",
+  },
+  {
+    id: "ds-st-4",
+    stageId: "video_assessment",
+    stageName: "Video assessment",
+    stageVersion: "video-v1",
+    status: "PASS",
+    weight: 5,
+    subScores: [
+      { key: "completeness", label: "completeness", score: 80, maxScore: 100 },
+      { key: "role_relevance", label: "role relevance", score: 85, maxScore: 100 },
+      { key: "specificity", label: "specificity", score: 70, maxScore: 100 },
+      { key: "clarity", label: "clarity", score: 82, maxScore: 100 },
+      { key: "structure", label: "structure", score: 78, maxScore: 100 },
+    ],
+    rawSignals: null,
+    evidence: [],
+    flags: [],
+    durationMs: 1800,
+    humanOverride: false,
+    overrideReason: null,
+    startedAt: "2026-07-06T10:15:00.000Z",
+    finishedAt: "2026-07-06T10:15:02.000Z",
+  },
+  {
+    id: "ds-st-5",
+    stageId: "leadership_interview",
+    stageName: "Leadership interview",
+    stageVersion: "interview-v1",
+    status: "PENDING_HUMAN",
+    weight: 20,
+    subScores: [],
+    rawSignals: null,
+    evidence: [],
+    flags: [{ severity: "warn", code: "awaiting_interview", message: "Interview not yet recorded." }],
+    durationMs: null,
+    humanOverride: false,
+    overrideReason: null,
+    startedAt: null,
+    finishedAt: null,
+  },
+];
+
+const demoDevSignalBreakdown = {
+  formulaVersion: "devsignal-score-v1",
+  configVersion: "v1",
+  pipelineVersion: "devsignal-pipeline-v1",
+  finalScore: 84,
+  weightedScore: 84,
+  cappedByStageId: null,
+  cap: null,
+  blockingFailures: [],
+  humanReviewRequired: true,
+  stages: [
+    { stageId: "application_intake", status: "PASS", included: true, reason: "scored", rawStageScore: 95, weight: 5, effectiveWeight: 5, contribution: 5.9 },
+    { stageId: "online_footprint", status: "PASS", included: true, reason: "scored", rawStageScore: 78, weight: 20, effectiveWeight: 20, contribution: 19.5 },
+    { stageId: "coding_challenge", status: "PASS", included: true, reason: "scored", rawStageScore: 88, weight: 30, effectiveWeight: 30, contribution: 33.0 },
+    { stageId: "video_assessment", status: "PASS", included: true, reason: "scored", rawStageScore: 79, weight: 5, effectiveWeight: 5, contribution: 4.9 },
+    { stageId: "leadership_interview", status: "PENDING_HUMAN", included: false, reason: "status PENDING_HUMAN — redistribute", rawStageScore: 0, weight: 20, effectiveWeight: 0, contribution: 0 },
+  ],
+};
+
+const demoDevSignalDetail = {
+  id: "ds-1",
+  workspaceId: "demo-ws",
+  clientId: null,
+  candidateId: "ds-cand-1",
+  candidateName: "Octavia Catelyn",
+  candidateGithubHandle: "octocat",
+  pipelineVersion: "devsignal-pipeline-v1",
+  configVersion: "v1",
+  status: "PENDING_HUMAN",
+  decision: "APPROVED_FOR_STAGING",
+  decisionReason: null,
+  finalScore: 84,
+  scoreBreakdown: demoDevSignalBreakdown,
+  bestMatchSummary: {
+    label: "REVIEW_RECOMMENDED",
+    labelDisplay: "Review recommended",
+    strengths: ["Application intake", "Online footprint analysis", "Timed coding challenge"],
+    vetted: false,
+  },
+  flags: [{ severity: "info", code: "high_paste_ratio", message: "High paste ratio (82%) — expected with AI assistance." }],
+  publicToken: "demo-token-octocat",
+  tokenExpiresAt: "2099-01-01T00:00:00.000Z",
+  promotedToCode: false,
+  promotedToCodeAt: null,
+  startedAt: "2026-07-06T10:00:00.000Z",
+  finishedAt: "2026-07-06T10:15:02.000Z",
+  createdAt: "2026-07-06T09:58:00.000Z",
+  updatedAt: "2026-07-06T10:15:02.000Z",
+  stageResults: demoDevSignalStageResults,
+  outcomeLinks: [],
+};
+
+const demoDevSignalAssessments = [
+  {
+    id: "ds-1",
+    workspaceId: "demo-ws",
+    clientId: null,
+    candidateId: "ds-cand-1",
+    candidateName: "Octavia Catelyn",
+    candidateGithubHandle: "octocat",
+    pipelineVersion: "devsignal-pipeline-v1",
+    configVersion: "v1",
+    status: "PENDING_HUMAN",
+    decision: "APPROVED_FOR_STAGING",
+    decisionReason: null,
+    finalScore: 84,
+    scoreBreakdown: demoDevSignalBreakdown,
+    bestMatchSummary: { label: "REVIEW_RECOMMENDED", labelDisplay: "Review recommended", strengths: [], vetted: false },
+    flags: [],
+    promotedToCode: false,
+    promotedToCodeAt: null,
+    startedAt: "2026-07-06T10:00:00.000Z",
+    finishedAt: "2026-07-06T10:15:02.000Z",
+    createdAt: "2026-07-06T09:58:00.000Z",
+    updatedAt: "2026-07-06T10:15:02.000Z",
+  },
+  {
+    id: "ds-2",
+    workspaceId: "demo-ws",
+    clientId: null,
+    candidateId: "ds-cand-2",
+    candidateName: "Marcus Bright",
+    candidateGithubHandle: "mbright",
+    pipelineVersion: "devsignal-pipeline-v1",
+    configVersion: "v1",
+    status: "COMPLETED",
+    decision: "APPROVED_FOR_CODE",
+    decisionReason: "Promoted into Code",
+    finalScore: 91,
+    scoreBreakdown: null,
+    bestMatchSummary: { label: "BEST_MATCH", labelDisplay: "Best match", strengths: [], vetted: true },
+    flags: [],
+    promotedToCode: true,
+    promotedToCodeAt: "2026-07-06T14:00:00.000Z",
+    startedAt: "2026-07-05T09:00:00.000Z",
+    finishedAt: "2026-07-05T09:20:00.000Z",
+    createdAt: "2026-07-05T08:55:00.000Z",
+    updatedAt: "2026-07-06T14:00:00.000Z",
+  },
+  {
+    id: "ds-3",
+    workspaceId: "demo-ws",
+    clientId: null,
+    candidateId: "ds-cand-3",
+    candidateName: "Priya Anand",
+    candidateGithubHandle: "priya-dev",
+    pipelineVersion: "devsignal-pipeline-v1",
+    configVersion: "v1",
+    status: "DRAFT",
+    decision: "NONE",
+    decisionReason: null,
+    finalScore: null,
+    scoreBreakdown: null,
+    bestMatchSummary: null,
+    flags: [],
+    promotedToCode: false,
+    promotedToCodeAt: null,
+    startedAt: null,
+    finishedAt: null,
+    createdAt: "2026-07-07T08:30:00.000Z",
+    updatedAt: "2026-07-07T08:30:00.000Z",
+  },
+];
+
+const demoDevSignalNewAssessment = {
+  ...demoDevSignalDetail,
+  id: "ds-new",
+  candidateName: "New candidate",
+  status: "DRAFT",
+  decision: "NONE",
+  finalScore: null,
+  scoreBreakdown: null,
+  bestMatchSummary: null,
+  publicToken: "demo-token-new",
+  stageResults: [],
+};
+
+const demoDevSignalAnalytics = {
+  total: 3,
+  byStatus: { PENDING_HUMAN: 1, COMPLETED: 1, DRAFT: 1 },
+  byDecision: { APPROVED_FOR_STAGING: 1, APPROVED_FOR_CODE: 1, NONE: 1 },
+  promotedToCode: 1,
+  averageFinalScore: 88,
+  outcomeLinks: 1,
+};
+
+const demoDevSignalConfig = {
+  id: "ds-cfg-1",
+  clientId: null,
+  name: "Default",
+  version: "v1",
+  isDefault: true,
+  enabledStages: [
+    "application_intake",
+    "profile_connections",
+    "video_assessment",
+    "coding_challenge",
+    "online_footprint",
+    "identity_verification",
+    "leadership_interview",
+    "score_report",
+  ],
+  stageOrder: [
+    "application_intake",
+    "profile_connections",
+    "video_assessment",
+    "coding_challenge",
+    "online_footprint",
+    "identity_verification",
+    "leadership_interview",
+    "score_report",
+  ],
+  stageWeights: {
+    application_intake: 5,
+    profile_connections: 10,
+    video_assessment: 5,
+    coding_challenge: 30,
+    online_footprint: 20,
+    identity_verification: 10,
+    leadership_interview: 20,
+    score_report: 0,
+  },
+  blockingRules: { identity_verification: true },
+  createdAt: "2026-07-06T00:00:00.000Z",
+  updatedAt: "2026-07-06T00:00:00.000Z",
+};
+
+// Minimal candidate for the detail's outcome-links placement picker.
+const demoDevSignalCandidate = {
+  id: "ds-cand-1",
+  name: "Octavia Catelyn",
+  githubHandle: "octocat",
+  placements: [
+    {
+      id: "ds-pl-1",
+      candidateId: "ds-cand-1",
+      clientId: "demo-c1",
+      clientName: "Northwind",
+      projectName: "Billing rebuild",
+      startDate: "2026-06-01T00:00:00.000Z",
+      endDate: null,
+      allocationPercent: 100,
+      notes: null,
+      clientPlatformId: null,
+      clientPlatformName: null,
+      clientPlatformRepoUrl: null,
+      repoPaths: [],
+      repoBranch: null,
+      lastScopedScanAt: null,
+      lastScopedScanRunId: null,
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:00:00.000Z",
+    },
+  ],
+};
+
 // ─── Resolver used by the fetch interceptor ─────────────────────────────────────
 
 /**
@@ -1163,5 +1488,24 @@ export function resolveDemoApi(pathname: string): unknown {
     // returns the unchanged canned data.
     return { ok: true };
   }
+
+  // DevSignal (developer vetting). The interceptor is method-agnostic, so the
+  // list endpoint returns BOTH `items` (GET list) and `assessment` (POST create)
+  // so either hook reads the field it wants.
+  if (pathname === "/api/devsignal/assessments") {
+    return { items: demoDevSignalAssessments, assessment: demoDevSignalNewAssessment };
+  }
+  if (pathname === "/api/devsignal/analytics/assessments") return { analytics: demoDevSignalAnalytics };
+  if (pathname === "/api/devsignal/pipeline-configs") return { items: [demoDevSignalConfig] };
+  if (pathname === "/api/devsignal/outcome-links") return { link: { id: "demo-link" } };
+  // Detail GET + any per-assessment mutation (run / decision / interview / promote).
+  if (/^\/api\/devsignal\/assessments\/[^/]+(\/(run|decision|interview|promote-to-code))?$/.test(pathname)) {
+    return { assessment: demoDevSignalDetail };
+  }
+  // Candidate detail — only the DevSignal detail's outcome-links picker uses this.
+  if (/^\/api\/codeclear\/candidates\/[^/]+$/.test(pathname)) {
+    return { candidate: demoDevSignalCandidate };
+  }
+
   return {};
 }

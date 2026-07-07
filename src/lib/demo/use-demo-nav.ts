@@ -20,7 +20,10 @@ export function useDemoLinkReroute() {
     if (!href.startsWith("/app/")) return;
     e.preventDefault();
     const docMatch = href.match(/^\/app\/docs\/([^/?#]+)/);
-    if (/^\/app\/portal\/[^/]+\/wiki/.test(href)) router.push("/demo/wiki");
+    const devSignalMatch = href.match(/^\/app\/codeclear\/devsignal\/([^/?#]+)$/);
+    if (devSignalMatch) router.push(`/demo/devsignal/${devSignalMatch[1]}`);
+    else if (/^\/app\/codeclear\/devsignal$/.test(href)) router.push("/demo/devsignal");
+    else if (/^\/app\/portal\/[^/]+\/wiki/.test(href)) router.push("/demo/wiki");
     else if (/^\/app\/portal\/[^/]+\/tasks/.test(href)) router.push("/demo/tasks");
     else if (/^\/app\/portal\/[^/]+$/.test(href)) router.push("/demo/portal");
     else if (docMatch && docMatch[1] !== "analytics")
