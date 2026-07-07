@@ -47,13 +47,13 @@ export function PulseStudiesPanel({
 
       {collapsed ? (
         <div className="flex flex-1 items-center justify-between gap-3 p-4">
-          <span className="text-xs text-[var(--text-4)]">
+          <span className="min-w-0 truncate text-xs text-[var(--text-4)]">
             {list.length > 0
               ? `${list.length} stud${list.length === 1 ? "y" : "ies"}`
               : "No studies yet"}
           </span>
           <Link href="/app/study/new" className="shrink-0">
-            <Button variant="secondary" size="sm">New research study</Button>
+            <Button variant="secondary" size="sm">New study</Button>
           </Link>
         </div>
       ) : (

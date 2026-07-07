@@ -63,7 +63,7 @@ export function PulseStartersPanel({
 
       {collapsed ? (
         <div className="flex flex-1 items-center justify-between gap-3 p-4">
-          <span className="text-xs text-[var(--text-4)]">
+          <span className="min-w-0 truncate text-xs text-[var(--text-4)]">
             {list.length > 0 ? `${list.length} building blocks` : "Library empty"}
           </span>
           <Link href="/app/starters" className="shrink-0">

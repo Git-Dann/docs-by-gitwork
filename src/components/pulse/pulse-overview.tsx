@@ -85,15 +85,17 @@ export function CardHeader({
       role={onToggle ? "button" : undefined}
       aria-expanded={onToggle ? !collapsed : undefined}
     >
-      <span className="widget-header__label">
+      {/* Label truncates rather than pushing the status out; status + chevron never
+          wrap (fixed-height header) — keeps the 3-up row tidy on narrow columns. */}
+      <span className="widget-header__label min-w-0 flex-1 truncate">
         <span className="widget-header__label--number">{number}</span>
         {` // ${title}`}
       </span>
-      <div className="flex items-center gap-2">
-        {status && <span className="widget-header__status">{status}</span>}
+      <div className="flex shrink-0 items-center gap-2">
+        {status && <span className="widget-header__status whitespace-nowrap">{status}</span>}
         {onToggle && (
           <ChevronDownIcon
-            className={cn("h-4 w-4 text-[var(--text-4)] transition-transform", !collapsed && "rotate-180")}
+            className={cn("h-4 w-4 shrink-0 text-[var(--text-4)] transition-transform", !collapsed && "rotate-180")}
           />
         )}
       </div>
