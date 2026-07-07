@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowDownTrayIcon,
   CheckIcon,
@@ -82,46 +83,86 @@ function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) 
 type MenuItem = { label: string; icon: ComponentType<SVGProps<SVGSVGElement>>; onClick: () => void; danger?: boolean };
 function RowMenu({ items, label = "Actions" }: { items: MenuItem[]; label?: string }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  // Portal-positioned so the menu escapes the wiki card's `overflow: hidden`
+  // (an in-flow absolute menu clips at the card edge). Fixed to the viewport,
+  // right-aligned under the button, flipping up when it'd run off the bottom.
+  const [pos, setPos] = useState<{ up: boolean; top: number; bottom: number; right: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  function openMenu() {
+    const el = btnRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const estH = items.length * 40 + 12;
+    const up = r.bottom + estH > window.innerHeight - 8;
+    setPos({
+      up,
+      top: r.bottom + 6,
+      bottom: window.innerHeight - r.top + 6,
+      right: Math.max(8, window.innerWidth - r.right),
+    });
+    setOpen(true);
+  }
+
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (btnRef.current?.contains(e.target as Node)) return;
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
     };
+    const onScroll = () => setOpen(false);
     document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      window.removeEventListener("scroll", onScroll, true);
+    };
   }, [open]);
+
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
+        ref={btnRef}
         type="button"
         aria-label={label}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => (open ? setOpen(false) : openMenu())}
         className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] border border-[var(--border-2)] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
       >
         <EllipsisHorizontalIcon className="h-4 w-4" />
       </button>
-      {open && (
-        <div className="absolute right-0 top-full z-40 mt-1.5 w-44 overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.12)] bg-[var(--surface-0)] py-1 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.3)]">
-          {items.map((it, i) => {
-            const Icon = it.icon;
-            return (
-              <button
-                key={i}
-                type="button"
-                onClick={() => {
-                  setOpen(false);
-                  it.onClick();
-                }}
-                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition hover:bg-[var(--surface-1)] ${it.danger ? "text-rose-600" : "text-[var(--text-2)]"}`}
-              >
-                <Icon className="h-4 w-4" /> {it.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
+      {open && pos && typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={menuRef}
+            style={{
+              position: "fixed",
+              right: pos.right,
+              ...(pos.up ? { bottom: pos.bottom } : { top: pos.top }),
+            }}
+            className="z-[100] w-44 overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.12)] bg-[var(--surface-0)] py-1 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.3)]"
+          >
+            {items.map((it, i) => {
+              const Icon = it.icon;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    it.onClick();
+                  }}
+                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition hover:bg-[var(--surface-1)] ${it.danger ? "text-rose-600" : "text-[var(--text-2)]"}`}
+                >
+                  <Icon className="h-4 w-4" /> {it.label}
+                </button>
+              );
+            })}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
