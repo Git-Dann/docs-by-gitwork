@@ -342,8 +342,8 @@ export async function mergeUserAccounts(
           where: { id: keepMembership.id },
           data: {
             role: mergeMembership.role,
-            permissions: mergeMembership.permissions,
-            permissionOverrides: mergeMembership.permissionOverrides,
+            permissions: mergeMembership.permissions as Prisma.InputJsonValue,
+            permissionOverrides: mergeMembership.permissionOverrides as Prisma.InputJsonValue,
           },
         });
         result.membershipAction = "merged_role";
