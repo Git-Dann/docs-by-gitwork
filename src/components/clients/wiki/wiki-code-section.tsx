@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   ArrowDownTrayIcon,
   CheckIcon,
@@ -101,6 +101,120 @@ function ReleaseNotes({ text }: { text: string }) {
   );
 }
 
+// ── Lightweight, dependency-free syntax highlighting ────────────────────────
+// Tuned for firmware / C-family (the .ino/.cpp/.h this section handles), with a
+// broad keyword set that also covers JS/Python so other pasted files still get
+// comments/strings/numbers coloured. Tokenises the RAW string then renders React
+// spans (React escapes text — no dangerouslySetInnerHTML, XSS-safe).
+const CODE_KEYWORDS = new Set([
+  // C / C++ / Arduino
+  "if", "else", "for", "while", "do", "switch", "case", "default", "break", "continue", "return",
+  "void", "int", "long", "short", "char", "unsigned", "signed", "float", "double", "bool", "boolean",
+  "byte", "word", "const", "static", "volatile", "struct", "class", "enum", "union", "typedef", "sizeof",
+  "new", "delete", "public", "private", "protected", "namespace", "using", "template", "typename", "auto",
+  "this", "nullptr", "true", "false", "goto", "extern", "inline", "operator", "virtual", "override",
+  "uint8_t", "uint16_t", "uint32_t", "uint64_t", "int8_t", "int16_t", "int32_t", "int64_t", "size_t", "String",
+  "HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP", "setup", "loop",
+  // JS / TS
+  "function", "var", "let", "import", "from", "export", "async", "await", "try", "catch", "finally",
+  "throw", "typeof", "instanceof", "of", "in", "yield", "interface", "type", "as", "extends", "implements",
+  // Python
+  "def", "print", "is", "not", "and", "or", "None", "True", "False", "elif", "lambda", "with", "pass", "self",
+]);
+
+type CodeToken = { t: "com" | "str" | "num" | "kw" | "pre" | "txt"; v: string };
+
+function tokenizeCode(code: string): CodeToken[] {
+  const tokens: CodeToken[] = [];
+  const n = code.length;
+  let i = 0;
+  const isWord = (c: string) => /[A-Za-z0-9_]/.test(c);
+  while (i < n) {
+    const c = code[i];
+    const c2 = code[i + 1];
+    if (c === "/" && c2 === "/") {
+      let j = i + 2;
+      while (j < n && code[j] !== "\n") j++;
+      tokens.push({ t: "com", v: code.slice(i, j) });
+      i = j;
+    } else if (c === "/" && c2 === "*") {
+      let j = i + 2;
+      while (j < n && !(code[j] === "*" && code[j + 1] === "/")) j++;
+      j = Math.min(n, j + 2);
+      tokens.push({ t: "com", v: code.slice(i, j) });
+      i = j;
+    } else if (c === '"' || c === "'" || c === "`") {
+      let j = i + 1;
+      while (j < n) {
+        if (code[j] === "\\") { j += 2; continue; }
+        if (code[j] === c) { j++; break; }
+        j++;
+      }
+      tokens.push({ t: "str", v: code.slice(i, j) });
+      i = j;
+    } else if (c === "#") {
+      let j = i + 1;
+      while (j < n && /[A-Za-z]/.test(code[j])) j++;
+      tokens.push({ t: "pre", v: code.slice(i, j) });
+      i = j;
+    } else if (/[0-9]/.test(c) || (c === "." && /[0-9]/.test(c2 ?? ""))) {
+      let j = i;
+      while (j < n && /[0-9a-fA-FxXbBoL._]/.test(code[j])) j++;
+      tokens.push({ t: "num", v: code.slice(i, j) });
+      i = j;
+    } else if (/[A-Za-z_]/.test(c)) {
+      let j = i;
+      while (j < n && isWord(code[j])) j++;
+      const w = code.slice(i, j);
+      tokens.push({ t: CODE_KEYWORDS.has(w) ? "kw" : "txt", v: w });
+      i = j;
+    } else {
+      let j = i + 1;
+      while (j < n && !/[/"'`#A-Za-z_0-9]/.test(code[j])) j++;
+      tokens.push({ t: "txt", v: code.slice(i, j) });
+      i = j;
+    }
+  }
+  return tokens;
+}
+
+function HighlightedCode({ code }: { code: string }) {
+  const tokens = useMemo(() => tokenizeCode(code), [code]);
+  return (
+    <>
+      {tokens.map((tk, idx): ReactNode =>
+        tk.t === "txt" ? tk.v : (
+          <span key={idx} className={`wch-${tk.t}`}>
+            {tk.v}
+          </span>
+        ),
+      )}
+    </>
+  );
+}
+
+// Theme-aware token colours — legible on the dark internal view and the light
+// public view. Rendered once per section.
+const CODE_HL_CSS = `
+.wch-com{color:#6a737d;font-style:italic}
+.wch-kw{color:#8250df}
+.wch-str{color:#0a7d55}
+.wch-num{color:#b45309}
+.wch-pre{color:#a3306e}
+[data-theme="dark"] .wch-com{color:#7d8590}
+[data-theme="dark"] .wch-kw{color:#c39cff}
+[data-theme="dark"] .wch-str{color:#6bd6a8}
+[data-theme="dark"] .wch-num{color:#e0a45e}
+[data-theme="dark"] .wch-pre{color:#f0a3c8}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .wch-com{color:#7d8590}
+  :root:not([data-theme="light"]) .wch-kw{color:#c39cff}
+  :root:not([data-theme="light"]) .wch-str{color:#6bd6a8}
+  :root:not([data-theme="light"]) .wch-num{color:#e0a45e}
+  :root:not([data-theme="light"]) .wch-pre{color:#f0a3c8}
+}
+`;
+
 function FileView({ file }: { file: WikiCodeVersionRecord["files"][number] }) {
   return (
     <div className="overflow-hidden rounded-[8px] border border-[var(--border-1)]">
@@ -112,7 +226,9 @@ function FileView({ file }: { file: WikiCodeVersionRecord["files"][number] }) {
         <CopyButton text={file.content} />
       </div>
       <pre className="max-h-[360px] overflow-auto bg-[var(--surface-0)] px-3 py-2.5 text-[12px] leading-relaxed text-[var(--text-2)]" style={{ fontFamily: MONO }}>
-        <code>{file.content}</code>
+        <code>
+          <HighlightedCode code={file.content} />
+        </code>
       </pre>
     </div>
   );
@@ -309,8 +425,8 @@ function ModuleView({ module, slug, isInternal }: { module: WikiCodeModuleRecord
         </p>
       ) : (
         <div className="space-y-2.5">
-          {module.versions.map((v, i) => (
-            <VersionView key={v.id} moduleName={module.name} version={v} defaultOpen={i === 0} isInternal={isInternal} slug={slug} />
+          {module.versions.map((v) => (
+            <VersionView key={v.id} moduleName={module.name} version={v} defaultOpen={false} isInternal={isInternal} slug={slug} />
           ))}
         </div>
       )}
@@ -364,6 +480,7 @@ export function WikiCodeSection({
 
   return (
     <section className="widget-card">
+      <style>{CODE_HL_CSS}</style>
       <div className="widget-header">
         <span className="widget-header__label" style={{ fontFamily: MONO }}>
           <span className="widget-header__label--number">01</span>
