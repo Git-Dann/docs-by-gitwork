@@ -31,6 +31,7 @@ import { getDefaultCodeClearCandidatePayloads } from "@/server/codeclear";
 import { migratePermissionModel } from "@/server/permissions";
 import { seedBuiltInStarters } from "@/server/starters-catalog";
 import { seedHandbookArticles } from "@/server/handbook-catalog";
+import { isSeedAccountEmail } from "@/server/seed-accounts";
 
 // Adds columns/tables introduced by the Portal schema extension that
 // prisma db push may not apply reliably through a pooler connection.
@@ -881,6 +882,10 @@ export async function ensureInitialAdmin(workspaceId?: string) {
   const email = process.env.INITIAL_ADMIN_EMAIL;
   const password = process.env.INITIAL_ADMIN_PASSWORD;
   if (!email || !password) return;
+  // Never (re)create or patch a placeholder admin — e.g. admin@example.com. These
+  // are seed/junk, hidden from every list; recreating one on boot would resurrect
+  // the very account we filter out. See src/server/seed-accounts.ts.
+  if (isSeedAccountEmail(email)) return;
 
   // Resolve workspaceId if not provided
   let wsId = workspaceId;
