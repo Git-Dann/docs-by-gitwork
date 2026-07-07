@@ -1403,3 +1403,110 @@ export const broadcastCreateSchema = z.object({
     z.literal(30),
   ]),
 });
+
+// ─── DevSignal (developer vetting engine) ────────────────────────────────────
+
+const devSignalNewCandidateSchema = z.object({
+  name: z.string().min(1),
+  githubHandle: z.string().min(1),
+  email: z.string().email().optional(),
+  primaryStack: z.string().min(1).optional(),
+});
+
+export const devSignalAssessmentCreateSchema = z
+  .object({
+    candidateId: z.string().min(1).optional(),
+    candidate: devSignalNewCandidateSchema.optional(),
+    clientId: z.string().min(1).optional(),
+  })
+  .refine((v) => Boolean(v.candidateId) || Boolean(v.candidate), {
+    message: "Provide candidateId or candidate details.",
+  });
+
+export const devSignalDecisionSchema = z.object({
+  decision: z.enum(["APPROVED_FOR_STAGING", "REJECTED", "NEEDS_MORE_INFO", "NONE"]),
+  reason: z.string().max(2000).optional(),
+});
+
+export const devSignalPromoteSchema = z.object({
+  reason: z.string().max(2000).optional(),
+});
+
+export const devSignalOutcomeLinkSchema = z.object({
+  assessmentId: z.string().min(1),
+  placementId: z.string().min(1).optional(),
+  deliveryMetrics: z.record(z.string(), z.unknown()).optional(),
+  source: z.string().max(120).optional(),
+  notes: z.string().max(4000).optional(),
+});
+
+export const devSignalPipelineConfigSchema = z.object({
+  name: z.string().min(1),
+  clientId: z.string().min(1).optional(),
+  version: z.string().min(1).default("v1"),
+  isDefault: z.boolean().optional(),
+  enabledStages: z.array(z.string()).min(1),
+  stageOrder: z.array(z.string()).min(1),
+  stageWeights: z.record(z.string(), z.number().int().min(0).max(100)),
+  blockingRules: z.record(z.string(), z.boolean()).optional(),
+  thresholds: z.record(z.string(), z.unknown()).optional(),
+});
+
+// ─── DevSignal public candidate flow (/vet/[token]) ──────────────────────────
+
+export const vetIntakeSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  email: z.string().email().max(320).optional().or(z.literal("")),
+  location: z.string().max(200).optional().or(z.literal("")),
+  timezone: z.string().max(120).optional().or(z.literal("")),
+  primaryStack: z.string().max(200).optional().or(z.literal("")),
+  yearsExperience: z.number().int().min(0).max(70).optional(),
+  linkedinUrl: z.string().max(500).optional().or(z.literal("")),
+  portfolioUrl: z.string().max(500).optional().or(z.literal("")),
+  availability: z.string().max(120).optional().or(z.literal("")),
+});
+
+export const vetConnectSchema = z.object({
+  githubHandle: z.string().min(1).max(120),
+});
+
+const vetTelemetryEventSchema = z.object({
+  t: z.number().nonnegative(),
+  type: z.enum(["keystroke", "paste", "run", "focus", "blur", "edit"]),
+  size: z.number().int().nonnegative().optional(),
+});
+
+export const vetChallengeSubmitSchema = z.object({
+  challengeId: z.string().min(1),
+  code: z.string().max(50_000),
+  testsPassed: z.number().int().min(0),
+  testsTotal: z.number().int().min(0),
+  timeTakenSec: z.number().int().min(0),
+  telemetry: z.array(vetTelemetryEventSchema).max(20_000).default([]),
+});
+
+export const devSignalInterviewSchema = z.object({
+  dimensions: z
+    .array(
+      z.object({
+        key: z.string().min(1),
+        label: z.string().min(1),
+        score: z.number().int().min(0).max(100),
+      }),
+    )
+    .min(1)
+    .max(20),
+  verdict: z.enum(["PASS", "WARN", "FAIL", "NEEDS_SECOND_REVIEW"]),
+  notes: z.string().max(4000).optional(),
+});
+
+export const vetVideoSubmitSchema = z
+  .object({
+    audioBase64: z.string().max(30_000_000).optional(),
+    mimeType: z.string().max(120).optional(),
+    transcript: z.string().max(50_000).optional(),
+    consentRetainTranscript: z.boolean().default(false),
+  })
+  .refine((v) => Boolean(v.audioBase64) || Boolean(v.transcript), {
+    message: "Provide audio or a transcript.",
+  });

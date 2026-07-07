@@ -42,6 +42,11 @@ import type {
   PipelineStatus,
   CodeClearTier,
 } from "@/types/codeclear";
+import type {
+  DevSignalAnalyticsDTO,
+  DevSignalAssessmentDTO,
+  DevSignalPipelineConfigDTO,
+} from "@/types/devsignal";
 import type { NotificationDTO } from "@/types/notifications";
 import type {
   DeskActionItemDTO,
@@ -3474,4 +3479,78 @@ export async function markNotificationsRead(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+// ─── DevSignal (developer vetting engine) ────────────────────────────────────
+
+const jsonPost = (body: unknown): RequestInit => ({
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+export async function listDevSignalAssessments(filters: { status?: string; decision?: string } = {}) {
+  const qs = new URLSearchParams();
+  if (filters.status) qs.set("status", filters.status);
+  if (filters.decision) qs.set("decision", filters.decision);
+  const s = qs.toString();
+  return apiFetch<{ items: DevSignalAssessmentDTO[] }>(`/api/devsignal/assessments${s ? `?${s}` : ""}`);
+}
+
+export async function getDevSignalAssessment(id: string) {
+  return apiFetch<{ assessment: DevSignalAssessmentDTO }>(`/api/devsignal/assessments/${id}`);
+}
+
+export async function createDevSignalAssessment(input: {
+  candidateId?: string;
+  candidate?: { name: string; githubHandle: string; email?: string; primaryStack?: string };
+  clientId?: string;
+}) {
+  return apiFetch<{ assessment: DevSignalAssessmentDTO }>("/api/devsignal/assessments", jsonPost(input));
+}
+
+export async function runDevSignalAssessment(id: string) {
+  return apiFetch<{ assessment: DevSignalAssessmentDTO }>(`/api/devsignal/assessments/${id}/run`, jsonPost({}));
+}
+
+export async function recordDevSignalDecision(
+  id: string,
+  input: { decision: "APPROVED_FOR_STAGING" | "REJECTED" | "NEEDS_MORE_INFO" | "NONE"; reason?: string },
+) {
+  return apiFetch<{ assessment: DevSignalAssessmentDTO }>(`/api/devsignal/assessments/${id}/decision`, jsonPost(input));
+}
+
+export async function recordDevSignalInterview(
+  id: string,
+  input: {
+    dimensions: Array<{ key: string; label: string; score: number }>;
+    verdict: "PASS" | "WARN" | "FAIL" | "NEEDS_SECOND_REVIEW";
+    notes?: string;
+  },
+) {
+  return apiFetch<{ assessment: DevSignalAssessmentDTO }>(`/api/devsignal/assessments/${id}/interview`, jsonPost(input));
+}
+
+export async function promoteDevSignalToCode(id: string, input: { reason?: string } = {}) {
+  return apiFetch<{ assessment: DevSignalAssessmentDTO }>(
+    `/api/devsignal/assessments/${id}/promote-to-code`,
+    jsonPost(input),
+  );
+}
+
+export async function listDevSignalConfigs() {
+  return apiFetch<{ items: DevSignalPipelineConfigDTO[] }>("/api/devsignal/pipeline-configs");
+}
+
+export async function getDevSignalAnalytics() {
+  return apiFetch<{ analytics: DevSignalAnalyticsDTO }>("/api/devsignal/analytics/assessments");
+}
+
+export async function createDevSignalOutcomeLink(input: {
+  assessmentId: string;
+  placementId?: string;
+  source?: string;
+  notes?: string;
+}) {
+  return apiFetch<{ link: { id: string } }>("/api/devsignal/outcome-links", jsonPost(input));
 }

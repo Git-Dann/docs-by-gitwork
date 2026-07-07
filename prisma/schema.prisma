@@ -373,6 +373,10 @@ model Workspace {
   slackUpdateLogs             SlackUpdateLog[]
   broadcasts                  Broadcast[]
   deskReminders               DeskReminder[]
+  devSignalAssessments        DevSignalAssessment[]
+  devSignalConfigs            DevSignalPipelineConfig[]
+  devSignalOutcomeLinks       DevSignalOutcomeLink[]
+  devSignalAuditEvents        DevSignalAuditEvent[]
 }
 
 /**
@@ -922,35 +926,35 @@ enum LeadStage {
 }
 
 model WorkspaceClient {
-  id                   String                @id @default(cuid())
-  workspaceId          String
-  name                 String
-  slug                 String
-  logoUrl              String?
+  id                       String                    @id @default(cuid())
+  workspaceId              String
+  name                     String
+  slug                     String
+  logoUrl                  String?
   /// Gitwork product/account leads shown on the client wiki header (User ids,
   /// display order preserved). Distinct from the delivery team (devs via placements).
-  productTeamUserIds   String[]              @default([])
-  website              String?
-  addressLine1         String?
-  addressLine2         String?
-  city                 String?
+  productTeamUserIds       String[]                  @default([])
+  website                  String?
+  addressLine1             String?
+  addressLine2             String?
+  city                     String?
   /// UK address line — county / region (the Typeform's "State/Region/Province").
-  county               String?
-  postcode             String?
-  country              String?
-  notes                String?               @db.Text
-  primaryContactName   String?
-  primaryContactEmail  String?
-  primaryContactPhone  String?
+  county                   String?
+  postcode                 String?
+  country                  String?
+  notes                    String?                   @db.Text
+  primaryContactName       String?
+  primaryContactEmail      String?
+  primaryContactPhone      String?
   /// Where invoices are sent — "which email should we send invoices to?".
   /// Distinct from primaryContactEmail (the day-to-day contact).
-  invoiceEmail         String?
-  googleDriveFolderUrl String?
-  clickupUrl           String?               @db.Text
+  invoiceEmail             String?
+  googleDriveFolderUrl     String?
+  clickupUrl               String?                   @db.Text
   /// Legacy single Slack channel id (pre-Phase-3). New code reads
   /// `effectiveInternalChannel(client) = slackInternalChannelId ?? slackChannelId`
   /// — kept until Phase 4 drops it so deploys roll forward / back without losing the link.
-  slackChannelId       String?
+  slackChannelId           String?
   /// Internal channel (Gitwork-only, typically private) for the client's project
   /// updates. Set by `provisionClientChannels` on create OR manually picked in the
   /// Edit-client modal. Replaces `slackChannelId` going forward.
@@ -964,70 +968,72 @@ model WorkspaceClient {
   /// Sticky error string from the last channel-provisioning attempt. Cleared on
   /// success. Drives the "Provision Slack channels" retry button on Edit Client.
   slackProvisionError      String?
-  hidden               Boolean               @default(false)
+  hidden                   Boolean                   @default(false)
   /// Lifecycle status. New onboarding submissions arrive as PENDING_REVIEW;
   /// Dan/Harry flip to ACTIVE via Move-to-workflow. Pulse scans are gated to
   /// ACTIVE clients only.
-  status               WorkspaceClientStatus @default(ACTIVE)
+  status                   WorkspaceClientStatus     @default(ACTIVE)
   /// Registered company name when it differs from the trading name above.
-  legalCompanyName     String?
+  legalCompanyName         String?
   /// Company registration number (Companies House etc.).
-  companyNumber        String?
+  companyNumber            String?
   /// VAT registration number.
-  vatNumber            String?
+  vatNumber                String?
   /// Billing address — populated only when it differs from the HQ address above.
-  billingAddressLine1  String?
-  billingAddressLine2  String?
-  billingCity          String?
-  billingCounty        String?
-  billingPostcode      String?
-  billingCountry       String?
+  billingAddressLine1      String?
+  billingAddressLine2      String?
+  billingCity              String?
+  billingCounty            String?
+  billingPostcode          String?
+  billingCountry           String?
   /// Public Gantt/timeline share. Token minted on first enable; toggling off
   /// keeps the token so the same URL re-activates. Public page checks both.
   /// NOT a DB unique constraint: adding a unique index trips `prisma db push`'s
   /// data-loss guard, which the Vercel build never force-applies (it would skip
   /// the whole migration). The token is 144 bits of randomness and lookups use
   /// findFirst, so a plain index is enough.
-  timelineShareToken   String?
-  timelineShareEnabled Boolean               @default(false)
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-  workspace            Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  pulseScans           PulseScan[]
-  platforms            ClientPlatform[]
-  designs              ClientDesign[]
-  documents            Document[]
-  supportClients       SupportClient[]
-  placements           Placement[]
-  studies              Study[]
-  meetings             Meeting[]
-  bankAccount          ClientBankAccount?
-  onboarding           ClientOnboarding?
-  designSystem         ClientDesignSystem?
-  wiki                 ClientWiki?
-  assignments          ClientAssignment[]
-  tasks                Task[]
-  featureBlocks        FeatureBlock[]
-  milestones           Milestone[]
+  timelineShareToken       String?
+  timelineShareEnabled     Boolean                   @default(false)
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  workspace                Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pulseScans               PulseScan[]
+  platforms                ClientPlatform[]
+  designs                  ClientDesign[]
+  documents                Document[]
+  supportClients           SupportClient[]
+  placements               Placement[]
+  studies                  Study[]
+  meetings                 Meeting[]
+  devSignalAssessments     DevSignalAssessment[]
+  devSignalConfigs         DevSignalPipelineConfig[]
+  bankAccount              ClientBankAccount?
+  onboarding               ClientOnboarding?
+  designSystem             ClientDesignSystem?
+  wiki                     ClientWiki?
+  assignments              ClientAssignment[]
+  tasks                    Task[]
+  featureBlocks            FeatureBlock[]
+  milestones               Milestone[]
   /// Monthly retainer-day allocation. Optional — surfaced in the UI only when set.
-  retainerDays         Int?
+  retainerDays             Int?
   /// Retainer days used in the current month (manually maintained). Paired with
   /// retainerDays as a "used / allowance" readout.
-  retainerDaysUsed     Int?
+  retainerDaysUsed         Int?
   /// The month (YYYY-MM, UTC) that `retainerDaysUsed` belongs to. When this is an
   /// earlier month than today, the used figure is treated as 0 on read (lazy monthly
   /// reset) and re-stamped to the current month on the next edit.
-  retainerPeriodMonth  String?
+  retainerPeriodMonth      String?
   // ── Leads (status = LEAD) — all additive, nullable ──
-  leadSource           String?
-  leadStage            LeadStage?
-  leadFollowUpAt       DateTime?
-  leadValue            Int?
-  leadValueCurrency    String?   @default("GBP")
+  leadSource               String?
+  leadStage                LeadStage?
+  leadFollowUpAt           DateTime?
+  leadValue                Int?
+  leadValueCurrency        String?                   @default("GBP")
   // ── Paused / inactive (status = INACTIVE) ──
-  resumeAt             DateTime?
-  pauseNote            String?
-  touchpoints          ClientTouchpoint[]
+  resumeAt                 DateTime?
+  pauseNote                String?
+  touchpoints              ClientTouchpoint[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, name])
@@ -1055,9 +1061,9 @@ model ClientTouchpoint {
 }
 
 model ClientPlatform {
-  id              String          @id @default(cuid())
+  id              String                @id @default(cuid())
   clientId        String
-  client          WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client          WorkspaceClient       @relation(fields: [clientId], references: [id], onDelete: Cascade)
   name            String
   platformType    String?
   url             String?
@@ -1065,19 +1071,19 @@ model ClientPlatform {
   repoUrl         String?
   /// When true, this platform's production + staging URLs surface as buttons in
   /// the client wiki header. Only the first featured platform is used.
-  featuredInWiki  Boolean         @default(false)
-  credentials     String?         @db.Text // LEGACY plaintext — migrated into passwordCipher then nulled (see /api/dev/encrypt-platform-credentials)
-  usernameCipher  String?         @db.Text // AES-256-GCM envelope (src/lib/encryption.ts)
-  passwordCipher  String?         @db.Text // AES-256-GCM envelope
-  notes           String?         @db.Text
-  previewImageUrl String?         @db.Text
+  featuredInWiki  Boolean               @default(false)
+  credentials     String?               @db.Text // LEGACY plaintext — migrated into passwordCipher then nulled (see /api/dev/encrypt-platform-credentials)
+  usernameCipher  String?               @db.Text // AES-256-GCM envelope (src/lib/encryption.ts)
+  passwordCipher  String?               @db.Text // AES-256-GCM envelope
+  notes           String?               @db.Text
+  previewImageUrl String?               @db.Text
   /// Placements engaged on this platform — drives the scoped GitHub scan.
   placements      Placement[]
   /// Multiple credential sets ("logins") — supersedes the single username/password ciphers
   /// above, which are migrated into one login each (see /api/dev/migrate-platform-logins).
   logins          ClientPlatformLogin[]
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 
   @@index([clientId])
   @@map("ClientPlatform")
@@ -1126,25 +1132,25 @@ enum DesignSystemStatus {
 /// ClientBankAccount). `shareToken` is intentionally NOT @unique — see the note on
 /// WorkspaceClient.timelineShareToken (a unique index trips the build's data-loss guard).
 model ClientDesignSystem {
-  id           String             @id @default(cuid())
-  clientId     String             @unique
-  client       WorkspaceClient    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id                  String             @id @default(cuid())
+  clientId            String             @unique
+  client              WorkspaceClient    @relation(fields: [clientId], references: [id], onDelete: Cascade)
   /// Nullable so a client's page can be enabled before any tokens are imported.
-  tokens       Json?
-  status       DesignSystemStatus @default(DRAFT)
+  tokens              Json?
+  status              DesignSystemStatus @default(DRAFT)
   /// Per-client page toggle (set in Edit client). Tri-state: null = unset, so the
   /// page defaults to visible when tokens exist; true/false is an explicit override.
-  enabled      Boolean?
+  enabled             Boolean?
   /// Show the Foundry masthead/footer branding on the guidelines. Off = clean own-brand doc.
-  showFoundryBranding Boolean       @default(true)
+  showFoundryBranding Boolean            @default(true)
   /// Opt-in: expose the client-branded Brand Guidelines deck (+ tab + PDF). Off by default.
-  guidelinesEnabled Boolean         @default(false)
-  shareToken   String?
-  shareEnabled Boolean            @default(false)
-  updatedById  String?
-  updatedBy    User?              @relation("DesignSystemUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  guidelinesEnabled   Boolean            @default(false)
+  shareToken          String?
+  shareEnabled        Boolean            @default(false)
+  updatedById         String?
+  updatedBy           User?              @relation("DesignSystemUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
   @@index([shareToken])
   @@map("ClientDesignSystem")
@@ -1157,44 +1163,44 @@ model ClientDesignSystem {
 /// sidebar. `shareToken` follows the same pattern as ClientDesignSystem.timelineShareToken —
 /// NOT @unique to avoid the Prisma db push data-loss guard; lookups use findFirst.
 model ClientWiki {
-  id                String                 @id @default(cuid())
-  clientId          String                 @unique
-  client            WorkspaceClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  shareToken        String?
-  shareEnabled      Boolean                @default(false)
+  id                 String                 @id @default(cuid())
+  clientId           String                 @unique
+  client             WorkspaceClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  shareToken         String?
+  shareEnabled       Boolean                @default(false)
   /// Secret token for the inbound course-request API. When set, external systems
   /// can POST course requests to /api/public/course-requests/[token]. Null = off.
-  courseIngestToken String?                @unique
+  courseIngestToken  String?                @unique
   /// Enabled changelog platforms for this wiki (e.g. ["IOS","ANDROID","WEB"]).
   /// Null falls back to the default IOS/ANDROID/WEB set; FIRESTICK is opt-in.
-  platforms         Json?
+  platforms          Json?
   /// Per-page public share tokens: { "<section>": "<token>" } for individually
   /// shared sections (ia / dev-guide / api-docs / changelog etc.). shareToken above is whole-wiki.
-  pageShares        Json?
+  pageShares         Json?
   /// Section slugs manually removed from the private sidebar. Add New removes
   /// entries from this list when a page is restored.
-  hiddenSections    Json?
+  hiddenSections     Json?
   /// Flat list of the per-page tokens above, for fast public lookup by token.
-  pageShareTokens   String[]               @default([])
+  pageShareTokens    String[]               @default([])
   /// DEPRECATED (v1 single-credential gate, superseded by ClientWikiUser).
   /// Kept to avoid Prisma's data-loss guard on a column drop; no longer read.
-  accessProtected    Boolean               @default(false)
+  accessProtected    Boolean                @default(false)
   accessUsername     String?
   accessPasswordHash String?
   /// Whether the Monitors (uptime) section is enabled for this wiki. The section
   /// appears once enabled; individual monitors live in WikiMonitor.
-  monitorsEnabled   Boolean                @default(false)
+  monitorsEnabled    Boolean                @default(false)
   /// Whether the Documents section is enabled. Entries live in WikiDocument.
-  documentsEnabled  Boolean                @default(false)
-  pages             ClientWikiPage[]
-  changelog         ClientChangelogEntry[]
-  courseRequests    ClientCourseRequest[]
-  intakeItems       ClientWikiIntakeItem[]
-  wikiUsers         ClientWikiUser[]
-  monitors          WikiMonitor[]
-  documents         WikiDocument[]
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @updatedAt
+  documentsEnabled   Boolean                @default(false)
+  pages              ClientWikiPage[]
+  changelog          ClientChangelogEntry[]
+  courseRequests     ClientCourseRequest[]
+  intakeItems        ClientWikiIntakeItem[]
+  wikiUsers          ClientWikiUser[]
+  monitors           WikiMonitor[]
+  documents          WikiDocument[]
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
 
   @@index([shareToken])
   @@map("ClientWiki")
@@ -1335,18 +1341,17 @@ model ClientWikiPage {
   @@map("ClientWikiPage")
 }
 
-
 /// Client-submitted bugs, feedback, and lightweight task requests kept inside
 /// the Wiki until a Gitwork admin/super-admin promotes one into Portal Tasks.
 model ClientWikiIntakeItem {
   id          String               @id @default(cuid())
   wikiId      String
   wiki        ClientWiki           @relation(fields: [wikiId], references: [id], onDelete: Cascade)
-  type        WikiIntakeItemType    @default(FEEDBACK)
+  type        WikiIntakeItemType   @default(FEEDBACK)
   title       String
   description String?              @db.Text
   priority    TaskPriority         @default(MEDIUM)
-  status      WikiIntakeItemStatus  @default(NEW)
+  status      WikiIntakeItemStatus @default(NEW)
   requestedBy String?
   externalRef String?
   source      String?
@@ -1590,63 +1595,64 @@ model ClientBankAccount {
 }
 
 model Candidate {
-  id                 String                 @id @default(cuid())
-  workspaceId        String
-  rateCardPersonId   String?
-  name               String
-  githubHandle       String
-  email              String?
-  primaryStack       String
-  techStacks         String[]               @default([])
-  signalSources      String[]               @default([])
-  location           String?
-  bio                String?
+  id                   String                 @id @default(cuid())
+  workspaceId          String
+  rateCardPersonId     String?
+  name                 String
+  githubHandle         String
+  email                String?
+  primaryStack         String
+  techStacks           String[]               @default([])
+  signalSources        String[]               @default([])
+  location             String?
+  bio                  String?
   /// Short tagline (≤25 chars) shown under the dev's name on the client wiki
   /// team-avatar hover. Distinct from `bio` (the longer GitHub/CodeClear bio).
-  wikiBio            String?
-  status             PipelineStatus         @default(SOURCED)
+  wikiBio              String?
+  status               PipelineStatus         @default(SOURCED)
   /// Derived tier (see codeclear-scoring.ts deriveTier). Persisted as a
   /// snapshot for cheap reads / SQL filters; rebuilt whenever the score
   /// changes. Effective tier in the UI = tierManualOverride ?? tier.
-  tier               CodeClearTier          @default(TIER_3)
+  tier                 CodeClearTier          @default(TIER_3)
   /// Admin escape hatch — when set, the UI shows this tier instead of the
   /// derived one. We never overwrite the derived value, so we can show
   /// "Override (was Tier 2)" in the drawer.
-  tierManualOverride CodeClearTier?
+  tierManualOverride   CodeClearTier?
   /// INTERNAL = a Gitwork team member. EXTERNAL = sourced for the marketplace.
   /// Existing rows default to INTERNAL so nothing changes for current devs.
-  origin             CandidateOrigin        @default(INTERNAL)
+  origin               CandidateOrigin        @default(INTERNAL)
   /// Organisational grouping — see CandidateDevGroup. Defaults to BENCH so
   /// every existing dev lands on the commercial roster. PRO_BONO devs are
   /// shown in a separate section on the Developers list and excluded from
   /// cost rollups. Additive — nothing breaks if downstream code ignores it.
-  devGroup           CandidateDevGroup      @default(BENCH)
+  devGroup             CandidateDevGroup      @default(BENCH)
   /// Reserved flag for the future marketplace — flips a dev from "in
   /// validation" to "available to clients". Does nothing yet client-side.
-  published          Boolean                @default(false)
-  avatarUrl          String?
-  linkedinUrl        String?
-  cvUrl              String?
-  portfolioUrl       String?
-  yearsExperience    Int?
-  hourlyRate         Decimal?               @db.Decimal(10, 2)
-  currency           String?                @db.VarChar(3)
-  timezone           String?
+  published            Boolean                @default(false)
+  avatarUrl            String?
+  linkedinUrl          String?
+  cvUrl                String?
+  portfolioUrl         String?
+  yearsExperience      Int?
+  hourlyRate           Decimal?               @db.Decimal(10, 2)
+  currency             String?                @db.VarChar(3)
+  timezone             String?
   /// User-overridable availability. When null, derive from open Placement
   /// (open placement → ENGAGED, otherwise AVAILABLE).
-  availability       CandidateAvailability?
-  recheckDueAt       DateTime?
-  createdAt          DateTime               @default(now())
-  updatedAt          DateTime               @updatedAt
-  workspace          Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  rateCardPerson     RateCardPerson?        @relation(fields: [rateCardPersonId], references: [id], onDelete: SetNull)
-  score              CodeClearScore?
-  scoreDraft         CodeClearScoreDraft?
-  githubAnalysisRuns GitHubAnalysisRun[]
-  checks             CodeClearCheck[]
-  placements         Placement[]
-  notes              Note[]
-  activityLog        ActivityLog[]
+  availability         CandidateAvailability?
+  recheckDueAt         DateTime?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  workspace            Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  rateCardPerson       RateCardPerson?        @relation(fields: [rateCardPersonId], references: [id], onDelete: SetNull)
+  score                CodeClearScore?
+  scoreDraft           CodeClearScoreDraft?
+  githubAnalysisRuns   GitHubAnalysisRun[]
+  checks               CodeClearCheck[]
+  placements           Placement[]
+  notes                Note[]
+  activityLog          ActivityLog[]
+  devSignalAssessments DevSignalAssessment[]
 
   @@unique([workspaceId, githubHandle])
   @@index([workspaceId, status])
@@ -1782,45 +1788,46 @@ model GitHubAnalysisRun {
 }
 
 model Placement {
-  id                  String              @id @default(cuid())
-  candidateId         String
-  candidate           Candidate           @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  clientId            String?
-  client              WorkspaceClient?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  clientName          String
-  projectName         String
-  startDate           DateTime
-  endDate             DateTime?
+  id                    String                 @id @default(cuid())
+  candidateId           String
+  candidate             Candidate              @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  clientId              String?
+  client                WorkspaceClient?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientName            String
+  projectName           String
+  startDate             DateTime
+  endDate               DateTime?
   /// Daily allocation as a percentage (1–100). 100 = full day on this
   /// client; 50 = half-day, with the other half free to be allocated to
   /// another Placement. Driven by the iOS scheduling view. Open-ended
   /// placements created by the current-client picker default to 100.
-  allocationPercent   Int                 @default(100)
+  allocationPercent     Int                    @default(100)
   /// Free-text notes attached to this scheduled block (e.g. "Sprint 2
   /// kickoff", "On-call rotation"). Shown in the iOS schedule detail view.
-  notes               String?
+  notes                 String?
   /// Optional link to the specific ClientPlatform (the client's web app, iOS
   /// app, etc.) this dev is engaged on. When set, the scoped-validation
   /// scan uses this platform's repoUrl as the target repo.
-  clientPlatformId    String?
-  clientPlatform      ClientPlatform?     @relation(fields: [clientPlatformId], references: [id], onDelete: SetNull)
+  clientPlatformId      String?
+  clientPlatform        ClientPlatform?        @relation(fields: [clientPlatformId], references: [id], onDelete: SetNull)
   /// Directory paths inside the platform's repo that the dev is responsible
   /// for. Empty array = whole repo. Used to filter GitHub commits during
   /// the per-engagement scan ("did Shahab actually touch apps/web?"). Each
   /// entry is a literal directory prefix or a simple glob like "apps/web/**".
-  repoPaths           String[]            @default([])
+  repoPaths             String[]               @default([])
   /// Optional branch the dev works on (e.g. "feature/auth-rewrite"). Falls
   /// back to the repo's default branch on the scan side when null.
-  repoBranch          String?
+  repoBranch            String?
   /// Latest scoped scan summary. Lets Pipeline / Portal show a quick
   /// "scanned 3d ago: 6/10 checks pass" badge without an extra query.
-  lastScopedScanAt    DateTime?
-  lastScopedScanRunId String?
-  lastScopedScanRun   GitHubAnalysisRun?  @relation("PlacementLastScan", fields: [lastScopedScanRunId], references: [id], onDelete: SetNull)
-  scopedScanRuns      GitHubAnalysisRun[] @relation("PlacementScans")
-  scopedChecks        CodeClearCheck[]    @relation("PlacementChecks")
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @default(now()) @updatedAt
+  lastScopedScanAt      DateTime?
+  lastScopedScanRunId   String?
+  lastScopedScanRun     GitHubAnalysisRun?     @relation("PlacementLastScan", fields: [lastScopedScanRunId], references: [id], onDelete: SetNull)
+  scopedScanRuns        GitHubAnalysisRun[]    @relation("PlacementScans")
+  scopedChecks          CodeClearCheck[]       @relation("PlacementChecks")
+  devSignalOutcomeLinks DevSignalOutcomeLink[]
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @default(now()) @updatedAt
 
   @@index([candidateId, startDate])
   @@index([clientId])
@@ -1859,21 +1866,21 @@ model ActivityLog {
 }
 
 model DocumentSection {
-  id          String   @id @default(cuid())
-  documentId  String
-  key         String
-  title       String
-  description String?
-  sortOrder   Int
-  isVisible   Boolean  @default(true)
-  data        Json
+  id           String   @id @default(cuid())
+  documentId   String
+  key          String
+  title        String
+  description  String?
+  sortOrder    Int
+  isVisible    Boolean  @default(true)
+  data         Json
   // Presenter-only notes shown in presentation mode's notes panel — never rendered in the
   // doc body, public share, or PDF. Optional, additive.
   speakerNotes String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  assets      Asset[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  assets       Asset[]
 
   @@index([documentId, sortOrder])
 }
@@ -2083,25 +2090,25 @@ model PulseScan {
 }
 
 model PulseMonitor {
-  id              String             @id @default(cuid())
-  workspaceId     String
-  workspace       Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  projectName     String
-  inputType       PulseScanInputType
-  inputUrl        String?
-  inputGithubRepo String?
-  clientId        String?
-  webhookSecret   String             @unique @default(cuid())
-  lastScanId      String?
-  lastHealthScore Int?
-  alertThreshold  Int                @default(10) // score drop that triggers alert
-  isActive        Boolean            @default(true)
+  id               String             @id @default(cuid())
+  workspaceId      String
+  workspace        Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  projectName      String
+  inputType        PulseScanInputType
+  inputUrl         String?
+  inputGithubRepo  String?
+  clientId         String?
+  webhookSecret    String             @unique @default(cuid())
+  lastScanId       String?
+  lastHealthScore  Int?
+  alertThreshold   Int                @default(10) // score drop that triggers alert
+  isActive         Boolean            @default(true)
   // Continuous monitoring (additive): scheduled re-scans + new-critical alerting.
-  frequency       String             @default("DAILY") // "DAILY" | "WEEKLY" | "OFF"
-  lastRunAt       DateTime? // last scheduled run (cron stamps this)
+  frequency        String             @default("DAILY") // "DAILY" | "WEEKLY" | "OFF"
+  lastRunAt        DateTime? // last scheduled run (cron stamps this)
   lastCriticalKeys Json? // string[] — CONFIRMED-critical checkKeys at last run, to diff for "new issue appeared"
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 
   @@index([workspaceId])
   @@index([webhookSecret])
@@ -2110,17 +2117,17 @@ model PulseMonitor {
 }
 
 model PulseScanCheck {
-  id        String           @id @default(cuid())
-  scanId    String
-  scan      PulseScan        @relation(fields: [scanId], references: [id], onDelete: Cascade)
-  category  String
-  checkKey  String
-  label     String
-  status    PulseCheckStatus
-  detail    String?
-  evidence  String?
-  sortOrder Int
-  createdAt DateTime         @default(now())
+  id               String           @id @default(cuid())
+  scanId           String
+  scan             PulseScan        @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  category         String
+  checkKey         String
+  label            String
+  status           PulseCheckStatus
+  detail           String?
+  evidence         String?
+  sortOrder        Int
+  createdAt        DateTime         @default(now())
   // Trust layer (additive): how sure we are the check is true + which bucket.
   confidence       String? // "HIGH" | "MEDIUM" | "LOW"
   confidenceReason String?
@@ -2359,33 +2366,33 @@ model CustomerIdentity {
 }
 
 model SupportConversation {
-  id            String                @id @default(cuid())
-  clientId      String
-  client        SupportClient         @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  source        SupportSource
-  customerLabel String
-  externalId    String?
-  subject       String
-  preview       String?
-  unread        Boolean               @default(true)
-  tags          String[]              @default([])
-  sentiment     ConversationSentiment @default(NEUTRAL)
-  receivedAt    DateTime
-  createdAt     DateTime              @default(now())
+  id              String                    @id @default(cuid())
+  clientId        String
+  client          SupportClient             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  source          SupportSource
+  customerLabel   String
+  externalId      String?
+  subject         String
+  preview         String?
+  unread          Boolean                   @default(true)
+  tags            String[]                  @default([])
+  sentiment       ConversationSentiment     @default(NEUTRAL)
+  receivedAt      DateTime
+  createdAt       DateTime                  @default(now())
   // ── triage state machine (the conversation is the unit of triage) ──
-  status         ConversationStatus   @default(NEW)
-  priority       ConversationPriority @default(NORMAL)
-  issueType      String?
-  assigneeId     String? // workspace User id
-  snoozeUntil    DateTime?
-  firstTriagedAt DateTime? // first transition out of NEW (replaces ticket.firstReplyAt for metrics)
-  closedAt       DateTime? // set on CLOSED/IGNORED (replaces ticket.resolvedAt)
+  status          ConversationStatus        @default(NEW)
+  priority        ConversationPriority      @default(NORMAL)
+  issueType       String?
+  assigneeId      String? // workspace User id
+  snoozeUntil     DateTime?
+  firstTriagedAt  DateTime? // first transition out of NEW (replaces ticket.firstReplyAt for metrics)
+  closedAt        DateTime? // set on CLOSED/IGNORED (replaces ticket.resolvedAt)
   // ── deep-link out to the native channel ──
   externalUrl     String? // canonical native-thread URL ("Open in {channel}")
   externalGuildId String? // Discord guild id, used to build the channel deep-link
-  messages      SupportMessage[]
-  tickets       SupportTicket[]
-  notes         SupportConversationNote[]
+  messages        SupportMessage[]
+  tickets         SupportTicket[]
+  notes           SupportConversationNote[]
 
   @@index([clientId, receivedAt])
   @@index([clientId, unread])
@@ -3360,4 +3367,185 @@ model RateLimitHit {
   createdAt DateTime @default(now())
 
   @@index([bucket, createdAt])
+}
+
+// ─── DevSignal ───────────────────────────────────────────────────────────────
+// Developer vetting engine. A NEW pipeline layer that feeds vetted developers
+// into Code — it does NOT replace the legacy CodeClear* models (those are the
+// existing Code roster and stay untouched). An assessment orchestrates the
+// 8-stage funnel, snapshots the config it ran under, and produces one
+// explainable 0–100 score. Nothing here promotes a candidate into Code
+// automatically — only a human decision (decision = APPROVED_FOR_CODE) can.
+
+enum DevSignalAssessmentStatus {
+  DRAFT
+  RUNNING
+  PENDING_HUMAN
+  COMPLETED
+  FAILED
+  ARCHIVED
+}
+
+enum DevSignalDecision {
+  NONE
+  APPROVED_FOR_STAGING
+  REJECTED
+  NEEDS_MORE_INFO
+  APPROVED_FOR_CODE
+}
+
+enum DevSignalStageStatus {
+  PENDING
+  RUNNING
+  PASS
+  FAIL
+  WARN
+  SKIPPED
+  PENDING_HUMAN
+  ERROR
+}
+
+model DevSignalAssessment {
+  id               String                    @id @default(cuid())
+  workspaceId      String
+  workspace        Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Optional client the assessment is scoped to (per-client pipeline config).
+  clientId         String?
+  client           WorkspaceClient?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  candidateId      String
+  candidate        Candidate                 @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  pipelineVersion  String
+  configVersion    String
+  /// Frozen copy of the pipeline config at assessment time — historical scores
+  /// stay interpretable after the live config's weights change.
+  configSnapshot   Json
+  status           DevSignalAssessmentStatus @default(DRAFT)
+  /// Invite-only front door: admin mints a token, candidate uses /vet/[token].
+  publicToken      String?                   @unique
+  tokenExpiresAt   DateTime?
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  /// Internal 0–100 score. Client-facing views show bestMatchSummary instead.
+  finalScore       Int?
+  scoreBreakdown   Json?
+  bestMatchSummary Json?
+  flags            Json?
+  decision         DevSignalDecision         @default(NONE)
+  decisionBy       String?
+  decisionAt       DateTime?
+  decisionReason   String?
+  /// Only ever set true by an explicit human promotion action.
+  promotedToCode   Boolean                   @default(false)
+  promotedToCodeBy String?
+  promotedToCodeAt DateTime?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+
+  stageResults DevSignalStageResult[]
+  outcomeLinks DevSignalOutcomeLink[]
+  auditEvents  DevSignalAuditEvent[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, decision])
+  @@index([candidateId, createdAt])
+  @@index([clientId])
+}
+
+model DevSignalStageResult {
+  id             String               @id @default(cuid())
+  assessmentId   String
+  assessment     DevSignalAssessment  @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  workspaceId    String
+  candidateId    String
+  /// Stage identifier (see DevSignalStageId union in server code).
+  stageId        String
+  stageName      String
+  stageVersion   String
+  status         DevSignalStageStatus @default(PENDING)
+  weight         Int                  @default(0)
+  subScores      Json?
+  rawSignals     Json?
+  evidence       Json?
+  flags          Json?
+  durationMs     Int?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  humanOverride  Boolean              @default(false)
+  overrideBy     String?
+  overrideAt     DateTime?
+  overrideReason String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  /// One row per stage per assessment — re-running a stage upserts (idempotent).
+  @@unique([assessmentId, stageId])
+  @@index([workspaceId])
+  @@index([candidateId])
+}
+
+model DevSignalPipelineConfig {
+  id                  String           @id @default(cuid())
+  workspaceId         String
+  workspace           Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  clientId            String?
+  client              WorkspaceClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  name                String
+  version             String
+  isDefault           Boolean          @default(false)
+  enabledStages       Json
+  stageOrder          Json
+  stageWeights        Json
+  thresholds          Json?
+  blockingRules       Json?
+  advisoryRules       Json?
+  retentionRules      Json?
+  notificationTargets Json?
+  createdBy           String?
+  publishedAt         DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@unique([workspaceId, name, version])
+  @@index([workspaceId, isDefault])
+  @@index([clientId])
+}
+
+model DevSignalOutcomeLink {
+  id              String              @id @default(cuid())
+  workspaceId     String
+  workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assessmentId    String
+  assessment      DevSignalAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  candidateId     String
+  /// Links an intake score to a real delivery placement — the future training
+  /// label. We capture it now; recalibration is deliberately NOT built yet.
+  placementId     String?
+  placement       Placement?          @relation(fields: [placementId], references: [id], onDelete: SetNull)
+  deliveryMetrics Json?
+  linkedAt        DateTime?
+  source          String?
+  notes           String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([workspaceId])
+  @@index([assessmentId])
+  @@index([candidateId])
+  @@index([placementId])
+}
+
+model DevSignalAuditEvent {
+  id           String               @id @default(cuid())
+  workspaceId  String
+  workspace    Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assessmentId String?
+  assessment   DevSignalAssessment? @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
+  candidateId  String?
+  actorId      String?
+  eventType    String
+  eventPayload Json?
+  createdAt    DateTime             @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@index([assessmentId, createdAt])
 }
