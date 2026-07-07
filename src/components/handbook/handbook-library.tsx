@@ -83,7 +83,7 @@ function ArticleCard({
       {/* Generated editorial cover */}
       <Link href={`/app/handbook/${article.id}`} className="block">
         <div
-          className="relative px-5 pb-5 pt-4"
+          className="relative flex h-32 flex-col px-5 pb-5 pt-4"
           style={{ background: `linear-gradient(135deg, ${hue.from} 0%, ${hue.to} 100%)` }}
         >
           <div className="flex items-center justify-between gap-2">
@@ -110,7 +110,7 @@ function ArticleCard({
             </button>
           </div>
           <h3
-            className="mt-3 line-clamp-3 text-[22px] leading-[1.15] tracking-[-0.02em]"
+            className="mt-auto line-clamp-2 text-[22px] leading-[1.15] tracking-[-0.02em]"
             style={{ fontFamily: "var(--font-display)", color: hue.ink }}
           >
             {article.title}
