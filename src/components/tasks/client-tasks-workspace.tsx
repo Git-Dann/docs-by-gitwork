@@ -343,6 +343,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           selectedIds={[...selected]}
           blocks={blocks}
           mode={view === "archived" ? "archived" : "active"}
+          clientId={clientId ?? undefined}
           onClear={() => setSelected(new Set())}
         />
       ) : null}

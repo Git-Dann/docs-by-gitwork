@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/format";
 import { useBatchUpdateTasks, useBatchDeleteTasks } from "@/hooks/use-tasks";
 import { useBackstageTeam } from "@/hooks/use-backstage";
+import { isAtLeast } from "@/types/auth";
 import { TASK_STATUSES, type TaskStatus, type TaskPriority, type FeatureBlockDTO } from "@/types/tasks";
 import { TaskStatusBadge, TaskPriorityDot } from "@/components/tasks/task-badges";
 
@@ -91,17 +92,27 @@ export function TaskBatchBar({
   blocks,
   onClear,
   mode = "active",
+  clientId,
 }: {
   selectedIds: string[];
   blocks: FeatureBlockDTO[];
   onClear: () => void;
   /** "archived" flips the Archive action to Unarchive (used by the Archived tab). */
   mode?: "active" | "archived";
+  /** When set, the assignee picker is scoped to this client's devs (+ admins). */
+  clientId?: string;
 }) {
   const batchUpdate = useBatchUpdateTasks();
   const batchDelete = useBatchDeleteTasks();
   const team = useBackstageTeam();
-  const members = team.data ?? [];
+  const allMembers = team.data ?? [];
+  // Scope assignees to the client's team — devs assigned to this client, plus admins/super-admins
+  // (who can be assigned anywhere). Mirrors the task-form scoping. Falls back to all if no client.
+  const members = clientId
+    ? allMembers.filter(
+        (m) => isAtLeast(m.role, "ADMIN") || m.assignedClientIds.includes(clientId),
+      )
+    : allMembers;
 
   const [assignSel, setAssignSel] = useState<Set<string>>(new Set());
   const [assignQuery, setAssignQuery] = useState("");
