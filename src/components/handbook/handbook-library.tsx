@@ -9,6 +9,7 @@ import {
   TrashIcon,
   StarIcon as StarOutline,
   ClockIcon,
+  ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 import { StarIcon as StarSolid } from "@heroicons/react/24/solid";
 import {
@@ -164,6 +165,9 @@ export function HandbookLibrary() {
   const [search, setSearch] = useState("");
   const [scope, setScope] = useState<Scope>("all");
   const [category, setCategory] = useState<string | null>(null);
+  // Mobile: the rail (4 scopes + up to a dozen sections) is collapsed by default so the article
+  // grid is reachable without scrolling past the whole nav. Always open on lg+ (see markup).
+  const [railOpen, setRailOpen] = useState(false);
 
   const includeArchived = scope === "archived";
   const { data, isLoading } = useHandbookList({
@@ -194,6 +198,19 @@ export function HandbookLibrary() {
   const publishedCount = articles.filter((a) => a.status !== "ARCHIVED").length;
   const featuredCount = articles.filter((a) => a.featured && a.status !== "ARCHIVED").length;
   const draftCount = articles.filter((a) => a.status === "DRAFT").length;
+
+  const SCOPE_LABEL: Record<Scope, string> = {
+    all: "All articles",
+    featured: "Featured",
+    drafts: "Drafts",
+    archived: "Archived",
+  };
+  const currentFilterLabel = category ?? SCOPE_LABEL[scope];
+  // Run a selection, then collapse the rail on mobile so results are visible immediately.
+  const pick = (fn: () => void) => {
+    fn();
+    setRailOpen(false);
+  };
 
   return (
     <section className="widget-card">
@@ -231,33 +248,50 @@ export function HandbookLibrary() {
       {/* Two-pane body: rail + content */}
       <div className="grid lg:grid-cols-[212px_1fr]">
         {/* Rail */}
-        <aside className="space-y-4 border-b border-[var(--border-2)] p-3 lg:border-b-0 lg:border-r">
-          <div className="space-y-1">
-            <RailItem label="All articles" count={publishedCount} active={scope === "all" && !category} onClick={() => { setScope("all"); setCategory(null); }} />
-            <RailItem label="Featured" count={featuredCount} active={scope === "featured"} onClick={() => { setScope("featured"); setCategory(null); }} />
-            <RailItem label="Drafts" count={draftCount} active={scope === "drafts"} onClick={() => { setScope("drafts"); setCategory(null); }} />
-            <RailItem label="Archived" active={scope === "archived"} onClick={() => { setScope("archived"); setCategory(null); }} />
-          </div>
+        <aside className="border-b border-[var(--border-2)] p-3 lg:border-b-0 lg:border-r">
+          {/* Mobile disclosure toggle — collapses the long filter list so content shows first */}
+          <button
+            type="button"
+            onClick={() => setRailOpen((o) => !o)}
+            aria-expanded={railOpen}
+            className="flex w-full items-center justify-between gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-[13px] font-medium text-[var(--text-1)] lg:hidden"
+          >
+            <span className="min-w-0 truncate">
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">Browse · </span>
+              {currentFilterLabel}
+            </span>
+            <ChevronDownIcon className={cn("h-4 w-4 shrink-0 text-[var(--text-3)] transition", railOpen && "rotate-180")} />
+          </button>
 
-          {categories.length > 0 && (
-            <div>
-              <p className="px-2.5 pb-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
-                Sections
-              </p>
-              <div className="space-y-0.5">
-                {categories.map((c) => (
-                  <RailItem
-                    key={c.category}
-                    dense
-                    label={c.category}
-                    count={c.count}
-                    active={category === c.category && scope !== "archived"}
-                    onClick={() => { setScope("all"); setCategory((prev) => (prev === c.category ? null : c.category)); }}
-                  />
-                ))}
-              </div>
+          {/* Filter list — collapsed on mobile unless toggled; always shown on lg+ */}
+          <div className={cn("space-y-4 lg:mt-0 lg:block", railOpen ? "mt-3 block" : "hidden")}>
+            <div className="space-y-1">
+              <RailItem label="All articles" count={publishedCount} active={scope === "all" && !category} onClick={() => pick(() => { setScope("all"); setCategory(null); })} />
+              <RailItem label="Featured" count={featuredCount} active={scope === "featured"} onClick={() => pick(() => { setScope("featured"); setCategory(null); })} />
+              <RailItem label="Drafts" count={draftCount} active={scope === "drafts"} onClick={() => pick(() => { setScope("drafts"); setCategory(null); })} />
+              <RailItem label="Archived" active={scope === "archived"} onClick={() => pick(() => { setScope("archived"); setCategory(null); })} />
             </div>
-          )}
+
+            {categories.length > 0 && (
+              <div>
+                <p className="px-2.5 pb-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+                  Sections
+                </p>
+                <div className="space-y-0.5">
+                  {categories.map((c) => (
+                    <RailItem
+                      key={c.category}
+                      dense
+                      label={c.category}
+                      count={c.count}
+                      active={category === c.category && scope !== "archived"}
+                      onClick={() => pick(() => { setScope("all"); setCategory((prev) => (prev === c.category ? null : c.category)); })}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </aside>
 
         {/* Content */}
