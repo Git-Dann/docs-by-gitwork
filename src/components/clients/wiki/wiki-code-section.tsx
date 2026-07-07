@@ -75,6 +75,32 @@ function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) 
   );
 }
 
+/** Release notes — clamped to a few lines so a long changelog doesn't bury the
+ *  code (which is the deliverable). Expandable when there's more to read. */
+function ReleaseNotes({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const long = text.length > 180;
+  return (
+    <div className="border-b border-[var(--border-1)] bg-[var(--surface-0)] px-3.5 py-3">
+      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+        What&apos;s new
+      </p>
+      <p className={`whitespace-pre-wrap text-[13px] leading-6 text-[var(--text-3)] ${!expanded && long ? "line-clamp-3" : ""}`}>
+        {text}
+      </p>
+      {long && (
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="mt-1 text-[12px] font-medium text-[var(--brand-700)] transition hover:opacity-80"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function FileView({ file }: { file: WikiCodeVersionRecord["files"][number] }) {
   return (
     <div className="overflow-hidden rounded-[8px] border border-[var(--border-1)]">
@@ -85,7 +111,7 @@ function FileView({ file }: { file: WikiCodeVersionRecord["files"][number] }) {
         </span>
         <CopyButton text={file.content} />
       </div>
-      <pre className="max-h-[420px] overflow-auto bg-[var(--surface-0)] px-3 py-2.5 text-[12px] leading-relaxed text-[var(--text-2)]" style={{ fontFamily: MONO }}>
+      <pre className="max-h-[360px] overflow-auto bg-[var(--surface-0)] px-3 py-2.5 text-[12px] leading-relaxed text-[var(--text-2)]" style={{ fontFamily: MONO }}>
         <code>{file.content}</code>
       </pre>
     </div>
@@ -160,11 +186,18 @@ function VersionView({
         </div>
       </div>
       {open && (
-        <div className="space-y-3 border-t border-[var(--border-1)] p-3.5">
-          {version.notes && <p className="whitespace-pre-wrap text-[13px] leading-6 text-[var(--text-3)]">{version.notes}</p>}
-          {version.files.map((f) => (
-            <FileView key={f.id} file={f} />
-          ))}
+        <div className="border-t border-[var(--border-1)]">
+          {version.notes && <ReleaseNotes text={version.notes} />}
+          <div className="space-y-3 p-3.5">
+            {version.files.length > 1 && (
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+                {version.files.length} files
+              </p>
+            )}
+            {version.files.map((f) => (
+              <FileView key={f.id} file={f} />
+            ))}
+          </div>
         </div>
       )}
     </div>
