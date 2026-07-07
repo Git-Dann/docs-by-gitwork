@@ -36,6 +36,8 @@ export function usePermissions() {
     // Action gates (view vs manage + high-risk)
     canRunFixAgent: can("pulse.fixAgent"),
     canManageCode: can("code.manage"),
+    // DevSignal vetting pipeline — admin-only feature perm (default-off).
+    canManageDevSignal: can("devsignal"),
     canManageDocs: can("docs.manage"),
     canShareDocs: can("docs.share"),
     canManageClients: can("clients.manage"),

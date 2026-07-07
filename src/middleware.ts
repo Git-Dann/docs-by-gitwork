@@ -148,6 +148,9 @@ function corsHeadersFor(pathname: string): Record<string, string> {
 // historically; both resolve to the same `clients` permission.
 const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
   { prefix: "/app/pulse", module: "pulse" },
+  // DevSignal — MUST precede the /app/code(clear) entries so it wins the
+  // first-match loop. Admin-only feature perm (default-off), not `codeclear`.
+  { prefix: "/app/codeclear/devsignal", module: "devsignal" },
   { prefix: "/app/code", module: "codeclear" }, // canonical
   { prefix: "/app/codeclear", module: "codeclear" }, // legacy
   { prefix: "/app/docs", module: "proposals" }, // canonical

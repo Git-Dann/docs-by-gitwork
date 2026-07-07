@@ -31,12 +31,12 @@ function WidgetHeader({ n, label }: { n: string; label: string }) {
 }
 
 export function DevSignalQueue() {
-  const { canManageCode } = usePermissions();
+  const { canManageDevSignal } = usePermissions();
   const assessments = useDevSignalAssessments();
   const analytics = useDevSignalAnalytics();
   const [modalOpen, setModalOpen] = useState(false);
 
-  if (!canManageCode) {
+  if (!canManageDevSignal) {
     return <p className="text-sm text-neutral-500">You don&apos;t have access to DevSignal.</p>;
   }
 

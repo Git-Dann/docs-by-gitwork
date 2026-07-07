@@ -9,8 +9,8 @@ import { usePermissions } from "@/hooks/use-permissions";
  * the Code roster only after a human promotion.
  */
 export function DevSignalEntryBanner() {
-  const { canManageCode } = usePermissions();
-  if (!canManageCode) return null;
+  const { canManageDevSignal } = usePermissions();
+  if (!canManageDevSignal) return null;
 
   return (
     <Link

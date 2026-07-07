@@ -41,10 +41,10 @@ function Header({ n, label }: { n: string; label: string }) {
 }
 
 export function AssessmentDetail({ id }: { id: string }) {
-  const { canManageCode } = usePermissions();
+  const { canManageDevSignal } = usePermissions();
   const { data, isLoading } = useDevSignalAssessment(id);
 
-  if (!canManageCode) return <p className="text-sm text-neutral-500">You don&apos;t have access to DevSignal.</p>;
+  if (!canManageDevSignal) return <p className="text-sm text-neutral-500">You don&apos;t have access to DevSignal.</p>;
   if (isLoading) return <p className="text-sm text-neutral-400">Loading…</p>;
   if (!data?.assessment) return <p className="text-sm text-red-600">Assessment not found.</p>;
 

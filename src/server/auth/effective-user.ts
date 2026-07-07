@@ -261,6 +261,11 @@ export function canRunFixAgent(user: EffectiveUser): boolean {
 export function canManageCode(user: EffectiveUser): boolean {
   return can(user, "code.manage");
 }
+/** Access the DevSignal vetting pipeline. Admin/Super Admin only by default
+ *  (feature perm, not code.manage) — grantable to Staff via the matrix. */
+export function canManageDevSignal(user: EffectiveUser): boolean {
+  return can(user, "devsignal");
+}
 /** Create/edit/delete documents in Docs. */
 export function canManageDocs(user: EffectiveUser): boolean {
   return can(user, "docs.manage");
