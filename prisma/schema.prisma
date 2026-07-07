@@ -1205,8 +1205,9 @@ model ClientWiki {
   documentsEnabled   Boolean                @default(false)
   /// Whether the Requests (client intake) section is enabled. When off, the
   /// section is hidden and the public token-based intake API rejects pushes.
-  /// Defaults true so existing wikis keep the section they already have.
-  intakeEnabled      Boolean                @default(true)
+  /// Defaults false so a fresh wiki starts minimal (Dashboard + Timeline only);
+  /// existing wikis keep whatever value they already have stored.
+  intakeEnabled      Boolean                @default(false)
   /// Whether the Code Handover section is enabled — versioned source per hardware
   /// module (e.g. Receiver / Sender firmware) handed to the client to flash.
   codeHandoverEnabled Boolean               @default(false)

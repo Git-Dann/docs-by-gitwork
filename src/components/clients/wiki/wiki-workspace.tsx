@@ -884,6 +884,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const documentsOn = wiki.documents.enabled;
   const intakeOn = wiki.intakeEnabled;
   const codeOn = wiki.codeHandover.enabled;
+  // A fresh wiki shows only Dashboard + Timeline (both permanent, non-deletable).
+  // Every other section appears once it has real content OR is explicitly enabled,
+  // and is otherwise offered under "+ Add New".
+  const designSystemOn = Boolean(wiki.designSystem);
+  const changelogOn = wiki.changelog.length > 0;
   const availableSections: WikiSection[] = [
     "dashboard",
     "timeline",
@@ -891,28 +896,24 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(documentsOn ? (["documents"] as const) : []),
     ...(intakeOn ? (["intake"] as const) : []),
     ...(codeOn ? (["code-handover"] as const) : []),
-    "design-system",
+    ...(designSystemOn ? (["design-system"] as const) : []),
     ...OPTIONAL_DOC_SECTIONS.filter(
-      (item) =>
-        !hiddenSections.has(item.section) &&
-        (item.section === "ia" || item.section === "dev-guide" || existingDocsPageSections.has(item.section)),
-    ).map(
-      (item) => item.section,
-    ),
-    "changelog",
+      (item) => !hiddenSections.has(item.section) && existingDocsPageSections.has(item.section),
+    ).map((item) => item.section),
+    ...(changelogOn ? (["changelog"] as const) : []),
     ...(COURSE_REQUESTS_SLUGS.includes(slug) ? (["course-requests"] as const) : []),
     "settings",
   ];
   const addableSections = [
     ...OPTIONAL_DOC_SECTIONS.filter(
-      (item) =>
-        hiddenSections.has(item.section) ||
-        (!["ia", "dev-guide"].includes(item.section) && !existingDocsPageSections.has(item.section)),
+      (item) => hiddenSections.has(item.section) || !existingDocsPageSections.has(item.section),
     ),
     ...(monitorsOn ? [] : [{ section: "monitors" as WikiSection, label: "Monitors" }]),
     ...(documentsOn ? [] : [{ section: "documents" as WikiSection, label: "Documents" }]),
     ...(intakeOn ? [] : [{ section: "intake" as WikiSection, label: "Requests" }]),
     ...(codeOn ? [] : [{ section: "code-handover" as WikiSection, label: "Code Handover" }]),
+    ...(designSystemOn ? [] : [{ section: "design-system" as WikiSection, label: "Design System" }]),
+    ...(changelogOn ? [] : [{ section: "changelog" as WikiSection, label: "Changelog" }]),
   ];
 
   // Which sections are publicly shared (for the sidebar globe indicator):
@@ -955,6 +956,13 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     if (section === "code-handover") {
       await setCodeEnabled.mutateAsync(true);
       setActiveSection("code-handover");
+      return;
+    }
+    // Design System + Changelog have no enable flag — they persist by content
+    // (imported tokens / a changelog entry). Adding just opens them so the
+    // operator can add that content; they then stay in the sidebar.
+    if (section === "design-system" || section === "changelog") {
+      setActiveSection(section);
       return;
     }
     if (!isDocsPageSection(section)) return;
