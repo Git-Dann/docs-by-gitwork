@@ -17,8 +17,6 @@ import { isAtLeast, isSuperAdmin } from "@/types/auth";
 // chunk, loaded only when that section is opened — so the default Account landing no
 // longer downloads the JS for every other tab.
 const GeneralTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.GeneralTab })));
-const BrandingTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.BrandingTab })));
-const ContentTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.ContentTab })));
 const TemplatesTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.TemplatesTab })));
 const RateCardTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.RateCardTab })));
 const IntegrationsTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.IntegrationsTab })));
@@ -296,8 +294,7 @@ export default async function SettingsSectionPage({
         {sectionId === "connected-apps" ? <ConnectedAppsPanel /> : null}
         {sectionId === "mcp" ? <McpAdminPanel /> : null}
         {sectionId === "general" ? <GeneralTab /> : null}
-        {sectionId === "branding" ? <BrandingTab /> : null}
-        {sectionId === "content" ? <ContentTab /> : null}
+        {/* branding + content slugs redirect to /general before render (PEOPLE_REDIRECTS) */}
         {sectionId === "templates" ? <TemplatesTab /> : null}
         {sectionId === "onboarding" ? <OnboardingFormsTab /> : null}
         {sectionId === "rate-card" ? <RateCardTab /> : null}
