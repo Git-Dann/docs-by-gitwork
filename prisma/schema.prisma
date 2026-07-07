@@ -332,6 +332,10 @@ model Workspace {
   /// Cached id of the "Foundry Docs Backup" Drive folder (created by the backup account). All
   /// backed-up Google Docs live under it. Null until the first backup run creates the folder.
   docsBackupFolderId          String?
+  /// Cached id of the "Foundry Client Archives" Drive folder — per-client archive subfolders live under it.
+  clientArchiveFolderId       String?
+  /// Cached id of the "Foundry Cold Storage" Drive folder (retention cold store, drive adapter).
+  coldStoreFolderId           String?
   /// Hide developer rates across the platform (On Your Desk cashflow, client cards). Off by default = rates hidden.
   showDevRates                Boolean                    @default(false)
   createdAt                   DateTime                   @default(now())
@@ -377,6 +381,8 @@ model Workspace {
   devSignalConfigs            DevSignalPipelineConfig[]
   devSignalOutcomeLinks       DevSignalOutcomeLink[]
   devSignalAuditEvents        DevSignalAuditEvent[]
+  backgroundJobs              BackgroundJob[]
+  coldArchives                ColdArchive[]
 }
 
 /**
@@ -1024,6 +1030,11 @@ model WorkspaceClient {
   /// earlier month than today, the used figure is treated as 0 on read (lazy monthly
   /// reset) and re-stamped to the current month on the next edit.
   retainerPeriodMonth      String?
+  /// Cached id of this client's archive subfolder under "Foundry Client Archives".
+  archiveDriveFolderId     String?
+  /// When the client's dataset was last exported to Drive (archive/delete lifecycle).
+  /// The reconcile cron re-exports when `updatedAt > archivedToDriveAt`.
+  archivedToDriveAt        DateTime?
   // ── Leads (status = LEAD) — all additive, nullable ──
   leadSource               String?
   leadStage                LeadStage?
@@ -3244,6 +3255,80 @@ model Broadcast {
   createdBy User      @relation("BroadcastCreator", fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, active, expiresAt])
+}
+
+// ── Data lifecycle: durable job queue + retention/cold-storage ───────────────
+
+model BackgroundJob {
+  id          String              @id @default(cuid())
+  workspaceId String?
+  /// Handler key, e.g. "CLIENT_ARCHIVE". Maps to a handler in src/server/jobs/handlers.ts.
+  type        String
+  payload     Json
+  status      BackgroundJobStatus @default(PENDING)
+  attempts    Int                 @default(0)
+  maxAttempts Int                 @default(5)
+  /// Earliest time the job may run. Backoff pushes this forward on each retry.
+  runAt       DateTime            @default(now())
+  /// Optional collapse key. `enqueueJob` skips creating a new row when a PENDING/RUNNING job with
+  /// the same key already exists (e.g. one in-flight archive per client). NOT a DB unique — a
+  /// completed key can be re-enqueued later (re-archive), and a unique index would block that.
+  dedupeKey   String?
+  lastError   String?             @db.Text
+  result      Json?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  workspace   Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([status, runAt])
+  @@index([dedupeKey, status])
+}
+
+model ColdArchive {
+  id              String        @id @default(cuid())
+  workspaceId     String?
+  /// Which RetentionPolicy produced this (e.g. "docs.view-events").
+  policyKey       String
+  /// The hot entity that was offloaded (e.g. "DocumentViewEvent").
+  entity          String
+  /// Optional scope the batch belongs to (e.g. the documentId) for targeted rehydrate.
+  scopeId         String?
+  /// Cold store location: store = "drive" | "fs"; ref = Drive file id or filesystem path.
+  store           String
+  ref             String        @db.Text
+  rowCount        Int           @default(0)
+  byteSize        Int?
+  /// Age window of the offloaded data (min/max source timestamp in the batch).
+  periodStart     DateTime?
+  periodEnd       DateTime?
+  tier            RetentionTier @default(COLD)
+  /// When this cold copy becomes eligible for purge-review (past its final retention window).
+  /// Null = keep indefinitely. Surfaced on On Your Desk for admins once <= now and not yet purged.
+  purgeEligibleAt DateTime?
+  /// Set when an admin approves permanent deletion of the cold copy. Never automatic.
+  purgedAt        DateTime?
+  createdAt       DateTime      @default(now())
+  workspace       Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, policyKey])
+  @@index([purgeEligibleAt, purgedAt])
+  @@index([entity, scopeId])
+}
+
+enum BackgroundJobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  /// Dead-lettered after exhausting maxAttempts. Inspect `lastError`; re-enqueue to retry.
+  FAILED
+}
+
+enum RetentionTier {
+  WARM
+  COLD
+  DEEP
 }
 
 // ════════════════════════════════════════════════════════════════════════════

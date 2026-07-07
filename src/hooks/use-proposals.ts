@@ -48,6 +48,8 @@ import {
   deletePlatformLogin,
   revealPlatformLogin,
   updateProposal,
+  getClientDriveArchiveStatus,
+  archiveClientToDrive,
 } from "@/lib/api";
 import type {
   ClientDesignRecord,
@@ -92,6 +94,24 @@ export function useCreateProposal() {
 // Clients change rarely — keep the list cached for 5 minutes so navigating
 // between Code pages doesn't trigger a refetch every time. Mutations on
 // clients still invalidate this query.
+export function useClientDriveArchiveStatus(slug: string, enabled = true) {
+  return useQuery({
+    queryKey: ["client-drive-archive", slug],
+    queryFn: () => getClientDriveArchiveStatus(slug),
+    enabled: enabled && Boolean(slug),
+  });
+}
+
+export function useArchiveClientToDrive(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => archiveClientToDrive(slug),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-drive-archive", slug] });
+    },
+  });
+}
+
 export function useClientList(filters?: {
   search?: string;
   status?: WorkspaceClientStatus | "ALL";

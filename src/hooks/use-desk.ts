@@ -25,8 +25,41 @@ import {
   getActiveBroadcast,
   postBroadcast,
   dismissBroadcast,
+  getDeskAttention,
+  getPurgeCandidates,
+  approvePurge,
 } from "@/lib/api";
 import type { BroadcastDuration } from "@/types/desk";
+
+export function useDeskAttention(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ["desk", "attention"] as const,
+    queryFn: getDeskAttention,
+    enabled: opts.enabled ?? true,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function usePurgeCandidates(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ["retention", "purge-candidates"] as const,
+    queryFn: getPurgeCandidates,
+    enabled: opts.enabled ?? true,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useApprovePurge() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => approvePurge(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["retention", "purge-candidates"] });
+      queryClient.invalidateQueries({ queryKey: ["desk", "attention"] });
+    },
+  });
+}
 
 export function useDeskCalendar(opts: { enabled?: boolean } = {}) {
   return useQuery({
