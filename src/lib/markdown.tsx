@@ -25,7 +25,7 @@ export function safeUrl(raw: string): string | null {
   return null;
 }
 
-function renderInline(text: string, keyPrefix: string): ReactNode[] {
+export function renderInline(text: string, keyPrefix: string): ReactNode[] {
   const out: ReactNode[] = [];
   let rest = text;
   let i = 0;

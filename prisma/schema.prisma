@@ -211,6 +211,7 @@ model User {
   mcpConnections            McpConnection[]
   deskReminders             DeskReminder[]
   broadcastsCreated         Broadcast[]             @relation("BroadcastCreator")
+  handbookArticles          HandbookArticle[]       @relation("HandbookAuthor")
   // Per-user Google OAuth refresh token. Captured on sign-in. Drives the personal dashboard
   // widgets (Calendar, Gmail, Meeting summary) so each member sees only their own data.
   // Workspace-level `Workspace.googleOAuthRefreshToken` is separate and intended only for
@@ -383,6 +384,7 @@ model Workspace {
   devSignalAuditEvents        DevSignalAuditEvent[]
   backgroundJobs              BackgroundJob[]
   coldArchives                ColdArchive[]
+  handbookArticles            HandbookArticle[]
 }
 
 /**
@@ -1174,53 +1176,53 @@ model ClientDesignSystem {
 /// sidebar. `shareToken` follows the same pattern as ClientDesignSystem.timelineShareToken —
 /// NOT @unique to avoid the Prisma db push data-loss guard; lookups use findFirst.
 model ClientWiki {
-  id                 String                 @id @default(cuid())
-  clientId           String                 @unique
-  client             WorkspaceClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  shareToken         String?
-  shareEnabled       Boolean                @default(false)
+  id                  String                 @id @default(cuid())
+  clientId            String                 @unique
+  client              WorkspaceClient        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  shareToken          String?
+  shareEnabled        Boolean                @default(false)
   /// Secret token for the inbound course-request API. When set, external systems
   /// can POST course requests to /api/public/course-requests/[token]. Null = off.
-  courseIngestToken  String?                @unique
+  courseIngestToken   String?                @unique
   /// Enabled changelog platforms for this wiki (e.g. ["IOS","ANDROID","WEB"]).
   /// Null falls back to the default IOS/ANDROID/WEB set; FIRESTICK is opt-in.
-  platforms          Json?
+  platforms           Json?
   /// Per-page public share tokens: { "<section>": "<token>" } for individually
   /// shared sections (ia / dev-guide / api-docs / changelog etc.). shareToken above is whole-wiki.
-  pageShares         Json?
+  pageShares          Json?
   /// Section slugs manually removed from the private sidebar. Add New removes
   /// entries from this list when a page is restored.
-  hiddenSections     Json?
+  hiddenSections      Json?
   /// Flat list of the per-page tokens above, for fast public lookup by token.
-  pageShareTokens    String[]               @default([])
+  pageShareTokens     String[]               @default([])
   /// DEPRECATED (v1 single-credential gate, superseded by ClientWikiUser).
   /// Kept to avoid Prisma's data-loss guard on a column drop; no longer read.
-  accessProtected    Boolean                @default(false)
-  accessUsername     String?
-  accessPasswordHash String?
+  accessProtected     Boolean                @default(false)
+  accessUsername      String?
+  accessPasswordHash  String?
   /// Whether the Monitors (uptime) section is enabled for this wiki. The section
   /// appears once enabled; individual monitors live in WikiMonitor.
-  monitorsEnabled    Boolean                @default(false)
+  monitorsEnabled     Boolean                @default(false)
   /// Whether the Documents section is enabled. Entries live in WikiDocument.
-  documentsEnabled   Boolean                @default(false)
+  documentsEnabled    Boolean                @default(false)
   /// Whether the Requests (client intake) section is enabled. When off, the
   /// section is hidden and the public token-based intake API rejects pushes.
   /// Defaults false so a fresh wiki starts minimal (Dashboard + Timeline only);
   /// existing wikis keep whatever value they already have stored.
-  intakeEnabled      Boolean                @default(false)
+  intakeEnabled       Boolean                @default(false)
   /// Whether the Code Handover section is enabled — versioned source per hardware
   /// module (e.g. Receiver / Sender firmware) handed to the client to flash.
-  codeHandoverEnabled Boolean               @default(false)
-  pages              ClientWikiPage[]
-  changelog          ClientChangelogEntry[]
-  courseRequests     ClientCourseRequest[]
-  intakeItems        ClientWikiIntakeItem[]
-  wikiUsers          ClientWikiUser[]
-  monitors           WikiMonitor[]
-  documents          WikiDocument[]
-  codeModules        WikiCodeModule[]
-  createdAt          DateTime               @default(now())
-  updatedAt          DateTime               @updatedAt
+  codeHandoverEnabled Boolean                @default(false)
+  pages               ClientWikiPage[]
+  changelog           ClientChangelogEntry[]
+  courseRequests      ClientCourseRequest[]
+  intakeItems         ClientWikiIntakeItem[]
+  wikiUsers           ClientWikiUser[]
+  monitors            WikiMonitor[]
+  documents           WikiDocument[]
+  codeModules         WikiCodeModule[]
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
 
   @@index([shareToken])
   @@map("ClientWiki")
@@ -2752,6 +2754,43 @@ model Starter {
   @@index([workspaceId, createdAt])
 }
 
+// ─── Handbook (internal developer knowledgebase) ────────────────────────────
+// A global, workspace-level, searchable library of developer standards, playbooks and
+// process — the canonical "how Gitwork builds". Super-Admin-only for now (role-gated like
+// Starters, not a grantable feature perm). Articles are free-form markdown, grouped by a
+// lightweight string `category` (the rail derives its list from the articles that exist).
+
+enum HandbookStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model HandbookArticle {
+  id          String         @id @default(cuid())
+  workspaceId String
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  authorId    String? // last editor / author; SetNull so deleting a user keeps the article
+  author      User?          @relation("HandbookAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  title       String
+  slug        String         @unique
+  summary     String         @default("") // one-line card subtitle + reading-surface lede
+  category    String         @default("General") // freeform; the rail lists categories in use
+  content     String         @default("") // markdown body
+  tags        String[]       @default([])
+  status      HandbookStatus @default(PUBLISHED)
+  featured    Boolean        @default(false) // pinned to the top of the library with a star
+  readMinutes Int? // estimated read time (computed on save)
+  orderKey    Int            @default(0)
+  viewCount   Int            @default(0)
+  publishedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([workspaceId, category])
+  @@index([workspaceId, updatedAt])
+}
+
 // ─── Agent & Check Configuration ────────────────────────────────────────────
 
 model AgentConfig {
@@ -3282,7 +3321,7 @@ model Milestone {
 /// days) and hard-deleted by an opportunistic purge thereafter. Not a task — no
 /// board, no status, no assignee. Per-user.
 model DeskReminder {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   workspaceId String
   userId      String
   body        String    @db.Text
@@ -3305,14 +3344,14 @@ model DeskReminder {
 /// time — enforced in app logic (posting a new one deactivates the current in a
 /// single transaction). Auto-hidden past expiresAt (reads filter on it).
 model Broadcast {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   workspaceId String
-  message     String    @db.Text
-  active      Boolean   @default(true)
+  message     String   @db.Text
+  active      Boolean  @default(true)
   expiresAt   DateTime
   createdById String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy User      @relation("BroadcastCreator", fields: [createdById], references: [id], onDelete: Cascade)

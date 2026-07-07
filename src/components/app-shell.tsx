@@ -3,6 +3,7 @@
 import {
   ArrowRightOnRectangleIcon,
   Bars3Icon,
+  BookOpenIcon,
   CodeBracketIcon,
   ChevronUpDownIcon,
   Cog8ToothIcon,
@@ -21,7 +22,7 @@ import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
 import { useAccount } from "@/hooks/use-account";
-import { isAtLeast } from "@/types/auth";
+import { isAtLeast, isSuperAdmin } from "@/types/auth";
 import { useViewAs, type ViewAsRole, type ViewAsUser } from "@/lib/view-as";
 import { listSupportClients, listTeamMembers } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
@@ -74,6 +75,9 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const account = useAccount();
   const isAdmin = isAtLeast(account.data?.role ?? "", "ADMIN");
+  // Super-Admin-only tools (Handbook) sit above Settings in the footer. Role-gated, not a
+  // grantable module perm — mirrors the Starters gate.
+  const superAdmin = isSuperAdmin(account.data?.role ?? "");
   const { viewAs, viewAsUser, setViewAs, setViewAsUser, effectivePermissions, previewLabel } = useViewAs(isAdmin);
   const realPermissions = useMemo(() => account.data?.permissions ?? [], [account.data?.permissions]);
   const isFullAccessAdmin = isAdmin && realPermissions.length === 0;
@@ -253,8 +257,19 @@ export function AppShell({
               ))}
             </nav>
           </div>
-          <div className="mt-auto border-t border-[var(--border-2)] px-3 py-3">
+          <div className="mt-auto space-y-1 border-t border-[var(--border-2)] px-3 py-3">
             <AiSpendCard />
+            {superAdmin ? (
+              <SidebarNavItem
+                item={{
+                  href: "/app/handbook",
+                  label: "Handbook",
+                  description: "Developer knowledgebase",
+                  icon: BookOpenIcon,
+                }}
+                active={Boolean(isActivePath(pathname, "/app/handbook"))}
+              />
+            ) : null}
             <SidebarNavItem
               item={{ href: "/app/settings/account", label: "Settings", icon: Cog8ToothIcon }}
               active={Boolean(isActivePath(pathname, "/app/settings"))}
@@ -287,6 +302,7 @@ export function AppShell({
             setViewAs={setViewAs}
             setViewAsUser={setViewAsUser}
             isAdmin={isAdmin}
+            superAdmin={superAdmin}
           />
         </aside>
 
@@ -354,6 +370,7 @@ function ExpandedRail({
   setViewAs,
   setViewAsUser,
   isAdmin,
+  superAdmin,
 }: {
   pathname: string | null;
   primaryNav: ReadonlyArray<NavItem>;
@@ -363,6 +380,7 @@ function ExpandedRail({
   setViewAs: (role: "STAFF" | "DEVELOPER" | null) => void;
   setViewAsUser: (name: string, permissions: string[], role?: string) => void;
   isAdmin: boolean;
+  superAdmin: boolean;
 }) {
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -396,6 +414,17 @@ function ExpandedRail({
         <div className="mt-4">
           <AiSpendCard />
           <div className="space-y-2">
+            {superAdmin ? (
+              <SidebarNavItem
+                item={{
+                  href: "/app/handbook",
+                  label: "Handbook",
+                  description: "Developer knowledgebase",
+                  icon: BookOpenIcon,
+                }}
+                active={Boolean(isActivePath(pathname, "/app/handbook"))}
+              />
+            ) : null}
             <SidebarNavItem
               item={{ href: "/app/settings/account", label: "Settings", icon: Cog8ToothIcon }}
               active={Boolean(isActivePath(pathname, "/app/settings"))}

@@ -273,6 +273,12 @@ export default auth(async (req) => {
       return NextResponse.redirect(new URL("/app", req.url));
     }
 
+    // The Handbook (internal developer knowledgebase) is Super-Admin-ONLY while it's built out.
+    // Same role-gate pattern as Starters — runs before the Admin-bypass module gate.
+    if (pathname.startsWith("/app/handbook") && !isAtLeast(req.auth.user.role, "SUPER_ADMIN")) {
+      return NextResponse.redirect(new URL("/app", req.url));
+    }
+
     // Module gate — Admins and Super Admins reach every module (nav safety: never lock
     // an admin out on a stale token). Staff and Developers are scoped to the modules in
     // their resolved permissions (baked into the JWT at sign-in). Matrix changes to a

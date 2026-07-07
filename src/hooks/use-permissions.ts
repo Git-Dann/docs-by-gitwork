@@ -51,5 +51,8 @@ export function usePermissions() {
     // Starters is Super-Admin-ONLY (Foundry-internal tools; the GitHub repo just stores the
     // sources). Role-gated, not a grantable feature perm — so Admins don't get it either.
     canManageStarters: isSuperAdmin(role),
+    // Handbook (internal developer knowledgebase) — Super-Admin-ONLY while it's built out.
+    // Role-gated like Starters; open it to a feature perm later if it should be broader.
+    canManageHandbook: isSuperAdmin(role),
   };
 }

@@ -1378,6 +1378,28 @@ export const starterAdoptSchema = z.object({
   starterId: z.string().min(1),
 });
 
+// ── Handbook (internal developer knowledgebase) ──────────────────────────────
+export const handbookStatusSchema = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);
+
+export const handbookCreateSchema = z.object({
+  title: z.string().trim().min(1, "Title is required").max(160),
+  summary: z.string().max(400).nullish(),
+  category: z.string().trim().max(60).nullish(),
+  content: z.string().max(200000).nullish(),
+  tags: z.array(z.string().trim().min(1).max(40)).max(30).optional(),
+  status: handbookStatusSchema.optional(),
+});
+
+export const handbookUpdateSchema = z.object({
+  title: z.string().trim().min(1).max(160).optional(),
+  summary: z.string().max(400).nullish(),
+  category: z.string().trim().max(60).nullish(),
+  content: z.string().max(200000).nullish(),
+  tags: z.array(z.string().trim().min(1).max(40)).max(30).optional(),
+  status: handbookStatusSchema.optional(),
+  featured: z.boolean().optional(),
+});
+
 // ─── On Your Desk: reminders + broadcasts ────────────────────────────────────
 
 export const deskReminderCreateSchema = z.object({

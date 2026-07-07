@@ -303,6 +303,14 @@ export function canManageStarters(user: EffectiveUser): boolean {
   return isSuperAdmin(user.role);
 }
 /**
+ * View + author the internal developer Handbook (the global knowledgebase). **Super-Admin-ONLY**
+ * for now while it's being built out — role-gated like Starters, not a grantable feature perm, so
+ * Admins don't get it either. Widen to a feature perm here + in use-permissions.ts when it opens up.
+ */
+export function canManageHandbook(user: EffectiveUser): boolean {
+  return isSuperAdmin(user.role);
+}
+/**
  * Authorize Claude (or any MCP client) to act on the user's behalf. This is the
  * real gate for the whole MCP/OAuth flow — the consent screen, the authorize
  * endpoint, and the self-service settings panel all check it. Admins hold it by
