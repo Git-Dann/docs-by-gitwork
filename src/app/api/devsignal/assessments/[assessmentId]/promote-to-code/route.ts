@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { assertCan, canManageCode, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertCan, canManageDevSignal, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { promoteToCode } from "@/server/devsignal/assessment";
 import { devSignalPromoteSchema } from "@/server/validators";
 
@@ -18,7 +18,7 @@ export async function POST(
 ) {
   try {
     const user = await getEffectiveUserOrNull(request);
-    assertCan(user, canManageCode, "promote a candidate into Code");
+    assertCan(user, canManageDevSignal, "promote a candidate into Code");
     const { workspace } = await ensureBaseRecords();
     const { assessmentId } = await params;
     const body = devSignalPromoteSchema.parse(await request.json().catch(() => ({})));

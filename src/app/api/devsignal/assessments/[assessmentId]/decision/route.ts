@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { assertCan, canManageCode, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertCan, canManageDevSignal, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { recordDecision } from "@/server/devsignal/assessment";
 import { devSignalDecisionSchema } from "@/server/validators";
 
@@ -13,7 +13,7 @@ export async function POST(
 ) {
   try {
     const user = await getEffectiveUserOrNull(request);
-    assertCan(user, canManageCode, "record a DevSignal decision");
+    assertCan(user, canManageDevSignal, "record a DevSignal decision");
     const { workspace } = await ensureBaseRecords();
     const { assessmentId } = await params;
     const body = devSignalDecisionSchema.parse(await request.json());

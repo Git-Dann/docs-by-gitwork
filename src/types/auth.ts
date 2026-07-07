@@ -168,6 +168,17 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
         description:
           "Candidate hourly rate and tier rate defaults inside Code. Off for developer accounts.",
       },
+      {
+        // Deliberately a `feature`, not tied to code.manage: STAFF auto-inherits
+        // code.manage (…MODULE_IDS presets), which would leak DevSignal to Staff.
+        // As a feature it defaults OFF for everyone except ADMIN (all ids) +
+        // SUPER_ADMIN. Grantable to a specific Staff member later via the matrix.
+        id: "devsignal",
+        category: "feature",
+        label: "DevSignal (developer vetting)",
+        description:
+          "The developer vetting pipeline that feeds Code — assess candidates and promote them into the roster. Admin/Super Admin only by default.",
+      },
     ],
   },
   {

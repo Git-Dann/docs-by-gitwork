@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { assertCan, canManageCode, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertCan, canManageDevSignal, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { createOutcomeLink } from "@/server/devsignal/assessment";
 import { devSignalOutcomeLinkSchema } from "@/server/validators";
 
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const user = await getEffectiveUserOrNull(request);
-    assertCan(user, canManageCode, "link a DevSignal outcome");
+    assertCan(user, canManageDevSignal, "link a DevSignal outcome");
     const { workspace } = await ensureBaseRecords();
     const body = devSignalOutcomeLinkSchema.parse(await request.json());
     const link = await createOutcomeLink(workspace.id, {
