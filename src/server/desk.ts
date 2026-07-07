@@ -42,6 +42,10 @@ type SlackRawMsg = {
   ts: string;
   user?: string;
   bot_id?: string;
+  /** Thread metadata (present on a thread parent) — used to tell whether the
+   *  caller already replied in-thread to a message that @mentioned them. */
+  reply_users?: string[];
+  latest_reply?: string;
 };
 
 export async function getMyDeskSlack(user: EffectiveUser): Promise<DeskSlackResult> {
@@ -150,6 +154,9 @@ export async function getMyDeskSlack(user: EffectiveUser): Promise<DeskSlackResu
 
 const MENTION_PER_CHANNEL = 40; // look a little deeper than the "what moved" feed
 const MAX_MENTIONS = 10;
+// "Needs you today" only wants @mentions still awaiting the caller's reply, from
+// roughly the last day — recent pings people are waiting on, not stale history.
+const MENTION_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Slack messages that @mention the caller, across the client channels they can
@@ -213,8 +220,25 @@ export async function getMyMentions(user: EffectiveUser): Promise<DeskMentionsRe
         );
         const data = (await res.json()) as { ok: boolean; messages?: SlackRawMsg[] };
         if (!data.ok) return [];
-        return (data.messages ?? [])
-          .filter((m) => m.type === "message" && !m.subtype && (m.text ?? "").includes(token_))
+        const msgs = data.messages ?? [];
+        const cutoff = Date.now() - MENTION_WINDOW_MS;
+        // Latest thing the caller themselves said in this channel — anything they
+        // were @mentioned in *before* this counts as already responded to.
+        const myLatestTs = Math.max(
+          0,
+          ...msgs.filter((m) => m.user === myId).map((m) => Number(m.ts) || 0),
+        );
+        return msgs
+          .filter((m) => {
+            if (m.type !== "message" || m.subtype || m.user === myId) return false;
+            if (!(m.text ?? "").includes(token_)) return false;
+            const ts = Number(m.ts) || 0;
+            if (ts * 1000 < cutoff) return false; // older than the 24h window
+            // Already handled: caller replied in-thread, or spoke later in-channel.
+            if (m.reply_users?.includes(myId)) return false;
+            if (myLatestTs > ts) return false;
+            return true;
+          })
           .map((raw) => ({ raw, client: c, channelId }));
       } catch {
         return [];

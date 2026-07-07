@@ -2,29 +2,25 @@
 
 import { useEffect, useState } from "react";
 import {
-  EnvelopeIcon,
   ChatBubbleLeftRightIcon,
   ClipboardDocumentListIcon,
   ArrowTopRightOnSquareIcon,
+  PlusIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import {
-  useDeskGmail,
   useDeskMentions,
   useDeskReminders,
+  useCreateDeskReminder,
   useUpdateDeskReminder,
 } from "@/hooks/use-desk";
-import { EditorialRow, DeskEmpty, DeskSkeleton, DeskConnectGoogle } from "./desk-shared";
+import { EditorialRow, DeskEmpty, DeskSkeleton } from "./desk-shared";
 
-const STORAGE_KEY = "gitwork.desk.needsreply.v1";
 const DISMISS_KEY = "gitwork.desk.needsreply.dismissed.v1";
 // A high-level triage list, not a feed — a handful of the most-critical things.
 const MAX_ITEMS = 6;
-// Only high-signal person-to-person mail — Gmail's Primary category excludes the
-// Featurebase / Gemini-notes / promotions / updates noise that isn't "needs you".
-const GMAIL_QUERY = "is:unread category:primary";
 
-type Source = "reminder" | "slack" | "gmail";
+type Source = "reminder" | "slack";
 type NeedItem = {
   id: string;
   source: Source;
@@ -36,29 +32,7 @@ type NeedItem = {
   reminderId?: string;
 };
 
-/** Persisted per-user source toggles (device-local). Default: both on. */
-function useSources() {
-  const [sources, setSources] = useState<{ slack: boolean; gmail: boolean }>({
-    slack: true,
-    gmail: true,
-  });
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const p = JSON.parse(raw) as { slack?: boolean; gmail?: boolean };
-        setSources({ slack: p.slack !== false, gmail: p.gmail !== false });
-      }
-    } catch {
-      /* ignore */
-    }
-    setReady(true);
-  }, []);
-  return { sources, ready };
-}
-
-/** Locally-remembered dismissals for mail/mentions (device-local, capped). */
+/** Locally-remembered dismissals for @mentions (device-local, capped). */
 function useDismissed() {
   const [ids, setIds] = useState<Set<string>>(new Set());
   useEffect(() => {
@@ -84,20 +58,23 @@ function useDismissed() {
 }
 
 /**
- * "Needs you today" — the single time-critical list: your reminders (incl. Slack
- * `/desk`), Slack @mentions, and high-signal Primary mail. Reminders are pinned
- * first (explicitly flagged = definitionally "needs you"); a reminder is cleared
- * by marking it done, mail/mentions by dismissing.
+ * "Needs you today" — the single time-critical list. Two sources only:
+ *  - your reminders (created here or via Slack `/desk`), pinned first; and
+ *  - Slack @mentions still awaiting your reply from the last 24h (answered ones
+ *    — replied in-thread or spoken-after in-channel — are filtered server-side).
+ * Mail was deliberately dropped: it pulled in calendar-accept / auto-reply noise
+ * that never actually needed you. A reminder is cleared by marking it done, a
+ * mention by dismissing it.
  */
 export function DeskNeedsReply() {
-  const { sources, ready } = useSources();
   const { dismissed, dismiss } = useDismissed();
   const reminders = useDeskReminders({ enabled: true });
+  const createReminder = useCreateDeskReminder();
   const updateReminder = useUpdateDeskReminder();
-  const mentions = useDeskMentions({ enabled: ready && sources.slack });
-  const gmail = useDeskGmail({ enabled: ready && sources.gmail, query: GMAIL_QUERY });
+  const mentions = useDeskMentions({ enabled: true });
+  const [draft, setDraft] = useState("");
 
-  // 1. Reminders (open, incl. /desk) — pinned first, newest first.
+  // 1. Reminders (open) — pinned first, newest first.
   const reminderItems: NeedItem[] = (reminders.data?.reminders ?? [])
     .filter((r) => !r.done)
     .map((r) => ({
@@ -111,45 +88,24 @@ export function DeskNeedsReply() {
     }))
     .sort((a, b) => b.sortTs - a.sortTs);
 
-  // 2. Feed — @mentions + Primary unread mail, newest first, dismissable.
-  const feed: NeedItem[] = [];
-  if (sources.slack) {
-    for (const m of mentions.data?.items ?? []) {
-      feed.push({
-        id: `slack:${m.id}`,
-        source: "slack",
-        title: m.text || `${m.author} mentioned you`,
-        sub: `${m.clientName} · ${m.author} · ${relTime(m.ts)}`,
-        sortTs: new Date(m.ts).getTime() || 0,
-        link: m.link,
-      });
-    }
-  }
-  if (sources.gmail) {
-    for (const g of (gmail.data?.messages ?? []).filter((m) => m.unread)) {
-      const sender = g.from.replace(/<[^>]+>/, "").replace(/"/g, "").trim() || g.from;
-      feed.push({
-        id: `gmail:${g.id}`,
-        source: "gmail",
-        title: g.subject,
-        sub: `${sender} · ${relTime(new Date(g.date).toISOString())}`,
-        sortTs: new Date(g.date).getTime() || 0,
-        link: g.threadId ? `https://mail.google.com/mail/u/0/#all/${g.threadId}` : null,
-      });
-    }
-  }
-  feed.sort((a, b) => b.sortTs - a.sortTs);
-  const visibleFeed = feed.filter((it) => !dismissed.has(it.id));
+  // 2. Slack @mentions awaiting a reply (server already applies the 24h /
+  //    unanswered filter), newest first, dismissable.
+  const mentionItems: NeedItem[] = (mentions.data?.items ?? [])
+    .map((m) => ({
+      id: `slack:${m.id}`,
+      source: "slack" as const,
+      title: m.text || `${m.author} mentioned you`,
+      sub: `${m.clientName} · ${m.author} · ${relTime(m.ts)}`,
+      sortTs: new Date(m.ts).getTime() || 0,
+      link: m.link,
+    }))
+    .sort((a, b) => b.sortTs - a.sortTs);
+  const visibleMentions = mentionItems.filter((it) => !dismissed.has(it.id));
 
-  const shown = [...reminderItems, ...visibleFeed].slice(0, MAX_ITEMS);
+  const shown = [...reminderItems, ...visibleMentions].slice(0, MAX_ITEMS);
 
-  const loading =
-    reminders.isPending ||
-    (sources.slack && mentions.isPending) ||
-    (sources.gmail && gmail.isPending);
-  const gmailDisconnected = sources.gmail && gmail.data && !gmail.data.connected;
-  const slackUnmapped =
-    sources.slack && mentions.data && mentions.data.configured && !mentions.data.mapped;
+  const loading = reminders.isPending || mentions.isPending;
+  const slackUnmapped = mentions.data && mentions.data.configured && !mentions.data.mapped;
 
   function dismissItem(it: NeedItem) {
     if (it.source === "reminder" && it.reminderId) {
@@ -159,24 +115,53 @@ export function DeskNeedsReply() {
     }
   }
 
+  function addReminder() {
+    const body = draft.trim();
+    if (!body) return;
+    createReminder.mutate(body, { onSuccess: () => setDraft("") });
+  }
+
   return (
     <EditorialRow
       title="Needs you today"
-      caption="Reminders, @mentions and key mail that actually need you — nothing else."
+      caption="Your reminders and unanswered Slack @mentions from the last 24h — nothing else."
     >
+      {/* Inline add-a-reminder (replaces the old header popover — reminders live here now). */}
+      <div className="mb-3 flex items-center gap-2">
+        <input
+          className="app-input flex-1"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Remember to…"
+          maxLength={280}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") addReminder();
+          }}
+        />
+        <button
+          type="button"
+          onClick={addReminder}
+          disabled={!draft.trim() || createReminder.isPending}
+          className="inline-flex shrink-0 items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-2 text-[13px] font-medium text-[var(--text-2)] transition hover:border-[var(--border-1)] hover:text-[var(--text-1)] disabled:opacity-50"
+        >
+          <PlusIcon className="h-4 w-4" />
+          Add
+        </button>
+      </div>
+
       {loading && shown.length === 0 ? (
         <DeskSkeleton />
       ) : shown.length > 0 ? (
         <>
-          {visibleFeed.length > 0 ? (
+          {visibleMentions.length > 0 ? (
             <div className="mb-1 flex items-center justify-end">
               <button
                 type="button"
-                onClick={() => dismiss(visibleFeed.map((it) => it.id))}
+                onClick={() => dismiss(visibleMentions.map((it) => it.id))}
                 className="text-[11px] uppercase tracking-[0.6px] text-[var(--text-4)] transition hover:text-[var(--text-2)]"
                 style={{ fontFamily: "var(--font-mono)" }}
               >
-                Dismiss mail
+                Dismiss @mentions
               </button>
             </div>
           ) : null}
@@ -185,14 +170,7 @@ export function DeskNeedsReply() {
               <NeedRow key={it.id} item={it} onDismiss={() => dismissItem(it)} />
             ))}
           </ul>
-          {gmailDisconnected ? (
-            <div className="mt-2">
-              <DeskConnectGoogle what="your inbox" />
-            </div>
-          ) : null}
         </>
-      ) : gmailDisconnected ? (
-        <DeskConnectGoogle what="your inbox" />
       ) : slackUnmapped ? (
         <DeskEmpty>Couldn&apos;t match your email in Slack — mentions won&apos;t show.</DeskEmpty>
       ) : (
@@ -205,7 +183,6 @@ export function DeskNeedsReply() {
 const SOURCE_ICON = {
   reminder: ClipboardDocumentListIcon,
   slack: ChatBubbleLeftRightIcon,
-  gmail: EnvelopeIcon,
 } as const;
 
 function NeedRow({ item, onDismiss }: { item: NeedItem; onDismiss: () => void }) {
