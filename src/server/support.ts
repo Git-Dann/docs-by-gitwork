@@ -21,6 +21,7 @@ import type {
 } from "@/types/support";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { seedAccountEmails } from "@/server/seed-accounts";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { canSeeAllClients, ForbiddenError } from "@/server/auth/effective-user";
 import { assignedClientIds } from "@/server/tasks";
@@ -1713,7 +1714,7 @@ export async function listWorkspaceMembers(): Promise<
 > {
   const workspaceId = await getWorkspaceId();
   const rows = await prisma.workspaceMember.findMany({
-    where: { workspaceId },
+    where: { workspaceId, user: { email: { notIn: seedAccountEmails() } } },
     include: { user: true },
   });
   return rows.map((m) => ({

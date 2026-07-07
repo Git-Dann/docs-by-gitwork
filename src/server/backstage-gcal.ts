@@ -3,9 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { googleClientForRefreshToken } from "@/server/google-auth";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import type { CalendarConnectionMember, TeamCalendarEvent } from "@/types/backstage";
-
-// Legacy pre-auth seed account — excluded from team-facing lists (see backstage.ts).
-const BOOTSTRAP_USER_EMAIL = "owner@gitwork.io";
+import { seedAccountEmails } from "@/server/seed-accounts";
 
 function displayName(u: { name: string | null; email: string }): string {
   return u.name?.trim() ? u.name : u.email;
@@ -32,7 +30,7 @@ export async function listCalendarConnections(
     where: {
       workspaceId: user.workspaceId,
       user: {
-        email: { not: BOOTSTRAP_USER_EMAIL },
+        email: { notIn: seedAccountEmails() },
         googleOAuthRefreshToken: { not: null },
       },
     },

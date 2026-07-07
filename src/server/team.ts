@@ -3,21 +3,19 @@ import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { ForbiddenError } from "@/server/auth/effective-user";
 import { recomputeMember } from "@/server/permissions";
+import { seedAccountEmails } from "@/server/seed-accounts";
 import { canManageRole, normalizeOverrides, type PermissionOverrides, type RoleId } from "@/types/auth";
 
 export async function getWorkspace() {
   return prisma.workspace.findUniqueOrThrow({ where: { slug: DEFAULT_WORKSPACE_SLUG } });
 }
 
-// Bootstrap placeholder — never a real team member
-const BOOTSTRAP_USER_EMAIL = "owner@gitwork.io";
-
 export async function listMembers() {
   const workspace = await getWorkspace();
   const rows = await prisma.workspaceMember.findMany({
     where: {
       workspaceId: workspace.id,
-      user: { email: { not: BOOTSTRAP_USER_EMAIL } },
+      user: { email: { notIn: seedAccountEmails() } },
     },
     // `googleOAuthEmail` is captured on a member's first successful Google sign-in (the auth
     // jwt callback writes it whenever Google returns a refresh token — which `prompt: "consent"`
@@ -133,7 +131,7 @@ async function assertNotLastSuperAdmin(workspaceId: string, memberId: string) {
       workspaceId,
       role: "SUPER_ADMIN",
       id: { not: memberId },
-      user: { email: { not: BOOTSTRAP_USER_EMAIL } },
+      user: { email: { notIn: seedAccountEmails() } },
     },
   });
   if (others === 0) {
