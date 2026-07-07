@@ -28,7 +28,7 @@ import {
 } from "@/types/codeclear";
 
 const statusTone: Record<PipelineStatus, string> = {
-  SOURCED: "border-slate-200 bg-slate-50 text-slate-700",
+  SOURCED: "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-2)]",
   INVITED: "border-sky-200 bg-sky-50 text-sky-700",
   ASSESSMENT_IN_PROGRESS: "border-amber-200 bg-amber-50 text-amber-700",
   CODECLEAR_COMPLETE: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -47,7 +47,7 @@ const analysisTone: Record<
   { className: string; icon: typeof SparklesIcon }
 > = {
   NEVER_RUN: {
-    className: "border-zinc-200 bg-zinc-50 text-zinc-700",
+    className: "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-2)]",
     icon: SparklesIcon,
   },
   RUNNING: {
@@ -239,7 +239,7 @@ export function CodeClearScoreBadge({
   const score = typeof value === "number" ? value : null;
   const tone =
     score === null
-      ? "border-zinc-200 bg-zinc-50 text-zinc-600"
+      ? "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]"
       : score >= 80
         ? "border-emerald-200 bg-emerald-50 text-emerald-700"
         : score >= 65

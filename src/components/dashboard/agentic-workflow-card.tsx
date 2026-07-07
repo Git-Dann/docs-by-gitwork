@@ -37,7 +37,7 @@ import type {
 } from "@/types/foundry-automation";
 
 const STAGE_TONE: Record<AutomationStageKey, string> = {
-  INTAKE_NEEDED: "border-slate-200 bg-slate-50 text-slate-700",
+  INTAKE_NEEDED: "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-2)]",
   DRAFT_PROPOSAL: "border-blue-200 bg-blue-50 text-blue-700",
   REVIEW_PROPOSAL: "border-amber-200 bg-amber-50 text-amber-800",
   WAITING_SIGNATURE: "border-sky-200 bg-sky-50 text-sky-700",
@@ -51,7 +51,7 @@ const GATE_TONE: Record<AutomationGateState, string> = {
   done: "bg-emerald-500",
   ready: "bg-blue-500",
   waiting: "bg-amber-400",
-  blocked: "bg-slate-300",
+  blocked: "bg-[var(--text-4)]",
 };
 
 export function AgenticWorkflowCard() {
@@ -1014,7 +1014,7 @@ function PlanReviewModal({
                   className={cn(
                     "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
                     block.existing
-                      ? "border-slate-200 bg-slate-50 text-slate-600"
+                      ? "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]"
                       : "border-emerald-200 bg-emerald-50 text-emerald-700",
                   )}
                 >
@@ -1032,7 +1032,7 @@ function PlanReviewModal({
                       <span
                         className={cn(
                           "mt-1 h-1.5 w-1.5 rounded-full",
-                          task.existing ? "bg-slate-300" : "bg-emerald-500",
+                          task.existing ? "bg-[var(--text-4)]" : "bg-emerald-500",
                         )}
                       />
                       <div className="min-w-0">

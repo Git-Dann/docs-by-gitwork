@@ -1688,7 +1688,7 @@ function InboxView({ clientId }: { clientId: string }) {
         <div className="app-card flex min-w-0 flex-col overflow-hidden p-0">
           {/* widget header */}
           <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
               {semanticResults ? "AI SEARCH" : "01 // INBOX"}
             </span>
             <div className="flex items-center gap-2">
@@ -1701,7 +1701,7 @@ function InboxView({ clientId }: { clientId: string }) {
                   <XMarkIcon className="h-2.5 w-2.5" /> clear
                 </button>
               )}
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-[var(--text-4)]">
                 {semanticResults ? semanticResults.length : filtered.length}
               </span>
             </div>
@@ -1757,7 +1757,7 @@ function InboxView({ clientId }: { clientId: string }) {
         <div className="app-card flex min-w-0 flex-col overflow-hidden" style={{ minHeight: 0, maxHeight: "calc(100vh - 14rem)" }}>
           {/* widget header */}
           <div className="flex h-9 shrink-0 items-center justify-between border-b border-black/[0.06] px-4">
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
               02 // CONVERSATION
             </span>
             {activeConvo && (
@@ -2071,10 +2071,10 @@ function SubredditView({ clientId, onGoToConnectors }: { clientId: string; onGoT
         {/* ── Left: subreddit connector cards ─────────────────────────────── */}
         <div className="app-card flex min-w-0 flex-col overflow-hidden p-0">
           <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
               01 // POSTS
             </span>
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-[var(--text-4)]">
               {posts.length}
             </span>
           </div>
@@ -2150,7 +2150,7 @@ function SubredditView({ clientId, onGoToConnectors }: { clientId: string; onGoT
                   ← Back
                 </button>
               )}
-              <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
                 {selectedPost ? selectedPost.subject.slice(0, 40) : selectedConn ? `02 // r/${subreddit}` : "02 // SUBREDDIT"}
               </span>
             </div>
@@ -2523,7 +2523,7 @@ function TicketsTableView({ clientId }: { clientId: string }) {
       {perfData?.metrics && (
         <div>
           <div className="mb-2 flex items-center justify-between">
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
               PERFORMANCE // LAST 30 DAYS
             </span>
           </div>
@@ -2978,7 +2978,7 @@ function ReportBuilder({
 
   const widgetHeader = (num: string, label: string, right?: React.ReactNode) => (
     <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-      <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+      <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
         {num} {"//"} {label}
       </span>
       {right ?? null}
@@ -3354,10 +3354,10 @@ function ReportsView({ client }: { client: SupportClient }) {
       {hasAllocation && (
         <div className="app-card overflow-hidden p-0">
           <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
               01 // SUPPORT DAYS
             </span>
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-[var(--text-4)]">
               {month}
             </span>
           </div>
@@ -3411,7 +3411,7 @@ function ReportsView({ client }: { client: SupportClient }) {
 
       <div className="app-card overflow-hidden p-0">
         <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-          <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+          <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
             02 // SAVED REPORTS (LEGACY)
           </span>
           <button
@@ -4461,7 +4461,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
       {agentLogs.length > 0 && (
         <div className="app-card overflow-hidden p-0">
           <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
               02 // AGENT ACTIVITY
             </span>
             <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-emerald-600">
@@ -4656,7 +4656,7 @@ function AgentsView({ clientId }: { clientId: string }) {
       <section>
         <div className="app-card mb-4 overflow-hidden p-0">
           <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
               01 // AGENT PIPELINE
             </span>
             <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-emerald-600">
@@ -4729,10 +4729,10 @@ function AgentsView({ clientId }: { clientId: string }) {
           <div className="app-card overflow-hidden p-0">
             {/* widget header */}
             <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-              <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
                 02 // MANUAL SYNC
               </span>
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-stone-400">
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-[var(--text-4)]">
                 {connections.length}
               </span>
             </div>
@@ -4823,7 +4823,7 @@ function AgentsView({ clientId }: { clientId: string }) {
           <div className="app-card overflow-hidden p-0">
             {/* widget header */}
             <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-              <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+              <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
                 03 // AGENT ACTIVITY
               </span>
               <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-emerald-600">
@@ -4918,7 +4918,7 @@ function SettingsView({ clientId }: { clientId: string }) {
       <section>
         <div className="app-card overflow-hidden p-0">
           <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
               00 // PORTAL LINK
             </span>
             {thisClient?.workspaceClientId && (
@@ -4961,7 +4961,7 @@ function SettingsView({ clientId }: { clientId: string }) {
       <section>
         <div className="app-card overflow-hidden p-0">
           <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-stone-400">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
               01 // WORKFLOW RULES
             </span>
             {canManageSupport ? (

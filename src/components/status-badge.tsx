@@ -35,8 +35,8 @@ const statusBadgeTones: Record<DocumentStatus, { wrapper: string; dot: string }>
     dot: "bg-rose-500",
   },
   ARCHIVED: {
-    wrapper: "border-zinc-200 bg-white text-zinc-700",
-    dot: "bg-zinc-400",
+    wrapper: "border-[var(--border-2)] bg-white text-[var(--text-2)]",
+    dot: "bg-[var(--text-4)]",
   },
 };
 
