@@ -187,16 +187,22 @@ function NewAssessmentModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Modal open onClose={onClose} title="New DevSignal assessment">
-      <div className="space-y-4 p-1">
-        <Field label="Candidate name" value={name} onChange={setName} />
-        <Field label="GitHub username" value={githubHandle} onChange={setGithubHandle} placeholder="octocat" />
-        <Field label="Email (optional)" value={email} onChange={setEmail} type="email" />
-        <p className="text-xs text-[var(--text-4)]">
-          This mints a tokenised invite link the candidate uses to complete their assessment. They
-          land in staging — nothing enters Code without your explicit promotion.
-        </p>
-        <div className="flex justify-end gap-2">
+    <Modal open onClose={onClose} title="New DevSignal assessment" panelClassName="w-[560px] max-w-[92vw]">
+      {/* Fixed height so the dialog reads intentional, not sparse. Fields in a
+          2-column grid; footer pinned to the bottom. */}
+      <div className="flex h-[360px] flex-col">
+        <div className="grid flex-1 grid-cols-2 content-start gap-x-4 gap-y-4 overflow-y-auto p-6">
+          <Field label="Candidate name" value={name} onChange={setName} />
+          <Field label="GitHub username" value={githubHandle} onChange={setGithubHandle} placeholder="octocat" />
+          <div className="col-span-2">
+            <Field label="Email (optional)" value={email} onChange={setEmail} type="email" />
+          </div>
+          <p className="col-span-2 text-sm leading-relaxed text-[var(--text-3)]">
+            This mints a tokenised invite link the candidate uses to complete their assessment. They
+            land in staging — nothing enters Code without your explicit promotion.
+          </p>
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-[var(--border-1)] px-6 py-4">
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
@@ -229,9 +235,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block font-mono text-xs uppercase tracking-wider text-[var(--text-4)]">
-        {label}
-      </span>
+      <span className="widget-data-label mb-1 block">{label}</span>
       <input
         type={type}
         value={value}
