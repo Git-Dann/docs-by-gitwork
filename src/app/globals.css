@@ -811,7 +811,7 @@ h2, h3, h4, h5 {
   .proposal-form-theme select,
   .proposal-form-theme textarea {
     width: 100%;
-    border: 1px solid rgba(0,0,0,0.14);
+    border: 1px solid var(--border-1);
     border-radius: 6px;
     background: var(--surface-0);
     color: var(--text-1);
@@ -885,6 +885,32 @@ h2, h3, h4, h5 {
     box-shadow:
       0 0 0 4px var(--brand-focus-ring),
       var(--shadow-xs);
+  }
+
+  /* Dark mode: dialog panels and inputs both default to --surface-0, so fields
+   * dissolve into the panel. Lift fields to --surface-1 (one step brighter) +
+   * a clearer placeholder so form controls read as distinct, filled inputs.
+   * Light mode keeps white fields (untouched — this block is dark-only). */
+  [data-theme="dark"] .app-input,
+  [data-theme="dark"] .app-input-compact,
+  [data-theme="dark"] .app-select,
+  [data-theme="dark"] .app-select-compact,
+  [data-theme="dark"] .app-textarea,
+  [data-theme="dark"] .proposal-field-compact,
+  [data-theme="dark"] .proposal-form-theme input:not([type="checkbox"]):not([type="radio"]),
+  [data-theme="dark"] .proposal-form-theme select,
+  [data-theme="dark"] .proposal-form-theme textarea {
+    background: var(--surface-1);
+    border-color: var(--border-1);
+  }
+
+  [data-theme="dark"] .app-input::placeholder,
+  [data-theme="dark"] .app-input-compact::placeholder,
+  [data-theme="dark"] .app-textarea::placeholder,
+  [data-theme="dark"] .proposal-field-compact::placeholder,
+  [data-theme="dark"] .proposal-form-theme input::placeholder,
+  [data-theme="dark"] .proposal-form-theme textarea::placeholder {
+    color: var(--text-3);
   }
 
   .app-input:disabled,
