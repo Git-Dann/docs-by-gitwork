@@ -29,7 +29,8 @@ export default function GmailWidget({ size, index }: { size: WidgetSize; index: 
   const num = String(index).padStart(2, "0");
   const { data, isLoading } = useQuery({
     queryKey: ["integrations", "gmail"],
-    queryFn: getGmailMessages,
+    // Wrap so React Query's QueryFunctionContext isn't passed as the `query` arg.
+    queryFn: () => getGmailMessages(),
     staleTime: 1000 * 60 * 2,
     retry: false,
   });
