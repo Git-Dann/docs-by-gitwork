@@ -36,6 +36,7 @@ import { buttonStyles } from "@/components/ui/button-styles";
 import { LogoImagePicker } from "@/components/ui/logo-image-picker";
 import { CountrySelect, PhoneInput, WebsiteInput } from "@/components/ui/contact-fields";
 import { ClientDesignFormModal } from "@/components/clients/client-design-form";
+import { ClientDriveArchiveButton } from "@/components/clients/client-drive-archive-button";
 import { ClientPlatformFormModal } from "@/components/clients/client-platform-form";
 import { StatusBadge } from "@/components/status-badge";
 import {
@@ -580,6 +581,7 @@ export function ClientDetail({ slug }: { slug: string }) {
               <PencilIcon className="h-3 w-3" />
               Edit
             </Button>
+            {!isSuggested && <ClientDriveArchiveButton slug={slug} />}
           </div>
         </div>
 

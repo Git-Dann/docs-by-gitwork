@@ -2204,6 +2204,57 @@ export async function getDeskMentions(): Promise<DeskMentionsResult> {
   return apiFetch("/api/desk/mentions");
 }
 
+// ─── Data lifecycle: client Drive archive + retention purge review ───────────
+
+export interface ClientDriveArchiveStatus {
+  archivedToDriveAt: string | null;
+  folderUrl: string | null;
+}
+
+/** Read the client's Google Drive archive status. */
+export async function getClientDriveArchiveStatus(slug: string): Promise<ClientDriveArchiveStatus> {
+  return apiFetch<ClientDriveArchiveStatus>(`/api/clients/${slug}/archive-to-drive`);
+}
+
+/** Manually (re-)run the client's Google Drive archive — enqueues a durable, deduped job. */
+export async function archiveClientToDrive(
+  slug: string,
+): Promise<{ jobId: string; queued: boolean; alreadyRunning: boolean }> {
+  return apiFetch(`/api/clients/${slug}/archive-to-drive`, { method: "POST" });
+}
+
+export interface DeskAttention {
+  purgeReview: { count: number; reclaimableBytes: number };
+}
+
+export async function getDeskAttention(): Promise<DeskAttention> {
+  return apiFetch("/api/desk/attention");
+}
+
+export interface PurgeCandidateDTO {
+  id: string;
+  policyKey: string;
+  entity: string;
+  scopeId: string | null;
+  rowCount: number;
+  byteSize: number | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  purgeEligibleAt: string | null;
+}
+
+export async function getPurgeCandidates(): Promise<{ candidates: PurgeCandidateDTO[] }> {
+  return apiFetch("/api/retention/purge-candidates");
+}
+
+export async function approvePurge(ids: string[]): Promise<{ purged: number; errors: string[] }> {
+  return apiFetch("/api/retention/purge", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+}
+
 // ─── Desk reminders (temporary personal list) ────────────────────────────────
 
 export async function getDeskReminders(): Promise<{ reminders: DeskReminderDTO[] }> {

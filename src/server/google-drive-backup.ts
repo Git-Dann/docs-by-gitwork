@@ -22,6 +22,7 @@ type OAuth2Client = InstanceType<typeof google.auth.OAuth2>;
 export type DriveClient = ReturnType<typeof google.drive>;
 
 const BACKUP_FOLDER_NAME = "Foundry Docs Backup";
+const CLIENT_ARCHIVE_FOLDER_NAME = "Foundry Client Archives";
 const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 
@@ -193,4 +194,130 @@ export async function backupDocumentBestEffort(documentId: string): Promise<void
   } catch (err) {
     console.warn(`[docs-gdrive-backup] on-share backup failed for ${documentId}: ${String(err).slice(0, 160)}`);
   }
+}
+
+/**
+ * Return the id of the "Foundry Client Archives" root folder, creating + caching it on the
+ * workspace (`clientArchiveFolderId`) if needed. Mirrors `ensureBackupFolder` but for the separate
+ * client-archive tree. Per-client subfolders live beneath this.
+ */
+export async function ensureClientArchiveFolder(
+  drive: DriveClient,
+  workspaceId: string,
+  existingFolderId: string | null,
+): Promise<string> {
+  if (existingFolderId) {
+    try {
+      const res = await drive.files.get({ fileId: existingFolderId, fields: "id, trashed" });
+      if (res.data.id && !res.data.trashed) return res.data.id;
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+    }
+  }
+
+  const created = await drive.files.create({
+    requestBody: { name: CLIENT_ARCHIVE_FOLDER_NAME, mimeType: FOLDER_MIME },
+    fields: "id",
+  });
+  const folderId = created.data.id;
+  if (!folderId) throw new Error("Drive did not return a folder id");
+
+  await prisma.workspace.update({
+    where: { id: workspaceId },
+    data: { clientArchiveFolderId: folderId },
+  });
+  return folderId;
+}
+
+/** Verify a cached child-folder id is still live, else create a fresh subfolder under `parentId`. */
+export async function ensureChildFolder(
+  drive: DriveClient,
+  parentId: string,
+  name: string,
+  existingFolderId: string | null,
+): Promise<string> {
+  if (existingFolderId) {
+    try {
+      const res = await drive.files.get({ fileId: existingFolderId, fields: "id, trashed" });
+      if (res.data.id && !res.data.trashed) return res.data.id;
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+    }
+  }
+  return createSubfolder(drive, parentId, name);
+}
+
+/** Create a subfolder under `parentId` and return its id. */
+export async function createSubfolder(
+  drive: DriveClient,
+  parentId: string,
+  name: string,
+): Promise<string> {
+  const created = await drive.files.create({
+    requestBody: { name, mimeType: FOLDER_MIME, parents: [parentId] },
+    fields: "id",
+  });
+  const id = created.data.id;
+  if (!id) throw new Error("Drive did not return a folder id");
+  return id;
+}
+
+/** Upload an HTML string as a native, editable Google Doc under `folderId`. Returns the file id. */
+export async function uploadHtmlAsDoc(
+  drive: DriveClient,
+  folderId: string,
+  title: string,
+  html: string,
+): Promise<string> {
+  const res = await drive.files.create({
+    requestBody: { name: title, mimeType: GOOGLE_DOC_MIME, parents: [folderId] },
+    media: { mimeType: "text/html", body: html },
+    fields: "id",
+  });
+  const id = res.data.id;
+  if (!id) throw new Error("Drive did not return a file id");
+  return id;
+}
+
+/** Upload a raw JSON string as a .json file under `folderId`. Returns the file id. */
+export async function uploadJsonFile(
+  drive: DriveClient,
+  folderId: string,
+  name: string,
+  json: string,
+): Promise<string> {
+  const res = await drive.files.create({
+    requestBody: { name, mimeType: "application/json", parents: [folderId] },
+    media: { mimeType: "application/json", body: json },
+    fields: "id",
+  });
+  const id = res.data.id;
+  if (!id) throw new Error("Drive did not return a file id");
+  return id;
+}
+
+/**
+ * Delete every non-trashed child of `folderId` (files + subfolders the app created). Used to make
+ * a re-archive a clean rewrite rather than piling up duplicate snapshots. Best-effort per child.
+ */
+export async function clearFolderContents(drive: DriveClient, folderId: string): Promise<void> {
+  let pageToken: string | undefined;
+  do {
+    const res = await drive.files.list({
+      q: `'${folderId}' in parents and trashed = false`,
+      fields: "nextPageToken, files(id)",
+      pageSize: 100,
+      pageToken,
+    });
+    const files = res.data.files ?? [];
+    for (const f of files) {
+      if (!f.id) continue;
+      try {
+        await drive.files.delete({ fileId: f.id });
+      } catch (err) {
+        if (!isNotFound(err)) throw err;
+      }
+    }
+    pageToken = res.data.nextPageToken ?? undefined;
+  } while (pageToken);
 }

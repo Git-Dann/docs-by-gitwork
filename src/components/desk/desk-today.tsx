@@ -24,6 +24,7 @@ import {
 import { WorldClocks, TeamOverlap, HQ_TZ, TEAM_TZ } from "./desk-time";
 import { DeskReminders } from "./desk-reminders";
 import { DeskNeedsReply } from "./desk-needs-reply";
+import { PurgeReviewBanner } from "./desk-purge-review";
 
 type Counterpart = { tz: string; label: string };
 
@@ -97,6 +98,9 @@ export function DeskToday({ onNavigate }: { onNavigate?: (tab: DeskTab) => void 
           .
         </h2>
       </div>
+
+      {/* Retention purge review — admins only, shown when there are cold archives past their window. */}
+      <PurgeReviewBanner enabled={isAdminOrAbove} />
 
       {/* Needs you today — Slack @mentions + unread Gmail that want a reply. */}
       <DeskNeedsReply />
