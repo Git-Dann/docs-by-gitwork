@@ -190,6 +190,7 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
   }, [team.data, task?.client.id]);
 
   const [editing, setEditing] = useState(false);
+  const [openSubtaskId, setOpenSubtaskId] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [subtaskTitle, setSubtaskTitle] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -362,23 +363,37 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
                 </p>
                 <div className="space-y-1.5">
                   {task.subtasks.map((s) => (
-                    <div key={s.id} className="flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2">
+                    <div key={s.id} className="group flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2">
                       <input
                         type="checkbox"
                         checked={s.status === "DONE"}
                         disabled={update.isPending}
                         onChange={(e) => toggleSubtask(s.id, e.target.checked)}
                         className="accent-[var(--brand-700)]"
+                        aria-label={s.status === "DONE" ? "Mark subtask not done" : "Mark subtask done"}
                       />
-                      <span
+                      {/* Open the subtask in its own drawer for full editing —
+                          rename, reassign, due date, notes, delete. */}
+                      <button
+                        type="button"
+                        onClick={() => setOpenSubtaskId(s.id)}
+                        title="Open subtask"
                         className={cn(
-                          "min-w-0 flex-1 truncate text-sm",
+                          "min-w-0 flex-1 truncate text-left text-sm transition hover:text-[var(--brand-700)] hover:underline",
                           s.status === "DONE" ? "text-[var(--text-4)] line-through" : "text-[var(--text-1)]",
                         )}
                       >
                         {s.title}
-                      </span>
+                      </button>
                       <AssigneeStack users={s.assignees} size={18} />
+                      <button
+                        type="button"
+                        onClick={() => setOpenSubtaskId(s.id)}
+                        aria-label="Edit subtask"
+                        className="shrink-0 rounded-[5px] p-1 text-[var(--text-4)] opacity-0 transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] focus:opacity-100 group-hover:opacity-100"
+                      >
+                        <PencilIcon className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   ))}
                   {task.subtasks.length === 0 ? <p className="text-xs text-[var(--text-4)]">No subtasks.</p> : null}
@@ -476,6 +491,11 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
       </div>
 
       {editing && task ? <TaskFormModal task={task} lockClient onClose={() => setEditing(false)} /> : null}
+
+      {/* Nested drawer for editing a subtask — stacks above this one. */}
+      {openSubtaskId ? (
+        <TaskDetailDrawer taskId={openSubtaskId} onClose={() => setOpenSubtaskId(null)} />
+      ) : null}
     </div>
   );
 }

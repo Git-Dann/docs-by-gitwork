@@ -43,7 +43,15 @@ import type {
   CodeClearTier,
 } from "@/types/codeclear";
 import type { NotificationDTO } from "@/types/notifications";
-import type { DeskActionItemDTO, DeskSlackResult, DeskHolidays } from "@/types/desk";
+import type {
+  DeskActionItemDTO,
+  DeskSlackResult,
+  DeskHolidays,
+  DeskReminderDTO,
+  BroadcastDTO,
+  BroadcastDuration,
+  DeskMentionsResult,
+} from "@/types/desk";
 import type {
   ProofCreateDocumentInput,
   ProofDocumentRecord,
@@ -2151,6 +2159,7 @@ export async function resetTeamMemberPassword(
 
 export interface GmailMessage {
   id: string;
+  threadId: string;
   subject: string;
   from: string;
   snippet: string;
@@ -2184,6 +2193,60 @@ export async function getDeskActionItems(): Promise<{ items: DeskActionItemDTO[]
 
 export async function getDeskSlack(): Promise<DeskSlackResult> {
   return apiFetch("/api/desk/slack");
+}
+
+export async function getDeskMentions(): Promise<DeskMentionsResult> {
+  return apiFetch("/api/desk/mentions");
+}
+
+// ─── Desk reminders (temporary personal list) ────────────────────────────────
+
+export async function getDeskReminders(): Promise<{ reminders: DeskReminderDTO[] }> {
+  return apiFetch("/api/desk/reminders");
+}
+
+export async function createDeskReminder(body: string): Promise<{ reminder: DeskReminderDTO }> {
+  return apiFetch("/api/desk/reminders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+}
+
+export async function updateDeskReminder(
+  id: string,
+  input: { done?: boolean; body?: string },
+): Promise<{ reminder: DeskReminderDTO }> {
+  return apiFetch(`/api/desk/reminders/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteDeskReminder(id: string): Promise<{ ok: true }> {
+  return apiFetch(`/api/desk/reminders/${id}`, { method: "DELETE" });
+}
+
+// ─── Desk broadcast (workspace-wide banner) ──────────────────────────────────
+
+export async function getActiveBroadcast(): Promise<{ broadcast: BroadcastDTO | null }> {
+  return apiFetch("/api/desk/broadcast");
+}
+
+export async function postBroadcast(input: {
+  message: string;
+  durationDays: BroadcastDuration;
+}): Promise<{ broadcast: BroadcastDTO }> {
+  return apiFetch("/api/desk/broadcast", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function dismissBroadcast(): Promise<{ ok: true }> {
+  return apiFetch("/api/desk/broadcast", { method: "DELETE" });
 }
 
 export async function getDeskHolidays(): Promise<DeskHolidays> {

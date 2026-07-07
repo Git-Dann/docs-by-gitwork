@@ -9,6 +9,7 @@ import { useNotifications, useMarkAllRead, useMarkRead } from "@/hooks/use-notif
 import type { NotificationDTO } from "@/types/notifications";
 import { NotificationItem } from "@/components/notifications/notification-item";
 import { EditorialRow, DeskEmpty, DeskSkeleton, RevealList } from "./desk-shared";
+import { DeskBroadcast } from "./desk-broadcast";
 
 export function DeskAlerts() {
   const router = useRouter();
@@ -25,6 +26,9 @@ export function DeskAlerts() {
 
   return (
     <div>
+      {/* Workspace-wide broadcast — everyone sees an active one; admins post/replace. */}
+      <DeskBroadcast />
+
       <EditorialRow
         title="Notifications"
         count={items.length}

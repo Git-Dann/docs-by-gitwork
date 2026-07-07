@@ -17,8 +17,10 @@ const APP_BASE_URL =
 
 export interface StandupTaskCardInput {
   taskId: string;
-  /** Database id of the SlackMessageRef row created when this card is posted. */
-  messageRefId: string;
+  /** Database id of the SlackMessageRef row, when the card carries per-task
+   *  Slack actions. Optional — the standup/project cards now render clean lists
+   *  (no per-task buttons), so callers may omit it. */
+  messageRefId?: string;
   title: string;
   blockName?: string | null;
   /** YYYY-MM-DD; overdue formatting is computed against the workdayLabel. */
@@ -82,32 +84,86 @@ export interface BuildStandupCardInput {
   tasks: StandupTaskCardInput[];
 }
 
-const MAX_TASKS_PER_CARD = 8;
+const MAX_TASKS_PER_CARD = 12;
 
 function taskDeepLink(t: Pick<StandupTaskCardInput, "clientSlug" | "taskId">): string {
   return `${APP_BASE_URL}/app/portal/${encodeURIComponent(t.clientSlug)}/tasks?task=${encodeURIComponent(t.taskId)}`;
 }
 
+/** Per-client task board URL — the single link that replaces the old per-task links. */
+function boardUrl(clientSlug: string | null | undefined): string {
+  return clientSlug
+    ? `${APP_BASE_URL}/app/portal/${encodeURIComponent(clientSlug)}/tasks`
+    : `${APP_BASE_URL}/app/portal`;
+}
+
+/** Flatten markdown to a one-line plain preview so a description never breaks
+ *  the tidy list layout (drops headings/lists/code/links-to-labels, collapses
+ *  whitespace). */
+function stripToPlain(s: string): string {
+  return s
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^[\s]*[-*+]\s+/gm, "")
+    .replace(/^\s*>\s?/gm, "")
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/([*_])(.*?)\1/g, "$2")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /**
- * Standup card — header + one section block per task (with an overflow accessory
- * carrying the action menu) + optional Monday "This week" block + optional note.
+ * Render a set of tasks as a clean bulleted mrkdwn list — one `• Title` per line,
+ * with optional light meta (block · due) italicised, and an optional one-line
+ * description underneath. No per-task links or menus: the card carries a single
+ * "View board" button instead. `+N more` folds into a trailing line when capped.
+ */
+function taskListText(
+  tasks: StandupTaskCardInput[],
+  opts: { today: string | null; withMeta: boolean; withDescriptions?: boolean },
+): string {
+  const visible = tasks.slice(0, MAX_TASKS_PER_CARD);
+  const overflow = Math.max(0, tasks.length - MAX_TASKS_PER_CARD);
+  const lines = visible.map((t) => {
+    const status = t.status ?? "DOING";
+    const parts: string[] = [];
+    if (opts.withMeta && t.blockName) parts.push(escapeMrkdwn(t.blockName));
+    if (opts.withMeta && t.dueDate) {
+      const isOverdue = Boolean(t.dueDate && opts.today && t.dueDate < opts.today && status !== "DONE");
+      const dueFriendly = formatFriendlyDue(t.dueDate, opts.today);
+      parts.push(isOverdue ? `due ${dueFriendly} (overdue)` : `due ${dueFriendly}`);
+    }
+    const meta = parts.length ? `  _· ${parts.join(" · ")}_` : "";
+    let line = `• ${escapeMrkdwn(t.title)}${meta}`;
+    if (opts.withDescriptions && t.description?.trim()) {
+      line += `\n   _${escapeMrkdwn(truncate(stripToPlain(t.description.trim()), 180))}_`;
+    }
+    return line;
+  });
+  if (overflow > 0) lines.push(`• _+${overflow} more_`);
+  return lines.join("\n");
+}
+
+/**
+ * Standup card — a clean, scannable update: a header line, a single bulleted
+ * task list (no per-task links or action menus), an optional Monday "This week"
+ * plan, an optional note, and ONE "View board" button linking to the client's
+ * task board.
  *
  * Returns `{ text, blocks }` ready for chat.postMessage.
  */
 export function buildStandupCard(input: BuildStandupCardInput): { text: string; blocks: SlackBlock[] } {
-  const phaseLabel = input.phase === "AM" ? "In Progress" : "Done today";
-  const visible = input.tasks.slice(0, MAX_TASKS_PER_CARD);
-  const overflowCount = Math.max(0, input.tasks.length - MAX_TASKS_PER_CARD);
+  const phaseLabel = input.phase === "AM" ? "In progress" : "Done today";
   const today = input.workdayLabel.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
-  const overdueCount = visible.filter(
-    (t) => t.dueDate && today && t.dueDate < today && t.status !== "DONE",
-  ).length;
-
   const friendlyDate = formatFriendlyDate(input.workdayLabel);
   const text = `${input.phase === "AM" ? "Standup" : "Done today"} — ${input.who} (${friendlyDate})`;
+  const clientSlug = input.tasks[0]?.clientSlug ?? null;
 
   // ─── Owner + date header — narrative style, mirrors how the team writes
-  //     standups in chat ("Owner: @Dan / Date: Friday, 12 June / In Progress").
+  //     standups in chat ("Owner: @Dan / Date: Friday, 12 June / In progress").
   const blocks: SlackBlock[] = [
     {
       type: "section",
@@ -115,13 +171,12 @@ export function buildStandupCard(input: BuildStandupCardInput): { text: string; 
         type: "mrkdwn",
         text:
           `*Owner:* ${escapeMrkdwn(input.who)}\n` +
-          `*Date:* ${escapeMrkdwn(friendlyDate)}\n` +
-          `*${phaseLabel}*`,
+          `*Date:* ${escapeMrkdwn(friendlyDate)}`,
       },
     },
   ];
 
-  // Optional "This week" plan — Monday-only Weekly section.
+  // Optional "This week" plan — Monday-only weekly section.
   if (input.weekPlan?.trim()) {
     blocks.push({
       type: "section",
@@ -132,96 +187,24 @@ export function buildStandupCard(input: BuildStandupCardInput): { text: string; 
     });
   }
 
-  // ─── Tasks — single section block per task with a markdown-link title and
-  //     a discreet overflow accessory carrying the actions. This keeps the
-  //     row scannable (no per-task action toolbar) while still being
-  //     fully actionable from Slack.
-  if (visible.length > 0) {
+  // ─── Tasks — one tidy bulleted list under a labelled heading. No per-task
+  //     links or overflow menus (cleaner + easier to read); the single board
+  //     button below covers "open in Foundry".
+  if (input.tasks.length > 0) {
     blocks.push({
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: `*Tasks* — ${visible.length}${overdueCount > 0 ? ` · *${overdueCount} overdue*` : ""}${overflowCount > 0 ? ` · +${overflowCount} in Foundry` : ""}`,
-        },
-      ],
-    });
-    for (const t of visible) {
-      const status = t.status ?? "DOING";
-      const isOverdue = Boolean(t.dueDate && today && t.dueDate < today && status !== "DONE");
-      // Meta: drop the client name (we're posting in the client's channel
-      // already, so it's redundant). Keep block + due. Overdue gets a text
-      // "(overdue)" suffix instead of an emoji warning.
-      const metaParts: string[] = [];
-      if (t.blockName) metaParts.push(escapeMrkdwn(t.blockName));
-      if (t.dueDate) {
-        const dueFriendly = formatFriendlyDue(t.dueDate, today);
-        metaParts.push(isOverdue ? `due ${dueFriendly} (overdue)` : `due ${dueFriendly}`);
-      }
-      const meta = metaParts.length ? `  ·  _${metaParts.join(" · ")}_` : "";
-      const descPreview = t.description?.trim()
-        ? truncate(stripToPlain(t.description.trim()), 180)
-        : null;
-      const value = encodeActionValue(t.messageRefId, t.taskId);
-
-      blocks.push({
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          // Title is a markdown link so the user can jump to the task with
-          // a single click — no separate button needed. Description goes on
-          // the next line, italicised, to give context without dominating.
-          text:
-            `<${taskDeepLink(t)}|*${escapeMrkdwn(t.title)}*>${meta}` +
-            (descPreview ? `\n_${escapeMrkdwn(descPreview)}_` : ""),
-        },
-        accessory: {
-          type: "overflow",
-          action_id: `task.menu.${t.taskId}`,
-          options: [
-            {
-              text: { type: "plain_text", text: "Mark done" },
-              value: `${SLACK_ACTIONS.TASK_MARK_DONE}|${value}`,
-            },
-            {
-              text: { type: "plain_text", text: "Mark in review" },
-              value: `${SLACK_ACTIONS.TASK_MARK_IN_REVIEW}|${value}`,
-            },
-            {
-              text: { type: "plain_text", text: "Add comment" },
-              value: `${SLACK_ACTIONS.TASK_ADD_COMMENT}|${value}`,
-            },
-            {
-              text: { type: "plain_text", text: "Show details" },
-              value: `${SLACK_ACTIONS.TASK_VIEW_NOTES}|${value}`,
-            },
-            {
-              text: { type: "plain_text", text: "Open in Foundry" },
-              url: taskDeepLink(t),
-              value: `${SLACK_ACTIONS.TASK_OPEN_IN_FOUNDRY}|${value}`,
-            },
-          ],
-        },
-      });
-    }
-  }
-
-  if (overflowCount > 0 && visible.length > 0) {
-    blocks.push({
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: `<${APP_BASE_URL}/app/portal|+${overflowCount} more in Foundry ↗>`,
-        },
-      ],
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text:
+          `*${phaseLabel}*\n` +
+          taskListText(input.tasks, { today, withMeta: input.phase === "AM" }),
+      },
     });
   }
 
   // ─── Blockers / asks — Dan's example called this "One thing we need".
   //     Only render when the dev provided a note on push.
   if (input.note?.trim()) {
-    blocks.push({ type: "divider" });
     blocks.push({
       type: "section",
       text: {
@@ -231,15 +214,14 @@ export function buildStandupCard(input: BuildStandupCardInput): { text: string; 
     });
   }
 
-  // ─── Footer: single bulk action + a quiet "posted from" timestamp line.
-  blocks.push({ type: "divider" });
+  // ─── Footer: the single board link + a quiet attribution line.
   blocks.push({
     type: "actions",
     elements: [
       {
         type: "button",
-        text: { type: "plain_text", text: "View my board" },
-        url: `${APP_BASE_URL}/app/portal`,
+        text: { type: "plain_text", text: "View board" },
+        url: boardUrl(clientSlug),
         action_id: "standup.viewBoard",
       },
     ],
@@ -336,65 +318,31 @@ export function buildProjectUpdateCard(
   ];
 
   for (const group of input.groups) {
-    const visible = group.tasks.slice(0, MAX_TASKS_PER_CARD);
-    const overflowCount = Math.max(0, group.tasks.length - MAX_TASKS_PER_CARD);
-    if (visible.length === 0) continue;
+    if (group.tasks.length === 0) continue;
+    // Clean bulleted list per group — no per-task links or menus. "Done" is
+    // treated as a completed list (no due meta); the others show light meta.
     blocks.push({
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: `*${group.label}* — ${group.tasks.length}${overflowCount > 0 ? ` · +${overflowCount} more` : ""}`,
-        },
-      ],
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text:
+          `*${group.label}*\n` +
+          taskListText(group.tasks, {
+            today,
+            withMeta: group.label !== "Done",
+            withDescriptions: input.detail === "TITLES_AND_DESCRIPTIONS",
+          }),
+      },
     });
-    for (const t of visible) {
-      const status = t.status ?? "DOING";
-      const isOverdue = Boolean(t.dueDate && today && t.dueDate < today && status !== "DONE");
-      const metaParts: string[] = [];
-      if (t.blockName) metaParts.push(escapeMrkdwn(t.blockName));
-      if (t.dueDate) {
-        const dueFriendly = formatFriendlyDue(t.dueDate, today);
-        metaParts.push(isOverdue ? `due ${dueFriendly} (overdue)` : `due ${dueFriendly}`);
-      }
-      const meta = metaParts.length ? `  ·  _${metaParts.join(" · ")}_` : "";
-      const descPreview =
-        input.detail === "TITLES_AND_DESCRIPTIONS" && t.description?.trim()
-          ? truncate(stripToPlain(t.description.trim()), 180)
-          : null;
-      const value = encodeActionValue(t.messageRefId, t.taskId);
-      blocks.push({
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text:
-            `<${taskDeepLink(t)}|*${escapeMrkdwn(t.title)}*>${meta}` +
-            (descPreview ? `\n_${escapeMrkdwn(descPreview)}_` : ""),
-        },
-        accessory: {
-          type: "overflow",
-          action_id: `task.menu.${t.taskId}`,
-          options: [
-            { text: { type: "plain_text", text: "Mark done" }, value: `${SLACK_ACTIONS.TASK_MARK_DONE}|${value}` },
-            { text: { type: "plain_text", text: "Mark in review" }, value: `${SLACK_ACTIONS.TASK_MARK_IN_REVIEW}|${value}` },
-            { text: { type: "plain_text", text: "Add comment" }, value: `${SLACK_ACTIONS.TASK_ADD_COMMENT}|${value}` },
-            { text: { type: "plain_text", text: "Show details" }, value: `${SLACK_ACTIONS.TASK_VIEW_NOTES}|${value}` },
-            { text: { type: "plain_text", text: "Open in Foundry" }, url: taskDeepLink(t), value: `${SLACK_ACTIONS.TASK_OPEN_IN_FOUNDRY}|${value}` },
-          ],
-        },
-      });
-    }
   }
 
   if (input.note?.trim()) {
-    blocks.push({ type: "divider" });
     blocks.push({
       type: "section",
       text: { type: "mrkdwn", text: `*Note*\n${escapeMrkdwn(input.note.trim())}` },
     });
   }
 
-  blocks.push({ type: "divider" });
   blocks.push({
     type: "actions",
     elements: [
@@ -548,24 +496,6 @@ function escapeMrkdwn(s: string): string {
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "…";
-}
-
-/** Strip common markdown to a flat one-line preview — keeps the standup card
- *  scannable when descriptions are multi-paragraph or have headings, lists,
- *  bold, code etc. The full text still renders untouched in the details modal. */
-function stripToPlain(s: string): string {
-  return s
-    .replace(/```[\s\S]*?```/g, " ") // fenced code blocks
-    .replace(/`([^`]+)`/g, "$1")      // inline code
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "") // images
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // links → just the label
-    .replace(/^#{1,6}\s+/gm, "")      // ATX headings
-    .replace(/^[\s]*[-*+]\s+/gm, "")  // bullet list markers
-    .replace(/^\s*>\s?/gm, "")        // blockquote markers
-    .replace(/(\*\*|__)(.*?)\1/g, "$2") // bold
-    .replace(/([*_])(.*?)\1/g, "$2")  // italic
-    .replace(/\s+/g, " ")             // collapse all whitespace incl. newlines
-    .trim();
 }
 
 /**

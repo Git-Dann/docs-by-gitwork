@@ -97,6 +97,7 @@ export function GanttChart({
   onBlockClick,
   onMilestoneClick,
   emptyHint = "No feature blocks yet — add one to start the timeline.",
+  slippage = true,
 }: {
   blocks: GanttBlock[];
   milestones?: GanttMilestone[];
@@ -104,10 +105,15 @@ export function GanttChart({
   onBlockClick?: (blockId: string) => void;
   onMilestoneClick?: (milestoneId: string) => void;
   emptyHint?: string;
+  /** Show the slip/slippage overlay + its toggle. Internal PM signal — the public
+   *  client timeline passes false so clients don't see "behind schedule" bars. */
+  slippage?: boolean;
 }) {
   const [scale, setScale] = useState<GanttScale>(initialScale);
   // Section ids whose task list is expanded. Default: all collapsed (compact rows).
   const [open, setOpen] = useState<Set<string>>(new Set());
+  // Slip overlay on by default (internal). Toggled from the controls bar.
+  const [showSlip, setShowSlip] = useState(true);
   const today = useMemo(() => new Date(), []);
 
   // Measure the scroll viewport so "Fit" can scale the timeline to the width
@@ -262,6 +268,21 @@ export function GanttChart({
               {allOpen ? "Collapse all" : "Expand all"}
             </button>
           ) : null}
+          {slippage && blocks.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setShowSlip((v) => !v)}
+              title="Show how far overdue, incomplete blocks have slipped past their end date"
+              className={cn(
+                "rounded-[6px] border px-2 py-0.5 text-[10px] font-medium transition",
+                showSlip
+                  ? "border-red-200 bg-red-50 text-red-700"
+                  : "border-[var(--border-2)] text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+              )}
+            >
+              {showSlip ? "Slippage on" : "Slippage off"}
+            </button>
+          ) : null}
         </div>
         <div className="inline-flex overflow-hidden rounded-[6px] border border-[var(--border-2)]">
           {(Object.keys(GANTT_SCALE_LABELS) as GanttScale[]).map((s, i) => (
@@ -374,6 +395,15 @@ export function GanttChart({
                 const shown = b.tasks.slice(0, 6);
                 const dueFmt = fmtShort(b.endDate);
                 const isOpen = open.has(b.id);
+                // Slip = the gap between a block's planned end (bar right edge) and
+                // today, when the block isn't finished. No baseline needed — it's
+                // computed purely from the current end date vs now.
+                const barRight = left + width;
+                const slipW = Math.max(0, Math.min(todayX, model.timelineWidth) - barRight);
+                const isSlipping = slippage && showSlip && b.progress < 100 && slipW > 2;
+                const slipDays = Math.round(slipW / pxPerDay);
+                const slipColor = slipDays >= 7 ? "#DC2626" : "#D97706"; // red past a week, else amber
+                const slipTint = slipDays >= 7 ? "rgba(220,38,38,0.26)" : "rgba(217,119,16,0.26)";
                 return (
                   <div
                     key={b.id}
@@ -474,6 +504,25 @@ export function GanttChart({
 
                     {/* Track */}
                     <div className="relative" style={{ width: model.timelineWidth }}>
+                      {/* Slip overlay — hatched extension from planned end → today */}
+                      {isSlipping ? (
+                        <div
+                          className="group/slip absolute top-2 h-7 rounded-r-[6px] border border-dashed"
+                          style={{
+                            left: barRight,
+                            width: slipW,
+                            borderColor: slipColor,
+                            background: `repeating-linear-gradient(45deg, ${slipTint} 0 2px, transparent 2px 6px)`,
+                          }}
+                        >
+                          <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--text-1)] px-2.5 py-1.5 text-left text-[11px] text-white shadow-lg group-hover/slip:block">
+                            <span className="font-medium">{slipDays}d behind</span>
+                            <span className="mt-0.5 block text-white/75" style={{ fontFamily: "var(--font-mono)" }}>
+                              due {dueFmt} · {b.progress}% done
+                            </span>
+                          </div>
+                        </div>
+                      ) : null}
                       <div className="group absolute top-2 h-7" style={{ left, width }}>
                         <div className={cn("h-full w-full overflow-hidden rounded-[6px]", t.bar)}>
                           <div className={cn("h-full", t.fill)} style={{ width: `${b.progress}%` }} />

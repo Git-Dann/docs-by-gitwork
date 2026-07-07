@@ -186,10 +186,14 @@ export async function pushDailyUpdate(
     },
   });
 
-  // Build + post the Slack messages from live task state. Best-effort.
-  void postStandupToSlack(user, workDate, input).catch((err) =>
-    console.error("[tasks] standup Slack post failed", err),
-  );
+  // Build + post the Slack messages from live task state. Awaited so we can
+  // report back how many channels actually received a post (honest UI feedback:
+  // a push with nothing to say shouldn't claim "Pushed to Slack"). Best-effort —
+  // a Slack failure never fails the request.
+  const posted = await postStandupToSlack(user, workDate, input).catch((err) => {
+    console.error("[tasks] standup Slack post failed", err);
+    return 0;
+  });
 
   // If this PM push is the one that completes the whole dev roster, nudge the lead once.
   if (input.phase === "PM" && !prior?.pmPushedAt) {
@@ -198,26 +202,28 @@ export async function pushDailyUpdate(
     );
   }
 
-  return updateToDTO(row, workDate);
+  return { ...updateToDTO(row, workDate), posted };
 }
 
+/** Post the standup to each involved client's internal channel. Returns the
+ *  number of channels a message was posted to (0 = nothing to say / no channel). */
 async function postStandupToSlack(
   user: EffectiveUser,
   workDate: Date,
   input: { phase: "AM" | "PM"; weekPlan?: string; note?: string },
-): Promise<void> {
+): Promise<number> {
   const ws = await prisma.workspace.findUnique({
     where: { id: user.workspaceId },
     select: { slackBotToken: true, slackBotTokenEncrypted: true },
   });
   const botToken = getSlackBotToken(ws);
-  if (!botToken) return;
+  if (!botToken) return 0;
 
   const tasks = await listTasks(user, { assigneeId: "me" });
   const { doing, done } = partition(tasks, workDate);
   const sectionTasks = input.phase === "AM" ? doing : done;
   if (sectionTasks.length === 0 && !(input.phase === "AM" && isMonday(workDate) && input.weekPlan)) {
-    return; // nothing to say
+    return 0; // nothing to say
   }
 
   // Resolve each involved client's internal channel — prefer the new dual-channel
@@ -236,6 +242,7 @@ async function postStandupToSlack(
   const workdayLabel = `${weekday} ${ymd(workDate)}`;
   const isMon = isMonday(workDate);
 
+  let postedCount = 0;
   for (const clientId of clientIds) {
     const channel = channelByClient.get(clientId);
     if (!channel) continue;
@@ -244,32 +251,10 @@ async function postStandupToSlack(
       continue;
     }
 
-    // Pre-mint a SlackMessageRef per task so the card's overflow buttons carry
-    // the ref ids we created. They share `channelId` + `messageTs` once we know
-    // them — we patch those in after chat.postMessage succeeds.
-    const kind = input.phase === "AM" ? "STANDUP_AM" : "STANDUP_PM";
-    const placeholders = await Promise.all(
-      mine.map((t) =>
-        prisma.slackMessageRef.create({
-          data: {
-            workspaceId: user.workspaceId,
-            channelId: channel,
-            // Stamp the channel id as a placeholder for messageTs so we satisfy
-            // the @@unique([channelId, messageTs]) constraint until chat.postMessage
-            // returns the real ts. Patched immediately after.
-            messageTs: `pending:${cryptoRandomId()}`,
-            taskId: t.id,
-            kind,
-            postedById: user.id,
-          },
-          select: { id: true },
-        }),
-      ),
-    );
-
-    const cardTasks: StandupTaskCardInput[] = mine.map((t, idx) => ({
+    // Clean list card — no per-task Slack actions, so no SlackMessageRef rows
+    // to pre-mint. The single "View board" button covers "open in Foundry".
+    const cardTasks: StandupTaskCardInput[] = mine.map((t) => ({
       taskId: t.id,
-      messageRefId: placeholders[idx].id,
       title: t.title,
       clientName: t.client.name,
       clientSlug: t.client.slug,
@@ -293,32 +278,19 @@ async function postStandupToSlack(
       text: card.text,
       blocks: card.blocks,
     });
-
-    if (result.ok && result.data.ts) {
-      // Patch the placeholder refs with the real Slack message ts so interactive
-      // payloads can resolve back to them.
-      await Promise.all(
-        placeholders.map((ref) =>
-          prisma.slackMessageRef.update({
-            where: { id: ref.id },
-            data: { messageTs: result.data.ts! },
-          }),
-        ),
-      );
-    } else {
-      // Posting failed — drop the placeholders so we don't leave dangling rows.
-      await prisma.slackMessageRef.deleteMany({
-        where: { id: { in: placeholders.map((p) => p.id) } },
-      });
-    }
+    if (result.ok && result.data.ts) postedCount += 1;
   }
 
   // Bump the workspace's lastSlackPostAt diagnostic so the Settings page
   // shows the integration is alive.
-  await prisma.workspace.update({
-    where: { id: user.workspaceId },
-    data: { lastSlackPostAt: new Date() },
-  }).catch(() => undefined);
+  if (postedCount > 0) {
+    await prisma.workspace.update({
+      where: { id: user.workspaceId },
+      data: { lastSlackPostAt: new Date() },
+    }).catch(() => undefined);
+  }
+
+  return postedCount;
 }
 
 /** Short random id for the placeholder messageTs — collision-resistant within the

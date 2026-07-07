@@ -44,6 +44,7 @@ import {
   listRecentSlackUpdates,
 } from "@/lib/api";
 import type { TaskStatus, TaskDTO } from "@/types/tasks";
+import { useToast } from "@/components/ui/toast";
 
 type TaskFilter = { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string; archived?: boolean };
 
@@ -129,14 +130,20 @@ export function useTaskAttention(opts: { mine?: boolean; enabled?: boolean } = {
 
 export function useCreateTask() {
   const qc = useQueryClient();
+  const { success, error } = useToast();
   return useMutation({
     mutationFn: (input: Parameters<typeof createTask>[0]) => createTask(input),
-    onSuccess: () => invalidateAll(qc),
+    onSuccess: () => {
+      invalidateAll(qc);
+      success("Task created");
+    },
+    onError: () => error("Couldn't create task", "Please try again."),
   });
 }
 
 export function useUpdateTask() {
   const qc = useQueryClient();
+  const { error } = useToast();
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateTask>[1] }) =>
       updateTask(id, input),
@@ -159,13 +166,17 @@ export function useUpdateTask() {
       const prev = patchTaskLists(qc, (tasks) => tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)));
       return { prev };
     },
-    onError: (_err, _vars, ctx) => ctx && restoreTaskLists(qc, ctx.prev),
+    onError: (_err, _vars, ctx) => {
+      if (ctx) restoreTaskLists(qc, ctx.prev);
+      error("Couldn't update task", "Your change was reverted.");
+    },
     onSettled: () => invalidateAll(qc),
   });
 }
 
 export function useMoveTask() {
   const qc = useQueryClient();
+  const { error } = useToast();
   return useMutation({
     mutationFn: ({ id, status, orderKey }: { id: string; status: TaskStatus; orderKey: number }) =>
       moveTask(id, { status, orderKey }),
@@ -176,13 +187,17 @@ export function useMoveTask() {
       );
       return { prev };
     },
-    onError: (_err, _vars, ctx) => ctx && restoreTaskLists(qc, ctx.prev),
+    onError: (_err, _vars, ctx) => {
+      if (ctx) restoreTaskLists(qc, ctx.prev);
+      error("Couldn't move task", "Your change was reverted.");
+    },
     onSettled: () => invalidateAll(qc),
   });
 }
 
 export function useDeleteTask() {
   const qc = useQueryClient();
+  const { success, error } = useToast();
   return useMutation({
     mutationFn: (id: string) => deleteTask(id),
     onMutate: async (id) => {
@@ -190,25 +205,40 @@ export function useDeleteTask() {
       const prev = patchTaskLists(qc, (tasks) => tasks.filter((t) => t.id !== id));
       return { prev };
     },
-    onError: (_err, _vars, ctx) => ctx && restoreTaskLists(qc, ctx.prev),
+    onError: (_err, _vars, ctx) => {
+      if (ctx) restoreTaskLists(qc, ctx.prev);
+      error("Couldn't delete task", "Please try again.");
+    },
+    onSuccess: () => success("Task deleted"),
     onSettled: () => invalidateAll(qc),
   });
 }
 
 export function useBatchUpdateTasks() {
   const qc = useQueryClient();
+  const { success, error } = useToast();
   return useMutation({
     mutationFn: ({ ids, patch }: { ids: string[]; patch: Parameters<typeof batchUpdateTasks>[1] }) =>
       batchUpdateTasks(ids, patch),
-    onSuccess: () => invalidateAll(qc),
+    onSuccess: (_data, vars) => {
+      invalidateAll(qc);
+      const n = vars.ids.length;
+      success(`Updated ${n} ${n === 1 ? "task" : "tasks"}`);
+    },
+    onError: () => error("Couldn't update tasks", "Please try again."),
   });
 }
 
 export function useBatchDeleteTasks() {
   const qc = useQueryClient();
+  const { success, error } = useToast();
   return useMutation({
     mutationFn: (ids: string[]) => batchDeleteTasks(ids),
-    onSuccess: () => invalidateAll(qc),
+    onSuccess: (_data, ids) => {
+      invalidateAll(qc);
+      success(`Deleted ${ids.length} ${ids.length === 1 ? "task" : "tasks"}`);
+    },
+    onError: () => error("Couldn't delete tasks", "Please try again."),
   });
 }
 
@@ -232,12 +262,15 @@ export function useImportTasks() {
 
 export function useAddTaskComment() {
   const qc = useQueryClient();
+  const { success, error } = useToast();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: string }) => addTaskComment(id, body),
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: QK.task(vars.id) });
       void qc.invalidateQueries({ queryKey: ["tasks", "list"] });
+      success("Note added");
     },
+    onError: () => error("Couldn't add note", "Please try again."),
   });
 }
 

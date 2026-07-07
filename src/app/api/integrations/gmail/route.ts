@@ -46,6 +46,7 @@ export async function GET() {
       const labelIds = res.data.labelIds ?? [];
       return {
         id: res.data.id ?? "",
+        threadId: res.data.threadId ?? "",
         subject: get("Subject") || "(no subject)",
         from: get("From"),
         snippet: res.data.snippet ?? "",

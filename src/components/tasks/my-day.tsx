@@ -23,6 +23,7 @@ export function MyDay() {
   const [weekPlan, setWeekPlan] = useState("");
   const [note, setNote] = useState("");
   const [pushed, setPushed] = useState<null | "AM" | "PM">(null);
+  const [pushMsg, setPushMsg] = useState<{ text: string; ok: boolean } | null>(null);
   // Synchronous guard against duplicate submits — React's `disabled` prop only
   // takes effect after a re-render commits, which leaves a window for a fast
   // double-click (or a retried click after an error) to fire mutateAsync twice.
@@ -50,13 +51,31 @@ export function MyDay() {
     if (pushingRef.current) return;
     pushingRef.current = true;
     try {
-      await push.mutateAsync({
+      const res = await push.mutateAsync({
         phase,
         weekPlan: data!.isMonday ? weekPlan : undefined,
         note: note.trim() || undefined,
       });
       setPushed(phase);
-      setTimeout(() => setPushed(null), 2500);
+      const posted = res?.posted ?? 0;
+      // Honest feedback: the standup only posts to a client's channel when there's
+      // something for that client (in-progress tasks for AM, done-today for PM).
+      // If nothing matched, say so rather than a misleading "Pushed to Slack".
+      setPushMsg(
+        posted > 0
+          ? { text: `Pushed to ${posted} ${posted === 1 ? "channel" : "channels"}`, ok: true }
+          : {
+              text:
+                phase === "PM"
+                  ? "Saved — no tasks marked done today to post"
+                  : "Saved — nothing in progress to post",
+              ok: false,
+            },
+      );
+      setTimeout(() => {
+        setPushed(null);
+        setPushMsg(null);
+      }, 4000);
     } finally {
       pushingRef.current = false;
     }
@@ -182,8 +201,16 @@ export function MyDay() {
           <span className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
             {amTime ? `AM ✓ ${amTime}` : "AM —"} · {pmTime ? `PM ✓ ${pmTime}` : "PM —"}
           </span>
-          {pushed ? (
-            <span className="text-[11px] font-medium text-emerald-600">Pushed to Slack</span>
+          {pushMsg ? (
+            <span
+              className={
+                pushMsg.ok
+                  ? "text-[11px] font-medium text-emerald-600"
+                  : "text-[11px] font-medium text-[var(--text-4)]"
+              }
+            >
+              {pushMsg.text}
+            </span>
           ) : null}
         </div>
       </div>

@@ -45,6 +45,7 @@ import {
   type ApiDocsContent,
 } from "./api-docs-page-editor";
 import { DesignSystemWorkspace } from "@/components/clients/design-system/design-system-workspace";
+import { ThemeToggle } from "@/components/theme-toggle";
 import {
   useClientWiki,
   useUpsertWikiPage,
@@ -1482,7 +1483,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
       {/* Header */}
-      <div className="widget-header sticky top-0 z-10 border-b border-[rgba(0,0,0,0.08)] bg-white">
+      <div className="widget-header sticky top-0 z-10 flex items-center justify-between border-b border-[rgba(0,0,0,0.08)] bg-white">
         <div className="flex items-center gap-3">
           <Link
             href={`/app/portal/${slug}`}
@@ -1497,6 +1498,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             {" // WIKI"}
           </span>
         </div>
+        {/* Same Light/Dark/System control as the rest of Foundry. */}
+        <ThemeToggle iconOnly />
       </div>
 
       {/* Body — stacks on mobile (nav on top), side-by-side from md up.

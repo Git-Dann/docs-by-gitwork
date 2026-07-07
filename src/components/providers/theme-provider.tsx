@@ -20,8 +20,11 @@ const EVENT = "gitwork:theme-changed";
  * preference: guest-facing client deliverables shared by token + the print/PDF
  * render path (which navigates to /docs/[token]?print=1 via headless Chromium).
  * Kept in sync with the inline anti-flash script in src/app/layout.tsx.
+ *
+ * NOTE: `wiki` is deliberately NOT here — the client wiki supports light/dark via
+ * its own ThemeToggle (internal takeover + public share header), matching Foundry.
  */
-const FORCE_LIGHT = /^\/(docs|report|sign|wiki|timeline|brand|onboarding|preview|embed|demo)\//;
+const FORCE_LIGHT = /^\/(docs|report|sign|timeline|brand|onboarding|preview|embed|demo)\//;
 
 type ThemeContextValue = {
   /** The user's chosen mode. */
