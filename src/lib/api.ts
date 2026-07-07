@@ -3107,6 +3107,78 @@ export async function setClientDesignSystemGuidelinesEnabled(
 
 import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiUserSummary } from "@/server/wiki";
 export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiUserSummary };
+import type {
+  WikiCodeHandoverSection,
+  WikiCodeModuleRecord,
+  WikiCodeVersionRecord,
+  WikiCodeFileRecord,
+  CodeFileInput,
+} from "@/server/wiki-code";
+export type { WikiCodeHandoverSection, WikiCodeModuleRecord, WikiCodeVersionRecord, WikiCodeFileRecord, CodeFileInput };
+
+// ─── Wiki code handover ─────────────────────────────────────────────────────
+export async function setWikiCodeEnabledApi(slug: string, enabled: boolean): Promise<{ enabled: boolean }> {
+  return apiFetch(`/api/clients/${slug}/wiki/code`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function createWikiCodeModuleApi(
+  slug: string,
+  input: { name: string; description?: string | null },
+): Promise<WikiCodeModuleRecord> {
+  return apiFetch(`/api/clients/${slug}/wiki/code`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateWikiCodeModuleApi(
+  slug: string,
+  moduleId: string,
+  input: { name?: string; description?: string | null },
+): Promise<WikiCodeModuleRecord> {
+  return apiFetch(`/api/clients/${slug}/wiki/code/${moduleId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteWikiCodeModuleApi(slug: string, moduleId: string): Promise<{ deleted: boolean }> {
+  return apiFetch(`/api/clients/${slug}/wiki/code/${moduleId}`, { method: "DELETE" });
+}
+
+export async function createWikiCodeVersionApi(
+  slug: string,
+  moduleId: string,
+  input: { label: string; notes?: string | null; files: CodeFileInput[]; makeCurrent?: boolean },
+): Promise<WikiCodeVersionRecord> {
+  return apiFetch(`/api/clients/${slug}/wiki/code/${moduleId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateWikiCodeVersionApi(
+  slug: string,
+  versionId: string,
+  input: { label?: string; notes?: string | null; files?: CodeFileInput[]; makeCurrent?: boolean },
+): Promise<WikiCodeVersionRecord> {
+  return apiFetch(`/api/clients/${slug}/wiki/code/versions/${versionId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteWikiCodeVersionApi(slug: string, versionId: string): Promise<{ deleted: boolean }> {
+  return apiFetch(`/api/clients/${slug}/wiki/code/versions/${versionId}`, { method: "DELETE" });
+}
 
 
 export interface WikiIntakeItemPayload {

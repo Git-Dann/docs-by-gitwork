@@ -535,6 +535,40 @@ const demoWiki = {
     stagingUrl: "https://staging.northwind.co",
   },
   documents: { enabled: false, documents: [] },
+  codeHandover: {
+    enabled: true,
+    modules: [
+      {
+        id: "cm1",
+        name: "Receiver",
+        description: "Firmware for the receiver unit — flash via PlatformIO.",
+        versions: [
+          {
+            id: "cv1b", label: "v1.2.0", notes: "Add low-power sleep between polls.", isCurrent: true, createdAt: atDays(-3),
+            files: [
+              { id: "f1", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n\nvoid setup() {\n  Serial.begin(115200);\n}\n\nvoid loop() {\n  // receive + decode\n}\n" },
+              { id: "f2", filename: "config.h", language: "cpp", content: "#define CHANNEL 7\n#define SLEEP_MS 500\n" },
+            ],
+          },
+          {
+            id: "cv1a", label: "v1.1.0", notes: "Initial handover.", isCurrent: false, createdAt: atDays(-30),
+            files: [{ id: "f3", filename: "main.cpp", language: "cpp", content: "// v1.1 receiver\nvoid setup() {}\nvoid loop() {}\n" }],
+          },
+        ],
+      },
+      {
+        id: "cm2",
+        name: "Sender",
+        description: "Firmware for the sender unit.",
+        versions: [
+          {
+            id: "cv2", label: "v1.0.0", notes: null, isCurrent: true, createdAt: atDays(-30),
+            files: [{ id: "f4", filename: "sender.ino", language: "cpp", content: "void setup() {}\nvoid loop() { /* transmit */ }\n" }],
+          },
+        ],
+      },
+    ],
+  },
   users: [],
   updatedAt: atDays(0),
 };

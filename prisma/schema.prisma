@@ -1207,6 +1207,9 @@ model ClientWiki {
   /// section is hidden and the public token-based intake API rejects pushes.
   /// Defaults true so existing wikis keep the section they already have.
   intakeEnabled      Boolean                @default(true)
+  /// Whether the Code Handover section is enabled — versioned source per hardware
+  /// module (e.g. Receiver / Sender firmware) handed to the client to flash.
+  codeHandoverEnabled Boolean               @default(false)
   pages              ClientWikiPage[]
   changelog          ClientChangelogEntry[]
   courseRequests     ClientCourseRequest[]
@@ -1214,11 +1217,62 @@ model ClientWiki {
   wikiUsers          ClientWikiUser[]
   monitors           WikiMonitor[]
   documents          WikiDocument[]
+  codeModules        WikiCodeModule[]
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
 
   @@index([shareToken])
   @@map("ClientWiki")
+}
+
+/// A hardware/firmware "module" handed over to a client (e.g. "Receiver",
+/// "Sender") — a named bucket of versioned source. Lives in the wiki Code
+/// Handover section; the client copies/downloads it to flash themselves.
+model WikiCodeModule {
+  id          String            @id @default(cuid())
+  wikiId      String
+  wiki        ClientWiki        @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  name        String
+  description String?           @db.Text
+  orderKey    Int               @default(0)
+  versions    WikiCodeVersion[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([wikiId])
+  @@map("WikiCodeModule")
+}
+
+/// One version of a module's code (e.g. "v1.2.0"). The current version is shown
+/// prominently; older versions collapse into an accordion. Files live inline.
+model WikiCodeVersion {
+  id        String         @id @default(cuid())
+  moduleId  String
+  module    WikiCodeModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  label     String
+  notes     String?        @db.Text
+  isCurrent Boolean        @default(false)
+  files     WikiCodeFile[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([moduleId])
+  @@map("WikiCodeVersion")
+}
+
+/// A single source file within a code version (filename + optional language hint
+/// for highlighting + the pasted contents).
+model WikiCodeFile {
+  id        String          @id @default(cuid())
+  versionId String
+  version   WikiCodeVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  filename  String
+  language  String?
+  content   String          @db.Text
+  orderKey  Int             @default(0)
+
+  @@index([versionId])
+  @@map("WikiCodeFile")
 }
 
 /// A document surfaced in a wiki's Documents section — a Foundry doc, an external
