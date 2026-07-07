@@ -51,7 +51,7 @@ export function OutcomeLinksPanel({
   };
 
   return (
-    <div className="rounded-xl border border-[var(--border-2)] bg-white p-5">
+    <div className="rounded-xl border border-[var(--border-2)] bg-[var(--surface-0)] p-5">
       <p className="font-mono text-xs uppercase tracking-wider text-[var(--text-4)]">06 // Delivery outcomes</p>
       <p className="mt-1 text-xs text-[var(--text-4)]">
         Link this assessment to real project delivery. This is the data loop that lets the score be
@@ -77,7 +77,7 @@ export function OutcomeLinksPanel({
         <select
           value={placementId}
           onChange={(e) => setPlacementId(e.target.value)}
-          className="app-select w-full rounded-md border border-[var(--border-1)] px-3 py-2 text-sm"
+          className="app-select w-full"
         >
           <option value="">General (no specific placement)</option>
           {placements.map((p) => (
@@ -91,7 +91,7 @@ export function OutcomeLinksPanel({
           onChange={(e) => setNotes(e.target.value)}
           rows={2}
           placeholder="Delivery notes (e.g. retained, client-rated 5/5, shipped on time)…"
-          className="w-full rounded-md border border-[var(--border-1)] px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          className="app-textarea w-full"
         />
         <button
           onClick={submit}
