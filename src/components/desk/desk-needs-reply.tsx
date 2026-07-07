@@ -5,13 +5,15 @@ import {
   EnvelopeIcon,
   ChatBubbleLeftRightIcon,
   ArrowTopRightOnSquareIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { useDeskGmail, useDeskMentions } from "@/hooks/use-desk";
 import { EditorialRow, DeskEmpty, DeskSkeleton, DeskConnectGoogle } from "./desk-shared";
 
 const STORAGE_KEY = "gitwork.desk.needsreply.v1";
-// A high-level triage summary, not a feed — show only the few most-recent things.
-const MAX_ITEMS = 3;
+const DISMISS_KEY = "gitwork.desk.needsreply.dismissed.v1";
+// A high-level triage list, not a feed — a handful of the most-recent things.
+const MAX_ITEMS = 5;
 
 type Source = "slack" | "gmail";
 type NeedItem = {
@@ -42,23 +44,41 @@ function useSources() {
     }
     setReady(true);
   }, []);
-  const toggle = (key: Source) =>
-    setSources((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
+  return { sources, ready };
+}
+
+/** Locally-remembered dismissals (device-local, capped). Dismissing hides an item;
+ *  genuinely new mentions/mail still surface later. */
+function useDismissed() {
+  const [ids, setIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DISMISS_KEY);
+      if (raw) setIds(new Set(JSON.parse(raw) as string[]));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const dismiss = (toAdd: string[]) =>
+    setIds((prev) => {
+      const next = new Set(prev);
+      for (const id of toAdd) next.add(id);
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        // Keep the set bounded — old ids age out of the source anyway.
+        localStorage.setItem(DISMISS_KEY, JSON.stringify([...next].slice(-200)));
       } catch {
         /* ignore */
       }
       return next;
     });
-  return { sources, toggle, ready };
+  return { dismissed: ids, dismiss };
 }
 
-/** "Needs you today" — a short triage list of Slack @mentions + unread Gmail that
- *  likely want a reply. Capped, newest first. Sources are toggleable (default both). */
+/** "Needs you today" — a light triage list of Slack @mentions + unread Gmail that
+ *  likely want a reply. Newest first, dismissable (one or all). */
 export function DeskNeedsReply() {
   const { sources, ready } = useSources();
+  const { dismissed, dismiss } = useDismissed();
   const mentions = useDeskMentions({ enabled: ready && sources.slack });
   const gmail = useDeskGmail({ enabled: ready && sources.gmail });
 
@@ -89,11 +109,11 @@ export function DeskNeedsReply() {
     }
   }
   items.sort((a, b) => b.sortTs - a.sortTs);
-  const shown = items.slice(0, MAX_ITEMS);
+  const visible = items.filter((it) => !dismissed.has(it.id));
+  const shown = visible.slice(0, MAX_ITEMS);
 
   const anyOn = sources.slack || sources.gmail;
-  const loading =
-    (sources.slack && mentions.isPending) || (sources.gmail && gmail.isPending);
+  const loading = (sources.slack && mentions.isPending) || (sources.gmail && gmail.isPending);
   const gmailDisconnected = sources.gmail && gmail.data && !gmail.data.connected;
   const slackUnmapped =
     sources.slack && mentions.data && mentions.data.configured && !mentions.data.mapped;
@@ -109,11 +129,21 @@ export function DeskNeedsReply() {
         <DeskSkeleton />
       ) : shown.length > 0 ? (
         <>
-          <div className="space-y-2">
-            {shown.map((it) => (
-              <NeedRow key={it.id} item={it} />
-            ))}
+          <div className="mb-1 flex items-center justify-end">
+            <button
+              type="button"
+              onClick={() => dismiss(visible.map((it) => it.id))}
+              className="text-[11px] uppercase tracking-[0.6px] text-[var(--text-4)] transition hover:text-[var(--text-2)]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              Dismiss all
+            </button>
           </div>
+          <ul className="divide-y divide-[var(--border-2)]">
+            {shown.map((it) => (
+              <NeedRow key={it.id} item={it} onDismiss={() => dismiss([it.id])} />
+            ))}
+          </ul>
           {gmailDisconnected ? (
             <div className="mt-2">
               <DeskConnectGoogle what="your inbox" />
@@ -131,30 +161,49 @@ export function DeskNeedsReply() {
   );
 }
 
-function NeedRow({ item }: { item: NeedItem }) {
+function NeedRow({ item, onDismiss }: { item: NeedItem; onDismiss: () => void }) {
   const Icon = item.source === "slack" ? ChatBubbleLeftRightIcon : EnvelopeIcon;
-  const body = (
-    <div className="flex items-start gap-3 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3.5 py-3 transition hover:border-[var(--brand-300)] hover:shadow-[var(--shadow-xs)]">
-      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-4)]" />
-      <div className="min-w-0 flex-1">
-        <p className="line-clamp-2 text-sm font-medium text-[var(--text-1)]">{item.title}</p>
-        <p
-          className="mt-0.5 truncate text-[11px] uppercase tracking-[0.6px] text-[var(--text-4)]"
+  const content = (
+    <>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm text-[var(--text-1)]">{item.title}</span>
+        <span
+          className="block truncate text-[11px] uppercase tracking-[0.6px] text-[var(--text-4)]"
           style={{ fontFamily: "var(--font-mono)" }}
         >
           {item.sub}
-        </p>
-      </div>
+        </span>
+      </span>
       {item.link ? (
-        <ArrowTopRightOnSquareIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-4)]" />
+        <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)] transition group-hover:text-[var(--brand-600)]" />
       ) : null}
-    </div>
+    </>
   );
-  if (!item.link) return body;
+
   return (
-    <a href={item.link} target="_blank" rel="noopener noreferrer" className="block">
-      {body}
-    </a>
+    <li className="group flex items-center gap-2.5 py-2.5">
+      <Icon className="h-4 w-4 shrink-0 text-[var(--text-4)]" />
+      {item.link ? (
+        <a
+          href={item.link}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex min-w-0 flex-1 items-center gap-2"
+        >
+          {content}
+        </a>
+      ) : (
+        <div className="flex min-w-0 flex-1 items-center gap-2">{content}</div>
+      )}
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Dismiss"
+        className="shrink-0 rounded-[5px] p-1 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
+      >
+        <XMarkIcon className="h-4 w-4" />
+      </button>
+    </li>
   );
 }
 
