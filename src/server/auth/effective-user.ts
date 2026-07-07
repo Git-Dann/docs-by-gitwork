@@ -303,12 +303,13 @@ export function canManageStarters(user: EffectiveUser): boolean {
   return isSuperAdmin(user.role);
 }
 /**
- * View + author the internal developer Handbook (the global knowledgebase). **Super-Admin-ONLY**
- * for now while it's being built out — role-gated like Starters, not a grantable feature perm, so
- * Admins don't get it either. Widen to a feature perm here + in use-permissions.ts when it opens up.
+ * Create / edit / delete Handbook articles. **Admin + Super Admin only** — developers and staff
+ * READ the Handbook (it's their bible) but never write to it. Role-gated (not a grantable feature
+ * perm) so it can't be handed to a developer by accident; ask explicitly to build dev-editing.
+ * Viewing is open to any authed internal user (the GET routes don't assert this).
  */
 export function canManageHandbook(user: EffectiveUser): boolean {
-  return isSuperAdmin(user.role);
+  return isAtLeast(user.role, "ADMIN");
 }
 /**
  * Authorize Claude (or any MCP client) to act on the user's behalf. This is the

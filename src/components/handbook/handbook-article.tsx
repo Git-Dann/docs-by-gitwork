@@ -57,7 +57,7 @@ export function HandbookArticleView({ articleId }: { articleId: string }) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="mx-auto max-w-5xl space-y-5">
       {/* Nav + actions */}
       <div className="flex items-center justify-between gap-2">
         <Link
@@ -124,7 +124,7 @@ export function HandbookArticleView({ articleId }: { articleId: string }) {
         />
         {/* Cream paper body */}
         <div className="px-6 py-10 sm:px-12 sm:py-12" style={{ background: "var(--hb-cream)" }}>
-          <div className="mx-auto max-w-3xl">
+          <div className="mx-auto max-w-4xl">
             <ArticleMarkdown content={article.content} />
           </div>
         </div>

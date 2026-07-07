@@ -8,8 +8,10 @@ import {
   useUpdateHandbookArticle,
   type HandbookInput,
 } from "@/hooks/use-handbook";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { Button, buttonStyles } from "@/components/ui/button";
 import { cn } from "@/lib/format";
+import { usePermissions } from "@/hooks/use-permissions";
 import { ArticleMarkdown } from "@/components/handbook/article-markdown";
 import { ArticleHero } from "@/components/handbook/article-hero";
 import { HANDBOOK_CATEGORY_SUGGESTIONS, type HandbookRecord, type HandbookStatus } from "@/server/handbook";
@@ -58,6 +60,7 @@ export function HandbookForm({
   onSaved?: (id: string) => void;
 }) {
   const router = useRouter();
+  const { canManageHandbook } = usePermissions();
   const create = useCreateHandbookArticle();
   const update = useUpdateHandbookArticle(article?.id ?? "");
   const isEdit = Boolean(article);
@@ -108,8 +111,34 @@ export function HandbookForm({
     { id: "preview", label: "Preview", icon: EyeIcon },
   ];
 
+  // Writing the Handbook is Admin + Super Admin only. Developers/staff read it but never edit —
+  // the API enforces this too; this just avoids showing an editor that would fail to save.
+  if (!canManageHandbook) {
+    return (
+      <div className="mx-auto max-w-xl">
+        <section className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header__label">
+              <span className="widget-header__label--number">01</span>
+              {" // READ-ONLY"}
+            </span>
+          </div>
+          <div className="px-6 py-10 text-center">
+            <h2 className="text-xl font-semibold text-[var(--text-1)]">The Handbook is read-only for your role</h2>
+            <p className="mx-auto mt-2 max-w-sm text-sm text-[var(--text-3)]">
+              Only Admins can create or edit articles. You can read everything in the Handbook.
+            </p>
+            <Link href="/app/handbook" className={cn("mt-5 inline-flex", buttonStyles({ variant: "secondary", size: "md" }))}>
+              Back to the Handbook
+            </Link>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="mx-auto max-w-5xl space-y-5">
+    <form onSubmit={handleSubmit} className="mx-auto max-w-6xl space-y-5">
       {/* 01 // ARTICLE DETAILS */}
       <section className="widget-card">
         <div className="widget-header">
@@ -259,7 +288,7 @@ export function HandbookForm({
                 <ArticleHero title={title} summary={summary} category={category} readMinutes={estimateReadMinutes(content)} />
               ) : null}
               <div className="px-6 py-8 sm:px-8">
-                <div className="mx-auto max-w-2xl">
+                <div className="mx-auto max-w-3xl">
                   <ArticleMarkdown content={content} />
                 </div>
               </div>

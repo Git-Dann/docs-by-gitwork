@@ -10,10 +10,9 @@ import { assertCan, canManageHandbook, getEffectiveUserOrNull } from "@/server/a
 
 export const dynamic = "force-dynamic";
 
-// The Handbook is a Super-Admin-only tool while it's built out — view == manage.
+// Reading the Handbook is open to any authed internal user (it's the devs' bible). Writing is gated.
 export async function GET(request: NextRequest) {
   try {
-    assertCan(await getEffectiveUserOrNull(request), canManageHandbook, "view the handbook");
     const url = new URL(request.url);
     const q = url.searchParams.get("q") ?? undefined;
     const category = url.searchParams.get("category") ?? undefined;
