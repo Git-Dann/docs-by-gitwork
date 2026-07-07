@@ -5,14 +5,13 @@ import {
   EnvelopeIcon,
   ChatBubbleLeftRightIcon,
   ArrowTopRightOnSquareIcon,
-  CheckIcon,
 } from "@heroicons/react/24/outline";
 import { useDeskGmail, useDeskMentions } from "@/hooks/use-desk";
-import { cn } from "@/lib/format";
-import { EditorialRow, DeskEmpty, DeskSkeleton, DeskConnectGoogle, RevealList } from "./desk-shared";
+import { EditorialRow, DeskEmpty, DeskSkeleton, DeskConnectGoogle } from "./desk-shared";
 
 const STORAGE_KEY = "gitwork.desk.needsreply.v1";
-const MAX_ITEMS = 10;
+// A high-level triage summary, not a feed — show only the few most-recent things.
+const MAX_ITEMS = 3;
 
 type Source = "slack" | "gmail";
 type NeedItem = {
@@ -59,7 +58,7 @@ function useSources() {
 /** "Needs you today" — a short triage list of Slack @mentions + unread Gmail that
  *  likely want a reply. Capped, newest first. Sources are toggleable (default both). */
 export function DeskNeedsReply() {
-  const { sources, toggle, ready } = useSources();
+  const { sources, ready } = useSources();
   const mentions = useDeskMentions({ enabled: ready && sources.slack });
   const gmail = useDeskGmail({ enabled: ready && sources.gmail });
 
@@ -102,25 +101,19 @@ export function DeskNeedsReply() {
   return (
     <EditorialRow
       title="Needs you today"
-      caption="Where you've been tagged or a reply is waiting."
+      caption="The top few things you've been tagged in or that are waiting on a reply."
     >
-      {/* Source toggles */}
-      <div className="mb-3 flex items-center gap-2">
-        <SourceChip label="Slack" icon={<ChatBubbleLeftRightIcon className="h-3.5 w-3.5" />} on={sources.slack} onClick={() => toggle("slack")} />
-        <SourceChip label="Gmail" icon={<EnvelopeIcon className="h-3.5 w-3.5" />} on={sources.gmail} onClick={() => toggle("gmail")} />
-      </div>
-
       {!anyOn ? (
-        <DeskEmpty>Both sources are off — turn one on above.</DeskEmpty>
+        <DeskEmpty>You&apos;re all caught up.</DeskEmpty>
       ) : loading && shown.length === 0 ? (
         <DeskSkeleton />
       ) : shown.length > 0 ? (
         <>
-          <RevealList
-            items={shown}
-            initial={5}
-            renderItem={(it) => <NeedRow key={it.id} item={it} />}
-          />
+          <div className="space-y-2">
+            {shown.map((it) => (
+              <NeedRow key={it.id} item={it} />
+            ))}
+          </div>
           {gmailDisconnected ? (
             <div className="mt-2">
               <DeskConnectGoogle what="your inbox" />
@@ -135,35 +128,6 @@ export function DeskNeedsReply() {
         <DeskEmpty>You&apos;re all caught up — nothing waiting on you.</DeskEmpty>
       )}
     </EditorialRow>
-  );
-}
-
-function SourceChip({
-  label,
-  icon,
-  on,
-  onClick,
-}: {
-  label: string;
-  icon: React.ReactNode;
-  on: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={on}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1 text-xs font-medium transition",
-        on
-          ? "border-[var(--brand-300)] bg-[var(--surface-brand)] text-[var(--brand-800)]"
-          : "border-[var(--border-2)] text-[var(--text-4)] hover:bg-[var(--surface-1)]",
-      )}
-    >
-      {on ? <CheckIcon className="h-3.5 w-3.5" /> : icon}
-      {label}
-    </button>
   );
 }
 

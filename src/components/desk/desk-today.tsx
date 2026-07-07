@@ -22,7 +22,6 @@ import {
   RevealList,
 } from "./desk-shared";
 import { WorldClocks, TeamOverlap, HQ_TZ, TEAM_TZ } from "./desk-time";
-import { DeskReminders } from "./desk-reminders";
 import { DeskNeedsReply } from "./desk-needs-reply";
 import { PurgeReviewBanner } from "./desk-purge-review";
 
@@ -102,13 +101,11 @@ export function DeskToday({ onNavigate }: { onNavigate?: (tab: DeskTab) => void 
       {/* Retention purge review — admins only, shown when there are cold archives past their window. */}
       <PurgeReviewBanner enabled={isAdminOrAbove} />
 
-      {/* Needs you today — Slack @mentions + unread Gmail that want a reply. */}
-      <DeskNeedsReply />
-
-      {/* Push your work forward */}
+      {/* Your day — the first-glance hero: focus, standup, numbers and agenda in one place
+          (formerly two near-identical "Push your work" + "Your day" rows). */}
       <EditorialRow
-        title="Push your work forward"
-        caption={showStandup ? "Your focus and standup for today." : "Your focus for today."}
+        title="Your day"
+        caption="Your focus, your numbers, today's agenda."
         stamp={<Stamp label="My tasks" href="/app" />}
       >
         {showStandup ? (
@@ -117,36 +114,25 @@ export function DeskToday({ onNavigate }: { onNavigate?: (tab: DeskTab) => void 
             <StandupPill label="PM standup" done={pmPushed} />
           </div>
         ) : null}
-        <div>
-          {myDay.isPending ? (
-            <DeskSkeleton />
-          ) : focus ? (
-            <DeskTaskRow task={focus} />
-          ) : (
-            <DeskEmpty>Nothing in progress — pick something up from Tasks.</DeskEmpty>
-          )}
-        </div>
-      </EditorialRow>
 
-      {/* Your day — clickable stats + today's agenda */}
-      <EditorialRow
-        title="Your day"
-        caption="Your numbers and today's agenda."
-        stamp={<Stamp label="My tasks" href="/app" />}
-      >
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        <SubLabel>Focus</SubLabel>
+        {myDay.isPending ? (
+          <DeskSkeleton />
+        ) : focus ? (
+          <DeskTaskRow task={focus} />
+        ) : (
+          <DeskEmpty>Nothing in progress — pick something up from Tasks.</DeskEmpty>
+        )}
+
+        <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
           <Stat n={overdueCount} label="Overdue" danger onClick={() => onNavigate?.("TASKS")} />
           <Stat n={doingCount} label="Doing" onClick={() => onNavigate?.("TASKS")} />
           <Stat n={dueSoonCount} label="Due soon" onClick={() => onNavigate?.("TASKS")} />
           <Stat n={doneToday} label="Done today" good onClick={() => onNavigate?.("TASKS")} />
         </div>
+
         <div className="mt-4">
-          <p
-            className="mb-2 text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            Today&apos;s agenda
-          </p>
+          <SubLabel>Today&apos;s agenda</SubLabel>
           <Agenda
             events={todaysEvents}
             now={now}
@@ -156,8 +142,8 @@ export function DeskToday({ onNavigate }: { onNavigate?: (tab: DeskTab) => void 
         </div>
       </EditorialRow>
 
-      {/* Quick reminders — short personal temporary list (clears after 7 days). */}
-      <DeskReminders />
+      {/* Needs you today — summarised: the top few things tagged / awaiting your reply. */}
+      <DeskNeedsReply />
 
       {/* Around the team — who's off + next UK/PK holiday + working-hours overlap. */}
       <AroundTheTeam counterpart={counterpart} />
@@ -324,6 +310,17 @@ function money(amount: number, currency: string): string {
   } catch {
     return `${Math.round(amount)} ${currency}`;
   }
+}
+
+function SubLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p
+      className="mb-2 text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]"
+      style={{ fontFamily: "var(--font-mono)" }}
+    >
+      {children}
+    </p>
+  );
 }
 
 function StandupPill({ label, done }: { label: string; done: boolean }) {

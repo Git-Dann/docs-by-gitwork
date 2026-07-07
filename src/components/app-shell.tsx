@@ -29,6 +29,7 @@ import { AiSpendCard } from "@/components/ai-spend-card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { DeskDrawer } from "@/components/desk/desk-drawer";
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { DeskRemindersMenu } from "@/components/desk/desk-reminders-menu";
 
 type NavItem = {
   href?: string;
@@ -227,6 +228,7 @@ export function AppShell({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/foundry-logo.svg" alt="Foundry" className="h-8 w-auto dark:brightness-0 dark:invert" />
         <div className="flex items-center gap-1">
+          <DeskRemindersMenu />
           <NotificationBell />
           <button
             type="button"
@@ -319,7 +321,8 @@ export function AppShell({
                     <p className="mt-1.5 text-sm leading-6 text-[var(--text-3)]">{subtitle}</p>
                   ) : null}
                 </div>
-                <div className="shrink-0 pt-1">
+                <div className="flex shrink-0 items-center gap-1 pt-1">
+                  <DeskRemindersMenu />
                   <NotificationBell />
                 </div>
               </div>
