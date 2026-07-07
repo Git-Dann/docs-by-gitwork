@@ -143,6 +143,8 @@ export interface WikiDTO {
   changelog: ChangelogEntryRecord[];
   courseRequests: CourseRequestRecord[];
   intakeItems: WikiIntakeItemRecord[];
+  /** Whether the Requests (client intake) section is enabled for this wiki. */
+  intakeEnabled: boolean;
   /** Project delivery timeline (feature blocks + milestones) — same source as /timeline/[token]. */
   timeline: WikiTimeline;
   /** The client's design system tokens, when one exists (null otherwise). */
@@ -426,6 +428,7 @@ async function buildDTO(
   clientId: string;
   shareToken: string | null;
   shareEnabled: boolean;
+  intakeEnabled?: boolean;
   platforms: unknown;
   pageShares?: unknown;
   hiddenSections?: unknown;
@@ -528,6 +531,7 @@ async function buildDTO(
       .slice()
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .map(serializeWikiIntakeItem),
+    intakeEnabled: wiki.intakeEnabled ?? true,
     timeline: await loadWikiTimeline(wiki.clientId),
     designSystem: await loadWikiDesignSystem(wiki.clientId),
     monitors: await loadWikiMonitors(wiki.clientId),
@@ -997,11 +1001,14 @@ export async function ingestWikiItemsByToken(
     where: { courseIngestToken: token },
     select: {
       id: true,
+      intakeEnabled: true,
       client: { select: { id: true, slug: true, name: true } },
       intakeItems: { select: { title: true, externalRef: true, status: true } },
     },
   });
   if (!wiki) return null;
+  // Intake section disabled (deleted from the wiki) → the API is off too.
+  if (!wiki.intakeEnabled) return null;
 
   const client = { id: wiki.client.id, slug: wiki.client.slug, name: wiki.client.name };
   if (opts.dryRun) return { client, created: [], skipped: 0, count: 0 };
@@ -1049,6 +1056,21 @@ export async function ingestWikiItemsByToken(
   }
 
   return { client, created, skipped, count: created.length };
+}
+
+/**
+ * Enable/disable the Requests (client intake) section. When disabled the
+ * section is hidden from the wiki and the public token-based intake API rejects
+ * pushes. Upserts the wiki row so it works before any intake item exists.
+ */
+export async function setWikiIntakeEnabled(clientId: string, enabled: boolean): Promise<void> {
+  const wiki = await prisma.clientWiki.upsert({
+    where: { clientId },
+    create: { clientId, intakeEnabled: enabled },
+    update: { intakeEnabled: enabled },
+    select: { id: true },
+  });
+  void wiki;
 }
 
 export async function addWikiIntakeItemByToken(

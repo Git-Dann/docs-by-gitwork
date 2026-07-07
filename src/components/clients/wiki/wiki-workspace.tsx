@@ -61,6 +61,7 @@ import {
   useSyncBigWedgeStatus,
   useSetWikiMonitorsEnabled,
   useSetWikiDocumentsEnabled,
+  useSetWikiIntakeEnabled,
 } from "@/hooks/use-wiki";
 import type { BigWedgeSyncResult } from "@/lib/api";
 import type { ChangelogEntryPayload, ChangelogEditInitial } from "./changelog-entry-form";
@@ -840,6 +841,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const deletePage = useDeleteWikiPage(slug);
   const setMonitorsEnabled = useSetWikiMonitorsEnabled(slug);
   const setDocumentsEnabled = useSetWikiDocumentsEnabled(slug);
+  const setIntakeEnabled = useSetWikiIntakeEnabled(slug);
   const addEntry = useAddChangelogEntry(slug);
   const deleteEntry = useDeleteChangelogEntry(slug);
   const updatePlatforms = useUpdateWikiPlatforms(slug);
@@ -876,12 +878,13 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   );
   const monitorsOn = wiki.monitors.enabled;
   const documentsOn = wiki.documents.enabled;
+  const intakeOn = wiki.intakeEnabled;
   const availableSections: WikiSection[] = [
     "dashboard",
     "timeline",
     ...(monitorsOn ? (["monitors"] as const) : []),
     ...(documentsOn ? (["documents"] as const) : []),
-    "intake",
+    ...(intakeOn ? (["intake"] as const) : []),
     "design-system",
     ...OPTIONAL_DOC_SECTIONS.filter(
       (item) =>
@@ -902,6 +905,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ),
     ...(monitorsOn ? [] : [{ section: "monitors" as WikiSection, label: "Monitors" }]),
     ...(documentsOn ? [] : [{ section: "documents" as WikiSection, label: "Documents" }]),
+    ...(intakeOn ? [] : [{ section: "intake" as WikiSection, label: "Requests" }]),
   ];
 
   // Which sections are publicly shared (for the sidebar globe indicator):
@@ -936,6 +940,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection("documents");
       return;
     }
+    if (section === "intake") {
+      await setIntakeEnabled.mutateAsync(true);
+      setActiveSection("intake");
+      return;
+    }
     if (!isDocsPageSection(section)) return;
     const type = SECTION_TO_TYPE[section];
     if (!type) return;
@@ -959,6 +968,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection(availableSections.find((s) => s !== "documents") ?? "dashboard");
       return;
     }
+    if (section === "intake") {
+      await setIntakeEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "intake") ?? "dashboard");
+      return;
+    }
     if (!isDocsPageSection(section)) return;
     const type = SECTION_TO_TYPE[section];
     if (!type) return;
@@ -968,8 +982,14 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   }
 
   function confirmDeletePage(section: WikiSection) {
-    if (!isDocsPageSection(section) && section !== "monitors" && section !== "documents") return;
-    const ok = window.confirm(`Delete ${SECTION_TITLES[section]} from this wiki? You can add it back later from Add New.`);
+    if (!isDocsPageSection(section) && section !== "monitors" && section !== "documents" && section !== "intake") return;
+    const extra =
+      section === "intake"
+        ? " Clients and the intake API can no longer add items until you re-add it."
+        : "";
+    const ok = window.confirm(
+      `Delete ${SECTION_TITLES[section]} from this wiki?${extra} You can add it back later from Add New.`,
+    );
     if (!ok) return;
     void handleDeletePage(section);
   }
@@ -1517,7 +1537,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             onAddSection={(section) => void handleAddSection(section)}
             isAddingSection={upsertPage.isPending}
             deletableSections={availableSections.filter(
-              (s) => isDocsPageSection(s) || s === "monitors" || s === "documents",
+              (s) => isDocsPageSection(s) || s === "monitors" || s === "documents" || s === "intake",
             )}
             onDeleteSection={confirmDeletePage}
             isDeletingSection={deletePage.isPending}

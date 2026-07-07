@@ -1203,6 +1203,10 @@ model ClientWiki {
   monitorsEnabled    Boolean                @default(false)
   /// Whether the Documents section is enabled. Entries live in WikiDocument.
   documentsEnabled   Boolean                @default(false)
+  /// Whether the Requests (client intake) section is enabled. When off, the
+  /// section is hidden and the public token-based intake API rejects pushes.
+  /// Defaults true so existing wikis keep the section they already have.
+  intakeEnabled      Boolean                @default(true)
   pages              ClientWikiPage[]
   changelog          ClientChangelogEntry[]
   courseRequests     ClientCourseRequest[]

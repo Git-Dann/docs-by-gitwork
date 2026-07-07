@@ -3313,6 +3313,14 @@ export async function setWikiMonitorsEnabledApi(slug: string, enabled: boolean):
   });
 }
 
+export async function setWikiIntakeEnabledApi(slug: string, enabled: boolean): Promise<{ enabled: boolean }> {
+  return apiFetch<{ enabled: boolean }>(`/api/clients/${slug}/wiki/intake-items`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 // ─── Wiki documents ─────────────────────────────────────────────────────────
 import type { WikiDocumentDTO } from "@/server/wiki-documents";
 export type { WikiDocumentDTO, WikiDocumentsSection } from "@/server/wiki-documents";

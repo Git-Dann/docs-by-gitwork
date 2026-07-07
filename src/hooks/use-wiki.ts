@@ -28,6 +28,7 @@ import {
   deleteWikiMonitorApi,
   runWikiMonitorApi,
   setWikiMonitorsEnabledApi,
+  setWikiIntakeEnabledApi,
   createWikiLinkDocApi,
   uploadWikiFileDocApi,
   updateWikiDocApi,
@@ -378,6 +379,14 @@ export function useSetWikiMonitorsEnabled(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (enabled: boolean) => setWikiMonitorsEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useSetWikiIntakeEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiIntakeEnabledApi(slug, enabled),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });
 }
