@@ -95,6 +95,10 @@ export function useTasks(filter: TaskFilter = {}, opts: { enabled?: boolean } = 
     queryFn: () => listTasks(filter),
     enabled: opts.enabled ?? true,
     staleTime: 15_000,
+    // Board/HQ status can change elsewhere (another tab, the drag board, Slack
+    // actions). The global default disables focus refetch; opt this back in so a
+    // stale status (e.g. a DOING task still showing as done) self-corrects on return.
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -123,6 +127,7 @@ export function useTaskAttention(opts: { mine?: boolean; enabled?: boolean } = {
     queryFn: () => getTaskAttention({ mine }),
     enabled,
     staleTime: 30_000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -282,6 +287,10 @@ export function useMyDay(date?: string, opts: { enabled?: boolean } = {}) {
     queryFn: () => getMyDay(date),
     enabled: opts.enabled ?? true,
     staleTime: 15_000,
+    // The Desk drawer is persistently mounted and the myday key is a static
+    // "today", so without a focus refetch the AM/PM pills + done-today can show a
+    // stale (even previous-day) snapshot. Refetch on focus so they stay accurate.
+    refetchOnWindowFocus: true,
   });
 }
 
