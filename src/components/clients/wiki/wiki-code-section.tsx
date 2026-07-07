@@ -1,17 +1,19 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
 import {
   ArrowDownTrayIcon,
   CheckIcon,
   ChevronRightIcon,
   ClipboardIcon,
+  EllipsisHorizontalIcon,
   PlusIcon,
   StarIcon,
   TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { StarIcon as StarSolid } from "@heroicons/react/24/solid";
+import { Modal } from "@/components/ui/modal";
 import type {
   CodeFileInput,
   WikiCodeHandoverSection,
@@ -72,6 +74,54 @@ function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) 
       {copied ? <CheckIcon className="h-3.5 w-3.5 text-emerald-500" /> : <ClipboardIcon className="h-3.5 w-3.5" />}
       {copied ? "Copied" : label}
     </button>
+  );
+}
+
+// Overflow "⋯" menu — keeps destructive/secondary actions off the row so there
+// aren't loose trash icons everywhere.
+type MenuItem = { label: string; icon: ComponentType<SVGProps<SVGSVGElement>>; onClick: () => void; danger?: boolean };
+function RowMenu({ items, label = "Actions" }: { items: MenuItem[]; label?: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-label={label}
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] border border-[var(--border-2)] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
+      >
+        <EllipsisHorizontalIcon className="h-4 w-4" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-40 mt-1.5 w-44 overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.12)] bg-[var(--surface-0)] py-1 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.3)]">
+          {items.map((it, i) => {
+            const Icon = it.icon;
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  it.onClick();
+                }}
+                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition hover:bg-[var(--surface-1)] ${it.danger ? "text-rose-600" : "text-[var(--text-2)]"}`}
+              >
+                <Icon className="h-4 w-4" /> {it.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -278,26 +328,29 @@ function VersionView({
           >
             <ArrowDownTrayIcon className="h-3.5 w-3.5" /> Download .zip
           </button>
-          {isInternal && !version.isCurrent && (
-            <button
-              type="button"
-              onClick={() => void setCurrent.mutateAsync({ versionId: version.id, makeCurrent: true })}
-              className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-            >
-              <StarIcon className="h-3.5 w-3.5" /> Make current
-            </button>
-          )}
           {isInternal && (
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm(`Delete version ${version.label}?`)) void deleteVersion.mutateAsync(version.id);
-              }}
-              aria-label="Delete version"
-              className="inline-flex items-center rounded-[6px] border border-[var(--border-2)] px-2 py-1 text-[var(--text-4)] transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
-            >
-              <TrashIcon className="h-3.5 w-3.5" />
-            </button>
+            <RowMenu
+              label={`Version ${version.label} actions`}
+              items={[
+                ...(version.isCurrent
+                  ? []
+                  : [
+                      {
+                        label: "Make current",
+                        icon: StarIcon,
+                        onClick: () => void setCurrent.mutateAsync({ versionId: version.id, makeCurrent: true }),
+                      },
+                    ]),
+                {
+                  label: "Delete version",
+                  icon: TrashIcon,
+                  danger: true,
+                  onClick: () => {
+                    if (window.confirm(`Delete version ${version.label}?`)) void deleteVersion.mutateAsync(version.id);
+                  },
+                },
+              ]}
+            />
           )}
         </div>
       </div>
@@ -324,13 +377,37 @@ function VersionView({
 type DraftFile = { filename: string; language: string; content: string };
 const emptyFile = (): DraftFile => ({ filename: "", language: "", content: "" });
 
-function AddVersionForm({ slug, moduleId, onDone }: { slug: string; moduleId: string; onDone: () => void }) {
+function AddVersionModal({
+  slug,
+  moduleId,
+  moduleName,
+  open,
+  onClose,
+}: {
+  slug: string;
+  moduleId: string;
+  moduleName: string;
+  open: boolean;
+  onClose: () => void;
+}) {
   const create = useCreateCodeVersion(slug);
   const [label, setLabel] = useState("");
   const [notes, setNotes] = useState("");
   const [makeCurrent, setMakeCurrent] = useState(true);
   const [files, setFiles] = useState<DraftFile[]>([emptyFile()]);
   const [error, setError] = useState<string | null>(null);
+
+  function reset() {
+    setLabel("");
+    setNotes("");
+    setMakeCurrent(true);
+    setFiles([emptyFile()]);
+    setError(null);
+  }
+  function close() {
+    reset();
+    onClose();
+  }
 
   async function save() {
     setError(null);
@@ -341,49 +418,70 @@ function AddVersionForm({ slug, moduleId, onDone }: { slug: string; moduleId: st
     if (clean.length === 0) return setError("Add at least one file with a name and content.");
     try {
       await create.mutateAsync({ moduleId, label: label.trim(), notes: notes.trim() || null, files: clean, makeCurrent });
-      onDone();
+      close();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save this version.");
     }
   }
 
   return (
-    <div className="space-y-3 rounded-[10px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] p-4">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Version label (e.g. v1.2.0)" className="app-input" />
-        <label className="inline-flex items-center gap-2 text-[13px] text-[var(--text-2)]">
-          <input type="checkbox" checked={makeCurrent} onChange={(e) => setMakeCurrent(e.target.checked)} className="h-4 w-4 accent-[var(--brand-600)]" />
-          Set as current version
-        </label>
-      </div>
-      <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Release notes (optional) — what changed in this version" rows={2} className="app-input resize-y py-2.5 leading-relaxed" />
-      <div className="space-y-3">
-        {files.map((f, i) => (
-          <div key={i} className="space-y-2 rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-0)] p-3">
-            <div className="flex gap-2">
-              <input value={f.filename} onChange={(e) => setFiles((p) => p.map((x, j) => (j === i ? { ...x, filename: e.target.value } : x)))} placeholder="filename (e.g. main.cpp)" className="app-input flex-1" />
-              <input value={f.language} onChange={(e) => setFiles((p) => p.map((x, j) => (j === i ? { ...x, language: e.target.value } : x)))} placeholder="lang (optional)" className="app-input w-32" />
-              {files.length > 1 && (
-                <button type="button" onClick={() => setFiles((p) => p.filter((_, j) => j !== i))} aria-label="Remove file" className="inline-flex items-center rounded-[7px] border border-[var(--border-2)] px-2 text-[var(--text-4)] transition hover:border-rose-300 hover:text-rose-600">
-                  <XMarkIcon className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-            <textarea value={f.content} onChange={(e) => setFiles((p) => p.map((x, j) => (j === i ? { ...x, content: e.target.value } : x)))} placeholder="Paste the file contents…" rows={6} className="app-input resize-y py-2.5 font-mono text-[12px] leading-relaxed" style={{ fontFamily: MONO }} />
+    <Modal open={open} onClose={close} title={`NEW VERSION · ${moduleName.toUpperCase()}`} panelClassName="w-full max-w-4xl">
+      <div className="grid gap-0 md:grid-cols-[320px_1fr]">
+        {/* Left — version meta */}
+        <div className="space-y-4 border-b border-[var(--border-1)] p-5 md:border-b-0 md:border-r">
+          <label className="block">
+            <span className="app-field-label">Version label</span>
+            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. v1.2.0" className="app-input" autoFocus />
+          </label>
+          <label className="block">
+            <span className="app-field-label">Release notes</span>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="What changed in this version (optional)"
+              rows={5}
+              className="app-input resize-y py-2.5 leading-relaxed"
+            />
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[var(--text-2)]">
+            <input type="checkbox" checked={makeCurrent} onChange={(e) => setMakeCurrent(e.target.checked)} className="h-4 w-4 accent-[var(--brand-600)]" />
+            Set as the current version
+          </label>
+        </div>
+
+        {/* Right — files */}
+        <div className="space-y-3 p-5">
+          <span className="app-field-label">Files</span>
+          <div className="max-h-[46vh] space-y-3 overflow-auto pr-0.5">
+            {files.map((f, i) => (
+              <div key={i} className="space-y-2 rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)] p-3">
+                <div className="flex gap-2">
+                  <input value={f.filename} onChange={(e) => setFiles((p) => p.map((x, j) => (j === i ? { ...x, filename: e.target.value } : x)))} placeholder="filename (e.g. main.cpp)" className="app-input flex-1" />
+                  <input value={f.language} onChange={(e) => setFiles((p) => p.map((x, j) => (j === i ? { ...x, language: e.target.value } : x)))} placeholder="lang" className="app-input w-24" />
+                  {files.length > 1 && (
+                    <button type="button" onClick={() => setFiles((p) => p.filter((_, j) => j !== i))} aria-label="Remove file" className="inline-flex items-center rounded-[7px] border border-[var(--border-2)] px-2 text-[var(--text-4)] transition hover:border-rose-300 hover:text-rose-600">
+                      <XMarkIcon className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                <textarea value={f.content} onChange={(e) => setFiles((p) => p.map((x, j) => (j === i ? { ...x, content: e.target.value } : x)))} placeholder="Paste the file contents…" rows={7} className="app-input resize-y py-2.5 text-[12px] leading-relaxed" style={{ fontFamily: MONO }} />
+              </div>
+            ))}
           </div>
-        ))}
-        <button type="button" onClick={() => setFiles((p) => [...p, emptyFile()])} className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--brand-700)] transition hover:opacity-80">
-          <PlusIcon className="h-4 w-4" /> Add another file
-        </button>
+          <button type="button" onClick={() => setFiles((p) => [...p, emptyFile()])} className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--brand-700)] transition hover:opacity-80">
+            <PlusIcon className="h-4 w-4" /> Add another file
+          </button>
+        </div>
       </div>
-      {error && <p className="text-sm text-rose-600">{error}</p>}
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={onDone} className="rounded-[8px] border border-[var(--border-2)] px-3.5 py-2 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]">Cancel</button>
+
+      {error && <p className="px-5 text-sm text-rose-600">{error}</p>}
+      <div className="flex justify-end gap-2 border-t border-[var(--border-1)] p-4">
+        <button type="button" onClick={close} className="rounded-[8px] border border-[var(--border-2)] px-3.5 py-2 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]">Cancel</button>
         <button type="button" onClick={() => void save()} disabled={create.isPending} className="inline-flex items-center gap-2 rounded-[8px] bg-[var(--brand-600)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60">
           {create.isPending ? "Saving…" : "Save version"}
         </button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -400,28 +498,33 @@ function ModuleView({ module, slug, isInternal }: { module: WikiCodeModuleRecord
         </div>
         {isInternal && (
           <div className="flex shrink-0 items-center gap-2">
-            <button type="button" onClick={() => setAdding((a) => !a)} className="inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] px-2.5 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)]">
+            <button type="button" onClick={() => setAdding(true)} className="inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] px-2.5 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)]">
               <PlusIcon className="h-4 w-4" /> New version
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm(`Delete module "${module.name}" and all its versions?`)) void deleteModule.mutateAsync(module.id);
-              }}
-              aria-label="Delete module"
-              className="inline-flex items-center rounded-[7px] border border-[var(--border-2)] px-2 py-1.5 text-[var(--text-4)] transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
-            >
-              <TrashIcon className="h-4 w-4" />
-            </button>
+            <RowMenu
+              label={`${module.name} actions`}
+              items={[
+                {
+                  label: "Delete module",
+                  icon: TrashIcon,
+                  danger: true,
+                  onClick: () => {
+                    if (window.confirm(`Delete module "${module.name}" and all its versions?`)) void deleteModule.mutateAsync(module.id);
+                  },
+                },
+              ]}
+            />
           </div>
         )}
       </div>
 
-      {isInternal && adding && <AddVersionForm slug={slug} moduleId={module.id} onDone={() => setAdding(false)} />}
+      {isInternal && (
+        <AddVersionModal slug={slug} moduleId={module.id} moduleName={module.name} open={adding} onClose={() => setAdding(false)} />
+      )}
 
       {module.versions.length === 0 ? (
         <p className="rounded-[8px] border border-dashed border-[var(--border-2)] px-4 py-6 text-center text-[13px] text-[var(--text-4)]">
-          No versions yet.{isInternal ? " Add the first version above." : ""}
+          No versions yet.{isInternal ? " Use “New version” to add one." : ""}
         </p>
       ) : (
         <div className="space-y-2.5">
@@ -434,35 +537,64 @@ function ModuleView({ module, slug, isInternal }: { module: WikiCodeModuleRecord
   );
 }
 
-function AddModuleForm({ slug, onDone }: { slug: string; onDone: () => void }) {
+function AddModuleModal({ slug, open, onClose }: { slug: string; open: boolean; onClose: () => void }) {
   const create = useCreateCodeModule(slug);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  function close() {
+    setName("");
+    setDescription("");
+    setError(null);
+    onClose();
+  }
 
   async function save() {
     setError(null);
     if (!name.trim()) return setError("Give the module a name (e.g. Receiver).");
     try {
       await create.mutateAsync({ name: name.trim(), description: description.trim() || null });
-      onDone();
+      close();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not add this module.");
     }
   }
 
   return (
-    <div className="space-y-3 rounded-[10px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] p-4">
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Module name (e.g. Receiver, Sender)" className="app-input" />
-      <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description (optional)" className="app-input" />
-      {error && <p className="text-sm text-rose-600">{error}</p>}
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={onDone} className="rounded-[8px] border border-[var(--border-2)] px-3.5 py-2 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]">Cancel</button>
+    <Modal open={open} onClose={close} title="NEW MODULE" panelClassName="w-full max-w-2xl">
+      <div className="grid gap-0 sm:grid-cols-[220px_1fr]">
+        {/* Left — what a module is */}
+        <div className="hidden border-r border-[var(--border-1)] bg-[var(--surface-1)] p-5 sm:block">
+          <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-[8px] bg-[var(--surface-brand)] text-[var(--brand-700)]">
+            <PlusIcon className="h-5 w-5" />
+          </div>
+          <p className="text-[13px] leading-6 text-[var(--text-3)]">
+            A module is one piece of hardware — e.g. <span className="text-[var(--text-2)]">Receiver</span> or{" "}
+            <span className="text-[var(--text-2)]">Sender</span>. You&apos;ll add versioned firmware inside it next.
+          </p>
+        </div>
+
+        {/* Right — the fields */}
+        <div className="space-y-4 p-5">
+          <label className="block">
+            <span className="app-field-label">Module name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Receiver" className="app-input" autoFocus />
+          </label>
+          <label className="block">
+            <span className="app-field-label">Description</span>
+            <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description (optional)" className="app-input" />
+          </label>
+          {error && <p className="text-sm text-rose-600">{error}</p>}
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 border-t border-[var(--border-1)] p-4">
+        <button type="button" onClick={close} className="rounded-[8px] border border-[var(--border-2)] px-3.5 py-2 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]">Cancel</button>
         <button type="button" onClick={() => void save()} disabled={create.isPending} className="inline-flex items-center gap-2 rounded-[8px] bg-[var(--brand-600)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60">
           {create.isPending ? "Adding…" : "Add module"}
         </button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -489,7 +621,7 @@ export function WikiCodeSection({
         {isInternal && (
           <button
             type="button"
-            onClick={() => setAddingModule((a) => !a)}
+            onClick={() => setAddingModule(true)}
             className="inline-flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-600)] px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-[var(--brand-700)]"
           >
             <PlusIcon className="h-3.5 w-3.5" /> Add module
@@ -504,7 +636,7 @@ export function WikiCodeSection({
           </p>
         )}
 
-        {isInternal && addingModule && <AddModuleForm slug={slug} onDone={() => setAddingModule(false)} />}
+        {isInternal && <AddModuleModal slug={slug} open={addingModule} onClose={() => setAddingModule(false)} />}
 
         {section.modules.length === 0 ? (
           <p className="rounded-[8px] border border-dashed border-[var(--border-2)] px-4 py-10 text-center text-sm text-[var(--text-4)]">
