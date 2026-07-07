@@ -161,6 +161,9 @@ export function DocumentCover({
     const accent = "#4F5BD5";
     // Strip a trailing period so we can render it in the accent colour.
     const cleanTitle = (title || "").replace(/\s*\.\s*$/, "");
+    // Minimal = bare front page: logo + eyebrow + title (+ footer). Drops the meta grid,
+    // executive summary, stat tiles and callout that the full "light" statement cover carries.
+    const minimal = coverStyle === "minimal";
     const pad = isPrint ? "56px 60px 40px" : "34px 40px 32px";
 
     return (
@@ -305,7 +308,7 @@ export function DocumentCover({
         </div>
 
         {/* Meta grid — up to 4-up. */}
-        {meta && meta.length ? (
+        {!minimal && meta && meta.length ? (
           <div
             style={{
               marginTop: 26,
@@ -338,7 +341,7 @@ export function DocumentCover({
         ) : null}
 
         {/* Executive summary — mono body. */}
-        {executiveSummary ? (
+        {!minimal && executiveSummary ? (
           <div style={{ marginTop: 24, maxWidth: "80ch" }}>
             {executiveSummary
               .split(/\n{2,}/)
@@ -362,7 +365,7 @@ export function DocumentCover({
         ) : null}
 
         {/* Stat tiles — rounded panels, one dark (via stat.bg). */}
-        {stats && stats.length ? (
+        {!minimal && stats && stats.length ? (
           <div
             style={{
               marginTop: 28,
@@ -417,7 +420,7 @@ export function DocumentCover({
         ) : null}
 
         {/* Confidentiality callout. */}
-        {callout ? (
+        {!minimal && callout ? (
           <div
             style={{
               marginTop: 24,

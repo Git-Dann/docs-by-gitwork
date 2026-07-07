@@ -887,7 +887,9 @@ export function ProposalList() {
                   with its own internal scroll so the picker stays focused on the chosen tab. */}
               <div className="mt-5 grid flex-1 gap-5 overflow-hidden md:grid-cols-[300px_minmax(0,1fr)]">
                 {/* Left — form */}
-                <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
+                {/* px-1 (not just pr-1): overflow-y-auto forces overflow-x to `auto`, which would
+                    clip an input's focus ring at the left/right edge. The side padding gives it room. */}
+                <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-1 py-0.5">
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
                       {LABEL_BY_TYPE[form.documentType]} title

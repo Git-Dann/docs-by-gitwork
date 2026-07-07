@@ -128,3 +128,19 @@ export const TEMPLATE_NAME_BY_TYPE: Record<DocumentType, string> = {
   BRIEF: "Brief / meeting notes — default",
   OTHER: "Blank document",
 };
+
+/** Plain-English descriptions for the default templates — shown in the template gallery. Kept
+ *  brand-neutral (no "Foundry"): the gallery already sits inside the product. */
+export const TEMPLATE_DESCRIPTION_BY_TYPE: Record<DocumentType, string> = {
+  PROPOSAL: "A structured client proposal — objectives, scope, timeline and costs.",
+  SLA: "A service level agreement — service tiers, response times and penalties.",
+  SOW: "A statement of work — scope, deliverables, timeline and acceptance.",
+  MSA: "A master service agreement — umbrella terms for an ongoing engagement.",
+  NDA: "A mutual non-disclosure agreement — confidentiality between two parties.",
+  CO: "A change order — a scoped, priced change to an existing statement of work.",
+  DSA: "A data sharing agreement — how personal data is shared and protected.",
+  HANDOVER: "A project handover — access, architecture and everything the next team needs.",
+  REPORT: "A recurring status report — progress, metrics and what's next.",
+  BRIEF: "A short brief or meeting notes — context, decisions and next steps.",
+  OTHER: "A blank document — a clean page with just the essentials.",
+};

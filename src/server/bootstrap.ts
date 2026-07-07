@@ -2,10 +2,12 @@ import { DocumentType, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { DEFAULT_PROPOSAL_METADATA, getDefaultProposalSections } from "@/lib/default-template";
 import {
+  TEMPLATE_DESCRIPTION_BY_TYPE,
   TEMPLATE_NAME_BY_TYPE,
   TEMPLATE_SLUG_BY_TYPE,
   getTemplateBlueprintsForType,
 } from "@/lib/templates";
+import { EXTRA_TEMPLATES } from "@/lib/templates/dev-templates";
 import {
   DEFAULT_ONBOARDING_FORM_SLUG,
   QUICK_ONBOARDING_FORM_SLUG,
@@ -256,6 +258,8 @@ async function _ensureBaseRecords() {
       slug: DEFAULT_TEMPLATE_SLUG,
     },
     update: {
+      name: TEMPLATE_NAME_BY_TYPE.PROPOSAL,
+      description: TEMPLATE_DESCRIPTION_BY_TYPE.PROPOSAL,
       sections: getDefaultProposalSections() as unknown as Prisma.InputJsonValue,
       metadata: DEFAULT_PROPOSAL_METADATA as unknown as Prisma.InputJsonValue,
       isDefault: true,
@@ -263,8 +267,8 @@ async function _ensureBaseRecords() {
     create: {
       workspaceId: workspace.id,
       slug: DEFAULT_TEMPLATE_SLUG,
-      name: "Foundry Proposal Template",
-      description: "Default structured proposal template for Foundry by Gitwork.",
+      name: TEMPLATE_NAME_BY_TYPE.PROPOSAL,
+      description: TEMPLATE_DESCRIPTION_BY_TYPE.PROPOSAL,
       documentType: DocumentType.PROPOSAL,
       sections: getDefaultProposalSections() as unknown as Prisma.InputJsonValue,
       metadata: DEFAULT_PROPOSAL_METADATA as unknown as Prisma.InputJsonValue,
@@ -302,6 +306,9 @@ async function _ensureBaseRecords() {
     await prisma.documentTemplate.upsert({
       where: { slug },
       update: {
+        // Refresh name + description on re-boot so existing rows drop the old "Foundry" copy.
+        name,
+        description: TEMPLATE_DESCRIPTION_BY_TYPE[type],
         sections: sections as unknown as Prisma.InputJsonValue,
         isDefault: true,
       },
@@ -309,10 +316,42 @@ async function _ensureBaseRecords() {
         workspaceId: workspace.id,
         slug,
         name,
-        description: `Default ${name.replace(" — default", "")} template for Foundry by Gitwork.`,
+        description: TEMPLATE_DESCRIPTION_BY_TYPE[type],
         documentType: type,
         sections: sections as unknown as Prisma.InputJsonValue,
         isDefault: true,
+      },
+    });
+  }
+
+  // Extra ready-to-use engineering templates (release/incident/sprint reports, technical handover,
+  // ADR). Seeded as additional, NON-default rows keyed by slug so they show as options in the
+  // create gallery. `update` refreshes their content on re-boot when the blueprints evolve.
+  for (const tpl of EXTRA_TEMPLATES) {
+    const sections = tpl.sections.map((blueprint, index) => ({
+      key: blueprint.key,
+      title: blueprint.title,
+      description: blueprint.description,
+      sortOrder: index,
+      isVisible: blueprint.visible ?? true,
+      data: blueprint.data,
+    }));
+    await prisma.documentTemplate.upsert({
+      where: { slug: tpl.slug },
+      update: {
+        name: tpl.name,
+        description: tpl.description,
+        sections: sections as unknown as Prisma.InputJsonValue,
+        isDefault: false,
+      },
+      create: {
+        workspaceId: workspace.id,
+        slug: tpl.slug,
+        name: tpl.name,
+        description: tpl.description,
+        documentType: tpl.documentType,
+        sections: sections as unknown as Prisma.InputJsonValue,
+        isDefault: false,
       },
     });
   }

@@ -86,8 +86,12 @@ export function ProposalSectionPreview({
   // inline text never accidentally pops a panel. All of this is skipped on the public/print view.
   const selectionId = section.id ?? section.key;
   const editorMode = Boolean(editable) || Boolean(onSelectSection);
+  // The cover is edited inline (title/subtitle) with its settings always available in the outline
+  // drill-in, so the floating canvas ✎ would be a redundant, dead-feeling control — skip it there.
   const showOptions =
-    Boolean(onSelectSection) && (sectionType.hasOptions ?? !sectionType.inlineEditable);
+    Boolean(onSelectSection) &&
+    section.key !== "cover" &&
+    (sectionType.hasOptions ?? !sectionType.inlineEditable);
 
   function wrapSelectable(content: ReactNode) {
     if (!editorMode) return content;
