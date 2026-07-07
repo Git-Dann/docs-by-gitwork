@@ -27,6 +27,7 @@ import { DeskTasks } from "./desk-tasks";
 import { DeskMeetings } from "./desk-meetings";
 import { DeskInbox } from "./desk-inbox";
 import { DeskAlerts } from "./desk-alerts";
+import { DeskRemindersMenu } from "./desk-reminders-menu";
 
 const STORAGE_KEY = "gitwork.desk.v1"; // localStorage: remembers the last tab long-term
 const OPEN_KEY = "gitwork.desk.open.v1"; // sessionStorage: open state, per browser session
@@ -255,8 +256,9 @@ function DeskHeader({
           </button>
         ))}
       </div>
-      {/* Reminders no longer live in a header popover — they're part of the
-          "Needs you today" list on the Today tab (create + clear there). */}
+      {/* Your personal clipboard — the daily to-dos you set yourself. Slack /desk
+          items are kept out of here (they surface in "Needs you today" instead). */}
+      <DeskRemindersMenu />
       {/* Mobile keeps an explicit close (X); desktop closes via the grab handle. */}
       <button
         type="button"

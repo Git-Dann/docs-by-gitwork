@@ -5,15 +5,9 @@ import {
   ChatBubbleLeftRightIcon,
   ClipboardDocumentListIcon,
   ArrowTopRightOnSquareIcon,
-  PlusIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import {
-  useDeskMentions,
-  useDeskReminders,
-  useCreateDeskReminder,
-  useUpdateDeskReminder,
-} from "@/hooks/use-desk";
+import { useDeskMentions, useDeskReminders, useUpdateDeskReminder } from "@/hooks/use-desk";
 import { EditorialRow, DeskEmpty, DeskSkeleton } from "./desk-shared";
 
 const DISMISS_KEY = "gitwork.desk.needsreply.dismissed.v1";
@@ -59,7 +53,8 @@ function useDismissed() {
 
 /**
  * "Needs you today" — the single time-critical list. Two sources only:
- *  - your reminders (created here or via Slack `/desk`), pinned first; and
+ *  - `/desk` reminders (Slack-delegated), pinned first — your own typed to-dos
+ *    live in the On Your Desk clipboard, NOT here; and
  *  - Slack @mentions still awaiting your reply from the last 24h (answered ones
  *    — replied in-thread or spoken-after in-channel — are filtered server-side).
  * Mail was deliberately dropped: it pulled in calendar-accept / auto-reply noise
@@ -69,19 +64,17 @@ function useDismissed() {
 export function DeskNeedsReply() {
   const { dismissed, dismiss } = useDismissed();
   const reminders = useDeskReminders({ enabled: true });
-  const createReminder = useCreateDeskReminder();
   const updateReminder = useUpdateDeskReminder();
   const mentions = useDeskMentions({ enabled: true });
-  const [draft, setDraft] = useState("");
 
-  // 1. Reminders (open) — pinned first, newest first.
+  // 1. /desk reminders (Slack-delegated), open — pinned first, newest first.
   const reminderItems: NeedItem[] = (reminders.data?.reminders ?? [])
-    .filter((r) => !r.done)
+    .filter((r) => !r.done && r.source === "SLACK")
     .map((r) => ({
       id: `reminder:${r.id}`,
       source: "reminder" as const,
       title: r.body,
-      sub: `Reminder · ${relTime(r.createdAt)}`,
+      sub: `/desk · ${relTime(r.createdAt)}`,
       sortTs: new Date(r.createdAt).getTime() || 0,
       link: null,
       reminderId: r.id,
@@ -115,40 +108,11 @@ export function DeskNeedsReply() {
     }
   }
 
-  function addReminder() {
-    const body = draft.trim();
-    if (!body) return;
-    createReminder.mutate(body, { onSuccess: () => setDraft("") });
-  }
-
   return (
     <EditorialRow
       title="Needs you today"
-      caption="Your reminders and unanswered Slack @mentions from the last 24h — nothing else."
+      caption="Slack /desk reminders and unanswered @mentions from the last 24h — nothing else."
     >
-      {/* Inline add-a-reminder (replaces the old header popover — reminders live here now). */}
-      <div className="mb-3 flex items-center gap-2">
-        <input
-          className="app-input flex-1"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="Remember to…"
-          maxLength={280}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") addReminder();
-          }}
-        />
-        <button
-          type="button"
-          onClick={addReminder}
-          disabled={!draft.trim() || createReminder.isPending}
-          className="inline-flex shrink-0 items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2.5 py-2 text-[13px] font-medium text-[var(--text-2)] transition hover:border-[var(--border-1)] hover:text-[var(--text-1)] disabled:opacity-50"
-        >
-          <PlusIcon className="h-4 w-4" />
-          Add
-        </button>
-      </div>
-
       {loading && shown.length === 0 ? (
         <DeskSkeleton />
       ) : shown.length > 0 ? (

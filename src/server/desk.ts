@@ -322,9 +322,16 @@ function reminderToDTO(r: {
   id: string;
   body: string;
   done: boolean;
+  source: string;
   createdAt: Date;
 }): DeskReminderDTO {
-  return { id: r.id, body: r.body, done: r.done, createdAt: r.createdAt.toISOString() };
+  return {
+    id: r.id,
+    body: r.body,
+    done: r.done,
+    source: r.source === "SLACK" ? "SLACK" : "MANUAL",
+    createdAt: r.createdAt.toISOString(),
+  };
 }
 
 export async function listDeskReminders(user: EffectiveUser): Promise<DeskReminderDTO[]> {
@@ -355,7 +362,12 @@ export async function createReminderForUser(args: {
   body: string;
 }): Promise<DeskReminderDTO> {
   const row = await prisma.deskReminder.create({
-    data: { workspaceId: args.workspaceId, userId: args.userId, body: args.body.trim().slice(0, 280) },
+    data: {
+      workspaceId: args.workspaceId,
+      userId: args.userId,
+      body: args.body.trim().slice(0, 280),
+      source: "SLACK",
+    },
   });
   return reminderToDTO(row);
 }
