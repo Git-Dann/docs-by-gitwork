@@ -243,7 +243,7 @@ function ModuleView({ module, slug, isInternal }: { module: WikiCodeModuleRecord
   const deleteModule = useDeleteCodeModule(slug);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 rounded-[12px] border border-[var(--border-1)] bg-[var(--surface-1)] p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="text-[16px] font-semibold text-[var(--text-1)]">{module.name}</h3>
@@ -361,7 +361,7 @@ export function WikiCodeSection({
             No code modules yet.{isInternal ? " Add one (e.g. Receiver, Sender) to start." : ""}
           </p>
         ) : (
-          <div className="space-y-8">
+          <div className="grid items-start gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(440px,100%),1fr))]">
             {section.modules.map((m) => (
               <ModuleView key={m.id} module={m} slug={slug} isInternal={isInternal} />
             ))}
