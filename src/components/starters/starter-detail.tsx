@@ -11,6 +11,7 @@ import {
   CheckIcon,
   ArrowRightIcon,
   ArrowTopRightOnSquareIcon,
+  ArrowDownTrayIcon,
 } from "@heroicons/react/24/outline";
 import {
   useStarter,
@@ -90,6 +91,8 @@ export function StarterDetail({ starterId }: { starterId: string }) {
   const promptText = starter.content?.promptText;
   const sourceUrl = starter.content?.sourceUrl;
   const sourceLabel = starter.content?.sourceLabel;
+  const isSkillLike = starter.type === "SKILL" || starter.type === "PROMPT";
+  const downloadUrl = `/api/starters/${starter.id}/download`;
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
@@ -163,6 +166,41 @@ export function StarterDetail({ starterId }: { starterId: string }) {
             {starter.name}
           </h1>
           <p className="mt-2 text-sm text-[var(--text-3)]">{starter.summary}</p>
+
+          {/* Add to Claude — packages the starter as a Claude Skill .zip (also the backup). */}
+          <div className="mt-4 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <a
+                href={downloadUrl}
+                download
+                className={cn(buttonStyles({ variant: "primary", size: "sm" }), "inline-flex items-center gap-1.5")}
+              >
+                <ArrowDownTrayIcon className="h-3.5 w-3.5" />
+                {isSkillLike ? "Add to Claude" : "Download source (.zip)"}
+              </a>
+              {isSkillLike && (
+                <a
+                  href="https://claude.ai/settings/capabilities"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+                >
+                  Open Claude Skills settings
+                  <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+                </a>
+              )}
+            </div>
+            <p className="mt-2 text-xs leading-5 text-[var(--text-3)]">
+              {isSkillLike ? (
+                <>
+                  Downloads a ready-to-install Skill. In Claude → <span className="font-medium text-[var(--text-2)]">Settings → Capabilities → Skills → Upload skill</span>,
+                  drop this <span className="font-mono">.zip</span> in (requires code execution). Doubles as your off-platform backup.
+                </>
+              ) : (
+                <>Downloads the full source as a <span className="font-mono">.zip</span> — your off-platform backup.</>
+              )}
+            </p>
+          </div>
 
           {sourceUrl && (
             <div className="mt-4 flex flex-wrap items-center gap-3">
