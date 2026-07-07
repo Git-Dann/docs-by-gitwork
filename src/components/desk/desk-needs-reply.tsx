@@ -4,18 +4,27 @@ import { useEffect, useState } from "react";
 import {
   EnvelopeIcon,
   ChatBubbleLeftRightIcon,
+  ClipboardDocumentListIcon,
   ArrowTopRightOnSquareIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { useDeskGmail, useDeskMentions } from "@/hooks/use-desk";
+import {
+  useDeskGmail,
+  useDeskMentions,
+  useDeskReminders,
+  useUpdateDeskReminder,
+} from "@/hooks/use-desk";
 import { EditorialRow, DeskEmpty, DeskSkeleton, DeskConnectGoogle } from "./desk-shared";
 
 const STORAGE_KEY = "gitwork.desk.needsreply.v1";
 const DISMISS_KEY = "gitwork.desk.needsreply.dismissed.v1";
-// A high-level triage list, not a feed — a handful of the most-recent things.
-const MAX_ITEMS = 5;
+// A high-level triage list, not a feed — a handful of the most-critical things.
+const MAX_ITEMS = 6;
+// Only high-signal person-to-person mail — Gmail's Primary category excludes the
+// Featurebase / Gemini-notes / promotions / updates noise that isn't "needs you".
+const GMAIL_QUERY = "is:unread category:primary";
 
-type Source = "slack" | "gmail";
+type Source = "reminder" | "slack" | "gmail";
 type NeedItem = {
   id: string;
   source: Source;
@@ -23,6 +32,8 @@ type NeedItem = {
   sub: string;
   sortTs: number;
   link: string | null;
+  /** Set on reminder items so dismiss = mark done. */
+  reminderId?: string;
 };
 
 /** Persisted per-user source toggles (device-local). Default: both on. */
@@ -47,8 +58,7 @@ function useSources() {
   return { sources, ready };
 }
 
-/** Locally-remembered dismissals (device-local, capped). Dismissing hides an item;
- *  genuinely new mentions/mail still surface later. */
+/** Locally-remembered dismissals for mail/mentions (device-local, capped). */
 function useDismissed() {
   const [ids, setIds] = useState<Set<string>>(new Set());
   useEffect(() => {
@@ -64,7 +74,6 @@ function useDismissed() {
       const next = new Set(prev);
       for (const id of toAdd) next.add(id);
       try {
-        // Keep the set bounded — old ids age out of the source anyway.
         localStorage.setItem(DISMISS_KEY, JSON.stringify([...next].slice(-200)));
       } catch {
         /* ignore */
@@ -74,18 +83,39 @@ function useDismissed() {
   return { dismissed: ids, dismiss };
 }
 
-/** "Needs you today" — a light triage list of Slack @mentions + unread Gmail that
- *  likely want a reply. Newest first, dismissable (one or all). */
+/**
+ * "Needs you today" — the single time-critical list: your reminders (incl. Slack
+ * `/desk`), Slack @mentions, and high-signal Primary mail. Reminders are pinned
+ * first (explicitly flagged = definitionally "needs you"); a reminder is cleared
+ * by marking it done, mail/mentions by dismissing.
+ */
 export function DeskNeedsReply() {
   const { sources, ready } = useSources();
   const { dismissed, dismiss } = useDismissed();
+  const reminders = useDeskReminders({ enabled: true });
+  const updateReminder = useUpdateDeskReminder();
   const mentions = useDeskMentions({ enabled: ready && sources.slack });
-  const gmail = useDeskGmail({ enabled: ready && sources.gmail });
+  const gmail = useDeskGmail({ enabled: ready && sources.gmail, query: GMAIL_QUERY });
 
-  const items: NeedItem[] = [];
+  // 1. Reminders (open, incl. /desk) — pinned first, newest first.
+  const reminderItems: NeedItem[] = (reminders.data?.reminders ?? [])
+    .filter((r) => !r.done)
+    .map((r) => ({
+      id: `reminder:${r.id}`,
+      source: "reminder" as const,
+      title: r.body,
+      sub: `Reminder · ${relTime(r.createdAt)}`,
+      sortTs: new Date(r.createdAt).getTime() || 0,
+      link: null,
+      reminderId: r.id,
+    }))
+    .sort((a, b) => b.sortTs - a.sortTs);
+
+  // 2. Feed — @mentions + Primary unread mail, newest first, dismissable.
+  const feed: NeedItem[] = [];
   if (sources.slack) {
     for (const m of mentions.data?.items ?? []) {
-      items.push({
+      feed.push({
         id: `slack:${m.id}`,
         source: "slack",
         title: m.text || `${m.author} mentioned you`,
@@ -98,7 +128,7 @@ export function DeskNeedsReply() {
   if (sources.gmail) {
     for (const g of (gmail.data?.messages ?? []).filter((m) => m.unread)) {
       const sender = g.from.replace(/<[^>]+>/, "").replace(/"/g, "").trim() || g.from;
-      items.push({
+      feed.push({
         id: `gmail:${g.id}`,
         source: "gmail",
         title: g.subject,
@@ -108,40 +138,51 @@ export function DeskNeedsReply() {
       });
     }
   }
-  items.sort((a, b) => b.sortTs - a.sortTs);
-  const visible = items.filter((it) => !dismissed.has(it.id));
-  const shown = visible.slice(0, MAX_ITEMS);
+  feed.sort((a, b) => b.sortTs - a.sortTs);
+  const visibleFeed = feed.filter((it) => !dismissed.has(it.id));
 
-  const anyOn = sources.slack || sources.gmail;
-  const loading = (sources.slack && mentions.isPending) || (sources.gmail && gmail.isPending);
+  const shown = [...reminderItems, ...visibleFeed].slice(0, MAX_ITEMS);
+
+  const loading =
+    reminders.isPending ||
+    (sources.slack && mentions.isPending) ||
+    (sources.gmail && gmail.isPending);
   const gmailDisconnected = sources.gmail && gmail.data && !gmail.data.connected;
   const slackUnmapped =
     sources.slack && mentions.data && mentions.data.configured && !mentions.data.mapped;
 
+  function dismissItem(it: NeedItem) {
+    if (it.source === "reminder" && it.reminderId) {
+      updateReminder.mutate({ id: it.reminderId, input: { done: true } });
+    } else {
+      dismiss([it.id]);
+    }
+  }
+
   return (
     <EditorialRow
       title="Needs you today"
-      caption="The top few things you've been tagged in or that are waiting on a reply."
+      caption="Reminders, @mentions and key mail that actually need you — nothing else."
     >
-      {!anyOn ? (
-        <DeskEmpty>You&apos;re all caught up.</DeskEmpty>
-      ) : loading && shown.length === 0 ? (
+      {loading && shown.length === 0 ? (
         <DeskSkeleton />
       ) : shown.length > 0 ? (
         <>
-          <div className="mb-1 flex items-center justify-end">
-            <button
-              type="button"
-              onClick={() => dismiss(visible.map((it) => it.id))}
-              className="text-[11px] uppercase tracking-[0.6px] text-[var(--text-4)] transition hover:text-[var(--text-2)]"
-              style={{ fontFamily: "var(--font-mono)" }}
-            >
-              Dismiss all
-            </button>
-          </div>
+          {visibleFeed.length > 0 ? (
+            <div className="mb-1 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => dismiss(visibleFeed.map((it) => it.id))}
+                className="text-[11px] uppercase tracking-[0.6px] text-[var(--text-4)] transition hover:text-[var(--text-2)]"
+                style={{ fontFamily: "var(--font-mono)" }}
+              >
+                Dismiss mail
+              </button>
+            </div>
+          ) : null}
           <ul className="divide-y divide-[var(--border-2)]">
             {shown.map((it) => (
-              <NeedRow key={it.id} item={it} onDismiss={() => dismiss([it.id])} />
+              <NeedRow key={it.id} item={it} onDismiss={() => dismissItem(it)} />
             ))}
           </ul>
           {gmailDisconnected ? (
@@ -152,7 +193,7 @@ export function DeskNeedsReply() {
         </>
       ) : gmailDisconnected ? (
         <DeskConnectGoogle what="your inbox" />
-      ) : slackUnmapped && !sources.gmail ? (
+      ) : slackUnmapped ? (
         <DeskEmpty>Couldn&apos;t match your email in Slack — mentions won&apos;t show.</DeskEmpty>
       ) : (
         <DeskEmpty>You&apos;re all caught up — nothing waiting on you.</DeskEmpty>
@@ -161,8 +202,14 @@ export function DeskNeedsReply() {
   );
 }
 
+const SOURCE_ICON = {
+  reminder: ClipboardDocumentListIcon,
+  slack: ChatBubbleLeftRightIcon,
+  gmail: EnvelopeIcon,
+} as const;
+
 function NeedRow({ item, onDismiss }: { item: NeedItem; onDismiss: () => void }) {
-  const Icon = item.source === "slack" ? ChatBubbleLeftRightIcon : EnvelopeIcon;
+  const Icon = SOURCE_ICON[item.source];
   const content = (
     <>
       <span className="min-w-0 flex-1">
@@ -182,7 +229,9 @@ function NeedRow({ item, onDismiss }: { item: NeedItem; onDismiss: () => void })
 
   return (
     <li className="group flex items-center gap-2.5 py-2.5">
-      <Icon className="h-4 w-4 shrink-0 text-[var(--text-4)]" />
+      <Icon
+        className={`h-4 w-4 shrink-0 ${item.source === "reminder" ? "text-[var(--brand-600)]" : "text-[var(--text-4)]"}`}
+      />
       {item.link ? (
         <a
           href={item.link}
@@ -198,7 +247,7 @@ function NeedRow({ item, onDismiss }: { item: NeedItem; onDismiss: () => void })
       <button
         type="button"
         onClick={onDismiss}
-        aria-label="Dismiss"
+        aria-label={item.source === "reminder" ? "Mark done" : "Dismiss"}
         className="shrink-0 rounded-[5px] p-1 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
       >
         <XMarkIcon className="h-4 w-4" />

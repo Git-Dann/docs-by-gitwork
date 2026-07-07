@@ -2182,8 +2182,11 @@ export interface CalendarEvent {
   meetLink: string | null;
 }
 
-export async function getGmailMessages(): Promise<{ connected: boolean; messages: GmailMessage[] }> {
-  return apiFetch("/api/integrations/gmail");
+export async function getGmailMessages(
+  query?: string,
+): Promise<{ connected: boolean; messages: GmailMessage[] }> {
+  const qs = query ? `?q=${encodeURIComponent(query)}` : "";
+  return apiFetch(`/api/integrations/gmail${qs}`);
 }
 
 export async function getCalendarEvents(): Promise<{ connected: boolean; events: CalendarEvent[] }> {

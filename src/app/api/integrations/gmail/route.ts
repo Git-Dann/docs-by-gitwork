@@ -11,17 +11,20 @@ export const dynamic = "force-dynamic";
  * sign-in overwrote the workspace token, leaking the most-recent signer's inbox to
  * everyone else.
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const authResult = await getUserGoogleAuth();
     if (!authResult.ok) return apiOk({ connected: false, messages: [] });
 
     const gmail = google.gmail({ version: "v1", auth: authResult.client });
 
+    // Optional ?q= Gmail search (e.g. "is:unread category:primary" for the Desk's
+    // high-signal "Needs you today" feed). Defaults to the full inbox.
+    const q = new URL(request.url).searchParams.get("q") || "in:inbox";
     const listRes = await gmail.users.messages.list({
       userId: "me",
       maxResults: 20,
-      q: "in:inbox",
+      q,
     });
 
     const messageIds = listRes.data.messages ?? [];

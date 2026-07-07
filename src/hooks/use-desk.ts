@@ -71,10 +71,10 @@ export function useDeskCalendar(opts: { enabled?: boolean } = {}) {
   });
 }
 
-export function useDeskGmail(opts: { enabled?: boolean } = {}) {
+export function useDeskGmail(opts: { enabled?: boolean; query?: string } = {}) {
   return useQuery({
-    queryKey: ["integrations", "gmail"] as const,
-    queryFn: getGmailMessages,
+    queryKey: ["integrations", "gmail", opts.query ?? null] as const,
+    queryFn: () => getGmailMessages(opts.query),
     enabled: opts.enabled ?? true,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
