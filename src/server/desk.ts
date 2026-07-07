@@ -323,6 +323,19 @@ export async function createDeskReminder(user: EffectiveUser, body: string): Pro
   return reminderToDTO(row);
 }
 
+/** Create a reminder on a specific user's list (used by the Slack `/desk` command,
+ *  where the caller adds a reminder to a teammate). Explicit target userId. */
+export async function createReminderForUser(args: {
+  workspaceId: string;
+  userId: string;
+  body: string;
+}): Promise<DeskReminderDTO> {
+  const row = await prisma.deskReminder.create({
+    data: { workspaceId: args.workspaceId, userId: args.userId, body: args.body.trim().slice(0, 280) },
+  });
+  return reminderToDTO(row);
+}
+
 export async function updateDeskReminder(
   user: EffectiveUser,
   id: string,
