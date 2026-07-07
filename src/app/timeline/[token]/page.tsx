@@ -59,7 +59,8 @@ export default async function PublicTimelinePage({
           </p>
         </header>
 
-        <GanttChart blocks={blocks} emptyHint="The timeline will appear here once work is scheduled." />
+        {/* Client-facing share — no internal "behind schedule" slip overlay. */}
+        <GanttChart blocks={blocks} slippage={false} emptyHint="The timeline will appear here once work is scheduled." />
 
         <footer className="mt-8 flex items-center justify-center gap-1.5 text-xs text-[var(--text-4)]">
           {/* eslint-disable-next-line @next/next/no-img-element */}

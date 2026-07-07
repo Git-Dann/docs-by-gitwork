@@ -42,8 +42,21 @@ import type {
   PipelineStatus,
   CodeClearTier,
 } from "@/types/codeclear";
+import type {
+  DevSignalAnalyticsDTO,
+  DevSignalAssessmentDTO,
+  DevSignalPipelineConfigDTO,
+} from "@/types/devsignal";
 import type { NotificationDTO } from "@/types/notifications";
-import type { DeskActionItemDTO, DeskSlackResult, DeskHolidays } from "@/types/desk";
+import type {
+  DeskActionItemDTO,
+  DeskSlackResult,
+  DeskHolidays,
+  DeskReminderDTO,
+  BroadcastDTO,
+  BroadcastDuration,
+  DeskMentionsResult,
+} from "@/types/desk";
 import type {
   ProofCreateDocumentInput,
   ProofDocumentRecord,
@@ -525,6 +538,23 @@ export async function setClientStatusApi(
   });
 }
 
+export interface ClientDriveArchiveStatus {
+  archivedToDriveAt: string | null;
+  folderUrl: string | null;
+}
+
+/** Read the client's Google Drive archive status. */
+export async function getClientDriveArchiveStatus(slug: string): Promise<ClientDriveArchiveStatus> {
+  return apiFetch<ClientDriveArchiveStatus>(`/api/clients/${slug}/archive-to-drive`);
+}
+
+/** Manually (re-)run the client's Google Drive archive — enqueues a durable, deduped job. */
+export async function archiveClientToDrive(
+  slug: string,
+): Promise<{ jobId: string; queued: boolean; alreadyRunning: boolean }> {
+  return apiFetch(`/api/clients/${slug}/archive-to-drive`, { method: "POST" });
+}
+
 /** Lead fields accepted by create/update for a LEAD client. */
 export interface LeadInput {
   leadSource?: string | null;
@@ -645,6 +675,17 @@ export async function updateClient(
 
 export async function getClientDetail(slug: string): Promise<ClientDetailRecord> {
   return apiFetch<ClientDetailRecord>(`/api/clients/${slug}`);
+}
+
+export async function updateClientProductTeam(
+  slug: string,
+  userIds: string[],
+): Promise<{ productTeamUserIds: string[] }> {
+  return apiFetch(`/api/clients/${slug}/product-team`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userIds }),
+  });
 }
 
 export async function createClientPlatform(
@@ -2140,6 +2181,7 @@ export async function resetTeamMemberPassword(
 
 export interface GmailMessage {
   id: string;
+  threadId: string;
   subject: string;
   from: string;
   snippet: string;
@@ -2171,8 +2213,94 @@ export async function getDeskActionItems(): Promise<{ items: DeskActionItemDTO[]
   return apiFetch("/api/desk/action-items");
 }
 
+export interface DeskAttention {
+  purgeReview: { count: number; reclaimableBytes: number };
+}
+
+export async function getDeskAttention(): Promise<DeskAttention> {
+  return apiFetch("/api/desk/attention");
+}
+
+export interface PurgeCandidateDTO {
+  id: string;
+  policyKey: string;
+  entity: string;
+  scopeId: string | null;
+  rowCount: number;
+  byteSize: number | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  purgeEligibleAt: string | null;
+}
+
+export async function getPurgeCandidates(): Promise<{ candidates: PurgeCandidateDTO[] }> {
+  return apiFetch("/api/retention/purge-candidates");
+}
+
+export async function approvePurge(ids: string[]): Promise<{ purged: number; errors: string[] }> {
+  return apiFetch("/api/retention/purge", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+}
+
 export async function getDeskSlack(): Promise<DeskSlackResult> {
   return apiFetch("/api/desk/slack");
+}
+
+export async function getDeskMentions(): Promise<DeskMentionsResult> {
+  return apiFetch("/api/desk/mentions");
+}
+
+// ─── Desk reminders (temporary personal list) ────────────────────────────────
+
+export async function getDeskReminders(): Promise<{ reminders: DeskReminderDTO[] }> {
+  return apiFetch("/api/desk/reminders");
+}
+
+export async function createDeskReminder(body: string): Promise<{ reminder: DeskReminderDTO }> {
+  return apiFetch("/api/desk/reminders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+}
+
+export async function updateDeskReminder(
+  id: string,
+  input: { done?: boolean; body?: string },
+): Promise<{ reminder: DeskReminderDTO }> {
+  return apiFetch(`/api/desk/reminders/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteDeskReminder(id: string): Promise<{ ok: true }> {
+  return apiFetch(`/api/desk/reminders/${id}`, { method: "DELETE" });
+}
+
+// ─── Desk broadcast (workspace-wide banner) ──────────────────────────────────
+
+export async function getActiveBroadcast(): Promise<{ broadcast: BroadcastDTO | null }> {
+  return apiFetch("/api/desk/broadcast");
+}
+
+export async function postBroadcast(input: {
+  message: string;
+  durationDays: BroadcastDuration;
+}): Promise<{ broadcast: BroadcastDTO }> {
+  return apiFetch("/api/desk/broadcast", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function dismissBroadcast(): Promise<{ ok: true }> {
+  return apiFetch("/api/desk/broadcast", { method: "DELETE" });
 }
 
 export async function getDeskHolidays(): Promise<DeskHolidays> {
@@ -3337,4 +3465,78 @@ export async function markNotificationsRead(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+// ─── DevSignal (developer vetting engine) ────────────────────────────────────
+
+const jsonPost = (body: unknown): RequestInit => ({
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+export async function listDevSignalAssessments(filters: { status?: string; decision?: string } = {}) {
+  const qs = new URLSearchParams();
+  if (filters.status) qs.set("status", filters.status);
+  if (filters.decision) qs.set("decision", filters.decision);
+  const s = qs.toString();
+  return apiFetch<{ items: DevSignalAssessmentDTO[] }>(`/api/devsignal/assessments${s ? `?${s}` : ""}`);
+}
+
+export async function getDevSignalAssessment(id: string) {
+  return apiFetch<{ assessment: DevSignalAssessmentDTO }>(`/api/devsignal/assessments/${id}`);
+}
+
+export async function createDevSignalAssessment(input: {
+  candidateId?: string;
+  candidate?: { name: string; githubHandle: string; email?: string; primaryStack?: string };
+  clientId?: string;
+}) {
+  return apiFetch<{ assessment: DevSignalAssessmentDTO }>("/api/devsignal/assessments", jsonPost(input));
+}
+
+export async function runDevSignalAssessment(id: string) {
+  return apiFetch<{ assessment: DevSignalAssessmentDTO }>(`/api/devsignal/assessments/${id}/run`, jsonPost({}));
+}
+
+export async function recordDevSignalDecision(
+  id: string,
+  input: { decision: "APPROVED_FOR_STAGING" | "REJECTED" | "NEEDS_MORE_INFO" | "NONE"; reason?: string },
+) {
+  return apiFetch<{ assessment: DevSignalAssessmentDTO }>(`/api/devsignal/assessments/${id}/decision`, jsonPost(input));
+}
+
+export async function recordDevSignalInterview(
+  id: string,
+  input: {
+    dimensions: Array<{ key: string; label: string; score: number }>;
+    verdict: "PASS" | "WARN" | "FAIL" | "NEEDS_SECOND_REVIEW";
+    notes?: string;
+  },
+) {
+  return apiFetch<{ assessment: DevSignalAssessmentDTO }>(`/api/devsignal/assessments/${id}/interview`, jsonPost(input));
+}
+
+export async function promoteDevSignalToCode(id: string, input: { reason?: string } = {}) {
+  return apiFetch<{ assessment: DevSignalAssessmentDTO }>(
+    `/api/devsignal/assessments/${id}/promote-to-code`,
+    jsonPost(input),
+  );
+}
+
+export async function listDevSignalConfigs() {
+  return apiFetch<{ items: DevSignalPipelineConfigDTO[] }>("/api/devsignal/pipeline-configs");
+}
+
+export async function getDevSignalAnalytics() {
+  return apiFetch<{ analytics: DevSignalAnalyticsDTO }>("/api/devsignal/analytics/assessments");
+}
+
+export async function createDevSignalOutcomeLink(input: {
+  assessmentId: string;
+  placementId?: string;
+  source?: string;
+  notes?: string;
+}) {
+  return apiFetch<{ link: { id: string } }>("/api/devsignal/outcome-links", jsonPost(input));
 }

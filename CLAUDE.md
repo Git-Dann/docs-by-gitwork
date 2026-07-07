@@ -946,8 +946,11 @@ This supersedes the Vercel/Neon assumptions throughout §2, §3, §5.
   `docs/neon-to-fasthosts-migration.md` (DB runbook) + `docs/fasthosts-secrets-recovery.md`.
 - **Now self-managed (Vercel/Neon did these before):**
   - **Crons** — Vercel cron jobs do NOT run on the VPS. `/api/cron/*` (`meet-transcripts`,
-    `pulse-reconcile`, `support-sync`, `docs-gdrive-backup`) must be triggered by host cron/systemd
-    timers hitting them with the `CRON_SECRET` header.
+    `pulse-reconcile`, `support-sync`, `docs-gdrive-backup`, **`jobs`**) must be triggered by host
+    cron/systemd timers hitting them with the `CRON_SECRET` header. ⚠️ **`/api/cron/jobs` is the
+    background-job worker (§24) — schedule it FREQUENTLY on the VPS (every 1–5 min), not daily.**
+    Its `vercel.json` entry is daily only because Vercel Hobby rejects sub-daily crons and the
+    vestigial Vercel build would fail — the real cadence is the host cron.
   - **DB backups** — schedule `pg_dump` off-box (Neon auto-backed-up before).
   - **Cert renewal** — ensure the Let's Encrypt renewer is in place (~90-day cert).
 - **Rollback** — **Vercel + Neon are kept live, read-only**, as a fallback until the VPS is proven,
@@ -958,12 +961,110 @@ This supersedes the Vercel/Neon assumptions throughout §2, §3, §5.
   Care semantic search (pgvector canary), AI (`ANTHROPIC_ADMIN_KEY` or the workspace DB key), and an
   onboarding bank-detail decrypt.
 
-## 26. Recent Changes (July 2026) — Study demoted from a top-level module to an admin-only Pulse tool
+## 24. Recent Changes (July 2026) — Durable job queue + client → Google Drive archive
+
+Introduced a **general background-job spine** and used it to **auto-export a client's whole dataset
+to Google Drive when the client is archived or deleted** — an off-platform, human-readable copy for
+hand-off / preservation. This is the first step of a **data-lifecycle model**
+(`ACTIVE → ARCHIVED → EXPORTED → PURGED`); **purge is deliberately NOT built yet** (export-only for
+now; a gated, verified-copy purge is a later opt-in). Blob-storage tiering (receipts `bytea` →
+object storage) was noted as a separate thread, not done here.
+
+- **Durable job queue (`src/server/jobs/*`)** — new `BackgroundJob` table (`type`, `payload`,
+  `status`, `attempts`/`maxAttempts`, `runAt`, `dedupeKey`, `lastError`, `result`) + enum
+  `BackgroundJobStatus`. `enqueueJob`/`enqueueJobBestEffort` (queue.ts) with **in-flight dedupe**
+  (skips insert when a PENDING/RUNNING job shares the `dedupeKey`; a *completed* key can re-enqueue,
+  so it's NOT a DB unique). `drainJobs` (runner.ts) **atomically claims** each due job (status-guarded
+  `updateMany` → RUNNING, so concurrent drains never double-run), dispatches via the `handlers.ts`
+  registry, and on failure reschedules with **backoff** (`BACKOFF_MS` in types.ts) until `maxAttempts`
+  then dead-letters (FAILED). Feasible because prod is now a long-running process on the VPS (no
+  serverless time cap, §23). **To add a job:** add a `JobType` + payload in `types.ts` and a handler
+  in `handlers.ts`.
+- **Worker cron** — `GET /api/cron/jobs` (CRON_SECRET, `maxDuration 300`): first **reconciles**
+  (enqueues archives for any ARCHIVED/hidden client with `archivedToDriveAt = null` — the safety net
+  for a failed inline enqueue), then **drains** the queue. ⚠️ **Must be hit FREQUENTLY by VPS host
+  cron (every 1–5 min)** — its `vercel.json` entry is daily only to keep the vestigial Vercel build
+  green (Hobby rejects sub-daily). See §23.
+- **Client archive (`src/server/client-archive.ts`)** — `runClientArchive(clientId)` (the
+  `CLIENT_ARCHIVE` handler) exports a client into a per-client subfolder under a **"Foundry Client
+  Archives"** Drive folder: `00 — Client Overview`, `Tasks & Timeline`, `Meetings`, `Wiki` as native
+  Google Docs, each `Document` as a Google Doc in a `Documents/` subfolder (reuses
+  `renderDocumentToHtml`), plus **`client-archive.json`** (full snapshot). Idempotent per client
+  (reuses the folder, **clears + rewrites** contents so re-runs don't dupe). **Reuses the Docs→Drive
+  infra (§21):** same backup account (`resolveBackupAuth`), same **`docsBackupEnabled` master switch**
+  (off by default → whole feature no-ops until enabled), `drive.file` scope (no re-consent). **The
+  encrypted `bankAccount` is deliberately NOT exported** (no decrypted bank details to Drive). New
+  Drive helpers added to `google-drive-backup.ts`: `ensureClientArchiveFolder`, `ensureChildFolder`,
+  `createSubfolder`, `uploadHtmlAsDoc`, `uploadJsonFile`, `clearFolderContents`.
+- **Triggers** — `setClientStatus(→ ARCHIVED)` and `deleteClientRecord` (the soft-hide) each fire
+  `archiveClientToDriveBestEffort` (enqueues a deduped job, non-blocking). NB **both archive and
+  delete are soft in Foundry** (status flag / `hidden`) — no data is actually removed, so this is
+  preservation, not rescue.
+- **UI** — a compact **"Archive to Drive" / "Re-archive"** button + an **"In Drive ↗"** folder link
+  on the client detail actions row (`ClientDriveArchiveButton`, gated by `canManageClients`). Route
+  `GET/POST /api/clients/[slug]/archive-to-drive` (status read + manual enqueue); hooks
+  `useClientDriveArchiveStatus` / `useArchiveClientToDrive`.
+- **Schema (additive → applies via the build's `prisma db push`; also added to `bootstrap.ts`'s
+  `ensurePortalSchema` belt-and-braces for the plain columns):** `BackgroundJob` model +
+  `BackgroundJobStatus` enum, `Workspace.clientArchiveFolderId`, `WorkspaceClient.archiveDriveFolderId`
+  + `archivedToDriveAt`.
+- **Deferred:** the purge stage of the lifecycle; blob-storage tiering; a Settings UI for the master
+  switch (still flip `docsBackupEnabled` directly, as with Docs backup). Verified via `tsc` + `eslint`
+  (no local DB/auth to exercise the Drive path live — see the local-verification note).
+
+## 25. Recent Changes (July 2026) — Retention / deep-storage tiering framework
+
+Generalises §24's lifecycle into a **platform-wide data-tiering framework** so the hot Postgres
+working set + nightly `pg_dump` stay lean as data ages, **without ever destructively losing data**.
+Age tiers: `HOT (0–30d) → WARM → COLD → DEEP`. **Tier-down is automatic + reversible**
+(rehydrate-on-demand); the **only destructive step is purge (deleting a cold copy), which is NEVER
+automatic** — it's surfaced for an admin to approve on On Your Desk.
+
+- **Cold store (`src/server/retention/cold-store.ts`)** — pluggable `ColdStore` (`putJson`/`getJson`/
+  `remove`, all gzipped). Two adapters, **no new vendor**: **`fs`** (VPS filesystem at `COLD_STORE_DIR`
+  — preferred when set: off the working set AND off `pg_dump`) and **`drive`** (the backup account's
+  "Foundry Cold Storage" folder — the **default** when `COLD_STORE_DIR` is unset; reuses
+  `resolveBackupAuth` + `docsBackupEnabled`). `getColdStore(workspace)` picks fs → drive; returns null
+  (→ policy skipped) when Drive is selected but no backup account is connected. R2/S3 can slot in later
+  behind the same interface.
+- **Policy registry (`src/server/retention/policies.ts`)** — one `RetentionPolicy` per data-type:
+  `{ key, entity, coldDays, purgeDays, tierDown }`, **configurable windows**. First policy:
+  **`docs.view-events`** (cold at 60d, purge-review at 365d) — offloads bulky `DocumentViewEvent`
+  per-section rows (batched per document) to cold, **keeping the `DocumentView` summary hot**, then
+  deletes the hot event rows only after the cold copy + manifest exist. Add a data-type = add one
+  entry; sweep/cron/purge-review all iterate the registry. (Next candidates: old `DocumentVersion`
+  snapshots, whole ACCEPTED/DECLINED docs 12mo+, then the `Expense` receipt `bytea` — the folded-in
+  blob-tiering thread.)
+- **`ColdArchive` model** — the manifest of every cold batch (`policyKey`, `entity`, `scopeId`,
+  `store`/`ref`, `rowCount`, `byteSize`, period, `tier`, `purgeEligibleAt`, `purgedAt`). Source of
+  truth for rehydrate + purge-review.
+- **Sweep + job** — `runRetentionSweep` (sweep.ts) runs each policy's `tierDown` per workspace,
+  bounded by `batchLimit` (backlog drains over runs), best-effort per policy. Runs as a
+  **`RETENTION_SWEEP`** job on the §24 queue; **`GET /api/cron/retention`** enqueues one deduped sweep
+  daily (host cron on the VPS; `vercel.json` daily).
+- **Purge review (`src/server/retention/purge.ts`)** — `listPurgeCandidates` (cold archives past
+  `purgeEligibleAt`, not purged), `approvePurge(ids)` (deletes the cold copy + stamps `purgedAt` —
+  the one destructive action, admin/super-admin only), `getPurgeAttention(user)` (count + reclaimable
+  bytes, admins only). Routes: `GET /api/desk/attention`, `GET /api/retention/purge-candidates`,
+  `POST /api/retention/purge`.
+- **On Your Desk surface (§22)** — `PurgeReviewBanner` in the TODAY tab (`isAdminOrAbove`, shown
+  only when count > 0): "N items ready to purge" → a modal to select + two-step-confirm permanent
+  deletion. Hooks `useDeskAttention` / `usePurgeCandidates` / `useApprovePurge`.
+- **Default-off & non-surprising:** with no `COLD_STORE_DIR` and `docsBackupEnabled` off, `getColdStore`
+  returns null → the sweep tiers nothing. Turn it on by connecting the Drive backup (as §21/§24) or
+  setting `COLD_STORE_DIR` (needs a Docker volume mount on the VPS).
+- **Schema (additive → `prisma db push`; `coldStoreFolderId` also in `bootstrap.ts`'s net):**
+  `ColdArchive` model + `RetentionTier` enum, `Workspace.coldStoreFolderId`.
+- **Deferred:** more policies (versions, whole-docs, receipts); rehydrate UI (the cold JSON is
+  fetchable via the manifest, but there's no "restore" button yet); WARM/DEEP tiers (only COLD is
+  wired); a Settings UI for windows (edit the policy for now). Verified via `tsc` + `eslint`.
+
+## 26. Recent Changes (July 2026) — Study demoted from a top-level module to an optional Pulse tool
 
 **Study** (AI user research — multi-agent persona interviews) was a first-class module: its own
 sidebar item, its own permission product, an (unused) HQ widget, and a `/context` module-map row.
-It's now an **optional, admin-only tool inside Pulse** — "one you *could* reach for", not automatic.
-**No routes/files were moved** — the change is UX re-parenting + permission tightening + a scan↔study
+It's now **framed as an optional tool inside Pulse** — "one you *could* reach for", not automatic.
+**No routes/files were moved** — the change is UX re-parenting + permission folding + a scan↔study
 link. Everything Study did still works.
 
 - **Removed from the top level:** deleted the Study **sidebar item** (`app-shell.tsx`), the **dead**
@@ -971,31 +1072,33 @@ link. Everything Study did still works.
   module-map row under Pulse. `FOUNDRY_MODULE_KEYS` still lists `"study"` — that's the **demo/mock**
   workspace-model typing, not nav/permissions, so it was left untouched.
 - **Permissions — admin/super-admin only:** the old `study` **module** id + `study.manage` **action**
-  were removed and replaced with a single **admin-only `feature`** perm `study` in `PERMISSION_CATALOG`
-  (`src/types/auth.ts`) — the studio pattern (default-off, `category: "feature"` so STAFF doesn't
+  were removed, and `study` was re-added to `PERMISSION_CATALOG` (`src/types/auth.ts`) as a single
+  **admin-only `feature`** perm (studio pattern — default-off, `category: "feature"` so STAFF doesn't
   auto-inherit it; ADMIN holds all ids, SUPER_ADMIN bypasses). The stray `"study"` id was removed from
   the view-as STAFF preset (`src/lib/view-as.ts`). `canManageStudy()` (server `effective-user.ts` +
   client `use-permissions.ts`) now checks **`study`** — view and manage collapse to one admin-only
-  gate. Middleware `MODULE_PATHS` gates `/app/study` on **`study`**. **Result: only Admin + Super Admin
-  see or use Study.** Grantable to Staff/Developers later via the Settings → Team matrix.
+  gate. Middleware `MODULE_PATHS` gates `/app/study` on **`study`** (non-admins lack it → redirected;
+  admins bypass). **Result: only Admin + Super Admin see or use Study.** Grantable to Staff/Developers
+  later via the Settings → Team matrix if wanted.
 - **Gated at every layer** (not just hidden): middleware blocks the `/app/study` pages; the
   `PulseStudiesPanel` + the scan `AgentPanel` "Research study" slot render only when `canManageStudy`
   (and `useStudyList(enabled)` skips the fetch for non-admins); and **every `/api/study/studies*`
   route** asserts `canManageStudy` (GET/POST/PATCH/DELETE + plan + run + stream — the SSE route returns
-  a clean 403). Only `/api/study/personas` (static built-in persona catalog, no workspace data) is open.
+  a clean 403). Only `/api/study/personas` (static built-in persona catalog, no workspace data) is left
+  open.
 - **Surfaced inside Pulse (2 entry points, admin-only):** a new **`PulseStudiesPanel`**
   (`src/components/pulse/pulse-studies-panel.tsx`) on the Pulse landing page (`/app/pulse`) lists
   studies + a "New research study" button; and a **"Research study" slot** in the scan-results
   **AgentPanel** (`pulse-scan-results.tsx`) — "Start research study" → `/app/study/new?scanId=…`
-  when unlinked, "View study" when linked.
+  when unlinked, "View study" when linked. Both are hidden entirely unless `canManageStudy`.
 - **Scan ↔ Study link (additive schema → applies via the build's `prisma db push`):**
   `Study.linkedScanId` (+ `@@index`) and `PulseScan.linkedStudyId`, both nullable loose ids (no FK,
   matching the cross-module convention). `createStudy()` validates the scan is in-workspace, persists
-  the link, and **mirrors `linkedStudyId` back onto the scan**. `serializePulseScan` + `PulseScanRecord`
-  carry `linkedStudyId`; `StudyRecord` carries `linkedScanId`. The wizard (`study-wizard.tsx`) reads
-  `?scanId=` (mirrors the existing `?clientId=`), **pre-fills** the brief from the scan's `projectName`
-  + top `criticalGaps`/`buildOpportunities` (soft defaults, never clobbers edits), and passes
-  `linkedScanId` through the create hook/route.
+  the link, and **mirrors `linkedStudyId` back onto the scan**. `serializePulseScan` +
+  `PulseScanRecord` carry `linkedStudyId`; `StudyRecord` carries `linkedScanId`. The wizard
+  (`study-wizard.tsx`) reads `?scanId=` (mirrors the existing `?clientId=`), **pre-fills** the brief
+  from the scan's `projectName` + top `criticalGaps`/`buildOpportunities` (soft defaults, never
+  clobbers user edits), and passes `linkedScanId` through the create hook/route.
 - **Deferred:** Study code/routes/API were deliberately **not** relocated under `/app/pulse/*` (kept
   at `/app/study`, no redirect stubs); no back-link chip rendered *on* the study detail page yet
   (the link is stored + surfaced from the Pulse side). Verified via `tsc` + `eslint`.

@@ -61,9 +61,11 @@ export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
             of work; progress updates automatically as tasks are completed.
           </p>
         </div>
+        {/* Client-facing wiki timeline — no internal slip overlay. */}
         <GanttChart
           blocks={blocks}
           milestones={milestones}
+          slippage={false}
           emptyHint="The timeline will appear here once project phases are scheduled."
         />
       </div>

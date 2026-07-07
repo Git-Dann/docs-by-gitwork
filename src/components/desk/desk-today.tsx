@@ -22,6 +22,10 @@ import {
   RevealList,
 } from "./desk-shared";
 import { WorldClocks, TeamOverlap, HQ_TZ, TEAM_TZ } from "./desk-time";
+import { PurgeReviewBanner } from "./desk-purge-review";
+import { DeskBroadcast } from "./desk-broadcast";
+import { DeskReminders } from "./desk-reminders";
+import { DeskNeedsReply } from "./desk-needs-reply";
 
 type Counterpart = { tz: string; label: string };
 
@@ -89,6 +93,15 @@ export function DeskToday({ onNavigate }: { onNavigate?: (tab: DeskTab) => void 
         </h2>
       </div>
 
+      {/* Broadcast — workspace-wide announcement (everyone sees it; admins post/replace). */}
+      <DeskBroadcast />
+
+      {/* Needs attention — retention purge review (admins/super-admins only, shown when > 0). */}
+      <PurgeReviewBanner enabled={isAdminOrAbove} />
+
+      {/* Needs you today — Slack @mentions + unread Gmail that want a reply. */}
+      <DeskNeedsReply />
+
       {/* Push your work forward */}
       <EditorialRow
         title="Push your work forward"
@@ -139,6 +152,9 @@ export function DeskToday({ onNavigate }: { onNavigate?: (tab: DeskTab) => void 
           />
         </div>
       </EditorialRow>
+
+      {/* Quick reminders — short personal temporary list (clears after 7 days). */}
+      <DeskReminders />
 
       {/* Around the team — who's off + next UK/PK holiday + working-hours overlap. */}
       <AroundTheTeam counterpart={counterpart} />

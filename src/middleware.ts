@@ -76,6 +76,10 @@ const PUBLIC_API_PATHS = [
   // Public client onboarding flow — the URL token in /api/onboarding/[token]
   // is its own auth.
   "/api/onboarding",
+  // Public DevSignal candidate flow — the URL token in /api/vet/[token] is its
+  // own auth (rate-limited in the handlers). The admin twin /api/devsignal
+  // stays gated. Anchored so this can't make /api/vetting-anything public.
+  "/api/vet",
   "/api/internal/resolve-host",
   // Public Pulse lite scanner (embeddable widget). SSRF-guarded + rate-limited
   // inside the handlers; no API key. CORS '*' (below) lets it run cross-origin.
@@ -105,6 +109,12 @@ const PUBLIC_API_PATHS = [
   "/api/cron",
 ];
 
+function isPublicApiPath(pathname: string): boolean {
+  // Anchor on a path-segment boundary so "/api/onboarding" can't make a sibling
+  // such as "/api/onboarding-forms" public. Exact match, or the entry followed by "/".
+  return PUBLIC_API_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+}
+
 const API_AUTH_COOKIE = "gitwork_api_session";
 
 // Server-internal headers used by route handlers to read the authenticated
@@ -122,6 +132,15 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
   "Access-Control-Max-Age": "86400",
 };
+
+// Wildcard CORS is only for the intentionally-cross-origin PUBLIC endpoints (the
+// embeddable Pulse widget, token-authed public pages, webhooks). Authenticated
+// /api routes are same-origin (web app) or native (iOS, no CORS) — sending them
+// `Access-Control-Allow-Origin: *` needlessly widened the CSRF surface. Empty
+// object → no CORS headers → the browser applies same-origin policy.
+function corsHeadersFor(pathname: string): Record<string, string> {
+  return isPublicApiPath(pathname) ? CORS_HEADERS : {};
+}
 
 // Maps /app/* path prefixes to the module permission that gates them. Listed as
 // pairs (not a module→path map) so a module can expose both its canonical route
@@ -196,9 +215,10 @@ export default auth(async (req) => {
     }
   }
 
-  // CORS preflight for all API routes
+  // CORS preflight — only the public API paths answer with permissive CORS;
+  // authenticated routes get no ACAO so cross-origin browser calls are blocked.
   if (req.method === "OPTIONS" && pathname.startsWith("/api/")) {
-    return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+    return new NextResponse(null, { status: 204, headers: corsHeadersFor(pathname) });
   }
 
   // Already logged in + visiting /login → send straight to the dashboard. But not if their
@@ -285,7 +305,7 @@ export default auth(async (req) => {
 
     // Anchor on a path-segment boundary so an entry like "/api/onboarding" can't make a
     // sibling such as "/api/onboarding-forms" public. Exact match, or the entry followed by "/".
-    const isPublic = PUBLIC_API_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+    const isPublic = isPublicApiPath(pathname);
     let mobileClaims: MobileTokenClaims | null = null;
 
     if (!isPublic) {
@@ -310,10 +330,21 @@ export default auth(async (req) => {
           }
         }
 
+        // (b) NextAuth web session. The `gitwork_api_session` cookie is minted on
+        // the /app response, but immediately after a Google sign-in the browser
+        // can fire the first /api/* fetch (e.g. /api/account) before that
+        // Set-Cookie has landed — a race that surfaced as a one-off 400/401 that
+        // "fixes itself on refresh". A valid session IS sufficient authorization
+        // (route handlers still enforce their own per-permission gates), so accept
+        // it directly and close the race.
+        if (!authorized && req.auth?.user) {
+          authorized = true;
+        }
+
         if (!authorized) {
           return new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
             status: 401,
-            headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+            headers: { ...corsHeadersFor(pathname), "Content-Type": "application/json" },
           });
         }
       }
@@ -331,7 +362,7 @@ export default auth(async (req) => {
     const response = NextResponse.next({
       request: { headers: forwardHeaders },
     });
-    for (const [key, value] of Object.entries(CORS_HEADERS)) {
+    for (const [key, value] of Object.entries(corsHeadersFor(pathname))) {
       response.headers.set(key, value);
     }
     return response;

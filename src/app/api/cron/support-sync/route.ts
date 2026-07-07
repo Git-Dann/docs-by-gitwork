@@ -1,5 +1,7 @@
 import { NextRequest, after } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
+import { assertCron } from "@/server/auth/cron";
+import { loggerFor } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { syncConnection } from "@/server/support-sync";
@@ -9,15 +11,11 @@ import { evaluateWorkflowRules } from "@/server/support";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+const log = loggerFor("cron:support-sync");
+
 export async function GET(request: NextRequest) {
   try {
-    const secret = process.env.CRON_SECRET;
-    if (secret) {
-      const authHeader = request.headers.get("Authorization");
-      if (authHeader !== `Bearer ${secret}`) {
-        return apiError("Unauthorized", 401);
-      }
-    }
+    assertCron(request);
 
     const workspace = await prisma.workspace.findFirst({
       where: { slug: DEFAULT_WORKSPACE_SLUG },
@@ -102,7 +100,9 @@ export async function GET(request: NextRequest) {
     // after the response — non-gating, never blocks sync.
     if (allNewConversationIds.length > 0) {
       after(async () => {
-        await enrichConversations({ workspace }, allNewConversationIds, { max: 50 }).catch(console.error);
+        await enrichConversations({ workspace }, allNewConversationIds, { max: 50 }).catch((err) =>
+          log.error("conversation enrichment failed", err),
+        );
         await Promise.allSettled(
           newConvByClient.map(({ clientId, convId }) => evaluateWorkflowRules(clientId, convId)),
         );

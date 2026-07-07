@@ -132,6 +132,8 @@ export interface WikiDTO {
   monitors: WikiMonitorsSection;
   /** Active delivery team (devs) on the project — for the dashboard hero stack. */
   team: WikiTeamMember[];
+  /** Gitwork product/account leads (workspace members) — a second hero stack. */
+  productTeam: WikiTeamMember[];
   /** Prod/staging links for the wiki header, from the client's featured platform (null when none). */
   headerLinks: WikiHeaderLinks | null;
   /** Documents section — whether it's enabled + the doc list (links/files/Foundry). */
@@ -255,6 +257,32 @@ async function loadWikiTeam(clientId: string): Promise<WikiTeamMember[]> {
     team.push({ name: c.name, initials: initialsOf(c.name), avatarUrl: c.avatarUrl, bio: c.wikiBio ?? null });
   }
   return team;
+}
+
+/**
+ * The client's product team (Gitwork account leads) — workspace members chosen
+ * per-client via `WorkspaceClient.productTeamUserIds`. Resolved to users and
+ * returned in the stored order. These are Users (not Candidates), so no wikiBio.
+ */
+async function loadWikiProductTeam(clientId: string): Promise<WikiTeamMember[]> {
+  const client = await prisma.workspaceClient.findUnique({
+    where: { id: clientId },
+    select: { productTeamUserIds: true },
+  });
+  const ids = client?.productTeamUserIds ?? [];
+  if (ids.length === 0) return [];
+  const users = await prisma.user.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true, email: true, avatarUrl: true },
+  });
+  const byId = new Map(users.map((u) => [u.id, u]));
+  // Preserve the stored display order; skip any ids that no longer resolve.
+  return ids.flatMap((id) => {
+    const u = byId.get(id);
+    if (!u) return [];
+    const displayName = u.name?.trim() || u.email;
+    return [{ name: displayName, initials: initialsOf(displayName), avatarUrl: u.avatarUrl, bio: null }];
+  });
 }
 
 /**
@@ -437,6 +465,7 @@ async function buildDTO(
     designSystem: await loadWikiDesignSystem(wiki.clientId),
     monitors: await loadWikiMonitors(wiki.clientId),
     team: await loadWikiTeam(wiki.clientId),
+    productTeam: await loadWikiProductTeam(wiki.clientId),
     headerLinks: await loadWikiHeaderLinks(wiki.clientId),
     documents: await loadWikiDocuments(wiki.clientId),
     users: opts?.includeUsers

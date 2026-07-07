@@ -59,6 +59,11 @@ function buildCandidateWhere(
 
   return {
     workspaceId,
+    // DevSignal isolation: candidates still in vetting (origin EXTERNAL, not yet
+    // promoted) must NOT appear in the Code roster. A human promotion flips
+    // `published` true, at which point they show. INTERNAL devs are unaffected.
+    // `NOT` avoids colliding with the OR clauses the filters below may add.
+    NOT: { origin: "EXTERNAL", published: false },
     ...(status ? { status: status as PrismaPipelineStatus } : {}),
     ...(tier ? { tier: tier as PrismaCodeClearTier } : {}),
     ...(stack

@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
+import { assertCron } from "@/server/auth/cron";
+import { loggerFor } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { googleClientForRefreshToken } from "@/server/google-auth";
@@ -45,11 +47,7 @@ const SCRIBE_ORGANISER_EMAILS = new Set([
  */
 export async function GET(request: NextRequest) {
   try {
-    const secret = process.env.CRON_SECRET;
-    if (secret) {
-      const authHeader = request.headers.get("Authorization");
-      if (authHeader !== `Bearer ${secret}`) return apiError("Unauthorized", 401);
-    }
+    assertCron(request);
 
     const workspace = await prisma.workspace.findFirst({
       where: { slug: DEFAULT_WORKSPACE_SLUG },
@@ -187,13 +185,15 @@ export async function GET(request: NextRequest) {
       }
     });
 
+    const log = loggerFor("cron:meet-transcripts");
     if (dropped > 0) {
-      console.warn(`[meet-transcripts] ${dropped} eligible meeting(s) deferred to a later run (cap ${MAX_PER_RUN}).`);
+      log.warn("eligible meetings deferred to a later run", { dropped, cap: MAX_PER_RUN });
     }
     if (unattributed.length > 0) {
-      console.warn(
-        `[meet-transcripts] ${unattributed.length} recent call(s) had no single-client match (skipped): ${unattributed.slice(0, 10).join("; ")}`,
-      );
+      log.warn("recent calls had no single-client match (skipped)", {
+        count: unattributed.length,
+        sample: unattributed.slice(0, 10),
+      });
     }
 
     return apiOk({

@@ -27,10 +27,32 @@ const nextConfig: NextConfig = {
     ],
   },
   async headers() {
+    // Baseline security headers applied to every route EXCEPT /embed/* (the public
+    // Pulse widget is intentionally frameable — handled separately below). The
+    // negative-lookahead source keeps the app's clickjacking protection off the
+    // embed so it can still load cross-origin.
+    const securityHeaders = [
+      // Force HTTPS for 2 years incl. subdomains. TLS terminates at the VPS proxy (§23).
+      { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      // Anti-clickjacking. CSP frame-ancestors is the modern control; X-Frame-Options
+      // covers older browsers. The app itself is never meant to be framed.
+      { key: "X-Frame-Options", value: "SAMEORIGIN" },
+      { key: "Content-Security-Policy", value: "frame-ancestors 'self';" },
+      // Drop features the web app doesn't use (native iOS handles device capture).
+      { key: "Permissions-Policy", value: "geolocation=(), microphone=(), browsing-topics=()" },
+    ];
     return [
+      {
+        // Everything except /embed/*.
+        source: "/((?!embed/).*)",
+        headers: securityHeaders,
+      },
       {
         // The public Pulse scanner is a shareable lead-gen widget — allow it to
         // be embedded as an <iframe> on any site (it exposes no authed actions).
+        // No X-Frame-Options here (it can't express a wildcard allow).
         source: "/embed/:path*",
         headers: [{ key: "Content-Security-Policy", value: "frame-ancestors *;" }],
       },

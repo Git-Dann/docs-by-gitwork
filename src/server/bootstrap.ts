@@ -15,6 +15,7 @@ import {
   getEnterpriseOnboardingForm,
 } from "@/lib/onboarding/default-form";
 import { prisma } from "@/lib/prisma";
+import { buildDefaultConfigRow } from "@/server/devsignal/config";
 import {
   DEFAULT_TEMPLATE_SLUG,
   DEFAULT_USER_EMAIL,
@@ -136,6 +137,12 @@ async function ensurePortalSchema() {
     `CREATE UNIQUE INDEX IF NOT EXISTS "DeviceToken_token_key" ON "DeviceToken"("token")`,
     `CREATE INDEX IF NOT EXISTS "DeviceToken_userId_environment_idx" ON "DeviceToken"("userId", "environment")`,
     `CREATE INDEX IF NOT EXISTS "DeviceToken_token_idx" ON "DeviceToken"("token")`,
+    // Client → Google Drive archive (data lifecycle). Additive; the BackgroundJob table + enum are
+    // left to `prisma db push` (it owns the enum type) — these are just the plain additive columns.
+    `ALTER TABLE "Workspace" ADD COLUMN IF NOT EXISTS "clientArchiveFolderId" TEXT`,
+    `ALTER TABLE "Workspace" ADD COLUMN IF NOT EXISTS "coldStoreFolderId" TEXT`,
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "archiveDriveFolderId" TEXT`,
+    `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "archivedToDriveAt" TIMESTAMP(3)`,
   ];
 
   for (const sql of statements) {
@@ -356,6 +363,33 @@ async function _ensureBaseRecords() {
       isDefault: false,
     },
   });
+
+  // DevSignal default pipeline config. `update: {}` so in-app weight edits
+  // aren't clobbered on re-boot (same discipline as the onboarding forms).
+  {
+    const devSignalDefault = buildDefaultConfigRow();
+    await prisma.devSignalPipelineConfig.upsert({
+      where: {
+        workspaceId_name_version: {
+          workspaceId: workspace.id,
+          name: devSignalDefault.name,
+          version: devSignalDefault.version,
+        },
+      },
+      update: {},
+      create: {
+        workspaceId: workspace.id,
+        name: devSignalDefault.name,
+        version: devSignalDefault.version,
+        isDefault: true,
+        enabledStages: devSignalDefault.enabledStages,
+        stageOrder: devSignalDefault.stageOrder,
+        stageWeights: devSignalDefault.stageWeights as Prisma.InputJsonValue,
+        blockingRules: devSignalDefault.blockingRules as Prisma.InputJsonValue,
+        publishedAt: new Date(),
+      },
+    });
+  }
 
   await prisma.rateCardPerson.createMany({
     data: getDefaultRateCardPeoplePayload(workspace.id),

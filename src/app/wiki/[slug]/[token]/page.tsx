@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { WikiPublicView } from "@/components/clients/wiki/wiki-public-view";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 // Session/cookie-dependent (the access lockdown) — render per request.
 export const dynamic = "force-dynamic";
@@ -89,13 +90,15 @@ export default async function PublicWikiPage({
   return (
     <div className="flex min-h-screen flex-col bg-[var(--surface-0)]">
       {/* Header — branding lives once, in the footer. */}
-      <header className="border-b border-[rgba(0,0,0,0.08)] bg-white px-4 py-4 md:px-8">
+      <header className="flex items-center justify-between gap-3 border-b border-[rgba(0,0,0,0.08)] bg-white px-4 py-4 md:px-8">
         <p
           className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]"
           style={{ fontFamily: "var(--font-mono)" }}
         >
           {wiki.clientName}{" // Wiki"}
         </p>
+        {/* Same Light/Dark/System control as the rest of Foundry. */}
+        <ThemeToggle iconOnly />
       </header>
 
       {/* Content grows to fill the viewport so the footer stays pinned to the bottom

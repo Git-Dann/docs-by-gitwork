@@ -7,6 +7,8 @@ import {
   createClient,
   createClientDesign,
   createClientPlatform,
+  updateClientProductTeam,
+  listTeamMembers,
   createOnboardingLink,
   createProposal,
   addMeetingDecisionApi,
@@ -33,6 +35,8 @@ import {
   saveEngagement,
   saveTimeline,
   setClientStatusApi,
+  getClientDriveArchiveStatus,
+  archiveClientToDrive,
   setProposalFavorite,
   listClientTouchpoints,
   createClientTouchpoint,
@@ -159,6 +163,24 @@ export function useSetClientStatus(slug: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
       queryClient.invalidateQueries({ queryKey: ["client", slug] });
+    },
+  });
+}
+
+export function useClientDriveArchiveStatus(slug: string, enabled = true) {
+  return useQuery({
+    queryKey: ["client-drive-archive", slug],
+    queryFn: () => getClientDriveArchiveStatus(slug),
+    enabled: enabled && Boolean(slug),
+  });
+}
+
+export function useArchiveClientToDrive(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => archiveClientToDrive(slug),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-drive-archive", slug] });
     },
   });
 }
@@ -328,6 +350,25 @@ export function useUpdateClientPlatform(slug: string, platformId: string) {
 export function useRevealClientPlatform(slug: string) {
   return useMutation({
     mutationFn: (platformId: string) => revealClientPlatformApi(slug, platformId),
+  });
+}
+
+/** Workspace members — for the product-team picker. */
+export function useTeamMembers() {
+  return useQuery({
+    queryKey: ["team", "members"],
+    queryFn: () => listTeamMembers(),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useUpdateClientProductTeam(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userIds: string[]) => updateClientProductTeam(slug, userIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client", slug] });
+    },
   });
 }
 
