@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { deriveKeywords } from "@/server/handbook-search";
+import { HANDBOOK_BODIES } from "@/server/handbook-bodies";
 
 // ── Built-in Handbook seed ───────────────────────────────────────────────────────
 // The shipped starter set of developer-facing articles — Gitwork standards and how we operate.
@@ -11,8 +12,10 @@ import { deriveKeywords } from "@/server/handbook-search";
 
 // Bump this whenever the built-in content below is revised so the change reaches existing
 // workspaces on the next deploy. v1 = initial skeletons; v2 = fully fleshed-out articles;
-// v3 = language guides, hidden search keywords, admonition/flair markup.
-export const HANDBOOK_SEED_VERSION = 3;
+// v3 = language guides, hidden search keywords, admonition/flair markup;
+// v4 = fully re-authored infographic-style content + removes the auto-seeded per-client project docs
+//      (the Handbook is the devs' bible, not a client directory).
+export const HANDBOOK_SEED_VERSION = 4;
 
 interface SeedArticle {
   slug: string;
@@ -1247,10 +1250,20 @@ export async function seedHandbookArticles(workspaceId: string): Promise<number>
   });
   if (workspace && workspace.handbookSeedVersion >= HANDBOOK_SEED_VERSION) return 0;
 
+  // One-time cleanup (v4): remove the earlier auto-seeded per-client "project" articles. The
+  // Handbook is the developers' bible, not a client directory — client context informs the docs,
+  // it doesn't live here as articles.
+  await prisma.handbookArticle.deleteMany({
+    where: { workspaceId, category: "Projects", slug: { startsWith: "project-" } },
+  });
+
   const now = new Date();
   let written = 0;
   for (const [i, a] of HANDBOOK_SEED.entries()) {
-    const words = a.content.trim().split(/\s+/).filter(Boolean).length;
+    // Content is the assembled, infographic-style body (handbook-bodies.ts); fall back to any inline
+    // content if a body is missing for a slug.
+    const content = HANDBOOK_BODIES[a.slug] ?? a.content;
+    const words = content.trim().split(/\s+/).filter(Boolean).length;
     const readMinutes = Math.max(1, Math.round(words / 200));
     const keywords = deriveKeywords({ title: a.title, category: a.category, tags: a.tags, explicit: a.keywords });
     await prisma.handbookArticle.upsert({
@@ -1262,7 +1275,7 @@ export async function seedHandbookArticles(workspaceId: string): Promise<number>
         title: a.title,
         summary: a.summary,
         category: a.category,
-        content: a.content,
+        content,
         tags: a.tags,
         keywords,
         readMinutes,
@@ -1274,7 +1287,7 @@ export async function seedHandbookArticles(workspaceId: string): Promise<number>
         slug: a.slug,
         summary: a.summary,
         category: a.category,
-        content: a.content,
+        content,
         tags: a.tags,
         keywords,
         status: "PUBLISHED",
@@ -1292,87 +1305,4 @@ export async function seedHandbookArticles(workspaceId: string): Promise<number>
     data: { handbookSeedVersion: HANDBOOK_SEED_VERSION },
   });
   return written;
-}
-
-/**
- * Seed a starter Handbook article per active (non-hidden) Portal client — a project playbook devs
- * flesh out. CREATE-ONLY, keyed on a stable `project-<clientSlug>` slug: once an article exists for
- * a client it's never touched again, so edits and deletions are preserved and new clients pick up a
- * stub on the next boot. Populated from real client fields — never fabricated. Runs every boot
- * (cheap: one query + create-if-missing per client).
- */
-export async function seedProjectArticles(workspaceId: string): Promise<number> {
-  const clients = await prisma.workspaceClient.findMany({
-    where: { workspaceId, hidden: false },
-    select: { name: true, slug: true, website: true, notes: true, primaryContactName: true, primaryContactEmail: true },
-    orderBy: { name: "asc" },
-  });
-  if (clients.length === 0) return 0;
-
-  const existing = await prisma.handbookArticle.findMany({
-    where: { workspaceId, slug: { in: clients.map((c) => `project-${c.slug}`) } },
-    select: { slug: true },
-  });
-  const have = new Set(existing.map((e) => e.slug));
-
-  const now = new Date();
-  let created = 0;
-  for (const c of clients) {
-    const slug = `project-${c.slug}`;
-    if (have.has(slug)) continue;
-
-    const overview = (c.notes ?? "").trim();
-    const contact = c.primaryContactName
-      ? `${c.primaryContactName}${c.primaryContactEmail ? ` (${c.primaryContactEmail})` : ""}`
-      : c.primaryContactEmail ?? "TBC";
-    const content = md(
-      overview || `Project workspace for **${c.name}**. Fill in the stack, repos and gotchas so any dev can pick this up cold.`,
-      "",
-      "## Overview",
-      overview ? overview : "_What is this project, and what stage is it at? (fill in)_",
-      "",
-      "## At a glance",
-      "| | |",
-      "|---|---|",
-      `| **Client** | ${c.name} |`,
-      `| **Website** | ${c.website ? c.website : "_TBC_"} |`,
-      `| **Primary contact** | ${contact} |`,
-      "",
-      "## Stack",
-      "_Languages, framework, hosting, key services. (fill in)_",
-      "",
-      "## Repositories & access",
-      "_Repo links, deploy target, where env/secrets live. (fill in — see [Handling secrets](/app/handbook))_",
-      "",
-      "## How we work on this",
-      "_Cadence, who's assigned, Slack channel, standup expectations. (fill in)_",
-      "",
-      "## Gotchas & tribal knowledge",
-      "> [!IMPORTANT]",
-      "> _The things that would bite a new dev — the non-obvious setup step, the flaky integration, the client preference. Write them here the moment you learn them._",
-    );
-    const words = content.trim().split(/\s+/).filter(Boolean).length;
-    await prisma.handbookArticle.create({
-      data: {
-        workspaceId,
-        title: c.name,
-        slug,
-        summary: `Project playbook for ${c.name} — stack, access, cadence and the gotchas.`,
-        category: "Projects",
-        content,
-        tags: ["project", c.slug],
-        keywords: deriveKeywords({
-          title: c.name,
-          category: "Projects",
-          tags: ["project", "client", c.slug],
-        }),
-        status: "PUBLISHED",
-        readMinutes: Math.max(1, Math.round(words / 200)),
-        orderKey: 0,
-        publishedAt: now,
-      },
-    });
-    created += 1;
-  }
-  return created;
 }

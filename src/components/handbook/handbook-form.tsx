@@ -218,7 +218,7 @@ export function HandbookForm({
               className="min-h-[420px] w-full resize-y bg-[var(--surface-0)] px-5 py-4 font-mono text-[13px] leading-6 text-[var(--text-1)] outline-none"
             />
           </div>
-          <div className={cn("px-5 py-4", !preview && "hidden lg:block")}>
+          <div className={cn("handbook-reader px-6 py-6", !preview && "hidden lg:block")} style={{ background: "var(--hb-cream)" }}>
             <ArticleMarkdown content={content} />
           </div>
         </div>

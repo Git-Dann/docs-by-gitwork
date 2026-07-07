@@ -1338,3 +1338,43 @@ button {
     animation: none;
   }
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Handbook article reader — a scoped editorial theme (infographic-grade layout in
+   Foundry blue/cream). Class-scoped under `.handbook-reader` so it NEVER affects the
+   app chrome, sidebar, or other modules. Warm + fixed regardless of app light/dark
+   (same discipline as the statement-style Docs render). Palette stays inside the
+   DESIGN.md blue family + semantic set — no new hues.
+   ──────────────────────────────────────────────────────────────────────────── */
+.handbook-reader {
+  --hb-navy: #0f172a;          /* sanctioned dark surface (hero / dark panels) */
+  --hb-navy-2: #111c33;        /* raised dark */
+  --hb-cream: #faf9f6;         /* warm page paper */
+  --hb-card: #ffffff;          /* card face */
+  --hb-panel: #f3f1ea;         /* warm inset panel */
+  --hb-ink: #14181f;           /* primary ink */
+  --hb-body: #3f4550;          /* body text */
+  --hb-muted: #7c7a72;         /* mono eyebrows / captions */
+  --hb-border: #e7e2d8;        /* warm hairline */
+  --hb-border-soft: #efeae0;
+  --hb-blue: #1d4ed8;          /* Gitwork Blue accent */
+  --hb-blue-deep: #1e3a8a;
+  --hb-blue-soft: #eff6ff;     /* soft blue callout wash */
+  --hb-blue-border: #cfe0fb;
+  --hb-green: #16a34a;
+  --hb-green-soft: #e9f7ee;
+  --hb-red: #dc2626;
+  --hb-on-dark: #f1f4f9;
+  --hb-on-dark-muted: #9aa6bd;
+}
+.handbook-reader .hb-serif { font-family: var(--font-display), Georgia, "Times New Roman", serif; }
+.handbook-reader .hb-mono { font-family: var(--font-mono), "SF Mono", Menlo, Consolas, monospace; }
+/* Eyebrow: mono, tracked, tiny, with a short accent rule beneath. */
+.handbook-reader .hb-eyebrow {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hb-blue);
+}

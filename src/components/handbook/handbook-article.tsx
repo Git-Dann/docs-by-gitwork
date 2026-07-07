@@ -21,7 +21,6 @@ import { cn, formatDate } from "@/lib/format";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { ArticleMarkdown } from "@/components/handbook/article-markdown";
 import { HandbookForm } from "@/components/handbook/handbook-form";
-import { hueFor } from "@/components/handbook/cover-hue";
 
 export function HandbookArticleView({ articleId }: { articleId: string }) {
   const router = useRouter();
@@ -112,69 +111,61 @@ export function HandbookArticleView({ articleId }: { articleId: string }) {
         )}
       </div>
 
-      {/* Editorial reading surface */}
-      <article className="widget-card">
-        <div className="widget-header">
-          <span className="widget-header__label">
-            <span className="widget-header__label--number">01</span>
-            {" // ARTICLE"}
+      {/* Editorial reading surface — scoped `.handbook-reader` theme (never leaks into the app) */}
+      <article className="handbook-reader overflow-hidden rounded-[16px] border border-[var(--hb-border)]">
+        {/* Navy hero band */}
+        <header className="relative overflow-hidden px-8 pb-9 pt-8 sm:px-12" style={{ background: "var(--hb-navy)" }}>
+          <span
+            aria-hidden
+            className="hb-serif pointer-events-none absolute -right-3 -top-10 select-none text-[190px] leading-none"
+            style={{ color: "#ffffff", opacity: 0.04 }}
+          >
+            §
           </span>
-          <span className="widget-header__status">
-            {article.status === "DRAFT" ? "DRAFT" : article.status === "ARCHIVED" ? "ARCHIVED" : "PUBLISHED"}
-          </span>
-        </div>
-
-        {/* Editorial cover band — gradient by section, echoing the reference infographic's covers */}
-        {(() => {
-          const hue = hueFor(`${article.category}:${article.title}`);
-          return (
-            <header
-              className="relative overflow-hidden border-b border-[var(--border-2)] px-7 pb-8 pt-9"
-              style={{ background: `linear-gradient(135deg, ${hue.from} 0%, ${hue.to} 100%)` }}
-            >
-              {/* oversized ghost numeral, like an editorial cover */}
-              <span
-                aria-hidden
-                className="pointer-events-none absolute -right-2 -top-6 select-none text-[150px] leading-none opacity-[0.10]"
-                style={{ fontFamily: "var(--font-display)", color: hue.ink }}
-              >
-                §
+          <div className="relative">
+            <div className="flex items-center justify-between gap-3">
+              <span className="hb-mono text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "#5b8def" }}>
+                Gitwork Handbook
               </span>
-              <div className="relative">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: hue.ink }}>
-                  <span>{article.category}</span>
-                  {article.readMinutes ? (
-                    <span className="inline-flex items-center gap-1 opacity-70">
-                      <ClockIcon className="h-3 w-3" />
-                      {article.readMinutes} min read
-                    </span>
-                  ) : null}
-                </div>
-                <div className="mt-3 h-0.5 w-12 rounded-full" style={{ background: hue.ink, opacity: 0.5 }} />
-                <h1
-                  className="mt-4 max-w-2xl text-[42px] leading-[1.06] tracking-[-0.03em]"
-                  style={{ fontFamily: "var(--font-display)", color: hue.ink }}
-                >
-                  {article.title}
-                </h1>
-                {article.summary ? (
-                  <p className="mt-3 max-w-2xl text-[17px] leading-7" style={{ color: hue.ink, opacity: 0.8 }}>
-                    {article.summary}
-                  </p>
-                ) : null}
-                <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px]" style={{ color: hue.ink, opacity: 0.65 }}>
-                  {article.author?.name ? <span>By {article.author.name}</span> : null}
-                  <span>Updated {formatDate(article.updatedAt)}</span>
-                  {article.tags.length > 0 ? <span>{article.tags.map((t) => `#${t}`).join("  ")}</span> : null}
-                </div>
-              </div>
-            </header>
-          );
-        })()}
+              <span className="hb-mono text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--hb-on-dark-muted)" }}>
+                {article.category} · Internal Standard
+              </span>
+            </div>
 
-        {/* Body */}
-        <div className="px-7 py-7">
-          <ArticleMarkdown content={article.content} className="space-y-5" />
+            <div className="mt-8">
+              <div className="hb-mono flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: "#5b8def" }}>
+                <span>{article.category}</span>
+                {article.readMinutes ? (
+                  <span className="inline-flex items-center gap-1" style={{ color: "var(--hb-on-dark-muted)" }}>
+                    <ClockIcon className="h-3 w-3" />
+                    {article.readMinutes} min read
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-3 h-0.5 w-12 rounded-full" style={{ background: "#5b8def" }} />
+              <h1 className="hb-serif mt-4 max-w-3xl text-[46px] leading-[1.04] tracking-[-0.02em]" style={{ color: "var(--hb-on-dark)" }}>
+                {article.title}
+                <span style={{ color: "#5b8def" }}>.</span>
+              </h1>
+              {article.summary ? (
+                <p className="mt-4 max-w-2xl text-[18px] leading-8" style={{ color: "var(--hb-on-dark-muted)" }}>
+                  {article.summary}
+                </p>
+              ) : null}
+              <div className="hb-mono mt-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]" style={{ color: "var(--hb-on-dark-muted)" }}>
+                {article.author?.name ? <span>By {article.author.name}</span> : null}
+                <span>Updated {formatDate(article.updatedAt)}</span>
+                {article.tags.length > 0 ? <span>{article.tags.map((t) => `#${t}`).join("  ")}</span> : null}
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Cream paper body */}
+        <div className="px-6 py-10 sm:px-12 sm:py-12" style={{ background: "var(--hb-cream)" }}>
+          <div className="mx-auto max-w-3xl">
+            <ArticleMarkdown content={article.content} />
+          </div>
         </div>
       </article>
     </div>
