@@ -342,6 +342,7 @@ export function ClientDetail({ slug }: { slug: string }) {
   // Leads show only the lead workspace + contact/notes — project/delivery info is hidden
   // until they become a client (status flips to ACTIVE via "Convert to client").
   const isLead = client.status === "LEAD";
+  const activeDevCount = (placements ?? []).filter((p) => !p.endDate).length;
 
   async function changeStatus(
     status: "ACTIVE" | "INACTIVE" | "LEAD",
@@ -481,13 +482,6 @@ export function ClientDetail({ slug }: { slug: string }) {
     client.postcode,
     client.country,
   ].filter(Boolean);
-
-  const hasContactInfo =
-    client.primaryContactName ||
-    client.primaryContactEmail ||
-    client.primaryContactPhone ||
-    addressParts.length > 0 ||
-    client.website;
 
   return (
     <div className="space-y-5">
@@ -701,28 +695,38 @@ export function ClientDetail({ slug }: { slug: string }) {
 
       {!isLead && (
         <>
-      {/* ── 02-06 // STATS ── */}
-      <div className={cn("grid grid-cols-2 gap-3 sm:gap-4", canViewPulse ? "lg:grid-cols-5" : "lg:grid-cols-4")}>
+      {/* ── 02-05 // STATS ── */}
+      <div className={cn("grid grid-cols-2 gap-3 sm:gap-4", canViewPulse ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
         <StatCard number="02" label="DOCS" value={proposals.length} />
         <StatCard number="03" label="PLATFORMS" value={platforms.length} />
         <StatCard number="04" label="DESIGNS" value={designs.length} />
         {canViewPulse ? <StatCard number="05" label="PULSE SCANS" value={pulseScans.length} /> : null}
-        <StatCard
-          number="06"
-          label="DEVS"
-          value={(placements ?? []).filter((p) => !p.endDate).length}
-          action={
-            <Link
-              href={`/app/portal/${slug}/tasks`}
-              className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
-            >
-              Tasks →
-            </Link>
-          }
-        />
       </div>
 
-      {/* ── 07 // SLACK ACTIVITY ── */}
+      {/* ── 06 // DEVS → the team's task board (dev count pinned in the title) ── */}
+      <section className="widget-card">
+        <div className="widget-header">
+          <span className="widget-header__label">
+            <span className="widget-header__label--number">06</span>
+            {" // DEVS"}
+          </span>
+          <span className="widget-data-label text-[var(--text-2)]">
+            {activeDevCount} {activeDevCount === 1 ? "Dev" : "Devs"}
+          </span>
+        </div>
+        <div className="p-5">
+          <Link
+            href={`/app/portal/${slug}/tasks`}
+            className="flex items-center justify-between rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3 text-sm font-medium text-[var(--text-1)] transition hover:border-[var(--brand-700)] hover:bg-[var(--surface-2)]"
+          >
+            Open task board
+            <span className="text-[var(--brand-700)]">Tasks →</span>
+          </Link>
+        </div>
+      </section>
+
+      {/* ── 07 // SLACK ACTIVITY (digest) + 08 // CONTACT — compact 2-col ── */}
+      <div className="grid items-start gap-4 lg:grid-cols-2">
       <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label">
@@ -759,13 +763,16 @@ export function ClientDetail({ slug }: { slug: string }) {
           data={slackActivity.data}
           isLoading={slackActivity.isPending}
           onConfigureClick={openEdit}
+          summaryOnly
         />
       </section>
+      <ContactCard client={client} number="08" onEdit={openEdit} />
+      </div>
         </>
       )}
 
-      {/* ── 08 // CONTACT (renumbered 02 in the lead view) ── */}
-      {(hasContactInfo || isLead) && (
+      {/* ── 02 // CONTACT — lead standalone (clients show Contact beside Slack above) ── */}
+      {isLead && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
@@ -2485,6 +2492,86 @@ function ClientDevelopersSection({
   );
 }
 
+/** Contact widget-card — used in the client's Slack+Contact 2-col row. Self-contained. */
+function ContactCard({
+  client,
+  number,
+  onEdit,
+}: {
+  client: ClientDetailRecord["client"];
+  number: string;
+  onEdit: () => void;
+}) {
+  const addressLines = [client.addressLine1, client.addressLine2].filter(Boolean);
+  const cityLine = [client.city, client.postcode].filter(Boolean).join(", ");
+  const hasAddress = addressLines.length > 0 || Boolean(cityLine) || Boolean(client.country);
+  const hasPrimary = Boolean(client.primaryContactName || client.primaryContactEmail || client.primaryContactPhone);
+  const anyInfo = hasPrimary || Boolean(client.website) || hasAddress;
+  return (
+    <section className="widget-card">
+      <div className="widget-header">
+        <span className="widget-header__label">
+          <span className="widget-header__label--number">{number}</span>
+          {" // CONTACT"}
+        </span>
+        <Button type="button" variant="secondary" size="xs" onClick={onEdit}>
+          <PencilIcon className="h-3 w-3" />
+          Edit
+        </Button>
+      </div>
+      <div className="p-6">
+        {anyInfo ? (
+          <div className="grid gap-6 sm:grid-cols-2">
+            {hasPrimary && (
+              <div className="space-y-1.5">
+                <p className="widget-data-label mb-2">Primary contact</p>
+                {client.primaryContactName && (
+                  <p className="text-sm font-medium text-[var(--text-1)]">{client.primaryContactName}</p>
+                )}
+                {client.primaryContactEmail && (
+                  <a href={`mailto:${client.primaryContactEmail}`} className="block text-sm text-[var(--brand-700)] hover:underline">
+                    {client.primaryContactEmail}
+                  </a>
+                )}
+                {client.primaryContactPhone && (
+                  <a href={`tel:${client.primaryContactPhone}`} className="block text-sm text-[var(--text-2)]">
+                    {client.primaryContactPhone}
+                  </a>
+                )}
+              </div>
+            )}
+            {client.website && (
+              <div className="space-y-1.5">
+                <p className="widget-data-label mb-2">Website</p>
+                <a
+                  href={client.website.startsWith("http") ? client.website : `https://${client.website}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm text-[var(--brand-700)] hover:underline"
+                >
+                  {client.website.replace(/^https?:\/\//, "")}
+                </a>
+              </div>
+            )}
+            {hasAddress && (
+              <div className="space-y-1.5">
+                <p className="widget-data-label mb-2">Address</p>
+                {addressLines.map((line, i) => (
+                  <p key={i} className="text-sm text-[var(--text-2)]">{line}</p>
+                ))}
+                {cityLine && <p className="text-sm text-[var(--text-2)]">{cityLine}</p>}
+                {client.country && <p className="text-sm text-[var(--text-2)]">{client.country}</p>}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-[var(--text-4)]">No contact details yet — add via Edit.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function StatCard({
   number,
   label,
@@ -2564,6 +2651,7 @@ function SlackActivityBody({
   data,
   isLoading,
   onConfigureClick,
+  summaryOnly = false,
 }: {
   data: {
     configured: boolean;
@@ -2575,6 +2663,8 @@ function SlackActivityBody({
   } | undefined;
   isLoading: boolean;
   onConfigureClick: () => void;
+  /** When true, render just the AI digest (no message list) — used in the compact 2-col row. */
+  summaryOnly?: boolean;
 }) {
   if (isLoading) {
     return (
@@ -2623,7 +2713,7 @@ function SlackActivityBody({
     );
   }
 
-  if (data.messages.length === 0) {
+  if (data.messages.length === 0 && !summaryOnly) {
     return (
       <div className="p-5">
         <p className="text-sm text-[var(--text-4)]">No recent messages in {data.channelName}.</p>
@@ -2634,6 +2724,47 @@ function SlackActivityBody({
   const summaryLines = data.summary
     ? data.summary.split("\n").map((l) => l.trim()).filter(Boolean)
     : [];
+
+  const digestBody =
+    summaryLines.length > 0 ? (
+      <ul className="space-y-2">
+        {summaryLines.map((line, i) => {
+          const clean = line.replace(/^\•\s*/, "").replace(/\*\*([^*]+)\*\*/g, "$1");
+          const colonIdx = clean.indexOf(":");
+          const label = colonIdx > 0 && colonIdx < 30 ? clean.slice(0, colonIdx) : null;
+          const body = label ? clean.slice(colonIdx + 1).trim() : clean;
+          return (
+            <li key={i} className="flex gap-2 text-sm leading-5 text-[var(--text-2)]">
+              <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-600)]" />
+              <span>
+                {label && <span className="font-semibold text-[var(--text-1)]">{label}: </span>}
+                {body}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    ) : (
+      data.reason !== "empty" && (
+        <p className="text-sm text-[var(--text-4)]">
+          Digest will appear after the first messages are posted.
+        </p>
+      )
+    );
+  const generatedAtEl = data.generatedAt ? (
+    <p className="widget-timestamp mt-4 opacity-50">{formatDate(data.generatedAt)}</p>
+  ) : null;
+
+  // Compact digest-only mode for the 2-col Slack + Contact row.
+  if (summaryOnly) {
+    return (
+      <div className="max-h-[360px] overflow-y-auto p-5">
+        <p className="widget-data-label mb-3">AI digest</p>
+        {digestBody}
+        {generatedAtEl}
+      </div>
+    );
+  }
 
   const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
   const recentMessages = data.messages
@@ -2652,41 +2783,8 @@ function SlackActivityBody({
       <div className="relative min-h-0">
         <div className="h-full overflow-y-auto p-5 pb-10">
         <p className="widget-data-label mb-3">AI digest</p>
-        {summaryLines.length > 0 ? (
-          <ul className="space-y-2">
-            {summaryLines.map((line, i) => {
-              const clean = line.replace(/^\•\s*/, "").replace(/\*\*([^*]+)\*\*/g, "$1");
-              const colonIdx = clean.indexOf(":");
-              const label = colonIdx > 0 && colonIdx < 30 ? clean.slice(0, colonIdx) : null;
-              const body = label ? clean.slice(colonIdx + 1).trim() : clean;
-              return (
-                <li key={i} className="flex gap-2 text-sm leading-5 text-[var(--text-2)]">
-                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-600)]" />
-                  <span>
-                    {label && (
-                      <span className="font-semibold text-[var(--text-1)]">{label}: </span>
-                    )}
-                    {body}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          /* Only show "no digest" if the channel has literally never had messages.
-             When the channel is just quiet (reason = "empty"), hide the placeholder
-             so the cached summary from a previous session would show if present. */
-          data.reason !== "empty" && (
-            <p className="text-sm text-[var(--text-4)]">
-              Digest will appear after the first messages are posted.
-            </p>
-          )
-        )}
-        {data.generatedAt && (
-          <p className="widget-timestamp mt-4 opacity-50">
-            {formatDate(data.generatedAt)}
-          </p>
-        )}
+        {digestBody}
+        {generatedAtEl}
         </div>
         {/* Fade gradient — no hard crop */}
         <div
