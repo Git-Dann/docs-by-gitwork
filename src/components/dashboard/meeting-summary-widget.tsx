@@ -53,6 +53,22 @@ interface CachedSummary {
   generatedBy?: string | null;
 }
 
+function MeetingJoinLink({ href }: { href: string | null }) {
+  if (!href) return null;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(event) => event.stopPropagation()}
+      className="inline-flex items-center gap-1 rounded-[5px] px-1.5 py-0.5 text-xs font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)] hover:text-[var(--brand-800)]"
+    >
+      <VideoCameraIcon className="h-3 w-3" />
+      Join
+    </a>
+  );
+}
+
 export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
   const [summaries, setSummaries] = useState<Record<string, CachedSummary>>({});
   const [generating, setGenerating] = useState<string | null>(null);
@@ -189,6 +205,7 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
                 <p className="text-xs text-[var(--text-3)]">
                   {formatDate(ev.start)} · {formatTime(ev.start)}
                 </p>
+                <MeetingJoinLink href={ev.meetLink} />
                 {!summaries[ev.id] ? (
                   <button
                     onClick={(e) => {
@@ -221,6 +238,7 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
                 <p className="mt-0.5 text-xs text-[var(--text-3)]">
                   {formatDate(activeEvent.start)} · {formatTime(activeEvent.start)}
                 </p>
+                <MeetingJoinLink href={activeEvent.meetLink} />
               </div>
               <button
                 onClick={() => setSelected(null)}

@@ -131,7 +131,7 @@ export function ProjectUpdateComposer({
     if (amChecked) markPhases.push("AM");
     if (pmChecked) markPhases.push("PM");
     try {
-      await push.mutateAsync({
+      const result = await push.mutateAsync({
         clientId,
         categoryIds: [...includedCats],
         statusGroups: [...statusGroups],
@@ -141,6 +141,15 @@ export function ProjectUpdateComposer({
         toRollup,
         saveAsDefaults: saveDefaults,
       });
+      if (!result.ok) {
+        setError(
+          result.channel
+            ? "Slack did not accept this update. Please try again shortly."
+            : "No Slack channel is configured for this client.",
+        );
+        pushingRef.current = false;
+        return;
+      }
       setPushed(true);
       setTimeout(onClose, 1100);
     } catch (e) {

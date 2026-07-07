@@ -4,6 +4,40 @@ import { getUserGoogleAuth } from "@/server/google-auth";
 
 export const dynamic = "force-dynamic";
 
+type CalendarEventLike = {
+  hangoutLink?: string | null;
+  location?: string | null;
+  description?: string | null;
+  conferenceData?: {
+    entryPoints?: Array<{
+      entryPointType?: string | null;
+      uri?: string | null;
+    }> | null;
+  } | null;
+};
+
+const MEETING_URL_RE = /https?:\/\/[^\s<>"']+/gi;
+const MEETING_HOST_RE = /(meet\.google\.com|zoom\.us|teams\.microsoft\.com|whereby\.com|webex\.com|gotomeeting\.com|join\.skype\.com)/i;
+
+function cleanUrl(value: string): string {
+  return value.replace(/[)\].,;]+$/g, "");
+}
+
+function extractUrls(value: string | null | undefined): string[] {
+  return (value?.match(MEETING_URL_RE) ?? []).map(cleanUrl);
+}
+
+function meetingLinkFromEvent(event: CalendarEventLike): string | null {
+  const conferenceLink =
+    event.hangoutLink ??
+    event.conferenceData?.entryPoints?.find((entry) => entry.entryPointType === "video")?.uri ??
+    null;
+  if (conferenceLink) return conferenceLink;
+
+  const candidates = [...extractUrls(event.location), ...extractUrls(event.description)];
+  return candidates.find((url) => MEETING_HOST_RE.test(url)) ?? candidates[0] ?? null;
+}
+
 /**
  * GET /api/integrations/calendar → upcoming events for the *signed-in user*.
  *
@@ -53,11 +87,6 @@ export async function GET() {
       })
       .slice(0, 20)
       .map((ev) => {
-        const meetLink =
-          ev.hangoutLink ??
-          ev.conferenceData?.entryPoints?.find((e) => e.entryPointType === "video")?.uri ??
-          null;
-
         return {
           id: ev.id ?? "",
           summary: ev.summary ?? "(no title)",
@@ -68,7 +97,7 @@ export async function GET() {
             .map((a) => a.email ?? a.displayName ?? "")
             .filter(Boolean),
           location: ev.location ?? null,
-          meetLink,
+          meetLink: meetingLinkFromEvent(ev),
         };
       });
 

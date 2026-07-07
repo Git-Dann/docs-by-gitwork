@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -69,6 +69,8 @@ export function TaskFormModal({
   const [dueDate, setDueDate] = useState(task?.dueDate ? task.dueDate.slice(0, 10) : "");
   const [featureBlockId, setFeatureBlockId] = useState(task?.featureBlock?.id ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   function toggleAssignee(id: string) {
     setAssigneeIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -109,8 +111,9 @@ export function TaskFormModal({
     [assigneeIds, task?.assignees, visibleAssigneeIds],
   );
 
-  async function handleSave() {
+  async function handleSave(options: { addAnother?: boolean } = {}) {
     setError(null);
+    setSuccess(null);
     if (!title.trim()) {
       setError("Title is required.");
       return;
@@ -148,6 +151,15 @@ export function TaskFormModal({
           dueDate: dueDate || null,
         });
         onSaved?.(saved);
+        if (options.addAnother) {
+          setTitle("");
+          setDescription("");
+          setAcceptanceCriteria("");
+          setDueDate("");
+          setSuccess("Task created. Add the next one.");
+          window.setTimeout(() => titleInputRef.current?.focus(), 0);
+          return;
+        }
       }
       onClose();
     } catch (err) {
@@ -186,6 +198,7 @@ export function TaskFormModal({
             <div>
               <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Title</label>
               <input
+                ref={titleInputRef}
                 autoFocus
                 className="app-input w-full"
                 value={title}
@@ -347,14 +360,25 @@ export function TaskFormModal({
             </div>
 
             {error ? <p className="text-sm text-[var(--danger-500)]">{error}</p> : null}
+            {success ? <p className="text-sm text-emerald-600">{success}</p> : null}
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-[var(--border-2)] px-6 py-4">
+        <div className="flex flex-wrap justify-end gap-3 border-t border-[var(--border-2)] px-6 py-4">
           <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button type="button" variant="primary" onClick={handleSave} loading={saving}>
+          {!isEdit ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void handleSave({ addAnother: true })}
+              loading={saving}
+            >
+              Create & add another
+            </Button>
+          ) : null}
+          <Button type="button" variant="primary" onClick={() => void handleSave()} loading={saving}>
             {isEdit ? "Save changes" : "Create task"}
           </Button>
         </div>

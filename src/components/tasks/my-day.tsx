@@ -50,6 +50,7 @@ export function MyDay() {
   async function pushUpdate(phase: "AM" | "PM") {
     if (pushingRef.current) return;
     pushingRef.current = true;
+    setPushMsg(null);
     try {
       const res = await push.mutateAsync({
         phase,
@@ -76,6 +77,11 @@ export function MyDay() {
         setPushed(null);
         setPushMsg(null);
       }, 4000);
+    } catch (err) {
+      setPushMsg({
+        text: err instanceof Error ? err.message : "Push failed",
+        ok: false,
+      });
     } finally {
       pushingRef.current = false;
     }

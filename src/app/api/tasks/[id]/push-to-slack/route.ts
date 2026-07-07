@@ -17,6 +17,7 @@ import { ensureBaseRecords } from "@/server/bootstrap";
 import { requireAuthedUser } from "@/server/auth/effective-user";
 import { getSlackBotToken, postMessage } from "@/server/slack/client";
 import { buildStandupCard, type StandupTaskCardInput } from "@/server/slack/blocks";
+import { assertTaskSlackPushCooldown } from "@/server/slack-cooldown";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
@@ -65,6 +66,7 @@ export async function POST(
     if (!botToken) {
       return apiError("Slack isn't connected. Set it up in Settings → Integrations.", 422);
     }
+    await assertTaskSlackPushCooldown(user, task.id);
 
     // Pre-mint the SlackMessageRef so the card's overflow buttons carry an id
     // we can authoritatively resolve back on interaction. The messageTs is a

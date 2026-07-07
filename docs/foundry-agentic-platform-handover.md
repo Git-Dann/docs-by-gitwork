@@ -359,6 +359,21 @@ Touched areas:
 - Meeting Notes UI: `src/components/clients/client-detail.tsx`
 - Task UI: `src/components/tasks/client-tasks-workspace.tsx`, `src/components/tasks/task-board.tsx`, `src/components/tasks/task-card.tsx`, `src/components/tasks/task-filter-bar.tsx`
 
+### Dev Workflow Safety Improvements
+
+Recent dev-operator quality-of-life changes:
+
+- Slack update sends now have a 60-second server-side cooldown for daily standups, ad-hoc project updates, broadcasts, and single-task test pushes. The cooldown is a retry/spam guard only; tasks, notes, defaults, and manual board edits remain independent.
+- The My Day and project update UIs surface cooldown/API errors directly so delayed network feedback does not encourage repeated clicking.
+- Calendar event ingestion now requests conference data and extracts meeting links from Google Meet, conference entry points, location, or description URLs. Dashboard calendar/meeting widgets show compact `Join` links where available.
+- The task creation modal now has `Create & add another` in create mode. It keeps client/status/priority/assignee/category context, clears the task-specific fields, and refocuses title for rapid planning sessions.
+
+Touched areas:
+
+- Cooldowns: `src/server/slack-cooldown.ts`, `src/server/tasks-standup.ts`, `src/server/slack-updates.ts`, `src/app/api/tasks/[id]/push-to-slack/route.ts`
+- Calendar links: `src/app/api/integrations/calendar/route.ts`, `src/components/dashboard/calendar-widget.tsx`, `src/components/dashboard/meeting-summary-widget.tsx`
+- Task entry: `src/components/tasks/task-form.tsx`
+
 ## Verification Notes
 
 The previous local failures were caused by running/installing dependencies under Node 24 while the project declares Node 22. The fix was:

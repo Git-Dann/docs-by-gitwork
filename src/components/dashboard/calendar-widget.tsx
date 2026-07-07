@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { SparklesIcon, VideoCameraIcon } from "@heroicons/react/24/solid";
 import { XMarkIcon } from "@heroicons/react/24/outline";
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { cn } from "@/lib/format";
 import { getCalendarEvents, generateMeetingSummary, getIntegrations } from "@/lib/api";
 import type { CalendarEvent, SlackChannel } from "@/lib/api";
 import type { WidgetSize } from "@/components/app-overview";
@@ -45,6 +46,25 @@ interface CachedSummary {
   cached: boolean;
   cachedAt?: string;
   generatedBy?: string | null;
+}
+
+function MeetingJoinLink({ href, compact = false }: { href: string | null; compact?: boolean }) {
+  if (!href) return null;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(event) => event.stopPropagation()}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-[5px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)] hover:text-[var(--brand-800)]",
+        compact ? "px-1.5 py-0.5 text-[11px]" : "px-2 py-1 text-xs",
+      )}
+    >
+      <VideoCameraIcon className={compact ? "h-3 w-3" : "h-3.5 w-3.5"} />
+      Join
+    </a>
+  );
 }
 
 export default function CalendarWidget({ size, index }: { size: WidgetSize; index: number }) {
@@ -118,6 +138,16 @@ export default function CalendarWidget({ size, index }: { size: WidgetSize; inde
     }
   }
 
+  function toggleSelected(eventId: string) {
+    setSelected((current) => (current === eventId ? null : eventId));
+  }
+
+  function handleEventKeyDown(event: KeyboardEvent<HTMLDivElement>, eventId: string) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    toggleSelected(eventId);
+  }
+
   if (isLoading) {
     return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
   }
@@ -141,7 +171,10 @@ export default function CalendarWidget({ size, index }: { size: WidgetSize; inde
             <p className="text-xs text-[var(--text-3)]">events upcoming</p>
           </div>
           {nextEvent && (
-            <p className="truncate text-center text-xs text-[var(--text-3)]">{nextEvent.summary}</p>
+            <div className="text-center">
+              <p className="truncate text-xs text-[var(--text-3)]">{nextEvent.summary}</p>
+              <MeetingJoinLink href={nextEvent.meetLink} compact />
+            </div>
           )}
         </div>
       </div>
@@ -208,29 +241,36 @@ export default function CalendarWidget({ size, index }: { size: WidgetSize; inde
               </div>
             ) : (
               events.map((ev) => (
-                <button
+                <div
                   key={ev.id}
-                  className={`w-full border-b border-[rgba(0,0,0,0.06)] px-4 py-2.5 text-left transition-colors hover:bg-[var(--surface-brand)] ${selected === ev.id ? "bg-[var(--surface-brand)]" : ""}`}
-                  onClick={() => setSelected(ev.id === selected ? null : ev.id)}
+                  role="button"
+                  tabIndex={0}
+                  className={`w-full cursor-pointer border-b border-[rgba(0,0,0,0.06)] px-4 py-2.5 text-left transition-colors hover:bg-[var(--surface-brand)] focus:outline-none focus-visible:bg-[var(--surface-brand)] ${selected === ev.id ? "bg-[var(--surface-brand)]" : ""}`}
+                  onClick={() => toggleSelected(ev.id)}
+                  onKeyDown={(event) => handleEventKeyDown(event, ev.id)}
                 >
                   <p className="truncate text-sm font-medium text-[var(--text-1)]">{ev.summary}</p>
                   <p className="mt-0.5 text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
                     {formatDate(ev.start)} · {formatTime(ev.start)}
                   </p>
-                  {summaries[ev.id] ? (
-                    <span className="mt-0.5 block text-xs font-medium text-[var(--success-500)]">✓ Ready</span>
-                  ) : (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelected(ev.id);
-                      }}
-                      className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--accent)] hover:underline"
-                    >
-                      <SparklesIcon className="h-3 w-3" /> Summarise
-                    </button>
-                  )}
-                </button>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <MeetingJoinLink href={ev.meetLink} compact />
+                    {summaries[ev.id] ? (
+                      <span className="text-xs font-medium text-[var(--success-500)]">✓ Ready</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelected(ev.id);
+                        }}
+                        className="inline-flex items-center gap-1 text-xs text-[var(--accent)] hover:underline"
+                      >
+                        <SparklesIcon className="h-3 w-3" /> Summarise
+                      </button>
+                    )}
+                  </div>
+                </div>
               ))
             )}
           </div>
@@ -258,9 +298,12 @@ export default function CalendarWidget({ size, index }: { size: WidgetSize; inde
               <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[rgba(0,0,0,0.08)] px-4 py-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-[var(--text-1)]">{activeEvent.summary}</p>
-                  <p className="mt-0.5 text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-                    {formatDate(activeEvent.start)} · {formatTime(activeEvent.start)}
-                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <p className="text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+                      {formatDate(activeEvent.start)} · {formatTime(activeEvent.start)}
+                    </p>
+                    <MeetingJoinLink href={activeEvent.meetLink} compact />
+                  </div>
                 </div>
                 <button
                   onClick={() => setSelected(null)}
@@ -299,9 +342,12 @@ export default function CalendarWidget({ size, index }: { size: WidgetSize; inde
               <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[rgba(0,0,0,0.08)] px-4 py-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-[var(--text-1)]">{activeEvent.summary}</p>
-                  <p className="mt-0.5 text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-                    {formatDate(activeEvent.start)} · {formatTime(activeEvent.start)}
-                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <p className="text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+                      {formatDate(activeEvent.start)} · {formatTime(activeEvent.start)}
+                    </p>
+                    <MeetingJoinLink href={activeEvent.meetLink} compact />
+                  </div>
                 </div>
                 <button
                   onClick={() => setSelected(null)}

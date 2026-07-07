@@ -15,6 +15,7 @@ import {
 import { listTasks } from "@/server/tasks";
 import { getSlackBotToken, postMessage } from "@/server/slack/client";
 import { buildRollupCard, buildStandupCard, type StandupTaskCardInput } from "@/server/slack/blocks";
+import { assertDailyUpdateCooldown } from "@/server/slack-cooldown";
 import { TEAM_ROSTER } from "@/server/team-roster";
 import type {
   TaskDTO,
@@ -157,6 +158,7 @@ export async function pushDailyUpdate(
   await ensureBaseRecords();
   const workDate = parseWorkDate();
   const now = new Date();
+  await assertDailyUpdateCooldown(user, { phase: input.phase, workDate });
 
   // For the EOD "all-in" nudge: was this dev's PM already in before this push?
   const prior =

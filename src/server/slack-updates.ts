@@ -46,6 +46,7 @@ import {
   type TaskCardDetail,
   type TaskDTO,
 } from "@/types/tasks";
+import { assertSlackUpdateLogCooldown } from "@/server/slack-cooldown";
 
 // ─── Per-dev push prefs ──────────────────────────────────────────────────────
 
@@ -165,6 +166,11 @@ export async function pushProjectUpdate(
   if ((totalSelected === 0 && !note) || !botToken || !channel) {
     return { ok: Boolean(botToken && channel), channel, taskCount: totalSelected };
   }
+  await assertSlackUpdateLogCooldown(user, {
+    kind: "PROJECT_UPDATE",
+    clientId: client.id,
+    label: "Project update",
+  });
 
   // Pre-mint a SlackMessageRef per posted task so the card's overflow actions
   // resolve back to them (identical scheme to the standup card).
@@ -189,6 +195,17 @@ export async function pushProjectUpdate(
     ),
   );
   const refByTask = new Map(flat.map((t, i) => [t.id, placeholders[i].id]));
+  const updateLog = await prisma.slackUpdateLog.create({
+    data: {
+      workspaceId: user.workspaceId,
+      userId: user.id,
+      kind: "PROJECT_UPDATE",
+      clientId: client.id,
+      channelId: channel,
+      taskCount: null,
+    },
+    select: { id: true },
+  });
 
   const groups: ProjectUpdateGroup[] = posting.map((g) => ({
     label: PROJECT_UPDATE_GROUP_LABELS[g.group] as ProjectUpdateGroup["label"],
@@ -225,6 +242,8 @@ export async function pushProjectUpdate(
     });
   } else {
     await prisma.slackMessageRef.deleteMany({ where: { id: { in: placeholders.map((p) => p.id) } } });
+    await prisma.slackUpdateLog.delete({ where: { id: updateLog.id } }).catch(() => undefined);
+    return { ok: false, channel, taskCount: flat.length };
   }
 
   // Optional cross-post to the roll-up channel (snapshot copy; actions still
@@ -236,15 +255,9 @@ export async function pushProjectUpdate(
     }
   }
 
-  await prisma.slackUpdateLog.create({
-    data: {
-      workspaceId: user.workspaceId,
-      userId: user.id,
-      kind: "PROJECT_UPDATE",
-      clientId: client.id,
-      channelId: channel,
-      taskCount: flat.length,
-    },
+  await prisma.slackUpdateLog.update({
+    where: { id: updateLog.id },
+    data: { taskCount: flat.length },
   });
   await bumpLastPost(user.workspaceId);
 
@@ -323,6 +336,11 @@ export async function broadcastUpdate(
   // Validate every target is in scope (the lead has seeAllClients, so this just
   // confirms the clients exist in the workspace).
   for (const id of input.clientIds) await assertClientInScope(user, id);
+  await assertSlackUpdateLogCooldown(user, {
+    kind: "BROADCAST",
+    clientId: null,
+    label: "Broadcast",
+  });
 
   const [clients, ws] = await Promise.all([
     prisma.workspaceClient.findMany({
@@ -337,6 +355,17 @@ export async function broadcastUpdate(
   const botToken = getSlackBotToken(ws);
   const who = user.name?.trim() || user.email;
   const postedChannels: string[] = [];
+  const summaryLog = await prisma.slackUpdateLog.create({
+    data: {
+      workspaceId: user.workspaceId,
+      userId: user.id,
+      kind: "BROADCAST",
+      clientId: null,
+      taskCount: 0,
+      message: input.message.trim(),
+    },
+    select: { id: true },
+  });
 
   if (botToken) {
     for (const client of clients) {
@@ -372,12 +401,9 @@ export async function broadcastUpdate(
 
   // Summary log row (clientId null) so the broadcast shows in history even when
   // no channel resolved.
-  await prisma.slackUpdateLog.create({
+  await prisma.slackUpdateLog.update({
+    where: { id: summaryLog.id },
     data: {
-      workspaceId: user.workspaceId,
-      userId: user.id,
-      kind: "BROADCAST",
-      clientId: null,
       taskCount: postedChannels.length,
       message: input.message.trim(),
     },
