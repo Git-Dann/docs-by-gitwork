@@ -646,8 +646,8 @@ function MemberTooltip({
       style={{ position: "fixed", left, top: anchor.top - 8, transform: "translate(-50%, -100%)" }}
       className="pointer-events-none z-[100] rounded-md bg-[var(--text-1)] px-2.5 py-1.5 text-center shadow-lg"
     >
-      <span className="block whitespace-nowrap text-[11px] font-medium text-white">{name}</span>
-      {bio && <span className="mt-0.5 block text-[10px] italic text-white/70">{bio}</span>}
+      <span className="block whitespace-nowrap text-[11px] font-medium text-[var(--surface-0)]">{name}</span>
+      {bio && <span className="mt-0.5 block text-[10px] italic text-[var(--surface-0)]/70">{bio}</span>}
     </div>,
     document.body,
   );
@@ -657,7 +657,7 @@ function TeamStack({ label, members }: { label: string; members: WikiDTO["team"]
   return (
     <div className="flex items-center gap-2">
       <span
-        className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]"
+        className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]"
         style={{ fontFamily: MONO }}
       >
         {label}
@@ -667,7 +667,7 @@ function TeamStack({ label, members }: { label: string; members: WikiDTO["team"]
           <AvatarWithTooltip key={i} member={m} />
         ))}
         {members.length > 6 && (
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-1)] text-[11px] font-semibold text-[var(--text-3)] ring-2 ring-white">
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-1)] text-[11px] font-semibold text-[var(--text-3)] ring-2 ring-[var(--surface-0)]">
             +{members.length - 6}
           </span>
         )}
@@ -698,12 +698,12 @@ function TeamAvatar({
         src={avatarUrl}
         alt={name}
         onError={() => setFailed(true)}
-        className="h-8 w-8 rounded-full object-cover ring-2 ring-white"
+        className="h-8 w-8 rounded-full object-cover ring-2 ring-[var(--surface-0)]"
       />
     );
   }
   return (
-    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--brand-50)] text-[11px] font-semibold text-[var(--brand-700)] ring-2 ring-white">
+    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--brand-50)] text-[11px] font-semibold text-[var(--brand-700)] ring-2 ring-[var(--surface-0)]">
       {initials}
     </span>
   );

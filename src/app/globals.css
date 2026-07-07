@@ -273,6 +273,45 @@
 [data-theme="dark"] .border-sky-200,
 [data-theme="dark"] .border-indigo-200 { border-color: rgba(96, 165, 250, 0.30); }
 
+/* Neutral-scale text remap for dark mode.
+ *
+ * Dashboard widgets and other older UI hardcode the light slate palette for
+ * text — as arbitrary hex (text-[#0F172A] titles, text-[#475569] body,
+ * text-[#94A3B8] muted) and as Tailwind neutral classes (text-slate/gray/
+ * zinc/neutral/stone-400..900). None flip, so on the dark shell titles go
+ * black-on-black and body text is barely legible. Map them to the text
+ * tokens (which are light in dark mode). Light mode is untouched. */
+[data-theme="dark"] .text-\[\#0F172A\],
+[data-theme="dark"] .text-\[\#0f172a\],
+[data-theme="dark"] .text-\[\#1E293B\],
+[data-theme="dark"] .text-\[\#111827\] { color: var(--text-1); }
+[data-theme="dark"] .text-\[\#334155\],
+[data-theme="dark"] .text-\[\#475569\] { color: var(--text-2); }
+[data-theme="dark"] .text-\[\#64748B\],
+[data-theme="dark"] .text-\[\#64748b\],
+[data-theme="dark"] .text-\[\#606b85\] { color: var(--text-3); }
+[data-theme="dark"] .text-\[\#94A3B8\],
+[data-theme="dark"] .text-\[\#94a3b8\] { color: var(--text-4); }
+
+[data-theme="dark"] .text-slate-900, [data-theme="dark"] .text-gray-900,
+[data-theme="dark"] .text-zinc-900,  [data-theme="dark"] .text-neutral-900,
+[data-theme="dark"] .text-stone-900,
+[data-theme="dark"] .text-slate-800, [data-theme="dark"] .text-gray-800,
+[data-theme="dark"] .text-zinc-800,  [data-theme="dark"] .text-neutral-800,
+[data-theme="dark"] .text-stone-800 { color: var(--text-1); }
+[data-theme="dark"] .text-slate-700, [data-theme="dark"] .text-gray-700,
+[data-theme="dark"] .text-zinc-700,  [data-theme="dark"] .text-neutral-700,
+[data-theme="dark"] .text-stone-700,
+[data-theme="dark"] .text-slate-600, [data-theme="dark"] .text-gray-600,
+[data-theme="dark"] .text-zinc-600,  [data-theme="dark"] .text-neutral-600,
+[data-theme="dark"] .text-stone-600 { color: var(--text-2); }
+[data-theme="dark"] .text-slate-500, [data-theme="dark"] .text-gray-500,
+[data-theme="dark"] .text-zinc-500,  [data-theme="dark"] .text-neutral-500,
+[data-theme="dark"] .text-stone-500 { color: var(--text-3); }
+[data-theme="dark"] .text-slate-400, [data-theme="dark"] .text-gray-400,
+[data-theme="dark"] .text-zinc-400,  [data-theme="dark"] .text-neutral-400,
+[data-theme="dark"] .text-stone-400 { color: var(--text-4); }
+
 @theme {
   --color-background: #ffffff;
   --color-foreground: #0F172A;
