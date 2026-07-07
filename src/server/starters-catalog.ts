@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { StarterType, StarterContent } from "@/server/starters";
+import PROMPT_STARTERS from "@/data/prompt-starters.json";
 
 // ── Built-in Starters catalog ───────────────────────────────────────────────────
 // The shipped Prompt→Production library. Seeded automatically on boot (see
@@ -23,7 +24,7 @@ export interface BuiltInStarter {
   featured?: boolean;
 }
 
-export const STARTER_BUILT_INS: BuiltInStarter[] = [
+const CORE_BUILT_INS: BuiltInStarter[] = [
   {
     slug: "humanizer",
     name: "Humanizer",
@@ -408,6 +409,15 @@ export const STARTER_BUILT_INS: BuiltInStarter[] = [
       _buildRef: "database-sentinel + supabase-pentest-skills + supashield + vibe-security",
     },
   },
+];
+
+// The Prompts category — a large pack of PROMPT-type starters parsed from the prompt packs into
+// src/data/prompt-starters.json (see scripts/parse-prompt-library.mjs). Gitwork-branded; each
+// carries its provenance only in content._buildRef, which serializeStarter strips before any
+// payload leaves the server. Combined with the core catalog into the seeded set.
+export const STARTER_BUILT_INS: BuiltInStarter[] = [
+  ...CORE_BUILT_INS,
+  ...(PROMPT_STARTERS as unknown as BuiltInStarter[]),
 ];
 
 // ── Source references ("view & use") ─────────────────────────────────────────────
