@@ -117,10 +117,12 @@ export interface PostMessageResponse {
   message?: Record<string, unknown>;
 }
 
-/** Foundry logo served from the public marketing site — Slack fetches it
- *  per-message when icon_url is set on chat.postMessage. Falls back to the
- *  app's configured display image if unreachable. */
-const DEFAULT_ICON_URL = "https://foundry.gitwork.co.uk/foundry-logo.png";
+/** Square Foundry avatar served from the public site — Slack fetches it per-message
+ *  when icon_url is set on chat.postMessage, and renders it in a SQUARE frame. The
+ *  wide `/foundry-logo.png` wordmark (245×64) was getting squished into that square
+ *  and looked broken; `/foundry-icon.png` is a 512×512 square (wordmark centred on
+ *  white) so it renders cleanly. Falls back to the app's display image if unreachable. */
+const DEFAULT_ICON_URL = "https://foundry.gitwork.co.uk/foundry-icon.png";
 
 export function postMessage(token: string, input: PostMessageInput): Promise<SlackResponse<PostMessageResponse>> {
   return call<PostMessageResponse>(token, "chat.postMessage", {
