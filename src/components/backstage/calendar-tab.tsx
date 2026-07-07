@@ -1002,7 +1002,24 @@ function DayDetail({
             <div key={ev.id} className="flex items-center gap-1.5 text-xs text-[var(--text-1)]">
               <span className={cn("h-2 w-2 shrink-0 rounded-full", memberDot(ev.userId))} />
               <span className="truncate">{ev.summary}</span>
-              <span className="ml-auto shrink-0 text-[10px] text-[var(--text-3)]">{eventTime(ev)}</span>
+              {ev.meetLink ? (
+                <a
+                  href={ev.meetLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-auto shrink-0 font-medium text-[var(--brand-700)] hover:underline"
+                >
+                  Join →
+                </a>
+              ) : null}
+              <span
+                className={cn(
+                  "shrink-0 text-[10px] text-[var(--text-3)]",
+                  ev.meetLink ? "" : "ml-auto",
+                )}
+              >
+                {eventTime(ev)}
+              </span>
             </div>
           ))}
         </div>

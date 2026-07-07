@@ -97,8 +97,17 @@ export async function getTeamCalendarEvents(
           const endRaw = ev.end?.dateTime ?? ev.end?.date;
           if (!startRaw) continue;
           const allDay = !ev.start?.dateTime;
+          const isPrivate = ev.visibility === "private";
           // Respect privacy: don't leak titles of events marked private.
-          const summary = ev.visibility === "private" ? "Busy" : ev.summary ?? "Busy";
+          const summary = isPrivate ? "Busy" : ev.summary ?? "Busy";
+          // Reliable conference link only (hangout / Meet video entry point) —
+          // never scrape description/location for other members' events. Null on
+          // private events so a masked "Busy" block carries no join link.
+          const meetLink = isPrivate
+            ? null
+            : ev.hangoutLink ??
+              ev.conferenceData?.entryPoints?.find((e) => e.entryPointType === "video")?.uri ??
+              null;
           out.push({
             id: `${m.user.id}:${ev.id ?? startRaw}`,
             userId: m.user.id,
@@ -107,6 +116,7 @@ export async function getTeamCalendarEvents(
             start: startRaw,
             end: endRaw ?? startRaw,
             allDay,
+            meetLink,
           });
         }
         return out;
