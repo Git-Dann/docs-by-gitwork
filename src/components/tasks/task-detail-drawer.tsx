@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowTopRightOnSquareIcon,
   PencilIcon,
@@ -29,7 +29,7 @@ import {
   useAddTaskComment,
   useCreateTask,
 } from "@/hooks/use-tasks";
-import { TASK_STATUSES, TASK_STATUS_LABELS, type TaskDetailDTO, type TaskStatus } from "@/types/tasks";
+import { TASK_STATUSES, TASK_STATUS_LABELS, type TaskDTO, type TaskDetailDTO, type TaskStatus } from "@/types/tasks";
 import { TaskAvatar, AssigneeStack } from "@/components/tasks/task-avatar";
 import { TaskPriorityBadge } from "@/components/tasks/task-badges";
 import { TaskFormModal } from "@/components/tasks/task-form";
@@ -41,6 +41,11 @@ import { getClientMeeting, type ScribeMeeting } from "@/lib/api";
 const ADMIN_ROLES = new Set(["ADMIN", "SUPER_ADMIN"]);
 
 const MONO = { fontFamily: "var(--font-mono)" } as const;
+
+// Entry animation for the slide-over: fade the backdrop, slide the panel in from the right.
+const DRAWER_KEYFRAMES =
+  "@keyframes drawer-backdrop-in{from{opacity:0}to{opacity:1}}" +
+  "@keyframes drawer-panel-in{from{transform:translateX(24px);opacity:0.4}to{transform:translateX(0);opacity:1}}";
 
 const STATUS_DOT: Record<TaskStatus, string> = {
   BACKLOG: "bg-zinc-400",
@@ -190,11 +195,27 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
   }, [team.data, task?.client.id]);
 
   const [editing, setEditing] = useState(false);
-  const [openSubtaskId, setOpenSubtaskId] = useState<string | null>(null);
+  const [editingSubtask, setEditingSubtask] = useState<TaskDTO | null>(null);
   const [note, setNote] = useState("");
   const [subtaskTitle, setSubtaskTitle] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Make the drawer a true modal: lock background scroll so the page behind can't
+  // be scrolled/navigated, and close on Escape — but only when no layered form
+  // modal is open (that modal owns its own Escape).
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !editing && !editingSubtask) onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [editing, editingSubtask, onClose]);
 
   async function copyRef() {
     if (!task) return;
@@ -247,8 +268,18 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
 
   return (
     <div className="fixed inset-0 z-[70] flex justify-end">
-      <button type="button" className="app-dialog-backdrop absolute inset-0" aria-label="Close" onClick={onClose} />
-      <div className="relative z-10 flex h-full w-full max-w-[560px] flex-col bg-[var(--surface-0)] shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)]">
+      <style>{DRAWER_KEYFRAMES}</style>
+      <button
+        type="button"
+        className="app-dialog-backdrop absolute inset-0"
+        aria-label="Close"
+        onClick={onClose}
+        style={{ animation: "drawer-backdrop-in 160ms ease-out" }}
+      />
+      <div
+        className="relative z-10 flex h-full w-full max-w-[560px] flex-col bg-[var(--surface-0)] shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)]"
+        style={{ animation: "drawer-panel-in 200ms cubic-bezier(0.22,1,0.36,1)" }}
+      >
         {isPending || !task ? (
           <div className="flex flex-1 items-center justify-center">
             <p className="widget-data-label animate-pulse">Loading task…</p>
@@ -372,12 +403,12 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
                         className="accent-[var(--brand-700)]"
                         aria-label={s.status === "DONE" ? "Mark subtask not done" : "Mark subtask done"}
                       />
-                      {/* Open the subtask in its own drawer for full editing —
-                          rename, reassign, due date, notes, delete. */}
+                      {/* Open the subtask in the edit form (rename, reassign, due,
+                          priority, description) — a light modal, not a nested drawer. */}
                       <button
                         type="button"
-                        onClick={() => setOpenSubtaskId(s.id)}
-                        title="Open subtask"
+                        onClick={() => setEditingSubtask(s)}
+                        title="Edit subtask"
                         className={cn(
                           "min-w-0 flex-1 truncate text-left text-sm transition hover:text-[var(--brand-700)] hover:underline",
                           s.status === "DONE" ? "text-[var(--text-4)] line-through" : "text-[var(--text-1)]",
@@ -388,7 +419,7 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
                       <AssigneeStack users={s.assignees} size={18} />
                       <button
                         type="button"
-                        onClick={() => setOpenSubtaskId(s.id)}
+                        onClick={() => setEditingSubtask(s)}
                         aria-label="Edit subtask"
                         className="shrink-0 rounded-[5px] p-1 text-[var(--text-4)] opacity-0 transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] focus:opacity-100 group-hover:opacity-100"
                       >
@@ -492,9 +523,9 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
 
       {editing && task ? <TaskFormModal task={task} lockClient onClose={() => setEditing(false)} /> : null}
 
-      {/* Nested drawer for editing a subtask — stacks above this one. */}
-      {openSubtaskId ? (
-        <TaskDetailDrawer taskId={openSubtaskId} onClose={() => setOpenSubtaskId(null)} />
+      {/* Edit a subtask in the standard task form modal — no nested drawer. */}
+      {editingSubtask ? (
+        <TaskFormModal task={editingSubtask} lockClient onClose={() => setEditingSubtask(null)} />
       ) : null}
     </div>
   );
