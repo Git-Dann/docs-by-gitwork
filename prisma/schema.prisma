@@ -339,6 +339,11 @@ model Workspace {
   coldStoreFolderId           String?
   /// Hide developer rates across the platform (On Your Desk cashflow, client cards). Off by default = rates hidden.
   showDevRates                Boolean                    @default(false)
+  /// Which revision of the built-in Handbook seed this workspace has received. Bumped in code
+  /// (HANDBOOK_SEED_VERSION); when the workspace's stored value is lower, bootstrap re-upserts the
+  /// built-in articles by slug once, then advances this. Lets us ship improved built-in content on
+  /// deploy without clobbering members' own edits between version bumps. 0 = never seeded.
+  handbookSeedVersion         Int                        @default(0)
   createdAt                   DateTime                   @default(now())
   updatedAt                   DateTime                   @updatedAt
   members                     WorkspaceMember[]
@@ -3324,14 +3329,14 @@ model DeskReminder {
   id          String   @id @default(cuid())
   workspaceId String
   userId      String
-  body        String    @db.Text
-  done        Boolean   @default(false)
+  body        String   @db.Text
+  done        Boolean  @default(false)
   // "MANUAL" = typed into the On Your Desk clipboard by the owner; "SLACK" =
   // created via the /desk slash command. The clipboard shows MANUAL only; the
   // "Needs you today" list surfaces SLACK ones. Additive, defaults MANUAL.
-  source      String    @default("MANUAL")
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  source      String   @default("MANUAL")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
