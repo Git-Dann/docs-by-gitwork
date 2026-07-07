@@ -87,8 +87,17 @@ export function WikiSidebar({
 }: Props) {
   const [addOpen, setAddOpen] = useState(false);
   // Portal-positioned (fixed) so the menu escapes the sidebar's scroll/overflow
-  // clipping. Opens upward from the pinned "Add New" button.
-  const [addPos, setAddPos] = useState<{ bottom: number; left: number; width: number } | null>(null);
+  // clipping. Positioned relative to the pinned button, opening whichever way has
+  // more room, and height-capped to that room so it never runs off the viewport
+  // (i.e. never disappears under the browser chrome).
+  const [addPos, setAddPos] = useState<{
+    up: boolean;
+    top: number;
+    bottom: number;
+    left: number;
+    width: number;
+    maxH: number;
+  } | null>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
   const addPanelRef = useRef<HTMLDivElement>(null);
 
@@ -96,7 +105,21 @@ export function WikiSidebar({
     const el = addBtnRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    setAddPos({ bottom: window.innerHeight - r.top + 6, left: r.left, width: r.width });
+    const margin = 8;
+    const width = Math.max(r.width, 200);
+    const spaceAbove = r.top - margin;
+    const spaceBelow = window.innerHeight - r.bottom - margin;
+    const up = spaceAbove >= spaceBelow;
+    const maxH = Math.max(140, (up ? spaceAbove : spaceBelow) - 6);
+    const left = Math.max(margin, Math.min(r.left, window.innerWidth - width - margin));
+    setAddPos({
+      up,
+      top: r.bottom + 6,
+      bottom: window.innerHeight - r.top + 6,
+      left,
+      width,
+      maxH,
+    });
     setAddOpen(true);
   }
 
@@ -261,8 +284,14 @@ export function WikiSidebar({
               createPortal(
                 <div
                   ref={addPanelRef}
-                  style={{ position: "fixed", bottom: addPos.bottom, left: addPos.left, width: Math.max(addPos.width, 200) }}
-                  className="z-[100] max-h-[60vh] overflow-auto rounded-[10px] border border-[rgba(0,0,0,0.10)] bg-[var(--surface-0)] py-1.5 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.24)]"
+                  style={{
+                    position: "fixed",
+                    left: addPos.left,
+                    width: addPos.width,
+                    maxHeight: addPos.maxH,
+                    ...(addPos.up ? { bottom: addPos.bottom } : { top: addPos.top }),
+                  }}
+                  className="z-[100] overflow-auto rounded-[10px] border border-[rgba(0,0,0,0.10)] bg-[var(--surface-0)] py-1.5 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.24)]"
                 >
                   {addableSections.map((item) => (
                     <button
