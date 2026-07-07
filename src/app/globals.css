@@ -813,7 +813,10 @@ h2, h3, h4, h5 {
     width: 100%;
     border: 1px solid var(--border-1);
     border-radius: 6px;
-    background: var(--surface-0);
+    /* background-COLOR (not the `background` shorthand) so it never resets the
+       select chevron's background-image / background-repeat: no-repeat → the
+       chevron would otherwise tile across the field. */
+    background-color: var(--surface-0);
     color: var(--text-1);
     box-shadow: var(--shadow-xs);
     outline: none;
@@ -900,7 +903,7 @@ h2, h3, h4, h5 {
   [data-theme="dark"] .proposal-form-theme input:not([type="checkbox"]):not([type="radio"]),
   [data-theme="dark"] .proposal-form-theme select,
   [data-theme="dark"] .proposal-form-theme textarea {
-    background: var(--surface-1);
+    background-color: var(--surface-1);
     border-color: var(--border-1);
   }
 
@@ -922,7 +925,7 @@ h2, h3, h4, h5 {
   .proposal-form-theme input:not([type="checkbox"]):not([type="radio"]):disabled,
   .proposal-form-theme select:disabled,
   .proposal-form-theme textarea:disabled {
-    background: var(--surface-1);
+    background-color: var(--surface-1);
     border-color: var(--border-2);
     color: var(--text-4);
     box-shadow: none;
