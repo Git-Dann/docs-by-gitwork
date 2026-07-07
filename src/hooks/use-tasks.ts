@@ -23,6 +23,7 @@ import {
   getTaskAttention,
   getMyDay,
   pushDailyUpdate,
+  deleteStandupUpdate,
   getRollupRoster,
   publishRollup,
   listMemberClients,
@@ -298,6 +299,17 @@ export function usePushDailyUpdate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: Parameters<typeof pushDailyUpdate>[0]) => pushDailyUpdate(input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["tasks", "myday"] });
+      void qc.invalidateQueries({ queryKey: QK.roster });
+    },
+  });
+}
+
+export function useDeleteStandupUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (phase: "AM" | "PM") => deleteStandupUpdate(phase),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["tasks", "myday"] });
       void qc.invalidateQueries({ queryKey: QK.roster });

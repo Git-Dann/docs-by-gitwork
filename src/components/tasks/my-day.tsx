@@ -5,9 +5,11 @@ import {
   ArrowRightCircleIcon,
   CheckCircleIcon,
   PaperAirplaneIcon,
+  TrashIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { useMyDay, usePushDailyUpdate, useUpdateTask } from "@/hooks/use-tasks";
+import { Modal } from "@/components/ui/modal";
+import { useMyDay, usePushDailyUpdate, useDeleteStandupUpdate, useUpdateTask } from "@/hooks/use-tasks";
 import type { TaskDTO } from "@/types/tasks";
 
 function timeOf(iso: string | null): string | null {
@@ -19,10 +21,13 @@ export function MyDay() {
   const { data, isPending } = useMyDay();
   const update = useUpdateTask();
   const push = usePushDailyUpdate();
+  const del = useDeleteStandupUpdate();
 
   const [weekPlan, setWeekPlan] = useState("");
   const [note, setNote] = useState("");
   const [pushed, setPushed] = useState<null | "AM" | "PM">(null);
+  // Phase awaiting confirmation in the pre-send modal (null = modal closed).
+  const [confirm, setConfirm] = useState<null | "AM" | "PM">(null);
   const [pushMsg, setPushMsg] = useState<{ text: string; ok: boolean } | null>(null);
   // Synchronous guard against duplicate submits — React's `disabled` prop only
   // takes effect after a re-render commits, which leaves a window for a fast
@@ -47,9 +52,19 @@ export function MyDay() {
     await update.mutateAsync({ id: task.id, input: { status: "DONE" } });
   }
 
+  function deleteUpdate(phase: "AM" | "PM") {
+    setPushMsg(null);
+    del.mutate(phase, {
+      onSuccess: () => setPushMsg({ text: `${phase} update deleted from Slack`, ok: false }),
+      onError: (e) =>
+        setPushMsg({ text: e instanceof Error ? e.message : "Delete failed", ok: false }),
+    });
+  }
+
   async function pushUpdate(phase: "AM" | "PM") {
     if (pushingRef.current) return;
     pushingRef.current = true;
+    setConfirm(null);
     setPushMsg(null);
     try {
       const res = await push.mutateAsync({
@@ -184,13 +199,13 @@ export function MyDay() {
           />
         </div>
 
-        {/* Push actions */}
+        {/* Push actions — clicking opens a confirmation preview before anything posts. */}
         <div className="flex flex-wrap items-center gap-3 border-t border-[var(--border-2)] pt-4">
           <Button
             type="button"
             variant="secondary"
             leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
-            onClick={() => pushUpdate("AM")}
+            onClick={() => setConfirm("AM")}
             loading={push.isPending && pushed !== "PM"}
           >
             Push morning
@@ -199,14 +214,13 @@ export function MyDay() {
             type="button"
             variant="primary"
             leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
-            onClick={() => pushUpdate("PM")}
+            onClick={() => setConfirm("PM")}
             loading={push.isPending && pushed !== "AM"}
           >
             Push end of day
           </Button>
-          <span className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-            {amTime ? `AM ✓ ${amTime}` : "AM —"} · {pmTime ? `PM ✓ ${pmTime}` : "PM —"}
-          </span>
+          <PhaseStatus label="AM" time={amTime} onDelete={() => deleteUpdate("AM")} deleting={del.isPending} />
+          <PhaseStatus label="PM" time={pmTime} onDelete={() => deleteUpdate("PM")} deleting={del.isPending} />
           {pushMsg ? (
             <span
               className={
@@ -220,7 +234,141 @@ export function MyDay() {
           ) : null}
         </div>
       </div>
+
+      {/* Pre-send confirmation — preview exactly what will post before it goes out. */}
+      <PushConfirmModal
+        phase={confirm}
+        tasks={confirm === "AM" ? data.doing : confirm === "PM" ? data.done : []}
+        note={note.trim()}
+        weekPlan={confirm === "AM" && data.isMonday ? weekPlan.trim() : ""}
+        sending={push.isPending}
+        onCancel={() => setConfirm(null)}
+        onSend={() => confirm && pushUpdate(confirm)}
+      />
     </section>
+  );
+}
+
+/** AM/PM status chip — shows the push time and, once pushed, a delete (retract) action. */
+function PhaseStatus({
+  label,
+  time,
+  onDelete,
+  deleting,
+}: {
+  label: "AM" | "PM";
+  time: string | null;
+  onDelete: () => void;
+  deleting: boolean;
+}) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[11px] text-[var(--text-4)]"
+      style={{ fontFamily: "var(--font-mono)" }}
+    >
+      {time ? `${label} ✓ ${time}` : `${label} —`}
+      {time ? (
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={deleting}
+          title={`Delete the ${label} update from Slack`}
+          aria-label={`Delete ${label} update`}
+          className="rounded-[4px] p-0.5 text-[var(--text-4)] transition hover:text-[var(--danger-500)] disabled:opacity-50"
+        >
+          <TrashIcon className="h-3 w-3" />
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
+/** Confirmation modal previewing the standup before it posts to Slack. */
+function PushConfirmModal({
+  phase,
+  tasks,
+  note,
+  weekPlan,
+  sending,
+  onCancel,
+  onSend,
+}: {
+  phase: "AM" | "PM" | null;
+  tasks: TaskDTO[];
+  note: string;
+  weekPlan: string;
+  sending: boolean;
+  onCancel: () => void;
+  onSend: () => void;
+}) {
+  const clients = [...new Set(tasks.map((t) => t.client.name))];
+  const heading = phase === "AM" ? "In progress" : "Done today";
+  const nothing = tasks.length === 0 && !weekPlan;
+  return (
+    <Modal
+      open={phase !== null}
+      onClose={onCancel}
+      title={phase === "AM" ? "Send morning standup" : "Send end-of-day update"}
+    >
+      <div className="space-y-4 p-5">
+        <p className="text-[13px] text-[var(--text-3)]">
+          {clients.length > 0
+            ? `Posts to ${clients.length} client ${clients.length === 1 ? "channel" : "channels"}: ${clients.join(", ")}.`
+            : "This won't post to any client channel — nothing here belongs to a client with a linked Slack channel."}
+        </p>
+
+        {weekPlan ? (
+          <div>
+            <p className="app-eyebrow mb-1">This week</p>
+            <p className="whitespace-pre-wrap text-sm text-[var(--text-2)]">{weekPlan}</p>
+          </div>
+        ) : null}
+
+        <div>
+          <p className="app-eyebrow mb-1.5">{heading} · {tasks.length}</p>
+          {tasks.length === 0 ? (
+            <p className="text-[13px] text-[var(--text-4)]">
+              {phase === "AM" ? "Nothing in progress." : "No tasks marked done today."}
+            </p>
+          ) : (
+            <ul className="space-y-1">
+              {tasks.map((t) => (
+                <li key={t.id} className="flex items-baseline gap-2 text-sm text-[var(--text-1)]">
+                  <span className="text-[var(--text-4)]">•</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {t.title}
+                    <span className="ml-1.5 text-[11px] text-[var(--text-4)]">{t.client.name}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {note ? (
+          <div>
+            <p className="app-eyebrow mb-1">One thing I need</p>
+            <p className="whitespace-pre-wrap text-sm text-[var(--text-2)]">{note}</p>
+          </div>
+        ) : null}
+
+        <div className="flex justify-end gap-2 border-t border-[var(--border-2)] pt-3">
+          <Button type="button" variant="tertiary" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
+            onClick={onSend}
+            loading={sending}
+            disabled={nothing}
+          >
+            {nothing ? "Nothing to send" : "Send to Slack"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
