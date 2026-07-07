@@ -28,12 +28,12 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 export function DevSignalQueue() {
-  const { canManageCode } = usePermissions();
+  const { canManageDevSignal } = usePermissions();
   const assessments = useDevSignalAssessments();
   const analytics = useDevSignalAnalytics();
   const [modalOpen, setModalOpen] = useState(false);
 
-  if (!canManageCode) {
+  if (!canManageDevSignal) {
     return <p className="text-sm text-[var(--text-3)]">You don&apos;t have access to DevSignal.</p>;
   }
 
