@@ -14,6 +14,7 @@ import {
   CommandLineIcon,
   ClipboardIcon,
   CheckIcon,
+  MagnifyingGlassIcon,
   StarIcon as StarOutline,
 } from "@heroicons/react/24/outline";
 import { StarIcon as StarSolid } from "@heroicons/react/24/solid";
@@ -238,6 +239,7 @@ export function StarterList() {
   const { mutate: toggleFeatured } = useToggleStarterFeatured();
   const { mutateAsync: adopt, isPending: adopting } = useAdoptStarter();
   const [filter, setFilter] = useState<Filter>("all");
+  const [query, setQuery] = useState("");
 
   async function handleAdopt(starterId: string) {
     if (!scanId) return;
@@ -250,7 +252,15 @@ export function StarterList() {
   const recommendations = scan ? recommendStartersForScan(scan, all).slice(0, 4) : [];
   const typeCount = (t: StarterType) => all.filter((s) => s.type === t).length;
 
-  const filtered = all.filter((s) => (filter === "all" ? true : s.type === filter));
+  // Smart search: every whitespace-separated term must appear somewhere in the item's searchText
+  // (name + summary + description + tags + hidden function/use-case keywords). So "sales email" or
+  // "make a logo" find the right prompt even when those exact words aren't in the title.
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const filtered = all.filter(
+    (s) =>
+      (filter === "all" ? true : s.type === filter) &&
+      (terms.length === 0 || terms.every((t) => s.searchText.includes(t))),
+  );
 
   const tabs: { id: Filter; label: string; count: number }[] = [
     { id: "all", label: "All", count: all.length },
@@ -325,8 +335,19 @@ export function StarterList() {
           </span>
           <span className="widget-header__status">{all.length} TOTAL</span>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-          <div className="flex flex-wrap gap-1 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-1">
+        <div className="space-y-3 px-5 py-4">
+          <div className="relative">
+            <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search starters — try “sales email”, “logo”, “debug”…"
+              className="w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] py-2 pl-9 pr-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-400)]"
+            />
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-1 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-1">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
@@ -360,6 +381,7 @@ export function StarterList() {
               New starter
             </Link>
           ) : null}
+          </div>
         </div>
       </section>
 
@@ -390,7 +412,11 @@ export function StarterList() {
               className="text-3xl leading-none tracking-[-0.03em] text-[var(--text-1)]"
               style={{ fontFamily: "var(--font-display)" }}
             >
-              {filter === "all" ? "No starters yet" : `No ${TYPE_LABEL[filter as StarterType].toLowerCase()} starters`}
+              {query
+                ? `No starters match “${query.trim()}”`
+                : filter === "all"
+                  ? "No starters yet"
+                  : `No ${TYPE_LABEL[filter as StarterType].toLowerCase()} starters`}
             </h3>
             {filter === "all" && canManageStarters && (
               <>

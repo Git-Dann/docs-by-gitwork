@@ -16,6 +16,46 @@ import { dirname, resolve } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT = resolve(__dirname, "../src/data/prompt-starters.json");
 
+// Function/use-case synonyms per category — the "smart" part of search: someone searching
+// "sales email" or "make a logo" lands on the right prompt even if those exact words aren't in
+// the title. Keyed by slugified Category.
+const CATEGORY_KEYWORDS = {
+  "productivity-and-personal": ["productivity", "planning", "focus", "decisions", "habits", "organization", "time management", "personal", "life"],
+  "learning-and-research": ["learn", "study", "teach", "explain", "understand", "research", "course", "tutor", "education", "knowledge"],
+  "writing-and-editing": ["writing", "editing", "copy", "copywriting", "rewrite", "proofread", "tone", "voice", "grammar", "email", "content"],
+  "business-and-marketing": ["marketing", "sales", "business", "growth", "ads", "advertising", "copywriting", "conversion", "funnel", "outreach", "brand", "content", "launch", "strategy"],
+  "coding-and-tech": ["code", "coding", "programming", "debug", "debugging", "engineering", "developer", "software", "code review", "regex", "technical", "build"],
+  "career-and-money": ["career", "job", "resume", "cv", "interview", "salary", "negotiation", "money", "finance", "budget", "raise"],
+  "creativity-and-ideas": ["ideas", "brainstorm", "creative", "creativity", "naming", "invention", "concepts", "innovation"],
+  "roleplay-and-personas": ["roleplay", "persona", "character", "simulation", "practice", "acting"],
+};
+
+// Image-generation categories/collections → visual-creation function terms.
+const IMAGE_KEYWORDS = ["image", "images", "image generation", "art", "visual", "generate", "picture", "graphic", "design"];
+const DESIGN_KEYWORDS = ["design", "build", "website", "web", "ui", "landing page", "prototype", "deck", "slides", "infographic", "wireframe", "animation", "frontend"];
+
+const STOPWORDS = new Set(["the", "a", "an", "my", "me", "to", "for", "of", "and", "or", "in", "on", "with", "that", "this", "it", "is", "your", "you", "into", "one", "then", "build", "make", "create", "get", "gets"]);
+
+function keywordsFor({ name, category, tool, collection }) {
+  const cat = category ? slugify(category) : "";
+  const set = new Set();
+  for (const k of CATEGORY_KEYWORDS[cat] ?? []) set.add(k);
+  const isImage = /portrait|scene|logo|icon|thumbnail|illustration|art|product|photo|image/.test(cat);
+  if (isImage) IMAGE_KEYWORDS.forEach((k) => set.add(k));
+  if (/claude-design|^(setup|prototype|slides|document|wireframe|animation)$/.test(slugify(collection || "")) || /design/.test(cat)) {
+    DESIGN_KEYWORDS.forEach((k) => set.add(k));
+  }
+  // Tool names (Midjourney, DALL-E, Ideogram, Claude Code…) are strong search terms.
+  if (tool && !/^any\b/i.test(tool)) {
+    tool.split(/[\/,]| or /i).map((t) => t.trim().toLowerCase()).filter(Boolean).forEach((t) => set.add(t));
+  }
+  // Meaningful words from the title.
+  for (const w of name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)) {
+    if (w.length > 2 && !STOPWORDS.has(w)) set.add(w);
+  }
+  return [...set];
+}
+
 function slugify(s) {
   return s
     .toLowerCase()
@@ -69,6 +109,8 @@ function parseFile(md) {
           "Drop it into any Claude chat or the Foundry connector",
         ],
         promptText,
+        // Hidden search terms (functions/use-cases/synonyms) — never rendered, folds into searchText.
+        keywords: keywordsFor({ name, category, tool, collection }),
         _buildRef: `tristenobrien:${id || slugify(name)}`,
       },
     });
