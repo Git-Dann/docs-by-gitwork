@@ -178,6 +178,9 @@ export type TeamCalendarEvent = {
   start: string;
   end: string;
   allDay: boolean;
+  /** Video-conference join link (Google Meet / hangout), null when none or the
+   *  event is private. Lets the team calendar surface a "Join" affordance. */
+  meetLink: string | null;
 };
 
 // ─── Portal Gantt overlay (admin-only) ────────────────────────────────────
