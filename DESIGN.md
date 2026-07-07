@@ -506,6 +506,23 @@ and `.bg-white` panels warm to `--doc-panel` — so blocks that already paint wi
 DM Serif Display, labels/cells stay mono. The block **editors** (e.g. `CostBreakdownTable`) render
 outside `.proposal-document`, so they keep the standard app styling.
 
+**Infographic blocks** (from the Release-Process reference) — new palette blocks under **Lists**,
+all in the statement palette with a **style dropdown/toggle in their Options** (never crowding the
+canvas). Each is inline-editable:
+- **Process steps** (`process_steps`) — numbered workflow pills with connecting arrows; options:
+  row vs stack, arrows on/off, highlight the final step (accent-filled).
+- **Do / Don't** (`do_dont`) — green-tick "do" panel beside a red-✕ "don't" panel (+ optional
+  footnote); the don't panel toggles dark (navy) or light.
+- **Principles grid** (`principles_grid`) — numbered items (01 · 02 · …); light or navy, 2/3 cols.
+- **Category checklist** (`category_checklist`) — a grid of small titled checklist cards, 1–4 cols.
+- **Heading → navy banner** — the `heading` block gained a `banner` style: a full-bleed navy band
+  with mono eyebrow + serif title (accent period) + optional lead. Chosen from the heading Options.
+
+**Responsive builder.** The editor splits into the outline rail + canvas at `lg` (single column
+below); on mobile the outline stacks above with a capped, scrollable height so it never buries the
+document, and the page title + document padding scale down. Block **style choices are always
+dropdowns/toggles in the block's Options** — the canvas stays clean.
+
 **`statement-cover`** (`DocumentCover` when `coverStyle !== "bold"`) — a full cream page:
 - Header: brand logo left, a mono **classification stack** right (`DOC TYPE` · `PREPARED {date}` ·
   `CONFIDENTIAL`), then a full-width hairline.

@@ -44,8 +44,8 @@ export function ProposalPreview({
     <article
       className={
         frame
-          ? "proposal-document mx-auto w-full max-w-[860px] rounded-[10px] border border-[var(--doc-line-soft)] p-8 shadow-[var(--shadow-sm)] sm:p-12 print:max-w-none print:rounded-none print:border-0 print:p-0 print:shadow-none"
-          : "proposal-document mx-auto w-full max-w-[860px] rounded-[10px] border border-[var(--doc-line-soft)] p-8 sm:p-12 print:max-w-none print:rounded-none print:border-0 print:p-0"
+          ? "proposal-document mx-auto w-full max-w-[860px] rounded-[10px] border border-[var(--doc-line-soft)] p-5 shadow-[var(--shadow-sm)] sm:p-8 lg:p-12 print:max-w-none print:rounded-none print:border-0 print:p-0 print:shadow-none"
+          : "proposal-document mx-auto w-full max-w-[860px] rounded-[10px] border border-[var(--doc-line-soft)] p-5 sm:p-8 lg:p-12 print:max-w-none print:rounded-none print:border-0 print:p-0"
       }
     >
       <div className="space-y-8 print:space-y-7">

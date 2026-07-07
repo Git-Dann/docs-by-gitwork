@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { SparklesIcon, VideoCameraIcon } from "@heroicons/react/24/solid";
 import { XMarkIcon } from "@heroicons/react/24/outline";
-import { useState, type KeyboardEvent } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/format";
 import { getCalendarEvents, generateMeetingSummary, getIntegrations } from "@/lib/api";
 import type { CalendarEvent, SlackChannel } from "@/lib/api";
 import type { WidgetSize } from "@/components/app-overview";
+import { Modal } from "@/components/ui/modal";
 
 function formatTime(iso: string): string {
   if (!iso.includes("T")) return "All day";
@@ -138,16 +139,6 @@ export default function CalendarWidget({ size, index }: { size: WidgetSize; inde
     }
   }
 
-  function toggleSelected(eventId: string) {
-    setSelected((current) => (current === eventId ? null : eventId));
-  }
-
-  function handleEventKeyDown(event: KeyboardEvent<HTMLDivElement>, eventId: string) {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    toggleSelected(eventId);
-  }
-
   if (isLoading) {
     return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
   }
@@ -216,7 +207,16 @@ export default function CalendarWidget({ size, index }: { size: WidgetSize; inde
   const activeSummary = selected ? summaries[selected] : null;
   const activeEvent = selected ? events.find((e) => e.id === selected) : null;
 
-  // ── md / lg: full calendar + meeting prep ───────────────────────────────────
+  // Group events under day headers, preserving the (already sorted) order.
+  const groups: { label: string; events: CalendarEvent[] }[] = [];
+  for (const ev of events) {
+    const label = formatDate(ev.start);
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) last.events.push(ev);
+    else groups.push({ label, events: [ev] });
+  }
+
+  // ── md / lg: single-column timeline ─────────────────────────────────────────
   return (
     <div className="flex h-full flex-col">
       {/* Widget header */}
@@ -227,137 +227,137 @@ export default function CalendarWidget({ size, index }: { size: WidgetSize; inde
         <span className="text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>next 14 days</span>
       </div>
 
-      {/* Body: two-panel layout */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left panel: event list */}
-        <div className="flex w-56 shrink-0 flex-col border-r border-[rgba(0,0,0,0.08)]">
-          <div className="border-b border-[rgba(0,0,0,0.06)] px-4 py-2">
-            <p className="text-xs font-medium text-[var(--text-3)]">Upcoming</p>
+      {/* Body: timeline list */}
+      <div className="flex-1 overflow-y-auto">
+        {events.length === 0 ? (
+          <div className="flex h-full items-center justify-center p-4 text-center">
+            <p className="text-xs text-[var(--text-4)]">No upcoming events</p>
           </div>
-          <div className="flex-1 overflow-y-auto">
-            {events.length === 0 ? (
-              <div className="flex h-full items-center justify-center p-4 text-center">
-                <p className="text-xs text-[var(--text-4)]">No upcoming events</p>
-              </div>
-            ) : (
-              events.map((ev) => (
-                <div
-                  key={ev.id}
-                  role="button"
-                  tabIndex={0}
-                  className={`w-full cursor-pointer border-b border-[rgba(0,0,0,0.06)] px-4 py-2.5 text-left transition-colors hover:bg-[var(--surface-brand)] focus:outline-none focus-visible:bg-[var(--surface-brand)] ${selected === ev.id ? "bg-[var(--surface-brand)]" : ""}`}
-                  onClick={() => toggleSelected(ev.id)}
-                  onKeyDown={(event) => handleEventKeyDown(event, ev.id)}
-                >
-                  <p className="truncate text-sm font-medium text-[var(--text-1)]">{ev.summary}</p>
-                  <p className="mt-0.5 text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-                    {formatDate(ev.start)} · {formatTime(ev.start)}
-                  </p>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <MeetingJoinLink href={ev.meetLink} compact />
-                    {summaries[ev.id] ? (
-                      <span className="text-xs font-medium text-[var(--success-500)]">✓ Ready</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelected(ev.id);
-                        }}
-                        className="inline-flex items-center gap-1 text-xs text-[var(--accent)] hover:underline"
-                      >
-                        <SparklesIcon className="h-3 w-3" /> Summarise
-                      </button>
-                    )}
-                  </div>
+        ) : (
+          <div className="px-4 py-3">
+            {groups.map((group) => (
+              <div key={group.label} className="mb-1 last:mb-0">
+                {/* Day header */}
+                <div className="sticky top-0 z-[1] -mx-4 bg-[var(--surface-card,var(--surface-0))]/90 px-4 py-1.5 backdrop-blur">
+                  <span
+                    className="text-[10px] font-medium uppercase tracking-[1.4px] text-[var(--text-4)]"
+                    style={{ fontFamily: "var(--font-mono)" }}
+                  >
+                    {group.label}
+                  </span>
                 </div>
-              ))
-            )}
+                {/* Events for the day, connected by a timeline rail */}
+                <ul className="relative ml-[3.25rem] border-l border-[rgba(0,0,0,0.08)]">
+                  {group.events.map((ev) => {
+                    const ready = Boolean(summaries[ev.id]);
+                    return (
+                      <li key={ev.id} className="relative py-2.5">
+                        {/* Time on the rail's left */}
+                        <span
+                          className="absolute -left-[3.75rem] top-3 w-11 text-right text-xs tabular-nums text-[var(--text-3)]"
+                          style={{ fontFamily: "var(--font-mono)" }}
+                        >
+                          {formatTime(ev.start)}
+                        </span>
+                        {/* Node dot */}
+                        <span className="absolute -left-[5px] top-3.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--surface-0)] bg-[var(--accent)]" />
+                        {/* Content */}
+                        <div className="pl-4">
+                          <p className="text-sm font-medium leading-snug text-[var(--text-1)]">{ev.summary}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <MeetingJoinLink href={ev.meetLink} compact />
+                            <button
+                              type="button"
+                              onClick={() => setSelected(ev.id)}
+                              className="inline-flex items-center gap-1 text-xs font-medium text-[var(--accent)] transition-colors hover:underline"
+                            >
+                              {ready ? (
+                                <>
+                                  <SparklesIcon className="h-3 w-3" />
+                                  View prep
+                                </>
+                              ) : (
+                                <>
+                                  <SparklesIcon className="h-3 w-3" />
+                                  Summarise
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
           </div>
-        </div>
+        )}
+      </div>
 
-        {/* Right panel: summary / empty state */}
-        <div className="flex flex-1 flex-col overflow-hidden">
-          {!selected || !activeEvent ? (
-            /* Nothing selected */
-            <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
-              <SparklesIcon className="h-6 w-6 text-[var(--text-4)]" />
-              <p className="text-xs text-[var(--text-3)]">Select a meeting to prep</p>
-              <p className="text-xs text-[var(--text-4)]">AI summary · emails · Slack</p>
-            </div>
-          ) : generating === selected ? (
-            /* Generating */
-            <div className="flex h-full flex-col items-center justify-center gap-2 p-4">
-              <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
-              <p className="text-xs text-[var(--text-3)]">Generating summary…</p>
-            </div>
-          ) : activeSummary ? (
-            /* Summary ready */
-            <div className="flex h-full flex-col overflow-hidden">
-              {/* Panel header */}
-              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[rgba(0,0,0,0.08)] px-4 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-[var(--text-1)]">{activeEvent.summary}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <p className="text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-                      {formatDate(activeEvent.start)} · {formatTime(activeEvent.start)}
-                    </p>
-                    <MeetingJoinLink href={activeEvent.meetLink} compact />
-                  </div>
-                </div>
-                <button
-                  onClick={() => setSelected(null)}
-                  className="shrink-0 rounded-[6px] p-1 text-[var(--text-3)] transition-colors hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-                >
-                  <XMarkIcon className="h-4 w-4" />
-                </button>
-              </div>
-              {/* Summary body */}
-              <div className="flex-1 overflow-y-auto p-4">
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-1)]">
-                  {activeSummary.summary}
+      {/* Meeting prep modal */}
+      <Modal
+        open={Boolean(selected && activeEvent)}
+        onClose={() => setSelected(null)}
+        panelClassName="w-full max-w-lg"
+        labelledById="calendar-prep-title"
+      >
+        {activeEvent && (
+          <div className="flex max-h-[80vh] flex-col">
+            {/* Header */}
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[rgba(0,0,0,0.08)] px-5 py-4">
+              <div className="min-w-0">
+                <p id="calendar-prep-title" className="truncate text-base font-semibold text-[var(--text-1)]">
+                  {activeEvent.summary}
                 </p>
-              </div>
-              {/* Footer */}
-              <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[rgba(0,0,0,0.08)] px-4 py-2.5">
-                <span className="text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-                  {activeSummary.cached
-                    ? `Cached${activeSummary.generatedBy ? ` · ${activeSummary.generatedBy}` : ""}`
-                    : "Just generated"}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void handleSummarise(activeEvent, { force: true })}
-                  className="inline-flex items-center gap-1 rounded-[6px] px-2.5 py-1 text-xs font-medium text-[var(--accent)] transition-colors hover:bg-[var(--surface-1)]"
-                >
-                  <SparklesIcon className="h-3 w-3" />
-                  Regenerate
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* No summary yet: channel picker + generate button */
-            <div className="flex h-full flex-col overflow-hidden">
-              {/* Panel header */}
-              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[rgba(0,0,0,0.08)] px-4 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-[var(--text-1)]">{activeEvent.summary}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <p className="text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-                      {formatDate(activeEvent.start)} · {formatTime(activeEvent.start)}
-                    </p>
-                    <MeetingJoinLink href={activeEvent.meetLink} compact />
-                  </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <p className="text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+                    {formatDate(activeEvent.start)} · {formatTime(activeEvent.start)}
+                  </p>
+                  <MeetingJoinLink href={activeEvent.meetLink} compact />
                 </div>
-                <button
-                  onClick={() => setSelected(null)}
-                  className="shrink-0 rounded-[6px] p-1 text-[var(--text-3)] transition-colors hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-                >
-                  <XMarkIcon className="h-4 w-4" />
-                </button>
               </div>
-              {/* Picker body */}
-              <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
+              <button
+                type="button"
+                onClick={() => setSelected(null)}
+                aria-label="Close"
+                className="shrink-0 rounded-[6px] p-1 text-[var(--text-3)] transition-colors hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+              >
+                <XMarkIcon className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            {generating === selected ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-5 py-12">
+                <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+                <p className="text-xs text-[var(--text-3)]">Generating summary…</p>
+              </div>
+            ) : activeSummary ? (
+              <>
+                <div className="flex-1 overflow-y-auto px-5 py-4">
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-1)]">
+                    {activeSummary.summary}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[rgba(0,0,0,0.08)] px-5 py-3">
+                  <span className="text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+                    {activeSummary.cached
+                      ? `Cached${activeSummary.generatedBy ? ` · ${activeSummary.generatedBy}` : ""}`
+                      : "Just generated"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleSummarise(activeEvent, { force: true })}
+                    className="inline-flex items-center gap-1 rounded-[6px] px-2.5 py-1 text-xs font-medium text-[var(--accent)] transition-colors hover:bg-[var(--surface-1)]"
+                  >
+                    <SparklesIcon className="h-3 w-3" />
+                    Regenerate
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
                 {slackChannels.length > 0 && (
                   <div>
                     <p className="mb-2 text-xs font-medium text-[var(--text-3)]">Slack channels</p>
@@ -365,6 +365,7 @@ export default function CalendarWidget({ size, index }: { size: WidgetSize; inde
                       {slackChannels.map((ch) => (
                         <button
                           key={ch.id}
+                          type="button"
                           onClick={() => toggleChannel(ch.id)}
                           className={`inline-flex items-center gap-1 rounded-[6px] border px-2.5 py-1 text-xs font-medium transition-colors ${
                             selectedChannels.has(ch.id)
@@ -382,21 +383,20 @@ export default function CalendarWidget({ size, index }: { size: WidgetSize; inde
                   </div>
                 )}
 
-                <div className="mt-auto">
-                  <button
-                    onClick={() => void handleSummarise(activeEvent)}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-[8px] bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-                  >
-                    <SparklesIcon className="h-4 w-4" />
-                    Generate Summary
-                  </button>
-                  <p className="mt-2 text-center text-xs text-[var(--text-4)]">Uses AI · emails · Slack</p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleSummarise(activeEvent)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-[8px] bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                >
+                  <SparklesIcon className="h-4 w-4" />
+                  Generate Summary
+                </button>
+                <p className="text-center text-xs text-[var(--text-4)]">Uses AI · emails · Slack</p>
               </div>
-            </div>
-          )}
-        </div>
-      </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

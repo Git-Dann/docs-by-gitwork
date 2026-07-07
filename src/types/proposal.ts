@@ -60,7 +60,12 @@ export type SectionKey =
   | "video_embed"      // YouTube / Loom / Vimeo with caption
   | "code_snippet"     // monospace code block with language label
   | "checklist"        // polarity-aware list (include / exclude) — P4.16 consolidation
-  | "breakdown";       // labelled breakdown list (label · count · description, hairline rules)
+  | "breakdown"        // labelled breakdown list (label · count · description, hairline rules)
+  // ── Sprint 9 (infographic-inspired) ─────────────────────────────────────────
+  | "process_steps"     // numbered step/workflow pills with connecting arrows
+  | "do_dont"           // paired do (green ticks) / don't (red crosses) panels
+  | "principles_grid"   // numbered principles grid (light or navy)
+  | "category_checklist"; // grid of small titled checklist cards
 
 export type CostKind = "ONE_OFF" | "RECURRING";
 
@@ -329,6 +334,44 @@ export interface HeadingSectionData {
   text: string;
   /** Optional eyebrow above the heading (mono caps). */
   eyebrow?: string;
+  /** `default` = plain heading; `banner` = full-bleed navy hero band (mono eyebrow + serif title
+   *  + optional lead), like the infographic's opener. */
+  style?: "default" | "banner";
+  /** Optional lead paragraph shown under a banner-style heading. */
+  subtitle?: string;
+}
+
+// ── Infographic-inspired blocks (Sprint 9) ──────────────────────────────────
+export interface ProcessStepsSectionData {
+  intro?: string;
+  steps: Array<{ label: string; note?: string }>;
+  /** Highlight the final step in the accent colour (the "Deploy to production" pill). */
+  highlightLast?: boolean;
+  /** Show connecting arrows between steps. */
+  arrows?: boolean;
+  /** Flowing row of pills vs a vertical stack. */
+  layout?: "row" | "stack";
+}
+
+export interface DoDontSectionData {
+  doTitle?: string;
+  doItems: string[];
+  dontTitle?: string;
+  dontItems: string[];
+  footnote?: string;
+  /** The "don't" panel: dark (navy) or light. */
+  dontStyle?: "dark" | "light";
+}
+
+export interface PrinciplesGridSectionData {
+  items: Array<{ title: string; detail?: string }>;
+  columns?: 2 | 3;
+  style?: "light" | "dark";
+}
+
+export interface CategoryChecklistSectionData {
+  groups: Array<{ title: string; items: string[] }>;
+  columns?: 1 | 2 | 3 | 4;
 }
 
 export interface ProseSectionData {
@@ -506,7 +549,11 @@ export type ProposalSectionData =
   | VideoEmbedSectionData
   | CodeSnippetSectionData
   | ChecklistSectionData
-  | BreakdownSectionData;
+  | BreakdownSectionData
+  | ProcessStepsSectionData
+  | DoDontSectionData
+  | PrinciplesGridSectionData
+  | CategoryChecklistSectionData;
 
 export interface ProposalSection {
   id?: string;

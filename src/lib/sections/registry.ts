@@ -16,6 +16,7 @@
 import { assumptionsSection } from "@/lib/sections/assumptions";
 import { breakdownSection } from "@/lib/sections/breakdown";
 import { calloutSection } from "@/lib/sections/callout";
+import { categoryChecklistSection } from "@/lib/sections/category-checklist";
 import { checklistSection } from "@/lib/sections/checklist";
 import { codeSnippetSection } from "@/lib/sections/code-snippet";
 import { comparisonTableSection } from "@/lib/sections/comparison-table";
@@ -24,6 +25,7 @@ import { coverSection } from "@/lib/sections/cover";
 import { ctaNextStepsSection } from "@/lib/sections/cta-next-steps";
 import { dataTableSection } from "@/lib/sections/data-table";
 import { dividerSection } from "@/lib/sections/divider";
+import { doDontSection } from "@/lib/sections/do-dont";
 import { escalationSection } from "@/lib/sections/escalation";
 import { exclusionsSection } from "@/lib/sections/exclusions";
 import { faqSection } from "@/lib/sections/faq";
@@ -36,6 +38,8 @@ import { outOfScopeSection } from "@/lib/sections/out-of-scope";
 import { partiesSection } from "@/lib/sections/parties";
 import { penaltiesSection } from "@/lib/sections/penalties";
 import { pricingTiersSection } from "@/lib/sections/pricing-tiers";
+import { principlesGridSection } from "@/lib/sections/principles-grid";
+import { processStepsSection } from "@/lib/sections/process-steps";
 import { productOverviewSection } from "@/lib/sections/product-overview";
 import { proseSection } from "@/lib/sections/prose";
 import { responseTimesSection } from "@/lib/sections/response-times";
@@ -72,6 +76,10 @@ export const SECTION_REGISTRY: Record<SectionKey, SectionType> = {
   out_of_scope: outOfScopeSection,
   checklist: checklistSection,
   breakdown: breakdownSection,
+  process_steps: processStepsSection,
+  do_dont: doDontSection,
+  principles_grid: principlesGridSection,
+  category_checklist: categoryChecklistSection,
   data_table: dataTableSection,
   comparison_table: comparisonTableSection,
   faq: faqSection,

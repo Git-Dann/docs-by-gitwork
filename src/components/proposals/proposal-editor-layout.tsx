@@ -846,7 +846,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               <span className="font-medium text-[var(--text-1)]">{draft.title}</span>
             </div>
 
-            <h1 className="mt-4 font-[family-name:var(--font-display)] text-[40px] font-normal leading-[1.1] tracking-[-0.5px] text-[var(--text-1)] sm:text-[44px]">
+            <h1 className="mt-4 font-[family-name:var(--font-display)] text-[28px] font-normal leading-[1.1] tracking-[-0.5px] text-[var(--text-1)] sm:text-[36px] lg:text-[44px]">
               {draft.title}
             </h1>
 
@@ -1228,12 +1228,13 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           </div>
 
           <section
-            className={`grid gap-4 ${outlineOpen ? "xl:grid-cols-[300px_minmax(0,1fr)]" : "xl:grid-cols-1"}`}
+            className={`grid gap-4 ${outlineOpen ? "lg:grid-cols-[280px_minmax(0,1fr)]" : "lg:grid-cols-1"}`}
           >
-            {/* Outline (02) — the hub. It travels with the scroll (sticky), lists the blocks, and
-                drills into a block's Options in-place (with a back to the list). No third column. */}
+            {/* Outline (02) — the hub. On desktop it's a sticky rail beside the canvas; on mobile it
+                stacks above with a capped, scrollable height so it never buries the document. It
+                lists the blocks and drills into a block's Options in-place (with a back to the list). */}
             {outlineOpen ? (
-              <div className="xl:sticky xl:top-6 xl:self-start">
+              <div className="max-h-[55vh] overflow-y-auto pr-1 lg:max-h-none lg:overflow-visible lg:pr-0 lg:sticky lg:top-6 lg:self-start">
                 {optionsEntry ? (
                   <section className="widget-card overflow-hidden">
                     <div className="widget-header">
