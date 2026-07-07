@@ -1,6 +1,7 @@
 /**
  * Slack slash-command handler — `/desk <who> <what>` adds a reminder to a
- * teammate's On Your Desk list.
+ * teammate's On Your Desk list; `/desk <what>` (no resolvable name) lands on
+ * the caller's own list.
  *
  * Resolution order for "who":
  *   1. An escaped Slack mention `<@U123|label>` (Slack sends this when the command
@@ -8,7 +9,8 @@
  *      Most robust; disambiguates people who share a first name (Syed, Ali).
  *   2. A typed name — longest leading match (3→1 tokens) against the roster's
  *      canonical names / aliases, then a unique-first-name fallback ("@harry",
- *      "dan"). Ambiguous first names (Syed, Ali) fall through to usage help.
+ *      "dan").
+ *   3. Neither resolves → the caller themselves (self), body = the whole text.
  *
  * Read-only against Slack (users.info); the only write is a DeskReminder on the
  * target. Returns the ephemeral reply text for the caller.
@@ -20,7 +22,7 @@ import { TEAM_ROSTER, normalizeRosterName, findRosterByName } from "@/lib/team-r
 import type { RosterEntry } from "@/lib/team-roster-aliases";
 
 const SLACK_API = "https://slack.com/api";
-const USAGE = "Try: `/desk @harry chase the DPA` — start with a teammate, then what to do.";
+const USAGE = "Try: `/desk chase the DPA` for yourself, or `/desk @harry chase the DPA` for a teammate.";
 
 // Unique first-name → roster entry (ambiguous first names map to null so we don't
 // guess between e.g. the two Syeds — those need an @mention or a fuller name).
@@ -38,6 +40,7 @@ export async function handleDeskCommand(args: {
   workspaceId: string;
   text: string | null;
   callerName: string;
+  callerSlackId: string | null;
   botToken: string | null;
 }): Promise<string> {
   const trimmed = (args.text ?? "").trim();
@@ -45,8 +48,9 @@ export async function handleDeskCommand(args: {
 
   let targetEmail: string | null = null;
   let body = "";
+  let isSelf = false;
 
-  // 1. Escaped Slack mention at the start.
+  // 1. Escaped Slack mention at the start → that teammate.
   const mention = trimmed.match(/^<@([A-Z0-9]+)(?:\|[^>]*)?>\s*([\s\S]*)$/);
   if (mention) {
     body = mention[2].trim();
@@ -73,12 +77,21 @@ export async function handleDeskCommand(args: {
         consumed = 1;
       }
     }
-    if (!entry) return `Couldn't find a teammate called "${tokens[0]}". ${USAGE}`;
-    targetEmail = entry.email;
-    body = tokens.slice(consumed).join(" ").trim();
+    if (entry) {
+      targetEmail = entry.email;
+      body = tokens.slice(consumed).join(" ").trim();
+    } else {
+      // 3. No teammate named → it's for the caller.
+      isSelf = true;
+      body = trimmed;
+      targetEmail = args.botToken && args.callerSlackId
+        ? await slackUserEmail(args.botToken, args.callerSlackId)
+        : null;
+      if (!targetEmail) return "Couldn't match your Slack account to Foundry.";
+    }
   }
 
-  if (!body) return `Add what to do, e.g. \`/desk @harry chase the DPA\`.`;
+  if (!body) return "Add what to do, e.g. `/desk @harry chase the DPA`.";
 
   const target = await prisma.user.findFirst({
     where: {
@@ -88,13 +101,16 @@ export async function handleDeskCommand(args: {
     select: { id: true, name: true },
   });
   if (!target) {
+    if (isSelf) return "Your Slack account isn't linked to a Foundry account.";
     const label = findRosterByName(targetEmail)?.name ?? targetEmail;
     return `${label} isn't set up in Foundry yet.`;
   }
 
-  const note = `${body} — via Slack (@${args.callerName})`;
+  // Own reminders are just the note; a reminder for someone else carries who asked.
+  const note = isSelf ? body : `${body} — via Slack (@${args.callerName})`;
   await createReminderForUser({ workspaceId: args.workspaceId, userId: target.id, body: note });
 
+  if (isSelf) return `✓ Added to your list: “${body}”`;
   const first = (target.name ?? "their").trim().split(/\s+/)[0] || "their";
   return `✓ Added to ${first}'s list: “${body}”`;
 }

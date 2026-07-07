@@ -79,6 +79,7 @@ export async function POST(request: NextRequest) {
       workspaceId: ws.id,
       text: params.get("text"),
       callerName: params.get("user_name") || "someone",
+      callerSlackId: params.get("user_id"),
       botToken: getSlackBotToken(ws),
     });
     return ephemeral(reply);
