@@ -35,27 +35,25 @@ export async function POST(request: NextRequest) {
   const params = new URLSearchParams(rawBody);
   const teamId = params.get("team_id") ?? undefined;
 
-  // 2. Resolve the workspace (by Slack team id, else the single-tenant fallback)
-  //    with everything the handler needs.
-  const ws = teamId
-    ? await prisma.workspace.findFirst({
-        where: { slackTeamId: teamId },
-        select: {
-          id: true,
-          slackSigningSecretEncrypted: true,
-          slackBotToken: true,
-          slackBotTokenEncrypted: true,
-        },
-      })
-    : await prisma.workspace.findFirst({
-        where: { slackSigningSecretEncrypted: { not: null } },
-        select: {
-          id: true,
-          slackSigningSecretEncrypted: true,
-          slackBotToken: true,
-          slackBotTokenEncrypted: true,
-        },
-      });
+  // 2. Resolve the workspace. Try the Slack team id first, but ALWAYS fall back to
+  //    the single-tenant "any workspace with a signing secret" — `Workspace.slackTeamId`
+  //    is not populated anywhere, so a team-id-only match would always miss for
+  //    slash commands (which always send a team_id).
+  const wsSelect = {
+    id: true,
+    slackSigningSecretEncrypted: true,
+    slackBotToken: true,
+    slackBotTokenEncrypted: true,
+  } as const;
+  let ws = teamId
+    ? await prisma.workspace.findFirst({ where: { slackTeamId: teamId }, select: wsSelect })
+    : null;
+  if (!ws?.slackSigningSecretEncrypted) {
+    ws = await prisma.workspace.findFirst({
+      where: { slackSigningSecretEncrypted: { not: null } },
+      select: wsSelect,
+    });
+  }
 
   let signingSecret: string | null = null;
   try {
