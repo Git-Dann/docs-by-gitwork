@@ -14,6 +14,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ComponentProps } from "react";
 import { Button } from "@/components/ui/button";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate } from "@/lib/format";
 import {
   analysisStateLabel,
@@ -67,19 +68,35 @@ const analysisTone: Record<
   },
 };
 
-const tabItems = [
-  { href: "/app/codeclear", label: "Overview" },
+type CodeTab = { href: string; label: string; devsignal?: boolean };
+
+const tabItems: readonly CodeTab[] = [
+  // Overview lives at the canonical /app/code (where the sidebar "Code" lands); the
+  // legacy /app/codeclear also renders it, so both count as the Overview tab.
+  { href: "/app/code", label: "Overview" },
   { href: "/app/codeclear/candidates", label: "Developers" },
   { href: "/app/codeclear/pipeline", label: "Pipeline" },
+  { href: "/app/codeclear/devsignal", label: "DevSignal", devsignal: true },
 ] as const;
+
+/** Is `tab` the active one for the current path? Overview matches both /app/code
+ *  and legacy /app/codeclear; every tab also matches its own sub-routes (detail
+ *  pages) so the tab stays lit when you drill in. */
+function isTabActive(href: string, pathname: string): boolean {
+  if (href === "/app/code") return pathname === "/app/code" || pathname === "/app/codeclear";
+  return pathname === href || pathname.startsWith(href + "/");
+}
 
 export function CodeClearTabs() {
   const pathname = usePathname();
+  const { canManageDevSignal } = usePermissions();
+  // DevSignal (dev vetting) is permission-gated — only show its tab to those who can reach it.
+  const items = tabItems.filter((t) => !t.devsignal || canManageDevSignal);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {tabItems.map((item) => {
-        const active = pathname === item.href;
+      {items.map((item) => {
+        const active = isTabActive(item.href, pathname);
 
         return (
           <Link
