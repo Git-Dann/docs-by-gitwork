@@ -2880,6 +2880,12 @@ export function pushDailyUpdate(input: {
   });
 }
 
+/** Retract a sent standup — deletes today's posted Slack messages for the phase
+ *  and resets the pushed state. */
+export function deleteStandupUpdate(phase: "AM" | "PM"): Promise<DailyUpdateDTO> {
+  return apiFetch(`/api/tasks/standup?phase=${phase}`, { method: "DELETE" });
+}
+
 export function getRollupRoster(): Promise<RollupRosterDTO> {
   return apiFetch("/api/tasks/rollup");
 }

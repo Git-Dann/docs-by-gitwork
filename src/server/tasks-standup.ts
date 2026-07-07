@@ -13,7 +13,7 @@ import {
   assertCanPublishTaskRollup,
 } from "@/server/auth/effective-user";
 import { listTasks } from "@/server/tasks";
-import { getSlackBotToken, postMessage } from "@/server/slack/client";
+import { getSlackBotToken, postMessage, deleteMessage } from "@/server/slack/client";
 import { buildRollupCard, buildStandupCard, type StandupTaskCardInput } from "@/server/slack/blocks";
 import { assertDailyUpdateCooldown } from "@/server/slack-cooldown";
 import { TEAM_ROSTER } from "@/server/team-roster";
@@ -207,6 +207,57 @@ export async function pushDailyUpdate(
   return { ...updateToDTO(row, workDate), posted };
 }
 
+/** Retract today's standup for a phase: delete the posted Slack messages
+ *  (chat.delete, best-effort) and clear the phase timestamp so the dev's pill
+ *  resets to un-pushed. Only touches messages this user posted today. */
+export async function deleteStandupUpdate(
+  user: EffectiveUser,
+  phase: "AM" | "PM",
+): Promise<DailyUpdateDTO> {
+  await ensureBaseRecords();
+  const workDate = parseWorkDate();
+  const kind = phase === "AM" ? "STANDUP_AM" : "STANDUP_PM";
+
+  const refs = await prisma.slackMessageRef.findMany({
+    where: {
+      workspaceId: user.workspaceId,
+      postedById: user.id,
+      kind,
+      createdAt: { gte: workDate },
+    },
+    select: { id: true, channelId: true, messageTs: true },
+  });
+
+  if (refs.length > 0) {
+    const ws = await prisma.workspace.findUnique({
+      where: { id: user.workspaceId },
+      select: { slackBotToken: true, slackBotTokenEncrypted: true },
+    });
+    const botToken = getSlackBotToken(ws);
+    if (botToken) {
+      await Promise.all(
+        refs.map((r) =>
+          deleteMessage(botToken, { channel: r.channelId, ts: r.messageTs }).catch(() => undefined),
+        ),
+      );
+    }
+    await prisma.slackMessageRef.deleteMany({ where: { id: { in: refs.map((r) => r.id) } } });
+  }
+
+  // Clear the phase timestamp so the AM/PM pill flips back to un-pushed.
+  const existing = await prisma.dailyUpdate.findUnique({
+    where: { userId_workDate: { userId: user.id, workDate } },
+  });
+  const row = existing
+    ? await prisma.dailyUpdate.update({
+        where: { userId_workDate: { userId: user.id, workDate } },
+        data: phase === "AM" ? { amPushedAt: null } : { pmPushedAt: null },
+      })
+    : null;
+
+  return updateToDTO(row, workDate);
+}
+
 /** Post the standup to each involved client's internal channel. Returns the
  *  number of channels a message was posted to (0 = nothing to say / no channel). */
 async function postStandupToSlack(
@@ -280,7 +331,24 @@ async function postStandupToSlack(
       text: card.text,
       blocks: card.blocks,
     });
-    if (result.ok && result.data.ts) postedCount += 1;
+    if (result.ok && result.data.ts) {
+      postedCount += 1;
+      // Record the posted message so the dev can retract this update later
+      // (chat.delete). taskId is null — this is a per-channel standup card, not a
+      // per-task ref. Best-effort; a fresh post always has a unique ts.
+      await prisma.slackMessageRef
+        .create({
+          data: {
+            workspaceId: user.workspaceId,
+            channelId: channel,
+            messageTs: result.data.ts,
+            taskId: null,
+            kind: input.phase === "AM" ? "STANDUP_AM" : "STANDUP_PM",
+            postedById: user.id,
+          },
+        })
+        .catch(() => undefined);
+    }
   }
 
   // Bump the workspace's lastSlackPostAt diagnostic so the Settings page

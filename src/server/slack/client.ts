@@ -147,6 +147,16 @@ export function updateMessage(token: string, input: UpdateMessageInput): Promise
   return call<PostMessageResponse>(token, "chat.update", input);
 }
 
+export interface DeleteMessageInput {
+  channel: string;
+  ts: string;
+}
+
+/** chat.delete — remove a message the bot posted (used to retract a sent update). */
+export function deleteMessage(token: string, input: DeleteMessageInput): Promise<SlackResponse> {
+  return call(token, "chat.delete", { channel: input.channel, ts: input.ts });
+}
+
 // ─── views.* (modals) ───────────────────────────────────────────────────────
 
 export interface OpenViewInput {
