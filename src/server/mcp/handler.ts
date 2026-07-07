@@ -21,10 +21,13 @@ import {
   canManageClients,
   canManageDocs,
   canManagePulse,
+  canManageStarters,
   canSeeAllClients,
   ForbiddenError,
   UnauthorizedError,
 } from "@/server/auth/effective-user";
+import { listStarters, getStarterBySlug } from "@/server/starters";
+import { buildSkillMarkdown } from "@/server/starters-package";
 import { runAgentScan, buildAgentVerdict } from "@/server/pulse-agent";
 import { getPulseScan } from "@/server/pulse";
 import type { CheckCategory } from "@/server/pulse-checks/categories";
@@ -688,7 +691,10 @@ export async function dispatch(
       case "initialize":
         return rpcResult(id, {
           protocolVersion: PROTOCOL_VERSION,
-          capabilities: { tools: { listChanged: false } },
+          capabilities: {
+            tools: { listChanged: false },
+            prompts: { listChanged: false },
+          },
           serverInfo: SERVER_INFO,
         });
       case "notifications/initialized":
@@ -705,6 +711,10 @@ export async function dispatch(
         });
       case "tools/call":
         return await handleToolCall(user, id, body.params);
+      case "prompts/list":
+        return rpcResult(id, { prompts: await listStarterPrompts(user) });
+      case "prompts/get":
+        return await handlePromptGet(user, id, body.params);
       case "ping":
         return rpcResult(id, {});
       default:
@@ -763,6 +773,46 @@ async function handleToolCall(
     }
     return rpcResult(id, errorResult(err));
   }
+}
+
+// ── prompts (Starters) ───────────────────────────────────────────────────────
+// Starters are Super-Admin-only, so non-admins see an empty prompt list and cannot fetch one.
+// Each starter's prompt body is the exact SKILL.md text served by the download route — a chat gets
+// identical content whether it installs the skill or invokes the prompt.
+
+async function listStarterPrompts(
+  user: EffectiveUser,
+): Promise<Array<{ name: string; description: string; arguments: [] }>> {
+  if (!canManageStarters(user)) return [];
+  const starters = await listStarters();
+  return starters.map((s) => ({ name: s.slug, description: s.summary, arguments: [] }));
+}
+
+async function handlePromptGet(
+  user: EffectiveUser,
+  id: JsonRpcId,
+  params: unknown,
+): Promise<JsonRpcResponse> {
+  if (!canManageStarters(user)) {
+    return rpcError(id, -32002, "You don't have permission to use starters.");
+  }
+  const name = (params as { name?: string } | null | undefined)?.name;
+  if (!name || typeof name !== "string") {
+    return rpcError(id, ERR_INVALID_PARAMS, "Missing prompt name.");
+  }
+  const starter = await getStarterBySlug(name);
+  if (!starter) {
+    return rpcError(id, ERR_METHOD_NOT_FOUND, `Unknown prompt: ${name}`);
+  }
+  return rpcResult(id, {
+    description: starter.summary,
+    messages: [
+      {
+        role: "user",
+        content: { type: "text", text: buildSkillMarkdown(starter) },
+      },
+    ],
+  });
 }
 
 // ── envelope helpers ───────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   PlusIcon,
@@ -10,6 +10,10 @@ import {
   TrashIcon,
   SparklesIcon,
   ArrowRightIcon,
+  ArrowDownTrayIcon,
+  CommandLineIcon,
+  ClipboardIcon,
+  CheckIcon,
   StarIcon as StarOutline,
 } from "@heroicons/react/24/outline";
 import { StarIcon as StarSolid } from "@heroicons/react/24/solid";
@@ -140,6 +144,16 @@ function StarterCard({
           ) : (
             <span className="widget-timestamp">{formatDate(starter.createdAt)}</span>
           )}
+          <a
+            href={`/api/starters/${starter.id}/download`}
+            download
+            onClick={(e) => e.stopPropagation()}
+            className="rounded-[6px] p-1 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)]"
+            title={starter.type === "SKILL" || starter.type === "PROMPT" ? "Add to Claude (.zip)" : "Download source (.zip)"}
+            aria-label="Download starter"
+          >
+            <ArrowDownTrayIcon className="h-3.5 w-3.5" />
+          </a>
           {canManage ? (
             <button
               type="button"
@@ -156,6 +170,59 @@ function StarterCard({
         </div>
       </div>
     </article>
+  );
+}
+
+// Two ways into a Claude chat: per-starter Skill zip (the download arrow on each card), or connect
+// Foundry's MCP server once so every starter appears as a slash-command prompt in Claude Desktop.
+function ClaudeConnectCard() {
+  const [origin, setOrigin] = useState("");
+  const [copied, setCopied] = useState(false);
+  useEffect(() => setOrigin(window.location.origin), []);
+  const snippet = `claude mcp add --transport http foundry ${origin || "https://foundry.gitwork.co.uk"}/api/mcp`;
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked — the snippet is still selectable */
+    }
+  }
+
+  return (
+    <section className="widget-card">
+      <div className="widget-header">
+        <span className="widget-header__label">
+          <span className="widget-header__label--number">02</span>
+          {" // USE IN CLAUDE"}
+        </span>
+      </div>
+      <div className="space-y-3 px-5 py-4">
+        <p className="text-xs leading-5 text-[var(--text-3)]">
+          <span className="font-medium text-[var(--text-2)]">Per starter</span> — hit the download arrow on any
+          card for a Skill <span className="font-mono">.zip</span>, then upload it in Claude → Settings →
+          Capabilities → Skills.
+          <br />
+          <span className="font-medium text-[var(--text-2)]">All at once</span> — connect Foundry to Claude
+          Desktop and every starter shows up as a slash-command prompt. Needs MCP enabled in Settings → Workspace.
+        </p>
+        <div className="flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
+          <CommandLineIcon className="h-4 w-4 shrink-0 text-[var(--text-4)]" />
+          <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--text-2)]">{snippet}</code>
+          <button
+            type="button"
+            onClick={copy}
+            className="shrink-0 rounded-[6px] p-1 text-[var(--text-4)] transition hover:bg-[var(--surface-2)] hover:text-[var(--text-1)]"
+            title="Copy connect command"
+            aria-label="Copy connect command"
+          >
+            {copied ? <CheckIcon className="h-3.5 w-3.5 text-emerald-600" /> : <ClipboardIcon className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -295,6 +362,9 @@ export function StarterList() {
           ) : null}
         </div>
       </section>
+
+      {/* How to get starters into a Claude chat — only outside the scan-focused flow */}
+      {!scan && canManageStarters && all.length > 0 && <ClaudeConnectCard />}
 
       {/* Cards grid */}
       {isLoading ? (
