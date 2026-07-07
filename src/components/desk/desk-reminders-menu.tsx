@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ClipboardDocumentListIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
-import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import {
@@ -13,12 +12,11 @@ import {
 } from "@/hooks/use-desk";
 
 /**
- * Reminders as a top-bar popover (sits beside the notification bell) rather than
- * taking a whole row on the Today view. A count badge shows open reminders; the
- * panel lets you jot a quick one. Same hooks as the old inline list; reminders
- * still clear themselves after 7 days.
+ * Reminders as a popover in the On Your Desk header (right side, beside the tabs) —
+ * not a whole row on Today. A count badge shows open reminders; the panel drops
+ * down into the drawer body. Same hooks as before; reminders still clear after 7 days.
  */
-export function DeskRemindersMenu({ className }: { className?: string }) {
+export function DeskRemindersMenu() {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const reminders = useDeskReminders({ enabled: true });
@@ -43,16 +41,19 @@ export function DeskRemindersMenu({ className }: { className?: string }) {
   }, [open]);
 
   return (
-    <div ref={wrapRef} className={cn("relative", className)}>
+    <div ref={wrapRef} className="relative shrink-0">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={openCount > 0 ? `Reminders, ${openCount} open` : "Reminders"}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="relative rounded-[6px] p-2 text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+        className={cn(
+          "relative rounded-[6px] p-1.5 transition hover:bg-[var(--surface-1)]",
+          open ? "text-[var(--brand-700)]" : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+        )}
       >
-        <ClipboardDocumentListIcon className="h-6 w-6" />
+        <ClipboardDocumentListIcon className="h-5 w-5" />
         {openCount > 0 && (
           <span
             aria-hidden
@@ -63,23 +64,15 @@ export function DeskRemindersMenu({ className }: { className?: string }) {
         )}
       </button>
 
-      {/* Desktop: anchored dropdown */}
       {open && (
         <div
           role="menu"
           aria-label="Reminders"
-          className="absolute right-0 z-50 mt-2 hidden w-[340px] overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] shadow-xl lg:block"
+          className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] shadow-xl"
         >
           <RemindersPanel />
         </div>
       )}
-
-      {/* Mobile: reuse the focus-trapped Modal as a sheet */}
-      <div className="lg:hidden">
-        <Modal open={open} onClose={() => setOpen(false)} panelClassName="w-full max-w-md p-0">
-          <RemindersPanel />
-        </Modal>
-      </div>
     </div>
   );
 }
@@ -99,7 +92,7 @@ function RemindersPanel() {
   }
 
   return (
-    <div className="flex max-h-[70vh] flex-col">
+    <div className="flex max-h-[55vh] flex-col">
       <div className="widget-header">
         <span className="widget-header-label">Reminders</span>
         <span className="text-[10px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
