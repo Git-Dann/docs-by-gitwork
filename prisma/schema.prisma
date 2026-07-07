@@ -2782,7 +2782,8 @@ model HandbookArticle {
   summary     String         @default("") // one-line card subtitle + reading-surface lede
   category    String         @default("General") // freeform; the rail lists categories in use
   content     String         @default("") // markdown body
-  tags        String[]       @default([])
+  tags        String[]       @default([]) // visible tags shown on the article
+  keywords    String[]       @default([]) // hidden search tags — related terms / synonyms for smart search
   status      HandbookStatus @default(PUBLISHED)
   featured    Boolean        @default(false) // pinned to the top of the library with a star
   readMinutes Int? // estimated read time (computed on save)

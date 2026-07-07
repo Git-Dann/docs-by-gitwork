@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
       category: data.category ?? null,
       content: data.content ?? null,
       tags: data.tags,
+      keywords: data.keywords,
       status: data.status,
       authorId: user?.id ?? null,
     });

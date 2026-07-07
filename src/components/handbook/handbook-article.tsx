@@ -21,6 +21,7 @@ import { cn, formatDate } from "@/lib/format";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { ArticleMarkdown } from "@/components/handbook/article-markdown";
 import { HandbookForm } from "@/components/handbook/handbook-form";
+import { hueFor } from "@/components/handbook/cover-hue";
 
 export function HandbookArticleView({ articleId }: { articleId: string }) {
   const router = useRouter();
@@ -123,34 +124,53 @@ export function HandbookArticleView({ articleId }: { articleId: string }) {
           </span>
         </div>
 
-        {/* Masthead */}
-        <header className="border-b border-[var(--border-2)] px-7 pb-7 pt-8">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--brand-700)]">
-            <span>{article.category}</span>
-            {article.readMinutes ? (
-              <span className="inline-flex items-center gap-1 text-[var(--text-4)]">
-                <ClockIcon className="h-3 w-3" />
-                {article.readMinutes} min read
+        {/* Editorial cover band — gradient by section, echoing the reference infographic's covers */}
+        {(() => {
+          const hue = hueFor(`${article.category}:${article.title}`);
+          return (
+            <header
+              className="relative overflow-hidden border-b border-[var(--border-2)] px-7 pb-8 pt-9"
+              style={{ background: `linear-gradient(135deg, ${hue.from} 0%, ${hue.to} 100%)` }}
+            >
+              {/* oversized ghost numeral, like an editorial cover */}
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -right-2 -top-6 select-none text-[150px] leading-none opacity-[0.10]"
+                style={{ fontFamily: "var(--font-display)", color: hue.ink }}
+              >
+                §
               </span>
-            ) : null}
-          </div>
-          {/* thin brand rule */}
-          <div className="mt-3 h-0.5 w-12 rounded-full bg-[var(--brand-600)]" />
-          <h1
-            className="mt-4 text-[40px] leading-[1.08] tracking-[-0.03em] text-[var(--text-1)]"
-            style={{ fontFamily: "var(--font-display)" }}
-          >
-            {article.title}
-          </h1>
-          {article.summary ? (
-            <p className="mt-3 max-w-2xl text-[17px] leading-7 text-[var(--text-3)]">{article.summary}</p>
-          ) : null}
-          <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-[var(--text-4)]">
-            {article.author?.name ? <span>By {article.author.name}</span> : null}
-            <span>Updated {formatDate(article.updatedAt)}</span>
-            {article.tags.length > 0 ? <span>{article.tags.map((t) => `#${t}`).join("  ")}</span> : null}
-          </div>
-        </header>
+              <div className="relative">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: hue.ink }}>
+                  <span>{article.category}</span>
+                  {article.readMinutes ? (
+                    <span className="inline-flex items-center gap-1 opacity-70">
+                      <ClockIcon className="h-3 w-3" />
+                      {article.readMinutes} min read
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-3 h-0.5 w-12 rounded-full" style={{ background: hue.ink, opacity: 0.5 }} />
+                <h1
+                  className="mt-4 max-w-2xl text-[42px] leading-[1.06] tracking-[-0.03em]"
+                  style={{ fontFamily: "var(--font-display)", color: hue.ink }}
+                >
+                  {article.title}
+                </h1>
+                {article.summary ? (
+                  <p className="mt-3 max-w-2xl text-[17px] leading-7" style={{ color: hue.ink, opacity: 0.8 }}>
+                    {article.summary}
+                  </p>
+                ) : null}
+                <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px]" style={{ color: hue.ink, opacity: 0.65 }}>
+                  {article.author?.name ? <span>By {article.author.name}</span> : null}
+                  <span>Updated {formatDate(article.updatedAt)}</span>
+                  {article.tags.length > 0 ? <span>{article.tags.map((t) => `#${t}`).join("  ")}</span> : null}
+                </div>
+              </div>
+            </header>
+          );
+        })()}
 
         {/* Body */}
         <div className="px-7 py-7">

@@ -20,24 +20,9 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate } from "@/lib/format";
 import { buttonStyles } from "@/components/ui/button";
 import type { HandbookListItem, HandbookStatus } from "@/server/handbook";
+import { hueFor } from "@/components/handbook/cover-hue";
 
 type Scope = "all" | "featured" | "drafts" | "archived";
-
-// Deterministic cover hue — same palette as the Docs card library (DESIGN.md).
-const COVER_HUES = [
-  { from: "#EFF6FF", to: "#DBEAFE", ink: "#1E3A8A" }, // blue
-  { from: "#F5F3FF", to: "#EDE9FE", ink: "#5B21B6" }, // violet
-  { from: "#ECFDF5", to: "#D1FAE5", ink: "#065F46" }, // emerald
-  { from: "#FFFBEB", to: "#FEF3C7", ink: "#92400E" }, // amber
-  { from: "#FFF1F2", to: "#FFE4E6", ink: "#9F1239" }, // rose
-  { from: "#F8FAFC", to: "#F1F5F9", ink: "#334155" }, // slate
-];
-
-function hueFor(seed: string) {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  return COVER_HUES[h % COVER_HUES.length];
-}
 
 const STATUS_LABEL: Record<HandbookStatus, string> = {
   DRAFT: "Draft",

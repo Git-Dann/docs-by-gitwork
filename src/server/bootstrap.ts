@@ -30,7 +30,7 @@ import { getDefaultRateCardPeoplePayload } from "@/server/rate-card";
 import { getDefaultCodeClearCandidatePayloads } from "@/server/codeclear";
 import { migratePermissionModel } from "@/server/permissions";
 import { seedBuiltInStarters } from "@/server/starters-catalog";
-import { seedHandbookArticles } from "@/server/handbook-catalog";
+import { seedHandbookArticles, seedProjectArticles } from "@/server/handbook-catalog";
 import { isSeedAccountEmail } from "@/server/seed-accounts";
 
 // Adds columns/tables introduced by the Portal schema extension that
@@ -397,9 +397,11 @@ async function _ensureBaseRecords() {
   // with no manual "load" step. Idempotent upsert by slug — see seedBuiltInStarters.
   await seedBuiltInStarters(workspace.id);
 
-  // Seed the starter Handbook (developer standards / how we operate) — ONLY when the workspace
-  // has zero articles, so the module lands populated on first boot but edits/deletions persist.
+  // Seed / refresh the built-in Handbook (developer standards, languages, how we operate) —
+  // version-gated so improved content ships on deploy without clobbering edits. Then create a
+  // starter project playbook per active Portal client (create-only, never clobbered).
   await seedHandbookArticles(workspace.id);
+  await seedProjectArticles(workspace.id);
 
   await ensureSampleProposal({ workspace, user, template });
   await ensureSampleCodeClearCandidates({ workspace });

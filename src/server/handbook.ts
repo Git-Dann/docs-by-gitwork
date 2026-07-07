@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { expandQuery, deriveKeywords } from "@/server/handbook-search";
 
 // ── Handbook (internal developer knowledgebase) ──────────────────────────────────
 // A global, workspace-level, searchable library of developer standards, playbooks and process —
@@ -49,6 +50,7 @@ export interface HandbookListItem {
 
 export interface HandbookRecord extends HandbookListItem {
   content: string;
+  keywords: string[];
   viewCount: number;
   publishedAt: string | null;
 }
@@ -61,6 +63,7 @@ type HandbookRow = {
   category: string;
   content: string;
   tags: string[];
+  keywords: string[];
   status: HandbookStatus;
   featured: boolean;
   readMinutes: number | null;
@@ -94,6 +97,7 @@ function serializeArticle(a: HandbookRow): HandbookRecord {
   return {
     ...serializeListItem(a),
     content: a.content,
+    keywords: a.keywords,
     viewCount: a.viewCount,
     publishedAt: a.publishedAt ? a.publishedAt.toISOString() : null,
   };
@@ -153,23 +157,30 @@ export async function listHandbookArticles(filters?: {
 }): Promise<HandbookListItem[]> {
   const workspace = await getWorkspace();
   const q = filters?.q?.trim();
+  // Smart search: expand the query into related terms (concept map) and match the raw phrase across
+  // the text fields plus any expanded term against the hidden `keywords` / visible `tags` arrays. So
+  // "ship" surfaces the deploy article, "auth" the security baseline, etc. — not just literal hits.
+  const terms = q ? expandQuery(q) : [];
+  const searchOr = q
+    ? [
+        { title: { contains: q, mode: "insensitive" as const } },
+        { summary: { contains: q, mode: "insensitive" as const } },
+        { content: { contains: q, mode: "insensitive" as const } },
+        { category: { contains: q, mode: "insensitive" as const } },
+        ...terms.map((t) => ({ title: { contains: t, mode: "insensitive" as const } })),
+        ...terms.map((t) => ({ summary: { contains: t, mode: "insensitive" as const } })),
+        { keywords: { hasSome: terms.length ? terms : [q] } },
+        { tags: { hasSome: terms.length ? terms : [q] } },
+      ]
+    : undefined;
+
   const rows = await prisma.handbookArticle.findMany({
     where: {
       workspaceId: workspace.id,
       ...(filters?.category ? { category: filters.category } : {}),
       ...(filters?.includeArchived ? {} : { status: { not: "ARCHIVED" } }),
       ...(filters?.includeDrafts === false ? { status: "PUBLISHED" } : {}),
-      ...(q
-        ? {
-            OR: [
-              { title: { contains: q, mode: "insensitive" } },
-              { summary: { contains: q, mode: "insensitive" } },
-              { content: { contains: q, mode: "insensitive" } },
-              { category: { contains: q, mode: "insensitive" } },
-              { tags: { has: q } },
-            ],
-          }
-        : {}),
+      ...(searchOr ? { OR: searchOr } : {}),
     },
     orderBy: [{ featured: "desc" }, { orderKey: "asc" }, { updatedAt: "desc" }],
     include: { author: AUTHOR_SELECT },
@@ -201,6 +212,7 @@ export async function createHandbookArticle(data: {
   category?: string | null;
   content?: string | null;
   tags?: string[];
+  keywords?: string[];
   status?: HandbookStatus;
   authorId?: string | null;
 }): Promise<HandbookRecord> {
@@ -208,6 +220,8 @@ export async function createHandbookArticle(data: {
   const slug = await uniqueSlug(data.title);
   const content = data.content ?? "";
   const status = data.status ?? "PUBLISHED";
+  const tags = data.tags ?? [];
+  const category = normalizeCategory(data.category);
   const row = await prisma.handbookArticle.create({
     data: {
       workspaceId: workspace.id,
@@ -215,9 +229,10 @@ export async function createHandbookArticle(data: {
       title: data.title,
       slug,
       summary: (data.summary ?? "").trim(),
-      category: normalizeCategory(data.category),
+      category,
       content,
-      tags: data.tags ?? [],
+      tags,
+      keywords: deriveKeywords({ title: data.title, category, tags, explicit: data.keywords }),
       status,
       readMinutes: estimateReadMinutes(content),
       publishedAt: status === "PUBLISHED" ? new Date() : null,
@@ -235,6 +250,7 @@ export async function updateHandbookArticle(
     category?: string | null;
     content?: string | null;
     tags?: string[];
+    keywords?: string[];
     status?: HandbookStatus;
     featured?: boolean;
     authorId?: string | null;
@@ -243,12 +259,24 @@ export async function updateHandbookArticle(
   const workspace = await getWorkspace();
   const existing = await prisma.handbookArticle.findFirst({
     where: { id, workspaceId: workspace.id },
-    select: { id: true, status: true, publishedAt: true },
+    select: { id: true, status: true, publishedAt: true, title: true, category: true, tags: true },
   });
   if (!existing) return null;
 
   // Stamp publishedAt the first time an article goes live.
   const goingLive = data.status === "PUBLISHED" && existing.status !== "PUBLISHED";
+
+  // Recompute hidden search keywords whenever any input to them changes, from the merged values.
+  const keywordsChanged =
+    data.title !== undefined || data.category !== undefined || data.tags !== undefined || data.keywords !== undefined;
+  const nextKeywords = keywordsChanged
+    ? deriveKeywords({
+        title: data.title ?? existing.title,
+        category: normalizeCategory(data.category ?? existing.category),
+        tags: data.tags ?? existing.tags,
+        explicit: data.keywords,
+      })
+    : undefined;
 
   const row = await prisma.handbookArticle.update({
     where: { id },
@@ -261,6 +289,7 @@ export async function updateHandbookArticle(
         readMinutes: estimateReadMinutes(data.content ?? ""),
       }),
       ...(data.tags !== undefined && { tags: data.tags }),
+      ...(nextKeywords !== undefined && { keywords: nextKeywords }),
       ...(data.status !== undefined && { status: data.status }),
       ...(data.featured !== undefined && { featured: data.featured }),
       ...(data.authorId !== undefined && { authorId: data.authorId }),

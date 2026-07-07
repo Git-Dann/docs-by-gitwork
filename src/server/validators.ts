@@ -1387,6 +1387,7 @@ export const handbookCreateSchema = z.object({
   category: z.string().trim().max(60).nullish(),
   content: z.string().max(200000).nullish(),
   tags: z.array(z.string().trim().min(1).max(40)).max(30).optional(),
+  keywords: z.array(z.string().trim().min(1).max(60)).max(60).optional(),
   status: handbookStatusSchema.optional(),
 });
 
@@ -1396,6 +1397,7 @@ export const handbookUpdateSchema = z.object({
   category: z.string().trim().max(60).nullish(),
   content: z.string().max(200000).nullish(),
   tags: z.array(z.string().trim().min(1).max(40)).max(30).optional(),
+  keywords: z.array(z.string().trim().min(1).max(60)).max(60).optional(),
   status: handbookStatusSchema.optional(),
   featured: z.boolean().optional(),
 });

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { deriveKeywords } from "@/server/handbook-search";
 
 // ── Built-in Handbook seed ───────────────────────────────────────────────────────
 // The shipped starter set of developer-facing articles — Gitwork standards and how we operate.
@@ -9,8 +10,9 @@ import { prisma } from "@/lib/prisma";
 // edited and grown in-app; new hand-authored articles (different slugs) are never touched.
 
 // Bump this whenever the built-in content below is revised so the change reaches existing
-// workspaces on the next deploy. v1 = initial skeletons; v2 = fully fleshed-out articles.
-export const HANDBOOK_SEED_VERSION = 2;
+// workspaces on the next deploy. v1 = initial skeletons; v2 = fully fleshed-out articles;
+// v3 = language guides, hidden search keywords, admonition/flair markup.
+export const HANDBOOK_SEED_VERSION = 3;
 
 interface SeedArticle {
   slug: string;
@@ -18,6 +20,8 @@ interface SeedArticle {
   category: string;
   summary: string;
   tags: string[];
+  /** Optional explicit hidden search terms; the seeder also auto-derives related terms. */
+  keywords?: string[];
   featured?: boolean;
   content: string;
 }
@@ -996,6 +1000,237 @@ export const HANDBOOK_SEED: SeedArticle[] = [
       "> The best handover is one you barely have to do — because the code is readable, the docs were written as you went, and nothing critical lives only in your head. Design for the day you walk away from day one.",
     ),
   },
+
+  // ── Languages ────────────────────────────────────────────────────────────────
+  {
+    slug: "language-typescript",
+    title: "TypeScript",
+    category: "Languages",
+    summary: "Our primary language. Type the boundaries, lean on inference, and never switch the checker off with `any`.",
+    tags: ["typescript", "language", "types"],
+    keywords: ["ts", "tsx", "generics", "zod", "type-safety", "javascript"],
+    featured: true,
+    content: md(
+      "TypeScript is the language we write most of Gitwork in — the Foundry app is TypeScript end to end. Used well it's a safety net that catches whole classes of bugs before they run; used lazily it's JavaScript with extra ceremony. Aim for the former.",
+      "",
+      "## i. Type the boundaries, infer the middle",
+      "Put explicit types where data crosses a boundary — exported function signatures, API payloads, component props. Let inference handle locals; annotating `const n = 1` as `: number` is noise.",
+      "```ts",
+      "// Boundary: explicit. Body: inferred.",
+      "export function estimateReadMinutes(content: string): number | null {",
+      "  const words = content.trim().split(/\\s+/).filter(Boolean).length;",
+      "  return words === 0 ? null : Math.max(1, Math.round(words / 200));",
+      "}",
+      "```",
+      "",
+      "## ii. `any` is the enemy",
+      "> [!WARNING]",
+      "> `any` switches off the type checker exactly where bugs hide. Every `any` is a small hole in the net. We carry some legacy `any` — don't add to it; prefer `unknown` and narrow.",
+      "",
+      "When a value is genuinely unknown (a JSON blob, a third-party payload), type it `unknown` and narrow with a guard or a Zod parse, so the compiler forces you to handle the shapes.",
+      "",
+      "## iii. Model with unions, not optional soup",
+      "A discriminated union says what's actually possible; a bag of optionals says \"anything goes\".",
+      "```ts",
+      "// Good — the shape tells you the states",
+      "type Result = { ok: true; value: string } | { ok: false; error: string };",
+      "```",
+      "",
+      "## iv. Validate at the edge with Zod",
+      "Types vanish at runtime, so every external input (request bodies, webhooks, model output) is parsed with a Zod schema from `src/server/validators.ts`. The parsed type flows inward with confidence.",
+      "",
+      "> [!TIP]",
+      "> `z.infer<typeof schema>` gives you a static type from a Zod schema for free — one source of truth for the shape and the validation.",
+      "",
+      "## House rules",
+      "- Prefer `type` aliases for unions/DTOs; `interface` for extensible object contracts.",
+      "- Keep server DTO types separate from Prisma row types — never leak a raw row (see [Data & Prisma conventions](/app/handbook)).",
+      "- `npx tsc --noEmit` is part of Done — no new errors.",
+    ),
+  },
+  {
+    slug: "language-javascript-node",
+    title: "JavaScript & Node",
+    category: "Languages",
+    summary: "The runtime under everything — async done right, modern idioms, and the sharp edges to respect.",
+    tags: ["javascript", "node", "language", "async"],
+    keywords: ["js", "nodejs", "promises", "npm", "esm", "runtime", "typescript"],
+    content: md(
+      "Even though we write TypeScript, it compiles to JavaScript and runs on Node — so JS semantics still bite. Know them.",
+      "",
+      "## i. Async, done right",
+      "- `await` in sequence only when there's a real dependency; otherwise parallelise.",
+      "```ts",
+      "// Independent work — don't await in series",
+      "const [user, workspace] = await Promise.all([getUser(id), getWorkspace(id)]);",
+      "```",
+      "- Every `await` can throw — a rejected promise is an exception. Handle it, or let it bubble to a boundary that does (`fromError` in API routes).",
+      "- Don't forget to `await`. A floating promise is a bug that fails silently and lands in the wrong tick.",
+      "",
+      "## ii. Modern idioms",
+      "- `?.` and `??` over hand-rolled null checks — but know `??` guards `null`/`undefined` only, while `||` also catches `0` and `\"\"` (usually a bug).",
+      "- Array methods (`map`/`filter`/`flatMap`/`reduce`) over index loops for transforms.",
+      "- Destructure at the top of a function so the inputs are visible.",
+      "",
+      "## iii. The sharp edges",
+      "> [!WARNING]",
+      "> `0`, `\"\"`, `NaN` and `false` are all falsy. `if (count || fallback)` silently replaces a legitimate `0`. Reach for `??` when zero/empty are valid values.",
+      "",
+      "- Equality: always `===`. `==` coerces in ways nobody remembers correctly.",
+      "- Dates are `Date` objects internally but ISO strings on the wire — serialize at the boundary.",
+      "",
+      "## Dependencies",
+      "> [!NOTE]",
+      "> Every dependency is code we now own the security and maintenance of. Before adding one, ask whether ten lines of our own would do. When we do add, pin it and note why in the PR.",
+    ),
+  },
+  {
+    slug: "language-swift-ios",
+    title: "Swift & SwiftUI (iOS)",
+    category: "Languages",
+    summary: "How we build the native Apple side — SwiftUI-first, value types, and a shared design language with the web.",
+    tags: ["swift", "swiftui", "ios", "mobile", "language"],
+    keywords: ["apple", "xcode", "iphone", "app", "foundry", "async await"],
+    content: md(
+      "Native Apple work (the Foundry companion app) is Swift + SwiftUI. It talks to the same Foundry API the web app does, and it wears the same design language — the numbered-widget grammar carries across.",
+      "",
+      "## i. SwiftUI first",
+      "Build screens declaratively with SwiftUI. Drop to UIKit only for the rare thing SwiftUI can't do, and wrap it in a `UIViewRepresentable` so the rest stays declarative.",
+      "",
+      "## ii. Value types by default",
+      "Prefer `struct` and `enum` over `class`. Value semantics make state predictable — a big reason SwiftUI works. Reach for a reference type only when you genuinely need identity or shared mutable state.",
+      "",
+      "## iii. Concurrency with async/await",
+      "```swift",
+      "func loadDesk() async throws -> Desk {",
+      "    let (data, _) = try await URLSession.shared.data(from: deskURL)",
+      "    return try JSONDecoder().decode(Desk.self, from: data)",
+      "}",
+      "```",
+      "- Mark UI-updating state `@MainActor`.",
+      "- Model server payloads as `Codable` structs mirroring the API DTOs — the same shapes the web client uses.",
+      "",
+      "## iv. Talk to the same API",
+      "> [!IMPORTANT]",
+      "> The iOS app is a client of the Foundry API, not a second backend. Every endpoint is mobile-JWT-aware via `requireAuthedUser` — build against the existing routes and DTOs rather than inventing parallel ones.",
+      "",
+      "## Design parity",
+      "> [!TIP]",
+      "> The app shares the web design language — mono widget headers, DM-Serif-equivalent display type, brand blue. When in doubt, mirror how the web renders the same data so the two feel like one product.",
+      "",
+      "Build + verify against the simulator with a demo session before calling an iOS change done.",
+    ),
+  },
+  {
+    slug: "language-sql",
+    title: "SQL & query patterns",
+    category: "Languages",
+    summary: "We mostly reach Postgres through Prisma — but you still think in SQL. Indexes, joins, and avoiding N+1.",
+    tags: ["sql", "postgres", "database", "language", "query"],
+    keywords: ["prisma", "join", "index", "query", "pgvector", "performance"],
+    content: md(
+      "Our database is PostgreSQL, reached mostly through Prisma (see [Data & Prisma conventions](/app/handbook)). But Prisma is a thin layer over SQL — the queries it generates behave like SQL, so you still need to think in it.",
+      "",
+      "## i. Index what you filter and sort",
+      "A query that filters on `workspaceId` and orders by `updatedAt` wants an index covering both. Without it, Postgres scans the whole table — fine at 100 rows, a real problem at 100,000.",
+      "```prisma",
+      "@@index([workspaceId, updatedAt])",
+      "```",
+      "",
+      "## ii. Kill N+1",
+      "> [!WARNING]",
+      "> The classic performance killer: one query for a list, then one more per row. It looks innocent in code and dies under real data. Fetch related data with a join (`include`), or batch the ids.",
+      "```ts",
+      "// One query, not one-per-article",
+      "prisma.handbookArticle.findMany({ include: { author: true } });",
+      "```",
+      "",
+      "## iii. Let the database do the work",
+      "Aggregations, counts and grouping belong in the query, not in a JS loop over every row.",
+      "```ts",
+      "prisma.handbookArticle.groupBy({ by: [\"category\"], _count: { _all: true } });",
+      "```",
+      "",
+      "## iv. Select only what you use",
+      "`select` the columns you need instead of pulling whole rows — less data over the wire, and it keeps sensitive columns out of payloads by default.",
+      "",
+      "## pgvector",
+      "> [!NOTE]",
+      "> Postgres carries the `pgvector` extension (Care uses it for semantic search). It's there if a feature genuinely needs vector similarity — but reach for it deliberately, not by default.",
+    ),
+  },
+  {
+    slug: "language-css-tailwind",
+    title: "CSS & Tailwind",
+    category: "Languages",
+    summary: "Tailwind v4, CSS-first config, design tokens over hardcoded values, and the dark-mode trap.",
+    tags: ["css", "tailwind", "styling", "language", "frontend"],
+    keywords: ["design system", "responsive", "dark mode", "layout", "tokens", "utility"],
+    content: md(
+      "We style with **Tailwind CSS v4** — CSS-first config (no `tailwind.config.js`), with the system's design tokens defined in `globals.css`. Get the tokens right and light + dark mode both come for free.",
+      "",
+      "## i. Tokens, not hex",
+      "Always style with the CSS variables, never a raw colour. The tokens flip in dark mode; a hardcoded hex does not.",
+      "```tsx",
+      "// Good — flips in dark mode",
+      "<div className=\"border border-[var(--border-2)] bg-[var(--surface-0)] text-[var(--text-1)]\" />",
+      "```",
+      "",
+      "## ii. The dark-mode trap",
+      "> [!WARNING]",
+      "> The dark remap covers `bg-white`, semantic tokens and rgba-black borders — but NOT the Tailwind neutral scales (`text-slate-500`, `bg-gray-100`, `zinc`, …). Use those on the navy shell and your text goes invisible in dark mode. Reach for `--text-*` / `--surface-*` / `--border-*` instead.",
+      "",
+      "## iii. Geometry & the no-pill rule",
+      "- `6px` radius on controls, `10px` on cards.",
+      "- `rounded-full` is for 6px status dots **only** — never buttons, never pills.",
+      "- Hairline borders (`--border-2`); no drop shadows on flat cards (shadow = modal/overlay).",
+      "",
+      "## iv. Layout & responsive",
+      "- Flex/grid with relative units; `max-width: 100%` on media.",
+      "- Wide content scrolls in its own `overflow-x-auto` container — the page never scrolls sideways.",
+      "- See [Responsive & mobile standards](/app/handbook) and the mobile playbook before layout work.",
+      "",
+      "> [!TIP]",
+      "> Use `cn()` from `src/lib/format.ts` for conditional classes — it merges cleanly and de-dupes conflicts.",
+      "",
+      "Everything here is downstream of the [design system](/app/handbook) — read that for the why.",
+    ),
+  },
+  {
+    slug: "language-bash-shell",
+    title: "Bash & shell scripting",
+    category: "Languages",
+    summary: "For deploy hooks, crons and one-off tooling — safe defaults, quoting, and knowing when to reach for Node instead.",
+    tags: ["bash", "shell", "scripting", "language", "cli"],
+    keywords: ["sh", "zsh", "terminal", "cron", "deploy", "script", "automation"],
+    content: md(
+      "Shell shows up in deploy hooks, the Docker entrypoint, host crons on the VPS, and quick local tooling. It's powerful and unforgiving — a few defaults keep scripts from failing silently.",
+      "",
+      "## i. Safe defaults at the top",
+      "> [!IMPORTANT]",
+      "> Start non-trivial scripts with strict mode so failures stop the script instead of ploughing on with bad state.",
+      "```bash",
+      "#!/usr/bin/env bash",
+      "set -euo pipefail   # exit on error, unset vars, and failed pipes",
+      "```",
+      "",
+      "## ii. Quote everything",
+      "Unquoted variables word-split and glob-expand — the source of most shell bugs.",
+      "```bash",
+      "cp \"$src\" \"$dst\"      # good",
+      "cp $src $dst          # breaks on spaces, expands globs",
+      "```",
+      "",
+      "## iii. Fail loudly",
+      "- Check that required env vars exist before using them.",
+      "- Prefer explicit `if ! command; then echo …; exit 1; fi` over hoping.",
+      "- On the VPS, `/api/cron/*` endpoints are triggered by host cron with the `CRON_SECRET` header — a script that fails silently means a cron that quietly stops running.",
+      "",
+      "## iv. Know when to stop",
+      "> [!TIP]",
+      "> Once a script grows conditionals, arrays and string parsing, rewrite it in TypeScript/Node. Shell is for gluing commands together, not for logic. If you're reaching for `awk` to parse structured data, you've outgrown the shell.",
+    ),
+  },
 ];
 
 /**
@@ -1017,6 +1252,7 @@ export async function seedHandbookArticles(workspaceId: string): Promise<number>
   for (const [i, a] of HANDBOOK_SEED.entries()) {
     const words = a.content.trim().split(/\s+/).filter(Boolean).length;
     const readMinutes = Math.max(1, Math.round(words / 200));
+    const keywords = deriveKeywords({ title: a.title, category: a.category, tags: a.tags, explicit: a.keywords });
     await prisma.handbookArticle.upsert({
       where: { slug: a.slug },
       update: {
@@ -1028,6 +1264,7 @@ export async function seedHandbookArticles(workspaceId: string): Promise<number>
         category: a.category,
         content: a.content,
         tags: a.tags,
+        keywords,
         readMinutes,
         ...(a.featured ? { featured: true } : {}),
       },
@@ -1039,6 +1276,7 @@ export async function seedHandbookArticles(workspaceId: string): Promise<number>
         category: a.category,
         content: a.content,
         tags: a.tags,
+        keywords,
         status: "PUBLISHED",
         featured: a.featured ?? false,
         readMinutes,
@@ -1054,4 +1292,87 @@ export async function seedHandbookArticles(workspaceId: string): Promise<number>
     data: { handbookSeedVersion: HANDBOOK_SEED_VERSION },
   });
   return written;
+}
+
+/**
+ * Seed a starter Handbook article per active (non-hidden) Portal client — a project playbook devs
+ * flesh out. CREATE-ONLY, keyed on a stable `project-<clientSlug>` slug: once an article exists for
+ * a client it's never touched again, so edits and deletions are preserved and new clients pick up a
+ * stub on the next boot. Populated from real client fields — never fabricated. Runs every boot
+ * (cheap: one query + create-if-missing per client).
+ */
+export async function seedProjectArticles(workspaceId: string): Promise<number> {
+  const clients = await prisma.workspaceClient.findMany({
+    where: { workspaceId, hidden: false },
+    select: { name: true, slug: true, website: true, notes: true, primaryContactName: true, primaryContactEmail: true },
+    orderBy: { name: "asc" },
+  });
+  if (clients.length === 0) return 0;
+
+  const existing = await prisma.handbookArticle.findMany({
+    where: { workspaceId, slug: { in: clients.map((c) => `project-${c.slug}`) } },
+    select: { slug: true },
+  });
+  const have = new Set(existing.map((e) => e.slug));
+
+  const now = new Date();
+  let created = 0;
+  for (const c of clients) {
+    const slug = `project-${c.slug}`;
+    if (have.has(slug)) continue;
+
+    const overview = (c.notes ?? "").trim();
+    const contact = c.primaryContactName
+      ? `${c.primaryContactName}${c.primaryContactEmail ? ` (${c.primaryContactEmail})` : ""}`
+      : c.primaryContactEmail ?? "TBC";
+    const content = md(
+      overview || `Project workspace for **${c.name}**. Fill in the stack, repos and gotchas so any dev can pick this up cold.`,
+      "",
+      "## Overview",
+      overview ? overview : "_What is this project, and what stage is it at? (fill in)_",
+      "",
+      "## At a glance",
+      "| | |",
+      "|---|---|",
+      `| **Client** | ${c.name} |`,
+      `| **Website** | ${c.website ? c.website : "_TBC_"} |`,
+      `| **Primary contact** | ${contact} |`,
+      "",
+      "## Stack",
+      "_Languages, framework, hosting, key services. (fill in)_",
+      "",
+      "## Repositories & access",
+      "_Repo links, deploy target, where env/secrets live. (fill in — see [Handling secrets](/app/handbook))_",
+      "",
+      "## How we work on this",
+      "_Cadence, who's assigned, Slack channel, standup expectations. (fill in)_",
+      "",
+      "## Gotchas & tribal knowledge",
+      "> [!IMPORTANT]",
+      "> _The things that would bite a new dev — the non-obvious setup step, the flaky integration, the client preference. Write them here the moment you learn them._",
+    );
+    const words = content.trim().split(/\s+/).filter(Boolean).length;
+    await prisma.handbookArticle.create({
+      data: {
+        workspaceId,
+        title: c.name,
+        slug,
+        summary: `Project playbook for ${c.name} — stack, access, cadence and the gotchas.`,
+        category: "Projects",
+        content,
+        tags: ["project", c.slug],
+        keywords: deriveKeywords({
+          title: c.name,
+          category: "Projects",
+          tags: ["project", "client", c.slug],
+        }),
+        status: "PUBLISHED",
+        readMinutes: Math.max(1, Math.round(words / 200)),
+        orderKey: 0,
+        publishedAt: now,
+      },
+    });
+    created += 1;
+  }
+  return created;
 }

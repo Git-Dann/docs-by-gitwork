@@ -42,6 +42,7 @@ export function HandbookForm({
   const [summary, setSummary] = useState(article?.summary ?? "");
   const [category, setCategory] = useState(article?.category ?? "");
   const [tags, setTags] = useState((article?.tags ?? []).join(", "));
+  const [keywords, setKeywords] = useState((article?.keywords ?? []).join(", "));
   const [status, setStatus] = useState<HandbookStatus>(article?.status ?? "PUBLISHED");
   const [content, setContent] = useState(article?.content ?? "");
   const [preview, setPreview] = useState(false);
@@ -62,6 +63,7 @@ export function HandbookForm({
       category: category.trim() || null,
       content,
       tags: csvToArray(tags),
+      keywords: csvToArray(keywords),
       status,
     };
     try {
@@ -156,6 +158,21 @@ export function HandbookForm({
                 placeholder="git, ci, deploys"
               />
             </div>
+          </div>
+          <div>
+            <label className={labelClass} htmlFor="hb-keywords">
+              Hidden search tags <span className="font-sans font-normal normal-case text-[var(--text-4)]">— related terms so search finds this (optional)</span>
+            </label>
+            <input
+              id="hb-keywords"
+              className={`${inputClass} mt-1.5`}
+              value={keywords}
+              onChange={(e) => setKeywords(e.target.value)}
+              placeholder="shipping, release, rollback, pipeline"
+            />
+            <p className="mt-1 text-[11px] text-[var(--text-4)]">
+              Not shown on the article. We also auto-add related terms — leave blank and search still works.
+            </p>
           </div>
         </div>
       </section>

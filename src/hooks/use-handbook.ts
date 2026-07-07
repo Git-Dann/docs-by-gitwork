@@ -25,6 +25,7 @@ export interface HandbookInput {
   category?: string | null;
   content?: string | null;
   tags?: string[];
+  keywords?: string[];
   status?: HandbookStatus;
 }
 
