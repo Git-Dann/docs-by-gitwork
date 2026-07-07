@@ -51,9 +51,9 @@ export function OutcomeLinksPanel({
   };
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-5">
-      <p className="font-mono text-xs uppercase tracking-wider text-neutral-400">06 // Delivery outcomes</p>
-      <p className="mt-1 text-xs text-neutral-400">
+    <div className="rounded-xl border border-[var(--border-2)] bg-white p-5">
+      <p className="font-mono text-xs uppercase tracking-wider text-[var(--text-4)]">06 // Delivery outcomes</p>
+      <p className="mt-1 text-xs text-[var(--text-4)]">
         Link this assessment to real project delivery. This is the data loop that lets the score be
         validated later — recalibration itself is not built yet.
       </p>
@@ -61,10 +61,10 @@ export function OutcomeLinksPanel({
       {links.length > 0 && (
         <ul className="mt-3 space-y-2">
           {links.map((l) => (
-            <li key={l.id} className="rounded-md border border-neutral-100 bg-neutral-50 px-3 py-2 text-sm">
-              <p className="font-medium text-neutral-800">{placementLabel(l.placementId)}</p>
-              {l.notes && <p className="text-xs text-neutral-500">{l.notes}</p>}
-              <p className="font-mono text-[10px] uppercase tracking-wider text-neutral-400">
+            <li key={l.id} className="rounded-md border border-[var(--border-3)] bg-[var(--surface-1)] px-3 py-2 text-sm">
+              <p className="font-medium text-[var(--text-2)]">{placementLabel(l.placementId)}</p>
+              {l.notes && <p className="text-xs text-[var(--text-3)]">{l.notes}</p>}
+              <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-4)]">
                 {l.source ?? "manual"}
                 {l.linkedAt ? ` · ${new Date(l.linkedAt).toLocaleDateString()}` : ""}
               </p>
@@ -73,11 +73,11 @@ export function OutcomeLinksPanel({
         </ul>
       )}
 
-      <div className="mt-4 space-y-2 border-t border-neutral-100 pt-4">
+      <div className="mt-4 space-y-2 border-t border-[var(--border-3)] pt-4">
         <select
           value={placementId}
           onChange={(e) => setPlacementId(e.target.value)}
-          className="app-select w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+          className="app-select w-full rounded-md border border-[var(--border-1)] px-3 py-2 text-sm"
         >
           <option value="">General (no specific placement)</option>
           {placements.map((p) => (
@@ -91,12 +91,12 @@ export function OutcomeLinksPanel({
           onChange={(e) => setNotes(e.target.value)}
           rows={2}
           placeholder="Delivery notes (e.g. retained, client-rated 5/5, shipped on time)…"
-          className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          className="w-full rounded-md border border-[var(--border-1)] px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
         />
         <button
           onClick={submit}
           disabled={create.isPending}
-          className="w-full rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium hover:bg-neutral-50 disabled:opacity-50"
+          className="w-full rounded-md border border-[var(--border-1)] px-4 py-2 text-sm font-medium hover:bg-[var(--surface-1)] disabled:opacity-50"
         >
           {create.isPending ? "Linking…" : "Link delivery outcome"}
         </button>
