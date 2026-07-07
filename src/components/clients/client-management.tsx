@@ -1362,26 +1362,7 @@ export function ClientManagement() {
           </div>
         </section>
 
-        {/* ── Bulk-select toggle (managers only; not on the onboarding-links tab) ── */}
-        {canManageClients && tab !== "onboarding" && !isPending && !error && clients.length > 0 && (
-          <div className="flex items-center justify-end gap-2">
-            {selectMode && (
-              <span className="widget-data-label">{selectedSlugs.size} selected</span>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setSelectMode((m) => !m);
-                setSelectedSlugs(new Set());
-              }}
-              className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-            >
-              {selectMode ? "Done" : "Select"}
-            </button>
-          </div>
-        )}
-
-        {/* ── Content per tab ── */}
+        {/* ── Content per tab (the Select toggle now lives on the section label row) ── */}
         {isPending ? (
           <div className="widget-card">
             <div className="widget-body py-16 text-center">
@@ -1398,16 +1379,37 @@ export function ClientManagement() {
           <OnboardingLinksList links={onboardingLinks} />
         ) : clients.length ? (
           <section className="space-y-3">
-            {(tab === "active" || tab === "leads" || tab === "inactive") && (
-              <div className="flex items-center gap-2">
-                <span className="widget-data-label">
-                  {tab === "leads" ? "Leads" : tab === "inactive" ? "Inactive" : "Active"}
-                </span>
-                <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--surface-2)] px-1.5 text-[11px] font-semibold text-[var(--text-3)]">
-                  {clients.length}
-                </span>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <span className="widget-data-label">
+                {tab === "leads"
+                  ? "Leads"
+                  : tab === "inactive"
+                    ? "Inactive"
+                    : tab === "pending"
+                      ? "Pending review"
+                      : "Active"}
+              </span>
+              <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--surface-2)] px-1.5 text-[11px] font-semibold text-[var(--text-3)]">
+                {clients.length}
+              </span>
+              {canManageClients && (
+                <div className="ml-auto flex items-center gap-2">
+                  {selectMode && (
+                    <span className="widget-data-label">{selectedSlugs.size} selected</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectMode((m) => !m);
+                      setSelectedSlugs(new Set());
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                  >
+                    {selectMode ? "Done" : "Select"}
+                  </button>
+                </div>
+              )}
+            </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {clients.map((client) => (
                 <ClientCard
