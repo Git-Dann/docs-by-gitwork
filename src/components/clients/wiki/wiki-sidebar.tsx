@@ -11,6 +11,7 @@ import {
   CircleStackIcon,
   ClockIcon,
   CodeBracketIcon,
+  CpuChipIcon,
   DocumentDuplicateIcon,
   CubeTransparentIcon,
   DocumentTextIcon,
@@ -28,6 +29,7 @@ export type WikiSection =
   | "monitors"
   | "documents"
   | "intake"
+  | "code-handover"
   | "design-system"
   | "ia"
   | "dev-guide"
@@ -103,6 +105,7 @@ export function WikiSidebar({
       "monitors",
       "documents",
       "intake",
+      "code-handover",
       "design-system",
       "ia",
       "dev-guide",
@@ -197,6 +200,7 @@ export function WikiSidebar({
         {navItem("monitors", "Monitors", <BoltIcon />)}
         {navItem("documents", "Documents", <DocumentDuplicateIcon />)}
         {navItem("intake", "Requests", <FlagIcon />)}
+        {navItem("code-handover", "Code Handover", <CpuChipIcon />)}
         {navItem("design-system", "Design System", <CubeTransparentIcon />)}
         {navItem("ia", "Info Architecture", <BookOpenIcon />)}
         {navItem("dev-guide", "Developer Guide", <CodeBracketIcon />)}

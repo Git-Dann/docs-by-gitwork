@@ -9,6 +9,7 @@ import { ApiDocsReference, normalizeApiDocsContent } from "./api-docs-page-edito
 import { ChangelogSection } from "./changelog-section";
 import { CourseRequestsSection } from "./course-requests-section";
 import { WikiIntakeSection } from "./wiki-intake-section";
+import { WikiCodeSection } from "./wiki-code-section";
 import { WikiTimelineSection } from "./wiki-timeline-section";
 import { WikiDashboard } from "./wiki-dashboard";
 import { DesignSystemViewer } from "@/components/clients/design-system/design-system-viewer";
@@ -50,6 +51,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   monitors: "Monitors",
   documents: "Documents",
   intake: "Requests",
+  "code-handover": "Code Handover",
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
@@ -102,6 +104,9 @@ export function WikiPublicView({
       ? (["documents"] as const)
       : []),
     ...(wiki.intakeEnabled ? (["intake"] as const) : []),
+    ...(wiki.codeHandover.enabled && wiki.codeHandover.modules.length > 0
+      ? (["code-handover"] as const)
+      : []),
     ...(wiki.designSystem ? (["design-system"] as const) : []),
     ...existingDocSections,
     ...(wiki.changelog.length > 0 ? (["changelog"] as const) : []),
@@ -182,6 +187,10 @@ export function WikiPublicView({
 
     if (activeSection === "intake") {
       return <WikiIntakeSection slug={wiki.clientSlug} token={token} items={wiki.intakeItems} mode="public" />;
+    }
+
+    if (activeSection === "code-handover") {
+      return <WikiCodeSection slug={wiki.clientSlug} section={wiki.codeHandover} mode="public" />;
     }
 
     if (activeSection === "design-system") {

@@ -68,6 +68,7 @@ const SHARE_SECTION_LABELS: Partial<Record<WikiSection, string>> = {
   timeline: "Timeline",
   monitors: "Monitors",
   documents: "Documents",
+  "code-handover": "Code Handover",
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",

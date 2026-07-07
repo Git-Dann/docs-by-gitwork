@@ -150,6 +150,7 @@ const WIKI_SECTION_LABEL: Record<string, string> = {
   timeline: "Timeline",
   monitors: "Monitors",
   documents: "Documents",
+  "code-handover": "Code Handover",
   ia: "IA",
   "dev-guide": "Dev Guide",
   "api-docs": "API Docs",

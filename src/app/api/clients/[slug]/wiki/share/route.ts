@@ -13,6 +13,7 @@ const bodySchema = z.object({
       "timeline",
       "monitors",
       "documents",
+      "code-handover",
       "design-system",
       "ia",
       "dev-guide",

@@ -22,6 +22,7 @@ import type {
 import type { DesignTokens } from "@/types/design-tokens";
 import { loadWikiMonitors, type WikiMonitorsSection } from "./wiki-monitors";
 import { loadWikiDocuments, type WikiDocumentsSection } from "./wiki-documents";
+import { loadWikiCodeHandover, type WikiCodeHandoverSection } from "./wiki-code";
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -151,6 +152,8 @@ export interface WikiDTO {
   designSystem: WikiDesignSystem | null;
   /** Uptime monitors section — whether it's enabled + the monitors with stats. */
   monitors: WikiMonitorsSection;
+  /** Code Handover section — versioned source per hardware module. */
+  codeHandover: WikiCodeHandoverSection;
   /** Active delivery team (devs) on the project — for the dashboard hero stack. */
   team: WikiTeamMember[];
   /** Gitwork product/account leads (workspace members) — a second hero stack. */
@@ -535,6 +538,7 @@ async function buildDTO(
     timeline: await loadWikiTimeline(wiki.clientId),
     designSystem: await loadWikiDesignSystem(wiki.clientId),
     monitors: await loadWikiMonitors(wiki.clientId),
+    codeHandover: await loadWikiCodeHandover(wiki.clientId),
     team: await loadWikiTeam(wiki.clientId),
     productTeam: await loadWikiProductTeam(wiki.clientId),
     headerLinks: await loadWikiHeaderLinks(wiki.clientId),
@@ -1345,6 +1349,7 @@ const SHAREABLE_SECTIONS = [
   "timeline",
   "monitors",
   "documents",
+  "code-handover",
   "design-system",
   "ia",
   "dev-guide",

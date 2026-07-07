@@ -29,6 +29,14 @@ import {
   runWikiMonitorApi,
   setWikiMonitorsEnabledApi,
   setWikiIntakeEnabledApi,
+  setWikiCodeEnabledApi,
+  createWikiCodeModuleApi,
+  updateWikiCodeModuleApi,
+  deleteWikiCodeModuleApi,
+  createWikiCodeVersionApi,
+  updateWikiCodeVersionApi,
+  deleteWikiCodeVersionApi,
+  type CodeFileInput,
   createWikiLinkDocApi,
   uploadWikiFileDocApi,
   updateWikiDocApi,
@@ -389,6 +397,62 @@ export function useSetWikiIntakeEnabled(slug: string) {
     mutationFn: (enabled: boolean) => setWikiIntakeEnabledApi(slug, enabled),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });
+}
+
+// ─── Code handover ──────────────────────────────────────────────────────────
+function useWikiInvalidate(slug: string) {
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+}
+
+export function useSetWikiCodeEnabled(slug: string) {
+  const invalidate = useWikiInvalidate(slug);
+  return useMutation({ mutationFn: (enabled: boolean) => setWikiCodeEnabledApi(slug, enabled), onSuccess: invalidate });
+}
+
+export function useCreateCodeModule(slug: string) {
+  const invalidate = useWikiInvalidate(slug);
+  return useMutation({
+    mutationFn: (input: { name: string; description?: string | null }) => createWikiCodeModuleApi(slug, input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdateCodeModule(slug: string) {
+  const invalidate = useWikiInvalidate(slug);
+  return useMutation({
+    mutationFn: ({ moduleId, ...input }: { moduleId: string; name?: string; description?: string | null }) =>
+      updateWikiCodeModuleApi(slug, moduleId, input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteCodeModule(slug: string) {
+  const invalidate = useWikiInvalidate(slug);
+  return useMutation({ mutationFn: (moduleId: string) => deleteWikiCodeModuleApi(slug, moduleId), onSuccess: invalidate });
+}
+
+export function useCreateCodeVersion(slug: string) {
+  const invalidate = useWikiInvalidate(slug);
+  return useMutation({
+    mutationFn: ({ moduleId, ...input }: { moduleId: string; label: string; notes?: string | null; files: CodeFileInput[]; makeCurrent?: boolean }) =>
+      createWikiCodeVersionApi(slug, moduleId, input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdateCodeVersion(slug: string) {
+  const invalidate = useWikiInvalidate(slug);
+  return useMutation({
+    mutationFn: ({ versionId, ...input }: { versionId: string; label?: string; notes?: string | null; files?: CodeFileInput[]; makeCurrent?: boolean }) =>
+      updateWikiCodeVersionApi(slug, versionId, input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteCodeVersion(slug: string) {
+  const invalidate = useWikiInvalidate(slug);
+  return useMutation({ mutationFn: (versionId: string) => deleteWikiCodeVersionApi(slug, versionId), onSuccess: invalidate });
 }
 
 // ─── Documents ────────────────────────────────────────────────────────────────
