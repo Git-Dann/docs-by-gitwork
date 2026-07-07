@@ -3287,6 +3287,10 @@ model DeskReminder {
   userId      String
   body        String    @db.Text
   done        Boolean   @default(false)
+  // "MANUAL" = typed into the On Your Desk clipboard by the owner; "SLACK" =
+  // created via the /desk slash command. The clipboard shows MANUAL only; the
+  // "Needs you today" list surfaces SLACK ones. Additive, defaults MANUAL.
+  source      String    @default("MANUAL")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

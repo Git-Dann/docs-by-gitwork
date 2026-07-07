@@ -67,6 +67,9 @@ export type DeskReminderDTO = {
   id: string;
   body: string;
   done: boolean;
+  /** "MANUAL" = typed into the clipboard by the owner; "SLACK" = via /desk. The
+   *  clipboard shows MANUAL only; "Needs you today" surfaces SLACK ones. */
+  source: "MANUAL" | "SLACK";
   createdAt: string; // ISO
 };
 
