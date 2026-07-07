@@ -101,7 +101,7 @@ export function WikiPublicView({
     ...(wiki.documents.enabled && wiki.documents.documents.length > 0
       ? (["documents"] as const)
       : []),
-    "intake",
+    ...(wiki.intakeEnabled ? (["intake"] as const) : []),
     ...(wiki.designSystem ? (["design-system"] as const) : []),
     ...existingDocSections,
     ...(wiki.changelog.length > 0 ? (["changelog"] as const) : []),

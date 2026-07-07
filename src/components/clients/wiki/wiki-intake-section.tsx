@@ -87,99 +87,95 @@ export function WikiIntakeSection({
   }
 
   return (
-    <div className="space-y-6">
-      <section className="widget-card overflow-hidden">
+    <div className="space-y-4">
+      {/* ── 01 // ADD REQUEST ── */}
+      <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label" style={{ fontFamily: MONO }}>
             <span className="widget-header__label--number">01</span>
-            {" // CLIENT INTAKE"}
+            {" // ADD REQUEST"}
           </span>
         </div>
-        <div className="grid gap-0 md:grid-cols-[1.05fr_0.95fr]">
-          <div className="border-b border-[var(--border-1)] p-6 md:border-b-0 md:border-r">
-            <h2 className="text-xl font-semibold text-[var(--text-1)]">Add a bug, feedback, or request</h2>
-            <p className="mt-2 text-sm leading-6 text-[var(--text-4)]">
-              This stays inside the client Wiki first. Clients can add items here, but only Gitwork
-              admins can promote them into the Dev task board and assign developers.
-            </p>
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              {(["BUG", "FEEDBACK", "TASK"] as ItemType[]).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setType(value)}
-                  className={`rounded-[10px] border px-3 py-2 text-left transition ${
-                    type === value
-                      ? "border-[var(--brand-600)] bg-[var(--brand-50)] text-[var(--brand-800)]"
-                      : "border-[var(--border-1)] bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]"
-                  }`}
-                >
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em]">{TYPE_LABEL[value]}</span>
-                </button>
-              ))}
-            </div>
-            <div className="mt-4 space-y-3">
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Short title"
-                className="w-full rounded-[9px] border border-[var(--border-2)] px-3 py-2 text-sm outline-none focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-100)]"
-              />
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="What happened, what should change, or any helpful context…"
-                rows={5}
-                className="w-full rounded-[9px] border border-[var(--border-2)] px-3 py-2 text-sm outline-none focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-100)]"
-              />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <select
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value as Priority)}
-                  className="rounded-[9px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm"
-                >
-                  <option value="LOW">Low priority</option>
-                  <option value="MEDIUM">Medium priority</option>
-                  <option value="HIGH">High priority</option>
-                </select>
-                <input
-                  value={requestedBy}
-                  onChange={(e) => setRequestedBy(e.target.value)}
-                  placeholder="Requested by (optional)"
-                  className="rounded-[9px] border border-[var(--border-2)] px-3 py-2 text-sm outline-none focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-100)]"
-                />
-              </div>
-              {error && <p className="text-sm text-red-600">{error}</p>}
+        <div className="space-y-4 p-6">
+          {/* Type — segmented pills */}
+          <div className="grid gap-2 sm:grid-cols-3">
+            {(["BUG", "FEEDBACK", "TASK"] as ItemType[]).map((value) => (
               <button
+                key={value}
                 type="button"
-                onClick={() => void submit()}
-                disabled={busy}
-                className="inline-flex items-center gap-2 rounded-[8px] bg-[var(--brand-700)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-800)] disabled:opacity-60"
+                onClick={() => setType(value)}
+                className={[
+                  "rounded-[8px] border px-3 py-2 text-[12px] font-semibold uppercase tracking-[0.06em] transition",
+                  type === value
+                    ? "border-[var(--brand-500)] bg-[var(--surface-brand)] text-[var(--brand-800)]"
+                    : "border-[var(--border-2)] bg-[var(--surface-0)] text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+                ].join(" ")}
+                style={{ fontFamily: MONO }}
               >
-                <PlusIcon className="h-4 w-4" />
-                {busy ? "Adding…" : "Add to Wiki intake"}
+                {TYPE_LABEL[value]}
               </button>
-            </div>
+            ))}
           </div>
-          <div className="bg-[var(--surface-1)] p-6">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)]" style={{ fontFamily: MONO }}>
-              Workflow
-            </p>
-            <ol className="mt-4 space-y-3 text-sm text-[var(--text-3)]">
-              <li><strong className="text-[var(--text-1)]">1.</strong> Client adds the item to this Wiki page or pushes it via API.</li>
-              <li><strong className="text-[var(--text-1)]">2.</strong> Gitwork reviews and clarifies it here.</li>
-              <li><strong className="text-[var(--text-1)]">3.</strong> Admin/Super Admin promotes it into Dev tasks when it is ready.</li>
-            </ol>
+
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Short title"
+            className="app-input"
+          />
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="What happened, what should change, or any helpful context…"
+            rows={4}
+            className="app-input resize-y py-2.5 leading-relaxed"
+          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <select
+              value={priority}
+              onChange={(e) => setPriority(e.target.value as Priority)}
+              className="app-select"
+            >
+              <option value="LOW">Low priority</option>
+              <option value="MEDIUM">Medium priority</option>
+              <option value="HIGH">High priority</option>
+            </select>
+            <input
+              value={requestedBy}
+              onChange={(e) => setRequestedBy(e.target.value)}
+              placeholder="Requested by (optional)"
+              className="app-input"
+            />
+          </div>
+
+          {error && <p className="text-sm text-[var(--danger-600,#dc2626)]">{error}</p>}
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => void submit()}
+              disabled={busy}
+              className="inline-flex items-center gap-2 rounded-[8px] bg-[var(--brand-600)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60"
+            >
+              <PlusIcon className="h-4 w-4" />
+              {busy ? "Adding…" : "Add request"}
+            </button>
           </div>
         </div>
       </section>
 
+      {/* ── 02 // INTAKE LIST ── */}
       <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label" style={{ fontFamily: MONO }}>
             <span className="widget-header__label--number">02</span>
             {" // INTAKE LIST"}
           </span>
+          {visibleItems.length > 0 && (
+            <span className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+              {visibleItems.length} ITEM{visibleItems.length === 1 ? "" : "S"}
+            </span>
+          )}
         </div>
         <div className="divide-y divide-[var(--border-1)]">
           {visibleItems.length === 0 ? (
@@ -189,15 +185,33 @@ export function WikiIntakeSection({
               <article key={item.id} className="p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-[var(--brand-50)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)]">{TYPE_LABEL[item.type as ItemType]}</span>
-                      <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)] ring-1 ring-[var(--border-1)]">{item.priority}</span>
-                      <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)] ring-1 ring-[var(--border-1)]">{STATUS_LABEL[item.status] ?? item.status}</span>
+                    <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                      <span
+                        className="rounded-full bg-[var(--surface-brand)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)]"
+                        style={{ fontFamily: MONO }}
+                      >
+                        {TYPE_LABEL[item.type as ItemType]}
+                      </span>
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)] ring-1 ring-[var(--border-1)]"
+                        style={{ fontFamily: MONO }}
+                      >
+                        {item.priority}
+                      </span>
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)] ring-1 ring-[var(--border-1)]"
+                        style={{ fontFamily: MONO }}
+                      >
+                        {STATUS_LABEL[item.status] ?? item.status}
+                      </span>
                     </div>
-                    <h3 className="text-base font-semibold text-[var(--text-1)]">{item.title}</h3>
-                    {item.description && <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-[var(--text-3)]">{item.description}</p>}
-                    <p className="mt-2 text-[12px] text-[var(--text-4)]">
-                      {item.requestedBy ? `Requested by ${item.requestedBy} · ` : ""}{new Date(item.createdAt).toLocaleString()}
+                    <h3 className="text-[15px] font-semibold text-[var(--text-1)]">{item.title}</h3>
+                    {item.description && (
+                      <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-[var(--text-3)]">{item.description}</p>
+                    )}
+                    <p className="mt-2 text-[12px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+                      {item.requestedBy ? `${item.requestedBy} · ` : ""}
+                      {new Date(item.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
                     </p>
                   </div>
                   {isInternal && (
@@ -207,26 +221,35 @@ export function WikiIntakeSection({
                           type="button"
                           disabled={promoteItem.isPending}
                           onClick={() => void promoteItem.mutateAsync({ id: item.id })}
-                          className="inline-flex items-center gap-1.5 rounded-[7px] bg-[var(--brand-700)] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[var(--brand-800)] disabled:opacity-60"
+                          className="inline-flex items-center gap-1.5 rounded-[7px] bg-[var(--brand-600)] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60"
                         >
                           <CheckCircleIcon className="h-4 w-4" /> Create task
                         </button>
                       ) : item.taskId ? (
-                        <a href={`/app/portal/${slug}/tasks`} className="inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-2)] hover:bg-[var(--surface-1)]">
+                        <a
+                          href={`/app/portal/${slug}/tasks`}
+                          className="inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                        >
                           View tasks <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
                         </a>
                       ) : null}
                       <button
                         type="button"
-                        onClick={() => void updateItem.mutateAsync({ id: item.id, data: { status: item.status === "CLOSED" ? "NEW" : "CLOSED" } })}
-                        className="rounded-[7px] border border-[var(--border-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+                        onClick={() =>
+                          void updateItem.mutateAsync({
+                            id: item.id,
+                            data: { status: item.status === "CLOSED" ? "NEW" : "CLOSED" },
+                          })
+                        }
+                        className="rounded-[7px] border border-[var(--border-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
                       >
                         {item.status === "CLOSED" ? "Reopen" : "Close"}
                       </button>
                       <button
                         type="button"
                         onClick={() => void deleteItem.mutateAsync(item.id)}
-                        className="inline-flex items-center rounded-[7px] border border-red-200 px-2 py-1.5 text-red-600 hover:bg-red-50"
+                        aria-label="Delete item"
+                        className="inline-flex items-center rounded-[7px] border border-[var(--border-2)] px-2 py-1.5 text-[var(--text-4)] transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
                       >
                         <TrashIcon className="h-4 w-4" />
                       </button>
