@@ -2,8 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { usePermissions } from "@/hooks/use-permissions";
+import { cn } from "@/lib/format";
 import { useNotice } from "./notice";
 import {
   useCreateDevSignalAssessment,
@@ -13,31 +16,25 @@ import {
 } from "@/hooks/use-devsignal";
 import type { DevSignalAssessmentDTO } from "@/types/devsignal";
 
+// Status pill tones. Semantic colours (sky/amber/emerald/rose) are remapped for
+// dark mode in globals.css; neutral states use design tokens so they flip too.
 const STATUS_STYLE: Record<string, string> = {
-  DRAFT: "bg-neutral-100 text-neutral-600",
-  RUNNING: "bg-blue-100 text-blue-700",
-  PENDING_HUMAN: "bg-amber-100 text-amber-700",
-  COMPLETED: "bg-green-100 text-green-700",
-  FAILED: "bg-red-100 text-red-700",
-  ARCHIVED: "bg-neutral-100 text-neutral-500",
+  DRAFT: "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]",
+  RUNNING: "border-sky-200 bg-sky-50 text-sky-700",
+  PENDING_HUMAN: "border-amber-200 bg-amber-50 text-amber-700",
+  COMPLETED: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  FAILED: "border-rose-200 bg-rose-50 text-rose-700",
+  ARCHIVED: "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-4)]",
 };
 
-function WidgetHeader({ n, label }: { n: string; label: string }) {
-  return (
-    <p className="font-mono text-xs uppercase tracking-wider text-neutral-400">
-      {`${n} // ${label}`}
-    </p>
-  );
-}
-
 export function DevSignalQueue() {
-  const { canManageDevSignal } = usePermissions();
+  const { canManageCode } = usePermissions();
   const assessments = useDevSignalAssessments();
   const analytics = useDevSignalAnalytics();
   const [modalOpen, setModalOpen] = useState(false);
 
-  if (!canManageDevSignal) {
-    return <p className="text-sm text-neutral-500">You don&apos;t have access to DevSignal.</p>;
+  if (!canManageCode) {
+    return <p className="text-sm text-[var(--text-3)]">You don&apos;t have access to DevSignal.</p>;
   }
 
   const items = assessments.data?.items ?? [];
@@ -45,24 +42,25 @@ export function DevSignalQueue() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="font-mono text-xs uppercase tracking-[0.2em] text-blue-600">DevSignal</p>
-          <h2 className="text-2xl font-semibold text-neutral-900">Vetting — staging review</h2>
-          <p className="mt-1 text-sm text-neutral-500">
+          <p className="font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--brand-700)]">
+            DevSignal
+          </p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+            Vetting — staging review
+          </h2>
+          <p className="mt-1 text-sm text-[var(--text-3)]">
             Candidates are assessed here and only enter Code when a human promotes them.
           </p>
         </div>
-        <button
-          onClick={() => setModalOpen(true)}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
+        <Button variant="primary" onClick={() => setModalOpen(true)}>
           New assessment
-        </button>
+        </Button>
       </div>
 
       {/* Analytics strip */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <StatCard n="01" label="Assessed" value={a?.total ?? 0} />
         <StatCard n="02" label="Pending review" value={a?.byStatus?.PENDING_HUMAN ?? 0} />
         <StatCard n="03" label="Promoted to Code" value={a?.promotedToCode ?? 0} />
@@ -71,24 +69,21 @@ export function DevSignalQueue() {
       </div>
 
       {/* Queue */}
-      <div className="rounded-xl border border-neutral-200 bg-white">
-        <div className="border-b border-neutral-100 px-5 py-3">
-          <WidgetHeader n="06" label="Assessment queue" />
-        </div>
+      <WidgetCard number="06" name="Assessment queue" bodyClassName="!p-0">
         {assessments.isLoading ? (
-          <p className="px-5 py-8 text-sm text-neutral-400">Loading…</p>
+          <p className="px-4 py-8 text-sm text-[var(--text-4)]">Loading…</p>
         ) : items.length === 0 ? (
-          <p className="px-5 py-8 text-sm text-neutral-400">
+          <p className="px-4 py-8 text-sm text-[var(--text-4)]">
             No assessments yet. Create one to mint a candidate invite link.
           </p>
         ) : (
-          <ul className="divide-y divide-neutral-100">
+          <ul className="divide-y divide-[var(--border-3)]">
             {items.map((item) => (
               <QueueRow key={item.id} item={item} />
             ))}
           </ul>
         )}
-      </div>
+      </WidgetCard>
 
       <PipelineConfigCard />
 
@@ -104,30 +99,31 @@ function PipelineConfigCard() {
   const weights = def.stageWeights;
   const stages = def.stageOrder.length ? def.stageOrder : Object.keys(weights);
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-5">
-      <WidgetHeader n="07" label="Pipeline config" />
-      <p className="mt-1 text-xs text-neutral-400">
+    <WidgetCard number="07" name="Pipeline config">
+      <p className="text-xs text-[var(--text-4)]">
         {def.name} · {def.version} — snapshotted onto every assessment so historical scores stay
         interpretable. Editing UI is coming; per-client configs are set via the API today.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         {stages.map((s) => (
-          <span key={s} className="rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-1 font-mono text-xs text-neutral-600">
+          <span
+            key={s}
+            className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 font-mono text-xs text-[var(--text-3)]"
+          >
             {s.replace(/_/g, " ")} · {weights[s] ?? 0}
-            {def.blockingRules[s] ? " ·🔒" : ""}
+            {def.blockingRules[s] ? <span aria-label="blocking gate">🔒</span> : null}
           </span>
         ))}
       </div>
-    </div>
+    </WidgetCard>
   );
 }
 
 function StatCard({ n, label, value }: { n: string; label: string; value: number | string }) {
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-4">
-      <WidgetHeader n={n} label={label} />
-      <p className="mt-2 font-serif text-3xl text-neutral-900">{value}</p>
-    </div>
+    <WidgetCard number={n} name={label} bodyClassName="!py-4">
+      <p className="widget-stat">{value}</p>
+    </WidgetCard>
   );
 }
 
@@ -137,24 +133,32 @@ function QueueRow({ item }: { item: DevSignalAssessmentDTO }) {
     <li>
       <Link
         href={`/app/codeclear/devsignal/${item.id}`}
-        className="flex items-center justify-between px-5 py-3 hover:bg-neutral-50"
+        className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-[var(--surface-1)]"
       >
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-neutral-900">{item.candidateName}</p>
-          <p className="font-mono text-xs text-neutral-400">
-            {item.candidateGithubHandle ?? "no handle"} · {new Date(item.createdAt).toLocaleDateString()}
+          <p className="truncate text-sm font-medium text-[var(--text-1)]">{item.candidateName}</p>
+          <p className="font-mono text-xs text-[var(--text-4)]">
+            {item.candidateGithubHandle ?? "no handle"} ·{" "}
+            {new Date(item.createdAt).toLocaleDateString()}
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="hidden text-sm text-neutral-500 sm:inline">{label}</span>
+          <span className="hidden text-sm text-[var(--text-3)] sm:inline">{label}</span>
           {typeof item.finalScore === "number" && (
-            <span className="font-mono text-sm text-neutral-700">{item.finalScore}</span>
+            <span className="font-mono text-sm text-[var(--text-2)]">{item.finalScore}</span>
           )}
-          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[item.status] ?? ""}`}>
+          <span
+            className={cn(
+              "rounded-[6px] border px-2 py-0.5 text-xs font-medium capitalize",
+              STATUS_STYLE[item.status] ?? "",
+            )}
+          >
             {item.status.replace("_", " ").toLowerCase()}
           </span>
           {item.promotedToCode && (
-            <span className="rounded-full bg-blue-600 px-2 py-0.5 text-xs font-medium text-white">in Code</span>
+            <span className="rounded-[6px] bg-[var(--brand-600)] px-2 py-0.5 text-xs font-medium text-white">
+              in Code
+            </span>
           )}
         </div>
       </Link>
@@ -188,21 +192,21 @@ function NewAssessmentModal({ onClose }: { onClose: () => void }) {
         <Field label="Candidate name" value={name} onChange={setName} />
         <Field label="GitHub username" value={githubHandle} onChange={setGithubHandle} placeholder="octocat" />
         <Field label="Email (optional)" value={email} onChange={setEmail} type="email" />
-        <p className="text-xs text-neutral-400">
+        <p className="text-xs text-[var(--text-4)]">
           This mints a tokenised invite link the candidate uses to complete their assessment. They
           land in staging — nothing enters Code without your explicit promotion.
         </p>
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-md border border-neutral-300 px-4 py-2 text-sm">
+          <Button variant="secondary" onClick={onClose}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             onClick={submit}
             disabled={create.isPending || !name.trim() || !githubHandle.trim()}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             {create.isPending ? "Creating…" : "Create & mint link"}
-          </button>
+          </Button>
         </div>
       </div>
       {noticeEl}
@@ -225,13 +229,15 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block font-mono text-xs uppercase tracking-wider text-neutral-500">{label}</span>
+      <span className="mb-1 block font-mono text-xs uppercase tracking-wider text-[var(--text-4)]">
+        {label}
+      </span>
       <input
         type={type}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        className="app-input w-full"
       />
     </label>
   );

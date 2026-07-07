@@ -19,8 +19,8 @@ export function DevSignalEntryBanner() {
     >
       <div>
         <p className="font-mono text-xs uppercase tracking-[0.2em] text-blue-600">DevSignal</p>
-        <p className="mt-0.5 text-sm font-medium text-neutral-900">Developer vetting &amp; staging review</p>
-        <p className="text-sm text-neutral-500">
+        <p className="mt-0.5 text-sm font-medium text-[var(--text-1)]">Developer vetting &amp; staging review</p>
+        <p className="text-sm text-[var(--text-3)]">
           Assess candidates through the pipeline, then promote the right ones into Code.
         </p>
       </div>
