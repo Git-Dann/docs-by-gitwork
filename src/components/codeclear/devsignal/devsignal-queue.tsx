@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { ArrowRightIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
@@ -68,22 +69,26 @@ export function DevSignalQueue() {
         <StatCard n="05" label="Avg score" value={a?.averageFinalScore ?? "—"} />
       </div>
 
-      {/* Queue */}
-      <WidgetCard number="06" name="Assessment queue" bodyClassName="!p-0">
+      {/* Queue — starter-style candidate cards (matches /app/starters) */}
+      <div>
+        <p className="widget-data-label mb-3">
+          <span className="text-[var(--brand-700)]">06</span>
+          {" // Assessment queue"}
+        </p>
         {assessments.isLoading ? (
-          <p className="px-4 py-8 text-sm text-[var(--text-4)]">Loading…</p>
+          <p className="text-sm text-[var(--text-4)]">Loading…</p>
         ) : items.length === 0 ? (
-          <p className="px-4 py-8 text-sm text-[var(--text-4)]">
+          <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-8 text-center text-sm text-[var(--text-4)]">
             No assessments yet. Create one to mint a candidate invite link.
           </p>
         ) : (
-          <ul className="divide-y divide-[var(--border-3)]">
-            {items.map((item) => (
-              <QueueRow key={item.id} item={item} />
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {items.map((item, i) => (
+              <AssessmentCard key={item.id} item={item} index={i} />
             ))}
-          </ul>
+          </div>
         )}
-      </WidgetCard>
+      </div>
 
       <PipelineConfigCard />
 
@@ -127,42 +132,68 @@ function StatCard({ n, label, value }: { n: string; label: string; value: number
   );
 }
 
-function QueueRow({ item }: { item: DevSignalAssessmentDTO }) {
-  const label = item.bestMatchSummary?.labelDisplay ?? "—";
+function StatusBadge({ status }: { status: string }) {
   return (
-    <li>
-      <Link
-        href={`/app/codeclear/devsignal/${item.id}`}
-        className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-[var(--surface-1)]"
-      >
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-[var(--text-1)]">{item.candidateName}</p>
-          <p className="font-mono text-xs text-[var(--text-4)]">
-            {item.candidateGithubHandle ?? "no handle"} ·{" "}
-            {new Date(item.createdAt).toLocaleDateString()}
-          </p>
-        </div>
+    <span
+      className={cn(
+        "rounded-[4px] border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em]",
+        STATUS_STYLE[status] ?? "",
+      )}
+    >
+      {status.replace("_", " ")}
+    </span>
+  );
+}
+
+// Starter-style candidate card (mirrors /app/starters' StarterCard).
+function AssessmentCard({ item, index }: { item: DevSignalAssessmentDTO; index: number }) {
+  const numberLabel = String(index + 1).padStart(2, "0");
+  const label = item.bestMatchSummary?.labelDisplay ?? "Not scored yet";
+  const href = `/app/codeclear/devsignal/${item.id}`;
+  return (
+    <article className="widget-card group transition-shadow hover:shadow-[rgba(0,0,0,0.04)_0px_2px_8px]">
+      <div className="widget-header">
+        <span className="widget-header__label">
+          <span className="widget-header__label--number">{numberLabel}</span>
+          {" // CANDIDATE"}
+        </span>
+        <StatusBadge status={item.status} />
+      </div>
+
+      <Link href={href} className="block min-w-0 px-4 pt-4">
+        <h3 className="line-clamp-1 text-sm font-semibold leading-snug text-[var(--text-1)] group-hover:text-[var(--brand-700)]">
+          {item.candidateName}
+        </h3>
+        <p className="mt-1 line-clamp-1 font-mono text-xs text-[var(--text-4)]">
+          {item.candidateGithubHandle ?? "no handle"}
+        </p>
+      </Link>
+
+      <p className="mx-4 mt-2.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--brand-700)]">
+        {label}
+      </p>
+
+      <div className="mt-3 flex items-center justify-between border-t border-[var(--border-2)] px-4 py-2.5">
+        <span className="widget-timestamp">{new Date(item.createdAt).toLocaleDateString()}</span>
         <div className="flex items-center gap-3">
-          <span className="hidden text-sm text-[var(--text-3)] sm:inline">{label}</span>
           {typeof item.finalScore === "number" && (
             <span className="font-mono text-sm text-[var(--text-2)]">{item.finalScore}</span>
           )}
-          <span
-            className={cn(
-              "rounded-[6px] border px-2 py-0.5 text-xs font-medium capitalize",
-              STATUS_STYLE[item.status] ?? "",
-            )}
-          >
-            {item.status.replace("_", " ").toLowerCase()}
-          </span>
           {item.promotedToCode && (
-            <span className="rounded-[6px] bg-[var(--brand-600)] px-2 py-0.5 text-xs font-medium text-white">
+            <span className="rounded-[4px] bg-[var(--brand-600)] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-white">
               in Code
             </span>
           )}
+          <Link
+            href={href}
+            className="inline-flex items-center gap-1 rounded-[6px] bg-[var(--brand-700)] px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-white transition hover:opacity-90"
+          >
+            Review
+            <ArrowRightIcon className="h-3 w-3" />
+          </Link>
         </div>
-      </Link>
-    </li>
+      </div>
+    </article>
   );
 }
 
