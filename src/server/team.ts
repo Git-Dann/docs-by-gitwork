@@ -251,3 +251,221 @@ export async function getInviteByToken(token: string) {
     include: { workspace: { select: { name: true } } },
   });
 }
+
+export interface MergeAccountsResult {
+  keepEmail: string;
+  mergeEmail: string;
+  transferred: {
+    clientAssignments: number;
+    tasks: number;
+    taskAssignees: number;
+    leaveRequests: number;
+    expenses: number;
+    dailyUpdates: number;
+    taskComments: number;
+    slackLogs: number;
+    candidateEmailUpdated: boolean;
+  };
+  membershipAction: "transferred" | "merged_role" | "kept" | "none";
+}
+
+/**
+ * Merge two user accounts. All data from `mergeEmail` is transferred to `keepEmail`,
+ * then the `mergeEmail` account is deleted. Super Admin only.
+ *
+ * Use case: a dev was provisioned with a placeholder/old email, later got a gitwork
+ * email, and logged in — creating a second bare account. This collapses the two.
+ */
+export async function mergeUserAccounts(
+  keepEmail: string,
+  mergeEmail: string,
+): Promise<MergeAccountsResult> {
+  if (keepEmail.toLowerCase() === mergeEmail.toLowerCase()) {
+    throw new Error("Cannot merge an account with itself.");
+  }
+
+  const workspace = await getWorkspace();
+
+  const [keepUser, mergeUser] = await Promise.all([
+    prisma.user.findUnique({
+      where: { email: keepEmail },
+      include: {
+        memberships: { where: { workspaceId: workspace.id }, take: 1 },
+      },
+    }),
+    prisma.user.findUnique({
+      where: { email: mergeEmail },
+      include: {
+        memberships: { where: { workspaceId: workspace.id }, take: 1 },
+      },
+    }),
+  ]);
+
+  if (!keepUser) throw new Error(`No account found for ${keepEmail}`);
+  if (!mergeUser) throw new Error(`No account found for ${mergeEmail}`);
+
+  const keepMembership = keepUser.memberships[0] ?? null;
+  const mergeMembership = mergeUser.memberships[0] ?? null;
+
+  const ROLE_RANK: Record<string, number> = {
+    SUPER_ADMIN: 4,
+    ADMIN: 3,
+    STAFF: 2,
+    DEVELOPER: 1,
+  };
+
+  const result: MergeAccountsResult = {
+    keepEmail,
+    mergeEmail,
+    transferred: {
+      clientAssignments: 0,
+      tasks: 0,
+      taskAssignees: 0,
+      leaveRequests: 0,
+      expenses: 0,
+      dailyUpdates: 0,
+      taskComments: 0,
+      slackLogs: 0,
+      candidateEmailUpdated: false,
+    },
+    membershipAction: "none",
+  };
+
+  await prisma.$transaction(async (tx) => {
+    // ── Membership ──────────────────────────────────────────────────────────
+    if (mergeMembership && keepMembership) {
+      const mergeRank = ROLE_RANK[mergeMembership.role] ?? 0;
+      const keepRank = ROLE_RANK[keepMembership.role] ?? 0;
+      if (mergeRank > keepRank) {
+        // Merge account has a higher role — promote the keep account
+        await tx.workspaceMember.update({
+          where: { id: keepMembership.id },
+          data: {
+            role: mergeMembership.role,
+            permissions: mergeMembership.permissions,
+            permissionOverrides: mergeMembership.permissionOverrides,
+          },
+        });
+        result.membershipAction = "merged_role";
+      } else {
+        result.membershipAction = "kept";
+      }
+      await tx.workspaceMember.delete({ where: { id: mergeMembership.id } });
+    } else if (mergeMembership && !keepMembership) {
+      // Keep account has no membership — reassign merge's membership
+      await tx.workspaceMember.update({
+        where: { id: mergeMembership.id },
+        data: { userId: keepUser.id },
+      });
+      result.membershipAction = "transferred";
+    }
+
+    // ── ClientAssignment ────────────────────────────────────────────────────
+    // Delete any keep-user assignments that would conflict with merge-user's
+    const mergeAssignments = await tx.clientAssignment.findMany({
+      where: { userId: mergeUser.id },
+      select: { clientId: true },
+    });
+    const mergeClientIds = mergeAssignments.map((r) => r.clientId);
+    if (mergeClientIds.length > 0) {
+      await tx.clientAssignment.deleteMany({
+        where: { userId: keepUser.id, clientId: { in: mergeClientIds } },
+      });
+      const { count } = await tx.clientAssignment.updateMany({
+        where: { userId: mergeUser.id },
+        data: { userId: keepUser.id },
+      });
+      result.transferred.clientAssignments = count;
+    }
+
+    // ── Tasks (legacy single assignee) ──────────────────────────────────────
+    const { count: taskCount } = await tx.task.updateMany({
+      where: { assigneeId: mergeUser.id },
+      data: { assigneeId: keepUser.id },
+    });
+    result.transferred.tasks = taskCount;
+
+    // Creator FK — SetNull on delete handles it, but transfer so history stays
+    await tx.task.updateMany({
+      where: { createdById: mergeUser.id },
+      data: { createdById: keepUser.id },
+    });
+
+    // ── Task m-n assignees (implicit join table _TaskAssignees) ─────────────
+    // A = Task id, B = User id (Task < User alphabetically → A=Task, B=User)
+    const assigneeRows = await tx.$executeRaw`
+      INSERT INTO "_TaskAssignees" ("A", "B")
+      SELECT "A", ${keepUser.id}
+      FROM "_TaskAssignees"
+      WHERE "B" = ${mergeUser.id}
+      ON CONFLICT DO NOTHING
+    `;
+    result.transferred.taskAssignees = Number(assigneeRows);
+    await tx.$executeRaw`DELETE FROM "_TaskAssignees" WHERE "B" = ${mergeUser.id}`;
+
+    // ── Leave requests ───────────────────────────────────────────────────────
+    const { count: lrReq } = await tx.leaveRequest.updateMany({
+      where: { requesterId: mergeUser.id },
+      data: { requesterId: keepUser.id },
+    });
+    await tx.leaveRequest.updateMany({
+      where: { approverId: mergeUser.id },
+      data: { approverId: keepUser.id },
+    });
+    result.transferred.leaveRequests = lrReq;
+
+    // ── Expenses ─────────────────────────────────────────────────────────────
+    const { count: expClaim } = await tx.expense.updateMany({
+      where: { claimantId: mergeUser.id },
+      data: { claimantId: keepUser.id },
+    });
+    await tx.expense.updateMany({
+      where: { reviewerId: mergeUser.id },
+      data: { reviewerId: keepUser.id },
+    });
+    result.transferred.expenses = expClaim;
+
+    // ── DailyUpdate (unique on userId+workDate — skip dates keepUser already owns)
+    const conflictDates = await tx.dailyUpdate.findMany({
+      where: { userId: keepUser.id },
+      select: { workDate: true },
+    });
+    const conflictDateValues = conflictDates.map((r) => r.workDate);
+    if (conflictDateValues.length > 0) {
+      await tx.dailyUpdate.deleteMany({
+        where: { userId: mergeUser.id, workDate: { in: conflictDateValues } },
+      });
+    }
+    const { count: duCount } = await tx.dailyUpdate.updateMany({
+      where: { userId: mergeUser.id },
+      data: { userId: keepUser.id },
+    });
+    result.transferred.dailyUpdates = duCount;
+
+    // ── TaskComment (authorId nullable — transfer, don't null) ───────────────
+    const { count: tcCount } = await tx.taskComment.updateMany({
+      where: { authorId: mergeUser.id },
+      data: { authorId: keepUser.id },
+    });
+    result.transferred.taskComments = tcCount;
+
+    // ── SlackUpdateLog ───────────────────────────────────────────────────────
+    const { count: slCount } = await tx.slackUpdateLog.updateMany({
+      where: { userId: mergeUser.id },
+      data: { userId: keepUser.id },
+    });
+    result.transferred.slackLogs = slCount;
+
+    // ── Candidate email backfill ─────────────────────────────────────────────
+    const candidateUpdate = await tx.candidate.updateMany({
+      where: { email: mergeUser.email },
+      data: { email: keepUser.email },
+    });
+    result.transferred.candidateEmailUpdated = candidateUpdate.count > 0;
+
+    // ── Delete the merged user (cascades DeviceToken, oauth tokens, etc.) ────
+    await tx.user.delete({ where: { id: mergeUser.id } });
+  });
+
+  return result;
+}
