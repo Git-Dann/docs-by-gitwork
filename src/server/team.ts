@@ -405,23 +405,23 @@ export async function mergeUserAccounts(
 
     // ── Leave requests ───────────────────────────────────────────────────────
     const { count: lrReq } = await tx.leaveRequest.updateMany({
-      where: { requesterId: mergeUser.id },
-      data: { requesterId: keepUser.id },
+      where: { userId: mergeUser.id },
+      data: { userId: keepUser.id },
     });
     await tx.leaveRequest.updateMany({
-      where: { approverId: mergeUser.id },
-      data: { approverId: keepUser.id },
+      where: { approvedById: mergeUser.id },
+      data: { approvedById: keepUser.id },
     });
     result.transferred.leaveRequests = lrReq;
 
     // ── Expenses ─────────────────────────────────────────────────────────────
     const { count: expClaim } = await tx.expense.updateMany({
-      where: { claimantId: mergeUser.id },
-      data: { claimantId: keepUser.id },
+      where: { userId: mergeUser.id },
+      data: { userId: keepUser.id },
     });
     await tx.expense.updateMany({
-      where: { reviewerId: mergeUser.id },
-      data: { reviewerId: keepUser.id },
+      where: { reviewedById: mergeUser.id },
+      data: { reviewedById: keepUser.id },
     });
     result.transferred.expenses = expClaim;
 
