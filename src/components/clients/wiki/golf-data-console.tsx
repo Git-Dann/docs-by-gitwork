@@ -15,7 +15,7 @@ import {
   KeyIcon,
   PlayIcon,
 } from "@heroicons/react/24/outline";
-import { useGolfDataConsole, useGolfCourseBackend, useGolfIntegrations, useRunGolfJob, useGolfClubsList } from "@/hooks/use-wiki";
+import { useGolfDataConsole, useGolfCourseBackend, useGolfIntegrations, useRunGolfJob, useGolfClubsList, useGolfUserData } from "@/hooks/use-wiki";
 import { usePermissions } from "@/hooks/use-permissions";
 import type {
   ConsoleTone,
@@ -25,6 +25,7 @@ import type {
 } from "@/server/golf-data-console";
 import type { CourseBackendData, CourseIntegration, RunJobResult } from "@/server/bigwedge-course-api";
 import type { GolfClubDTO } from "@/server/golf-clubs";
+import type { UserDataSnapshot } from "@/server/bigwedge-user-data";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 const SERIF = "var(--font-display), 'Times New Roman', Georgia, serif";
@@ -231,17 +232,22 @@ function DatasetVersions({ datasets }: { datasets: GolfDataConsole["datasets"] }
 
 // ── main ──────────────────────────────────────────────────────────────────────
 
-type View = "overview" | "clubs" | "course-backend" | "integrations";
+type View = "overview" | "clubs" | "course-backend" | "user-data" | "integrations";
 
 export function GolfDataConsoleView({ slug }: { slug: string; clientName?: string }) {
   const [view, setView] = useState<View>("overview");
   const overview = useGolfDataConsole(slug, true);
   const clubs = useGolfClubsList(slug, view === "clubs");
   const backend = useGolfCourseBackend(slug, view === "course-backend");
+  const userData = useGolfUserData(slug, view === "user-data");
   const integrations = useGolfIntegrations(slug, view === "integrations");
 
   const active =
-    view === "overview" ? overview : view === "clubs" ? clubs : view === "course-backend" ? backend : integrations;
+    view === "overview" ? overview
+    : view === "clubs" ? clubs
+    : view === "course-backend" ? backend
+    : view === "user-data" ? userData
+    : integrations;
   const refreshing = active.isFetching;
   const refetch = () => active.refetch();
 
@@ -275,6 +281,7 @@ export function GolfDataConsoleView({ slug }: { slug: string; clientName?: strin
             <option value="overview">Platform overview</option>
             <option value="clubs">Clubs</option>
             <option value="course-backend">Course backend</option>
+            <option value="user-data">User data</option>
             <option value="integrations">Integrations</option>
           </select>
 
@@ -296,6 +303,8 @@ export function GolfDataConsoleView({ slug }: { slug: string; clientName?: strin
         <ClubsView state={clubs} />
       ) : view === "course-backend" ? (
         <CourseBackendView state={backend} />
+      ) : view === "user-data" ? (
+        <UserDataView state={userData} />
       ) : (
         <IntegrationsView slug={slug} state={integrations} />
       )}
@@ -1002,6 +1011,104 @@ function MetricTile({ value, label, tone, number = "" }: { value: string; label:
     <WidgetCard number={number} label={label} bodyClassName="px-4 pb-3 pt-3">
       <span style={{ fontFamily: SERIF, fontSize: 34, lineHeight: 1, letterSpacing: "-0.02em", color: tone ? toneColor(tone) : "var(--text-1)" }}>{value}</span>
     </WidgetCard>
+  );
+}
+
+// ── User data (aggregate app analytics, read-only) ───────────────────────────
+
+function fmtVal(v: number): string {
+  if (!Number.isFinite(v)) return String(v);
+  return Number.isInteger(v) ? v.toLocaleString("en-GB") : v.toLocaleString("en-GB", { maximumFractionDigits: 2 });
+}
+
+const GROUP_ORDER = ["Overall", "Activity", "Subscriptions", "Clubhouse", "Feedback"];
+
+function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) {
+  const { data, isPending, isError, refetch } = state;
+
+  if (isPending) return <Loading label="Reading Big Wedge user analytics…" />;
+  if (isError || !data) return <ErrorState onRetry={() => refetch()} label="Couldn't load user data." />;
+
+  const d = data as UserDataSnapshot;
+
+  if (!d.connected) {
+    return (
+      <WidgetCard number="01" label="User Data" status="not connected" bodyClassName="p-6">
+        <div className="flex items-start gap-3">
+          <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--warning-500)]" />
+          <div>
+            <p className="text-[13px] font-medium text-[var(--text-2)]">App analytics API not connected</p>
+            <p className="mt-1 text-[12px] text-[var(--text-4)]">
+              User analytics come from the main Big Wedge app API. Set the admin JWT in{" "}
+              <span className="font-medium">Care → Connectors → Analytics API</span> (or{" "}
+              <span style={{ fontFamily: MONO }}>WEDGE_APP_API_TOKEN</span>). The token may have expired — app JWTs are short-lived.
+            </p>
+            {d.error ? <p className="mt-2 rounded-[6px] bg-[var(--surface-1)] px-2 py-1.5" style={{ fontFamily: MONO, fontSize: 10, color: "var(--text-4)" }}>{d.error}</p> : null}
+          </div>
+        </div>
+      </WidgetCard>
+    );
+  }
+
+  // Group the flattened metrics.
+  const groups = new Map<string, typeof d.metrics>();
+  for (const m of d.metrics) {
+    const g = m.group ?? "Other";
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g)!.push(m);
+  }
+  const orderedGroups = [...groups.keys()].sort((a, b) => {
+    const ai = GROUP_ORDER.indexOf(a);
+    const bi = GROUP_ORDER.indexOf(b);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi) || a.localeCompare(b);
+  });
+
+  return (
+    <>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1.5" style={{ color: "var(--success-500)", fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+          <span className="inline-block h-2 w-2 rounded-full" style={{ background: "var(--success-500)" }} /> Connected
+        </span>
+        <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-4)" }}>
+          · {d.metrics.length} metrics · {d.endpointsHit.length} endpoints
+          {d.endpointsFailed.length ? ` · ${d.endpointsFailed.length} unavailable` : ""}
+        </span>
+      </div>
+
+      {d.metrics.length === 0 ? (
+        <WidgetCard number="01" label="User Data" status="empty" bodyClassName="p-6">
+          <p className="text-[12px] text-[var(--text-4)]">Connected, but the analytics endpoints returned no numeric fields. The admin report shape may have changed.</p>
+        </WidgetCard>
+      ) : (
+        <div className="mt-3 space-y-3">
+          {orderedGroups.map((g, i) => {
+            const items = groups.get(g)!;
+            return (
+              <WidgetCard key={g} number={String(i + 1).padStart(2, "0")} label={g} status={`${items.length}`} bodyClassName="p-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                  {items.map((m) => (
+                    <div key={m.key} className="rounded-[6px] border border-[var(--border-2)] px-3 py-2.5">
+                      <div style={{ fontFamily: SERIF, fontSize: 26, lineHeight: 1, letterSpacing: "-0.01em", color: "var(--text-1)" }}>
+                        {fmtVal(m.value)}{m.unit ? <span style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-4)" }}> {m.unit}</span> : null}
+                      </div>
+                      <div className="mt-1 truncate" title={m.label} style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-4)" }}>{m.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </WidgetCard>
+            );
+          })}
+        </div>
+      )}
+
+      <p className="mt-3 flex items-start gap-1.5 px-1 text-[11px] leading-relaxed text-[var(--text-4)]">
+        <ShieldCheckIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>
+          Read-only, live from the Big Wedge app API (<span style={{ fontFamily: MONO }}>analytics/overall-report · clubhouse/stats · feedback/stats · rounds</span>).
+          The API exposes <span className="font-medium">aggregate</span> analytics only (no raw per-user export); platform/OS, demographics and subscription splits appear here when the admin report includes them.
+        </span>
+      </p>
+    </>
   );
 }
 

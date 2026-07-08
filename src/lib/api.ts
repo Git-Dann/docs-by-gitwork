@@ -3517,6 +3517,13 @@ export async function getGolfClubsList(slug: string): Promise<{ clubs: GolfClubD
   return apiFetch<{ clubs: GolfClubDTO[]; total: number }>(`/api/clients/${slug}/wiki/golf-data/clubs`);
 }
 
+import type { UserDataSnapshot } from "@/server/bigwedge-user-data";
+export type { UserDataSnapshot } from "@/server/bigwedge-user-data";
+
+export async function getGolfUserData(slug: string): Promise<UserDataSnapshot> {
+  return apiFetch<UserDataSnapshot>(`/api/clients/${slug}/wiki/golf-data/user-data`);
+}
+
 // ─── Course requests (Wedge wiki) ───────────────────────────────────────────
 
 export interface CourseFeedbackCandidate {
