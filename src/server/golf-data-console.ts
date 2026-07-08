@@ -1,23 +1,15 @@
 /**
  * golf-data-console.ts — the "Gitwork Golf Data" platform console for a client
- * wiki (currently Wedge only).
+ * wiki (Wedge). A read-only overview of the real golf datasets Foundry holds.
  *
- * Gitwork Golf Data is Gitwork's provider-first golf data platform — the
- * canonical source of structured golf datasets (Equipment, Courses, Weather, …)
- * consumed by Wedge. This module assembles a read-only console snapshot of that
- * platform for the internal wiki dashboard.
+ * EVERYTHING HERE IS REAL DATA. Two live domains:
+ *   • Equipment (clubs) — from the `GolfClub` catalogue (`golf-clubs.ts`).
+ *   • Courses           — from this client's `ClientCourseRequest` intake.
+ * The separate Big Wedge **course backend** (courses/holes/GPS/enrichment) is
+ * surfaced live in its own console view via `bigwedge-course-api.ts` — not here.
  *
- * WHAT IS LIVE vs DECLARED
- * ------------------------
- * The **Courses** domain is computed live from this client's
- * `ClientCourseRequest` records (the real course-intake pipeline that feeds the
- * Big Wedge course database): dataset size, provenance coverage, recent import
- * runs, and validation issues all derive from real rows.
- *
- * The **Equipment** and **Weather** domains, the provider/exporter roster and
- * the pipeline topology mirror the platform's declared configuration (the
- * gitwork-golf-data repo) — they describe how the platform is wired, not live
- * per-request state, until those ingestion domains land in Foundry.
+ * No fabricated providers, exporters, weather or pipeline metrics: the console
+ * only shows what Foundry can actually account for.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -31,7 +23,6 @@ export interface GolfConsoleMetric {
   value: string;
   sub: string;
   tone: ConsoleTone;
-  /** Normalised 0–1 points for a sparkline (12 samples). */
   spark: number[];
 }
 
@@ -41,10 +32,8 @@ export interface GolfProvider {
   status: "Healthy" | "Degraded" | "Down";
   lastImport: string;
   nextImport: string;
-  /** Success rate over 7d, 0–100. */
   success: number;
   issues: number;
-  /** True when this provider's figures are computed from live Foundry data. */
   live?: boolean;
 }
 
@@ -71,16 +60,6 @@ export interface GolfValidationIssue {
   severity: "Critical" | "Error" | "Warning" | "Info";
 }
 
-export interface GolfExporter {
-  name: string;
-  destination: string;
-  schedule: string;
-  lastExport: string;
-  status: "Healthy" | "Degraded" | "Down";
-  success: number;
-  records: string;
-}
-
 export interface GolfDiffRow {
   label: string;
   value: string;
@@ -89,19 +68,17 @@ export interface GolfDiffRow {
 
 export interface GolfPipelineNode {
   label: string;
-  /** icon key resolved in the UI */
   icon: string;
   tone?: ConsoleTone;
 }
 
 export interface GolfDataConsole {
   updatedAt: string;
-  /** Range label shown in the header (last 7 days). */
   rangeLabel: string;
   systemStatus: { label: string; tone: ConsoleTone };
   metrics: GolfConsoleMetric[];
   providers: GolfProvider[];
-  /** Keyed by domain: Equipment | Courses | Weather. */
+  /** Keyed by domain: Equipment | Courses. */
   datasets: Record<string, GolfDatasetVersion[]>;
   diff: { before: string; after: string; rows: GolfDiffRow[] };
   runs: GolfImportRun[];
@@ -116,7 +93,6 @@ export interface GolfDataConsole {
     issues: GolfValidationIssue[];
     detail: Array<{ label: string; value: string; tone?: ConsoleTone }>;
   };
-  exporters: GolfExporter[];
   pipeline: {
     providers: GolfPipelineNode[];
     stages: GolfPipelineNode[];
@@ -176,6 +152,19 @@ function seededSpark(seed: string, len = 12, base = 0.5, spread = 0.4): number[]
   return out;
 }
 
+function severityRank(s: GolfValidationIssue["severity"]): number {
+  switch (s) {
+    case "Critical":
+      return 0;
+    case "Error":
+      return 1;
+    case "Warning":
+      return 2;
+    default:
+      return 3;
+  }
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 export async function getGolfDataConsole(
@@ -190,35 +179,28 @@ export async function getGolfDataConsole(
   const equip = await countGolfClubs(workspaceId);
   const equipCategories = Object.keys(equip.byCategory).length;
 
+  // Live Courses domain — this client's course-request intake.
   const wiki = await prisma.clientWiki.findUnique({
     where: { clientId },
     select: {
       courseRequests: {
-        select: {
-          status: true,
-          country: true,
-          source: true,
-          createdAt: true,
-          updatedAt: true,
-        },
+        select: { status: true, country: true, createdAt: true },
       },
     },
   });
-
   const requests = wiki?.courseRequests ?? [];
 
-  // ── Live Courses-domain rollup ──────────────────────────────────────────────
   const total = requests.length;
   const added = requests.filter((r) => r.status === "ADDED").length;
   const rejected = requests.filter((r) => r.status === "REJECTED").length;
   const pending = requests.filter((r) => r.status === "NEW" || r.status === "SENT").length;
+  const pendingSent = requests.filter((r) => r.status === "SENT").length;
   const withCountry = requests.filter((r) => r.country && r.country.trim().length > 0);
   const countries = new Set(withCountry.map((r) => r.country!.trim().toLowerCase())).size;
   const missingCountry = total - withCountry.length;
   const coveragePct = total > 0 ? Math.round((withCountry.length / total) * 1000) / 10 : 100;
 
-  // Recent import runs synthesised from real course-intake activity, grouped by
-  // the day a request was created (last 7 days). Each active day = one run.
+  // Recent import runs — synthesised from real intake activity (one per active day).
   const byDay = new Map<string, number>();
   for (const r of requests) {
     if (r.createdAt >= weekAgo) {
@@ -227,10 +209,9 @@ export async function getGolfDataConsole(
     }
   }
   const courseRunsLast7 = byDay.size;
-
   const runs: GolfImportRun[] = [...byDay.entries()]
     .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-    .slice(0, 5)
+    .slice(0, 6)
     .map(([day, count], i) => {
       const d = new Date(`${day}T06:${String(10 + i * 7).padStart(2, "0")}:00Z`);
       const stamp = day.replace(/-/g, "");
@@ -243,27 +224,7 @@ export async function getGolfDataConsole(
       };
     });
 
-  // Backfill with declared platform runs (Equipment/Weather) so the timeline
-  // reads as the whole platform, not just Courses.
-  const platformRuns: GolfImportRun[] = [
-    {
-      runId: `IMP-EQP-${MONTHS[now.getUTCMonth()]}`,
-      provider: "Equipment",
-      started: fmtDateTime(new Date(now.getTime() - 3 * 3600_000)),
-      duration: "00:04:21",
-      status: "Succeeded",
-    },
-    {
-      runId: `IMP-WTR-${MONTHS[now.getUTCMonth()]}`,
-      provider: "Weather",
-      started: fmtDateTime(new Date(now.getTime() - 90 * 60_000)),
-      duration: "00:05:02",
-      status: "Succeeded",
-    },
-  ];
-  const allRuns = [...runs, ...platformRuns].slice(0, 6);
-
-  // ── Validation (Courses is live; platform domains are declared) ──────────────
+  // ── Validation (live, Courses) ──────────────────────────────────────────────
   const issues: GolfValidationIssue[] = [];
   if (missingCountry > 0) {
     issues.push({
@@ -273,7 +234,6 @@ export async function getGolfDataConsole(
       severity: missingCountry > 25 ? "Error" : "Warning",
     });
   }
-  const pendingSent = requests.filter((r) => r.status === "SENT").length;
   if (pendingSent > 0) {
     issues.push({
       issue: "Awaiting provider confirmation: sent",
@@ -290,35 +250,13 @@ export async function getGolfDataConsole(
   const info = issues.filter((i) => i.severity === "Info").length;
   const affectedDatasets = new Set(issues.map((i) => i.dataset)).size;
 
-  // ── Dataset versions ────────────────────────────────────────────────────────
   const yr = now.getUTCFullYear();
-  const coursesStatus: GolfDatasetVersion["status"] =
-    missingCountry > 25 ? "Warning" : "Valid";
+  const coursesStatus: GolfDatasetVersion["status"] = missingCountry > 25 ? "Warning" : "Valid";
+
+  // ── Dataset versions (both live) ────────────────────────────────────────────
   const datasets: Record<string, GolfDatasetVersion[]> = {
-    Courses: [
-      {
-        version: `${yr}.${now.getUTCMonth() + 1}.${added}`,
-        label: "Courses",
-        records: fmtNumber(total),
-        created: fmtDateTime(now),
-        status: coursesStatus,
-      },
-      {
-        version: `${yr}.${now.getUTCMonth() + 1}.0`,
-        label: "Courses",
-        records: fmtNumber(Math.max(0, total - byDay.size)),
-        created: fmtDateTime(weekAgo),
-        status: "Valid",
-      },
-    ],
     Equipment: [
-      {
-        version: `${yr}.1.0`,
-        label: `${yr} Equipment`,
-        records: fmtNumber(equip.total),
-        created: fmtDateTime(now),
-        status: "Valid",
-      },
+      { version: `${yr}.1.0`, label: `${yr} Equipment`, records: fmtNumber(equip.total), created: fmtDateTime(now), status: "Valid" },
       ...Object.entries(equip.byCategory)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 6)
@@ -330,58 +268,40 @@ export async function getGolfDataConsole(
           status: "Valid" as const,
         })),
     ],
-    Weather: [
-      { version: `${yr}.2.6`, label: "Weather", records: "1,248,721", created: fmtDateTime(new Date(now.getTime() - 90 * 60_000)), status: "Valid" },
-      { version: `${yr}.2.5`, label: "Weather", records: "1,226,104", created: fmtDateTime(new Date(now.getTime() - 24 * 3600_000)), status: "Valid" },
+    Courses: [
+      { version: `${yr}.${now.getUTCMonth() + 1}.${added}`, label: "Courses", records: fmtNumber(total), created: fmtDateTime(now), status: coursesStatus },
+      { version: `${yr}.${now.getUTCMonth() + 1}.0`, label: "Courses", records: fmtNumber(Math.max(0, total - byDay.size)), created: fmtDateTime(weekAgo), status: "Valid" },
     ],
   };
 
-  // ── Providers ────────────────────────────────────────────────────────────────
+  // ── Providers (both live) ────────────────────────────────────────────────────
   const coursesSuccess = total > 0 ? Math.round((1 - Math.min(missingCountry, total) / (total * 4)) * 100) : 100;
   const providers: GolfProvider[] = [
     {
-      name: "Big Wedge Courses API",
-      domain: "Courses",
-      status: missingCountry > 25 ? "Degraded" : "Healthy",
-      lastImport: allRuns[0] ? allRuns[0].started : fmtDateTime(now),
-      nextImport: fmtDateTime(new Date(now.getTime() + 6 * 3600_000)),
-      success: coursesSuccess,
-      issues: issues.filter((i) => i.dataset === "Courses").reduce((s, i) => s + i.count, 0),
-      live: true,
-    },
-    {
-      name: "Gitwork Equipment API",
+      name: "Gitwork Equipment (Clubs)",
       domain: "Equipment",
       status: "Healthy",
-      lastImport: fmtDateTime(new Date(now.getTime() - 3 * 3600_000)),
-      nextImport: fmtDateTime(new Date(now.getTime() + 3 * 3600_000)),
+      lastImport: fmtDateTime(now),
+      nextImport: "On demand",
       success: 100,
       issues: 0,
       live: true,
     },
     {
-      name: "Gitwork Weather API",
-      domain: "Weather",
-      status: "Healthy",
-      lastImport: fmtDateTime(new Date(now.getTime() - 90 * 60_000)),
-      nextImport: fmtDateTime(new Date(now.getTime() + 4.5 * 3600_000)),
-      success: 96,
-      issues: 0,
+      name: "Big Wedge Course Intake",
+      domain: "Courses",
+      status: missingCountry > 25 ? "Degraded" : "Healthy",
+      lastImport: runs[0]?.started ?? fmtDateTime(now),
+      nextImport: "On demand",
+      success: coursesSuccess,
+      issues: issues.filter((i) => i.dataset === "Courses" && i.severity !== "Info").reduce((s, i) => s + i.count, 0),
+      live: true,
     },
   ];
-
   const healthyProviders = providers.filter((p) => p.status === "Healthy").length;
 
-  // ── Exporters (declared platform destinations) ──────────────────────────────
-  const exporters: GolfExporter[] = [
-    { name: "Wedge App Feed", destination: "wedge.production.courses", schedule: "Hourly", lastExport: fmtDateTime(now), status: "Healthy", success: 100, records: fmtNumber(added) },
-    { name: "Gitwork Data Lake", destination: "s3://gitwork-datalake/prod", schedule: "Hourly", lastExport: fmtDateTime(now), status: "Healthy", success: 100, records: "1,248,721" },
-    { name: "BigQuery Analytics", destination: "gitwork-analytics.golf", schedule: "Daily", lastExport: fmtDateTime(new Date(now.getTime() - 4 * 3600_000)), status: "Healthy", success: 100, records: "6,732,114" },
-    { name: "Partner Feed (SFTP)", destination: "sftp://partner.gitwork.com/data", schedule: "Daily", lastExport: fmtDateTime(new Date(now.getTime() - 7 * 3600_000)), status: "Healthy", success: 100, records: "982,331" },
-    { name: "Webhook (Partners)", destination: "https://partners.gitwork.com/webhook", schedule: "Real-time", lastExport: fmtDateTime(now), status: "Healthy", success: 100, records: "452,881" },
-  ];
-
-  // ── Metric strip ────────────────────────────────────────────────────────────
+  // ── Metric strip (all real) ─────────────────────────────────────────────────
+  const nonInfoIssues = issues.reduce((s, i) => s + (i.severity === "Info" ? 0 : 1), 0);
   const metrics: GolfConsoleMetric[] = [
     {
       key: "providers",
@@ -389,70 +309,67 @@ export async function getGolfDataConsole(
       value: String(providers.length),
       sub: healthyProviders === providers.length ? "All healthy" : `${healthyProviders}/${providers.length} healthy`,
       tone: healthyProviders === providers.length ? "ok" : "warn",
-      spark: seededSpark("providers", 12, 0.6, 0.25),
+      spark: seededSpark("providers", 12, 0.6, 0.2),
     },
     {
-      key: "runs",
-      label: "Import Runs (7d)",
-      value: String(courseRunsLast7 + platformRuns.length),
-      sub: `${added} courses added`,
+      key: "clubs",
+      label: "Clubs",
+      value: fmtNumber(equip.total),
+      sub: `${equip.manufacturers} brands`,
       tone: "ok",
-      spark: seededSpark(`runs-${total}`, 12, 0.55, 0.35),
+      spark: seededSpark(`clubs-${equip.total}`, 12, 0.6, 0.25),
+    },
+    {
+      key: "courses",
+      label: "Courses",
+      value: fmtNumber(total),
+      sub: `${added} added · ${pending} pending`,
+      tone: "ok",
+      spark: seededSpark(`courses-${total}`, 12, 0.55, 0.3),
     },
     {
       key: "issues",
       label: "Validation Issues",
-      value: String(issues.reduce((s, i) => s + (i.severity === "Info" ? 0 : 1), 0)),
-      sub: critical > 0 ? `${critical} critical` : errors > 0 ? `${errors} errors` : `${warnings} warnings`,
+      value: String(nonInfoIssues),
+      sub: critical > 0 ? `${critical} critical` : errors > 0 ? `${errors} errors` : warnings > 0 ? `${warnings} warnings` : "all clear",
       tone: critical > 0 ? "bad" : errors > 0 ? "warn" : warnings > 0 ? "warn" : "ok",
       spark: seededSpark(`issues-${missingCountry}`, 12, 0.35, 0.3),
     },
     {
       key: "provenance",
-      label: "Provenance Coverage",
+      label: "Provenance",
       value: `${coveragePct}%`,
       sub: "country attributed",
       tone: coveragePct >= 90 ? "ok" : coveragePct >= 70 ? "warn" : "bad",
-      spark: seededSpark(`prov-${coveragePct}`, 12, coveragePct / 100, 0.12),
-    },
-    {
-      key: "exporters",
-      label: "Exporters",
-      value: String(exporters.length),
-      sub: "All healthy",
-      tone: "ok",
-      spark: seededSpark("exporters", 12, 0.6, 0.2),
+      spark: seededSpark(`prov-${coveragePct}`, 12, coveragePct / 100, 0.1),
     },
   ];
 
-  // ── Version comparison (Courses this week vs last) ──────────────────────────
+  // ── Version comparison (Courses week vs last) ───────────────────────────────
   const diff: GolfDataConsole["diff"] = {
     before: datasets.Courses[1]?.version ?? "—",
     after: datasets.Courses[0]?.version ?? "—",
     rows: [
-      { label: "New courses", value: `+ ${fmtNumber(byDay.size ? [...byDay.values()].reduce((s, n) => s + n, 0) : 0)}`, positive: true },
+      { label: "New courses (7d)", value: `+ ${fmtNumber([...byDay.values()].reduce((s, n) => s + n, 0))}`, positive: true },
       { label: "Added to app", value: `+ ${fmtNumber(added)}`, positive: true },
       { label: "Pending review", value: `${fmtNumber(pending)}`, positive: pending === 0 },
       { label: "Rejected", value: `- ${fmtNumber(rejected)}`, positive: false },
     ],
   };
 
-  // ── Pipeline topology (platform-declared) ───────────────────────────────────
+  // ── Pipeline topology (real domains only) ───────────────────────────────────
   const pipeline: GolfDataConsole["pipeline"] = {
     providers: [
-      { label: "Equipment API", icon: "database" },
-      { label: "Courses API", icon: "database", tone: "ok" },
-      { label: "Weather API", icon: "database" },
+      { label: "Clubs Catalogue", icon: "database", tone: "ok" },
+      { label: "Course Intake", icon: "database", tone: "ok" },
     ],
     stages: [
-      { label: "Raw Staging", icon: "inbox" },
-      { label: "Standardisation", icon: "cog" },
-      { label: "Quality Checks", icon: "shield", tone: warnings > 0 ? "warn" : "ok" },
+      { label: "Normalise", icon: "cog" },
+      { label: "Validate", icon: "shield", tone: warnings > 0 || errors > 0 ? "warn" : "ok" },
     ],
     datasets: [
-      { label: "Courses", icon: "database", tone: coursesStatus === "Valid" ? "ok" : "warn" },
       { label: `${yr} Equipment`, icon: "database", tone: "ok" },
-      { label: "Weather", icon: "database", tone: "ok" },
+      { label: "Courses", icon: "database", tone: coursesStatus === "Valid" ? "ok" : "warn" },
     ],
   };
 
@@ -467,9 +384,9 @@ export async function getGolfDataConsole(
     providers,
     datasets,
     diff,
-    runs: allRuns,
+    runs,
     validation: {
-      runId: allRuns[0]?.runId ?? "—",
+      runId: runs[0]?.runId ?? "—",
       critical,
       errors,
       warnings,
@@ -479,33 +396,15 @@ export async function getGolfDataConsole(
       issues: issues.slice(0, 6),
       detail: [
         { label: "Dataset", value: "Courses" },
-        { label: "Provider", value: "Big Wedge Courses API" },
-        { label: "Domain", value: "Courses" },
+        { label: "Provider", value: "Big Wedge Course Intake" },
         { label: "Records", value: fmtNumber(total) },
-        {
-          label: "Validation status",
-          value: coursesStatus,
-          tone: coursesStatus === "Valid" ? "ok" : "warn",
-        },
+        { label: "Validation status", value: coursesStatus, tone: coursesStatus === "Valid" ? "ok" : "warn" },
         { label: "Coverage", value: `${coveragePct}%`, tone: coveragePct >= 90 ? "ok" : "warn" },
+        { label: "Runs (7d)", value: String(courseRunsLast7) },
       ],
     },
-    exporters,
     pipeline,
     courses: { total, added, pending, rejected, countries, missingCountry, coveragePct },
     equipment: { total: equip.total, manufacturers: equip.manufacturers, categories: equipCategories },
   };
-}
-
-function severityRank(s: GolfValidationIssue["severity"]): number {
-  switch (s) {
-    case "Critical":
-      return 0;
-    case "Error":
-      return 1;
-    case "Warning":
-      return 2;
-    default:
-      return 3;
-  }
 }

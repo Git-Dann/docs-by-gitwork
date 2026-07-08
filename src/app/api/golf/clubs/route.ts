@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { apiOk, fromError } from "@/lib/api-response";
+import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { listGolfClubs, clubsToCsv } from "@/server/golf-clubs";
 
@@ -9,8 +9,14 @@ import { listGolfClubs, clubsToCsv } from "@/server/golf-clubs";
  *
  * Query: ?manufacturer= ?category= ?year= ?q= ?format=json|csv
  */
+/** Dev-facing clubs API is disabled until we open it to developers.
+ *  Flip GOLF_DEV_API_ENABLED=true to enable. The in-app console reads clubs
+ *  through the internal wiki endpoint, not this one, so it is unaffected. */
+const DEV_API_ENABLED = process.env.GOLF_DEV_API_ENABLED === "true";
+
 export async function GET(req: NextRequest) {
   try {
+    if (!DEV_API_ENABLED) return apiError("The clubs API is not yet available", 404);
     const { workspace } = await ensureBaseRecords();
     const sp = req.nextUrl.searchParams;
     const yearRaw = sp.get("year");

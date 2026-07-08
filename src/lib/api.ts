@@ -3488,9 +3488,15 @@ export async function deleteWikiUserApi(slug: string, userId: string): Promise<v
 
 import type { GolfDataConsole } from "@/server/golf-data-console";
 export type { GolfDataConsole } from "@/server/golf-data-console";
+import type { CourseBackendData } from "@/server/bigwedge-course-api";
+export type { CourseBackendData } from "@/server/bigwedge-course-api";
 
 export async function getGolfDataConsole(slug: string): Promise<GolfDataConsole> {
   return apiFetch<GolfDataConsole>(`/api/clients/${slug}/wiki/golf-data`);
+}
+
+export async function getGolfCourseBackend(slug: string): Promise<CourseBackendData> {
+  return apiFetch<CourseBackendData>(`/api/clients/${slug}/wiki/golf-data/course-backend`);
 }
 
 // ─── Course requests (Wedge wiki) ───────────────────────────────────────────

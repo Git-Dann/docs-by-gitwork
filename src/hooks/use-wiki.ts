@@ -16,6 +16,7 @@ import {
   updateWikiEntryStatusApi,
   updateWikiChangelogEntryApi,
   getGolfDataConsole,
+  getGolfCourseBackend,
   addWikiCourseRequest,
   updateWikiCourseRequestApi,
   deleteWikiCourseRequest,
@@ -302,6 +303,16 @@ export function useGolfDataConsole(slug: string, enabled: boolean) {
     queryFn: () => getGolfDataConsole(slug),
     enabled: Boolean(slug) && enabled,
     staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useGolfCourseBackend(slug: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["golf-course-backend", slug],
+    queryFn: () => getGolfCourseBackend(slug),
+    enabled: Boolean(slug) && enabled,
+    staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
   });
 }

@@ -26,7 +26,7 @@ interface BwPage {
   next?: string | null;
 }
 
-async function resolveBigWedgeApi(
+export async function resolveBigWedgeApi(
   workspaceClientId: string,
 ): Promise<{ baseUrl: string; apiToken: string } | { error: string }> {
   const support =

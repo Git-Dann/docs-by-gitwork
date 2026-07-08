@@ -537,37 +537,40 @@ dropdowns/toggles in the block's Options** — the canvas stays clean.
 ## Golf Data Console (Wedge wiki)
 
 A Wedge-only section of the client wiki (`/app/portal/wedge/wiki` → **Golf Data**) that
-surfaces the **Gitwork Golf Data** platform — Gitwork's provider-first golf dataset platform
-(Equipment · Courses · Weather …) that feeds the Wedge app. It reuses the widget grammar
-wholesale; no new tokens or hues. Component `src/components/clients/wiki/golf-data-console.tsx`,
-backed by `GET /api/clients/[slug]/wiki/golf-data` (`src/server/golf-data-console.ts`).
+surfaces the **Gitwork Golf Data** platform — the real golf datasets Foundry holds for Wedge. It
+reuses the widget grammar wholesale; no new tokens or hues. Component
+`src/components/clients/wiki/golf-data-console.tsx`.
 
-**Live vs declared.** The **Courses** domain (from `ClientCourseRequest`) and the **Equipment /
-clubs** domain (from the `GolfClub` catalogue — `src/server/golf-clubs.ts`) are computed live from
-Foundry data. Weather, the exporter roster and the pipeline transform mirror the platform's
-declared configuration. A `LIVE` mono chip marks providers whose figures are real; a footnote
-states the split plainly — never dress declared config up as live telemetry.
+**Everything shown is real data — no fabricated figures.** Two views, switched by a **dropdown in
+the action bar next to Refresh** (`app-select-compact`):
+- **Platform overview** (`GET /api/clients/[slug]/wiki/golf-data` → `golf-data-console.ts`) — the
+  two live Foundry domains: **Equipment/clubs** (from the `GolfClub` catalogue, `golf-clubs.ts`)
+  and **Courses** (from `ClientCourseRequest` intake). Providers, dataset versions, validation,
+  runs and pipeline derive from those; a `LIVE` chip marks each real provider.
+- **Course backend** (`GET /api/clients/[slug]/wiki/golf-data/course-backend` →
+  `bigwedge-course-api.ts`) — a **read-only** live pull from the Big Wedge course backend's own
+  aggregates (`/api/v1/stats · /sources · /activity`): courses/clubs/GPS coverage, coverage by
+  country, data-quality bars, source coverage, hole distribution, recent enrichment activity.
+  Foundry **never writes** to it; auth reuses the Care Analytics connector token (base URL
+  overridable via `WEDGE_COURSE_API_URL`). Degrades to a clear "not connected" card.
 
-**Clubs export API (for devs).** The console's `14 // EQUIPMENT · CLUBS API` widget surfaces the
-dev-facing dataset endpoints: `GET /api/golf/clubs` (JSON; filters `manufacturer` · `category` ·
-`year` · `q`), `?format=csv`, and `/api/golf/clubs/openapi` (OpenAPI 3.1). All are API-key gated
-(`Authorization: Bearer <API_KEY>`, or the in-app session cookie), served from `golf-clubs.ts`.
-The starter catalogue seeds via `seedGolfClubs()` in bootstrap (idempotent).
+**Developer API is disabled.** A disabled **Dev API** control sits in the action bar, and the
+overview's `11 // DEVELOPER API` widget lists the planned (struck-through) endpoints. The routes
+(`/api/golf/clubs`, `?format=csv`, `/api/golf/clubs/openapi`) exist but are gated off behind
+`GOLF_DEV_API_ENABLED` (default off → 404) until we open the platform to developers.
 
-**Layout.** An action bar (system-status dot + `Updated {mono time}` left; range readout +
-**Refresh** right), then a **metric strip** of 5 unnumbered stat widgets, then a
-`xl:grid-cols-3` body: a 2-col main stack (`01 // PROVIDERS`, `02 // IMPORT RUNS`,
-`03 // SCHEMA / PIPELINE`, `04 // DATASET VERSIONS` + `05 // VERSION COMPARISON`,
-`06 // EXPORTERS`) beside a right rail (`07 // VALIDATION`, `08 // COURSES (LIVE)`). Every
-panel is a `widget-card` opened by the `NN // NAME` monospace header — the console is a grid of
-widgets, not a bespoke screen.
+**Layout.** An action bar (system-status dot + `Updated {mono time}` left; **view dropdown** +
+disabled **Dev API** + **Refresh** right), then per view a **metric strip** of stat widgets and an
+`xl:grid-cols-3` body of `widget-card`s, each opened by the `NN // NAME` monospace header — the
+console is a grid of widgets, not a bespoke screen. (Overview numbers `01`–`14`; the Course
+backend view numbers its own `01`–`05`.)
 
 **Console conventions (within the widget system):**
 - **Metric panels** — DM Serif Display figure (~40px) over a mono `{colors.…}`-toned sub-label
   (`CheckCircle`/`Triangle` glyph) with an inline SVG **sparkline** stroked in the metric's tone.
-- **Tables** — mono uppercase 10px headers, hairline row borders, provider/exporter *names* in
-  Inter, all IDs / timestamps / destinations / counts in JetBrains Mono. Run IDs + version
-  strings render in `{colors.primary}`.
+- **Tables** — mono uppercase 10px headers, hairline row borders, provider/country *names* in
+  Inter, all IDs / timestamps / counts in JetBrains Mono. Run IDs + version strings render in
+  `{colors.primary}`.
 - **Status** — a `rounded-sm` (4px) badge with a leading status dot, mapped to the semantic set:
   Valid/Healthy/Succeeded → green, Warning/Degraded → amber, Failed/Down/Critical → red, Info →
   blue. Never a pill.
