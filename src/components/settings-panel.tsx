@@ -1311,6 +1311,7 @@ function GoogleServiceAccountSection({
 }
 
 const SLACK_ROUTE_EVENTS: { id: string; label: string; module: string }[] = [
+  { id: "tasks.updates", label: "Daily PM updates (#updates)", module: "Tasks" },
   { id: "pulse.scan_failed", label: "Pulse scan failed", module: "Pulse" },
   { id: "pulse.monitor_drift", label: "Pulse monitor drift", module: "Pulse" },
   { id: "study.report_ready", label: "Study report ready", module: "Study" },

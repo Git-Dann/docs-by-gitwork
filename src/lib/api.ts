@@ -2899,6 +2899,19 @@ export function publishRollup(
   return apiFetch(`/api/tasks/rollup${override ? "?override=true" : ""}`, { method: "POST" });
 }
 
+/** Compile every dev's PM update (done-today + note), grouped by developer, and
+ *  post it to the dedicated #updates channel. `configured` is false when no
+ *  "Daily PM updates" channel route is set in Settings → Integrations. */
+export function pushPmUpdates(): Promise<{
+  ok: boolean;
+  channel: string | null;
+  configured: boolean;
+  devCount: number;
+  taskCount: number;
+}> {
+  return apiFetch(`/api/tasks/pm-updates`, { method: "POST" });
+}
+
 // ─── Ad-hoc Slack pushes (Tasks-page composer + DevOps broadcast) ────────────
 
 export function getSlackPushPrefs(): Promise<SlackPushPrefs> {
