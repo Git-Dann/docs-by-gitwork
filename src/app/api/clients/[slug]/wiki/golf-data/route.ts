@@ -4,6 +4,8 @@ import { getGolfDataConsole } from "@/server/golf-data-console";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 
+export const maxDuration = 30;
+
 /** GET the Gitwork Golf Data platform console snapshot for a client (Wedge). */
 export async function GET(
   _req: NextRequest,

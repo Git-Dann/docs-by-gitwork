@@ -475,23 +475,40 @@ function OverviewView({ state }: { state: ReturnType<typeof useGolfDataConsole> 
             </div>
           </WidgetCard>
 
-          <WidgetCard number="12" label="Courses (Live)" status="from intake" bodyClassName="p-4">
+          {/* Course backend rollup — same numbers as the Course backend view */}
+          <WidgetCard number="12" label="Course Backend (Live)" status={snapshot.backend?.connected ? "connected" : "offline"} bodyClassName="p-4">
+            {snapshot.backend?.connected ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <RollupStat value={snapshot.backend.courses} label="Courses" tone="ok" icon={<CircleStackIcon className="h-4 w-4" />} />
+                  <RollupStat value={snapshot.backend.venues} label="Venues" icon={<GlobeAltIcon className="h-4 w-4" />} />
+                  <RollupStat value={snapshot.backend.holes} label="Holes" icon={<ServerStackIcon className="h-4 w-4" />} />
+                  <RollupStat value={snapshot.backend.countries} label="Countries" icon={<MapPinIcon className="h-4 w-4" />} />
+                </div>
+                <div className="mt-3 rounded-[6px] bg-[var(--surface-1)] px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>GPS coverage</span>
+                    <span style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-2)" }}>{snapshot.backend.gpsCoveragePct}%</span>
+                  </div>
+                  <span className="widget-progress mt-1.5 block"><span className="widget-progress__fill" style={{ width: `${snapshot.backend.gpsCoveragePct}%` }} /></span>
+                </div>
+              </>
+            ) : (
+              <p className="text-[12px] text-[var(--text-4)]">Course backend offline — set the login on the VPS. Requests + Equipment below are unaffected.</p>
+            )}
+          </WidgetCard>
+
+          {/* Course requests (intake) — distinct from the course backend */}
+          <WidgetCard number="13" label="Course Requests" status="user intake" bodyClassName="p-4">
             <div className="grid grid-cols-2 gap-3">
-              <RollupStat value={snapshot.courses.total} label="Total courses" icon={<CircleStackIcon className="h-4 w-4" />} />
-              <RollupStat value={snapshot.courses.added} label="Added to app" tone="ok" icon={<CheckCircleIcon className="h-4 w-4" />} />
+              <RollupStat value={snapshot.courses.total} label="Requests" icon={<CircleStackIcon className="h-4 w-4" />} />
+              <RollupStat value={snapshot.courses.added} label="Added" tone="ok" icon={<CheckCircleIcon className="h-4 w-4" />} />
               <RollupStat value={snapshot.courses.pending} label="Pending" tone={snapshot.courses.pending > 0 ? "warn" : "ok"} icon={<ExclamationTriangleIcon className="h-4 w-4" />} />
               <RollupStat value={snapshot.courses.countries} label="Countries" icon={<GlobeAltIcon className="h-4 w-4" />} />
             </div>
-            <div className="mt-3 rounded-[6px] bg-[var(--surface-1)] px-3 py-2">
-              <div className="flex items-center justify-between">
-                <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>Provenance coverage</span>
-                <span style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-2)" }}>{snapshot.courses.coveragePct}%</span>
-              </div>
-              <span className="widget-progress mt-1.5 block"><span className="widget-progress__fill" style={{ width: `${snapshot.courses.coveragePct}%` }} /></span>
-            </div>
           </WidgetCard>
 
-          <WidgetCard number="13" label="Equipment (Live)" status="clubs" bodyClassName="p-4">
+          <WidgetCard number="14" label="Equipment (Live)" status="clubs" bodyClassName="p-4">
             <div className="grid grid-cols-3 gap-3">
               <RollupStat value={snapshot.equipment.total} label="Clubs" tone="ok" icon={<CircleStackIcon className="h-4 w-4" />} />
               <RollupStat value={snapshot.equipment.manufacturers} label="Brands" icon={<ServerStackIcon className="h-4 w-4" />} />
@@ -501,7 +518,7 @@ function OverviewView({ state }: { state: ReturnType<typeof useGolfDataConsole> 
 
           <p className="flex items-start gap-1.5 px-1 text-[11px] leading-relaxed text-[var(--text-4)]">
             <ShieldCheckIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>All figures are live from Foundry data (clubs catalogue + course intake). The full Big Wedge course backend is in the <span className="font-medium">Course backend</span> view.</span>
+            <span>The overview reconciles with the other views: <span className="font-medium">Courses/Venues/GPS</span> are the live Course backend, <span className="font-medium">Equipment</span> is the Clubs catalogue, <span className="font-medium">Requests</span> is user intake. Same numbers, drill in for detail.</span>
           </p>
         </div>
       </div>
