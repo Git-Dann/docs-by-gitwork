@@ -207,7 +207,9 @@ export function TaskFormModal({
         </div>
 
         <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto px-6 py-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.85fr)] lg:overflow-hidden">
-          <div className="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+          {/* p-1.5 gives the fields' 4px focus ring room inside the scroll box —
+              without it the ring clips against the overflow edge. */}
+          <div className="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:p-1.5">
             <div>
               <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Title</label>
               <input
@@ -247,7 +249,7 @@ export function TaskFormModal({
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-col gap-4 lg:overflow-hidden">
+          <div className="flex min-h-0 flex-col gap-4 lg:overflow-hidden lg:p-1.5">
             {!lockClient ? (
               <div>
                 <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Client</label>
