@@ -517,7 +517,7 @@ export function GanttChart({
                         >
                           <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--text-1)] px-2.5 py-1.5 text-left text-[11px] text-[var(--surface-0)] shadow-lg group-hover/slip:block">
                             <span className="font-medium">{slipDays}d behind</span>
-                            <span className="mt-0.5 block text-white/75" style={{ fontFamily: "var(--font-mono)" }}>
+                            <span className="mt-0.5 block text-[var(--surface-0)]/75" style={{ fontFamily: "var(--font-mono)" }}>
                               due {dueFmt} · {b.progress}% done
                             </span>
                           </div>
@@ -538,7 +538,7 @@ export function GanttChart({
                         {/* Instant styled tooltip (date range) */}
                         <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--text-1)] px-2.5 py-1.5 text-left text-[11px] text-[var(--surface-0)] shadow-lg group-hover:block">
                           <span className="font-medium">{b.name}</span>
-                          <span className="mt-0.5 block text-white/75" style={{ fontFamily: "var(--font-mono)" }}>
+                          <span className="mt-0.5 block text-[var(--surface-0)]/75" style={{ fontFamily: "var(--font-mono)" }}>
                             {fmtShort(b.startDate)} – {fmtShort(b.endDate)} · {b.progress}%
                           </span>
                         </div>
@@ -567,12 +567,12 @@ export function GanttChart({
                         type="button"
                         onClick={onMilestoneClick ? () => onMilestoneClick(m.id) : undefined}
                         aria-label={`${m.name} · ${dateFmt}`}
-                        className="block h-3.5 w-3.5 rotate-45 rounded-[2px] border border-white shadow-sm transition hover:scale-125"
+                        className="block h-3.5 w-3.5 rotate-45 rounded-[2px] border border-[var(--surface-0)] shadow-sm transition hover:scale-125"
                         style={{ background: c, cursor: onMilestoneClick ? "pointer" : "default" }}
                       />
                       <div className="pointer-events-none absolute top-full left-1/2 z-50 mt-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--text-1)] px-2.5 py-1.5 text-left text-[11px] text-[var(--surface-0)] shadow-lg group-hover:block">
                         <span className="font-medium">{m.name}</span>
-                        <span className="mt-0.5 block text-white/75" style={{ fontFamily: "var(--font-mono)" }}>
+                        <span className="mt-0.5 block text-[var(--surface-0)]/75" style={{ fontFamily: "var(--font-mono)" }}>
                           {dateFmt}
                         </span>
                       </div>
