@@ -26,6 +26,7 @@ import {
   type WordmarkId,
 } from "./config";
 import { exportAllZip, exportOne } from "./export";
+import { btnPrimary, btnSecondary, Field, IconBtn, NumberInput, PanelHeader, SectionRule, Segmented, Toggle } from "./studio-ui";
 import { ArtboardBody } from "./templates";
 
 interface StudioState {
@@ -49,11 +50,6 @@ const DEFAULT_STATE: StudioState = {
   format: "png",
   scale: 2,
 };
-
-const btnPrimary =
-  "inline-flex items-center justify-center gap-1.5 rounded-[8px] bg-[var(--brand-700)] px-3.5 py-2 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-800)] disabled:opacity-50";
-const btnSecondary =
-  "inline-flex items-center justify-center gap-1.5 rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-0)] px-3 py-2 text-[12px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]";
 
 function loadState(): StudioState {
   if (typeof window === "undefined") return DEFAULT_STATE;
@@ -448,36 +444,7 @@ function ArtboardCard({
   );
 }
 
-// ── Presentational primitives ──
-function PanelHeader({ label }: { label: string }) {
-  return (
-    <div className="border-b border-[var(--border-2)] px-5 py-3.5">
-      <span className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-3)]">{label}</span>
-    </div>
-  );
-}
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="mb-2 flex items-baseline justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-3)]">{label}</span>
-        {hint ? <span className="text-[10px] text-[var(--text-4)]">{hint}</span> : null}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function SectionRule({ label }: { label: string }) {
-  return (
-    <div className="flex items-center gap-3 pt-1">
-      <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-4)]">{label}</span>
-      <span className="h-px flex-1 bg-[var(--border-2)]" />
-    </div>
-  );
-}
-
+// ── Presentational primitives (social-specific; generic ones live in studio-ui.tsx) ──
 function StyleCard({ preset, active, onClick }: { preset: StylePreset; active: boolean; onClick: () => void }) {
   return (
     <button
@@ -626,85 +593,6 @@ function SlideFields({ slide, onChange }: { slide: Slide; onChange: (p: Partial<
       <Field label="Body">
         <textarea className="app-input min-h-[80px] w-full resize-y" value={slide.body} onChange={(e) => onChange({ body: e.target.value })} />
       </Field>
-    </div>
-  );
-}
-
-function NumberInput({ value, onChange }: { value: number; onChange: (n: number) => void }) {
-  return (
-    <input
-      type="number"
-      className="app-input w-full"
-      value={value}
-      min={100}
-      max={5000}
-      onChange={(e) => {
-        const n = Number(e.target.value);
-        if (Number.isFinite(n)) onChange(Math.min(5000, Math.max(100, Math.round(n))));
-      }}
-    />
-  );
-}
-
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
-  return (
-    <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-[var(--text-2)]">
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className={"relative h-[22px] w-[38px] shrink-0 rounded-full transition " + (checked ? "bg-[var(--brand-700)]" : "bg-[var(--border-1)]")}
-      >
-        <span className={"absolute top-[3px] h-4 w-4 rounded-full bg-white shadow transition-all " + (checked ? "left-[19px]" : "left-[3px]")} />
-      </button>
-      {label}
-    </label>
-  );
-}
-
-function IconBtn({ onClick, aria, children }: { onClick: () => void; aria: string; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={aria}
-      className="flex h-6 w-6 items-center justify-center rounded-[5px] text-[var(--text-3)] transition hover:bg-[var(--surface-0)] hover:text-[var(--text-1)]"
-    >
-      {children}
-    </button>
-  );
-}
-
-function Segmented<T extends string | number>({
-  value,
-  options,
-  onChange,
-  full,
-}: {
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (v: T) => void;
-  full?: boolean;
-}) {
-  return (
-    <div className={(full ? "grid w-full " : "inline-flex ") + "rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5"} style={full ? { gridTemplateColumns: `repeat(${options.length}, 1fr)` } : undefined}>
-      {options.map((o) => {
-        const active = o.value === value;
-        return (
-          <button
-            key={String(o.value)}
-            type="button"
-            onClick={() => onChange(o.value)}
-            className={
-              "rounded-[6px] px-2.5 py-1.5 text-[12px] font-medium transition " +
-              (active ? "bg-[var(--surface-0)] text-[var(--text-1)] shadow-sm" : "text-[var(--text-3)] hover:text-[var(--text-1)]")
-            }
-          >
-            {o.label}
-          </button>
-        );
-      })}
     </div>
   );
 }
