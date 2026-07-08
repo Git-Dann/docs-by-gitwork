@@ -3488,8 +3488,8 @@ export async function deleteWikiUserApi(slug: string, userId: string): Promise<v
 
 import type { GolfDataConsole } from "@/server/golf-data-console";
 export type { GolfDataConsole } from "@/server/golf-data-console";
-import type { CourseBackendData } from "@/server/bigwedge-course-api";
-export type { CourseBackendData } from "@/server/bigwedge-course-api";
+import type { CourseBackendData, CourseIntegrationsData, RunJobResult } from "@/server/bigwedge-course-api";
+export type { CourseBackendData, CourseIntegrationsData, CourseIntegration, RunJobResult } from "@/server/bigwedge-course-api";
 
 export async function getGolfDataConsole(slug: string): Promise<GolfDataConsole> {
   return apiFetch<GolfDataConsole>(`/api/clients/${slug}/wiki/golf-data`);
@@ -3497,6 +3497,18 @@ export async function getGolfDataConsole(slug: string): Promise<GolfDataConsole>
 
 export async function getGolfCourseBackend(slug: string): Promise<CourseBackendData> {
   return apiFetch<CourseBackendData>(`/api/clients/${slug}/wiki/golf-data/course-backend`);
+}
+
+export async function getGolfIntegrations(slug: string): Promise<CourseIntegrationsData> {
+  return apiFetch<CourseIntegrationsData>(`/api/clients/${slug}/wiki/golf-data/integrations`);
+}
+
+export async function runGolfJob(slug: string, job: string, batch?: number): Promise<RunJobResult> {
+  return apiFetch<RunJobResult>(`/api/clients/${slug}/wiki/golf-data/run-job`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job, ...(batch ? { batch } : {}) }),
+  });
 }
 
 // ─── Course requests (Wedge wiki) ───────────────────────────────────────────

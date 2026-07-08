@@ -17,6 +17,8 @@ import {
   updateWikiChangelogEntryApi,
   getGolfDataConsole,
   getGolfCourseBackend,
+  getGolfIntegrations,
+  runGolfJob,
   addWikiCourseRequest,
   updateWikiCourseRequestApi,
   deleteWikiCourseRequest,
@@ -314,6 +316,27 @@ export function useGolfCourseBackend(slug: string, enabled: boolean) {
     enabled: Boolean(slug) && enabled,
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
+  });
+}
+
+export function useGolfIntegrations(slug: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["golf-integrations", slug],
+    queryFn: () => getGolfIntegrations(slug),
+    enabled: Boolean(slug) && enabled,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useRunGolfJob(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ job, batch }: { job: string; batch?: number }) => runGolfJob(slug, job, batch),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["golf-integrations", slug] });
+      queryClient.invalidateQueries({ queryKey: ["golf-course-backend", slug] });
+    },
   });
 }
 

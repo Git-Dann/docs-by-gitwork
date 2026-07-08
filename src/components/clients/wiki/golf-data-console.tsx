@@ -8,19 +8,22 @@ import {
   ShieldCheckIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
-  LockClosedIcon,
   GlobeAltIcon,
   MapPinIcon,
   ArrowRightIcon,
+  BoltIcon,
+  KeyIcon,
+  PlayIcon,
 } from "@heroicons/react/24/outline";
-import { useGolfDataConsole, useGolfCourseBackend } from "@/hooks/use-wiki";
+import { useGolfDataConsole, useGolfCourseBackend, useGolfIntegrations, useRunGolfJob } from "@/hooks/use-wiki";
+import { usePermissions } from "@/hooks/use-permissions";
 import type {
   ConsoleTone,
   GolfConsoleMetric,
   GolfDataConsole,
   GolfPipelineNode,
 } from "@/server/golf-data-console";
-import type { CourseBackendData } from "@/server/bigwedge-course-api";
+import type { CourseBackendData, CourseIntegration, RunJobResult } from "@/server/bigwedge-course-api";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 const SERIF = "var(--font-display), 'Times New Roman', Georgia, serif";
@@ -227,16 +230,18 @@ function DatasetVersions({ datasets }: { datasets: GolfDataConsole["datasets"] }
 
 // ── main ──────────────────────────────────────────────────────────────────────
 
-type View = "overview" | "course-backend";
+type View = "overview" | "course-backend" | "integrations";
 
 export function GolfDataConsoleView({ slug }: { slug: string; clientName?: string }) {
   const [view, setView] = useState<View>("overview");
   const overview = useGolfDataConsole(slug, true);
   const backend = useGolfCourseBackend(slug, view === "course-backend");
+  const integrations = useGolfIntegrations(slug, view === "integrations");
 
   const refreshing =
-    view === "overview" ? overview.isFetching : backend.isFetching;
-  const refetch = () => (view === "overview" ? overview.refetch() : backend.refetch());
+    view === "overview" ? overview.isFetching : view === "course-backend" ? backend.isFetching : integrations.isFetching;
+  const refetch = () =>
+    view === "overview" ? overview.refetch() : view === "course-backend" ? backend.refetch() : integrations.refetch();
 
   const snapshot = overview.data;
 
@@ -267,18 +272,8 @@ export function GolfDataConsoleView({ slug }: { slug: string; clientName?: strin
           >
             <option value="overview">Platform overview</option>
             <option value="course-backend">Course backend</option>
+            <option value="integrations">Integrations</option>
           </select>
-
-          {/* Dev API — disabled for now */}
-          <button
-            type="button"
-            disabled
-            title="Developer API endpoints are disabled for now"
-            className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-[6px] border border-dashed border-[var(--border-2)] px-2.5 py-1.5 text-[13px] font-medium text-[var(--text-4)] opacity-70"
-          >
-            <LockClosedIcon className="h-4 w-4" />
-            Dev API
-          </button>
 
           <button
             type="button"
@@ -292,7 +287,13 @@ export function GolfDataConsoleView({ slug }: { slug: string; clientName?: strin
         </div>
       </div>
 
-      {view === "overview" ? <OverviewView state={overview} /> : <CourseBackendView state={backend} />}
+      {view === "overview" ? (
+        <OverviewView state={overview} />
+      ) : view === "course-backend" ? (
+        <CourseBackendView state={backend} />
+      ) : (
+        <IntegrationsView slug={slug} state={integrations} />
+      )}
     </div>
   );
 }
@@ -417,31 +418,11 @@ function OverviewView({ state }: { state: ReturnType<typeof useGolfDataConsole> 
             </WidgetCard>
           </div>
 
-          {/* Dev API — disabled */}
-          <WidgetCard number="11" label="Developer API" status="disabled" bodyClassName="p-4">
-            <div className="flex items-start gap-3 rounded-[8px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] p-4">
-              <LockClosedIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--text-4)]" />
-              <div className="min-w-0">
-                <p className="text-[13px] font-medium text-[var(--text-2)]">Dev endpoints are disabled for now</p>
-                <p className="mt-1 text-[12px] text-[var(--text-4)]">
-                  When we open the platform to developers, these will serve the clubs + courses datasets. Planned:
-                </p>
-                <ul className="mt-2 space-y-1">
-                  {["GET /api/golf/clubs", "GET /api/golf/clubs?format=csv", "GET /api/golf/clubs/openapi"].map((e) => (
-                    <li key={e} className="flex items-center gap-2">
-                      <span className="rounded-[3px] px-1 py-0.5" style={{ background: "var(--surface-2)", color: "var(--text-4)", fontFamily: MONO, fontSize: 9, fontWeight: 600 }}>GET</span>
-                      <span className="truncate line-through" style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-4)" }}>{e.replace("GET ", "")}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </WidgetCard>
         </div>
 
         {/* Right rail */}
         <div className="space-y-3">
-          <WidgetCard number="12" label="Validation" status={snapshot.validation.runId} bodyClassName="p-4">
+          <WidgetCard number="11" label="Validation" status={snapshot.validation.runId} bodyClassName="p-4">
             <div className="grid grid-cols-4 gap-2">
               {[
                 { n: snapshot.validation.critical, l: "Critical", tone: "bad" as ConsoleTone },
@@ -489,7 +470,7 @@ function OverviewView({ state }: { state: ReturnType<typeof useGolfDataConsole> 
             </div>
           </WidgetCard>
 
-          <WidgetCard number="13" label="Courses (Live)" status="from intake" bodyClassName="p-4">
+          <WidgetCard number="12" label="Courses (Live)" status="from intake" bodyClassName="p-4">
             <div className="grid grid-cols-2 gap-3">
               <RollupStat value={snapshot.courses.total} label="Total courses" icon={<CircleStackIcon className="h-4 w-4" />} />
               <RollupStat value={snapshot.courses.added} label="Added to app" tone="ok" icon={<CheckCircleIcon className="h-4 w-4" />} />
@@ -505,7 +486,7 @@ function OverviewView({ state }: { state: ReturnType<typeof useGolfDataConsole> 
             </div>
           </WidgetCard>
 
-          <WidgetCard number="14" label="Equipment (Live)" status="clubs" bodyClassName="p-4">
+          <WidgetCard number="13" label="Equipment (Live)" status="clubs" bodyClassName="p-4">
             <div className="grid grid-cols-3 gap-3">
               <RollupStat value={snapshot.equipment.total} label="Clubs" tone="ok" icon={<CircleStackIcon className="h-4 w-4" />} />
               <RollupStat value={snapshot.equipment.manufacturers} label="Brands" icon={<ServerStackIcon className="h-4 w-4" />} />
@@ -700,6 +681,200 @@ function CourseBackendView({ state }: { state: ReturnType<typeof useGolfCourseBa
         </div>
       </div>
     </>
+  );
+}
+
+// ── Integrations (connectors: monitor + run) ─────────────────────────────────
+
+const TYPE_META: Record<CourseIntegration["type"], { label: string; tone: ConsoleTone }> = {
+  paid: { label: "Licensed", tone: "warn" },
+  free: { label: "Free (key)", tone: "info" },
+  open: { label: "Open", tone: "ok" },
+};
+
+const STATUS_META: Record<CourseIntegration["status"], { label: string; tone: ConsoleTone }> = {
+  active: { label: "Active", tone: "ok" },
+  "needs-key": { label: "Needs key", tone: "warn" },
+  idle: { label: "Idle", tone: "info" },
+};
+
+function TonePill({ label, tone }: { label: string; tone: ConsoleTone }) {
+  const { bg, fg } = toneBg(tone);
+  return (
+    <span className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5" style={{ background: bg, color: fg, fontFamily: MONO, fontSize: 9, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+      {label}
+    </span>
+  );
+}
+
+function ago(iso: string): string {
+  return iso.slice(0, 16).replace("T", " ");
+}
+
+function IntegrationCard({ slug, integ, canManage }: { slug: string; integ: CourseIntegration; canManage: boolean }) {
+  const run = useRunGolfJob(slug);
+  const [result, setResult] = useState<RunJobResult | null>(null);
+
+  const doRun = async () => {
+    setResult(null);
+    try {
+      const r = await run.mutateAsync({ job: integ.jobKey as string });
+      setResult(r);
+    } catch (e) {
+      setResult({ ok: false, job: integ.jobKey ?? "", detail: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
+  return (
+    <div className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-[13px] font-medium text-[var(--text-1)]">{integ.label}</span>
+            {integ.role === "spine" ? <TonePill label="Spine" tone="info" /> : null}
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            <TonePill label={TYPE_META[integ.type].label} tone={TYPE_META[integ.type].tone} />
+            <TonePill label={STATUS_META[integ.status].label} tone={STATUS_META[integ.status].tone} />
+            {integ.needsKey ? (
+              <span className="inline-flex items-center gap-0.5 text-[var(--text-4)]" title="Requires an API key set on the backend">
+                <KeyIcon className="h-3 w-3" />
+              </span>
+            ) : null}
+          </div>
+        </div>
+        {integ.coverage != null ? (
+          <div className="shrink-0 text-right">
+            <div style={{ fontFamily: SERIF, fontSize: 22, lineHeight: 1, color: "var(--text-1)" }}>{integ.coverage.toLocaleString("en-GB")}</div>
+            <div style={{ fontFamily: MONO, fontSize: 8, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>courses</div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-1">
+        {integ.provides.map((p) => (
+          <span key={p} className="rounded-[3px] px-1.5 py-0.5" style={{ background: "var(--surface-1)", color: "var(--text-3)", fontFamily: MONO, fontSize: 9 }}>{p}</span>
+        ))}
+      </div>
+
+      <div className="mt-2 border-t border-[var(--border-2)] pt-2">
+        {integ.lastRun ? (
+          <p style={{ fontFamily: MONO, fontSize: 10, color: "var(--text-4)" }}>
+            Last: <span style={{ color: "var(--success-500)" }}>{integ.lastRun.recordsAffected.toLocaleString("en-GB")}</span> ·{" "}
+            {integ.lastRun.skipped} skip ·{" "}
+            <span style={{ color: integ.lastRun.errors > 0 ? "var(--danger-500)" : "var(--text-4)" }}>{integ.lastRun.errors} err</span> · {ago(integ.lastRun.createdAt)}
+          </p>
+        ) : (
+          <p style={{ fontFamily: MONO, fontSize: 10, color: "var(--text-4)" }}>No runs recorded</p>
+        )}
+
+        {integ.jobKey ? (
+          <div className="mt-2 flex items-center gap-2">
+            {canManage ? (
+              <button
+                type="button"
+                onClick={doRun}
+                disabled={run.isPending}
+                className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-1 text-[12px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+              >
+                {run.isPending ? <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" /> : <PlayIcon className="h-3.5 w-3.5" />}
+                {run.isPending ? "Running…" : "Run"}
+              </button>
+            ) : (
+              <span style={{ fontFamily: MONO, fontSize: 9, color: "var(--text-4)" }}>Admins can run</span>
+            )}
+            {result ? (
+              <span style={{ fontFamily: MONO, fontSize: 10, color: result.ok ? "var(--success-500)" : "var(--danger-500)" }}>
+                {result.ok
+                  ? `+${(result.enriched ?? result.seeded ?? 0).toLocaleString("en-GB")} enriched`
+                  : (result.detail ?? "failed").slice(0, 60)}
+              </span>
+            ) : null}
+          </div>
+        ) : (
+          <p className="mt-2" style={{ fontFamily: MONO, fontSize: 9, color: "var(--text-4)" }}>
+            <BoltIcon className="mr-1 inline h-3 w-3" />Runs on the backend&apos;s daily schedule
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function IntegrationsView({ slug, state }: { slug: string; state: ReturnType<typeof useGolfIntegrations> }) {
+  const { data, isPending, isError, refetch } = state;
+  const { canManageClients } = usePermissions();
+
+  if (isPending) return <Loading label="Loading connectors…" />;
+  if (isError || !data) return <ErrorState onRetry={() => refetch()} label="Couldn't load integrations." />;
+
+  if (!data.connected) {
+    return (
+      <WidgetCard number="01" label="Integrations" status="not connected" bodyClassName="p-6">
+        <div className="flex items-start gap-3">
+          <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--warning-500)]" />
+          <div>
+            <p className="text-[13px] font-medium text-[var(--text-2)]">Course backend not connected</p>
+            <p className="mt-1 text-[12px] text-[var(--text-4)]">Set the login (Care → Connectors, or WEDGE_COURSE_API_USER/PASSWORD) to load connectors.</p>
+            {data.error ? <p className="mt-2 rounded-[6px] bg-[var(--surface-1)] px-2 py-1.5" style={{ fontFamily: MONO, fontSize: 10, color: "var(--text-4)" }}>{data.error}</p> : null}
+          </div>
+        </div>
+      </WidgetCard>
+    );
+  }
+
+  const list = data.integrations;
+  const active = list.filter((i) => i.status === "active").length;
+  const needsKey = list.filter((i) => i.status === "needs-key").length;
+  const runnable = list.filter((i) => i.jobKey).length;
+
+  const spine = list.filter((i) => i.role === "spine");
+  const enrich = list.filter((i) => i.role === "enrichment");
+  const seed = list.filter((i) => i.role === "seed");
+
+  const section = (num: string, label: string, items: CourseIntegration[]) =>
+    items.length ? (
+      <WidgetCard number={num} label={label} status={`${items.length}`} bodyClassName="p-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {items.map((i) => (
+            <IntegrationCard key={i.key} slug={slug} integ={i} canManage={canManageClients} />
+          ))}
+        </div>
+      </WidgetCard>
+    ) : null;
+
+  return (
+    <>
+      <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <MetricTile value={String(list.length)} label="Connectors" />
+        <MetricTile value={String(active)} label="Active" tone="ok" />
+        <MetricTile value={String(needsKey)} label="Need a key" tone={needsKey > 0 ? "warn" : "ok"} />
+        <MetricTile value={data.total.toLocaleString("en-GB")} label="Spine courses" />
+      </div>
+
+      <div className="mt-3 space-y-3">
+        {section("01", "Spine (Licensed)", spine)}
+        {section("02", "Enrichment", enrich)}
+        {section("03", "Seeders", seed)}
+      </div>
+
+      <p className="mt-3 flex items-start gap-1.5 px-1 text-[11px] leading-relaxed text-[var(--text-4)]">
+        <ShieldCheckIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>
+          {runnable} connectors are runnable on demand{canManageClients ? "" : " (admins only)"}; the rest run on the backend&apos;s
+          daily schedule. Running enrichment executes <span className="font-medium">on the course backend</span> — it adds data to
+          courses (GPS, images, ratings…) on top of the golfapi.io spine. Zero load on Foundry.
+        </span>
+      </p>
+    </>
+  );
+}
+
+function MetricTile({ value, label, tone }: { value: string; label: string; tone?: ConsoleTone }) {
+  return (
+    <WidgetCard number="" label={label} bodyClassName="px-4 pb-3 pt-3">
+      <span style={{ fontFamily: SERIF, fontSize: 34, lineHeight: 1, letterSpacing: "-0.02em", color: tone ? toneColor(tone) : "var(--text-1)" }}>{value}</span>
+    </WidgetCard>
   );
 }
 
