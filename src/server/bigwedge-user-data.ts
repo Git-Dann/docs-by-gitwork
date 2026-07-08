@@ -25,14 +25,51 @@ import { cached } from "@/server/golf-cache";
 /** The main Big Wedge app API (users/analytics). Non-secret; override with env. */
 const DEFAULT_APP_API_URL = "https://apiv1.bigwedgegolf.com";
 
+export interface UserDataLists {
+  topActiveUsers: Array<{ username: string; count: number }>;
+  mostPlayedCourses: Array<{ courseName: string; clubName: string; count: number }>;
+  gameModes: Array<{ mode: string; count: number; percentage: number | null }>;
+}
+
 export interface UserDataSnapshot {
   connected: boolean;
   baseUrl: string | null;
   error: string | null;
   /** Flattened metrics, each tagged with a `group`. */
   metrics: AnalyticsMetric[];
+  /** Non-numeric leaderboards pulled from the report (arrays flattenMetrics skips). */
+  lists: UserDataLists;
   endpointsHit: string[];
   endpointsFailed: string[];
+}
+
+const EMPTY_LISTS: UserDataLists = { topActiveUsers: [], mostPlayedCourses: [], gameModes: [] };
+
+function asArray(v: unknown): Record<string, unknown>[] {
+  return Array.isArray(v) ? (v.filter((x) => x && typeof x === "object") as Record<string, unknown>[]) : [];
+}
+function str(v: unknown, fallback = "—"): string {
+  return v == null ? fallback : String(v);
+}
+function num(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+function extractLists(report: Record<string, unknown>): UserDataLists {
+  const eng = (report.engagement ?? {}) as Record<string, unknown>;
+  const golf = (report.golf_metrics ?? {}) as Record<string, unknown>;
+  const gm = (report.game_modes ?? {}) as Record<string, unknown>;
+  return {
+    topActiveUsers: asArray(eng.top_active_users)
+      .map((u) => ({ username: str(u.username), count: num(u.count) }))
+      .slice(0, 10),
+    mostPlayedCourses: asArray(golf.most_played_courses)
+      .map((c) => ({ courseName: str(c.course_name), clubName: str(c.club_name, ""), count: num(c.count) }))
+      .slice(0, 10),
+    gameModes: asArray(gm.distribution)
+      .map((m) => ({ mode: str(m.mode_name), count: num(m.count), percentage: typeof m.percentage === "number" ? m.percentage : null }))
+      .slice(0, 10),
+  };
 }
 
 function humanize(s: string): string {
@@ -91,7 +128,7 @@ export async function getUserData(workspaceClientId: string, force = false): Pro
 async function loadUserData(workspaceClientId: string): Promise<UserDataSnapshot> {
   const r = await resolveAppApi(workspaceClientId);
   if ("error" in r) {
-    return { connected: false, baseUrl: null, error: r.error, metrics: [], endpointsHit: [], endpointsFailed: [] };
+    return { connected: false, baseUrl: null, error: r.error, metrics: [], lists: EMPTY_LISTS, endpointsHit: [], endpointsFailed: [] };
   }
   const { baseUrl, token } = r;
 
@@ -100,6 +137,7 @@ async function loadUserData(workspaceClientId: string): Promise<UserDataSnapshot
   const to = now.toISOString().slice(0, 10);
 
   const metrics: AnalyticsMetric[] = [];
+  let lists: UserDataLists = EMPTY_LISTS;
   const hit: string[] = [];
   const failed: string[] = [];
 
@@ -122,6 +160,7 @@ async function loadUserData(workspaceClientId: string): Promise<UserDataSnapshot
     }
     // Fallback: if the shape wasn't the expected nested one, flatten whole.
     if (grouped === 0) metrics.push(...flattenMetrics(report, { group: "Overall", limit: 60 }));
+    lists = extractLists(report);
     hit.push("analytics/overall-report");
   } catch (err) {
     return {
@@ -129,6 +168,7 @@ async function loadUserData(workspaceClientId: string): Promise<UserDataSnapshot
       baseUrl,
       error: err instanceof Error ? err.message : String(err),
       metrics: [],
+      lists: EMPTY_LISTS,
       endpointsHit: [],
       endpointsFailed: ["analytics/overall-report"],
     };
@@ -176,5 +216,5 @@ async function loadUserData(workspaceClientId: string): Promise<UserDataSnapshot
     failed.push("subscriptions/plans");
   }
 
-  return { connected: true, baseUrl, error: null, metrics, endpointsHit: hit, endpointsFailed: failed };
+  return { connected: true, baseUrl, error: null, metrics, lists, endpointsHit: hit, endpointsFailed: failed };
 }

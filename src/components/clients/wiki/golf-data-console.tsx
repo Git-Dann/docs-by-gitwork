@@ -1124,6 +1124,76 @@ function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) 
         </div>
       )}
 
+      {(() => {
+        const L = d.lists;
+        const has = L.topActiveUsers.length || L.mostPlayedCourses.length || L.gameModes.length;
+        if (!has) return null;
+        let n = d.metrics.length ? orderedGroups.length : 0;
+        const next = () => String(++n).padStart(2, "0");
+        return (
+          <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {L.mostPlayedCourses.length ? (
+              <WidgetCard number={next()} label="Most Played Courses" status={`top ${L.mostPlayedCourses.length}`} bodyClassName="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead><tr>{["Course", "Club", "Rounds"].map((h) => <th key={h} className={th} style={thStyle}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {L.mostPlayedCourses.map((c, i) => (
+                        <tr key={i}>
+                          <td className={td}><span className="text-[13px] text-[var(--text-1)]">{c.courseName}</span></td>
+                          <td className={td} style={monoCell}>{c.clubName}</td>
+                          <td className={td} style={{ ...monoCell, color: "var(--text-2)" }}>{c.count.toLocaleString("en-GB")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </WidgetCard>
+            ) : null}
+
+            {L.topActiveUsers.length ? (
+              <WidgetCard number={next()} label="Top Active Users" status={`top ${L.topActiveUsers.length}`} bodyClassName="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead><tr>{["#", "Username", "Rounds"].map((h) => <th key={h} className={th} style={thStyle}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {L.topActiveUsers.map((u, i) => (
+                        <tr key={i}>
+                          <td className={td} style={{ ...monoCell, color: "var(--text-4)" }}>{i + 1}</td>
+                          <td className={td} style={{ ...monoCell, color: "var(--text-1)", fontSize: 13 }}>{u.username}</td>
+                          <td className={td} style={{ ...monoCell, color: "var(--text-2)" }}>{u.count.toLocaleString("en-GB")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </WidgetCard>
+            ) : null}
+
+            {L.gameModes.length ? (
+              <WidgetCard number={next()} label="Game Modes" status={`${L.gameModes.length} modes`} bodyClassName="p-4">
+                <div className="space-y-2.5">
+                  {L.gameModes.map((m, i) => {
+                    const p = m.percentage ?? 0;
+                    return (
+                      <div key={i}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[13px] text-[var(--text-2)]">{m.mode}</span>
+                          <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-3)" }}>
+                            {m.count.toLocaleString("en-GB")}{m.percentage != null ? ` · ${m.percentage}%` : ""}
+                          </span>
+                        </div>
+                        <span className="widget-progress mt-1 block"><span className="widget-progress__fill" style={{ width: `${Math.max(2, p)}%` }} /></span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </WidgetCard>
+            ) : null}
+          </div>
+        );
+      })()}
+
       <p className="mt-3 flex items-start gap-1.5 px-1 text-[11px] leading-relaxed text-[var(--text-4)]">
         <ShieldCheckIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span>

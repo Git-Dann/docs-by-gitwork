@@ -231,6 +231,30 @@ async function loadCourseBackendData(workspaceClientId: string): Promise<CourseB
   };
 }
 
+/**
+ * Lightweight keep-warm ping — a tiny authed DB read so the course backend's
+ * CockroachDB (free tier) never idles into a cold start. Not cached; always hits.
+ */
+export async function pingCourseBackend(
+  workspaceClientId: string,
+): Promise<{ ok: boolean; status?: number; ms: number; error?: string }> {
+  const start = Date.now();
+  const resolved = await resolveCourseApi(workspaceClientId);
+  if ("error" in resolved) return { ok: false, ms: Date.now() - start, error: resolved.error };
+  try {
+    const res = await fetch(`${resolved.baseUrl}/api/v1/courses/?page=1&page_size=1`, {
+      headers: {
+        "User-Agent": "Foundry/1.0",
+        ...(resolved.token ? { Authorization: `Bearer ${resolved.token}` } : {}),
+      },
+      cache: "no-store",
+    });
+    return { ok: res.ok, status: res.status, ms: Date.now() - start };
+  } catch (err) {
+    return { ok: false, ms: Date.now() - start, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 /** Read-only monitor of all connectors: coverage (/sources) + last run (/cron-status). */
 export async function getCourseIntegrations(workspaceClientId: string, force = false): Promise<CourseIntegrationsData> {
   return cached(`course-integrations:${workspaceClientId}`, () => loadCourseIntegrations(workspaceClientId), { force });
