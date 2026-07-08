@@ -227,14 +227,6 @@ export function ScreenshotsWorkspace() {
         <PanelHeader label="01 // CONTROLS" />
         <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5">
           <Field label="Store targets" hint={`${state.targets.length} selected`}>
-            <div className="mb-2 flex items-center gap-3">
-              <button type="button" className="text-[11px] font-medium text-[var(--brand-700)] hover:underline" onClick={() => patch({ targets: CANVAS_PRESETS.map((c) => c.id) })}>
-                Select all
-              </button>
-              <button type="button" className="text-[11px] font-medium text-[var(--text-4)] hover:underline" onClick={() => patch({ targets: [DEFAULT_SCREENSHOT_STATE.targets[0]] })}>
-                Reset
-              </button>
-            </div>
             <TargetPicker selected={state.targets} onToggle={toggleTarget} />
           </Field>
 
