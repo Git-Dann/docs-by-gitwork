@@ -15,7 +15,9 @@ import {
   KeyIcon,
   PlayIcon,
 } from "@heroicons/react/24/outline";
+import { useQueryClient } from "@tanstack/react-query";
 import { useGolfDataConsole, useGolfCourseBackend, useGolfIntegrations, useRunGolfJob, useGolfClubsList, useGolfUserData } from "@/hooks/use-wiki";
+import { getGolfDataConsole, getGolfCourseBackend, getGolfIntegrations, getGolfUserData } from "@/lib/api";
 import { usePermissions } from "@/hooks/use-permissions";
 import type {
   ConsoleTone,
@@ -242,14 +244,32 @@ export function GolfDataConsoleView({ slug }: { slug: string; clientName?: strin
   const userData = useGolfUserData(slug, view === "user-data");
   const integrations = useGolfIntegrations(slug, view === "integrations");
 
+  const qc = useQueryClient();
+  const [forcing, setForcing] = useState(false);
   const active =
     view === "overview" ? overview
     : view === "clubs" ? clubs
     : view === "course-backend" ? backend
     : view === "user-data" ? userData
     : integrations;
-  const refreshing = active.isFetching;
-  const refetch = () => active.refetch();
+  const refreshing = active.isFetching || forcing;
+
+  // Refresh bypasses the server-side cache (?refresh=1) and writes fresh data in.
+  const refetch = async () => {
+    if (view === "clubs") {
+      await clubs.refetch();
+      return;
+    }
+    setForcing(true);
+    try {
+      if (view === "overview") qc.setQueryData(["golf-data-console", slug], await getGolfDataConsole(slug, true));
+      else if (view === "course-backend") qc.setQueryData(["golf-course-backend", slug], await getGolfCourseBackend(slug, true));
+      else if (view === "user-data") qc.setQueryData(["golf-user-data", slug], await getGolfUserData(slug, true));
+      else qc.setQueryData(["golf-integrations", slug], await getGolfIntegrations(slug, true));
+    } finally {
+      setForcing(false);
+    }
+  };
 
   const snapshot = overview.data;
 

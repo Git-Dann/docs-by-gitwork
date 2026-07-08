@@ -20,6 +20,7 @@
 import { getJson, type AnalyticsMetric } from "@/server/support-analytics/types";
 import { flattenMetrics } from "@/server/support-analytics/generic";
 import { resolveBigWedgeApi } from "@/server/wiki-bigwedge-sync";
+import { cached } from "@/server/golf-cache";
 
 /** The main Big Wedge app API (users/analytics). Non-secret; override with env. */
 const DEFAULT_APP_API_URL = "https://apiv1.bigwedgegolf.com";
@@ -83,7 +84,11 @@ interface Paginated {
   count?: number;
 }
 
-export async function getUserData(workspaceClientId: string): Promise<UserDataSnapshot> {
+export async function getUserData(workspaceClientId: string, force = false): Promise<UserDataSnapshot> {
+  return cached(`user-data:${workspaceClientId}`, () => loadUserData(workspaceClientId), { force });
+}
+
+async function loadUserData(workspaceClientId: string): Promise<UserDataSnapshot> {
   const r = await resolveAppApi(workspaceClientId);
   if ("error" in r) {
     return { connected: false, baseUrl: null, error: r.error, metrics: [], endpointsHit: [], endpointsFailed: [] };

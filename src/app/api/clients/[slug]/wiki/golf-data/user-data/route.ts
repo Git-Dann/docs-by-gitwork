@@ -8,7 +8,7 @@ export const maxDuration = 30;
 
 /** GET Big Wedge user analytics (read-only) for the console's User data view. */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
   try {
@@ -20,7 +20,7 @@ export async function GET(
     });
     if (!client) return apiError("Client not found", 404);
 
-    const data = await getUserData(client.id);
+    const data = await getUserData(client.id, req.nextUrl.searchParams.get("refresh") === "1");
     return apiOk(data);
   } catch (err) {
     return fromError(err);

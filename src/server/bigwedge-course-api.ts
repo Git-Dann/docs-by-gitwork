@@ -18,6 +18,7 @@
 
 import { getJson } from "@/server/support-analytics/types";
 import { resolveBigWedgeApi } from "@/server/wiki-bigwedge-sync";
+import { cached, bustGolfCache } from "@/server/golf-cache";
 
 /** The deployed Big Wedge course backend (Vercel). Non-secret; override with env. */
 const DEFAULT_COURSE_API_URL = "https://wedge-course-backend.vercel.app";
@@ -187,7 +188,11 @@ interface CronEvent {
   created_at: string;
 }
 
-export async function getCourseBackendData(workspaceClientId: string): Promise<CourseBackendData> {
+export async function getCourseBackendData(workspaceClientId: string, force = false): Promise<CourseBackendData> {
+  return cached(`course-backend:${workspaceClientId}`, () => loadCourseBackendData(workspaceClientId), { force });
+}
+
+async function loadCourseBackendData(workspaceClientId: string): Promise<CourseBackendData> {
   const resolved = await resolveCourseApi(workspaceClientId);
   if ("error" in resolved) {
     return { connected: false, baseUrl: null, error: resolved.error, stats: null, sources: null, activity: [] };
@@ -227,7 +232,11 @@ export async function getCourseBackendData(workspaceClientId: string): Promise<C
 }
 
 /** Read-only monitor of all connectors: coverage (/sources) + last run (/cron-status). */
-export async function getCourseIntegrations(workspaceClientId: string): Promise<CourseIntegrationsData> {
+export async function getCourseIntegrations(workspaceClientId: string, force = false): Promise<CourseIntegrationsData> {
+  return cached(`course-integrations:${workspaceClientId}`, () => loadCourseIntegrations(workspaceClientId), { force });
+}
+
+async function loadCourseIntegrations(workspaceClientId: string): Promise<CourseIntegrationsData> {
   const resolved = await resolveCourseApi(workspaceClientId);
   if ("error" in resolved) {
     return { connected: false, baseUrl: null, error: resolved.error, total: 0, integrations: [] };
@@ -328,6 +337,8 @@ export async function runCourseJob(
     if (!res.ok) {
       return { ok: false, job, detail: String(data.detail ?? `HTTP ${res.status}`) };
     }
+    // Enrichment changed backend state — drop cached reads so the next load is fresh.
+    bustGolfCache(workspaceClientId);
     return {
       ok: true,
       job,

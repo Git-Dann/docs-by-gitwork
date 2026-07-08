@@ -15,6 +15,7 @@
 import { prisma } from "@/lib/prisma";
 import { countGolfClubs, slugify } from "@/server/golf-clubs";
 import { getCourseBackendData } from "@/server/bigwedge-course-api";
+import { cached } from "@/server/golf-cache";
 
 export type ConsoleTone = "ok" | "warn" | "bad" | "info";
 
@@ -185,7 +186,19 @@ function severityRank(s: GolfValidationIssue["severity"]): number {
 export async function getGolfDataConsole(
   clientId: string,
   workspaceId: string,
-  opts: { now?: Date } = {},
+  opts: { now?: Date; force?: boolean } = {},
+): Promise<GolfDataConsole> {
+  return cached(
+    `console:${clientId}`,
+    () => loadGolfDataConsole(clientId, workspaceId, opts),
+    { force: opts.force },
+  );
+}
+
+async function loadGolfDataConsole(
+  clientId: string,
+  workspaceId: string,
+  opts: { now?: Date; force?: boolean } = {},
 ): Promise<GolfDataConsole> {
   const now = opts.now ?? new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -195,7 +208,7 @@ export async function getGolfDataConsole(
   const equipCategories = Object.keys(equip.byCategory).length;
 
   // Live Course-backend domain (best-effort — overview still renders if it's down).
-  const be = await getCourseBackendData(clientId).catch(() => null);
+  const be = await getCourseBackendData(clientId, opts.force).catch(() => null);
   const beStats = be?.connected ? be.stats : null;
   const backend: GolfDataConsole["backend"] = beStats
     ? {
