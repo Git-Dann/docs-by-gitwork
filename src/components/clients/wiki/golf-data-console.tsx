@@ -1042,9 +1042,9 @@ function fmtVal(v: number): string {
 }
 
 const GROUP_ORDER = [
-  "User Growth", "Retention", "Engagement", "Business Growth", "Revenue",
-  "Golf Metrics", "Game Modes", "Activity", "Subscriptions", "Clubhouse", "Feedback", "Overall",
+  "User Growth", "Engagement", "Retention", "Revenue",
 ];
+const KPI_GROUPS = new Set(GROUP_ORDER);
 
 function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) {
   const { data, isPending, isError, refetch } = state;
@@ -1076,17 +1076,18 @@ function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) 
     );
   }
 
-  // Group the flattened metrics.
+  // Group the flattened metrics — KPIs only.
   const groups = new Map<string, typeof d.metrics>();
   for (const m of d.metrics) {
     const g = m.group ?? "Other";
+    if (!KPI_GROUPS.has(g)) continue; // Skip non-KPI groups
     if (!groups.has(g)) groups.set(g, []);
     groups.get(g)!.push(m);
   }
   const orderedGroups = [...groups.keys()].sort((a, b) => {
     const ai = GROUP_ORDER.indexOf(a);
     const bi = GROUP_ORDER.indexOf(b);
-    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi) || a.localeCompare(b);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
   });
 
   return (
@@ -1106,32 +1107,69 @@ function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) 
           <p className="text-[12px] text-[var(--text-4)]">Connected, but the analytics endpoints returned no numeric fields. The admin report shape may have changed.</p>
         </WidgetCard>
       ) : (
-        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {orderedGroups.map((g, i) => {
+        <div className="mt-4 space-y-5">
+          {orderedGroups.map((g, groupIdx) => {
             const items = groups.get(g)!;
+            const isUserGrowth = g === "User Growth";
+            const isRevenue = g === "Revenue";
+            const gridCols = isUserGrowth ? "sm:grid-cols-2 lg:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-3";
+            const cardColsClass = items.length === 1 ? "grid-cols-1" : "grid-cols-2";
+
             return (
-              <WidgetCard key={g} number={String(i + 1).padStart(2, "0")} label={g} status={`${items.length}`} bodyClassName="p-4">
-                <div className="grid grid-cols-2 gap-3">
-                  {items.map((m) => (
-                    <div key={m.key} className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-2)] px-3.5 py-3">
-                      <div style={{ fontFamily: SERIF, fontSize: 32, lineHeight: 1, letterSpacing: "-0.02em", color: "var(--text-1)", fontWeight: 700 }}>
-                        {fmtVal(m.value)}
-                      </div>
-                      {m.unit && <div style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-3)", marginTop: "2px", fontWeight: 500 }}>{m.unit}</div>}
-                      {m.previous !== undefined && m.previous !== null && m.previous !== 0 ? (() => {
-                        const pct = Math.round(((m.value - m.previous) / m.previous) * 100);
-                        const isUp = pct >= 0;
-                        return (
-                          <div style={{ fontFamily: MONO, fontSize: 11, color: isUp ? "var(--success-500)" : "var(--warning-500)", letterSpacing: "0.05em", marginTop: "6px", fontWeight: 600 }}>
-                            {isUp ? "↑" : "↓"} {Math.abs(pct)}%
-                          </div>
-                        );
-                      })() : null}
-                      <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-3)", marginTop: "8px", lineHeight: 1.3, fontWeight: 500 }}>{m.label}</div>
-                    </div>
-                  ))}
+              <div key={g}>
+                <div className="mb-3 flex items-baseline gap-2">
+                  <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-3)", fontWeight: 600 }}>
+                    {String(groupIdx + 1).padStart(2, "0")} // {g}
+                  </span>
+                  {isRevenue && <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--success-500)", fontWeight: 600 }}>💰</span>}
                 </div>
-              </WidgetCard>
+                <div className={`grid grid-cols-1 gap-4 ${gridCols}`}>
+                  {items.map((m) => {
+                    const pct = m.previous !== undefined && m.previous !== null && m.previous !== 0
+                      ? Math.round(((m.value - m.previous) / m.previous) * 100)
+                      : null;
+                    const isUp = pct !== null && pct >= 0;
+                    const isBigMetric = ["users", "revenue"].some(k => m.key.toLowerCase().includes(k));
+
+                    return (
+                      <div
+                        key={m.key}
+                        className={`rounded-[12px] border border-[var(--border-2)] p-5 ${isRevenue ? "bg-[var(--brand-500)] bg-opacity-10 border-[var(--brand-500)] border-opacity-40" : "bg-[var(--surface-2)]"}`}
+                        style={{ minHeight: isBigMetric && isUserGrowth ? "140px" : "120px" }}
+                      >
+                        <div style={{ fontFamily: SERIF, fontSize: isBigMetric ? 42 : 32, lineHeight: 1, letterSpacing: "-0.02em", color: isRevenue ? "var(--brand-500)" : "var(--text-1)", fontWeight: 800 }}>
+                          {fmtVal(m.value)}
+                        </div>
+                        {m.unit && <div style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-3)", marginTop: "3px", fontWeight: 500 }}>{m.unit}</div>}
+                        {pct !== null && (
+                          <div style={{
+                            fontFamily: MONO,
+                            fontSize: 11,
+                            color: isUp ? "var(--success-500)" : "var(--warning-500)",
+                            letterSpacing: "0.05em",
+                            marginTop: "8px",
+                            fontWeight: 700
+                          }}>
+                            {isUp ? "↑" : "↓"} {Math.abs(pct)}% vs last mo
+                          </div>
+                        )}
+                        <div style={{
+                          fontFamily: MONO,
+                          fontSize: 10,
+                          letterSpacing: "0.04em",
+                          textTransform: "uppercase",
+                          color: "var(--text-3)",
+                          marginTop: "10px",
+                          lineHeight: 1.3,
+                          fontWeight: 500
+                        }}>
+                          {m.label}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
         </div>
