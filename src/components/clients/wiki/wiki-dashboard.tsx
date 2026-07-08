@@ -31,6 +31,10 @@ import type { WikiSection } from "./wiki-sidebar";
 
 // JetBrains Mono stack — consistent with wiki-workspace / wiki-public-view.
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
+// Editorial serif — Fraunces (Gitwork parent brand), falling back to the app's
+// DM Serif. Used for the hero name + pull-out stat figures per the Gitwork brand
+// guide, paired with mono labels (the DESIGN.md data signature).
+const SERIF = "var(--font-fraunces), var(--font-display), 'Times New Roman', Georgia, serif";
 
 type DocSection = "ia" | "dev-guide" | "api-docs" | "architecture" | "runbook" | "data-model";
 
@@ -202,9 +206,14 @@ function Widget({
 function Metric({ value, label }: { value: string; label: string }) {
   return (
     <div>
-      <div className="text-2xl font-semibold leading-none text-[var(--text-1)]">{value}</div>
       <div
-        className="mt-1 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]"
+        className="text-[30px] leading-none text-[var(--text-1)]"
+        style={{ fontFamily: SERIF, fontWeight: 600 }}
+      >
+        {value}
+      </div>
+      <div
+        className="mt-1.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]"
         style={{ fontFamily: MONO }}
       >
         {label}
@@ -268,7 +277,7 @@ export function WikiDashboard({
             {pct !== null && (
               <div>
                 <div className="mb-1 flex items-baseline justify-between">
-                  <span className="text-2xl font-semibold leading-none text-[var(--text-1)]">
+                  <span className="text-[30px] leading-none text-[var(--text-1)]" style={{ fontFamily: SERIF, fontWeight: 600 }}>
                     {pct}%
                   </span>
                   <span className="text-[11px] text-[var(--text-4)]">
@@ -475,10 +484,11 @@ export function WikiDashboard({
                   Knowledge Wiki
                 </p>
                 <h1
-                  className="mt-1 truncate text-2xl text-[var(--text-1)] md:text-3xl"
-                  style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+                  className="mt-1 truncate text-[26px] text-[var(--text-1)] md:text-[34px]"
+                  style={{ fontFamily: SERIF, fontWeight: 600, letterSpacing: "-0.01em" }}
                 >
                   {wiki.clientName}
+                  <span className="text-[var(--brand-600)]">.</span>
                 </h1>
               </div>
             </div>
