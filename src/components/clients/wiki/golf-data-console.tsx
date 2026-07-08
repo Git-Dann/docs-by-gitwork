@@ -1062,9 +1062,12 @@ function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) 
           <div>
             <p className="text-[13px] font-medium text-[var(--text-2)]">App analytics API not connected</p>
             <p className="mt-1 text-[12px] text-[var(--text-4)]">
-              User analytics come from the main Big Wedge app API. Set the admin JWT in{" "}
-              <span className="font-medium">Care → Connectors → Analytics API</span> (or{" "}
-              <span style={{ fontFamily: MONO }}>WEDGE_APP_API_TOKEN</span>). The token may have expired — app JWTs are short-lived.
+              User analytics come from the main Big Wedge app API. Recommended: set{" "}
+              <span style={{ fontFamily: MONO }}>WEDGE_APP_API_USER</span> +{" "}
+              <span style={{ fontFamily: MONO }}>WEDGE_APP_API_PASSWORD</span> on the VPS — Foundry mints a fresh
+              token each pull (app JWTs expire fast). Alternatively paste an admin JWT in{" "}
+              <span className="font-medium">Care → Connectors → Analytics API</span> or set{" "}
+              <span style={{ fontFamily: MONO }}>WEDGE_APP_API_TOKEN</span>.
             </p>
             {d.error ? <p className="mt-2 rounded-[6px] bg-[var(--surface-1)] px-2 py-1.5" style={{ fontFamily: MONO, fontSize: 10, color: "var(--text-4)" }}>{d.error}</p> : null}
           </div>
