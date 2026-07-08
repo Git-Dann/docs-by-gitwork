@@ -1118,6 +1118,15 @@ function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) 
                         <div style={{ fontFamily: SERIF, fontSize: 26, lineHeight: 1, letterSpacing: "-0.01em", color: "var(--text-1)" }}>
                           {fmtVal(m.value)}{m.unit ? <span style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-4)" }}> {m.unit}</span> : null}
                         </div>
+                        {m.previous !== undefined && m.previous !== null && m.previous !== 0 ? (() => {
+                          const pct = Math.round(((m.value - m.previous) / m.previous) * 100);
+                          const isUp = pct >= 0;
+                          return (
+                            <div className="mt-1.5" style={{ fontFamily: MONO, fontSize: 10, color: isUp ? "var(--success-500)" : "var(--warning-500)", letterSpacing: "0.05em" }}>
+                              {isUp ? "↑" : "↓"} {Math.abs(pct)}%
+                            </div>
+                          );
+                        })() : null}
                         <div className="mt-1 truncate" title={m.label} style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-4)" }}>{m.label}</div>
                       </div>
                     ))}
