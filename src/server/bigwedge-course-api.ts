@@ -7,14 +7,65 @@
  * NON-NEGOTIABLE: this module only ever GETs. It never writes to the course
  * backend or anywhere else — the console is a viewer.
  *
- * Auth reuses the Big Wedge admin JWT from the Care → Connectors "Analytics API"
- * connector (same token the course-request sync uses). The course backend is a
- * separate service from the main app API, so its base URL can be overridden with
- * `WEDGE_COURSE_API_URL` (env); otherwise it falls back to the connector base URL.
+ * Auth — the course backend issues short-lived (12h) JWTs, so a stored static
+ * token would expire. Precedence, in order:
+ *   1. env `WEDGE_COURSE_API_USER` + `WEDGE_COURSE_API_PASSWORD` → Foundry mints a
+ *      FRESH access token per pull via `POST /api/v1/auth/token/` (never expires out).
+ *   2. the Big Wedge admin JWT from the Care → Connectors "Analytics API" connector.
+ *   3. no token (works only if the backend runs with `REQUIRE_AUTH=false`).
+ * Base URL: env `WEDGE_COURSE_API_URL` wins, else the connector's base URL.
  */
 
 import { getJson } from "@/server/support-analytics/types";
 import { resolveBigWedgeApi } from "@/server/wiki-bigwedge-sync";
+
+/** Mint a fresh access token from username/password. Returns null on failure. */
+async function mintCourseToken(
+  baseUrl: string,
+  username: string,
+  password: string,
+): Promise<string | null> {
+  try {
+    const res = await fetch(`${baseUrl}/api/v1/auth/token/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": "Foundry/1.0" },
+      body: JSON.stringify({ username, password }),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { access?: string };
+    return json.access ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve { baseUrl, token } for the course backend per the precedence above. */
+async function resolveCourseApi(
+  workspaceClientId: string,
+): Promise<{ baseUrl: string; token?: string } | { error: string }> {
+  const envUrl = process.env.WEDGE_COURSE_API_URL?.trim();
+  const envUser = process.env.WEDGE_COURSE_API_USER?.trim();
+  const envPass = process.env.WEDGE_COURSE_API_PASSWORD?.trim();
+
+  // Connector is optional when an env URL is configured.
+  const connector = await resolveBigWedgeApi(workspaceClientId);
+  const connectorOk = !("error" in connector);
+
+  const baseUrl = (envUrl || (connectorOk ? connector.baseUrl : "")).replace(/\/$/, "");
+  if (!baseUrl) {
+    return { error: "error" in connector ? connector.error : "No course backend URL configured." };
+  }
+
+  // 1) mint from env creds
+  if (envUser && envPass) {
+    const token = await mintCourseToken(baseUrl, envUser, envPass);
+    if (token) return { baseUrl, token };
+    return { error: `Login to ${baseUrl}/api/v1/auth/token/ failed (check WEDGE_COURSE_API_USER/PASSWORD).` };
+  }
+  // 2) static connector token, or 3) no token (open backend)
+  return { baseUrl, token: connectorOk ? connector.apiToken : undefined };
+}
 
 export interface CourseBackendStats {
   courses: number;
@@ -57,19 +108,13 @@ export interface CourseBackendData {
   activity: CourseBackendActivity[];
 }
 
-function courseApiBaseUrl(connectorBaseUrl: string): string {
-  const override = process.env.WEDGE_COURSE_API_URL?.trim();
-  return (override || connectorBaseUrl).replace(/\/$/, "");
-}
-
 export async function getCourseBackendData(workspaceClientId: string): Promise<CourseBackendData> {
-  const resolved = await resolveBigWedgeApi(workspaceClientId);
+  const resolved = await resolveCourseApi(workspaceClientId);
   if ("error" in resolved) {
     return { connected: false, baseUrl: null, error: resolved.error, stats: null, sources: null, activity: [] };
   }
 
-  const baseUrl = courseApiBaseUrl(resolved.baseUrl);
-  const token = resolved.apiToken;
+  const { baseUrl, token } = resolved;
 
   // Stats is the primary signal — if it fails, we're not connected. Sources +
   // activity are best-effort (older backends may not expose them).
