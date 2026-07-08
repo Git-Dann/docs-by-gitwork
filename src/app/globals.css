@@ -898,6 +898,17 @@ h2, h3, h4, h5 {
     line-height: 20px;
   }
 
+  /* A <textarea> using .app-input / .app-input-compact must never inherit the
+     single-line `padding: 0 12px` — that jams the copy against the top edge.
+     Give multi-line fields proper vertical padding + comfortable line-height. */
+  textarea.app-input,
+  textarea.app-input-compact {
+    min-height: 72px;
+    height: auto;
+    padding: 10px 12px;
+    line-height: 1.5;
+  }
+
   textarea.proposal-field-compact,
   .proposal-form-theme textarea.proposal-field-compact {
     min-height: 96px;
