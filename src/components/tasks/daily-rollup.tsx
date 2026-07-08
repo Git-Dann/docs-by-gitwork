@@ -4,12 +4,13 @@ import { useState } from "react";
 import {
   CheckCircleIcon,
   MegaphoneIcon,
+  PaperAirplaneIcon,
   ChevronUpIcon,
   ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
-import { useRollupRoster, usePublishRollup } from "@/hooks/use-tasks";
+import { useRollupRoster, usePublishRollup, usePushPmUpdates } from "@/hooks/use-tasks";
 import { TaskAvatar } from "@/components/tasks/task-avatar";
 
 const PAGE_SIZE = 5;
@@ -32,7 +33,9 @@ export function DailyRollup({
 }) {
   const { data, isPending } = useRollupRoster(enabled);
   const publish = usePublishRollup();
+  const pushPm = usePushPmUpdates();
   const [result, setResult] = useState<string | null>(null);
+  const [pmResult, setPmResult] = useState<string | null>(null);
   const [page, setPage] = useState(0);
 
   const devs = data?.devs ?? [];
@@ -56,6 +59,24 @@ export function DailyRollup({
       );
     } catch (e) {
       setResult(e instanceof Error ? e.message : "Publish failed");
+    }
+  }
+
+  async function doPushPm() {
+    setPmResult(null);
+    try {
+      const r = await pushPm.mutateAsync();
+      if (!r.configured) {
+        setPmResult("No #updates channel set — pick one in Settings → Integrations (Daily PM updates).");
+      } else if (r.devCount === 0) {
+        setPmResult("No developers have posted a PM update yet today.");
+      } else {
+        setPmResult(
+          `Pushed ${r.devCount} dev update${r.devCount === 1 ? "" : "s"} (${r.taskCount} task${r.taskCount === 1 ? "" : "s"}) to #updates.`,
+        );
+      }
+    } catch (e) {
+      setPmResult(e instanceof Error ? e.message : "Push failed");
     }
   }
 
@@ -162,6 +183,35 @@ export function DailyRollup({
                   {result}
                 </span>
               ) : null}
+
+              {/* Push to Slack — compiles each dev's PM update (done today + note),
+                  grouped by developer, to the dedicated #updates channel. */}
+              <div className="mt-3 border-t border-dashed border-[var(--border-2)] pt-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-[var(--text-2)]">End-of-day PM updates</p>
+                    <p className="text-[11px] text-[var(--text-4)]">
+                      Compile every dev&apos;s PM update to #updates
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
+                    onClick={doPushPm}
+                    disabled={pushPm.isPending}
+                    loading={pushPm.isPending}
+                  >
+                    Push to Slack
+                  </Button>
+                </div>
+                {pmResult ? (
+                  <span className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[var(--text-2)]">
+                    <CheckCircleIcon className="h-4 w-4 text-emerald-600" />
+                    {pmResult}
+                  </span>
+                ) : null}
+              </div>
             </div>
             ) : null}
           </>

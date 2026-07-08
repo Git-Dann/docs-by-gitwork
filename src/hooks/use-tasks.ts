@@ -26,6 +26,7 @@ import {
   deleteStandupUpdate,
   getRollupRoster,
   publishRollup,
+  pushPmUpdates,
   listMemberClients,
   setMemberClients,
   listFeatureBlocks,
@@ -333,6 +334,16 @@ export function usePublishRollup() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (override: boolean = false) => publishRollup(override),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: QK.roster }),
+  });
+}
+
+/** "Push to Slack" — compile every dev's PM update grouped by developer and post
+ *  it to the dedicated #updates channel. */
+export function usePushPmUpdates() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => pushPmUpdates(),
     onSuccess: () => void qc.invalidateQueries({ queryKey: QK.roster }),
   });
 }

@@ -277,6 +277,53 @@ export function buildRollupCard(input: {
   return { text, blocks };
 }
 
+export interface PmUpdateDev {
+  name: string;
+  /** This dev's tasks marked done today. */
+  tasks: Array<{ title: string; clientName: string; clientSlug: string; taskId: string }>;
+  /** The dev's end-of-day note ("One thing I need"), when they left one. */
+  note?: string | null;
+}
+
+/**
+ * End-of-day PM roll-up — one consolidated card compiling each developer's PM
+ * update (their done-today tasks + note), grouped BY DEVELOPER. Posted to the
+ * dedicated "Daily PM updates" channel (Settings → Integrations route
+ * `tasks.updates`), distinct from the client-grouped `buildRollupCard`.
+ */
+export function buildPmUpdatesCard(input: {
+  dateLabel: string;
+  devs: PmUpdateDev[];
+}): { text: string; blocks: SlackBlock[] } {
+  const friendlyDate = formatFriendlyDate(input.dateLabel);
+  const text = `End-of-day updates · ${input.dateLabel}`;
+  const blocks: SlackBlock[] = [
+    { type: "header", text: { type: "plain_text", text: `:memo: End-of-day updates` } },
+    { type: "context", elements: [{ type: "mrkdwn", text: escapeMrkdwn(friendlyDate) }] },
+  ];
+  if (input.devs.length === 0) {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "_No developers have posted a PM update yet today._" },
+    });
+    return { text, blocks };
+  }
+  for (const dev of input.devs) {
+    const taskLines = dev.tasks.length
+      ? dev.tasks
+          .map((t) => `• ${escapeMrkdwn(t.title)}  _· ${escapeMrkdwn(t.clientName)}_`)
+          .join("\n")
+      : "_No tasks marked done today._";
+    let body = `*${escapeMrkdwn(dev.name)}*\n${taskLines}`;
+    if (dev.note?.trim()) {
+      body += `\n> ${escapeMrkdwn(truncate(dev.note.trim(), 600))}`;
+    }
+    blocks.push({ type: "section", text: { type: "mrkdwn", text: body } });
+  }
+  blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: `Posted from Foundry` }] });
+  return { text, blocks };
+}
+
 export interface ProjectUpdateGroup {
   label: "In progress" | "Done" | "Up next";
   tasks: StandupTaskCardInput[];

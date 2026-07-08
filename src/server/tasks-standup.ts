@@ -14,7 +14,13 @@ import {
 } from "@/server/auth/effective-user";
 import { listTasks } from "@/server/tasks";
 import { getSlackBotToken, postMessage, deleteMessage } from "@/server/slack/client";
-import { buildRollupCard, buildStandupCard, type StandupTaskCardInput } from "@/server/slack/blocks";
+import {
+  buildRollupCard,
+  buildStandupCard,
+  buildPmUpdatesCard,
+  type PmUpdateDev,
+  type StandupTaskCardInput,
+} from "@/server/slack/blocks";
 import { assertDailyUpdateCooldown } from "@/server/slack-cooldown";
 import { TEAM_ROSTER } from "@/server/team-roster";
 import type {
@@ -381,6 +387,17 @@ export function resolveRollupChannel(
   return routes?.["tasks.rollup"] ?? ws?.slackSummaryChannelId ?? null;
 }
 
+/** The daily PM-updates channel: the routed "tasks.updates" channel (Settings →
+ *  Integrations "Daily PM updates" route). Distinct from the client-grouped
+ *  roll-up channel — this is the dev-grouped end-of-day compilation (#updates).
+ *  Returns null when unconfigured so the caller can prompt the admin to set it. */
+export function resolveUpdatesChannel(
+  ws: { channelRoutes: unknown } | null,
+): string | null {
+  const routes = (ws?.channelRoutes as Record<string, string> | null) ?? null;
+  return routes?.["tasks.updates"] ?? null;
+}
+
 /** One-off nudge to the roll-up channel the moment every dev's PM update is in.
  *  Exported so an EOD push made via the Tasks-page composer (slack-updates.ts)
  *  also fires the nudge when it completes the roster. */
@@ -583,5 +600,124 @@ export async function publishRollup(
     channel,
     clientCount: groups.size,
     taskCount: doneTasks.length,
+  };
+}
+
+/**
+ * End-of-day "Push to Slack" — compile every developer's PM update (their
+ * done-today tasks + their end-of-day note) grouped BY DEVELOPER and post ONE
+ * consolidated card to the dedicated PM-updates channel (Settings → Integrations
+ * `tasks.updates` route, i.e. #updates). Only devs who have pushed their PM
+ * update today are included. Best-effort Slack post; a missing token/channel
+ * never fails the request — `configured: false` tells the UI to prompt setup.
+ */
+export async function publishPmUpdates(
+  user: EffectiveUser,
+): Promise<{
+  ok: boolean;
+  channel: string | null;
+  configured: boolean;
+  devCount: number;
+  taskCount: number;
+}> {
+  assertCanPublishTaskRollup(user);
+  await ensureBaseRecords();
+  const workDate = parseWorkDate();
+  const devIds = await getDeveloperUserIds(user.workspaceId);
+
+  if (devIds.length === 0) {
+    return { ok: true, channel: null, configured: true, devCount: 0, taskCount: 0 };
+  }
+
+  const assigneeFilter = [
+    { assignees: { some: { id: { in: devIds } } } },
+    { assigneeId: { in: devIds } },
+  ];
+  const [users, updates, doneTasks] = await Promise.all([
+    prisma.user.findMany({
+      where: { id: { in: devIds } },
+      select: { id: true, name: true, email: true },
+    }),
+    // Only devs who've pushed their PM update today — that's what "PM updates" means.
+    prisma.dailyUpdate.findMany({
+      where: {
+        workspaceId: user.workspaceId,
+        workDate,
+        userId: { in: devIds },
+        pmPushedAt: { not: null },
+      },
+      select: { userId: true, note: true },
+    }),
+    prisma.task.findMany({
+      where: {
+        workspaceId: user.workspaceId,
+        status: "DONE",
+        completedAt: { gte: workDate, lt: nextUtcDay(workDate) },
+        OR: assigneeFilter,
+      },
+      select: {
+        id: true,
+        title: true,
+        assigneeId: true,
+        assignees: { select: { id: true } },
+        client: { select: { name: true, slug: true } },
+      },
+      orderBy: { completedAt: "asc" },
+    }),
+  ]);
+
+  const userById = new Map(users.map((u) => [u.id, u]));
+  const noteByUser = new Map(updates.map((u) => [u.userId, u.note]));
+  const devSet = new Set(devIds);
+
+  // Fan each done task out to every assigned dev (m-n + legacy single assignee).
+  const tasksByDev = new Map<string, PmUpdateDev["tasks"]>();
+  for (const t of doneTasks) {
+    const ids = new Set<string>(t.assignees.map((a) => a.id));
+    if (t.assigneeId) ids.add(t.assigneeId);
+    for (const id of ids) {
+      if (!devSet.has(id)) continue;
+      const arr = tasksByDev.get(id) ?? [];
+      arr.push({ title: t.title, clientName: t.client.name, clientSlug: t.client.slug, taskId: t.id });
+      tasksByDev.set(id, arr);
+    }
+  }
+
+  const devs: PmUpdateDev[] = updates
+    .map((u): PmUpdateDev | null => {
+      const row = userById.get(u.userId);
+      if (!row) return null;
+      return {
+        name: row.name?.trim() || row.email,
+        tasks: tasksByDev.get(u.userId) ?? [],
+        note: noteByUser.get(u.userId) ?? null,
+      };
+    })
+    .filter((d): d is PmUpdateDev => d !== null)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const taskCount = devs.reduce((n, d) => n + d.tasks.length, 0);
+
+  const ws = await prisma.workspace.findUnique({
+    where: { id: user.workspaceId },
+    select: { slackBotToken: true, slackBotTokenEncrypted: true, channelRoutes: true },
+  });
+  const botToken = getSlackBotToken(ws);
+  const channel = resolveUpdatesChannel(ws);
+
+  if (botToken && channel) {
+    const card = buildPmUpdatesCard({ dateLabel: ymd(workDate), devs });
+    await postMessage(botToken, { channel, text: card.text, blocks: card.blocks });
+    await prisma.workspace
+      .update({ where: { id: user.workspaceId }, data: { lastSlackPostAt: new Date() } })
+      .catch(() => undefined);
+  }
+
+  return {
+    ok: true,
+    channel,
+    configured: Boolean(channel),
+    devCount: devs.length,
+    taskCount,
   };
 }
