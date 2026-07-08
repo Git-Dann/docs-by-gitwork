@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { BuildingOffice2Icon } from "@heroicons/react/24/solid";
+import { NewTaskButton } from "@/components/tasks/new-task-button";
 import { useClientList } from "@/hooks/use-proposals";
 import type { WidgetSize } from "@/components/app-overview";
 import type { ClientListItem } from "@/types/client";
@@ -83,44 +84,48 @@ function ClientRow({ client }: { client: ClientListItem }) {
   }
 
   return (
-    <Link
-      href={`/app/portal/${client.slug}`}
-      className="flex items-center gap-3 rounded-[8px] border border-[rgba(0,0,0,0.06)] bg-white px-2.5 py-2 transition-colors hover:bg-[var(--surface-1)]"
-    >
-      {client.logoUrl ? (
-        // Logos come from arbitrary client domains — keep raw <img> to avoid
-        // configuring next/image remote patterns for every new client.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={client.logoUrl}
-          alt=""
-          className="h-7 w-7 shrink-0 rounded-[6px] object-cover"
-        />
-      ) : (
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] bg-[var(--surface-1)] text-[10px] font-semibold text-[#475569]">
-          {initials(client.name)}
-        </span>
-      )}
+    <div className="group flex items-center gap-3 rounded-[8px] border border-[rgba(0,0,0,0.06)] bg-white px-2.5 py-2 transition-colors hover:bg-[var(--surface-1)]">
+      <Link href={`/app/portal/${client.slug}`} className="flex min-w-0 flex-1 items-center gap-3">
+        {client.logoUrl ? (
+          // Logos come from arbitrary client domains — keep raw <img> to avoid
+          // configuring next/image remote patterns for every new client.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={client.logoUrl}
+            alt=""
+            className="h-7 w-7 shrink-0 rounded-[6px] object-cover"
+          />
+        ) : (
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] bg-[var(--surface-1)] text-[10px] font-semibold text-[#475569]">
+            {initials(client.name)}
+          </span>
+        )}
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <p className="truncate text-sm font-medium text-[#0F172A]">{client.name}</p>
-          {client.status === "PENDING_REVIEW" ? (
-            <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-medium text-amber-700">
-              Pending
-            </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <p className="truncate text-sm font-medium text-[#0F172A]">{client.name}</p>
+            {client.status === "PENDING_REVIEW" ? (
+              <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-medium text-amber-700">
+                Pending
+              </span>
+            ) : null}
+          </div>
+          {stats.length > 0 ? (
+            <p
+              className="truncate text-[10px] uppercase tracking-[0.08em] text-[#94A3B8]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              {stats.join(" · ")}
+            </p>
           ) : null}
         </div>
-        {stats.length > 0 ? (
-          <p
-            className="truncate text-[10px] uppercase tracking-[0.08em] text-[#94A3B8]"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            {stats.join(" · ")}
-          </p>
-        ) : null}
-      </div>
-    </Link>
+      </Link>
+      <NewTaskButton
+        clientId={client.id}
+        clientName={client.name}
+        className="opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100"
+      />
+    </div>
   );
 }
 

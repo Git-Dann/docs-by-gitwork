@@ -23,6 +23,14 @@ import {
 const ADMIN_ROLES = new Set(["ADMIN", "SUPER_ADMIN"]);
 const EMPTY_MEMBERS: BackstageMember[] = [];
 
+/** Local (not UTC) YYYY-MM-DD for today — the default date on a new task, so
+ *  logging same-day work needs no extra clicks (per the team's request). */
+function todayIso(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function isAdminOrSuperAdmin(role: string): boolean {
   return ADMIN_ROLES.has(role);
 }
@@ -67,7 +75,11 @@ export function TaskFormModal({
   );
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? defaultStatus ?? "BACKLOG");
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? "MEDIUM");
-  const [dueDate, setDueDate] = useState(task?.dueDate ? task.dueDate.slice(0, 10) : "");
+  // New tasks default the date to today (saves a click when logging same-day
+  // work); editing keeps the task's existing date (blank stays blank).
+  const [dueDate, setDueDate] = useState(
+    task?.dueDate ? task.dueDate.slice(0, 10) : task ? "" : todayIso(),
+  );
   const [featureBlockId, setFeatureBlockId] = useState(task?.featureBlock?.id ?? "");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -156,7 +168,7 @@ export function TaskFormModal({
           setTitle("");
           setDescription("");
           setAcceptanceCriteria("");
-          setDueDate("");
+          setDueDate(todayIso());
           setSuccess("Task created. Add the next one.");
           window.setTimeout(() => titleInputRef.current?.focus(), 0);
           return;
