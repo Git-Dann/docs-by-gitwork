@@ -432,6 +432,18 @@ export function WikiDashboard({
           </div>
         );
       }
+      case "intake": {
+        const items = wiki.intakeItems;
+        const open = items.filter((r) => r.status === "NEW" || r.status === "TRIAGED").length;
+        return items.length > 0 ? (
+          <div className="flex items-end gap-6">
+            <Metric value={String(open)} label="Open" />
+            <Metric value={String(items.length)} label="Total" />
+          </div>
+        ) : (
+          <p className="text-[13px] text-[var(--text-4)]">No requests submitted yet.</p>
+        );
+      }
       case "course-requests": {
         const reqs = wiki.courseRequests;
         const open = reqs.filter((r) => r.status === "NEW").length;
@@ -490,7 +502,8 @@ export function WikiDashboard({
     }
   }
 
-  const footerStats = buildFooterStats(wiki, pct, activeMonitors, worstMonitor);
+  const teamCount = wiki.productTeam.length + wiki.team.length;
+  const footerStats = buildFooterStats(wiki, activeMonitors, worstMonitor);
 
   return (
     <div className="mx-auto w-full max-w-5xl">
@@ -537,7 +550,13 @@ export function WikiDashboard({
             {/* Teams — stacked avatars with a name + italic-bio tooltip on
                 hover. Product (account leads) above Delivery (the devs). */}
             {(wiki.productTeam.length > 0 || wiki.team.length > 0) && (
-              <div className="flex shrink-0 flex-col items-start gap-2.5 sm:items-end">
+              <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+                <span
+                  className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/35"
+                  style={{ fontFamily: MONO }}
+                >
+                  Team · {teamCount}
+                </span>
                 {wiki.productTeam.length > 0 && (
                   <TeamStack label="Product" members={wiki.productTeam} />
                 )}
@@ -622,35 +641,16 @@ export function WikiDashboard({
 
       {sections.length > 0 && (
         <>
-          {/* Jump-to strip — a numbered wayfinding row echoing the Gitwork
-              brand guide's workflow chips, letting the wiki double as a real
-              entryway to every page instead of just a summary card grid. */}
-          <div className="mt-4 flex items-center gap-3.5 overflow-x-auto rounded-[12px] border border-[var(--border-1)] bg-[var(--surface-1)] px-5 py-3.5">
-            <span
-              className="shrink-0 text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--text-4)]"
-              style={{ fontFamily: MONO }}
-            >
-              Jump to
-            </span>
-            <div className="flex items-center gap-2.5 whitespace-nowrap">
-              {sections.map((section, i) => (
-                <span key={section} className="flex items-center gap-2.5">
-                  {i > 0 && <span className="text-[var(--text-4)]">→</span>}
-                  <button
-                    type="button"
-                    onClick={() => onSelect(section)}
-                    className="text-[11.5px] font-medium text-[var(--text-2)] transition hover:text-[var(--brand-700)]"
-                    style={{ fontFamily: MONO }}
-                  >
-                    {toRomanLower(i + 1)}. {SECTION_META[section].label}
-                  </button>
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* Section widgets — one per page, each showing live data */}
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {/* Section widgets — one per page, each showing live data. Auto-fit
+              columns (not a fixed 1/2/3 breakpoint grid) so a trailing row
+              with fewer cards than columns stretches to fill the width
+              instead of leaving a dangling gap; `items-start` lets each card
+              size to its own content instead of stretching to match a taller
+              sibling (e.g. the wide Timeline card) in the same row. */}
+          <div
+            className="mt-4 grid items-start gap-4"
+            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}
+          >
             {sections.map((section, i) => (
               <Widget
                 key={section}
@@ -674,8 +674,10 @@ export function WikiDashboard({
               >
                 Project overview
               </p>
+              {/* No max-width — the previous `max-w-lg` cap forced a wrap to
+                  two lines despite the band having plenty of room to spare. */}
               <h2
-                className="mt-2 max-w-lg text-[22px] leading-snug text-white md:text-[26px]"
+                className="mt-2 text-[22px] leading-snug text-white md:text-[26px]"
                 style={{ fontFamily: SERIF, fontWeight: 600 }}
               >
                 Everything about {wiki.clientName}, ready when you need it.
@@ -716,19 +718,18 @@ export function WikiDashboard({
   );
 }
 
-/** Real, available data only — a stat is omitted rather than shown as zero/empty. */
+/**
+ * Real, available data only — a stat is omitted rather than shown as
+ * zero/empty. Completion % and team size render elsewhere (the timeline
+ * card and the masthead's team stack, respectively) so they're not
+ * duplicated here.
+ */
 function buildFooterStats(
   wiki: WikiDTO,
-  pct: number | null,
   activeMonitors: WikiDTO["monitors"]["monitors"],
   worstMonitor: string | null,
 ): { value: string; label: string; color?: string }[] {
   const stats: { value: string; label: string; color?: string }[] = [];
-  if (pct !== null) stats.push({ value: `${pct}%`, label: "Complete" });
-  const teamCount = wiki.productTeam.length + wiki.team.length;
-  if (teamCount > 0) {
-    stats.push({ value: String(teamCount), label: teamCount === 1 ? "Team member" : "Team members" });
-  }
   if (wiki.documents.documents.length > 0) {
     stats.push({
       value: String(wiki.documents.documents.length),
