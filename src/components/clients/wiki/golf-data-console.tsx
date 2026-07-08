@@ -566,8 +566,8 @@ function CourseBackendView({ state }: { state: ReturnType<typeof useGolfCourseBa
   const sourceTotal = sources._total ?? s.courses;
   const holeDist = Object.entries(s.hole_distribution).sort((a, b) => Number(b[1]) - Number(a[1]));
 
-  const tile = (value: string | number, label: string, tone?: ConsoleTone, sub?: string) => (
-    <WidgetCard number="" label={label} bodyClassName="px-4 pb-3 pt-3">
+  const tile = (num: string, value: string | number, label: string, tone?: ConsoleTone, sub?: string) => (
+    <WidgetCard number={num} label={label} bodyClassName="px-4 pb-3 pt-3">
       <span style={{ fontFamily: SERIF, fontSize: 40, lineHeight: 1, letterSpacing: "-0.02em", color: tone ? toneColor(tone) : "var(--text-1)" }}>{value}</span>
       {sub ? <div className="mt-1.5" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-4)" }}>{sub}</div> : null}
     </WidgetCard>
@@ -584,18 +584,18 @@ function CourseBackendView({ state }: { state: ReturnType<typeof useGolfCourseBa
 
       {/* Metric strip */}
       <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        {tile(s.courses.toLocaleString("en-GB"), "Courses")}
-        {tile(s.clubs.toLocaleString("en-GB"), "Clubs")}
-        {tile(`${gpsPct}%`, "GPS Coverage", gpsPct >= 80 ? "ok" : "warn", `${s.with_gps.toLocaleString("en-GB")} courses`)}
-        {tile(s.gps_points.toLocaleString("en-GB"), "GPS Points")}
-        {tile(s.holes.toLocaleString("en-GB"), "Holes")}
-        {tile(s.countries.toLocaleString("en-GB"), "Countries")}
+        {tile("01", s.courses.toLocaleString("en-GB"), "Courses")}
+        {tile("02", s.clubs.toLocaleString("en-GB"), "Venues (Clubs)")}
+        {tile("03", `${gpsPct}%`, "GPS Coverage", gpsPct >= 80 ? "ok" : "warn", `${s.with_gps.toLocaleString("en-GB")} courses`)}
+        {tile("04", s.gps_points.toLocaleString("en-GB"), "GPS Points")}
+        {tile("05", s.holes.toLocaleString("en-GB"), "Holes")}
+        {tile("06", s.countries.toLocaleString("en-GB"), "Countries")}
       </div>
 
       <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-3">
         <div className="space-y-3 xl:col-span-2">
           {/* Coverage by country */}
-          <WidgetCard number="01" label="Coverage by Country" status={`${s.countries} countries`} bodyClassName="p-0">
+          <WidgetCard number="07" label="Coverage by Country" status={`${s.countries} countries`} bodyClassName="p-0">
             <div className="max-h-[340px] overflow-auto">
               <table className="w-full border-collapse text-sm">
                 <thead><tr>{["Country", "Courses", "With GPS", "GPS %"].map((h) => <th key={h} className={th} style={thStyle}>{h}</th>)}</tr></thead>
@@ -615,7 +615,7 @@ function CourseBackendView({ state }: { state: ReturnType<typeof useGolfCourseBa
           </WidgetCard>
 
           {/* Recent activity */}
-          <WidgetCard number="02" label="Recent Activity" status="enrichment · seeds" bodyClassName="p-0">
+          <WidgetCard number="08" label="Recent Activity" status="enrichment · seeds" bodyClassName="p-0">
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-sm">
                 <thead><tr>{["Source", "Type", "Affected", "Skipped", "Errors", "When"].map((h) => <th key={h} className={th} style={thStyle}>{h}</th>)}</tr></thead>
@@ -639,7 +639,7 @@ function CourseBackendView({ state }: { state: ReturnType<typeof useGolfCourseBa
 
         <div className="space-y-3">
           {/* Data quality */}
-          <WidgetCard number="03" label="Data Quality" status={`${completePct}% complete`} bodyClassName="p-4">
+          <WidgetCard number="09" label="Data Quality" status={`${completePct}% complete`} bodyClassName="p-4">
             {[
               { l: "Complete records", n: s.complete },
               { l: "With GPS", n: s.with_gps },
@@ -664,7 +664,7 @@ function CourseBackendView({ state }: { state: ReturnType<typeof useGolfCourseBa
           </WidgetCard>
 
           {/* Sources */}
-          <WidgetCard number="04" label="Source Coverage" status={`of ${sourceTotal.toLocaleString("en-GB")}`} bodyClassName="p-4">
+          <WidgetCard number="10" label="Source Coverage" status={`of ${sourceTotal.toLocaleString("en-GB")}`} bodyClassName="p-4">
             {sourceRows.length === 0 ? (
               <p style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-4)" }}>No source data</p>
             ) : (
@@ -684,7 +684,7 @@ function CourseBackendView({ state }: { state: ReturnType<typeof useGolfCourseBa
           </WidgetCard>
 
           {/* Hole distribution */}
-          <WidgetCard number="05" label="Hole Distribution" bodyClassName="p-4">
+          <WidgetCard number="11" label="Hole Distribution" bodyClassName="p-4">
             <div className="flex flex-wrap gap-2">
               {holeDist.map(([holes, count]) => (
                 <div key={holes} className="rounded-[6px] border border-[var(--border-2)] px-3 py-2 text-center">
@@ -752,31 +752,31 @@ function ClubsView({ state }: { state: ReturnType<typeof useGolfClubsList> }) {
   return (
     <>
       <div className="mt-3 grid grid-cols-3 gap-3">
-        <MetricTile value={all.length.toLocaleString("en-GB")} label="Clubs" tone="ok" />
-        <MetricTile value={String(brands.length)} label="Brands" />
-        <MetricTile value={String(categories.length)} label="Types" />
+        <MetricTile number="01" value={all.length.toLocaleString("en-GB")} label="Clubs" tone="ok" />
+        <MetricTile number="02" value={String(brands.length)} label="Brands" />
+        <MetricTile number="03" value={String(categories.length)} label="Types" />
       </div>
 
-      <WidgetCard number="01" label="Clubs Catalogue" status={`${filtered.length} shown`} bodyClassName="p-0">
-        {/* Toolbar */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-2)] p-3">
+      <WidgetCard number="04" label="Clubs Catalogue" status={`${filtered.length} shown`} bodyClassName="p-0">
+        {/* Toolbar — one line on sm+, stacks on mobile */}
+        <div className="flex flex-col gap-2 border-b border-[var(--border-2)] p-3 sm:flex-row sm:items-center">
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search brand, model…"
-            className="app-input-compact min-w-[180px] flex-1"
+            className="app-input-compact w-full sm:flex-1"
           />
-          <select value={brand} onChange={(e) => setBrand(e.target.value)} className="app-select-compact">
+          <select value={brand} onChange={(e) => setBrand(e.target.value)} className="app-select-compact w-full sm:w-44">
             <option value="all">All brands</option>
             {brands.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
-          <select value={category} onChange={(e) => setCategory(e.target.value)} className="app-select-compact">
+          <select value={category} onChange={(e) => setCategory(e.target.value)} className="app-select-compact w-full sm:w-44">
             <option value="all">All types</option>
             {categories.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
 
-        <div className="max-h-[560px] overflow-auto">
+        <div className="max-h-[calc(100dvh-360px)] min-h-[420px] overflow-auto">
           <table className="w-full border-collapse text-sm">
             <thead className="sticky top-0 z-10 bg-[var(--surface-0)]">
               <tr>{["Brand", "Model", "Type", "Year", "Lofts / Set", "Specs"].map((h) => <th key={h} className={th} style={thStyle}>{h}</th>)}</tr>
@@ -973,16 +973,16 @@ function IntegrationsView({ slug, state }: { slug: string; state: ReturnType<typ
   return (
     <>
       <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <MetricTile value={String(list.length)} label="Connectors" />
-        <MetricTile value={String(active)} label="Active" tone="ok" />
-        <MetricTile value={String(needsKey)} label="Need a key" tone={needsKey > 0 ? "warn" : "ok"} />
-        <MetricTile value={data.total.toLocaleString("en-GB")} label="Spine courses" />
+        <MetricTile number="01" value={String(list.length)} label="Connectors" />
+        <MetricTile number="02" value={String(active)} label="Active" tone="ok" />
+        <MetricTile number="03" value={String(needsKey)} label="Need a key" tone={needsKey > 0 ? "warn" : "ok"} />
+        <MetricTile number="04" value={data.total.toLocaleString("en-GB")} label="Spine courses" />
       </div>
 
       <div className="mt-3 space-y-3">
-        {section("01", "Spine (Licensed)", spine)}
-        {section("02", "Enrichment", enrich)}
-        {section("03", "Seeders", seed)}
+        {section("05", "Spine (Licensed)", spine)}
+        {section("06", "Enrichment", enrich)}
+        {section("07", "Seeders", seed)}
       </div>
 
       <p className="mt-3 flex items-start gap-1.5 px-1 text-[11px] leading-relaxed text-[var(--text-4)]">
@@ -997,9 +997,9 @@ function IntegrationsView({ slug, state }: { slug: string; state: ReturnType<typ
   );
 }
 
-function MetricTile({ value, label, tone }: { value: string; label: string; tone?: ConsoleTone }) {
+function MetricTile({ value, label, tone, number = "" }: { value: string; label: string; tone?: ConsoleTone; number?: string }) {
   return (
-    <WidgetCard number="" label={label} bodyClassName="px-4 pb-3 pt-3">
+    <WidgetCard number={number} label={label} bodyClassName="px-4 pb-3 pt-3">
       <span style={{ fontFamily: SERIF, fontSize: 34, lineHeight: 1, letterSpacing: "-0.02em", color: tone ? toneColor(tone) : "var(--text-1)" }}>{value}</span>
     </WidgetCard>
   );
