@@ -6,6 +6,7 @@ import {
   BoltIcon,
   BookOpenIcon,
   CalendarDaysIcon,
+  ChartBarIcon,
   ChevronDownIcon,
   Cog6ToothIcon,
   GlobeAltIcon,
@@ -40,10 +41,14 @@ export type WikiSection =
   | "data-model"
   | "changelog"
   | "course-requests"
+  | "golf-data"
   | "settings";
 
 /** Course Requests is currently a Wedge-only section. */
 export const COURSE_REQUESTS_SLUGS = ["wedge"];
+
+/** The Golf Data Console is currently a Wedge-only section. */
+export const GOLF_DATA_SLUGS = ["wedge"];
 
 export const OPTIONAL_DOC_SECTIONS: Array<{
   section: WikiSection;
@@ -156,6 +161,7 @@ export function WikiSidebar({
       "data-model",
       "changelog",
       "course-requests",
+      "golf-data",
     ],
   );
   visibleSections.add(active);
@@ -252,6 +258,8 @@ export function WikiSidebar({
         {navItem("changelog", "Changelog", <ClockIcon />)}
         {COURSE_REQUESTS_SLUGS.includes(slug) &&
           navItem("course-requests", "Course Requests", <FlagIcon />)}
+        {GOLF_DATA_SLUGS.includes(slug) &&
+          navItem("golf-data", "Golf Data", <ChartBarIcon />)}
 
         {hasAddItems && (
           <div className="relative shrink-0 md:mt-2 md:border-t md:border-[var(--border-1)] md:pt-2">

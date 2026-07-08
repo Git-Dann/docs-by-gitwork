@@ -24,12 +24,14 @@ import {
   WikiSidebar,
   type WikiSection,
   COURSE_REQUESTS_SLUGS,
+  GOLF_DATA_SLUGS,
   OPTIONAL_DOC_SECTIONS,
 } from "./wiki-sidebar";
 import { WikiPageEditor, type WikiPageEditorHandle } from "./wiki-page-editor";
 import { ChangelogSection } from "./changelog-section";
 import { ChangelogEntryForm } from "./changelog-entry-form";
 import { CourseRequestsSection } from "./course-requests-section";
+import { GolfDataConsoleView } from "./golf-data-console";
 import { WikiIntakeSection } from "./wiki-intake-section";
 import { WikiCodeSection } from "./wiki-code-section";
 import { CourseRequestForm, type CourseRequestPayload } from "./course-request-form";
@@ -113,6 +115,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   "data-model": "Data Model",
   changelog: "Changelog",
   "course-requests": "Course Requests",
+  "golf-data": "Golf Data",
 };
 
 const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
@@ -902,6 +905,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ).map((item) => item.section),
     ...(changelogOn ? (["changelog"] as const) : []),
     ...(COURSE_REQUESTS_SLUGS.includes(slug) ? (["course-requests"] as const) : []),
+    ...(GOLF_DATA_SLUGS.includes(slug) ? (["golf-data"] as const) : []),
     "settings",
   ];
   const addableSections = [
@@ -1433,6 +1437,21 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           </section>
         </>
       );
+    }
+
+    // ── Golf Data Console (Wedge only) — the Gitwork Golf Data platform console.
+    // Renders its own numbered widget cards, so it is not wrapped in one card.
+    if (activeSection === "golf-data") {
+      if (!GOLF_DATA_SLUGS.includes(slug)) {
+        return (
+          <div className="rounded-[10px] border border-dashed border-[rgba(0,0,0,0.12)] py-14 text-center">
+            <p className="text-[13px] text-[var(--text-4)]">
+              The Golf Data Console isn&apos;t enabled for this client.
+            </p>
+          </div>
+        );
+      }
+      return <GolfDataConsoleView slug={slug} clientName={clientName} />;
     }
 
     // ── Documentation pages

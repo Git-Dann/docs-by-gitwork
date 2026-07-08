@@ -6,6 +6,7 @@ import type { ComponentType, ReactNode, SVGProps } from "react";
 import {
   BookOpenIcon,
   CalendarDaysIcon,
+  ChartBarIcon,
   CircleStackIcon,
   ClockIcon,
   CodeBracketIcon,
@@ -51,6 +52,7 @@ const SECTION_META: Record<
   "data-model": { label: "Data Model", icon: CircleStackIcon },
   changelog: { label: "Changelog", icon: ClockIcon },
   "course-requests": { label: "Course Requests", icon: FlagIcon },
+  "golf-data": { label: "Golf Data", icon: ChartBarIcon },
 };
 
 const SECTION_PAGE_TYPE: Record<DocSection, string> = {
@@ -395,6 +397,16 @@ export function WikiDashboard({
           <div className="flex items-end gap-6">
             <Metric value={String(open)} label="New" />
             <Metric value={String(reqs.length)} label="Total" />
+          </div>
+        );
+      }
+      case "golf-data": {
+        const reqs = wiki.courseRequests;
+        const added = reqs.filter((r) => r.status === "ADDED").length;
+        return (
+          <div className="flex items-end gap-6">
+            <Metric value={String(added)} label="Live courses" />
+            <Metric value="3" label="Providers" />
           </div>
         );
       }

@@ -7,6 +7,7 @@ import {
   CalendarDaysIcon,
   CheckIcon,
   ChevronDownIcon,
+  ChartBarIcon,
   CircleStackIcon,
   ClockIcon,
   CodeBracketIcon,
@@ -40,6 +41,7 @@ const SECTION_ICON: Record<WikiSection, IconType> = {
   "data-model": CircleStackIcon,
   changelog: ClockIcon,
   "course-requests": FlagIcon,
+  "golf-data": ChartBarIcon,
   settings: Cog6ToothIcon,
 };
 

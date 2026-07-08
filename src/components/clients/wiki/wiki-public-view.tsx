@@ -61,6 +61,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   "data-model": "Data Model",
   changelog: "Changelog",
   "course-requests": "Course Requests",
+  "golf-data": "Golf Data",
 };
 
 // JetBrains Mono stack — consistent with wiki-workspace.tsx

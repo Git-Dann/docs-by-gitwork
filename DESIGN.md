@@ -534,6 +534,43 @@ dropdowns/toggles in the block's Options** — the canvas stays clean.
 
 ---
 
+## Golf Data Console (Wedge wiki)
+
+A Wedge-only section of the client wiki (`/app/portal/wedge/wiki` → **Golf Data**) that
+surfaces the **Gitwork Golf Data** platform — Gitwork's provider-first golf dataset platform
+(Equipment · Courses · Weather …) that feeds the Wedge app. It reuses the widget grammar
+wholesale; no new tokens or hues. Component `src/components/clients/wiki/golf-data-console.tsx`,
+backed by `GET /api/clients/[slug]/wiki/golf-data` (`src/server/golf-data-console.ts`).
+
+**Live vs declared.** The **Courses** domain is computed live from the client's
+`ClientCourseRequest` intake (dataset size, provenance coverage, recent import runs, validation
+issues). Equipment/Weather, the provider + exporter roster and the pipeline topology mirror the
+platform's declared configuration. A small `LIVE` mono chip marks providers whose figures are
+real; a footnote states the split plainly — never dress declared config up as live telemetry.
+
+**Layout.** An action bar (system-status dot + `Updated {mono time}` left; range readout +
+**Refresh** right), then a **metric strip** of 5 unnumbered stat widgets, then a
+`xl:grid-cols-3` body: a 2-col main stack (`01 // PROVIDERS`, `02 // IMPORT RUNS`,
+`03 // SCHEMA / PIPELINE`, `04 // DATASET VERSIONS` + `05 // VERSION COMPARISON`,
+`06 // EXPORTERS`) beside a right rail (`07 // VALIDATION`, `08 // COURSES (LIVE)`). Every
+panel is a `widget-card` opened by the `NN // NAME` monospace header — the console is a grid of
+widgets, not a bespoke screen.
+
+**Console conventions (within the widget system):**
+- **Metric panels** — DM Serif Display figure (~40px) over a mono `{colors.…}`-toned sub-label
+  (`CheckCircle`/`Triangle` glyph) with an inline SVG **sparkline** stroked in the metric's tone.
+- **Tables** — mono uppercase 10px headers, hairline row borders, provider/exporter *names* in
+  Inter, all IDs / timestamps / destinations / counts in JetBrains Mono. Run IDs + version
+  strings render in `{colors.primary}`.
+- **Status** — a `rounded-sm` (4px) badge with a leading status dot, mapped to the semantic set:
+  Valid/Healthy/Succeeded → green, Warning/Degraded → amber, Failed/Down/Critical → red, Info →
+  blue. Never a pill.
+- **Success cells** — a mono `%` beside a slim `widget-progress` fill (`{colors.primary}`).
+- **Pipeline** — hairline-bordered mono nodes in three lanes (Providers → Transform → Datasets)
+  joined by chevron arrows; a node borders in its tone when it carries state.
+- All colours resolve through `--text-*` / `--surface-*` / `--border-*` / `--brand-*` / semantic
+  tokens, so the console is correct in both light and navy dark mode.
+
 ## Do's and Don'ts
 
 ### Do

@@ -15,6 +15,7 @@ import {
   updateWikiPlatformsApi,
   updateWikiEntryStatusApi,
   updateWikiChangelogEntryApi,
+  getGolfDataConsole,
   addWikiCourseRequest,
   updateWikiCourseRequestApi,
   deleteWikiCourseRequest,
@@ -292,6 +293,16 @@ export function usePromoteWikiIntakeItem(slug: string) {
     mutationFn: ({ id, assigneeIds }: { id: string; assigneeIds?: string[] }) =>
       promoteWikiIntakeItemApi(slug, id, { assigneeIds }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useGolfDataConsole(slug: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["golf-data-console", slug],
+    queryFn: () => getGolfDataConsole(slug),
+    enabled: Boolean(slug) && enabled,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 
