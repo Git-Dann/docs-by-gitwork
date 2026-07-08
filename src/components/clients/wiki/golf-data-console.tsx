@@ -1106,22 +1106,24 @@ function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) 
           <p className="text-[12px] text-[var(--text-4)]">Connected, but the analytics endpoints returned no numeric fields. The admin report shape may have changed.</p>
         </WidgetCard>
       ) : (
-        <div className="mt-3 space-y-3">
+        <div className="mt-3 columns-1 sm:columns-2 xl:columns-3 gap-3">
           {orderedGroups.map((g, i) => {
             const items = groups.get(g)!;
             return (
-              <WidgetCard key={g} number={String(i + 1).padStart(2, "0")} label={g} status={`${items.length}`} bodyClassName="p-4">
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                  {items.map((m) => (
-                    <div key={m.key} className="rounded-[6px] border border-[var(--border-2)] px-3 py-2.5">
-                      <div style={{ fontFamily: SERIF, fontSize: 26, lineHeight: 1, letterSpacing: "-0.01em", color: "var(--text-1)" }}>
-                        {fmtVal(m.value)}{m.unit ? <span style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-4)" }}> {m.unit}</span> : null}
+              <div key={g} style={{ breakInside: "avoid" }}>
+                <WidgetCard number={String(i + 1).padStart(2, "0")} label={g} status={`${items.length}`} bodyClassName="p-4">
+                  <div className="grid grid-cols-2 gap-2">
+                    {items.map((m) => (
+                      <div key={m.key} className="rounded-[6px] border border-[var(--border-2)] px-3 py-2.5">
+                        <div style={{ fontFamily: SERIF, fontSize: 26, lineHeight: 1, letterSpacing: "-0.01em", color: "var(--text-1)" }}>
+                          {fmtVal(m.value)}{m.unit ? <span style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-4)" }}> {m.unit}</span> : null}
+                        </div>
+                        <div className="mt-1 truncate" title={m.label} style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-4)" }}>{m.label}</div>
                       </div>
-                      <div className="mt-1 truncate" title={m.label} style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-4)" }}>{m.label}</div>
-                    </div>
-                  ))}
-                </div>
-              </WidgetCard>
+                    ))}
+                  </div>
+                </WidgetCard>
+              </div>
             );
           })}
         </div>
