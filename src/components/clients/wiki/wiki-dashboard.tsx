@@ -35,6 +35,9 @@ const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, mo
 // DM Serif. Used for the hero name + pull-out stat figures per the Gitwork brand
 // guide, paired with mono labels (the DESIGN.md data signature).
 const SERIF = "var(--font-fraunces), var(--font-display), 'Times New Roman', Georgia, serif";
+// Playfair Display italic — the Gitwork brand-guide "step numeral" motif, used as
+// a faint editorial index on each widget card.
+const PLAYFAIR = "var(--font-playfair), var(--font-fraunces), Georgia, serif";
 
 type DocSection = "ia" | "dev-guide" | "api-docs" | "architecture" | "runbook" | "data-model";
 
@@ -167,11 +170,13 @@ function Widget({
   onSelect,
   children,
   wide,
+  numeral,
 }: {
   section: WikiSection;
   onSelect: (s: WikiSection) => void;
   children: ReactNode;
   wide?: boolean;
+  numeral?: string;
 }) {
   const meta = SECTION_META[section as Exclude<WikiSection, "dashboard" | "settings">];
   const Icon = meta.icon;
@@ -180,25 +185,33 @@ function Widget({
       type="button"
       onClick={() => onSelect(section)}
       className={[
-        "group flex flex-col rounded-[14px] border border-[var(--border-1)] bg-white p-5 text-left transition hover:border-[var(--brand-500)] hover:shadow-[0_10px_28px_-10px_rgba(0,0,0,0.14)]",
+        "group relative flex flex-col overflow-hidden rounded-[14px] border border-[var(--border-1)] bg-[var(--surface-0)] p-5 text-left transition hover:border-[var(--brand-500)] hover:shadow-[0_10px_28px_-10px_rgba(0,0,0,0.14)]",
         wide ? "sm:col-span-2" : "",
       ].join(" ")}
     >
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] bg-[var(--brand-50)] text-[var(--brand-700)]">
-            <Icon className="h-5 w-5" />
-          </span>
-          <span
-            className="text-[11px] uppercase tracking-[0.08em] text-[var(--text-2)]"
-            style={{ fontFamily: MONO }}
-          >
-            {meta.label}
-          </span>
-        </div>
-        <ArrowRightIcon className="h-4 w-4 text-[var(--text-4)] opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100" />
+      {/* Editorial step numeral (Playfair italic) — faint brand watermark. */}
+      {numeral && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -top-1 right-3 select-none text-[46px] leading-none text-[var(--brand-600)] opacity-[0.16]"
+          style={{ fontFamily: PLAYFAIR, fontStyle: "italic", fontWeight: 500 }}
+        >
+          {numeral}
+        </span>
+      )}
+      <div className="relative mb-3 flex items-center gap-2.5">
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] bg-[var(--brand-50)] text-[var(--brand-700)]">
+          <Icon className="h-5 w-5" />
+        </span>
+        <span
+          className="text-[11px] uppercase tracking-[0.08em] text-[var(--text-2)]"
+          style={{ fontFamily: MONO }}
+        >
+          {meta.label}
+        </span>
+        <ArrowRightIcon className="ml-auto h-4 w-4 text-[var(--text-4)] opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100" />
       </div>
-      <div className="flex-1">{children}</div>
+      <div className="relative flex-1">{children}</div>
     </button>
   );
 }
@@ -207,13 +220,13 @@ function Metric({ value, label }: { value: string; label: string }) {
   return (
     <div>
       <div
-        className="text-[30px] leading-none text-[var(--text-1)]"
-        style={{ fontFamily: SERIF, fontWeight: 600 }}
+        className="text-[38px] leading-none text-[var(--text-1)]"
+        style={{ fontFamily: SERIF, fontWeight: 600, letterSpacing: "-0.01em" }}
       >
         {value}
       </div>
       <div
-        className="mt-1.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]"
+        className="mt-2 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]"
         style={{ fontFamily: MONO }}
       >
         {label}
@@ -277,7 +290,7 @@ export function WikiDashboard({
             {pct !== null && (
               <div>
                 <div className="mb-1 flex items-baseline justify-between">
-                  <span className="text-[30px] leading-none text-[var(--text-1)]" style={{ fontFamily: SERIF, fontWeight: 600 }}>
+                  <span className="text-[38px] leading-none text-[var(--text-1)]" style={{ fontFamily: SERIF, fontWeight: 600, letterSpacing: "-0.01em" }}>
                     {pct}%
                   </span>
                   <span className="text-[11px] text-[var(--text-4)]">
@@ -484,8 +497,8 @@ export function WikiDashboard({
                   Knowledge Wiki
                 </p>
                 <h1
-                  className="mt-1 truncate text-[26px] text-[var(--text-1)] md:text-[34px]"
-                  style={{ fontFamily: SERIF, fontWeight: 600, letterSpacing: "-0.01em" }}
+                  className="mt-0.5 truncate text-[40px] leading-[1.02] text-[var(--text-1)] md:text-[52px]"
+                  style={{ fontFamily: SERIF, fontWeight: 600, letterSpacing: "-0.02em" }}
                 >
                   {wiki.clientName}
                   <span className="text-[var(--brand-600)]">.</span>
@@ -581,15 +594,24 @@ export function WikiDashboard({
         </div>
       </section>
 
+      {/* Editorial accent rule — a hairline with a short brand segment, echoing
+          the Gitwork brand guide's accent rules. */}
+      {sections.length > 0 && (
+        <div className="relative mt-7 h-px w-full bg-[var(--border-1)]">
+          <span className="absolute left-0 top-0 h-px w-16 bg-[var(--brand-600)]" />
+        </div>
+      )}
+
       {/* Section widgets — one per page, each showing live data */}
       {sections.length > 0 ? (
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {sections.map((section) => (
+        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {sections.map((section, i) => (
             <Widget
               key={section}
               section={section}
               onSelect={onSelect}
               wide={section === "timeline"}
+              numeral={String(i + 1).padStart(2, "0")}
             >
               {widgetBody(section)}
             </Widget>
