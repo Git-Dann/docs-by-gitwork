@@ -140,10 +140,25 @@ export type RollupRosterDTO = {
 export type TaskCardDetail = "TITLES" | "TITLES_AND_DESCRIPTIONS";
 
 /** Which status groups a project update may include. Mirrors the standup
- *  `partition()`: DOING = DOING|IN_REVIEW, DONE = status===DONE (point-in-time,
- *  no done-today filter), UPCOMING = TODO|BACKLOG. */
+ *  `partition()`: DOING = DOING|IN_REVIEW, DONE = completed *today* (see
+ *  `isTaskDoneToday`), UPCOMING = TODO|BACKLOG. */
 export const PROJECT_UPDATE_STATUS_GROUPS = ["DOING", "DONE", "UPCOMING"] as const;
 export type ProjectUpdateStatusGroup = (typeof PROJECT_UPDATE_STATUS_GROUPS)[number];
+
+/** True when a task is DONE and was completed within the current day (UTC-day
+ *  boundaries, matching the standup's `isDoneOn`). The "Push to Slack" DONE group
+ *  uses this so it shows only today's completions, not the whole all-time backlog.
+ *  `now` is injectable for tests; defaults to the current time. */
+export function isTaskDoneToday(
+  task: Pick<TaskDTO, "status" | "completedAt">,
+  now: Date = new Date(),
+): boolean {
+  if (task.status !== "DONE" || !task.completedAt) return false;
+  const completed = new Date(task.completedAt).getTime();
+  const start = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const end = start + 24 * 60 * 60 * 1000;
+  return completed >= start && completed < end;
+}
 
 export const PROJECT_UPDATE_GROUP_LABELS: Record<ProjectUpdateStatusGroup, string> = {
   DOING: "In progress",

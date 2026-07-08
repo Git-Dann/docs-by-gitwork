@@ -8,6 +8,7 @@ import { cn } from "@/lib/format";
 import { useMyDay, usePushProjectUpdate, useSlackPushPrefs } from "@/hooks/use-tasks";
 import {
   DEFAULT_PUSH_PREFS,
+  isTaskDoneToday,
   NO_CATEGORY_ID,
   PROJECT_UPDATE_GROUP_LABELS,
   PROJECT_UPDATE_STATUS_GROUPS,
@@ -24,7 +25,7 @@ function timeOf(iso: string | null): string | null {
 
 function inStatusGroup(t: TaskDTO, g: ProjectUpdateStatusGroup): boolean {
   if (g === "DOING") return t.status === "DOING" || t.status === "IN_REVIEW";
-  if (g === "DONE") return t.status === "DONE";
+  if (g === "DONE") return isTaskDoneToday(t); // only today's completions, matches the server
   return t.status === "TODO" || t.status === "BACKLOG";
 }
 
