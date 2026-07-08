@@ -21,6 +21,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { countGolfClubs, slugify } from "@/server/golf-clubs";
 
 export type ConsoleTone = "ok" | "warn" | "bad" | "info";
 
@@ -131,6 +132,12 @@ export interface GolfDataConsole {
     missingCountry: number;
     coveragePct: number;
   };
+  /** Live Equipment-domain rollup (from the GolfClub catalogue). */
+  equipment: {
+    total: number;
+    manufacturers: number;
+    categories: number;
+  };
 }
 
 // ── formatting helpers ────────────────────────────────────────────────────────
@@ -173,10 +180,15 @@ function seededSpark(seed: string, len = 12, base = 0.5, spread = 0.4): number[]
 
 export async function getGolfDataConsole(
   clientId: string,
+  workspaceId: string,
   opts: { now?: Date } = {},
 ): Promise<GolfDataConsole> {
   const now = opts.now ?? new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  // Live Equipment domain — the real GolfClub catalogue.
+  const equip = await countGolfClubs(workspaceId);
+  const equipCategories = Object.keys(equip.byCategory).length;
 
   const wiki = await prisma.clientWiki.findUnique({
     where: { clientId },
@@ -270,12 +282,6 @@ export async function getGolfDataConsole(
       severity: "Info",
     });
   }
-  // Declared platform validation (Equipment) — mirrors the golf-data repo's
-  // equipment quality rules until that domain lands in Foundry.
-  issues.push(
-    { issue: "Duplicate model variant", dataset: "Equipment", count: 12, severity: "Warning" },
-    { issue: "Missing spec: loft", dataset: "Equipment", count: 8, severity: "Warning" },
-  );
   issues.sort((a, b) => severityRank(a.severity) - severityRank(b.severity) || b.count - a.count);
 
   const critical = issues.filter((i) => i.severity === "Critical").length;
@@ -306,9 +312,23 @@ export async function getGolfDataConsole(
       },
     ],
     Equipment: [
-      { version: `${yr}.1.2`, label: `${yr} Equipment`, records: "11,203", created: fmtDateTime(new Date(now.getTime() - 24 * 3600_000)), status: "Valid" },
-      { version: `${yr}.1.1`, label: `${yr} Equipment`, records: "11,180", created: fmtDateTime(new Date(now.getTime() - 8 * 24 * 3600_000)), status: "Valid" },
-      { version: `${yr - 1}.3.0`, label: `${yr - 1} Equipment`, records: "10,987", created: `${MONTHS[3]} 29, 05:22`, status: "Valid" },
+      {
+        version: `${yr}.1.0`,
+        label: `${yr} Equipment`,
+        records: fmtNumber(equip.total),
+        created: fmtDateTime(now),
+        status: "Valid",
+      },
+      ...Object.entries(equip.byCategory)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6)
+        .map(([cat, n]) => ({
+          version: slugify(cat),
+          label: cat,
+          records: fmtNumber(n),
+          created: fmtDateTime(now),
+          status: "Valid" as const,
+        })),
     ],
     Weather: [
       { version: `${yr}.2.6`, label: "Weather", records: "1,248,721", created: fmtDateTime(new Date(now.getTime() - 90 * 60_000)), status: "Valid" },
@@ -336,7 +356,8 @@ export async function getGolfDataConsole(
       lastImport: fmtDateTime(new Date(now.getTime() - 3 * 3600_000)),
       nextImport: fmtDateTime(new Date(now.getTime() + 3 * 3600_000)),
       success: 100,
-      issues: 20,
+      issues: 0,
+      live: true,
     },
     {
       name: "Gitwork Weather API",
@@ -472,6 +493,7 @@ export async function getGolfDataConsole(
     exporters,
     pipeline,
     courses: { total, added, pending, rejected, countries, missingCountry, coveragePct },
+    equipment: { total: equip.total, manufacturers: equip.manufacturers, categories: equipCategories },
   };
 }
 

@@ -523,11 +523,62 @@ export function GolfDataConsoleView({ slug }: { slug: string; clientName?: strin
             </div>
           </WidgetCard>
 
+          {/* Live equipment (clubs) rollup + the dev-facing export API */}
+          <WidgetCard number="14" label="Equipment · Clubs API" status="live" bodyClassName="p-4">
+            <div className="grid grid-cols-3 gap-3">
+              <RollupStat value={snapshot.equipment.total} label="Clubs" tone="ok" icon={<CircleStackIcon className="h-4 w-4" />} />
+              <RollupStat value={snapshot.equipment.manufacturers} label="Brands" icon={<ServerStackIcon className="h-4 w-4" />} />
+              <RollupStat value={snapshot.equipment.categories} label="Categories" icon={<ShieldCheckIcon className="h-4 w-4" />} />
+            </div>
+
+            <div className="mt-3">
+              <div className="mb-1.5" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-4)" }}>
+                Dev endpoints
+              </div>
+              <div className="space-y-1.5">
+                {[
+                  { m: "GET", path: "/api/golf/clubs", note: "JSON — filters: manufacturer · category · year · q" },
+                  { m: "GET", path: "/api/golf/clubs?format=csv", note: "CSV export" },
+                  { m: "GET", path: "/api/golf/clubs/openapi", note: "OpenAPI 3.1 spec" },
+                ].map((e) => (
+                  <div key={e.path} className="rounded-[6px] border border-[var(--border-2)] px-2.5 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-[3px] px-1 py-0.5" style={{ background: "var(--brand-50)", color: "var(--brand-700)", fontFamily: MONO, fontSize: 9, fontWeight: 600 }}>{e.m}</span>
+                      <span className="truncate" style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-2)" }}>{e.path}</span>
+                    </div>
+                    <p className="mt-0.5" style={{ fontFamily: MONO, fontSize: 9, color: "var(--text-4)" }}>{e.note}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <a
+                  href="/api/golf/clubs?format=csv"
+                  className="inline-flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-600)] px-2.5 py-1.5 text-[13px] font-medium text-white transition hover:bg-[var(--brand-800)]"
+                >
+                  <InboxArrowDownIcon className="h-4 w-4" />
+                  Download CSV
+                </a>
+                <a
+                  href="/api/golf/clubs"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-[13px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                >
+                  View JSON
+                </a>
+              </div>
+              <p className="mt-2" style={{ fontFamily: MONO, fontSize: 10, color: "var(--text-4)" }}>
+                External devs: send <span className="text-[var(--text-2)]">Authorization: Bearer &lt;API_KEY&gt;</span>.
+              </p>
+            </div>
+          </WidgetCard>
+
           <p className="flex items-start gap-1.5 px-1 text-[11px] leading-relaxed text-[var(--text-4)]">
             <ShieldCheckIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
-              <span className="font-medium">Courses</span> is live from Wedge&apos;s course intake. Equipment, Weather,
-              exporters and pipeline reflect the Gitwork Golf Data platform configuration.
+              <span className="font-medium">Courses</span> and <span className="font-medium">Equipment (clubs)</span> are
+              live from Foundry data. Weather, exporters and the pipeline transform reflect the Gitwork Golf Data
+              platform configuration.
             </span>
           </p>
         </div>

@@ -542,11 +542,17 @@ surfaces the **Gitwork Golf Data** platform — Gitwork's provider-first golf da
 wholesale; no new tokens or hues. Component `src/components/clients/wiki/golf-data-console.tsx`,
 backed by `GET /api/clients/[slug]/wiki/golf-data` (`src/server/golf-data-console.ts`).
 
-**Live vs declared.** The **Courses** domain is computed live from the client's
-`ClientCourseRequest` intake (dataset size, provenance coverage, recent import runs, validation
-issues). Equipment/Weather, the provider + exporter roster and the pipeline topology mirror the
-platform's declared configuration. A small `LIVE` mono chip marks providers whose figures are
-real; a footnote states the split plainly — never dress declared config up as live telemetry.
+**Live vs declared.** The **Courses** domain (from `ClientCourseRequest`) and the **Equipment /
+clubs** domain (from the `GolfClub` catalogue — `src/server/golf-clubs.ts`) are computed live from
+Foundry data. Weather, the exporter roster and the pipeline transform mirror the platform's
+declared configuration. A `LIVE` mono chip marks providers whose figures are real; a footnote
+states the split plainly — never dress declared config up as live telemetry.
+
+**Clubs export API (for devs).** The console's `14 // EQUIPMENT · CLUBS API` widget surfaces the
+dev-facing dataset endpoints: `GET /api/golf/clubs` (JSON; filters `manufacturer` · `category` ·
+`year` · `q`), `?format=csv`, and `/api/golf/clubs/openapi` (OpenAPI 3.1). All are API-key gated
+(`Authorization: Bearer <API_KEY>`, or the in-app session cookie), served from `golf-clubs.ts`.
+The starter catalogue seeds via `seedGolfClubs()` in bootstrap (idempotent).
 
 **Layout.** An action bar (system-status dot + `Updated {mono time}` left; range readout +
 **Refresh** right), then a **metric strip** of 5 unnumbered stat widgets, then a

@@ -33,6 +33,7 @@ import { getDefaultCodeClearCandidatePayloads } from "@/server/codeclear";
 import { migratePermissionModel } from "@/server/permissions";
 import { seedBuiltInStarters } from "@/server/starters-catalog";
 import { seedHandbookArticles } from "@/server/handbook-catalog";
+import { seedGolfClubs } from "@/server/golf-clubs";
 import { isSeedAccountEmail } from "@/server/seed-accounts";
 
 // Adds columns/tables introduced by the Portal schema extension that
@@ -439,6 +440,11 @@ async function _ensureBaseRecords() {
   // Seed / refresh the built-in Handbook (developer standards, languages, how we operate) —
   // version-gated so improved content ships on deploy without clobbering members' edits.
   await seedHandbookArticles(workspace.id);
+
+  // Seed the canonical golf equipment (clubs) dataset — the Equipment domain of
+  // the Gitwork Golf Data platform, served to devs via /api/golf/clubs.
+  // Idempotent: skips once populated (extend via the SEED_CLUBS catalogue).
+  await seedGolfClubs(workspace.id);
 
   await ensureSampleProposal({ workspace, user, template });
   await ensureSampleCodeClearCandidates({ workspace });

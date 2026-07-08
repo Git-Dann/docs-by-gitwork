@@ -390,6 +390,7 @@ model Workspace {
   backgroundJobs              BackgroundJob[]
   coldArchives                ColdArchive[]
   handbookArticles            HandbookArticle[]
+  golfClubs                   GolfClub[]
 }
 
 /**
@@ -1504,6 +1505,40 @@ enum CourseRequestStatus {
   SENT
   ADDED
   REJECTED
+}
+
+/// Canonical golf equipment (clubs) dataset — the "Equipment" domain of the
+/// Gitwork Golf Data platform, consumed by Wedge + partner devs via the
+/// /api/golf/clubs export endpoints. Schema mirrors the gitwork-golf-data repo's
+/// EquipmentModelRecord (manufacturer / category / model / family / year / specs
+/// + variants). One row per model; variants (lofts/flex/handedness) live inline.
+model GolfClub {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  manufacturer String
+  /// Driver · Fairway Wood · Hybrid · Iron Set · Wedge · Putter · …
+  category     String
+  modelName    String
+  modelFamily  String?
+  modelYear    Int?
+  /// active | discontinued
+  status       String    @default("active")
+  /// manufacturer:category:year:model slug — the dedupe key.
+  naturalKey   String
+  aliases      String[]
+  imageUrls    String[]
+  /// Flat specification map (e.g. { headMaterial, adjustableLoft, setComposition }).
+  specs        Json?
+  /// Array of { name, loft?, flex?, handedness?, sku? }.
+  variants     Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([workspaceId, naturalKey])
+  @@index([workspaceId, category])
+  @@index([workspaceId, manufacturer])
+  @@map("GolfClub")
 }
 
 enum WikiPageType {

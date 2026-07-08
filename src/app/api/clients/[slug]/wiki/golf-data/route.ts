@@ -18,7 +18,7 @@ export async function GET(
     });
     if (!client) return apiError("Client not found", 404);
 
-    const console = await getGolfDataConsole(client.id);
+    const console = await getGolfDataConsole(client.id, workspace.id);
     return apiOk(console);
   } catch (err) {
     return fromError(err);
