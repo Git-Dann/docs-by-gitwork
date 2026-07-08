@@ -21,6 +21,9 @@ import { getJson, type AnalyticsMetric } from "@/server/support-analytics/types"
 import { flattenMetrics } from "@/server/support-analytics/generic";
 import { resolveBigWedgeApi } from "@/server/wiki-bigwedge-sync";
 
+/** The main Big Wedge app API (users/analytics). Non-secret; override with env. */
+const DEFAULT_APP_API_URL = "https://apiv1.bigwedgegolf.com";
+
 export interface UserDataSnapshot {
   connected: boolean;
   baseUrl: string | null;
@@ -31,19 +34,49 @@ export interface UserDataSnapshot {
   endpointsFailed: string[];
 }
 
+function humanize(s: string): string {
+  return s.replace(/[_.]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Mint a fresh app JWT from username/password (app tokens are short-lived). */
+async function mintAppToken(baseUrl: string, username: string, password: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${baseUrl}/api/v1/auth/login/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": "Foundry/1.0" },
+      body: JSON.stringify({ username, password }),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { access?: string };
+    return json.access ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function resolveAppApi(
   workspaceClientId: string,
 ): Promise<{ baseUrl: string; token: string } | { error: string }> {
   const envUrl = process.env.WEDGE_APP_API_URL?.trim();
+  const envUser = process.env.WEDGE_APP_API_USER?.trim();
+  const envPass = process.env.WEDGE_APP_API_PASSWORD?.trim();
   const envToken = process.env.WEDGE_APP_API_TOKEN?.trim();
-  if (envUrl && envToken) return { baseUrl: envUrl.replace(/\/$/, ""), token: envToken };
 
-  const r = await resolveBigWedgeApi(workspaceClientId);
-  if ("error" in r) {
-    if (envUrl && envToken) return { baseUrl: envUrl.replace(/\/$/, ""), token: envToken };
-    return { error: r.error };
+  const connector = await resolveBigWedgeApi(workspaceClientId);
+  const connectorOk = !("error" in connector);
+  const baseUrl = (envUrl || (connectorOk ? connector.baseUrl : "") || DEFAULT_APP_API_URL).replace(/\/$/, "");
+
+  // 1) mint a fresh token from creds (most robust — app JWTs expire fast)
+  if (envUser && envPass) {
+    const token = await mintAppToken(baseUrl, envUser, envPass);
+    if (token) return { baseUrl, token };
+    return { error: `Login to ${baseUrl}/api/v1/auth/login/ failed (check WEDGE_APP_API_USER/PASSWORD).` };
   }
-  return { baseUrl: (envUrl || r.baseUrl).replace(/\/$/, ""), token: envToken || r.apiToken };
+  // 2) static env token, or 3) the Care Analytics connector token
+  if (envToken) return { baseUrl, token: envToken };
+  if (connectorOk) return { baseUrl, token: connector.apiToken };
+  return { error: connector.error };
 }
 
 interface Paginated {
@@ -65,13 +98,25 @@ export async function getUserData(workspaceClientId: string): Promise<UserDataSn
   const hit: string[] = [];
   const failed: string[] = [];
 
-  // Primary aggregate — also our connectivity probe.
+  // Primary aggregate — also our connectivity probe. The report is
+  // `{ status, data: { user_growth, engagement, retention, golf_metrics, … } }`;
+  // flatten each sub-section into its own group so the view reads cleanly.
   try {
-    const overall = await getJson<unknown>(
+    const overall = await getJson<Record<string, unknown>>(
       `${baseUrl}/api/v1/analytics/overall-report/?date_from=${from}&date_to=${to}`,
       token,
     );
-    metrics.push(...flattenMetrics(overall, { group: "Overall", limit: 60 }));
+    const report = (overall?.data && typeof overall.data === "object" ? overall.data : overall) as Record<string, unknown>;
+    let grouped = 0;
+    for (const [section, val] of Object.entries(report)) {
+      if (val && typeof val === "object" && !Array.isArray(val)) {
+        const before = metrics.length;
+        metrics.push(...flattenMetrics(val, { group: humanize(section), limit: 30 }));
+        grouped += metrics.length - before;
+      }
+    }
+    // Fallback: if the shape wasn't the expected nested one, flatten whole.
+    if (grouped === 0) metrics.push(...flattenMetrics(report, { group: "Overall", limit: 60 }));
     hit.push("analytics/overall-report");
   } catch (err) {
     return {

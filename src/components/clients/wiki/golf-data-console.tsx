@@ -1021,7 +1021,10 @@ function fmtVal(v: number): string {
   return Number.isInteger(v) ? v.toLocaleString("en-GB") : v.toLocaleString("en-GB", { maximumFractionDigits: 2 });
 }
 
-const GROUP_ORDER = ["Overall", "Activity", "Subscriptions", "Clubhouse", "Feedback"];
+const GROUP_ORDER = [
+  "User Growth", "Retention", "Engagement", "Business Growth", "Revenue",
+  "Golf Metrics", "Game Modes", "Activity", "Subscriptions", "Clubhouse", "Feedback", "Overall",
+];
 
 function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) {
   const { data, isPending, isError, refetch } = state;
