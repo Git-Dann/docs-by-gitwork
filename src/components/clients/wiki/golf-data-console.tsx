@@ -1106,33 +1106,32 @@ function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) 
           <p className="text-[12px] text-[var(--text-4)]">Connected, but the analytics endpoints returned no numeric fields. The admin report shape may have changed.</p>
         </WidgetCard>
       ) : (
-        <div className="mt-3 columns-1 sm:columns-2 xl:columns-3">
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {orderedGroups.map((g, i) => {
             const items = groups.get(g)!;
             return (
-              <div key={g} style={{ breakInside: "avoid" }}>
-                <WidgetCard number={String(i + 1).padStart(2, "0")} label={g} status={`${items.length}`} bodyClassName="p-3">
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {items.map((m) => (
-                      <div key={m.key} className="rounded-[6px] border border-[var(--border-2)] px-2.5 py-2">
-                        <div style={{ fontFamily: SERIF, fontSize: 28, lineHeight: 1.1, letterSpacing: "-0.01em", color: "var(--text-1)", fontWeight: 600 }}>
-                          {fmtVal(m.value)}{m.unit ? <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-3)", fontWeight: 400 }}> {m.unit}</span> : null}
-                        </div>
-                        {m.previous !== undefined && m.previous !== null && m.previous !== 0 ? (() => {
-                          const pct = Math.round(((m.value - m.previous) / m.previous) * 100);
-                          const isUp = pct >= 0;
-                          return (
-                            <div style={{ fontFamily: MONO, fontSize: 10, color: isUp ? "var(--success-500)" : "var(--warning-500)", letterSpacing: "0.05em", marginTop: "3px", fontWeight: 500 }}>
-                              {isUp ? "↑" : "↓"} {Math.abs(pct)}%
-                            </div>
-                          );
-                        })() : null}
-                        <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-3)", marginTop: "4px", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }} title={m.label}>{m.label}</div>
+              <WidgetCard key={g} number={String(i + 1).padStart(2, "0")} label={g} status={`${items.length}`} bodyClassName="p-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {items.map((m) => (
+                    <div key={m.key} className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-2)] px-3.5 py-3">
+                      <div style={{ fontFamily: SERIF, fontSize: 32, lineHeight: 1, letterSpacing: "-0.02em", color: "var(--text-1)", fontWeight: 700 }}>
+                        {fmtVal(m.value)}
                       </div>
-                    ))}
-                  </div>
-                </WidgetCard>
-              </div>
+                      {m.unit && <div style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-3)", marginTop: "2px", fontWeight: 500 }}>{m.unit}</div>}
+                      {m.previous !== undefined && m.previous !== null && m.previous !== 0 ? (() => {
+                        const pct = Math.round(((m.value - m.previous) / m.previous) * 100);
+                        const isUp = pct >= 0;
+                        return (
+                          <div style={{ fontFamily: MONO, fontSize: 11, color: isUp ? "var(--success-500)" : "var(--warning-500)", letterSpacing: "0.05em", marginTop: "6px", fontWeight: 600 }}>
+                            {isUp ? "↑" : "↓"} {Math.abs(pct)}%
+                          </div>
+                        );
+                      })() : null}
+                      <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-3)", marginTop: "8px", lineHeight: 1.3, fontWeight: 500 }}>{m.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </WidgetCard>
             );
           })}
         </div>
