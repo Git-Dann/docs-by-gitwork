@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { resolveAiConfig, completeText } from "@/server/ai-provider";
 import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
+import { getEffectiveUserOrNull, canComputeAiFor } from "@/server/auth/effective-user";
 import { getPerformanceMetricsForPeriod } from "@/server/support";
 
 function fmtDuration(ms: number | null): string {
@@ -143,6 +144,7 @@ export async function POST(
       workspaceId: workspace.id,
       cacheKey: `care-report-narrative:${clientId}`,
       inputsHash,
+      canCompute: canComputeAiFor(await getEffectiveUserOrNull(request)),
       compute: async () => {
         const raw = await completeText({
           config,
@@ -173,7 +175,9 @@ Return ONLY a JSON object in this exact format — no preamble, no markdown fenc
       },
     });
 
-    return apiOk({ ...cacheResult.response, ticketCount: total });
+    // Viewer without the AI gate + no cached narrative → empty sections (no token spend).
+    const narrative = cacheResult?.response ?? { overviewText: "", performanceText: "", summaryText: "" };
+    return apiOk({ ...narrative, ticketCount: total });
   } catch (error) {
     return fromError(error);
   }

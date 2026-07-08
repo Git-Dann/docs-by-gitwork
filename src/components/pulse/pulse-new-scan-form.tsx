@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronDownIcon, GlobeAltIcon, CodeBracketIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { useCreatePulseScan } from "@/hooks/use-pulse";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/format";
 import { JURISDICTIONS, JURISDICTION_CODES, JURISDICTION_PRESETS } from "@/server/pulse-checks/jurisdictions";
 import type { PulseScanInputType } from "@/types/pulse";
@@ -178,6 +179,7 @@ export function PulseNewScanForm({
 }) {
   const router = useRouter();
   const { mutateAsync, isPending } = useCreatePulseScan();
+  const { canGenerateAi, isPending: permsPending } = usePermissions();
 
   const [projectName, setProjectName] = useState("");
   const [inputType, setInputType] = useState<PulseScanInputType>("URL");
@@ -245,6 +247,20 @@ export function PulseNewScanForm({
   const activeProviderLabel = configuredProviders.find((p) => p.id === activeProvider)?.label ?? activeProvider;
 
   const derivedName = deriveProjectName(inputType, inputValue);
+
+  // Running a scan spends AI tokens — restricted to AI-generation holders (admins by default).
+  // The API enforces this too; this just avoids a dead-end form for non-holders.
+  if (!permsPending && !canGenerateAi) {
+    return (
+      <div className="app-card space-y-2 p-6 text-center sm:p-7">
+        <p className="text-sm font-medium text-[var(--text-1)]">Running scans is restricted</p>
+        <p className="text-sm text-[var(--text-3)]">
+          Pulse scans use AI, so creating one needs the “Generate with AI” permission. Ask an admin to
+          run the scan, or to grant you the permission in Settings → Team. You can still view existing scans.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="app-card space-y-5 p-6 sm:p-7">

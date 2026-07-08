@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { resolveAiConfig, completeText } from "@/server/ai-provider";
 import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
+import { getEffectiveUserOrNull, canComputeAiFor } from "@/server/auth/effective-user";
 import type { AnalyticsReportMetric } from "@/types/support";
 
 export const dynamic = "force-dynamic";
@@ -59,6 +60,7 @@ export async function POST(
       workspaceId: workspace.id,
       cacheKey: `care-analytics-narrative:${clientId}`,
       inputsHash,
+      canCompute: canComputeAiFor(await getEffectiveUserOrNull(request)),
       compute: async () => {
         const narrative = await completeText({
           config,
@@ -74,7 +76,8 @@ export async function POST(
       },
     });
 
-    return apiOk({ narrative: cacheResult.response.narrative });
+    // Viewer without the AI gate + no cached narrative → empty (they can't spend tokens).
+    return apiOk({ narrative: cacheResult?.response.narrative ?? "" });
   } catch (error) {
     return fromError(error);
   }

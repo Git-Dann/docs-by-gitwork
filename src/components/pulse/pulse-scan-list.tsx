@@ -14,6 +14,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { usePulseScans, useDeletePulseScan, useMonitors } from "@/hooks/use-pulse";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatRelative } from "@/lib/format";
 import type { PulseScanListItem, PulseScanStatus, PulseScanInputType } from "@/types/pulse";
 import {
@@ -428,6 +429,9 @@ function ScanRow({
 export function PulseScanListView() {
   const { data, isLoading, error } = usePulseScans();
   const { data: monitorsData } = useMonitors();
+  // Running a scan spends AI tokens → gated to admins by default. Non-generators still
+  // view existing scans; the API also enforces this.
+  const { canGenerateAi } = usePermissions();
   const { mutateAsync: bulkDelete, isPending: bulkDeleting } = useDeletePulseScan();
 
   const [search, setSearch] = useState("");
@@ -630,11 +634,13 @@ export function PulseScanListView() {
             <option value="SCORE_LOW">Score: low → high</option>
           </select>
 
-          <Link href="/app/pulse/new" className="shrink-0">
-            <Button variant="primary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />} className="whitespace-nowrap">
-              New scan
-            </Button>
-          </Link>
+          {canGenerateAi && (
+            <Link href="/app/pulse/new" className="shrink-0">
+              <Button variant="primary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />} className="whitespace-nowrap">
+                New scan
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
 

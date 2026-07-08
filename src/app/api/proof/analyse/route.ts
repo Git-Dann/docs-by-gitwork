@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
+import { getEffectiveUserOrNull, canComputeAiFor } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 
@@ -93,6 +94,7 @@ export async function POST(request: Request) {
       workspaceId: workspace.id,
       cacheKey: `proof-analyse:${inputsHash}`,
       inputsHash,
+      canCompute: canComputeAiFor(await getEffectiveUserOrNull(request)),
       compute: async () => {
         const client = new Anthropic({ apiKey });
         const message = await client.messages.create({
@@ -124,6 +126,14 @@ export async function POST(request: Request) {
       },
     });
 
+    // Viewer without the AI gate + no cached analysis → 403 rather than a silent empty
+    // (brief analysis has no meaningful "empty" shape).
+    if (!result) {
+      return NextResponse.json(
+        { error: "AI generation is restricted to admins. Ask an admin to run this, or request the “Generate with AI” permission." },
+        { status: 403 },
+      );
+    }
     return NextResponse.json({ analysis: result.response, cached: result.cached });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

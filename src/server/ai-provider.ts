@@ -93,6 +93,15 @@ const LIGHT_MODELS: Partial<Record<AiProvider, string>> = {
   // LOCAL: no cost either way — keep workspace model
 };
 
+/**
+ * The cheaper model for a provider, or `standardModel` when the provider has no light tier
+ * (Gemini/Local). For routes that build their own provider client instead of using
+ * `completeText` but still want light-tier pricing on short/simple output.
+ */
+export function lightModelFor(provider: AiProvider, standardModel: string): string {
+  return LIGHT_MODELS[provider] ?? standardModel;
+}
+
 export interface CompleteArgs {
   config: ResolvedAiConfig;
   system: string;

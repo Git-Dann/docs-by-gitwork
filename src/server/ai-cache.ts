@@ -114,18 +114,28 @@ export async function setCachedAiResponse<T>(params: CacheWriteParams<T>): Promi
  * if the cache misses; this handles the lookup, the call-through, and the cache write.
  *
  * Returns `cached: true` on cache hits, `cached: false` on freshly-generated responses.
+ *
+ * When `canCompute` is false (a viewer who lacks the `ai.generate` gate), a cache miss
+ * returns `null` instead of paying for a fresh call — the caller serves an empty/pending
+ * response. Cache HITS are always returned regardless, so viewers still see AI output an
+ * admin already generated.
  */
 export async function cachedOrCompute<T>(
   params: CacheLookupParams & {
     /** Set true to bypass the cache and force a regenerate. */
     force?: boolean;
+    /** Default true. When false, a cache miss returns null rather than computing. */
+    canCompute?: boolean;
     compute: () => Promise<{ response: T; modelUsed?: string | null }>;
   },
-): Promise<AiCacheResult<T>> {
+): Promise<AiCacheResult<T> | null> {
   if (!params.force) {
     const cached = await getCachedAiResponse<T>(params);
     if (cached) return cached;
   }
+
+  // Viewer without the AI-generation gate and no cache hit → don't spend tokens.
+  if (params.canCompute === false) return null;
 
   const fresh = await params.compute();
   await setCachedAiResponse({

@@ -1447,6 +1447,7 @@ function InboxFiltersDropdown({
 }
 
 function InboxView({ clientId }: { clientId: string }) {
+  const { canGenerateAi } = usePermissions(); // AI Draft spends tokens — admins by default
   const { data: convoData, isLoading: convosLoading } = useSupportConversations(clientId);
   const convos = useMemo(() => convoData?.conversations ?? [], [convoData]);
   const syncConn = useSyncConnection(clientId);
@@ -1876,6 +1877,7 @@ function InboxView({ clientId }: { clientId: string }) {
                             {manualLabel}
                           </span>
                         )}
+                        {canGenerateAi && (
                         <button
                           type="button"
                           onClick={() => void handleAiDraft()}
@@ -1886,6 +1888,7 @@ function InboxView({ clientId }: { clientId: string }) {
                           <SparklesIcon className={cn("h-3.5 w-3.5 text-violet-500", generateDraft.isPending && "animate-spin")} />
                           {generateDraft.isPending ? "Drafting…" : "AI Draft"}
                         </button>
+                        )}
                       </div>
                     </div>
                     <textarea
@@ -2767,6 +2770,7 @@ function ReportBuilder({
   onCancel: () => void;
 }) {
   const { data: session } = useSession();
+  const { canGenerateAi } = usePermissions(); // "Write narratives" spends tokens — admins by default
   const authorDefault = session?.user?.name ?? "";
 
   // Default period is previous month (May when viewing in June)
@@ -3009,6 +3013,7 @@ function ReportBuilder({
             <SparklesIcon className="h-3.5 w-3.5 mr-1" />
             {generating ? "Generating…" : "Generate"}
           </Button>
+          {canGenerateAi && (
           <Button
             type="button"
             variant="secondary"
@@ -3020,6 +3025,7 @@ function ReportBuilder({
             <SparklesIcon className="h-3.5 w-3.5 mr-1" />
             {generateNarrative.isPending ? "Writing…" : "Write narratives"}
           </Button>
+          )}
           <Button type="button" variant="primary" size="sm" loading={saving} onClick={handleSave}>
             {report ? "Save changes" : "Save report"}
           </Button>

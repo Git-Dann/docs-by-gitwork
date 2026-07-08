@@ -4,6 +4,7 @@ import OpenAI from "openai";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -13,6 +14,7 @@ export async function POST(
   { params }: { params: Promise<{ clientId: string; convId: string }> },
 ) {
   try {
+    assertCan(await getEffectiveUserOrNull(_req), canGenerateAi, "generate AI support drafts");
     const { clientId, convId } = await params;
 
     const { workspace } = await ensureBaseRecords();

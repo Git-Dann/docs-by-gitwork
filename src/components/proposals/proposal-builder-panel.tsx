@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { apiFetch } from "@/lib/api";
 import { useCreateSnippet } from "@/hooks/use-snippets";
+import { usePermissions } from "@/hooks/use-permissions";
 import { SECTION_REGISTRY } from "@/lib/sections/registry";
 import type {
   ObjectiveItem,
@@ -32,6 +33,7 @@ export function ProposalBuilderPanel({
   embedded?: boolean;
 }) {
   const createSnippet = useCreateSnippet();
+  const { canGenerateAi } = usePermissions(); // per-section "Expand with AI" spends tokens
   const [snippetOpen, setSnippetOpen] = useState(false);
   const [snippetName, setSnippetName] = useState("");
 
@@ -181,7 +183,7 @@ export function ProposalBuilderPanel({
 
   const moduleLabel = activeSection.title.toUpperCase();
   const sectionType = SECTION_REGISTRY[activeSection.key];
-  const aiExpandable = sectionType?.aiExpandable === true;
+  const aiExpandable = sectionType?.aiExpandable === true && canGenerateAi;
 
   const Wrapper = embedded ? "div" : "article";
   return (
