@@ -1041,8 +1041,12 @@ function fmtVal(v: number): string {
   return Number.isInteger(v) ? v.toLocaleString("en-GB") : v.toLocaleString("en-GB", { maximumFractionDigits: 2 });
 }
 
+// All 6 groups below come from the single `overall-report` aggregate call — same
+// trust level as each other. Clubhouse (a single-active-room debug endpoint),
+// Feedback (support ticket counts) and the raw "Overall" fallback are deliberately
+// left out: not business KPIs, and Clubhouse's numbers were literal 1-room test data.
 const GROUP_ORDER = [
-  "User Growth", "Engagement", "Retention", "Revenue",
+  "User Growth", "Engagement", "Retention", "Business Growth", "Revenue", "Golf Metrics",
 ];
 const KPI_GROUPS = new Set(GROUP_ORDER);
 
@@ -1110,19 +1114,19 @@ function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) 
         <div className="mt-4 space-y-6">
           {orderedGroups.map((g, groupIdx) => {
             const allItems = groups.get(g)!;
-            // The Big Wedge API already computes a period-over-period growth % for
-            // some groups (e.g. `user_growth_pct`). Pull it out as a real trend badge
-            // on the group header instead of showing it as its own sign-less card —
-            // this is live data from the API, not a fabricated comparison.
-            const pctMetric = allItems.find((m) => /_pct$/i.test(m.key));
-            const items = pctMetric ? allItems.filter((m) => m.key !== pctMetric.key) : allItems;
-            const pctValue = pctMetric ? Math.round(pctMetric.value * 10) / 10 : null;
+            // Only `*_growth_pct` fields are genuine period-over-period trends — pull
+            // those out as a real header badge. Other `_pct` fields (e.g. Business
+            // Growth's `premium_pct`/`free_pct`) are composition ratios, not trends,
+            // and stay as normal cards with a % suffix — an up/down arrow on those
+            // would misrepresent what they mean.
+            const growthMetric = allItems.find((m) => /growth_pct$/i.test(m.key));
+            const items = growthMetric ? allItems.filter((m) => m.key !== growthMetric.key) : allItems;
+            const pctValue = growthMetric ? Math.round(growthMetric.value * 10) / 10 : null;
             const isUp = pctValue !== null && pctValue >= 0;
 
             const isHero = g === "User Growth";
             const isRevenue = g === "Revenue";
-            const gridCols = isHero ? "sm:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-3";
-            const numberSize = isHero ? 40 : 30;
+            const numberSize = isHero ? 36 : 28;
 
             return (
               <div key={g}>
@@ -1147,7 +1151,7 @@ function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) 
                     </span>
                   )}
                 </div>
-                <div className={`grid grid-cols-1 gap-4 ${gridCols}`}>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                   {items.map((m) => {
                     const isPercentField = /_pct$/i.test(m.key) || /pct$/i.test(m.label);
                     const isCurrencyField = isRevenue && !isPercentField;

@@ -202,7 +202,9 @@ async function loadUserData(workspaceClientId: string): Promise<UserDataSnapshot
   }
 
   if (roundsResult.status === "fulfilled" && typeof roundsResult.value.count === "number") {
-    metrics.push({ key: "rounds_total", label: "Rounds played", value: roundsResult.value.count, group: "Activity" });
+    // Distinct from the report's date-scoped "Rounds Played" (Engagement group,
+    // Jan 1 → today): this is the unscoped, all-time count from the rounds table.
+    metrics.push({ key: "rounds_all_time", label: "All-Time Rounds", value: roundsResult.value.count, group: "Engagement" });
     hit.push("rounds");
   } else {
     failed.push("rounds");
