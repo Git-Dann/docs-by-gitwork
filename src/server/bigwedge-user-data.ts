@@ -141,14 +141,37 @@ async function loadUserData(workspaceClientId: string): Promise<UserDataSnapshot
   const hit: string[] = [];
   const failed: string[] = [];
 
+  // Fire every endpoint concurrently — these are all independent reads, and the
+  // prior sequential await-chain (~4-5 round trips to a remote API) was the main
+  // cause of slow page loads. A failure on any one never sinks the others.
+  const [overallResult, clubhouseResult, feedbackResult, roundsResult, plansResult] = await Promise.allSettled([
+    getJson<Record<string, unknown>>(
+      `${baseUrl}/api/v1/analytics/overall-report/?date_from=${from}&date_to=${to}`,
+      token,
+    ),
+    getJson<unknown>(`${baseUrl}/api/v1/clubhouse/stats/`, token),
+    getJson<unknown>(`${baseUrl}/api/v1/feedback/stats/`, token),
+    getJson<Paginated>(`${baseUrl}/api/v1/rounds/?page=1`, token),
+    getJson<unknown>(`${baseUrl}/api/v1/subscriptions/plans/`, token),
+  ]);
+
   // Primary aggregate — also our connectivity probe. The report is
   // `{ status, data: { user_growth, engagement, retention, golf_metrics, … } }`;
   // flatten each sub-section into its own group so the view reads cleanly.
-  try {
-    const overall = await getJson<Record<string, unknown>>(
-      `${baseUrl}/api/v1/analytics/overall-report/?date_from=${from}&date_to=${to}`,
-      token,
-    );
+  if (overallResult.status === "rejected") {
+    const err = overallResult.reason;
+    return {
+      connected: false,
+      baseUrl,
+      error: err instanceof Error ? err.message : String(err),
+      metrics: [],
+      lists: EMPTY_LISTS,
+      endpointsHit: [],
+      endpointsFailed: ["analytics/overall-report"],
+    };
+  }
+  {
+    const overall = overallResult.value;
     const report = (overall?.data && typeof overall.data === "object" ? overall.data : overall) as Record<string, unknown>;
     let grouped = 0;
     for (const [section, val] of Object.entries(report)) {
@@ -162,49 +185,31 @@ async function loadUserData(workspaceClientId: string): Promise<UserDataSnapshot
     if (grouped === 0) metrics.push(...flattenMetrics(report, { group: "Overall", limit: 60 }));
     lists = extractLists(report);
     hit.push("analytics/overall-report");
-  } catch (err) {
-    return {
-      connected: false,
-      baseUrl,
-      error: err instanceof Error ? err.message : String(err),
-      metrics: [],
-      lists: EMPTY_LISTS,
-      endpointsHit: [],
-      endpointsFailed: ["analytics/overall-report"],
-    };
   }
 
-  // Best-effort supplementary endpoints — a failure on one never sinks the rest.
-  const extra: Array<{ name: string; url: string; group: string; prefix?: string }> = [
-    { name: "clubhouse/stats", url: `${baseUrl}/api/v1/clubhouse/stats/`, group: "Clubhouse" },
-    { name: "feedback/stats", url: `${baseUrl}/api/v1/feedback/stats/`, group: "Feedback", prefix: "feedback" },
-  ];
-  await Promise.all(
-    extra.map(async (e) => {
-      try {
-        const data = await getJson<unknown>(e.url, token);
-        metrics.push(...flattenMetrics(data, { group: e.group, prefix: e.prefix, limit: 24 }));
-        hit.push(e.name);
-      } catch {
-        failed.push(e.name);
-      }
-    }),
-  );
+  if (clubhouseResult.status === "fulfilled") {
+    metrics.push(...flattenMetrics(clubhouseResult.value, { group: "Clubhouse", limit: 24 }));
+    hit.push("clubhouse/stats");
+  } else {
+    failed.push("clubhouse/stats");
+  }
 
-  // Rounds played (count from the paginated list).
-  try {
-    const rounds = await getJson<Paginated>(`${baseUrl}/api/v1/rounds/?page=1`, token);
-    if (typeof rounds.count === "number") {
-      metrics.push({ key: "rounds_total", label: "Rounds played", value: rounds.count, group: "Activity" });
-    }
+  if (feedbackResult.status === "fulfilled") {
+    metrics.push(...flattenMetrics(feedbackResult.value, { group: "Feedback", prefix: "feedback", limit: 24 }));
+    hit.push("feedback/stats");
+  } else {
+    failed.push("feedback/stats");
+  }
+
+  if (roundsResult.status === "fulfilled" && typeof roundsResult.value.count === "number") {
+    metrics.push({ key: "rounds_total", label: "Rounds played", value: roundsResult.value.count, group: "Activity" });
     hit.push("rounds");
-  } catch {
+  } else {
     failed.push("rounds");
   }
 
-  // Subscription plans (count of available plans).
-  try {
-    const plans = await getJson<unknown>(`${baseUrl}/api/v1/subscriptions/plans/`, token);
+  if (plansResult.status === "fulfilled") {
+    const plans = plansResult.value;
     const list = Array.isArray(plans)
       ? plans
       : Array.isArray((plans as { results?: unknown[] })?.results)
@@ -212,7 +217,7 @@ async function loadUserData(workspaceClientId: string): Promise<UserDataSnapshot
         : [];
     if (list.length) metrics.push({ key: "plans", label: "Subscription plans", value: list.length, group: "Subscriptions" });
     hit.push("subscriptions/plans");
-  } catch {
+  } else {
     failed.push("subscriptions/plans");
   }
 

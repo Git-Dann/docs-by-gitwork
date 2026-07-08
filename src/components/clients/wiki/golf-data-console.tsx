@@ -1108,13 +1108,17 @@ function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) 
         </WidgetCard>
       ) : (
         <div className="mt-4 space-y-6">
-          {d.metrics.some((m) => m.previous != null && m.previous !== 0) && (
-            <p style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-4)" }}>
-              Trends shown vs previous month
-            </p>
-          )}
           {orderedGroups.map((g, groupIdx) => {
-            const items = groups.get(g)!;
+            const allItems = groups.get(g)!;
+            // The Big Wedge API already computes a period-over-period growth % for
+            // some groups (e.g. `user_growth_pct`). Pull it out as a real trend badge
+            // on the group header instead of showing it as its own sign-less card —
+            // this is live data from the API, not a fabricated comparison.
+            const pctMetric = allItems.find((m) => /_pct$/i.test(m.key));
+            const items = pctMetric ? allItems.filter((m) => m.key !== pctMetric.key) : allItems;
+            const pctValue = pctMetric ? Math.round(pctMetric.value * 10) / 10 : null;
+            const isUp = pctValue !== null && pctValue >= 0;
+
             const isHero = g === "User Growth";
             const isRevenue = g === "Revenue";
             const gridCols = isHero ? "sm:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-3";
@@ -1122,19 +1126,31 @@ function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) 
 
             return (
               <div key={g}>
-                <div
-                  className="mb-3"
-                  style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-3)", fontWeight: 600 }}
-                >
-                  {`${String(groupIdx + 1).padStart(2, "0")} // ${g}`}
+                <div className="mb-3 flex items-center gap-2.5">
+                  <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-3)", fontWeight: 600 }}>
+                    {`${String(groupIdx + 1).padStart(2, "0")} // ${g}`}
+                  </span>
+                  {pctValue !== null && (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5"
+                      style={{
+                        fontFamily: MONO,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: "0.03em",
+                        color: isUp ? "var(--success-500)" : "var(--warning-500)",
+                        background: isUp ? "color-mix(in srgb, var(--success-500) 14%, transparent)" : "color-mix(in srgb, var(--warning-500) 14%, transparent)",
+                      }}
+                      title="Period-over-period growth, as reported by the Big Wedge analytics API"
+                    >
+                      {isUp ? "↑" : "↓"} {Math.abs(pctValue)}%
+                    </span>
+                  )}
                 </div>
                 <div className={`grid grid-cols-1 gap-4 ${gridCols}`}>
                   {items.map((m) => {
-                    const pct =
-                      m.previous != null && m.previous !== 0
-                        ? Math.round(((m.value - m.previous) / m.previous) * 100)
-                        : null;
-                    const isUp = pct !== null && pct >= 0;
+                    const isPercentField = /_pct$/i.test(m.key) || /pct$/i.test(m.label);
+                    const isCurrencyField = isRevenue && !isPercentField;
 
                     return (
                       <div
@@ -1148,14 +1164,11 @@ function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) 
                         }}
                       >
                         <div style={{ fontFamily: SERIF, fontSize: numberSize, lineHeight: 1, letterSpacing: "-0.02em", color: isRevenue ? "var(--brand-500)" : "var(--text-1)", fontWeight: 700 }}>
+                          {isCurrencyField ? "£" : ""}
                           {fmtVal(m.value)}
+                          {isPercentField ? "%" : ""}
                           {m.unit ? <span style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-4)", fontWeight: 400, marginLeft: 4 }}>{m.unit}</span> : null}
                         </div>
-                        {pct !== null && (
-                          <div style={{ fontFamily: MONO, fontSize: 11, color: isUp ? "var(--success-500)" : "var(--warning-500)", letterSpacing: "0.04em", marginTop: 8, fontWeight: 700 }}>
-                            {isUp ? "↑" : "↓"} {Math.abs(pct)}%
-                          </div>
-                        )}
                         <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-3)", marginTop: 10, lineHeight: 1.3, fontWeight: 500 }}>
                           {m.label}
                         </div>
