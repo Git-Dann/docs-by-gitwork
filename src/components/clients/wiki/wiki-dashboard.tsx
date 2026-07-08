@@ -635,7 +635,7 @@ export function WikiDashboard({
             <div className="flex items-center gap-2.5 whitespace-nowrap">
               {sections.map((section, i) => (
                 <span key={section} className="flex items-center gap-2.5">
-                  {i > 0 && <span className="text-[var(--border-2)]">→</span>}
+                  {i > 0 && <span className="text-[var(--text-4)]">→</span>}
                   <button
                     type="button"
                     onClick={() => onSelect(section)}
@@ -869,7 +869,7 @@ function TeamAvatar({
     );
   }
   return (
-    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--brand-100)] text-[11px] font-semibold text-[var(--brand-800)] ring-2 ring-[#0F172A]">
+    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(59,130,246,0.22)] text-[11px] font-semibold text-[#BFDBFE] ring-2 ring-[#0F172A]">
       {initials}
     </span>
   );
