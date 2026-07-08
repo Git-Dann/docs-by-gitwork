@@ -183,37 +183,40 @@ export function DailyRollup({
                   {result}
                 </span>
               ) : null}
-
-              {/* Push to Slack — compiles each dev's PM update (done today + note),
-                  grouped by developer, to the dedicated #updates channel. */}
-              <div className="mt-3 border-t border-dashed border-[var(--border-2)] pt-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-[var(--text-2)]">End-of-day PM updates</p>
-                    <p className="text-[11px] text-[var(--text-4)]">
-                      Compile every dev&apos;s PM update to #updates
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
-                    onClick={doPushPm}
-                    disabled={pushPm.isPending}
-                    loading={pushPm.isPending}
-                  >
-                    Push to Slack
-                  </Button>
-                </div>
-                {pmResult ? (
-                  <span className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[var(--text-2)]">
-                    <CheckCircleIcon className="h-4 w-4 text-emerald-600" />
-                    {pmResult}
-                  </span>
-                ) : null}
-              </div>
             </div>
             ) : null}
+
+            {/* Push to Slack — compiles each dev's PM update (done today + note),
+                grouped by developer, to the dedicated #updates channel. Shown to
+                anyone who can see this card (admins monitoring + the DevOps lead),
+                unlike the client-grouped "Publish roll-up" above which is the
+                lead's tool only. */}
+            <div className="border-t border-[var(--border-2)] pt-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-[var(--text-2)]">End-of-day PM updates</p>
+                  <p className="text-[11px] text-[var(--text-4)]">
+                    Compile every dev&apos;s PM update to #updates
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
+                  onClick={doPushPm}
+                  disabled={pushPm.isPending}
+                  loading={pushPm.isPending}
+                >
+                  Push to Slack
+                </Button>
+              </div>
+              {pmResult ? (
+                <span className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[var(--text-2)]">
+                  <CheckCircleIcon className="h-4 w-4 text-emerald-600" />
+                  {pmResult}
+                </span>
+              ) : null}
+            </div>
           </>
         )}
       </div>
