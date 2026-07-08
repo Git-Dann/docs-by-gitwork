@@ -472,8 +472,10 @@ export function WikiDashboard({
 
   return (
     <div className="mx-auto w-full max-w-5xl">
-      {/* Hero — overflow visible so the team avatars' name tooltips aren't clipped. */}
-      <section className="widget-card">
+      {/* Hero — overflow visible so the team avatars' name tooltips and the
+          serif masthead's descenders aren't clipped by `.widget-card`'s
+          `overflow: hidden`. */}
+      <section className="widget-card" style={{ overflow: "visible" }}>
         <div className="flex flex-col gap-5 p-6 md:p-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
             <div className="flex min-w-0 items-center gap-4">
@@ -497,7 +499,7 @@ export function WikiDashboard({
                   Knowledge Wiki
                 </p>
                 <h1
-                  className="mt-0.5 truncate text-[40px] leading-[1.02] text-[var(--text-1)] md:text-[52px]"
+                  className="mt-0.5 break-words pb-1 text-[40px] leading-[1.12] text-[var(--text-1)] md:text-[52px]"
                   style={{ fontFamily: SERIF, fontWeight: 600, letterSpacing: "-0.02em" }}
                 >
                   {wiki.clientName}
