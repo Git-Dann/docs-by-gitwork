@@ -37,6 +37,7 @@ import {
   NO_CATEGORY_ID,
   PROJECT_UPDATE_GROUP_LABELS,
   type BroadcastInput,
+  isTaskDoneToday,
   type BroadcastResult,
   type ProjectUpdateInput,
   type ProjectUpdateResult,
@@ -103,7 +104,7 @@ const STATUS_GROUP_ORDER: ProjectUpdateStatusGroup[] = ["DOING", "DONE", "UPCOMI
 
 function inStatusGroup(t: TaskDTO, group: ProjectUpdateStatusGroup): boolean {
   if (group === "DOING") return t.status === "DOING" || t.status === "IN_REVIEW";
-  if (group === "DONE") return t.status === "DONE"; // point-in-time, no done-today filter
+  if (group === "DONE") return isTaskDoneToday(t); // only today's completions, not all-time
   return t.status === "TODO" || t.status === "BACKLOG";
 }
 
