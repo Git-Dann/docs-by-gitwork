@@ -5,11 +5,13 @@
 export function StatusBar({
   w,
   h,
+  top,
   style,
   tint,
 }: {
   w: number; // screen width in px
   h: number; // status band height in px
+  top: number; // band offset from the screen top (aligns with the cutout)
   style: "ios" | "android";
   tint: "light" | "dark";
 }) {
@@ -23,7 +25,7 @@ export function StatusBar({
     <div
       style={{
         position: "absolute",
-        top: 0,
+        top,
         left: 0,
         width: "100%",
         height: h,

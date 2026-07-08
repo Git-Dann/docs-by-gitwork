@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, DM_Serif_Display, JetBrains_Mono, Caveat, Dancing_Script, Great_Vibes, Fraunces, Playfair_Display } from "next/font/google";
+import { Inter, DM_Serif_Display, JetBrains_Mono, Caveat, Dancing_Script, Great_Vibes, Fraunces, Playfair_Display, Poppins, Montserrat, Space_Grotesk, Manrope, Archivo, Sora } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AppProviders } from "@/components/providers/app-providers";
 import "./globals.css";
@@ -38,6 +38,17 @@ const greatVibes = Great_Vibes({ subsets: ["latin"], weight: ["400"], variable: 
 const fraunces = Fraunces({ subsets: ["latin"], weight: ["400", "600", "700"], style: ["normal", "italic"], variable: "--font-fraunces", display: "swap" });
 const playfairDisplay = Playfair_Display({ subsets: ["latin"], weight: ["400", "700"], style: ["normal", "italic"], variable: "--font-playfair", display: "swap" });
 
+// Extra display/sans families offered as text-layer fonts in Studio's App Screenshots mode.
+// Bound to CSS vars (next/font self-hosts them, so no runtime request to Google — keeps the CSP
+// intact and lets html-to-image rasterize them cleanly). Only fetched once a matching
+// `font-family: var(--font-…)` rule is actually used.
+const poppins = Poppins({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-poppins", display: "swap" });
+const montserrat = Montserrat({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-montserrat", display: "swap" });
+const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-space-grotesk", display: "swap" });
+const manrope = Manrope({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-manrope", display: "swap" });
+const archivo = Archivo({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-archivo", display: "swap" });
+const sora = Sora({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-sora", display: "swap" });
+
 export const metadata: Metadata = {
   // Resolves relative OpenGraph/Twitter image URLs (incl. generated og-images)
   // to absolute ones so link previews work when shared off-site.
@@ -57,7 +68,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${dmSerifDisplay.variable} ${jetbrainsMono.variable} ${caveat.variable} ${dancingScript.variable} ${greatVibes.variable} ${fraunces.variable} ${playfairDisplay.variable}`}
+      className={`${inter.variable} ${dmSerifDisplay.variable} ${jetbrainsMono.variable} ${caveat.variable} ${dancingScript.variable} ${greatVibes.variable} ${fraunces.variable} ${playfairDisplay.variable} ${poppins.variable} ${montserrat.variable} ${spaceGrotesk.variable} ${manrope.variable} ${archivo.variable} ${sora.variable}`}
       suppressHydrationWarning
     >
       <head>

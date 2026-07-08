@@ -8,13 +8,23 @@ import type { ExportFormat } from "../config";
 
 export type DeviceId = "iphone-17" | "pixel-10";
 export type StoreId = "appstore" | "play";
-export type LayoutId = "text-top" | "text-bottom" | "centered" | "device-only" | "full-bleed" | "feature";
+export type LayoutId = "text-top" | "text-bottom" | "centered" | "device-only" | "device-left" | "device-right" | "full-bleed" | "feature";
 
 // ── Fonts (reuse Studio's stack) ──────────────────────────────────────────────
 export const FONT_OPTIONS: { id: string; label: string; stack: string }[] = [
-  { id: "sans", label: "Sans", stack: "var(--font-sans), ui-sans-serif, system-ui, sans-serif" },
+  // Sans / display (Google Fonts, self-hosted via next/font — see src/app/layout.tsx)
+  { id: "sans", label: "Inter", stack: "var(--font-sans), ui-sans-serif, system-ui, sans-serif" },
+  { id: "poppins", label: "Poppins", stack: "var(--font-poppins), ui-sans-serif, system-ui, sans-serif" },
+  { id: "montserrat", label: "Montserrat", stack: "var(--font-montserrat), ui-sans-serif, system-ui, sans-serif" },
+  { id: "manrope", label: "Manrope", stack: "var(--font-manrope), ui-sans-serif, system-ui, sans-serif" },
+  { id: "sora", label: "Sora", stack: "var(--font-sora), ui-sans-serif, system-ui, sans-serif" },
+  { id: "space-grotesk", label: "Space Grotesk", stack: "var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif" },
+  { id: "archivo", label: "Archivo", stack: "var(--font-archivo), ui-sans-serif, system-ui, sans-serif" },
+  // Serif
   { id: "serif-dm", label: "DM Serif", stack: "var(--font-display), 'Times New Roman', Georgia, serif" },
   { id: "serif-fraunces", label: "Fraunces", stack: "var(--font-fraunces), 'Times New Roman', Georgia, serif" },
+  { id: "playfair", label: "Playfair", stack: "var(--font-playfair), Georgia, serif" },
+  // Mono
   { id: "mono", label: "Mono", stack: "var(--font-mono), ui-monospace, 'SF Mono', Menlo, monospace" },
 ];
 export const DEFAULT_FONT = "sans";
@@ -117,15 +127,19 @@ export interface LayoutPreset {
   hasDevice: boolean;
   fullBleed: boolean;
   device?: { cx: number; cy: number; height: number };
-  textZone: { xPct: number; yPct: number; align: "left" | "center" | "right" };
+  // textZone anchors newly-added text: (xPct, yPct) is the TOP-centre of the text block, so yPct is
+  // simply the distance from the top edge (no clipping). widthPct is the block width (% of canvas).
+  textZone: { xPct: number; yPct: number; align: "left" | "center" | "right"; widthPct?: number };
 }
 
 export const LAYOUT_PRESETS: LayoutPreset[] = [
-  { id: "text-top", label: "Text top", hasDevice: true, fullBleed: false, device: { cx: 0.5, cy: 0.74, height: 0.82 }, textZone: { xPct: 50, yPct: 11, align: "center" } },
-  { id: "text-bottom", label: "Text bottom", hasDevice: true, fullBleed: false, device: { cx: 0.5, cy: 0.34, height: 0.82 }, textZone: { xPct: 50, yPct: 84, align: "center" } },
-  { id: "centered", label: "Device centred", hasDevice: true, fullBleed: false, device: { cx: 0.5, cy: 0.52, height: 0.78 }, textZone: { xPct: 50, yPct: 9, align: "center" } },
-  { id: "device-only", label: "Device only", hasDevice: true, fullBleed: false, device: { cx: 0.5, cy: 0.5, height: 0.92 }, textZone: { xPct: 50, yPct: 8, align: "center" } },
-  { id: "full-bleed", label: "Full-bleed", hasDevice: false, fullBleed: true, textZone: { xPct: 50, yPct: 86, align: "center" } },
+  { id: "text-top", label: "Text top", hasDevice: true, fullBleed: false, device: { cx: 0.5, cy: 0.76, height: 0.82 }, textZone: { xPct: 50, yPct: 7, align: "center" } },
+  { id: "text-bottom", label: "Text bottom", hasDevice: true, fullBleed: false, device: { cx: 0.5, cy: 0.32, height: 0.82 }, textZone: { xPct: 50, yPct: 70, align: "center" } },
+  { id: "centered", label: "Device centred", hasDevice: true, fullBleed: false, device: { cx: 0.5, cy: 0.54, height: 0.78 }, textZone: { xPct: 50, yPct: 6, align: "center" } },
+  { id: "device-only", label: "Device only", hasDevice: true, fullBleed: false, device: { cx: 0.5, cy: 0.5, height: 0.92 }, textZone: { xPct: 50, yPct: 6, align: "center" } },
+  { id: "device-left", label: "Device left · text right", hasDevice: true, fullBleed: false, device: { cx: 0.29, cy: 0.5, height: 0.58 }, textZone: { xPct: 74, yPct: 32, align: "left", widthPct: 44 } },
+  { id: "device-right", label: "Text left · device right", hasDevice: true, fullBleed: false, device: { cx: 0.71, cy: 0.5, height: 0.58 }, textZone: { xPct: 26, yPct: 32, align: "right", widthPct: 44 } },
+  { id: "full-bleed", label: "Full-bleed", hasDevice: false, fullBleed: true, textZone: { xPct: 50, yPct: 74, align: "center" } },
 ];
 
 export const FEATURE_LAYOUT: LayoutPreset = {
@@ -133,7 +147,7 @@ export const FEATURE_LAYOUT: LayoutPreset = {
   label: "Feature graphic",
   hasDevice: false,
   fullBleed: false,
-  textZone: { xPct: 50, yPct: 50, align: "center" },
+  textZone: { xPct: 50, yPct: 32, align: "center", widthPct: 86 },
 };
 
 export function layoutById(id: LayoutId): LayoutPreset {
@@ -235,7 +249,7 @@ export function newTextLayer(layout: LayoutId, over?: Partial<TextLayer>): TextL
     align: zone.align,
     xPct: zone.xPct,
     yPct: zone.yPct,
-    widthPct: 82,
+    widthPct: zone.widthPct ?? 82,
     rotation: 0,
     shadow: { on: true, x: 0, y: 6, blur: 24, color: "rgba(0,0,0,0.35)" },
     ...over,

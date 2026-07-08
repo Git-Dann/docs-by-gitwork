@@ -1,6 +1,7 @@
-// One text layer, positioned at true pixel size. The block is centred on its (xPct, yPct) anchor
-// and rotated in place; font size scales by the canvas unit `u`. Drop shadow via CSS text-shadow.
-// Newlines in the copy are honoured (white-space: pre-line).
+// One text layer, positioned at true pixel size. (xPct, yPct) is the TOP-centre of the block, so
+// yPct reads as "distance from the top edge" and the text never clips against the top. The block is
+// rotated about its top-centre; font size scales by the canvas unit `u`. Drop shadow via CSS
+// text-shadow. Newlines in the copy are honoured (white-space: pre-line).
 
 import { fontStack, type TextLayer as TextLayerModel } from "./config";
 
@@ -13,8 +14,8 @@ export function TextLayer({ layer, u }: { layer: TextLayerModel; u: number }) {
         left: `${layer.xPct}%`,
         top: `${layer.yPct}%`,
         width: `${layer.widthPct}%`,
-        transform: `translate(-50%, -50%) rotate(${layer.rotation}deg)`,
-        transformOrigin: "center center",
+        transform: `translate(-50%, 0) rotate(${layer.rotation}deg)`,
+        transformOrigin: "center top",
         textAlign: layer.align,
         fontFamily: fontStack(layer.font),
         fontWeight: layer.weight,

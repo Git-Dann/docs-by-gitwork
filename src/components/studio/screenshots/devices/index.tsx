@@ -42,7 +42,11 @@ export function DeviceFrame({
   const screenW = W - 2 * b;
   const screenH = screenW * g.screenAspect;
   const outerH = screenH + 2 * b;
-  const statusH = screenH * 0.048;
+  const statusH = screenH * 0.045;
+  // Vertical centre of the cutout (Dynamic Island / hole-punch) — the status bar sits on this line
+  // so the clock/icons align with the cutout and clear the top of the frame (as on a real device).
+  const cutoutCenterY = g.cutout.type === "island" ? g.cutout.top * W + (g.cutout.hPct * W) / 2 : g.cutout.top * W + (g.cutout.dPct * W) / 2;
+  const statusTop = Math.max(screenH * 0.008, cutoutCenterY - statusH / 2);
 
   return (
     <div
@@ -73,7 +77,7 @@ export function DeviceFrame({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={screenImage} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         ) : null}
-        {statusBar.on ? <StatusBar w={screenW} h={statusH} style={statusBar.style} tint={statusBar.tint} /> : null}
+        {statusBar.on ? <StatusBar w={screenW} h={statusH} top={statusTop} style={statusBar.style} tint={statusBar.tint} /> : null}
         {g.cutout.type === "island" ? (
           <DynamicIsland w={g.cutout.wPct * W} h={g.cutout.hPct * W} top={g.cutout.top * W} />
         ) : (
