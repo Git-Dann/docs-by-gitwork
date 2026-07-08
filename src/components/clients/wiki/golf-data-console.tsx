@@ -1107,62 +1107,56 @@ function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) 
           <p className="text-[12px] text-[var(--text-4)]">Connected, but the analytics endpoints returned no numeric fields. The admin report shape may have changed.</p>
         </WidgetCard>
       ) : (
-        <div className="mt-4 space-y-5">
+        <div className="mt-4 space-y-6">
+          {d.metrics.some((m) => m.previous != null && m.previous !== 0) && (
+            <p style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-4)" }}>
+              Trends shown vs previous month
+            </p>
+          )}
           {orderedGroups.map((g, groupIdx) => {
             const items = groups.get(g)!;
-            const isUserGrowth = g === "User Growth";
+            const isHero = g === "User Growth";
             const isRevenue = g === "Revenue";
-            const gridCols = isUserGrowth ? "sm:grid-cols-2 lg:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-3";
-            const cardColsClass = items.length === 1 ? "grid-cols-1" : "grid-cols-2";
+            const gridCols = isHero ? "sm:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-3";
+            const numberSize = isHero ? 40 : 30;
 
             return (
               <div key={g}>
-                <div className="mb-3 flex items-baseline gap-2">
-                  <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-3)", fontWeight: 600 }}>
-                    {String(groupIdx + 1).padStart(2, "0")} // {g}
-                  </span>
-                  {isRevenue && <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--success-500)", fontWeight: 600 }}>💰</span>}
+                <div
+                  className="mb-3"
+                  style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-3)", fontWeight: 600 }}
+                >
+                  {`${String(groupIdx + 1).padStart(2, "0")} // ${g}`}
                 </div>
                 <div className={`grid grid-cols-1 gap-4 ${gridCols}`}>
                   {items.map((m) => {
-                    const pct = m.previous !== undefined && m.previous !== null && m.previous !== 0
-                      ? Math.round(((m.value - m.previous) / m.previous) * 100)
-                      : null;
+                    const pct =
+                      m.previous != null && m.previous !== 0
+                        ? Math.round(((m.value - m.previous) / m.previous) * 100)
+                        : null;
                     const isUp = pct !== null && pct >= 0;
-                    const isBigMetric = ["users", "revenue"].some(k => m.key.toLowerCase().includes(k));
 
                     return (
                       <div
                         key={m.key}
-                        className={`rounded-[12px] border border-[var(--border-2)] p-5 ${isRevenue ? "bg-[var(--brand-500)] bg-opacity-10 border-[var(--brand-500)] border-opacity-40" : "bg-[var(--surface-2)]"}`}
-                        style={{ minHeight: isBigMetric && isUserGrowth ? "140px" : "120px" }}
+                        className="rounded-[12px] border p-5"
+                        style={{
+                          background: "var(--surface-2)",
+                          borderColor: isRevenue
+                            ? "color-mix(in srgb, var(--brand-500) 45%, var(--border-2))"
+                            : "var(--border-2)",
+                        }}
                       >
-                        <div style={{ fontFamily: SERIF, fontSize: isBigMetric ? 42 : 32, lineHeight: 1, letterSpacing: "-0.02em", color: isRevenue ? "var(--brand-500)" : "var(--text-1)", fontWeight: 800 }}>
+                        <div style={{ fontFamily: SERIF, fontSize: numberSize, lineHeight: 1, letterSpacing: "-0.02em", color: isRevenue ? "var(--brand-500)" : "var(--text-1)", fontWeight: 700 }}>
                           {fmtVal(m.value)}
+                          {m.unit ? <span style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-4)", fontWeight: 400, marginLeft: 4 }}>{m.unit}</span> : null}
                         </div>
-                        {m.unit && <div style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-3)", marginTop: "3px", fontWeight: 500 }}>{m.unit}</div>}
                         {pct !== null && (
-                          <div style={{
-                            fontFamily: MONO,
-                            fontSize: 11,
-                            color: isUp ? "var(--success-500)" : "var(--warning-500)",
-                            letterSpacing: "0.05em",
-                            marginTop: "8px",
-                            fontWeight: 700
-                          }}>
-                            {isUp ? "↑" : "↓"} {Math.abs(pct)}% vs last mo
+                          <div style={{ fontFamily: MONO, fontSize: 11, color: isUp ? "var(--success-500)" : "var(--warning-500)", letterSpacing: "0.04em", marginTop: 8, fontWeight: 700 }}>
+                            {isUp ? "↑" : "↓"} {Math.abs(pct)}%
                           </div>
                         )}
-                        <div style={{
-                          fontFamily: MONO,
-                          fontSize: 10,
-                          letterSpacing: "0.04em",
-                          textTransform: "uppercase",
-                          color: "var(--text-3)",
-                          marginTop: "10px",
-                          lineHeight: 1.3,
-                          fontWeight: 500
-                        }}>
+                        <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-3)", marginTop: 10, lineHeight: 1.3, fontWeight: 500 }}>
                           {m.label}
                         </div>
                       </div>
