@@ -19,6 +19,9 @@
 import { getJson } from "@/server/support-analytics/types";
 import { resolveBigWedgeApi } from "@/server/wiki-bigwedge-sync";
 
+/** The deployed Big Wedge course backend (Vercel). Non-secret; override with env. */
+const DEFAULT_COURSE_API_URL = "https://wedge-course-backend.vercel.app";
+
 /** Mint a fresh access token from username/password. Returns null on failure. */
 async function mintCourseToken(
   baseUrl: string,
@@ -52,10 +55,7 @@ async function resolveCourseApi(
   const connector = await resolveBigWedgeApi(workspaceClientId);
   const connectorOk = !("error" in connector);
 
-  const baseUrl = (envUrl || (connectorOk ? connector.baseUrl : "")).replace(/\/$/, "");
-  if (!baseUrl) {
-    return { error: "error" in connector ? connector.error : "No course backend URL configured." };
-  }
+  const baseUrl = (envUrl || (connectorOk ? connector.baseUrl : "") || DEFAULT_COURSE_API_URL).replace(/\/$/, "");
 
   // 1) mint from env creds
   if (envUser && envPass) {
