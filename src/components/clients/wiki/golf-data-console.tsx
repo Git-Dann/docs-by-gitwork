@@ -15,7 +15,7 @@ import {
   KeyIcon,
   PlayIcon,
 } from "@heroicons/react/24/outline";
-import { useGolfDataConsole, useGolfCourseBackend, useGolfIntegrations, useRunGolfJob } from "@/hooks/use-wiki";
+import { useGolfDataConsole, useGolfCourseBackend, useGolfIntegrations, useRunGolfJob, useGolfClubsList } from "@/hooks/use-wiki";
 import { usePermissions } from "@/hooks/use-permissions";
 import type {
   ConsoleTone,
@@ -24,6 +24,7 @@ import type {
   GolfPipelineNode,
 } from "@/server/golf-data-console";
 import type { CourseBackendData, CourseIntegration, RunJobResult } from "@/server/bigwedge-course-api";
+import type { GolfClubDTO } from "@/server/golf-clubs";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 const SERIF = "var(--font-display), 'Times New Roman', Georgia, serif";
@@ -230,18 +231,19 @@ function DatasetVersions({ datasets }: { datasets: GolfDataConsole["datasets"] }
 
 // ── main ──────────────────────────────────────────────────────────────────────
 
-type View = "overview" | "course-backend" | "integrations";
+type View = "overview" | "clubs" | "course-backend" | "integrations";
 
 export function GolfDataConsoleView({ slug }: { slug: string; clientName?: string }) {
   const [view, setView] = useState<View>("overview");
   const overview = useGolfDataConsole(slug, true);
+  const clubs = useGolfClubsList(slug, view === "clubs");
   const backend = useGolfCourseBackend(slug, view === "course-backend");
   const integrations = useGolfIntegrations(slug, view === "integrations");
 
-  const refreshing =
-    view === "overview" ? overview.isFetching : view === "course-backend" ? backend.isFetching : integrations.isFetching;
-  const refetch = () =>
-    view === "overview" ? overview.refetch() : view === "course-backend" ? backend.refetch() : integrations.refetch();
+  const active =
+    view === "overview" ? overview : view === "clubs" ? clubs : view === "course-backend" ? backend : integrations;
+  const refreshing = active.isFetching;
+  const refetch = () => active.refetch();
 
   const snapshot = overview.data;
 
@@ -271,6 +273,7 @@ export function GolfDataConsoleView({ slug }: { slug: string; clientName?: strin
             aria-label="Console view"
           >
             <option value="overview">Platform overview</option>
+            <option value="clubs">Clubs</option>
             <option value="course-backend">Course backend</option>
             <option value="integrations">Integrations</option>
           </select>
@@ -289,6 +292,8 @@ export function GolfDataConsoleView({ slug }: { slug: string; clientName?: strin
 
       {view === "overview" ? (
         <OverviewView state={overview} />
+      ) : view === "clubs" ? (
+        <ClubsView state={clubs} />
       ) : view === "course-backend" ? (
         <CourseBackendView state={backend} />
       ) : (
@@ -680,6 +685,111 @@ function CourseBackendView({ state }: { state: ReturnType<typeof useGolfCourseBa
           </p>
         </div>
       </div>
+    </>
+  );
+}
+
+// ── Clubs browser ─────────────────────────────────────────────────────────────
+
+function clubLofts(c: GolfClubDTO): string {
+  const lofts = Array.from(new Set(c.variants.map((v) => v.loft).filter(Boolean))) as string[];
+  if (lofts.length) return lofts.join(", ");
+  const set = c.specifications?.setComposition;
+  if (typeof set === "string") return set;
+  return "—";
+}
+
+function specSummary(c: GolfClubDTO): string {
+  return Object.entries(c.specifications ?? {})
+    .filter(([k]) => k !== "setComposition")
+    .slice(0, 3)
+    .map(([k, v]) => (typeof v === "boolean" ? (v ? k : "") : `${v}`))
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function ClubsView({ state }: { state: ReturnType<typeof useGolfClubsList> }) {
+  const { data, isPending, isError, refetch } = state;
+  const [q, setQ] = useState("");
+  const [category, setCategory] = useState<string>("all");
+  const [brand, setBrand] = useState<string>("all");
+
+  if (isPending) return <Loading label="Loading clubs…" />;
+  if (isError || !data) return <ErrorState onRetry={() => refetch()} label="Couldn't load clubs." />;
+
+  const all = data.clubs;
+  const categories = Array.from(new Set(all.map((c) => c.category))).sort();
+  const brands = Array.from(new Set(all.map((c) => c.manufacturer))).sort();
+
+  const ql = q.trim().toLowerCase();
+  const filtered = all.filter((c) => {
+    if (category !== "all" && c.category !== category) return false;
+    if (brand !== "all" && c.manufacturer !== brand) return false;
+    if (ql) {
+      const hay = `${c.manufacturer} ${c.modelName} ${c.modelFamily ?? ""} ${c.category} ${c.aliases.join(" ")}`.toLowerCase();
+      if (!hay.includes(ql)) return false;
+    }
+    return true;
+  });
+
+  return (
+    <>
+      <div className="mt-3 grid grid-cols-3 gap-3">
+        <MetricTile value={all.length.toLocaleString("en-GB")} label="Clubs" tone="ok" />
+        <MetricTile value={String(brands.length)} label="Brands" />
+        <MetricTile value={String(categories.length)} label="Types" />
+      </div>
+
+      <WidgetCard number="01" label="Clubs Catalogue" status={`${filtered.length} shown`} bodyClassName="p-0">
+        {/* Toolbar */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-2)] p-3">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search brand, model…"
+            className="app-input-compact min-w-[180px] flex-1"
+          />
+          <select value={brand} onChange={(e) => setBrand(e.target.value)} className="app-select-compact">
+            <option value="all">All brands</option>
+            {brands.map((b) => <option key={b} value={b}>{b}</option>)}
+          </select>
+          <select value={category} onChange={(e) => setCategory(e.target.value)} className="app-select-compact">
+            <option value="all">All types</option>
+            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+
+        <div className="max-h-[560px] overflow-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead className="sticky top-0 z-10 bg-[var(--surface-0)]">
+              <tr>{["Brand", "Model", "Type", "Year", "Lofts / Set", "Specs"].map((h) => <th key={h} className={th} style={thStyle}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {filtered.map((c) => (
+                <tr key={c.id}>
+                  <td className={td}><span className="text-[13px] font-medium text-[var(--text-1)]">{c.manufacturer}</span></td>
+                  <td className={td}>
+                    <span className="text-[13px] text-[var(--text-2)]">{c.modelName}</span>
+                    {c.aliases.length ? <span className="ml-1.5" style={{ fontFamily: MONO, fontSize: 9, color: "var(--text-4)" }}>({c.aliases[0]})</span> : null}
+                  </td>
+                  <td className={td} style={monoCell}>{c.category}</td>
+                  <td className={td} style={monoCell}>{c.modelYear ?? "—"}</td>
+                  <td className={td} style={{ ...monoCell, color: "var(--text-2)" }}>{clubLofts(c)}</td>
+                  <td className={td} style={{ ...monoCell, fontSize: 11 }}>{specSummary(c)}</td>
+                </tr>
+              ))}
+              {filtered.length === 0 ? (
+                <tr><td className={td} colSpan={6} style={{ ...monoCell, textAlign: "center" }}>No clubs match</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </WidgetCard>
+
+      <p className="mt-3 flex items-start gap-1.5 px-1 text-[11px] leading-relaxed text-[var(--text-4)]">
+        <ShieldCheckIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>Live from the <span className="font-medium">GolfClub</span> catalogue — the same Type · Brand · Model · Loft the Big Wedge app collects. The catalogue grows via the scheduled collector.</span>
+      </p>
     </>
   );
 }

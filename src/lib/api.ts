@@ -3490,6 +3490,8 @@ import type { GolfDataConsole } from "@/server/golf-data-console";
 export type { GolfDataConsole } from "@/server/golf-data-console";
 import type { CourseBackendData, CourseIntegrationsData, RunJobResult } from "@/server/bigwedge-course-api";
 export type { CourseBackendData, CourseIntegrationsData, CourseIntegration, RunJobResult } from "@/server/bigwedge-course-api";
+import type { GolfClubDTO } from "@/server/golf-clubs";
+export type { GolfClubDTO } from "@/server/golf-clubs";
 
 export async function getGolfDataConsole(slug: string): Promise<GolfDataConsole> {
   return apiFetch<GolfDataConsole>(`/api/clients/${slug}/wiki/golf-data`);
@@ -3509,6 +3511,10 @@ export async function runGolfJob(slug: string, job: string, batch?: number): Pro
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ job, ...(batch ? { batch } : {}) }),
   });
+}
+
+export async function getGolfClubsList(slug: string): Promise<{ clubs: GolfClubDTO[]; total: number }> {
+  return apiFetch<{ clubs: GolfClubDTO[]; total: number }>(`/api/clients/${slug}/wiki/golf-data/clubs`);
 }
 
 // ─── Course requests (Wedge wiki) ───────────────────────────────────────────

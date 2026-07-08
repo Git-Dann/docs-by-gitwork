@@ -18,6 +18,7 @@ import {
   getGolfDataConsole,
   getGolfCourseBackend,
   getGolfIntegrations,
+  getGolfClubsList,
   runGolfJob,
   addWikiCourseRequest,
   updateWikiCourseRequestApi,
@@ -315,6 +316,16 @@ export function useGolfCourseBackend(slug: string, enabled: boolean) {
     queryFn: () => getGolfCourseBackend(slug),
     enabled: Boolean(slug) && enabled,
     staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useGolfClubsList(slug: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["golf-clubs-list", slug],
+    queryFn: () => getGolfClubsList(slug),
+    enabled: Boolean(slug) && enabled,
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 }
