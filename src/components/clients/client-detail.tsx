@@ -315,7 +315,7 @@ export function ClientDetail({ slug }: { slug: string }) {
   const createDesignMutation = useCreateClientDesign(slug);
   const slackActivity = useClientSlackActivity(slug);
   const setStatus = useSetClientStatus(slug);
-  const { canViewPulse } = usePermissions();
+  const { canViewPulse, canManageClients } = usePermissions();
   // Pause (→ INACTIVE) modal state.
   const [pausing, setPausing] = useState(false);
   const [resumeAtInput, setResumeAtInput] = useState("");
@@ -560,17 +560,19 @@ export function ClientDetail({ slug }: { slug: string }) {
                 />
               </a>
             )}
-            {!isSuggested && client.status === "LEAD" && (
+            {canManageClients && !isSuggested && client.status === "LEAD" && (
               <Button type="button" variant="primary" size="xs" onClick={() => changeStatus("ACTIVE")} disabled={setStatus.isPending}>
                 <ArrowRightCircleIcon className="h-3 w-3" />
                 Convert to client
               </Button>
             )}
-            <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
-              <PencilIcon className="h-3 w-3" />
-              Edit
-            </Button>
-            {!isSuggested && !isLead && (
+            {canManageClients && (
+              <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
+                <PencilIcon className="h-3 w-3" />
+                Edit
+              </Button>
+            )}
+            {canManageClients && !isSuggested && !isLead && (
               <Menu as="div" className="relative">
                 <MenuButton
                   className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] border border-[var(--border-2)] bg-white text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
@@ -782,11 +784,11 @@ export function ClientDetail({ slug }: { slug: string }) {
         <SlackActivityBody
           data={slackActivity.data}
           isLoading={slackActivity.isPending}
-          onConfigureClick={openEdit}
+          onConfigureClick={canManageClients ? openEdit : undefined}
           summaryOnly
         />
       </section>
-      <ContactCard client={client} number="08" onEdit={openEdit} />
+      <ContactCard client={client} number="08" onEdit={canManageClients ? openEdit : undefined} />
       </div>
         </>
       )}
@@ -799,10 +801,12 @@ export function ClientDetail({ slug }: { slug: string }) {
               <span className="widget-header__label--number">{isLead ? "02" : "08"}</span>
               {" // CONTACT"}
             </span>
-            <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
-              <PencilIcon className="h-3 w-3" />
-              Edit
-            </Button>
+            {canManageClients && (
+              <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
+                <PencilIcon className="h-3 w-3" />
+                Edit
+              </Button>
+            )}
           </div>
           <div className="p-6">
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -880,10 +884,12 @@ export function ClientDetail({ slug }: { slug: string }) {
                 <span className="widget-header__label--number">04</span>
                 {" // NOTES"}
               </span>
-              <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
-                <PencilIcon className="h-3 w-3" />
-                Edit
-              </Button>
+              {canManageClients && (
+                <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
+                  <PencilIcon className="h-3 w-3" />
+                  Edit
+                </Button>
+              )}
             </div>
             <div className="p-6">
               {client.notes ? (
@@ -984,7 +990,7 @@ export function ClientDetail({ slug }: { slug: string }) {
             <span className="widget-header__label--number">10</span>
             {" // PLATFORMS"}
           </span>
-          {!isSuggested && (
+          {!isSuggested && canManageClients && (
             <button
               type="button"
               onClick={() => { setPlatformError(null); setPlatformModal({ open: true, platform: null }); }}
@@ -1037,7 +1043,7 @@ export function ClientDetail({ slug }: { slug: string }) {
             {" // DESIGNS"}
           </span>
           <div className="flex items-center gap-1">
-            {!isSuggested && (
+            {!isSuggested && canManageClients && (
               <button
                 type="button"
                 onClick={() => { setDesignError(null); setDesignModal({ open: true, design: null }); }}
@@ -2520,7 +2526,7 @@ function ContactCard({
 }: {
   client: ClientDetailRecord["client"];
   number: string;
-  onEdit: () => void;
+  onEdit?: () => void;
 }) {
   const addressLines = [client.addressLine1, client.addressLine2].filter(Boolean);
   const cityLine = [client.city, client.postcode].filter(Boolean).join(", ");
@@ -2534,10 +2540,12 @@ function ContactCard({
           <span className="widget-header__label--number">{number}</span>
           {" // CONTACT"}
         </span>
-        <Button type="button" variant="secondary" size="xs" onClick={onEdit}>
-          <PencilIcon className="h-3 w-3" />
-          Edit
-        </Button>
+        {onEdit && (
+          <Button type="button" variant="secondary" size="xs" onClick={onEdit}>
+            <PencilIcon className="h-3 w-3" />
+            Edit
+          </Button>
+        )}
       </div>
       <div className="flex-1 p-6">
         {anyInfo ? (
@@ -2700,7 +2708,7 @@ function SlackActivityBody({
     messages: Array<{ id: string; author: string; text: string; ts: string }>;
   } | undefined;
   isLoading: boolean;
-  onConfigureClick: () => void;
+  onConfigureClick?: () => void;
   /** When true, render just the AI digest (no message list) — used in the compact 2-col row. */
   summaryOnly?: boolean;
 }) {
@@ -2725,14 +2733,19 @@ function SlackActivityBody({
           </p>
         ) : (
           <p className="text-sm text-[var(--text-4)]">
-            No Slack channel linked.{" "}
-            <button
-              type="button"
-              onClick={onConfigureClick}
-              className="text-[var(--brand-700)] hover:underline"
-            >
-              Set one in Edit →
-            </button>
+            No Slack channel linked.
+            {onConfigureClick ? (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={onConfigureClick}
+                  className="text-[var(--brand-700)] hover:underline"
+                >
+                  Set one in Edit →
+                </button>
+              </>
+            ) : null}
           </p>
         )}
       </div>
