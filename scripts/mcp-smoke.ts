@@ -64,7 +64,7 @@ console.log("tools/list");
   });
   if (res && "result" in res) {
     const tools = (res.result as { tools: Array<{ name: string; inputSchema: object }> }).tools;
-    check("returns 10 tools", tools.length === 10, `got ${tools.length}`);
+    check("returns 11 tools", tools.length === 11, `got ${tools.length}`);
     const expected = [
       "list_clients",
       "create_client",
@@ -74,6 +74,7 @@ console.log("tools/list");
       "list_members",
       "find_meetings",
       "create_document",
+      "update_document",
       "pulse_scan",
       "pulse_scan_result",
     ];
