@@ -14,7 +14,9 @@
 import type { ReactNode } from "react";
 
 // One pass matches the earliest inline marker; precedence: link → bold → italic → underscore-italic → code.
-const INLINE_RE = /(\[[^\]]+\]\([^)\s]+\))|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(_[^_\n]+_)|(`[^`\n]+`)/;
+// Exported so rich-inline-editor.tsx's canvas editor can parse/serialize with the exact same
+// rules as this renderer — one source of truth for what counts as Markdown here.
+export const INLINE_RE = /(\[[^\]]+\]\([^)\s]+\))|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(_[^_\n]+_)|(`[^`\n]+`)/;
 
 /** Allow only safe URL schemes; bare domains become https; anything odd (javascript:, data:) is dropped. */
 export function safeUrl(raw: string): string | null {

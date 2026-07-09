@@ -5,7 +5,7 @@ import { defineSection } from "@/lib/sections/types";
 import { SimpleForm } from "@/lib/sections/_shared";
 import { MarkdownField } from "@/components/proposals/markdown-field";
 import { Markdown } from "@/lib/markdown";
-import { InlineTextArea } from "@/lib/sections/inline-text";
+import { RichInlineEditor } from "@/lib/sections/rich-inline-editor";
 import type { ProseSectionData } from "@/types/proposal";
 
 export const proseSection = defineSection<ProseSectionData>({
@@ -33,13 +33,12 @@ export const proseSection = defineSection<ProseSectionData>({
   Preview: ({ data, editable, onChange }) => {
     if (editable && onChange) {
       return (
-        <InlineTextArea
+        <RichInlineEditor
           value={data.content}
           onChange={(content) => onChange({ ...data, content })}
-          placeholder="Write freely. Markdown supported — **bold**, *italic*, [links](…), - lists."
+          placeholder="Write freely. Highlight text to bold/italicise/link it."
           ariaLabel="Prose content"
           className="max-w-4xl text-[15px] leading-7 text-[var(--text-1)]"
-          enableFormatBar
         />
       );
     }

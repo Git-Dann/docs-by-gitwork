@@ -14,13 +14,8 @@
 
 "use client";
 
-import { useRef, type CSSProperties, type ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
-import {
-  InlineFormatBar,
-  useTextareaFormatting,
-  useTextareaSelectionRect,
-} from "@/lib/sections/inline-format-toolbar";
 
 const FIELD_RESET: CSSProperties = {
   gridArea: "1 / 1 / 2 / 2",
@@ -44,7 +39,6 @@ export function InlineTextArea({
   className,
   style,
   ariaLabel,
-  enableFormatBar = false,
 }: {
   value: string;
   onChange: (next: string) => void;
@@ -54,25 +48,13 @@ export function InlineTextArea({
   /** Inline typography (for blocks that style via `style`, e.g. heading) — applied to the wrapper. */
   style?: CSSProperties;
   ariaLabel?: string;
-  /**
-   * Show a floating Bold/Italic/Link/Code bar when text is highlighted. Opt-in — only meaningful
-   * for fields whose read-side actually renders the value through <Markdown/> (e.g. prose,
-   * introduction's summary); enabling it on a plain-text field would let an operator insert
-   * `**`/`_`/backticks that then show up as literal characters on the public page.
-   */
-  enableFormatBar?: boolean;
 }) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-  const rect = useTextareaSelectionRect(ref, enableFormatBar);
-  const { wrap, link } = useTextareaFormatting(ref, value, onChange);
-
   return (
     <div
       className={`inline-edit grid w-full rounded-[4px] transition-colors focus-within:bg-[var(--surface-brand)]/50 ${className ?? ""}`}
       style={style}
     >
       <textarea
-        ref={ref}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
@@ -86,15 +68,6 @@ export function InlineTextArea({
       <div aria-hidden style={{ ...FIELD_RESET, visibility: "hidden", pointerEvents: "none" }}>
         {value ? `${value} ` : placeholder || " "}
       </div>
-      {enableFormatBar ? (
-        <InlineFormatBar
-          rect={rect}
-          onBold={() => wrap("**")}
-          onItalic={() => wrap("*")}
-          onCode={() => wrap("`")}
-          onLink={link}
-        />
-      ) : null}
     </div>
   );
 }

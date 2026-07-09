@@ -6,6 +6,7 @@ import { EditorHint, FormTextArea, SimpleForm } from "@/lib/sections/_shared";
 import { MarkdownField } from "@/components/proposals/markdown-field";
 import { Markdown } from "@/lib/markdown";
 import { InlineTextArea } from "@/lib/sections/inline-text";
+import { RichInlineEditor } from "@/lib/sections/rich-inline-editor";
 import type { IntroductionSectionData } from "@/types/proposal";
 
 const DEFAULT: IntroductionSectionData = { statement: "", summary: "", graphic: "" };
@@ -49,13 +50,12 @@ export const introductionSection = defineSection<IntroductionSectionData>({
             ariaLabel="Company statement"
             className="text-[22px] leading-[1.7] tracking-[-0.02em] text-[var(--text-1)]"
           />
-          <InlineTextArea
+          <RichInlineEditor
             value={data.summary}
             onChange={(summary) => onChange({ ...data, summary })}
-            placeholder="Positioning summary (Markdown supported)…"
+            placeholder="Positioning summary — highlight text to bold/italicise/link it."
             ariaLabel="Positioning summary"
             className="max-w-3xl text-[15px] leading-7 text-[var(--text-2)]"
-            enableFormatBar
           />
         </div>
       );
