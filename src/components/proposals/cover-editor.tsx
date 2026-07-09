@@ -11,7 +11,7 @@ import type { CoverSectionData } from "@/types/proposal";
 const COVER_STYLES: Array<{ value: NonNullable<CoverSectionData["coverStyle"]>; label: string; hint: string }> = [
   { value: "light", label: "Light", hint: "Editorial, warm canvas" },
   { value: "minimal", label: "Minimal", hint: "Bare title + logo" },
-  { value: "bold", label: "Bold", hint: "Blue gradient hero" },
+  { value: "bold", label: "Bold", hint: "Dark navy hero" },
 ];
 
 export function CoverEditor({

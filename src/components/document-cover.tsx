@@ -7,10 +7,10 @@
  *
  * Anatomy (top to bottom):
  *
- *   ┌──────────────────────────────────────────────────────┐  ← Blue gradient hero
- *   │  FOUNDRY // PROPOSAL                    [rightSlot]  │
+ *   ┌──────────────────────────────────────────────────────┐  ← Hero: blue gradient (Pulse) or
+ *   │  FOUNDRY // PROPOSAL                    [rightSlot]  │    Gitwork navy (Docs, boldPalette="navy")
  *   │                                                      │
- *   │  Big editorial title in DM Serif Display.            │
+ *   │  Big editorial title in DM Serif Display or Fraunces.│
  *   │                                                      │
  *   │  v1.0  ·  PROJECT NAME                               │
  *   │  CLIENT: Acme  ·  PREPARED BY: Dan                   │
@@ -101,6 +101,12 @@ export interface DocumentCoverProps {
    * a warm canvas with blue used only as a thin accent. `minimal` is the barest variant.
    */
   coverStyle?: "light" | "minimal" | "bold";
+  /**
+   * `bold`'s hero colour + display font. `blue` (default) is the legacy Pulse look — untouched.
+   * `navy` is Gitwork's actual brand hero (Dark Navy + Fraunces + a purple accent bar) — Docs'
+   * cover.tsx always passes this; nothing else needs to opt in.
+   */
+  boldPalette?: "blue" | "navy";
   /** Optional banner image shown across the top of light/minimal covers. */
   heroImage?: string;
   /** Editor-only: when set, the title renders as an inline editable field on the canvas. */
@@ -136,6 +142,7 @@ export function DocumentCover({
   watermarkTone = "neutral",
   coBrand,
   coverStyle = "bold",
+  boldPalette = "blue",
   heroImage,
   onTitleChange,
   onSubtitleChange,
@@ -485,27 +492,29 @@ export function DocumentCover({
     );
   }
 
-  // ── Bold hero (legacy blue gradient) — the only path that reaches here; light/minimal returned
-  // above via the statement cover. Kept intact for Pulse and any direct bold caller. ──
+  // ── Bold hero — `blue` is the legacy gradient (Pulse; untouched). `navy` is Gitwork's actual
+  // brand hero per the brand guide: Dark Navy, Fraunces, a purple accent bar. Docs' cover.tsx
+  // always requests `navy`; nothing else needs to opt in, so Pulse never sees this branch move. ──
+  const navy = boldPalette === "navy";
+  // This branch isn't wrapped in its own block (the light/minimal branch above already
+  // returned), so it shares scope with the module-level `serif` — can't shadow it here the way
+  // that branch does; use a distinctly-named override instead for the navy hero only.
+  const boldSerif = navy ? "var(--font-fraunces), 'Fraunces', Georgia, serif" : serif;
+  const accent = "#6B52FF"; // Purple
   const isBold = true;
   const isMinimal = false;
   const hero = {
-    background: isBold
-      ? "linear-gradient(140deg, #1D4ED8 0%, #1E3A8A 100%)"
-      : isMinimal
-        ? "#FFFFFF"
-        : "#FAFAF9",
+    background: navy
+      ? "linear-gradient(160deg, #17172a 0%, #0C0C18 100%)"
+      : "linear-gradient(140deg, #1D4ED8 0%, #1E3A8A 100%)",
     minHeight: isBold ? (isPrint ? "44vh" : 220) : undefined,
-    eyebrow: isBold ? "rgba(255,255,255,0.55)" : "#1D4ED8",
-    title: isBold ? "white" : "#0F172A",
-    subtitle: isBold ? "rgba(255,255,255,0.60)" : "#475569",
-    metaLabel: isBold ? "rgba(255,255,255,0.50)" : "#64748B",
-    metaValue: isBold ? "rgba(255,255,255,0.90)" : "#0F172A",
-    // The single accent rule under the header on light covers; minimal uses a hairline.
-    rule: isBold ? null : isMinimal ? "rgba(0,0,0,0.10)" : "#1D4ED8",
-    watermarkColor: isBold
-      ? `rgba(255,255,255,${watermarkAlpha})`
-      : `rgba(15,23,42,${watermarkTone === "neutral" ? "0.05" : watermarkAlpha})`,
+    eyebrow: "rgba(255,255,255,0.55)",
+    title: "white",
+    subtitle: "rgba(255,255,255,0.60)",
+    metaLabel: "rgba(255,255,255,0.50)",
+    metaValue: "rgba(255,255,255,0.90)",
+    rule: null,
+    watermarkColor: `rgba(255,255,255,${watermarkAlpha})`,
   };
 
   return (
@@ -559,8 +568,9 @@ export function DocumentCover({
           />
         ) : null}
 
-        {/* Subtle geometric accents — only on the bold blue hero */}
-        {isBold ? (
+        {/* Subtle geometric accents — the legacy blue hero only; the navy brand hero reads
+            cleaner flat per the brand guide reference. */}
+        {isBold && !navy ? (
           <>
             <div
               aria-hidden="true"
@@ -644,6 +654,11 @@ export function DocumentCover({
             ) : null}
           </div>
 
+          {/* Purple accent bar — the brand guide's generic "accent element" motif. */}
+          {navy ? (
+            <div aria-hidden="true" style={{ width: 32, height: 2, background: accent, marginBottom: 18 }} />
+          ) : null}
+
           {/* Title — inline-editable on the canvas when onTitleChange is provided. */}
           {onTitleChange ? (
             <div style={{ maxWidth: "80%" }}>
@@ -653,7 +668,7 @@ export function DocumentCover({
                 placeholder="Document title"
                 ariaLabel="Document title"
                 style={{
-                  fontFamily: serif,
+                  fontFamily: boldSerif,
                   fontSize: isPrint ? 54 : 40,
                   fontWeight: 400,
                   letterSpacing: "-0.025em",
@@ -666,7 +681,7 @@ export function DocumentCover({
             <h1
               style={{
                 margin: 0,
-                fontFamily: serif,
+                fontFamily: boldSerif,
                 fontSize: isPrint ? 54 : 40,
                 fontWeight: 400,
                 letterSpacing: "-0.025em",
@@ -783,7 +798,7 @@ export function DocumentCover({
                   style={{ height: 22, objectFit: "contain", display: "block" }}
                 />
               ) : (
-                <span style={{ fontFamily: serif, fontSize: 20, fontWeight: 400, letterSpacing: "-0.01em", color: "#0F172A" }}>
+                <span style={{ fontFamily: boldSerif, fontSize: 20, fontWeight: 400, letterSpacing: "-0.01em", color: "#0F172A" }}>
                   {coBrand.clientName}
                 </span>
               )}
@@ -856,7 +871,7 @@ export function DocumentCover({
               >
                 <div
                   style={{
-                    fontFamily: serif,
+                    fontFamily: boldSerif,
                     fontSize: 28,
                     fontWeight: 400,
                     color: stat.color ?? "#0F172A",
@@ -1005,7 +1020,7 @@ export function DocumentVersionChip({
   version: string;
   status: string;
   documentNumber?: string | null;
-  /** `light` = white text for the bold blue hero; `dark` = ink text for light/minimal covers. */
+  /** `light` = white text for the bold navy hero; `dark` = ink text for light/minimal covers. */
   tone?: "light" | "dark";
 }) {
   const isDark = tone === "dark";
@@ -1027,7 +1042,7 @@ export function DocumentVersionChip({
             fontWeight: 600,
             letterSpacing: "0.1em",
             textTransform: "uppercase",
-            color: isDark ? "#1D4ED8" : "rgba(147,197,253,1)",
+            color: isDark ? "#6B52FF" : "#C4B5FD",
           }}
         >
           {documentNumber}
@@ -1035,7 +1050,7 @@ export function DocumentVersionChip({
       ) : null}
       <span
         style={{
-          fontFamily: "var(--font-display), 'DM Serif Display', serif",
+          fontFamily: "var(--font-fraunces), 'Fraunces', 'DM Serif Display', serif",
           fontSize: 44,
           fontWeight: 400,
           letterSpacing: "-0.02em",

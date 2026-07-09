@@ -260,7 +260,7 @@ export const coverSection = defineSection<CoverSectionData>({
                   { count: phasesCount, label: "Phases" },
                   { count: touchpointsCount, label: "Touchpoints" },
                   // The one dark tile — echoes the statement's "total" emphasis.
-                  { count: formattedValue, label: "Value", bg: "#191817", color: "#FFFFFF" },
+                  { count: formattedValue, label: "Value", bg: "#0C0C18", color: "#FFFFFF" },
                 ]
               : undefined
           }
@@ -270,6 +270,7 @@ export const coverSection = defineSection<CoverSectionData>({
           classification={classification}
           companyFooter={companyFooter}
           logoUrl={brandLogoUrl}
+          boldPalette="navy"
           coBrand={
             data.brandLockup === "CLIENT_X_GITWORK" &&
             (resolvedClientLogo || (clientName && clientName !== "Client"))
