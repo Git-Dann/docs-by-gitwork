@@ -15,7 +15,9 @@ import {
   KeyIcon,
   PlayIcon,
 } from "@heroicons/react/24/outline";
-import { useGolfDataConsole, useGolfCourseBackend, useGolfIntegrations, useRunGolfJob } from "@/hooks/use-wiki";
+import { useQueryClient } from "@tanstack/react-query";
+import { useGolfDataConsole, useGolfCourseBackend, useGolfIntegrations, useRunGolfJob, useGolfClubsList, useGolfUserData } from "@/hooks/use-wiki";
+import { getGolfDataConsole, getGolfCourseBackend, getGolfIntegrations, getGolfUserData } from "@/lib/api";
 import { usePermissions } from "@/hooks/use-permissions";
 import type {
   ConsoleTone,
@@ -24,6 +26,8 @@ import type {
   GolfPipelineNode,
 } from "@/server/golf-data-console";
 import type { CourseBackendData, CourseIntegration, RunJobResult } from "@/server/bigwedge-course-api";
+import type { GolfClubDTO } from "@/server/golf-clubs";
+import type { UserDataSnapshot } from "@/server/bigwedge-user-data";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 const SERIF = "var(--font-display), 'Times New Roman', Georgia, serif";
@@ -230,18 +234,42 @@ function DatasetVersions({ datasets }: { datasets: GolfDataConsole["datasets"] }
 
 // ── main ──────────────────────────────────────────────────────────────────────
 
-type View = "overview" | "course-backend" | "integrations";
+type View = "overview" | "clubs" | "course-backend" | "user-data" | "integrations";
 
 export function GolfDataConsoleView({ slug }: { slug: string; clientName?: string }) {
   const [view, setView] = useState<View>("overview");
   const overview = useGolfDataConsole(slug, true);
+  const clubs = useGolfClubsList(slug, view === "clubs");
   const backend = useGolfCourseBackend(slug, view === "course-backend");
+  const userData = useGolfUserData(slug, view === "user-data");
   const integrations = useGolfIntegrations(slug, view === "integrations");
 
-  const refreshing =
-    view === "overview" ? overview.isFetching : view === "course-backend" ? backend.isFetching : integrations.isFetching;
-  const refetch = () =>
-    view === "overview" ? overview.refetch() : view === "course-backend" ? backend.refetch() : integrations.refetch();
+  const qc = useQueryClient();
+  const [forcing, setForcing] = useState(false);
+  const active =
+    view === "overview" ? overview
+    : view === "clubs" ? clubs
+    : view === "course-backend" ? backend
+    : view === "user-data" ? userData
+    : integrations;
+  const refreshing = active.isFetching || forcing;
+
+  // Refresh bypasses the server-side cache (?refresh=1) and writes fresh data in.
+  const refetch = async () => {
+    if (view === "clubs") {
+      await clubs.refetch();
+      return;
+    }
+    setForcing(true);
+    try {
+      if (view === "overview") qc.setQueryData(["golf-data-console", slug], await getGolfDataConsole(slug, true));
+      else if (view === "course-backend") qc.setQueryData(["golf-course-backend", slug], await getGolfCourseBackend(slug, true));
+      else if (view === "user-data") qc.setQueryData(["golf-user-data", slug], await getGolfUserData(slug, true));
+      else qc.setQueryData(["golf-integrations", slug], await getGolfIntegrations(slug, true));
+    } finally {
+      setForcing(false);
+    }
+  };
 
   const snapshot = overview.data;
 
@@ -271,7 +299,9 @@ export function GolfDataConsoleView({ slug }: { slug: string; clientName?: strin
             aria-label="Console view"
           >
             <option value="overview">Platform overview</option>
+            <option value="clubs">Clubs</option>
             <option value="course-backend">Course backend</option>
+            <option value="user-data">User data</option>
             <option value="integrations">Integrations</option>
           </select>
 
@@ -289,8 +319,12 @@ export function GolfDataConsoleView({ slug }: { slug: string; clientName?: strin
 
       {view === "overview" ? (
         <OverviewView state={overview} />
+      ) : view === "clubs" ? (
+        <ClubsView state={clubs} />
       ) : view === "course-backend" ? (
         <CourseBackendView state={backend} />
+      ) : view === "user-data" ? (
+        <UserDataView state={userData} />
       ) : (
         <IntegrationsView slug={slug} state={integrations} />
       )}
@@ -470,23 +504,40 @@ function OverviewView({ state }: { state: ReturnType<typeof useGolfDataConsole> 
             </div>
           </WidgetCard>
 
-          <WidgetCard number="12" label="Courses (Live)" status="from intake" bodyClassName="p-4">
+          {/* Course backend rollup — same numbers as the Course backend view */}
+          <WidgetCard number="12" label="Course Backend (Live)" status={snapshot.backend?.connected ? "connected" : "offline"} bodyClassName="p-4">
+            {snapshot.backend?.connected ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <RollupStat value={snapshot.backend.courses} label="Courses" tone="ok" icon={<CircleStackIcon className="h-4 w-4" />} />
+                  <RollupStat value={snapshot.backend.venues} label="Venues" icon={<GlobeAltIcon className="h-4 w-4" />} />
+                  <RollupStat value={snapshot.backend.holes} label="Holes" icon={<ServerStackIcon className="h-4 w-4" />} />
+                  <RollupStat value={snapshot.backend.countries} label="Countries" icon={<MapPinIcon className="h-4 w-4" />} />
+                </div>
+                <div className="mt-3 rounded-[6px] bg-[var(--surface-1)] px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>GPS coverage</span>
+                    <span style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-2)" }}>{snapshot.backend.gpsCoveragePct}%</span>
+                  </div>
+                  <span className="widget-progress mt-1.5 block"><span className="widget-progress__fill" style={{ width: `${snapshot.backend.gpsCoveragePct}%` }} /></span>
+                </div>
+              </>
+            ) : (
+              <p className="text-[12px] text-[var(--text-4)]">Course backend offline — set the login on the VPS. Requests + Equipment below are unaffected.</p>
+            )}
+          </WidgetCard>
+
+          {/* Course requests (intake) — distinct from the course backend */}
+          <WidgetCard number="13" label="Course Requests" status="user intake" bodyClassName="p-4">
             <div className="grid grid-cols-2 gap-3">
-              <RollupStat value={snapshot.courses.total} label="Total courses" icon={<CircleStackIcon className="h-4 w-4" />} />
-              <RollupStat value={snapshot.courses.added} label="Added to app" tone="ok" icon={<CheckCircleIcon className="h-4 w-4" />} />
+              <RollupStat value={snapshot.courses.total} label="Requests" icon={<CircleStackIcon className="h-4 w-4" />} />
+              <RollupStat value={snapshot.courses.added} label="Added" tone="ok" icon={<CheckCircleIcon className="h-4 w-4" />} />
               <RollupStat value={snapshot.courses.pending} label="Pending" tone={snapshot.courses.pending > 0 ? "warn" : "ok"} icon={<ExclamationTriangleIcon className="h-4 w-4" />} />
               <RollupStat value={snapshot.courses.countries} label="Countries" icon={<GlobeAltIcon className="h-4 w-4" />} />
             </div>
-            <div className="mt-3 rounded-[6px] bg-[var(--surface-1)] px-3 py-2">
-              <div className="flex items-center justify-between">
-                <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>Provenance coverage</span>
-                <span style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-2)" }}>{snapshot.courses.coveragePct}%</span>
-              </div>
-              <span className="widget-progress mt-1.5 block"><span className="widget-progress__fill" style={{ width: `${snapshot.courses.coveragePct}%` }} /></span>
-            </div>
           </WidgetCard>
 
-          <WidgetCard number="13" label="Equipment (Live)" status="clubs" bodyClassName="p-4">
+          <WidgetCard number="14" label="Equipment (Live)" status="clubs" bodyClassName="p-4">
             <div className="grid grid-cols-3 gap-3">
               <RollupStat value={snapshot.equipment.total} label="Clubs" tone="ok" icon={<CircleStackIcon className="h-4 w-4" />} />
               <RollupStat value={snapshot.equipment.manufacturers} label="Brands" icon={<ServerStackIcon className="h-4 w-4" />} />
@@ -496,7 +547,7 @@ function OverviewView({ state }: { state: ReturnType<typeof useGolfDataConsole> 
 
           <p className="flex items-start gap-1.5 px-1 text-[11px] leading-relaxed text-[var(--text-4)]">
             <ShieldCheckIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>All figures are live from Foundry data (clubs catalogue + course intake). The full Big Wedge course backend is in the <span className="font-medium">Course backend</span> view.</span>
+            <span>The overview reconciles with the other views: <span className="font-medium">Courses/Venues/GPS</span> are the live Course backend, <span className="font-medium">Equipment</span> is the Clubs catalogue, <span className="font-medium">Requests</span> is user intake. Same numbers, drill in for detail.</span>
           </p>
         </div>
       </div>
@@ -544,8 +595,8 @@ function CourseBackendView({ state }: { state: ReturnType<typeof useGolfCourseBa
   const sourceTotal = sources._total ?? s.courses;
   const holeDist = Object.entries(s.hole_distribution).sort((a, b) => Number(b[1]) - Number(a[1]));
 
-  const tile = (value: string | number, label: string, tone?: ConsoleTone, sub?: string) => (
-    <WidgetCard number="" label={label} bodyClassName="px-4 pb-3 pt-3">
+  const tile = (num: string, value: string | number, label: string, tone?: ConsoleTone, sub?: string) => (
+    <WidgetCard number={num} label={label} bodyClassName="px-4 pb-3 pt-3">
       <span style={{ fontFamily: SERIF, fontSize: 40, lineHeight: 1, letterSpacing: "-0.02em", color: tone ? toneColor(tone) : "var(--text-1)" }}>{value}</span>
       {sub ? <div className="mt-1.5" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-4)" }}>{sub}</div> : null}
     </WidgetCard>
@@ -562,18 +613,18 @@ function CourseBackendView({ state }: { state: ReturnType<typeof useGolfCourseBa
 
       {/* Metric strip */}
       <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        {tile(s.courses.toLocaleString("en-GB"), "Courses")}
-        {tile(s.clubs.toLocaleString("en-GB"), "Clubs")}
-        {tile(`${gpsPct}%`, "GPS Coverage", gpsPct >= 80 ? "ok" : "warn", `${s.with_gps.toLocaleString("en-GB")} courses`)}
-        {tile(s.gps_points.toLocaleString("en-GB"), "GPS Points")}
-        {tile(s.holes.toLocaleString("en-GB"), "Holes")}
-        {tile(s.countries.toLocaleString("en-GB"), "Countries")}
+        {tile("01", s.courses.toLocaleString("en-GB"), "Courses")}
+        {tile("02", s.clubs.toLocaleString("en-GB"), "Venues (Clubs)")}
+        {tile("03", `${gpsPct}%`, "GPS Coverage", gpsPct >= 80 ? "ok" : "warn", `${s.with_gps.toLocaleString("en-GB")} courses`)}
+        {tile("04", s.gps_points.toLocaleString("en-GB"), "GPS Points")}
+        {tile("05", s.holes.toLocaleString("en-GB"), "Holes")}
+        {tile("06", s.countries.toLocaleString("en-GB"), "Countries")}
       </div>
 
       <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-3">
         <div className="space-y-3 xl:col-span-2">
           {/* Coverage by country */}
-          <WidgetCard number="01" label="Coverage by Country" status={`${s.countries} countries`} bodyClassName="p-0">
+          <WidgetCard number="07" label="Coverage by Country" status={`${s.countries} countries`} bodyClassName="p-0">
             <div className="max-h-[340px] overflow-auto">
               <table className="w-full border-collapse text-sm">
                 <thead><tr>{["Country", "Courses", "With GPS", "GPS %"].map((h) => <th key={h} className={th} style={thStyle}>{h}</th>)}</tr></thead>
@@ -593,7 +644,7 @@ function CourseBackendView({ state }: { state: ReturnType<typeof useGolfCourseBa
           </WidgetCard>
 
           {/* Recent activity */}
-          <WidgetCard number="02" label="Recent Activity" status="enrichment · seeds" bodyClassName="p-0">
+          <WidgetCard number="08" label="Recent Activity" status="enrichment · seeds" bodyClassName="p-0">
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-sm">
                 <thead><tr>{["Source", "Type", "Affected", "Skipped", "Errors", "When"].map((h) => <th key={h} className={th} style={thStyle}>{h}</th>)}</tr></thead>
@@ -617,7 +668,7 @@ function CourseBackendView({ state }: { state: ReturnType<typeof useGolfCourseBa
 
         <div className="space-y-3">
           {/* Data quality */}
-          <WidgetCard number="03" label="Data Quality" status={`${completePct}% complete`} bodyClassName="p-4">
+          <WidgetCard number="09" label="Data Quality" status={`${completePct}% complete`} bodyClassName="p-4">
             {[
               { l: "Complete records", n: s.complete },
               { l: "With GPS", n: s.with_gps },
@@ -642,7 +693,7 @@ function CourseBackendView({ state }: { state: ReturnType<typeof useGolfCourseBa
           </WidgetCard>
 
           {/* Sources */}
-          <WidgetCard number="04" label="Source Coverage" status={`of ${sourceTotal.toLocaleString("en-GB")}`} bodyClassName="p-4">
+          <WidgetCard number="10" label="Source Coverage" status={`of ${sourceTotal.toLocaleString("en-GB")}`} bodyClassName="p-4">
             {sourceRows.length === 0 ? (
               <p style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-4)" }}>No source data</p>
             ) : (
@@ -662,7 +713,7 @@ function CourseBackendView({ state }: { state: ReturnType<typeof useGolfCourseBa
           </WidgetCard>
 
           {/* Hole distribution */}
-          <WidgetCard number="05" label="Hole Distribution" bodyClassName="p-4">
+          <WidgetCard number="11" label="Hole Distribution" bodyClassName="p-4">
             <div className="flex flex-wrap gap-2">
               {holeDist.map(([holes, count]) => (
                 <div key={holes} className="rounded-[6px] border border-[var(--border-2)] px-3 py-2 text-center">
@@ -680,6 +731,111 @@ function CourseBackendView({ state }: { state: ReturnType<typeof useGolfCourseBa
           </p>
         </div>
       </div>
+    </>
+  );
+}
+
+// ── Clubs browser ─────────────────────────────────────────────────────────────
+
+function clubLofts(c: GolfClubDTO): string {
+  const lofts = Array.from(new Set(c.variants.map((v) => v.loft).filter(Boolean))) as string[];
+  if (lofts.length) return lofts.join(", ");
+  const set = c.specifications?.setComposition;
+  if (typeof set === "string") return set;
+  return "—";
+}
+
+function specSummary(c: GolfClubDTO): string {
+  return Object.entries(c.specifications ?? {})
+    .filter(([k]) => k !== "setComposition")
+    .slice(0, 3)
+    .map(([k, v]) => (typeof v === "boolean" ? (v ? k : "") : `${v}`))
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function ClubsView({ state }: { state: ReturnType<typeof useGolfClubsList> }) {
+  const { data, isPending, isError, refetch } = state;
+  const [q, setQ] = useState("");
+  const [category, setCategory] = useState<string>("all");
+  const [brand, setBrand] = useState<string>("all");
+
+  if (isPending) return <Loading label="Loading clubs…" />;
+  if (isError || !data) return <ErrorState onRetry={() => refetch()} label="Couldn't load clubs." />;
+
+  const all = data.clubs;
+  const categories = Array.from(new Set(all.map((c) => c.category))).sort();
+  const brands = Array.from(new Set(all.map((c) => c.manufacturer))).sort();
+
+  const ql = q.trim().toLowerCase();
+  const filtered = all.filter((c) => {
+    if (category !== "all" && c.category !== category) return false;
+    if (brand !== "all" && c.manufacturer !== brand) return false;
+    if (ql) {
+      const hay = `${c.manufacturer} ${c.modelName} ${c.modelFamily ?? ""} ${c.category} ${c.aliases.join(" ")}`.toLowerCase();
+      if (!hay.includes(ql)) return false;
+    }
+    return true;
+  });
+
+  return (
+    <>
+      <div className="mt-3 grid grid-cols-3 gap-3">
+        <MetricTile number="01" value={all.length.toLocaleString("en-GB")} label="Clubs" tone="ok" />
+        <MetricTile number="02" value={String(brands.length)} label="Brands" />
+        <MetricTile number="03" value={String(categories.length)} label="Types" />
+      </div>
+
+      <WidgetCard number="04" label="Clubs Catalogue" status={`${filtered.length} shown`} bodyClassName="p-0">
+        {/* Toolbar — one line on sm+, stacks on mobile */}
+        <div className="flex flex-col gap-2 border-b border-[var(--border-2)] p-3 sm:flex-row sm:items-center">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search brand, model…"
+            className="app-input-compact w-full sm:flex-1"
+          />
+          <select value={brand} onChange={(e) => setBrand(e.target.value)} className="app-select-compact w-full sm:w-44">
+            <option value="all">All brands</option>
+            {brands.map((b) => <option key={b} value={b}>{b}</option>)}
+          </select>
+          <select value={category} onChange={(e) => setCategory(e.target.value)} className="app-select-compact w-full sm:w-44">
+            <option value="all">All types</option>
+            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+
+        <div className="max-h-[calc(100dvh-360px)] min-h-[420px] overflow-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead className="sticky top-0 z-10 bg-[var(--surface-0)]">
+              <tr>{["Brand", "Model", "Type", "Year", "Lofts / Set", "Specs"].map((h) => <th key={h} className={th} style={thStyle}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {filtered.map((c) => (
+                <tr key={c.id}>
+                  <td className={td}><span className="text-[13px] font-medium text-[var(--text-1)]">{c.manufacturer}</span></td>
+                  <td className={td}>
+                    <span className="text-[13px] text-[var(--text-2)]">{c.modelName}</span>
+                    {c.aliases.length ? <span className="ml-1.5" style={{ fontFamily: MONO, fontSize: 9, color: "var(--text-4)" }}>({c.aliases[0]})</span> : null}
+                  </td>
+                  <td className={td} style={monoCell}>{c.category}</td>
+                  <td className={td} style={monoCell}>{c.modelYear ?? "—"}</td>
+                  <td className={td} style={{ ...monoCell, color: "var(--text-2)" }}>{clubLofts(c)}</td>
+                  <td className={td} style={{ ...monoCell, fontSize: 11 }}>{specSummary(c)}</td>
+                </tr>
+              ))}
+              {filtered.length === 0 ? (
+                <tr><td className={td} colSpan={6} style={{ ...monoCell, textAlign: "center" }}>No clubs match</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </WidgetCard>
+
+      <p className="mt-3 flex items-start gap-1.5 px-1 text-[11px] leading-relaxed text-[var(--text-4)]">
+        <ShieldCheckIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>Live from the <span className="font-medium">GolfClub</span> catalogue — the same Type · Brand · Model · Loft the Big Wedge app collects. The catalogue grows via the scheduled collector.</span>
+      </p>
     </>
   );
 }
@@ -846,16 +1002,16 @@ function IntegrationsView({ slug, state }: { slug: string; state: ReturnType<typ
   return (
     <>
       <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <MetricTile value={String(list.length)} label="Connectors" />
-        <MetricTile value={String(active)} label="Active" tone="ok" />
-        <MetricTile value={String(needsKey)} label="Need a key" tone={needsKey > 0 ? "warn" : "ok"} />
-        <MetricTile value={data.total.toLocaleString("en-GB")} label="Spine courses" />
+        <MetricTile number="01" value={String(list.length)} label="Connectors" />
+        <MetricTile number="02" value={String(active)} label="Active" tone="ok" />
+        <MetricTile number="03" value={String(needsKey)} label="Need a key" tone={needsKey > 0 ? "warn" : "ok"} />
+        <MetricTile number="04" value={data.total.toLocaleString("en-GB")} label="Spine courses" />
       </div>
 
       <div className="mt-3 space-y-3">
-        {section("01", "Spine (Licensed)", spine)}
-        {section("02", "Enrichment", enrich)}
-        {section("03", "Seeders", seed)}
+        {section("05", "Spine (Licensed)", spine)}
+        {section("06", "Enrichment", enrich)}
+        {section("07", "Seeders", seed)}
       </div>
 
       <p className="mt-3 flex items-start gap-1.5 px-1 text-[11px] leading-relaxed text-[var(--text-4)]">
@@ -870,11 +1026,244 @@ function IntegrationsView({ slug, state }: { slug: string; state: ReturnType<typ
   );
 }
 
-function MetricTile({ value, label, tone }: { value: string; label: string; tone?: ConsoleTone }) {
+function MetricTile({ value, label, tone, number = "" }: { value: string; label: string; tone?: ConsoleTone; number?: string }) {
   return (
-    <WidgetCard number="" label={label} bodyClassName="px-4 pb-3 pt-3">
+    <WidgetCard number={number} label={label} bodyClassName="px-4 pb-3 pt-3">
       <span style={{ fontFamily: SERIF, fontSize: 34, lineHeight: 1, letterSpacing: "-0.02em", color: tone ? toneColor(tone) : "var(--text-1)" }}>{value}</span>
     </WidgetCard>
+  );
+}
+
+// ── User data (aggregate app analytics, read-only) ───────────────────────────
+
+function fmtVal(v: number): string {
+  if (!Number.isFinite(v)) return String(v);
+  return Number.isInteger(v) ? v.toLocaleString("en-GB") : v.toLocaleString("en-GB", { maximumFractionDigits: 2 });
+}
+
+// All 6 groups below come from the single `overall-report` aggregate call — same
+// trust level as each other. Clubhouse (a single-active-room debug endpoint),
+// Feedback (support ticket counts) and the raw "Overall" fallback are deliberately
+// left out: not business KPIs, and Clubhouse's numbers were literal 1-room test data.
+const GROUP_ORDER = [
+  "User Growth", "Engagement", "Retention", "Business Growth", "Revenue", "Golf Metrics",
+];
+const KPI_GROUPS = new Set(GROUP_ORDER);
+
+function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) {
+  const { data, isPending, isError, refetch } = state;
+
+  if (isPending) return <Loading label="Reading Big Wedge user analytics…" />;
+  if (isError || !data) return <ErrorState onRetry={() => refetch()} label="Couldn't load user data." />;
+
+  const d = data as UserDataSnapshot;
+
+  if (!d.connected) {
+    return (
+      <WidgetCard number="01" label="User Data" status="not connected" bodyClassName="p-6">
+        <div className="flex items-start gap-3">
+          <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--warning-500)]" />
+          <div>
+            <p className="text-[13px] font-medium text-[var(--text-2)]">App analytics API not connected</p>
+            <p className="mt-1 text-[12px] text-[var(--text-4)]">
+              User analytics come from the main Big Wedge app API. Recommended: set{" "}
+              <span style={{ fontFamily: MONO }}>WEDGE_APP_API_USER</span> +{" "}
+              <span style={{ fontFamily: MONO }}>WEDGE_APP_API_PASSWORD</span> on the VPS — Foundry mints a fresh
+              token each pull (app JWTs expire fast). Alternatively paste an admin JWT in{" "}
+              <span className="font-medium">Care → Connectors → Analytics API</span> or set{" "}
+              <span style={{ fontFamily: MONO }}>WEDGE_APP_API_TOKEN</span>.
+            </p>
+            {d.error ? <p className="mt-2 rounded-[6px] bg-[var(--surface-1)] px-2 py-1.5" style={{ fontFamily: MONO, fontSize: 10, color: "var(--text-4)" }}>{d.error}</p> : null}
+          </div>
+        </div>
+      </WidgetCard>
+    );
+  }
+
+  // Group the flattened metrics — KPIs only.
+  const groups = new Map<string, typeof d.metrics>();
+  for (const m of d.metrics) {
+    const g = m.group ?? "Other";
+    if (!KPI_GROUPS.has(g)) continue; // Skip non-KPI groups
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g)!.push(m);
+  }
+  const orderedGroups = [...groups.keys()].sort((a, b) => {
+    const ai = GROUP_ORDER.indexOf(a);
+    const bi = GROUP_ORDER.indexOf(b);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+
+  return (
+    <>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1.5" style={{ color: "var(--success-500)", fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+          <span className="inline-block h-2 w-2 rounded-full" style={{ background: "var(--success-500)" }} /> Connected
+        </span>
+        <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-4)" }}>
+          · {d.metrics.length} metrics · {d.endpointsHit.length} endpoints
+          {d.endpointsFailed.length ? ` · ${d.endpointsFailed.length} unavailable` : ""}
+        </span>
+      </div>
+
+      {d.metrics.length === 0 ? (
+        <WidgetCard number="01" label="User Data" status="empty" bodyClassName="p-6">
+          <p className="text-[12px] text-[var(--text-4)]">Connected, but the analytics endpoints returned no numeric fields. The admin report shape may have changed.</p>
+        </WidgetCard>
+      ) : (
+        <div className="mt-4 space-y-6">
+          {orderedGroups.map((g, groupIdx) => {
+            const allItems = groups.get(g)!;
+            // Only `*_growth_pct` fields are genuine period-over-period trends — pull
+            // those out as a real header badge. Other `_pct` fields (e.g. Business
+            // Growth's `premium_pct`/`free_pct`) are composition ratios, not trends,
+            // and stay as normal cards with a % suffix — an up/down arrow on those
+            // would misrepresent what they mean.
+            const growthMetric = allItems.find((m) => /growth_pct$/i.test(m.key));
+            const items = growthMetric ? allItems.filter((m) => m.key !== growthMetric.key) : allItems;
+            const pctValue = growthMetric ? Math.round(growthMetric.value * 10) / 10 : null;
+            const isUp = pctValue !== null && pctValue >= 0;
+
+            const isHero = g === "User Growth";
+            const isRevenue = g === "Revenue";
+            const numberSize = isHero ? 36 : 28;
+
+            return (
+              <div key={g}>
+                <div className="mb-3 flex items-center gap-2.5">
+                  <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-3)", fontWeight: 600 }}>
+                    {`${String(groupIdx + 1).padStart(2, "0")} // ${g}`}
+                  </span>
+                  {pctValue !== null && (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5"
+                      style={{
+                        fontFamily: MONO,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: "0.03em",
+                        color: isUp ? "var(--success-500)" : "var(--warning-500)",
+                        background: isUp ? "color-mix(in srgb, var(--success-500) 14%, transparent)" : "color-mix(in srgb, var(--warning-500) 14%, transparent)",
+                      }}
+                      title="Period-over-period growth, as reported by the Big Wedge analytics API"
+                    >
+                      {isUp ? "↑" : "↓"} {Math.abs(pctValue)}%
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  {items.map((m) => {
+                    const isPercentField = /_pct$/i.test(m.key) || /pct$/i.test(m.label);
+                    const isCurrencyField = isRevenue && !isPercentField;
+
+                    return (
+                      <div
+                        key={m.key}
+                        className="rounded-[12px] border p-5"
+                        style={{
+                          background: "var(--surface-2)",
+                          borderColor: isRevenue
+                            ? "color-mix(in srgb, var(--brand-500) 45%, var(--border-2))"
+                            : "var(--border-2)",
+                        }}
+                      >
+                        <div style={{ fontFamily: SERIF, fontSize: numberSize, lineHeight: 1, letterSpacing: "-0.02em", color: isRevenue ? "var(--brand-500)" : "var(--text-1)", fontWeight: 700 }}>
+                          {isCurrencyField ? "£" : ""}
+                          {fmtVal(m.value)}
+                          {isPercentField ? "%" : ""}
+                          {m.unit ? <span style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-4)", fontWeight: 400, marginLeft: 4 }}>{m.unit}</span> : null}
+                        </div>
+                        <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-3)", marginTop: 10, lineHeight: 1.3, fontWeight: 500 }}>
+                          {m.label}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {(() => {
+        const L = d.lists;
+        const has = L.topActiveUsers.length || L.mostPlayedCourses.length || L.gameModes.length;
+        if (!has) return null;
+        let n = d.metrics.length ? orderedGroups.length : 0;
+        const next = () => String(++n).padStart(2, "0");
+        return (
+          <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {L.mostPlayedCourses.length ? (
+              <WidgetCard number={next()} label="Most Played Courses" status={`top ${L.mostPlayedCourses.length}`} bodyClassName="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead><tr>{["Course", "Club", "Rounds"].map((h) => <th key={h} className={th} style={thStyle}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {L.mostPlayedCourses.map((c, i) => (
+                        <tr key={i}>
+                          <td className={td}><span className="text-[13px] text-[var(--text-1)]">{c.courseName}</span></td>
+                          <td className={td} style={monoCell}>{c.clubName}</td>
+                          <td className={td} style={{ ...monoCell, color: "var(--text-2)" }}>{c.count.toLocaleString("en-GB")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </WidgetCard>
+            ) : null}
+
+            {L.topActiveUsers.length ? (
+              <WidgetCard number={next()} label="Top Active Users" status={`top ${L.topActiveUsers.length}`} bodyClassName="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead><tr>{["#", "Username", "Rounds"].map((h) => <th key={h} className={th} style={thStyle}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {L.topActiveUsers.map((u, i) => (
+                        <tr key={i}>
+                          <td className={td} style={{ ...monoCell, color: "var(--text-4)" }}>{i + 1}</td>
+                          <td className={td} style={{ ...monoCell, color: "var(--text-1)", fontSize: 13 }}>{u.username}</td>
+                          <td className={td} style={{ ...monoCell, color: "var(--text-2)" }}>{u.count.toLocaleString("en-GB")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </WidgetCard>
+            ) : null}
+
+            {L.gameModes.length ? (
+              <WidgetCard number={next()} label="Game Modes" status={`${L.gameModes.length} modes`} bodyClassName="p-4">
+                <div className="space-y-2.5">
+                  {L.gameModes.map((m, i) => {
+                    const p = m.percentage ?? 0;
+                    return (
+                      <div key={i}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[13px] text-[var(--text-2)]">{m.mode}</span>
+                          <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-3)" }}>
+                            {m.count.toLocaleString("en-GB")}{m.percentage != null ? ` · ${m.percentage}%` : ""}
+                          </span>
+                        </div>
+                        <span className="widget-progress mt-1 block"><span className="widget-progress__fill" style={{ width: `${Math.max(2, p)}%` }} /></span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </WidgetCard>
+            ) : null}
+          </div>
+        );
+      })()}
+
+      <p className="mt-3 flex items-start gap-1.5 px-1 text-[11px] leading-relaxed text-[var(--text-4)]">
+        <ShieldCheckIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>
+          Read-only, live from the Big Wedge app API (<span style={{ fontFamily: MONO }}>analytics/overall-report · clubhouse/stats · feedback/stats · rounds</span>).
+          The API exposes <span className="font-medium">aggregate</span> analytics only (no raw per-user export); platform/OS, demographics and subscription splits appear here when the admin report includes them.
+        </span>
+      </p>
+    </>
   );
 }
 

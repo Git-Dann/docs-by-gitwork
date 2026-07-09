@@ -1,7 +1,7 @@
 import { after } from "next/server";
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
-import { assertCan, canManagePulse, canSeeAllClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertCan, canManagePulse, canGenerateAi, canSeeAllClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assignedClientIds } from "@/server/tasks";
 import { pulseScanCreateSchema } from "@/server/validators";
 import { createPulseScanRecord, runAnalysis, listPulseScans } from "@/server/pulse";
@@ -26,7 +26,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    assertCan(await getEffectiveUserOrNull(request), canManagePulse, "create Pulse scans");
+    // Running a scan spends AI tokens (synthesis/discovery run after the free checks), so it
+    // needs BOTH the Pulse-manage action AND the AI-generation gate. Admins hold both; a scoped
+    // developer holds neither, and Staff (pulse.manage but not ai.generate) can't spend on scans.
+    const scanUser = await getEffectiveUserOrNull(request);
+    assertCan(scanUser, canManagePulse, "create Pulse scans");
+    assertCan(scanUser, canGenerateAi, "run AI-powered Pulse scans");
     const body = pulseScanCreateSchema.parse(await request.json());
 
     // For URL/GITHUB_REPO scans, projectDescription supplements the main input as inputDescription.

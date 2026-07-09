@@ -54,5 +54,11 @@ export function usePermissions() {
     // Handbook (internal developer knowledgebase): everyone reads it, but only Admin + Super Admin
     // create/edit/delete. Developers and staff NEVER write to it (role-gated, not grantable).
     canManageHandbook: isAtLeast(role, "ADMIN"),
+    // May TRIGGER fresh AI generation (spends tokens): Docs authoring, Care drafts + report
+    // narratives, meeting/Slack summaries, Pulse scans + discovery. Admin/Super Admin by default;
+    // grantable per person via `ai.generate`. Non-holders read cached AI output only. Use this to
+    // hide/disable AI trigger buttons so non-holders don't hit a 403 wall. NB: fetching Scribe
+    // meeting notes is exempt — it stays available to everyone regardless of this flag.
+    canGenerateAi: isAtLeast(role, "ADMIN") || permissions.includes("ai.generate"),
   };
 }

@@ -344,6 +344,7 @@ model Workspace {
   /// built-in articles by slug once, then advances this. Lets us ship improved built-in content on
   /// deploy without clobbering members' own edits between version bumps. 0 = never seeded.
   handbookSeedVersion         Int                        @default(0)
+  golfClubSeedVersion         Int                        @default(0)
   createdAt                   DateTime                   @default(now())
   updatedAt                   DateTime                   @updatedAt
   members                     WorkspaceMember[]

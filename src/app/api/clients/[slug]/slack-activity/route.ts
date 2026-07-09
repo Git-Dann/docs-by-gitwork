@@ -3,7 +3,7 @@ import { apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
-import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { getEffectiveUserOrNull, canComputeAiFor } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { resolveAiConfig, completeText, type WorkspaceAiFields } from "@/server/ai-provider";
 import { getSlackBotToken } from "@/server/slack/client";
@@ -42,7 +42,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { workspace } = await ensureBaseRecords();
     const { slug } = await context.params;
-    await assertClientAccessBySlug(await getEffectiveUserOrNull(request), slug);
+    const user = await getEffectiveUserOrNull(request);
+    await assertClientAccessBySlug(user, slug);
+    // Any teammate with client access sees the cached digest; only AI-generation holders
+    // (admins by default) pay to refresh it when the channel ticks forward.
+    const canCompute = canComputeAiFor(user);
 
     const [client, ws] = await Promise.all([
       prisma.workspaceClient.findFirst({
@@ -199,6 +203,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       workspaceId: workspace.id,
       cacheKey: `slack-activity:${channelId}`,
       inputsHash,
+      canCompute,
       compute: async () => {
         const summary = await summarise(
           messages,
@@ -212,10 +217,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return apiOk({
       configured: true,
       channelName,
-      summary: cacheResult.response.summary,
-      generatedAt: cacheResult.cachedAt ?? new Date().toISOString(),
-      cached: cacheResult.cached,
-      reason: "ok",
+      // Viewer without the AI gate + no cached digest → no summary, but the raw messages
+      // still render. Reason "stale" tells the client it's cache-only, not an error.
+      summary: cacheResult?.response.summary ?? null,
+      generatedAt: cacheResult?.cachedAt ?? null,
+      cached: cacheResult?.cached ?? false,
+      reason: cacheResult ? "ok" : "stale",
       participants,
       messages,
     });

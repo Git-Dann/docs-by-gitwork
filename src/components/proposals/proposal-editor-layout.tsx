@@ -62,6 +62,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { slugifyClientName } from "@/lib/clients";
 import { useProposal, useUpdateProposal } from "@/hooks/use-proposals";
 import { useDeleteSnippet, useSnippets } from "@/hooks/use-snippets";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatCurrency, formatDate, statusLabel } from "@/lib/format";
 import { deriveProposalStatus } from "@/lib/proposal-workflow";
 import { approvalTrackApplies } from "@/lib/templates";
@@ -178,6 +179,9 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
   const [pullDataOpen, setPullDataOpen] = useState(false);
   const [aiChatOpen, setAiChatOpen] = useState(false);
+  // Only AI-generation holders (admins by default) see AI authoring — it spends tokens.
+  // Non-holders still edit the doc by hand; the server also blocks the routes.
+  const { canGenerateAi } = usePermissions();
   const [templateSavedAt, setTemplateSavedAt] = useState<string | null>(null);
   const [presenting, setPresenting] = useState(false);
 
@@ -925,7 +929,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               Present
             </Button>
 
-            {/* AI menu — Ask AI · Quick draft */}
+            {/* AI menu — Ask AI · Quick draft. Hidden for non-generators (cost gate). */}
+            {canGenerateAi && (
             <div>
               <button
                 ref={aiMenuButtonRef}
@@ -978,6 +983,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 </div>
               )}
             </div>
+            )}
             {draft.documentType === "REPORT" && (
               <button
                 type="button"

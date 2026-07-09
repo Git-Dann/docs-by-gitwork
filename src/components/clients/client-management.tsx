@@ -405,7 +405,7 @@ function ClientCard({
   onToggleSelect?: (slug: string) => void;
 }) {
   const router = useRouter();
-  const { canViewClientFinancials, canViewPulse } = usePermissions();
+  const { canViewClientFinancials, canViewPulse, canManageClients } = usePermissions();
   const devCount = client.devCount ?? 0;
   // Retainer burn-down (gated) — a thin bar under the metrics strip; red once over allowance.
   const retainerAllowance = client.retainerDays ?? 0;
@@ -569,9 +569,11 @@ function ClientCard({
           <p className="flex-1 truncate font-semibold leading-snug text-[var(--text-1)]">
             {client.name}
           </p>
-          <div onClick={(e) => e.stopPropagation()}>
-            <DeleteButton clientSlug={client.slug} />
-          </div>
+          {canManageClients ? (
+            <div onClick={(e) => e.stopPropagation()}>
+              <DeleteButton clientSlug={client.slug} />
+            </div>
+          ) : null}
         </div>
 
         {client.status === "LEAD" ? (

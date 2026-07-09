@@ -3,6 +3,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getPulseScan } from "@/server/pulse";
 import { generateDiscoveryKit } from "@/server/pulse-ai";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import type { PulseScanCheckInput } from "@/types/pulse";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ scanId: string }> },
 ) {
   try {
@@ -20,7 +21,9 @@ export async function POST(
     if (!scan) return apiError("Scan not found.", 404);
     if (scan.status !== "COMPLETED") return apiError("Scan must be completed first.", 400);
     if (!scan.llmAnalysis) return apiError("AI synthesis must complete before generating discovery prep.", 400);
+    // An already-generated kit is served to anyone; only AI-generation holders pay to create one.
     if (scan.discoveryKit) return apiOk({ kit: scan.discoveryKit });
+    assertCan(await getEffectiveUserOrNull(request), canGenerateAi, "generate a Pulse discovery kit");
 
     const { workspace } = await ensureBaseRecords();
     const p = (workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";

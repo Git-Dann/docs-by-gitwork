@@ -36,6 +36,7 @@ import { SECTION_REGISTRY } from "@/lib/sections/registry";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { AiNotConfiguredError } from "@/server/document-ai";
+import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -87,6 +88,7 @@ function mergeShape(original: unknown, candidate: unknown): unknown | null {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canGenerateAi, "use AI document authoring");
     const { id } = await context.params;
     const body = chatSchema.parse(await request.json());
 

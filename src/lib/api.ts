@@ -3525,17 +3525,22 @@ import type { GolfDataConsole } from "@/server/golf-data-console";
 export type { GolfDataConsole } from "@/server/golf-data-console";
 import type { CourseBackendData, CourseIntegrationsData, RunJobResult } from "@/server/bigwedge-course-api";
 export type { CourseBackendData, CourseIntegrationsData, CourseIntegration, RunJobResult } from "@/server/bigwedge-course-api";
+import type { GolfClubDTO } from "@/server/golf-clubs";
+export type { GolfClubDTO } from "@/server/golf-clubs";
 
-export async function getGolfDataConsole(slug: string): Promise<GolfDataConsole> {
-  return apiFetch<GolfDataConsole>(`/api/clients/${slug}/wiki/golf-data`);
+const gdUrl = (slug: string, sub = "", refresh = false) =>
+  `/api/clients/${slug}/wiki/golf-data${sub}${refresh ? "?refresh=1" : ""}`;
+
+export async function getGolfDataConsole(slug: string, refresh = false): Promise<GolfDataConsole> {
+  return apiFetch<GolfDataConsole>(gdUrl(slug, "", refresh));
 }
 
-export async function getGolfCourseBackend(slug: string): Promise<CourseBackendData> {
-  return apiFetch<CourseBackendData>(`/api/clients/${slug}/wiki/golf-data/course-backend`);
+export async function getGolfCourseBackend(slug: string, refresh = false): Promise<CourseBackendData> {
+  return apiFetch<CourseBackendData>(gdUrl(slug, "/course-backend", refresh));
 }
 
-export async function getGolfIntegrations(slug: string): Promise<CourseIntegrationsData> {
-  return apiFetch<CourseIntegrationsData>(`/api/clients/${slug}/wiki/golf-data/integrations`);
+export async function getGolfIntegrations(slug: string, refresh = false): Promise<CourseIntegrationsData> {
+  return apiFetch<CourseIntegrationsData>(gdUrl(slug, "/integrations", refresh));
 }
 
 export async function runGolfJob(slug: string, job: string, batch?: number): Promise<RunJobResult> {
@@ -3544,6 +3549,17 @@ export async function runGolfJob(slug: string, job: string, batch?: number): Pro
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ job, ...(batch ? { batch } : {}) }),
   });
+}
+
+export async function getGolfClubsList(slug: string): Promise<{ clubs: GolfClubDTO[]; total: number }> {
+  return apiFetch<{ clubs: GolfClubDTO[]; total: number }>(`/api/clients/${slug}/wiki/golf-data/clubs`);
+}
+
+import type { UserDataSnapshot } from "@/server/bigwedge-user-data";
+export type { UserDataSnapshot } from "@/server/bigwedge-user-data";
+
+export async function getGolfUserData(slug: string, refresh = false): Promise<UserDataSnapshot> {
+  return apiFetch<UserDataSnapshot>(gdUrl(slug, "/user-data", refresh));
 }
 
 // ─── Course requests (Wedge wiki) ───────────────────────────────────────────

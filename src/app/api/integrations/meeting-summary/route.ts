@@ -10,6 +10,8 @@ import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { getUserGoogleAuth } from "@/server/google-auth";
 import { getSlackBotToken } from "@/server/slack/client";
+import { getEffectiveUserOrNull, canComputeAiFor } from "@/server/auth/effective-user";
+import { lightModelFor } from "@/server/ai-provider";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -74,6 +76,11 @@ export async function POST(req: NextRequest) {
       model = workspace.anthropicModel ?? "claude-sonnet-5";
     }
 
+    // A meeting summary is short, structured output — route it to the light tier (Haiku /
+    // gpt-4o-mini, ~3.75× cheaper) rather than full Sonnet. Model is part of the cache key,
+    // so this also invalidates any Sonnet-generated entries on first re-fetch.
+    model = lightModelFor(provider, model);
+
     if (!apiKey) {
       return apiError("No AI API key configured. Add one in Settings → Integrations.", 422);
     }
@@ -111,6 +118,13 @@ export async function POST(req: NextRequest) {
           generatedBy: cached.generatedBy?.name ?? cached.generatedBy?.email ?? null,
         });
       }
+    }
+
+    // Cache missed (or stale). Only AI-generation holders (admins by default) pay to
+    // generate a fresh summary; everyone else gets an empty result and can view whatever
+    // an admin has already cached. Keeps the dashboard widget from burning tokens per-viewer.
+    if (!canComputeAiFor(await getEffectiveUserOrNull(req))) {
+      return apiOk({ summary: "", cached: false, notGenerated: true });
     }
 
     // ── Fetch related Gmail threads ────────────────────────────────────────────

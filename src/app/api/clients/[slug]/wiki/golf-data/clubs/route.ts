@@ -1,14 +1,12 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { getCourseBackendData } from "@/server/bigwedge-course-api";
+import { listGolfClubs } from "@/server/golf-clubs";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 
-export const maxDuration = 30;
-
-/** GET the Big Wedge course-backend live data (read-only) for the console. */
+/** GET the full clubs catalogue for the console's Clubs browser (internal). */
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
   try {
@@ -20,8 +18,8 @@ export async function GET(
     });
     if (!client) return apiError("Client not found", 404);
 
-    const data = await getCourseBackendData(client.id, req.nextUrl.searchParams.get("refresh") === "1");
-    return apiOk(data);
+    const clubs = await listGolfClubs(workspace.id);
+    return apiOk({ clubs, total: clubs.length });
   } catch (err) {
     return fromError(err);
   }

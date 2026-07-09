@@ -31,6 +31,13 @@ import type { WikiSection } from "./wiki-sidebar";
 
 // JetBrains Mono stack — consistent with wiki-workspace / wiki-public-view.
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
+// Editorial serif — Fraunces (Gitwork parent brand), falling back to the app's
+// DM Serif. Used for the hero name + pull-out stat figures per the Gitwork brand
+// guide, paired with mono labels (the DESIGN.md data signature).
+const SERIF = "var(--font-fraunces), var(--font-display), 'Times New Roman', Georgia, serif";
+// Playfair Display italic — the Gitwork brand-guide "step numeral" motif, used as
+// a faint editorial index on each widget card.
+const PLAYFAIR = "var(--font-playfair), var(--font-fraunces), Georgia, serif";
 
 type DocSection = "ia" | "dev-guide" | "api-docs" | "architecture" | "runbook" | "data-model";
 
@@ -157,17 +164,38 @@ function endpointCount(content: unknown): number | null {
   return null;
 }
 
+const ROMAN_NUMERALS: [number, string][] = [
+  [1000, "m"], [900, "cm"], [500, "d"], [400, "cd"],
+  [100, "c"], [90, "xc"], [50, "l"], [40, "xl"],
+  [10, "x"], [9, "ix"], [5, "v"], [4, "iv"], [1, "i"],
+];
+
+/** Lowercase roman numeral — the editorial section marker (i., ii., iii. …). */
+function toRomanLower(n: number): string {
+  let num = n;
+  let result = "";
+  for (const [value, symbol] of ROMAN_NUMERALS) {
+    while (num >= value) {
+      result += symbol;
+      num -= value;
+    }
+  }
+  return result;
+}
+
 /** A widget tile — a clickable card that surfaces real data from its section. */
 function Widget({
   section,
   onSelect,
   children,
   wide,
+  numeral,
 }: {
   section: WikiSection;
   onSelect: (s: WikiSection) => void;
   children: ReactNode;
   wide?: boolean;
+  numeral?: string;
 }) {
   const meta = SECTION_META[section as Exclude<WikiSection, "dashboard" | "settings">];
   const Icon = meta.icon;
@@ -176,25 +204,34 @@ function Widget({
       type="button"
       onClick={() => onSelect(section)}
       className={[
-        "group flex flex-col rounded-[14px] border border-[var(--border-1)] bg-white p-5 text-left transition hover:border-[var(--brand-500)] hover:shadow-[0_10px_28px_-10px_rgba(0,0,0,0.14)]",
+        "group relative flex flex-col overflow-hidden rounded-[14px] border border-[var(--border-1)] bg-[var(--surface-0)] p-5 text-left transition hover:border-[var(--brand-500)] hover:shadow-[0_10px_28px_-10px_rgba(0,0,0,0.14)]",
         wide ? "sm:col-span-2" : "",
       ].join(" ")}
     >
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] bg-[var(--brand-50)] text-[var(--brand-700)]">
-            <Icon className="h-5 w-5" />
-          </span>
+      <div className="relative mb-3 flex items-center gap-2">
+        {/* Editorial step numeral (Playfair italic) — a real section marker,
+            echoing the Gitwork brand guide's "i. ii. iii." motif. */}
+        {numeral && (
           <span
-            className="text-[11px] uppercase tracking-[0.08em] text-[var(--text-2)]"
-            style={{ fontFamily: MONO }}
+            aria-hidden
+            className="text-[15px] text-[var(--brand-600)]"
+            style={{ fontFamily: PLAYFAIR, fontStyle: "italic", fontWeight: 500 }}
           >
-            {meta.label}
+            {numeral}.
           </span>
-        </div>
-        <ArrowRightIcon className="h-4 w-4 text-[var(--text-4)] opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100" />
+        )}
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] bg-[var(--brand-50)] text-[var(--brand-700)]">
+          <Icon className="h-5 w-5" />
+        </span>
+        <span
+          className="text-[11px] uppercase tracking-[0.08em] text-[var(--text-2)]"
+          style={{ fontFamily: MONO }}
+        >
+          {meta.label}
+        </span>
+        <ArrowRightIcon className="ml-auto h-4 w-4 text-[var(--text-4)] opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100" />
       </div>
-      <div className="flex-1">{children}</div>
+      <div className="relative flex-1">{children}</div>
     </button>
   );
 }
@@ -202,9 +239,14 @@ function Widget({
 function Metric({ value, label }: { value: string; label: string }) {
   return (
     <div>
-      <div className="text-2xl font-semibold leading-none text-[var(--text-1)]">{value}</div>
       <div
-        className="mt-1 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]"
+        className="text-[38px] leading-none text-[var(--text-1)]"
+        style={{ fontFamily: SERIF, fontWeight: 600, letterSpacing: "-0.01em" }}
+      >
+        {value}
+      </div>
+      <div
+        className="mt-2 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]"
         style={{ fontFamily: MONO }}
       >
         {label}
@@ -268,7 +310,7 @@ export function WikiDashboard({
             {pct !== null && (
               <div>
                 <div className="mb-1 flex items-baseline justify-between">
-                  <span className="text-2xl font-semibold leading-none text-[var(--text-1)]">
+                  <span className="text-[38px] leading-none text-[var(--text-1)]" style={{ fontFamily: SERIF, fontWeight: 600, letterSpacing: "-0.01em" }}>
                     {pct}%
                   </span>
                   <span className="text-[11px] text-[var(--text-4)]">
@@ -390,6 +432,18 @@ export function WikiDashboard({
           </div>
         );
       }
+      case "intake": {
+        const items = wiki.intakeItems;
+        const open = items.filter((r) => r.status === "NEW" || r.status === "TRIAGED").length;
+        return items.length > 0 ? (
+          <div className="flex items-end gap-6">
+            <Metric value={String(open)} label="Open" />
+            <Metric value={String(items.length)} label="Total" />
+          </div>
+        ) : (
+          <p className="text-[13px] text-[var(--text-4)]">No requests submitted yet.</p>
+        );
+      }
       case "course-requests": {
         const reqs = wiki.courseRequests;
         const open = reqs.filter((r) => r.status === "NEW").length;
@@ -448,46 +502,61 @@ export function WikiDashboard({
     }
   }
 
+  const teamCount = wiki.productTeam.length + wiki.team.length;
+  const footerStats = buildFooterStats(wiki, activeMonitors, worstMonitor);
+
   return (
     <div className="mx-auto w-full max-w-5xl">
-      {/* Hero — overflow visible so the team avatars' name tooltips aren't clipped. */}
-      <section className="widget-card">
-        <div className="flex flex-col gap-5 p-6 md:p-8">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-            <div className="flex min-w-0 items-center gap-4">
+      {/* Masthead — a fixed-navy editorial band (the client's front door), always
+          dark regardless of the app theme, so every colour here is hardcoded
+          rather than pulled from the light/dark `--text-*`/`--surface-*` tokens. */}
+      <section className="rounded-[14px] bg-[#0F172A] p-6 md:p-9">
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+            <div className="flex min-w-0 items-start gap-4">
               {wiki.designSystem?.logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={wiki.designSystem.logoUrl}
                   alt={`${wiki.clientName} logo`}
-                  className="h-14 w-14 shrink-0 overflow-hidden rounded-[10px] border border-[var(--border-1)] bg-white object-cover"
+                  className="mt-1 h-12 w-12 shrink-0 overflow-hidden rounded-[10px] border border-white/10 bg-white object-cover"
                 />
               ) : (
-                <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-[10px] border border-[var(--border-1)] bg-[var(--brand-50)] text-[var(--brand-700)]">
+                <span className="mt-1 inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-[10px] border border-white/10 bg-white/[0.06] text-white/70">
                   <Squares2X2Icon className="h-6 w-6" />
                 </span>
               )}
               <div className="min-w-0">
                 <p
-                  className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-4)]"
+                  className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/50"
                   style={{ fontFamily: MONO }}
                 >
                   Knowledge Wiki
                 </p>
                 <h1
-                  className="mt-1 truncate text-2xl text-[var(--text-1)] md:text-3xl"
-                  style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+                  className="mt-1.5 break-words pb-1 text-[40px] leading-[1.12] text-white md:text-[52px]"
+                  style={{ fontFamily: SERIF, fontWeight: 600, letterSpacing: "-0.02em" }}
                 >
                   {wiki.clientName}
+                  <span className="text-[var(--brand-400)]">.</span>
                 </h1>
+                <p className="mt-2 max-w-md text-[13.5px] leading-relaxed text-white/60">
+                  Everything about your project — timeline, docs, code and the
+                  team behind it — in one place.
+                </p>
               </div>
             </div>
 
-            {/* Teams — moved to the right; stacked avatars with a name +
-                italic-bio tooltip on hover. Product (account leads) above
-                Delivery (the devs). */}
+            {/* Teams — stacked avatars with a name + italic-bio tooltip on
+                hover. Product (account leads) above Delivery (the devs). */}
             {(wiki.productTeam.length > 0 || wiki.team.length > 0) && (
-              <div className="flex shrink-0 flex-col items-start gap-2.5 sm:items-end">
+              <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+                <span
+                  className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/35"
+                  style={{ fontFamily: MONO }}
+                >
+                  Team · {teamCount}
+                </span>
                 {wiki.productTeam.length > 0 && (
                   <TeamStack label="Product" members={wiki.productTeam} />
                 )}
@@ -506,33 +575,33 @@ export function WikiDashboard({
                   href={normalizeUrl(wiki.website)}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[var(--text-2)] transition hover:text-[var(--brand-700)]"
+                  className="inline-flex items-center gap-1.5 text-white/70 transition hover:text-white"
                 >
-                  <GlobeAltIcon className="h-4 w-4 text-[var(--text-4)]" />
+                  <GlobeAltIcon className="h-4 w-4 text-white/40" />
                   {displayHost(wiki.website)}
                 </a>
               )}
               {wiki.contact?.name && (
-                <span className="inline-flex items-center gap-1.5 text-[var(--text-2)]">
-                  <UserIcon className="h-4 w-4 text-[var(--text-4)]" />
+                <span className="inline-flex items-center gap-1.5 text-white/70">
+                  <UserIcon className="h-4 w-4 text-white/40" />
                   {wiki.contact.name}
                 </span>
               )}
               {wiki.contact?.email && (
                 <a
                   href={`mailto:${wiki.contact.email}`}
-                  className="inline-flex items-center gap-1.5 text-[var(--text-2)] transition hover:text-[var(--brand-700)]"
+                  className="inline-flex items-center gap-1.5 text-white/70 transition hover:text-white"
                 >
-                  <EnvelopeIcon className="h-4 w-4 text-[var(--text-4)]" />
+                  <EnvelopeIcon className="h-4 w-4 text-white/40" />
                   {wiki.contact.email}
                 </a>
               )}
               {wiki.contact?.phone && (
                 <a
                   href={`tel:${wiki.contact.phone}`}
-                  className="inline-flex items-center gap-1.5 text-[var(--text-2)] transition hover:text-[var(--brand-700)]"
+                  className="inline-flex items-center gap-1.5 text-white/70 transition hover:text-white"
                 >
-                  <PhoneIcon className="h-4 w-4 text-[var(--text-4)]" />
+                  <PhoneIcon className="h-4 w-4 text-white/40" />
                   {wiki.contact.phone}
                 </a>
               )}
@@ -559,33 +628,88 @@ export function WikiDashboard({
                     href={normalizeUrl(wiki.headerLinks.stagingUrl)}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] bg-white px-3.5 py-2 text-[13px] font-medium text-[var(--text-1)] transition hover:bg-[var(--surface-1)]"
+                    className="inline-flex items-center gap-1.5 rounded-[8px] border border-white/15 bg-white/[0.06] px-3.5 py-2 text-[13px] font-medium text-white transition hover:bg-white/10"
                   >
-                    <ArrowTopRightOnSquareIcon className="h-4 w-4 text-[var(--text-4)]" />
+                    <ArrowTopRightOnSquareIcon className="h-4 w-4 text-white/60" />
                     Staging
                   </a>
                 )}
               </div>
             )}
-
         </div>
       </section>
 
-      {/* Section widgets — one per page, each showing live data */}
-      {sections.length > 0 ? (
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {sections.map((section) => (
-            <Widget
-              key={section}
-              section={section}
-              onSelect={onSelect}
-              wide={section === "timeline"}
-            >
-              {widgetBody(section)}
-            </Widget>
-          ))}
-        </div>
-      ) : (
+      {sections.length > 0 && (
+        <>
+          {/* Section widgets — one per page, each showing live data. Auto-fit
+              columns (not a fixed 1/2/3 breakpoint grid) so a trailing row
+              with fewer cards than columns stretches to fill the width
+              instead of leaving a dangling gap; `items-start` lets each card
+              size to its own content instead of stretching to match a taller
+              sibling (e.g. the wide Timeline card) in the same row. */}
+          <div
+            className="mt-4 grid items-start gap-4"
+            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}
+          >
+            {sections.map((section, i) => (
+              <Widget
+                key={section}
+                section={section}
+                onSelect={onSelect}
+                wide={section === "timeline"}
+                numeral={toRomanLower(i + 1)}
+              >
+                {widgetBody(section)}
+              </Widget>
+            ))}
+          </div>
+
+          {/* Closing stat band — bookends the masthead, mirroring the Gitwork
+              brand guide's "our standard" close. Only real, available data. */}
+          {footerStats.length > 0 && (
+            <section className="mt-4 rounded-[14px] bg-[#0F172A] p-6 md:p-8">
+              <p
+                className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/50"
+                style={{ fontFamily: MONO }}
+              >
+                Project overview
+              </p>
+              {/* No max-width — the previous `max-w-lg` cap forced a wrap to
+                  two lines despite the band having plenty of room to spare. */}
+              <h2
+                className="mt-2 text-[22px] leading-snug text-white md:text-[26px]"
+                style={{ fontFamily: SERIF, fontWeight: 600 }}
+              >
+                Everything about {wiki.clientName}, ready when you need it.
+              </h2>
+              <div className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-4">
+                {footerStats.map((stat) => (
+                  <div key={stat.label}>
+                    <div
+                      className="text-[26px] leading-none"
+                      style={{
+                        fontFamily: SERIF,
+                        fontWeight: 600,
+                        color: stat.color ?? "#ffffff",
+                      }}
+                    >
+                      {stat.value}
+                    </div>
+                    <div
+                      className="mt-1.5 text-[9.5px] uppercase tracking-[0.1em] text-white/45"
+                      style={{ fontFamily: MONO }}
+                    >
+                      {stat.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </>
+      )}
+
+      {sections.length === 0 && (
         <p className="mt-8 text-center text-sm text-[var(--text-4)]">
           No published sections yet.
         </p>
@@ -594,12 +718,41 @@ export function WikiDashboard({
   );
 }
 
-/** A labelled hero avatar stack (name + italic bio on hover). */
+/**
+ * Real, available data only — a stat is omitted rather than shown as
+ * zero/empty. Completion % and team size render elsewhere (the timeline
+ * card and the masthead's team stack, respectively) so they're not
+ * duplicated here.
+ */
+function buildFooterStats(
+  wiki: WikiDTO,
+  activeMonitors: WikiDTO["monitors"]["monitors"],
+  worstMonitor: string | null,
+): { value: string; label: string; color?: string }[] {
+  const stats: { value: string; label: string; color?: string }[] = [];
+  if (wiki.documents.documents.length > 0) {
+    stats.push({
+      value: String(wiki.documents.documents.length),
+      label: wiki.documents.documents.length === 1 ? "Document" : "Documents",
+    });
+  }
+  if (activeMonitors.length > 0) {
+    const STATUS: Record<string, { value: string; color?: string }> = {
+      UP: { value: "Up", color: "#4ADE80" },
+      DEGRADED: { value: "Degraded", color: "#FBBF24" },
+      DOWN: { value: "Down", color: "#F87171" },
+      UNKNOWN: { value: "—" },
+    };
+    const s = STATUS[worstMonitor ?? "UNKNOWN"];
+    stats.push({ value: s.value, label: "All systems", color: s.color });
+  }
+  return stats;
+}
+
 /**
  * Avatar + hover tooltip. The tooltip is rendered in a portal to document.body
- * (position: fixed) so it escapes the wiki card's `overflow: hidden` and never
- * clips — the stacks sit at the card's top-right corner. Centred above the
- * avatar, then clamped to the viewport so long names never run off-screen.
+ * (position: fixed) so it always sits above the masthead and any other card,
+ * and is clamped to the viewport so long names never run off-screen.
  */
 function AvatarWithTooltip({ member }: { member: WikiDTO["team"][number] }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -665,11 +818,13 @@ function MemberTooltip({
   );
 }
 
+/** Renders inside the fixed-navy masthead — colours are hardcoded, not the
+ * light/dark `--text-*`/`--surface-*` tokens, since this band never flips. */
 function TeamStack({ label, members }: { label: string; members: WikiDTO["team"] }) {
   return (
     <div className="flex items-center gap-2">
       <span
-        className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]"
+        className="text-[9px] font-semibold uppercase tracking-[0.12em] text-white/40"
         style={{ fontFamily: MONO }}
       >
         {label}
@@ -679,7 +834,7 @@ function TeamStack({ label, members }: { label: string; members: WikiDTO["team"]
           <AvatarWithTooltip key={i} member={m} />
         ))}
         {members.length > 6 && (
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-1)] text-[11px] font-semibold text-[var(--text-3)] ring-2 ring-[var(--surface-0)]">
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-[11px] font-semibold text-white/80 ring-2 ring-[#0F172A]">
             +{members.length - 6}
           </span>
         )}
@@ -710,12 +865,12 @@ function TeamAvatar({
         src={avatarUrl}
         alt={name}
         onError={() => setFailed(true)}
-        className="h-8 w-8 rounded-full object-cover ring-2 ring-[var(--surface-0)]"
+        className="h-8 w-8 rounded-full object-cover ring-2 ring-[#0F172A]"
       />
     );
   }
   return (
-    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--brand-50)] text-[11px] font-semibold text-[var(--brand-700)] ring-2 ring-[var(--surface-0)]">
+    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(59,130,246,0.22)] text-[11px] font-semibold text-[#BFDBFE] ring-2 ring-[#0F172A]">
       {initials}
     </span>
   );

@@ -165,6 +165,32 @@ export async function requireAuthedUserOrDefault(req: Request): Promise<Effectiv
   };
 }
 
+/**
+ * May this user TRIGGER fresh AI generation (which spends tokens)? This is the single
+ * cost gate for every generative AI route in Foundry — Docs authoring, Care drafts +
+ * report narratives, meeting/Slack summaries, brief analysis, Pulse scans + discovery.
+ *
+ * Admin + Super Admin always pass (role tier — robust even if a stored role matrix
+ * snapshot predates the `ai.generate` perm). Staff/Developers pass only when explicitly
+ * granted `ai.generate` per person. Non-holders can still READ cached AI output; they
+ * just can't pay for new generation.
+ *
+ * EXCEPTION: fetching Scribe meeting notes is intentionally NOT gated by this — it's the
+ * one AI action developers keep — so its route uses client-access checks, not this.
+ */
+export function canGenerateAi(user: EffectiveUser): boolean {
+  return isAtLeast(user.role, "ADMIN") || user.permissions.includes("ai.generate");
+}
+
+/**
+ * Whether a caller may compute a fresh AI response. Trusted API_KEY / legacy-bearer callers
+ * (no per-user identity → null) may compute, matching the assertCan convention; a signed-in
+ * user must hold canGenerateAi. Non-computers are served cached output only.
+ */
+export function canComputeAiFor(user: EffectiveUser | null): boolean {
+  return !user || canGenerateAi(user);
+}
+
 export function canApproveBackstage(user: EffectiveUser): boolean {
   return isSuperAdmin(user.role) || user.permissions.includes("backstage.approve");
 }

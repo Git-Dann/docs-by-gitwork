@@ -7,6 +7,7 @@ import { useSession } from "next-auth/react";
 import { useClientList } from "@/hooks/use-proposals";
 import { useTasks } from "@/hooks/use-tasks";
 import { MyDay } from "@/components/tasks/my-day";
+import { NewTaskButton } from "@/components/tasks/new-task-button";
 import { cn } from "@/lib/format";
 import type { TaskStatus } from "@/types/tasks";
 
@@ -185,14 +186,19 @@ export function DevOverview() {
             <>
               <div className="widget-body space-y-1.5">
                 {pageClients.map((c) => (
-                  <Link
+                  <div
                     key={c.id}
-                    href={`/app/portal/${c.slug}/tasks`}
-                    className="flex items-center justify-between rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 transition hover:bg-[var(--surface-1)]"
+                    className="flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 transition hover:bg-[var(--surface-1)]"
                   >
-                    <span className="truncate text-sm font-medium text-[var(--text-1)]">{c.name}</span>
-                    <ArrowRightIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
-                  </Link>
+                    <Link
+                      href={`/app/portal/${c.slug}/tasks`}
+                      className="flex min-w-0 flex-1 items-center justify-between gap-2"
+                    >
+                      <span className="truncate text-sm font-medium text-[var(--text-1)]">{c.name}</span>
+                      <ArrowRightIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
+                    </Link>
+                    <NewTaskButton clientId={c.id} clientName={c.name} />
+                  </div>
                 ))}
               </div>
               {clients.length > PAGE_SIZE && (

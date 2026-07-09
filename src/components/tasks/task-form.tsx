@@ -23,6 +23,14 @@ import {
 const ADMIN_ROLES = new Set(["ADMIN", "SUPER_ADMIN"]);
 const EMPTY_MEMBERS: BackstageMember[] = [];
 
+/** Local (not UTC) YYYY-MM-DD for today — the default date on a new task, so
+ *  logging same-day work needs no extra clicks (per the team's request). */
+function todayIso(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function isAdminOrSuperAdmin(role: string): boolean {
   return ADMIN_ROLES.has(role);
 }
@@ -67,7 +75,11 @@ export function TaskFormModal({
   );
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? defaultStatus ?? "BACKLOG");
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? "MEDIUM");
-  const [dueDate, setDueDate] = useState(task?.dueDate ? task.dueDate.slice(0, 10) : "");
+  // New tasks default the date to today (saves a click when logging same-day
+  // work); editing keeps the task's existing date (blank stays blank).
+  const [dueDate, setDueDate] = useState(
+    task?.dueDate ? task.dueDate.slice(0, 10) : task ? "" : todayIso(),
+  );
   const [featureBlockId, setFeatureBlockId] = useState(task?.featureBlock?.id ?? "");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -156,7 +168,7 @@ export function TaskFormModal({
           setTitle("");
           setDescription("");
           setAcceptanceCriteria("");
-          setDueDate("");
+          setDueDate(todayIso());
           setSuccess("Task created. Add the next one.");
           window.setTimeout(() => titleInputRef.current?.focus(), 0);
           return;
@@ -195,7 +207,9 @@ export function TaskFormModal({
         </div>
 
         <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto px-6 py-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.85fr)] lg:overflow-hidden">
-          <div className="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+          {/* p-1.5 gives the fields' 4px focus ring room inside the scroll box —
+              without it the ring clips against the overflow edge. */}
+          <div className="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:p-1.5">
             <div>
               <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Title</label>
               <input
@@ -235,7 +249,7 @@ export function TaskFormModal({
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-col gap-4 lg:overflow-hidden">
+          <div className="flex min-h-0 flex-col gap-4 lg:overflow-hidden lg:p-1.5">
             {!lockClient ? (
               <div>
                 <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Client</label>

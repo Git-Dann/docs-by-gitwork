@@ -14,6 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { AiNotConfiguredError, expandSection } from "@/server/document-ai";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
+import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import type { SectionKey } from "@/types/proposal";
 
 interface RouteContext {
@@ -27,6 +28,7 @@ const schema = z.object({
 
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canGenerateAi, "use AI document authoring");
     const { id } = await context.params;
     const body = schema.parse(await request.json());
     const { workspace } = await ensureBaseRecords();

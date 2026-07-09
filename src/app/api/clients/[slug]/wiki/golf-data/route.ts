@@ -4,9 +4,11 @@ import { getGolfDataConsole } from "@/server/golf-data-console";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 
+export const maxDuration = 30;
+
 /** GET the Gitwork Golf Data platform console snapshot for a client (Wedge). */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
   try {
@@ -18,7 +20,9 @@ export async function GET(
     });
     if (!client) return apiError("Client not found", 404);
 
-    const console = await getGolfDataConsole(client.id, workspace.id);
+    const console = await getGolfDataConsole(client.id, workspace.id, {
+      force: req.nextUrl.searchParams.get("refresh") === "1",
+    });
     return apiOk(console);
   } catch (err) {
     return fromError(err);

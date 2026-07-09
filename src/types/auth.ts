@@ -313,6 +313,30 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
     ],
   },
   {
+    // AI generation — the token-spending gate. A single cross-cutting feature perm that
+    // governs whether a member may TRIGGER fresh AI generation anywhere in Foundry (Docs
+    // authoring, Care drafts + report narratives, meeting/Slack summaries, Pulse scans +
+    // discovery, brief analysis). Deliberately a `feature` (default-off) so STAFF/DEVELOPER
+    // don't auto-inherit it; ADMIN holds all ids and SUPER_ADMIN bypasses, so admins have it
+    // out of the box. Non-holders can still READ cached AI output — they just can't spend
+    // tokens. EXCEPTION: Scribe meeting-note fetching is intentionally NOT gated by this (it's
+    // the one AI action developers keep) — see the /meetings/ingest route.
+    product: "AI",
+    permissions: [
+      {
+        id: "ai.generate",
+        category: "feature",
+        label: "Generate with AI",
+        description:
+          "Trigger fresh AI generation across Foundry (document authoring, support drafts, " +
+          "report narratives, meeting/Slack summaries, Pulse scans and discovery). Costs tokens. " +
+          "Admin/Super Admin only by default — everyone else reads cached AI output instead. " +
+          "Fetching Scribe meeting notes is exempt and stays available to all. Grant per person " +
+          "here to let a specific Staff/Developer spend on AI.",
+      },
+    ],
+  },
+  {
     product: "Integrations",
     permissions: [
       {

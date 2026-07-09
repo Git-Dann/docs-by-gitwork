@@ -813,8 +813,27 @@ const ALL_PLATFORM_OPTIONS = [
   { value: "WEB", label: "Web" },
 ];
 
+/** Every valid section id — used to validate a section restored from the URL hash. */
+const ALL_WIKI_SECTIONS: WikiSection[] = [
+  "dashboard", "timeline", "monitors", "documents", "intake", "code-handover",
+  "design-system", "ia", "dev-guide", "api-docs", "architecture", "runbook",
+  "data-model", "changelog", "course-requests", "golf-data", "settings",
+];
+
+/** Read the active section from the URL hash (e.g. `#api-docs`), defaulting to dashboard. */
+function readSectionFromHash(): WikiSection {
+  if (typeof window === "undefined") return "dashboard";
+  const raw = window.location.hash.replace(/^#/, "");
+  return (ALL_WIKI_SECTIONS as string[]).includes(raw) ? (raw as WikiSection) : "dashboard";
+}
+
 export function WikiWorkspace({ slug, clientName }: Props) {
-  const [activeSection, setActiveSection] = useState<WikiSection>("dashboard");
+  // Restore the open section from the URL hash so a refresh lands on the same page.
+  // Safe from hydration mismatch: the first render shows the loader (below), which
+  // doesn't depend on activeSection, so server/client output match until wiki loads.
+  const [activeSection, setActiveSection] = useState<WikiSection>(readSectionFromHash);
+  /** Latest available sections, mirrored from render so the guard effect can read them. */
+  const availableSectionsRef = useRef<WikiSection[]>([]);
   const [showChangelogForm, setShowChangelogForm] = useState(false);
   /** Version string currently being edited, or null when adding a new one. */
   const [editingVersion, setEditingVersion] = useState<string | null>(null);
@@ -841,7 +860,30 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     setPageSavedLabel(null);
   }, [activeSection]);
 
+  // Mirror the active section into the URL hash so a browser refresh restores it.
+  useEffect(() => {
+    const next = `#${activeSection}`;
+    if (window.location.hash !== next) {
+      window.history.replaceState(null, "", next);
+    }
+  }, [activeSection]);
+
+  // Follow back/forward navigation between sections.
+  useEffect(() => {
+    const onHashChange = () => setActiveSection(readSectionFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
   const { data: wiki, isPending } = useClientWiki(slug);
+
+  // If the restored section isn't available for this client (e.g. a deleted page or
+  // a Wedge-only section on another client), fall back to the dashboard once loaded.
+  useEffect(() => {
+    if (activeSection === "dashboard") return;
+    const avail = availableSectionsRef.current;
+    if (avail.length && !avail.includes(activeSection)) setActiveSection("dashboard");
+  }, [activeSection, wiki]);
 
   const upsertPage = useUpsertWikiPage(slug);
   const deletePage = useDeleteWikiPage(slug);
@@ -908,6 +950,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(GOLF_DATA_SLUGS.includes(slug) ? (["golf-data"] as const) : []),
     "settings",
   ];
+  availableSectionsRef.current = availableSections;
   const addableSections = [
     ...OPTIONAL_DOC_SECTIONS.filter(
       (item) => hiddenSections.has(item.section) || !existingDocsPageSections.has(item.section),

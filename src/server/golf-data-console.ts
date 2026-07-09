@@ -14,6 +14,8 @@
 
 import { prisma } from "@/lib/prisma";
 import { countGolfClubs, slugify } from "@/server/golf-clubs";
+import { getCourseBackendData } from "@/server/bigwedge-course-api";
+import { cached } from "@/server/golf-cache";
 
 export type ConsoleTone = "ok" | "warn" | "bad" | "info";
 
@@ -114,6 +116,20 @@ export interface GolfDataConsole {
     manufacturers: number;
     categories: number;
   };
+  /** Live Course-backend rollup (from the Big Wedge backend /stats) — the same
+   *  numbers the "Course backend" view drills into, so the two reconcile. */
+  backend: {
+    connected: boolean;
+    courses: number;
+    venues: number;
+    withGps: number;
+    gpsPoints: number;
+    holes: number;
+    countries: number;
+    gpsCoveragePct: number;
+    missingGps: number;
+    missingTees: number;
+  } | null;
 }
 
 // ── formatting helpers ────────────────────────────────────────────────────────
@@ -170,7 +186,19 @@ function severityRank(s: GolfValidationIssue["severity"]): number {
 export async function getGolfDataConsole(
   clientId: string,
   workspaceId: string,
-  opts: { now?: Date } = {},
+  opts: { now?: Date; force?: boolean } = {},
+): Promise<GolfDataConsole> {
+  return cached(
+    `console:${clientId}`,
+    () => loadGolfDataConsole(clientId, workspaceId, opts),
+    { force: opts.force },
+  );
+}
+
+async function loadGolfDataConsole(
+  clientId: string,
+  workspaceId: string,
+  opts: { now?: Date; force?: boolean } = {},
 ): Promise<GolfDataConsole> {
   const now = opts.now ?? new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -178,6 +206,30 @@ export async function getGolfDataConsole(
   // Live Equipment domain — the real GolfClub catalogue.
   const equip = await countGolfClubs(workspaceId);
   const equipCategories = Object.keys(equip.byCategory).length;
+
+  // Live Course-backend domain (best-effort — overview still renders if it's down).
+  const be = await getCourseBackendData(clientId, opts.force).catch(() => null);
+  const beStats = be?.connected ? be.stats : null;
+  const backend: GolfDataConsole["backend"] = beStats
+    ? {
+        connected: true,
+        courses: beStats.courses,
+        venues: beStats.clubs,
+        withGps: beStats.with_gps,
+        gpsPoints: beStats.gps_points,
+        holes: beStats.holes,
+        countries: beStats.countries,
+        gpsCoveragePct: beStats.courses > 0 ? Math.round((beStats.with_gps / beStats.courses) * 100) : 0,
+        missingGps: beStats.missing_gps,
+        missingTees: beStats.missing_tees,
+      }
+    : be
+      ? {
+          connected: false,
+          courses: 0, venues: 0, withGps: 0, gpsPoints: 0, holes: 0,
+          countries: 0, gpsCoveragePct: 0, missingGps: 0, missingTees: 0,
+        }
+      : null;
 
   // Live Courses domain — this client's course-request intake.
   const wiki = await prisma.clientWiki.findUnique({
@@ -224,12 +276,18 @@ export async function getGolfDataConsole(
       };
     });
 
-  // ── Validation (live, Courses) ──────────────────────────────────────────────
+  // ── Validation — real backend data-quality + intake checks ──────────────────
   const issues: GolfValidationIssue[] = [];
+  if (backend?.connected) {
+    if (backend.missingGps > 0)
+      issues.push({ issue: "Courses missing GPS", dataset: "Courses", count: backend.missingGps, severity: "Warning" });
+    if (backend.missingTees > 0)
+      issues.push({ issue: "Courses missing tees", dataset: "Courses", count: backend.missingTees, severity: "Warning" });
+  }
   if (missingCountry > 0) {
     issues.push({
-      issue: "Missing required field: country",
-      dataset: "Courses",
+      issue: "Request missing country",
+      dataset: "Requests",
       count: missingCountry,
       severity: missingCountry > 25 ? "Error" : "Warning",
     });
@@ -237,7 +295,7 @@ export async function getGolfDataConsole(
   if (pendingSent > 0) {
     issues.push({
       issue: "Awaiting provider confirmation: sent",
-      dataset: "Courses",
+      dataset: "Requests",
       count: pendingSent,
       severity: "Info",
     });
@@ -268,15 +326,32 @@ export async function getGolfDataConsole(
           status: "Valid" as const,
         })),
     ],
-    Courses: [
-      { version: `${yr}.${now.getUTCMonth() + 1}.${added}`, label: "Courses", records: fmtNumber(total), created: fmtDateTime(now), status: coursesStatus },
-      { version: `${yr}.${now.getUTCMonth() + 1}.0`, label: "Courses", records: fmtNumber(Math.max(0, total - byDay.size)), created: fmtDateTime(weekAgo), status: "Valid" },
+    Courses: backend?.connected
+      ? [
+          { version: "live", label: "Courses", records: fmtNumber(backend.courses), created: fmtDateTime(now), status: backend.missingGps > backend.courses / 2 ? "Warning" : "Valid" },
+          { version: "live", label: "Venues (Clubs)", records: fmtNumber(backend.venues), created: fmtDateTime(now), status: "Valid" },
+          { version: "live", label: "Holes", records: fmtNumber(backend.holes), created: fmtDateTime(now), status: "Valid" },
+          { version: "live", label: "GPS points", records: fmtNumber(backend.gpsPoints), created: fmtDateTime(now), status: "Valid" },
+        ]
+      : [{ version: "—", label: "Courses", records: "—", created: fmtDateTime(now), status: "Warning" }],
+    Requests: [
+      { version: `${yr}.${now.getUTCMonth() + 1}.${added}`, label: "Requests", records: fmtNumber(total), created: fmtDateTime(now), status: coursesStatus },
     ],
   };
 
   // ── Providers (both live) ────────────────────────────────────────────────────
   const coursesSuccess = total > 0 ? Math.round((1 - Math.min(missingCountry, total) / (total * 4)) * 100) : 100;
   const providers: GolfProvider[] = [
+    {
+      name: "Big Wedge Course Backend",
+      domain: "Courses",
+      status: backend?.connected ? "Healthy" : "Down",
+      lastImport: fmtDateTime(now),
+      nextImport: "Live",
+      success: backend?.connected ? backend.gpsCoveragePct : 0,
+      issues: backend?.connected ? backend.missingGps : 0,
+      live: true,
+    },
     {
       name: "Gitwork Equipment (Clubs)",
       domain: "Equipment",
@@ -289,77 +364,78 @@ export async function getGolfDataConsole(
     },
     {
       name: "Big Wedge Course Intake",
-      domain: "Courses",
+      domain: "Requests",
       status: missingCountry > 25 ? "Degraded" : "Healthy",
       lastImport: runs[0]?.started ?? fmtDateTime(now),
       nextImport: "On demand",
       success: coursesSuccess,
-      issues: issues.filter((i) => i.dataset === "Courses" && i.severity !== "Info").reduce((s, i) => s + i.count, 0),
+      issues: issues.filter((i) => i.dataset === "Requests" && i.severity !== "Info").reduce((s, i) => s + i.count, 0),
       live: true,
     },
   ];
-  const healthyProviders = providers.filter((p) => p.status === "Healthy").length;
 
-  // ── Metric strip (all real) ─────────────────────────────────────────────────
+  // ── Metric strip — the unified rollup. Courses/Venues/GPS come from the SAME
+  // backend /stats the "Course backend" view drills into, so the two reconcile.
   const nonInfoIssues = issues.reduce((s, i) => s + (i.severity === "Info" ? 0 : 1), 0);
   const metrics: GolfConsoleMetric[] = [
     {
-      key: "providers",
-      label: "Providers",
-      value: String(providers.length),
-      sub: healthyProviders === providers.length ? "All healthy" : `${healthyProviders}/${providers.length} healthy`,
-      tone: healthyProviders === providers.length ? "ok" : "warn",
-      spark: seededSpark("providers", 12, 0.6, 0.2),
-    },
-    {
-      key: "clubs",
-      label: "Clubs",
-      value: fmtNumber(equip.total),
-      sub: `${equip.manufacturers} brands`,
-      tone: "ok",
-      spark: seededSpark(`clubs-${equip.total}`, 12, 0.6, 0.25),
-    },
-    {
       key: "courses",
       label: "Courses",
+      value: backend?.connected ? fmtNumber(backend.courses) : "—",
+      sub: backend?.connected ? "course backend" : "backend offline",
+      tone: backend?.connected ? "ok" : "warn",
+      spark: seededSpark(`courses-${backend?.courses ?? 0}`, 12, 0.6, 0.15),
+    },
+    {
+      key: "venues",
+      label: "Venues (Clubs)",
+      value: backend?.connected ? fmtNumber(backend.venues) : "—",
+      sub: backend?.connected ? `${backend.countries} countries` : "backend offline",
+      tone: backend?.connected ? "ok" : "warn",
+      spark: seededSpark(`venues-${backend?.venues ?? 0}`, 12, 0.6, 0.15),
+    },
+    {
+      key: "equipment",
+      label: "Equipment",
+      value: fmtNumber(equip.total),
+      sub: `${equip.manufacturers} brands · clubs`,
+      tone: "ok",
+      spark: seededSpark(`equip-${equip.total}`, 12, 0.6, 0.25),
+    },
+    {
+      key: "gps",
+      label: "GPS Coverage",
+      value: backend?.connected ? `${backend.gpsCoveragePct}%` : "—",
+      sub: backend?.connected ? `${fmtNumber(backend.gpsPoints)} points` : "backend offline",
+      tone: !backend?.connected ? "warn" : backend.gpsCoveragePct >= 80 ? "ok" : "warn",
+      spark: seededSpark(`gps-${backend?.gpsCoveragePct ?? 0}`, 12, (backend?.gpsCoveragePct ?? 50) / 100, 0.08),
+    },
+    {
+      key: "requests",
+      label: "Requests",
       value: fmtNumber(total),
       sub: `${added} added · ${pending} pending`,
-      tone: "ok",
-      spark: seededSpark(`courses-${total}`, 12, 0.55, 0.3),
-    },
-    {
-      key: "issues",
-      label: "Validation Issues",
-      value: String(nonInfoIssues),
-      sub: critical > 0 ? `${critical} critical` : errors > 0 ? `${errors} errors` : warnings > 0 ? `${warnings} warnings` : "all clear",
-      tone: critical > 0 ? "bad" : errors > 0 ? "warn" : warnings > 0 ? "warn" : "ok",
-      spark: seededSpark(`issues-${missingCountry}`, 12, 0.35, 0.3),
-    },
-    {
-      key: "provenance",
-      label: "Provenance",
-      value: `${coveragePct}%`,
-      sub: "country attributed",
-      tone: coveragePct >= 90 ? "ok" : coveragePct >= 70 ? "warn" : "bad",
-      spark: seededSpark(`prov-${coveragePct}`, 12, coveragePct / 100, 0.1),
+      tone: nonInfoIssues > 0 ? "warn" : "ok",
+      spark: seededSpark(`req-${total}`, 12, 0.5, 0.3),
     },
   ];
 
-  // ── Version comparison (Courses week vs last) ───────────────────────────────
+  // ── Course requests breakdown (intake pipeline) ─────────────────────────────
   const diff: GolfDataConsole["diff"] = {
-    before: datasets.Courses[1]?.version ?? "—",
-    after: datasets.Courses[0]?.version ?? "—",
+    before: "requests",
+    after: `${added}/${total} added`,
     rows: [
-      { label: "New courses (7d)", value: `+ ${fmtNumber([...byDay.values()].reduce((s, n) => s + n, 0))}`, positive: true },
+      { label: "New requests (7d)", value: `+ ${fmtNumber([...byDay.values()].reduce((s, n) => s + n, 0))}`, positive: true },
       { label: "Added to app", value: `+ ${fmtNumber(added)}`, positive: true },
       { label: "Pending review", value: `${fmtNumber(pending)}`, positive: pending === 0 },
       { label: "Rejected", value: `- ${fmtNumber(rejected)}`, positive: false },
     ],
   };
 
-  // ── Pipeline topology (real domains only) ───────────────────────────────────
+  // ── Pipeline topology (real domains) ────────────────────────────────────────
   const pipeline: GolfDataConsole["pipeline"] = {
     providers: [
+      { label: "Course Backend", icon: "database", tone: backend?.connected ? "ok" : "warn" },
       { label: "Clubs Catalogue", icon: "database", tone: "ok" },
       { label: "Course Intake", icon: "database", tone: "ok" },
     ],
@@ -368,8 +444,8 @@ export async function getGolfDataConsole(
       { label: "Validate", icon: "shield", tone: warnings > 0 || errors > 0 ? "warn" : "ok" },
     ],
     datasets: [
+      { label: "Courses", icon: "database", tone: backend?.connected ? "ok" : "warn" },
       { label: `${yr} Equipment`, icon: "database", tone: "ok" },
-      { label: "Courses", icon: "database", tone: coursesStatus === "Valid" ? "ok" : "warn" },
     ],
   };
 
@@ -394,17 +470,25 @@ export async function getGolfDataConsole(
       total: issues.reduce((s, i) => s + i.count, 0),
       affectedDatasets,
       issues: issues.slice(0, 6),
-      detail: [
-        { label: "Dataset", value: "Courses" },
-        { label: "Provider", value: "Big Wedge Course Intake" },
-        { label: "Records", value: fmtNumber(total) },
-        { label: "Validation status", value: coursesStatus, tone: coursesStatus === "Valid" ? "ok" : "warn" },
-        { label: "Coverage", value: `${coveragePct}%`, tone: coveragePct >= 90 ? "ok" : "warn" },
-        { label: "Runs (7d)", value: String(courseRunsLast7) },
-      ],
+      detail: backend?.connected
+        ? [
+            { label: "Courses", value: fmtNumber(backend.courses) },
+            { label: "Venues", value: fmtNumber(backend.venues) },
+            { label: "GPS coverage", value: `${backend.gpsCoveragePct}%`, tone: backend.gpsCoveragePct >= 80 ? "ok" : "warn" },
+            { label: "Missing GPS", value: fmtNumber(backend.missingGps), tone: "warn" },
+            { label: "Requests", value: fmtNumber(total) },
+            { label: "Req. coverage", value: `${coveragePct}%`, tone: coveragePct >= 90 ? "ok" : "warn" },
+          ]
+        : [
+            { label: "Course backend", value: "offline", tone: "warn" },
+            { label: "Requests", value: fmtNumber(total) },
+            { label: "Req. coverage", value: `${coveragePct}%`, tone: coveragePct >= 90 ? "ok" : "warn" },
+            { label: "Runs (7d)", value: String(courseRunsLast7) },
+          ],
     },
     pipeline,
     courses: { total, added, pending, rejected, countries, missingCountry, coveragePct },
     equipment: { total: equip.total, manufacturers: equip.manufacturers, categories: equipCategories },
+    backend,
   };
 }

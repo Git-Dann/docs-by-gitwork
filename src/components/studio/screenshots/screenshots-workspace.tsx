@@ -22,6 +22,7 @@ import {
   STORE_LABEL,
   canvasById,
   fillBase,
+  layoutById,
   newScene,
   newTextLayer,
   type BackgroundTheme,
@@ -96,6 +97,29 @@ export function ScreenshotsWorkspace() {
       ...s,
       scenes: s.scenes.map((sc) => (sc.id === sceneId ? { ...sc, texts: sc.texts.map((t) => (t.id === textId ? { ...t, ...p } : t)) } : sc)),
     }));
+  }, []);
+
+  // Switching layout rearranges the whole scene: the device moves (Scene reads state.layout), and
+  // every text layer is re-anchored to the new layout's text zone. Multiple layers stack downward
+  // within the zone so they don't overlap. Fine-tune afterwards with the per-layer X/Y sliders.
+  const setLayout = useCallback((layout: LayoutId) => {
+    setState((s) => {
+      const zone = layoutById(layout).textZone;
+      return {
+        ...s,
+        layout,
+        scenes: s.scenes.map((sc) => ({
+          ...sc,
+          texts: sc.texts.map((t, i) => ({
+            ...t,
+            xPct: zone.xPct,
+            yPct: Math.min(92, Math.max(2, zone.yPct + i * 14)),
+            align: zone.align,
+            widthPct: zone.widthPct ?? t.widthPct,
+          })),
+        })),
+      };
+    });
   }, []);
 
   const toggleTarget = useCallback((id: string) => {
@@ -235,7 +259,7 @@ export function ScreenshotsWorkspace() {
               className="app-select w-full"
               value={state.layout}
               disabled={!anyFramed}
-              onChange={(e) => patch({ layout: e.target.value as LayoutId })}
+              onChange={(e) => setLayout(e.target.value as LayoutId)}
             >
               {LAYOUT_PRESETS.map((l) => (
                 <option key={l.id} value={l.id}>
