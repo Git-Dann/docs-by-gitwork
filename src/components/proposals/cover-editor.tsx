@@ -4,6 +4,7 @@ import { CheckIcon } from "@heroicons/react/20/solid";
 import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import { useClientList } from "@/hooks/use-proposals";
 import { ImagePicker } from "@/components/ui/image-picker";
+import { LogoQuickSwap } from "@/components/ui/logo-quick-swap";
 import { cn } from "@/lib/format";
 import type { CoverSectionData } from "@/types/proposal";
 
@@ -215,12 +216,16 @@ export function CoverEditor({
           {/* Cover logos — both editable here so you can swap the Foundry mark per-document and
               supply a client logo even for a prospect that isn't in Portal yet. */}
           <Field label="Brand logo">
+            <LogoQuickSwap
+              value={value.brandLogoUrl ?? ""}
+              onChange={(brandLogoUrl) => onChange({ ...value, brandLogoUrl })}
+            />
             <ImagePicker
               value={value.brandLogoUrl ?? ""}
               onChange={(brandLogoUrl) => onChange({ ...value, brandLogoUrl })}
             />
             <span className="mt-1.5 block text-xs leading-5 text-[var(--text-4)]">
-              Overrides the cover&rsquo;s Foundry mark for this document. Leave blank to use the
+              Overrides the cover&rsquo;s logo for this document. Leave blank to use the
               Settings → Branding logo.
             </span>
           </Field>

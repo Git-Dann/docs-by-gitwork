@@ -1,5 +1,6 @@
 import { TableOfContents } from "@/components/proposals/table-of-contents";
 import { ProposalSectionPreview } from "@/components/proposals/proposal-section-preview";
+import { PaginatedSectionList } from "@/components/proposals/paginated-section-list";
 import { resolveProposalMergeVariables } from "@/lib/merge-variables";
 import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
@@ -13,6 +14,7 @@ export function ProposalPreview({
   onSelectSection,
   editable = false,
   onSectionChange,
+  paginate = false,
 }: {
   proposal: ProposalDocument;
   className?: string;
@@ -32,6 +34,9 @@ export function ProposalPreview({
   editable?: boolean;
   /** Editor-only: write a block's data back to the draft (inline editing). */
   onSectionChange?: (sectionId: string, next: ProposalSection["data"]) => void;
+  /** Editor-only: show approximate "Page N" seams between sections (visual guide, never reflows
+   *  content — see paginated-section-list.tsx). Off everywhere except the editor canvas. */
+  paginate?: boolean;
 }) {
   // Substitute merge variables ({{client_name}}, {{total}}, …) for the rendered/exported view.
   // In editable mode we render the RAW proposal so inline edits bind to the real template text
@@ -48,19 +53,11 @@ export function ProposalPreview({
           : "proposal-document mx-auto w-full max-w-[860px] rounded-[10px] border border-[var(--doc-line-soft)] p-5 sm:p-8 lg:p-12 print:max-w-none print:rounded-none print:border-0 print:p-0"
       }
     >
-      <div className="space-y-8 print:space-y-7">
-        {visibleSections.map((section, index) =>
-          trackSections ? (
-            <div
-              key={section.id ?? `${section.key}-${index}`}
-              data-doc-section={section.key}
-              data-doc-section-title={section.title}
-            >
-              <ProposalSectionPreview section={section} proposal={resolved} index={index} />
-            </div>
-          ) : (
+      {paginate ? (
+        <PaginatedSectionList
+          sections={visibleSections}
+          renderSection={(section, index) => (
             <ProposalSectionPreview
-              key={section.id ?? `${section.key}-${index}`}
               section={section}
               proposal={resolved}
               index={index}
@@ -73,9 +70,38 @@ export function ProposalPreview({
                   : undefined
               }
             />
-          ),
-        )}
-      </div>
+          )}
+        />
+      ) : (
+        <div className="space-y-8 print:space-y-7">
+          {visibleSections.map((section, index) =>
+            trackSections ? (
+              <div
+                key={section.id ?? `${section.key}-${index}`}
+                data-doc-section={section.key}
+                data-doc-section-title={section.title}
+              >
+                <ProposalSectionPreview section={section} proposal={resolved} index={index} />
+              </div>
+            ) : (
+              <ProposalSectionPreview
+                key={section.id ?? `${section.key}-${index}`}
+                section={section}
+                proposal={resolved}
+                index={index}
+                activeSectionId={activeSectionId}
+                onSelectSection={onSelectSection}
+                editable={editable}
+                onChange={
+                  onSectionChange
+                    ? (next) => onSectionChange(section.id ?? section.key, next)
+                    : undefined
+                }
+              />
+            ),
+          )}
+        </div>
+      )}
     </article>
   );
 

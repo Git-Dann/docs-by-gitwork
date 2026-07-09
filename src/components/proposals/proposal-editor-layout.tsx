@@ -1298,6 +1298,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                     editable
                     onSelectSection={openOptions}
                     onSectionChange={handleSectionDataChange}
+                    paginate
                   />
                 </div>
               </div>

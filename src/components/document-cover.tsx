@@ -74,7 +74,8 @@ export interface DocumentCoverProps {
   callout?: DocumentCoverCallout;
   /** Pre-formatted date string shown in the footer. */
   dated: string;
-  /** Path to the Foundry logo. Defaults to `/foundry-logo.png`. */
+  /** Path to the cover logo. Defaults to `/foundry-logo.svg`; swap to `/gitwork-logo-home-page.png`
+   *  for a Gitwork-branded cover (see LogoQuickSwap in cover-editor.tsx / settings-panel.tsx). */
   logoUrl?: string;
   /**
    * `print` produces a full-page A4 cover (min-height: 100vh, full padding, page-break-after).
@@ -129,7 +130,7 @@ export function DocumentCover({
   executiveSummary,
   callout,
   dated,
-  logoUrl = "/foundry-logo.png",
+  logoUrl = "/foundry-logo.svg",
   variant = "print",
   watermark,
   watermarkTone = "neutral",
@@ -148,17 +149,20 @@ export function DocumentCover({
   const mono = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
   const serif = "var(--font-display), 'DM Serif Display', 'Times New Roman', Georgia, serif";
 
-  // ── Statement cover (light / minimal) — the editorial financial-statement look (Harry's
-  // reference): warm cream paper, serif logo/title with a periwinkle accent, mono meta + body,
-  // stat tiles (one dark), and a company footer. Bold (Pulse) falls through to the legacy hero. ──
+  // ── Statement cover (light / minimal) — Gitwork's actual brand system (gitwork-brandguide):
+  // Fraunces display serif, Cream paper, Purple accent, Dark Navy ink. Bold (Pulse) falls through
+  // to the legacy blue-gradient hero below and is intentionally untouched by this palette. ──
   if (coverStyle !== "bold") {
-    const paper = "#F0EEE8";
-    const panel = "#F7F5EF";
-    const ink = "#1A1A17";
-    const inkSoft = "#4B4A44";
-    const muted = "#8A867C";
-    const line = "rgba(0,0,0,0.14)";
-    const accent = "#4F5BD5";
+    // Shadows the outer `serif` (DM Serif Display) for this branch only — Fraunces is already
+    // loaded site-wide as --font-fraunces (src/app/layout.tsx), just unused here until now.
+    const serif = "var(--font-fraunces), 'Fraunces', Georgia, serif";
+    const paper = "#F2EDE4"; // Cream
+    const panel = "#EAE5DC"; // Warm Subtle
+    const ink = "#1A1A1E"; // Primary Text
+    const inkSoft = "#46464C";
+    const muted = "#6B6B6B"; // Muted
+    const line = "rgba(12,12,24,0.12)"; // hairline tinted toward Dark Navy
+    const accent = "#6B52FF"; // Purple
     // Strip a trailing period so we can render it in the accent colour.
     const cleanTitle = (title || "").replace(/\s*\.\s*$/, "");
     // Minimal = bare front page: logo + eyebrow + title (+ footer). Drops the meta grid,
@@ -197,7 +201,7 @@ export function DocumentCover({
               fontSize: isPrint ? "7vw" : 72,
               letterSpacing: "0.25em",
               whiteSpace: "nowrap",
-              color: `rgba(26,26,23,${watermarkTone === "neutral" ? "0.05" : watermarkAlpha})`,
+              color: `rgba(26,26,30,${watermarkTone === "neutral" ? "0.05" : watermarkAlpha})`,
               userSelect: "none",
             }}
           >

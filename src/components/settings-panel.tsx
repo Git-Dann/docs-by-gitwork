@@ -29,6 +29,7 @@ import { useUpdateWorkspaceDefaults, useWorkspaceDefaults } from "@/hooks/use-wo
 import { useAccount, useToggleDevRates } from "@/hooks/use-account";
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
+import { LogoQuickSwap } from "@/components/ui/logo-quick-swap";
 import type { RateBillingPeriod, RateCardPersonRecord } from "@/types/rate-card";
 import { SavedIndicator } from "@/components/settings/saved-indicator";
 import { SettingsCard } from "@/components/settings/settings-card";
@@ -160,6 +161,10 @@ export function GeneralTab() {
         <div className="mt-6 grid gap-5 sm:grid-cols-2 xl:max-w-md">
           <div className="space-y-2">
             <FieldLabel>Workspace logo</FieldLabel>
+            <LogoQuickSwap
+              value={branding?.brandLogoUrl ?? ""}
+              onChange={(value) => updateBranding.mutate({ brandLogoUrl: value })}
+            />
             <ImagePicker
               value={branding?.brandLogoUrl ?? ""}
               onChange={(value) => updateBranding.mutate({ brandLogoUrl: value })}

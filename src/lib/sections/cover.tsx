@@ -121,7 +121,7 @@ export const coverSection = defineSection<CoverSectionData>({
     const brandLogoUrl =
       (data.brandLogoUrl ?? "").trim() ||
       (branding?.brandLogoUrl ?? "").trim() ||
-      "/foundry-logo.png";
+      "/foundry-logo.svg";
     // Client lockup logo: per-document override → linked Portal client's logo → (none, show name).
     const resolvedClientLogo =
       (data.clientLogoUrl ?? "").trim() || (proposal.linkedClientLogoUrl ?? "").trim() || "";
