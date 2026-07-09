@@ -11,6 +11,7 @@
 import { useCallback, useRef, useState } from "react";
 import { LinkIcon, ListBulletIcon, NumberedListIcon } from "@heroicons/react/24/outline";
 import { MERGE_VARIABLES } from "@/lib/merge-variables";
+import { InlineFormatBar, useTextareaSelectionRect } from "@/lib/sections/inline-format-toolbar";
 
 export function MarkdownField({
   label,
@@ -31,6 +32,7 @@ export function MarkdownField({
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [varsOpen, setVarsOpen] = useState(false);
+  const selectionRect = useTextareaSelectionRect(ref, true);
 
   // Re-apply a selection after React commits the controlled value (which otherwise resets caret).
   const restoreSelection = useCallback((start: number, end: number) => {
@@ -177,6 +179,13 @@ export function MarkdownField({
           className="block w-full resize-y border-0 bg-white px-3 py-2 text-sm leading-6 text-[var(--text-1)] outline-none placeholder:text-[var(--text-4)]"
         />
       </div>
+      <InlineFormatBar
+        rect={selectionRect}
+        onBold={() => wrap("**")}
+        onItalic={() => wrap("*")}
+        onCode={() => wrap("`")}
+        onLink={link}
+      />
     </label>
   );
 }

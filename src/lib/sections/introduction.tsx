@@ -55,6 +55,7 @@ export const introductionSection = defineSection<IntroductionSectionData>({
             placeholder="Positioning summary (Markdown supported)…"
             ariaLabel="Positioning summary"
             className="max-w-3xl text-[15px] leading-7 text-[var(--text-2)]"
+            enableFormatBar
           />
         </div>
       );

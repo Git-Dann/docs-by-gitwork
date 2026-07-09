@@ -39,6 +39,7 @@ export const proseSection = defineSection<ProseSectionData>({
           placeholder="Write freely. Markdown supported — **bold**, *italic*, [links](…), - lists."
           ariaLabel="Prose content"
           className="max-w-4xl text-[15px] leading-7 text-[var(--text-1)]"
+          enableFormatBar
         />
       );
     }
