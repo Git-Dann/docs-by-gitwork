@@ -348,7 +348,7 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
           "Each connection is per-user and bound by your existing permissions — Claude can't do " +
           "more than you can. Admins and Super Admins hold this by default; grant it to Staff or " +
           "Developers here to let them connect their own Claude. Enforced on the consent screen, " +
-          "the OAuth authorize endpoint, and the Connected apps settings.",
+          "the OAuth authorize endpoint, and the MCP settings page.",
       },
     ],
   },

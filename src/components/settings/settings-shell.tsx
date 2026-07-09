@@ -85,13 +85,6 @@ const GROUPS: SectionGroup[] = [
         description: "Channels, digests, quiet hours.",
         icon: BellAlertIcon,
       },
-      {
-        id: "connected-apps",
-        label: "Connected apps",
-        description: "Claude and other MCP clients.",
-        icon: CommandLineIcon,
-        permission: "mcp.connect",
-      },
     ],
   },
   {
@@ -157,9 +150,9 @@ const GROUPS: SectionGroup[] = [
       {
         id: "mcp",
         label: "MCP",
-        description: "Workspace-wide Claude / MCP toggle and connections.",
+        description: "Connect Claude, plus the workspace-wide toggle for Super Admins.",
         icon: CommandLineIcon,
-        superAdminOnly: true,
+        permission: "mcp.connect",
       },
     ],
   },

@@ -1,10 +1,11 @@
 // Admin + per-user helpers for managing MCP connections.
 //
-// Two callers:
-//   • Settings → Workspace → MCP (Super Admin) uses the *Workspace functions:
-//     setMcpEnabled, listConnectionsForWorkspace, revokeConnectionByAdmin.
-//   • Settings → Account → Connected apps (any user) uses the *Own functions:
-//     listOwnConnections, revokeOwnConnection.
+// Both surfaces are now one page, Settings → MCP (see mcp-admin-panel.tsx):
+//   • The Workspace functions (setMcpEnabled, listConnectionsForWorkspace,
+//     revokeConnectionByAdmin) back the Status + all-connections sections,
+//     shown only to Super Admins.
+//   • The Own functions (listOwnConnections, revokeOwnConnection) back the
+//     Quick start + your-connections sections, shown to anyone with mcp.connect.
 //
 // Every state change is audited via recordAuditEntry — same pattern as the
 // other integration toggles (Google, Slack, email).

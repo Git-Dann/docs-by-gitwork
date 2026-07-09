@@ -1,10 +1,10 @@
-// React Query hooks for the MCP settings panels.
+// React Query hooks for the single Settings → MCP page (mcp-admin-panel.tsx).
 //
-// Two independent surfaces:
+// Two independent data surfaces, both rendered on that one page:
 //   • useMcpAdmin / useToggleMcp / useRevokeAdminConnection
-//     — workspace-level admin (Settings → Workspace → MCP, Super Admin)
+//     — workspace-level admin (Super Admin only; fetched conditionally)
 //   • useMyMcp / useRevokeOwnConnection
-//     — per-user (Settings → Account → Connected apps)
+//     — per-user self-connect (anyone with mcp.connect)
 
 "use client";
 
@@ -66,10 +66,11 @@ async function deleteJson(url: string): Promise<void> {
 
 // ── admin ──────────────────────────────────────────────────────────────────
 
-export function useMcpAdmin() {
+export function useMcpAdmin(enabled = true) {
   return useQuery({
     queryKey: ADMIN_KEY,
     queryFn: () => getJson<McpAdminPayload>("/api/settings/mcp"),
+    enabled,
   });
 }
 

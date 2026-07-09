@@ -146,7 +146,7 @@ export default async function ConsentPage({
           </ul>
           <p className="mt-3 text-xs text-[var(--text-3)]">
             You can revoke this connection at any time from{" "}
-            <strong>Settings → Connected apps</strong>.
+            <strong>Settings → MCP</strong>.
           </p>
         </div>
 

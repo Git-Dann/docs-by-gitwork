@@ -17,6 +17,7 @@ import { NextResponse } from "next/server";
 import { validateMcpBearer } from "@/server/mcp/auth";
 import { dispatch } from "@/server/mcp/handler";
 import { assertMcpEnabled, OAuthError } from "@/server/oauth";
+import { originFrom } from "@/lib/request-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -26,8 +27,7 @@ const COMMON_HEADERS = {
 } as const;
 
 function unauthorized(request: Request) {
-  const url = new URL(request.url);
-  const origin = `${url.protocol}//${url.host}`;
+  const origin = originFrom(request);
   return new NextResponse(
     JSON.stringify({
       jsonrpc: "2.0",

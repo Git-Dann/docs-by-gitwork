@@ -7,17 +7,15 @@ const nextConfig: NextConfig = {
   // chunk only ships the icons it uses, not the whole set. Pure build-time transform.
   experimental: {
     optimizePackageImports: ["@heroicons/react"],
-    // Self-hosted standalone server.js defaults this to false, which makes it build
-    // every Route Handler's request.url from its own bind hostname/port
-    // (HOSTNAME=0.0.0.0, PORT=3000) instead of the incoming Host header — regardless
-    // of what nginx forwards. Broke the RFC 8414/9728 OAuth metadata routes (issuer
-    // came back as "https://0.0.0.0:3000") after the Vercel→VPS migration (§23),
-    // since Vercel's platform handled this differently. Safe here: nginx is the only
-    // ingress and P5.19 custom-hostname doc routing already trusts the Host header.
-    trustHostHeader: true,
-    // Real, functioning internal flag (checked in next/dist/server/lib/router-utils/
-    // resolve-routes.js) — not yet in this Next version's public ExperimentalConfig type.
-  } as NonNullable<NextConfig["experimental"]> & { trustHostHeader: boolean },
+  },
+  // NOTE: experimental.trustHostHeader does NOT work for self-hosted standalone
+  // builds — Next's build pipeline (build/index.js, generate-required-server-files)
+  // hardcodes it to the Vercel-platform-detection boolean when writing
+  // required-server-files.json, unconditionally overwriting whatever's set here.
+  // Routes needing the real public origin behind nginx must read the Host /
+  // X-Forwarded-Host request header directly (see src/lib/request-origin.ts)
+  // instead of request.url. Confirmed by instrumenting next/dist/server/config.js
+  // and next/dist/build/index.js directly — this isn't a guess.
   // Keep the headless-Chromium packages out of the bundler so their code isn't relocated.
   serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core", "firebase-admin"],
   // …but Chromium's binary pack under bin/ is loaded by a computed path at runtime, so Next's

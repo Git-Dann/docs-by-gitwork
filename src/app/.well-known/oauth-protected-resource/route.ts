@@ -9,13 +9,9 @@
 // Public — no auth required (bootstrap discovery).
 
 import { NextResponse } from "next/server";
+import { originFrom } from "@/lib/request-origin";
 
 export const dynamic = "force-dynamic";
-
-function originFrom(request: Request): string {
-  const url = new URL(request.url);
-  return `${url.protocol}//${url.host}`;
-}
 
 export async function GET(request: Request) {
   const origin = originFrom(request);

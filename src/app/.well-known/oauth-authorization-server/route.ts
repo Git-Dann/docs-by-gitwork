@@ -2,19 +2,15 @@
 //
 // Tells MCP clients (claude.ai and others) where to find Foundry's OAuth
 // endpoints so they can self-configure. The issuer URL is derived from the
-// incoming request so dev / preview / production all return correct URLs
-// without per-environment config.
+// incoming request's Host header (see src/lib/request-origin.ts) so dev /
+// preview / production all return correct URLs without per-environment config.
 //
 // Public — no auth required (the whole point is bootstrap).
 
 import { NextResponse } from "next/server";
+import { originFrom } from "@/lib/request-origin";
 
 export const dynamic = "force-dynamic";
-
-function originFrom(request: Request): string {
-  const url = new URL(request.url);
-  return `${url.protocol}//${url.host}`;
-}
 
 export async function GET(request: Request) {
   const issuer = originFrom(request);

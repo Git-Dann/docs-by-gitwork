@@ -31,9 +31,6 @@ const OnboardingFormsTab = dynamic(() =>
 const McpAdminPanel = dynamic(() =>
   import("@/components/settings/mcp-admin-panel").then((m) => ({ default: m.McpAdminPanel })),
 );
-const ConnectedAppsPanel = dynamic(() =>
-  import("@/components/settings/connected-apps-panel").then((m) => ({ default: m.ConnectedAppsPanel })),
-);
 
 const VALID_SECTIONS: SettingsSectionId[] = [
   "account",
@@ -59,8 +56,10 @@ const VALID_SECTIONS: SettingsSectionId[] = [
   "workspace", // legacy
 ];
 
-// Sections only Super Admins may open (the role matrix editor + MCP master toggle).
-const SUPER_ADMIN_SECTIONS = new Set<SettingsSectionId>(["roles", "mcp"]);
+// Sections only Super Admins may open (the role matrix editor). MCP is no longer
+// here — the page itself is permission-gated (mcp.connect) and self-gates its
+// workspace-toggle section to Super Admins internally.
+const SUPER_ADMIN_SECTIONS = new Set<SettingsSectionId>(["roles"]);
 
 // Admin-or-above sections that are NOT per-role toggles (member management + legacy).
 // "people" (Members + the Roles tab) is admin-or-above; the Roles tab self-gates to Super Admin.
@@ -85,6 +84,9 @@ const PEOPLE_REDIRECTS: Partial<Record<SettingsSectionId, string>> = {
   // Any bookmark to the old URLs lands on the merged page — same content, one URL.
   branding: "/app/settings/general",
   content: "/app/settings/general",
+  // Connected apps folded into MCP — one page for self-connect + (for Super Admins)
+  // the workspace toggle. Same content, one URL.
+  "connected-apps": "/app/settings/mcp",
 };
 
 // Settings sub-sections gated by an individual matrix permission. A Super Admin can
@@ -100,9 +102,10 @@ const SETTINGS_SECTION_PERMISSION: Partial<Record<SettingsSectionId, string>> = 
   audit: "settings.audit",
   developer: "settings.developer",
   privacy: "settings.privacy",
-  // Per-user MCP panel — anyone holding mcp.connect (Admins by default;
-  // Staff/Developers via the matrix) can self-connect Claude.
-  "connected-apps": "mcp.connect",
+  // Anyone holding mcp.connect (Admins by default; Staff/Developers via the
+  // matrix) can open the page to self-connect Claude. The workspace-toggle
+  // section inside is additionally gated to Super Admins (page-level, not here).
+  mcp: "mcp.connect",
 };
 
 const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string }> = {
@@ -114,13 +117,15 @@ const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string 
     title: "Notifications",
     subtitle: "Where and when Foundry pings you.",
   },
+  // Legacy URL — present in the meta so the type stays exhaustive; the page-level
+  // redirect (PEOPLE_REDIRECTS) catches this slug before this meta is ever read.
   "connected-apps": {
     title: "Connected apps",
-    subtitle: "Authorize Claude and other MCP clients to act on your behalf.",
+    subtitle: "Merged into MCP — connect Claude from Settings → MCP.",
   },
   mcp: {
     title: "MCP",
-    subtitle: "Workspace-wide Claude / MCP integration — toggle and connections.",
+    subtitle: "Connect Claude to Foundry, plus (for Super Admins) the workspace toggle and connections.",
   },
   general: {
     title: "Document defaults",
@@ -291,7 +296,6 @@ export default async function SettingsSectionPage({
       <SettingsShell activeSection={sectionId}>
         {sectionId === "account" ? <AccountSettingsPanel /> : null}
         {sectionId === "notifications" ? <NotificationsSection /> : null}
-        {sectionId === "connected-apps" ? <ConnectedAppsPanel /> : null}
         {sectionId === "mcp" ? <McpAdminPanel /> : null}
         {sectionId === "general" ? <GeneralTab /> : null}
         {/* branding + content slugs redirect to /general before render (PEOPLE_REDIRECTS) */}

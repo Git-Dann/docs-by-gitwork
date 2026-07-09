@@ -26,6 +26,7 @@ import {
 } from "@/server/oauth";
 import { resolveEffectiveUserById } from "@/server/mcp/auth";
 import { canConnectMcp } from "@/server/auth/effective-user";
+import { originFrom } from "@/lib/request-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -172,6 +173,7 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
+  const origin = originFrom(request);
   const v = await validateParams(readParams(url.searchParams));
   if (!v.ok) {
     if (v.renderInPlace) return errorPage(v.message, v.status);
@@ -182,9 +184,9 @@ export async function GET(request: Request) {
   // NextAuth, then come back to /oauth/consent with the same params.
   const session = await auth();
   if (!session?.user?.id) {
-    const consentUrl = new URL("/oauth/consent", url.origin);
+    const consentUrl = new URL("/oauth/consent", origin);
     url.searchParams.forEach((value, key) => consentUrl.searchParams.set(key, value));
-    const signInUrl = new URL("/api/auth/signin", url.origin);
+    const signInUrl = new URL("/api/auth/signin", origin);
     signInUrl.searchParams.set("callbackUrl", consentUrl.toString());
     return NextResponse.redirect(signInUrl, 302);
   }
@@ -192,7 +194,7 @@ export async function GET(request: Request) {
   // Authenticated → take the user to the consent screen, carrying every
   // OAuth param along so the POST can re-validate from scratch (defence in
   // depth — never trust the consent page's hidden inputs alone).
-  const consentUrl = new URL("/oauth/consent", url.origin);
+  const consentUrl = new URL("/oauth/consent", origin);
   url.searchParams.forEach((value, key) => consentUrl.searchParams.set(key, value));
   return NextResponse.redirect(consentUrl, 302);
 }
