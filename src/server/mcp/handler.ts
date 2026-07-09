@@ -35,7 +35,7 @@ import { listDerivedClients, createClientRecord } from "@/server/clients";
 import { assignedClientIds, listTasks, createTask, updateTask } from "@/server/tasks";
 import { listMembers } from "@/server/team";
 import { listClientMeetings } from "@/server/meetings";
-import { allocateDocumentNumber } from "@/server/documents";
+import { allocateDocumentNumber, updateDocument } from "@/server/documents";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { applyClientNameToSections } from "@/lib/apply-client-name";
@@ -80,7 +80,8 @@ const SERVER_INSTRUCTIONS =
   "Foundry by Gitwork — Gitwork's design-and-build agency platform. Use these tools to work with " +
   "the workspace on the signed-in user's behalf (their permissions apply): list/create clients, " +
   "list/create/update tasks, list members, search Scribe meeting notes, create documents " +
-  "(proposals/SOW/SLA/…), and run or fetch Pulse production-readiness scans. Foundry Starters " +
+  "(proposals/SOW/SLA/HANDOVER/…) and then fill in their content with update_document, and run " +
+  "or fetch Pulse production-readiness scans. Foundry Starters " +
   "(reusable prompts/skills/kits) are exposed as MCP prompts — list them with prompts/list and " +
   "pull one in with prompts/get. Prefer resolving a client by slug; use list_members for assignee ids.";
 
@@ -234,6 +235,41 @@ const createDocumentSchema = z.object({
   client: z.string().optional(),
   documentType: DOCUMENT_TYPE.optional(),
   productName: z.string().optional(),
+});
+
+const DOCUMENT_STATUS = z.enum([
+  "DRAFT",
+  "PRODUCT_SIGN_OFF",
+  "TECH_SIGN_OFF",
+  "IN_REVIEW",
+  "APPROVED",
+  "SENT",
+  "ACCEPTED",
+  "DECLINED",
+  "ARCHIVED",
+]);
+
+// Looser than the editor's own `sectionSchema` (src/server/validators.ts): sortOrder/isVisible
+// are derived here (array order / default-visible) rather than demanded from the caller, since a
+// tool caller shouldn't need to know Foundry's internal ordering/visibility bookkeeping.
+const updateDocumentSectionSchema = z.object({
+  key: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string().optional(),
+  isVisible: z.boolean().optional(),
+  data: z.record(z.string(), z.unknown()).or(z.array(z.unknown())),
+  speakerNotes: z.string().optional(),
+});
+
+const updateDocumentSchema = z.object({
+  documentId: z.string().min(1),
+  title: z.string().min(1).max(200).optional(),
+  status: DOCUMENT_STATUS.optional(),
+  summary: z.string().optional(),
+  productName: z.string().optional(),
+  clientName: z.string().optional(),
+  sections: z.array(updateDocumentSectionSchema).min(1).optional(),
+  labels: z.array(z.string().min(1).max(40)).max(20).optional(),
 });
 
 const pulseScanToolSchema = z.object({
@@ -625,6 +661,80 @@ const TOOLS: ToolDef[] = [
         `Created ${document.documentType} ${document.documentNumber}: "${document.title}"${
           clientName ? ` for ${clientName}` : ""
         }. Open it in Foundry to edit.`,
+      );
+    },
+  },
+  {
+    name: "update_document",
+    description:
+      "Update an existing document's content (title, status, summary, sections, labels) by its " +
+      "documentId — e.g. filling in the sections of a HANDOVER/REPORT/PROPOSAL doc created with " +
+      "create_document. `sections`, if provided, REPLACES the document's current sections " +
+      "wholesale (pass the full set you want, not just the ones changing). Each section's `data` " +
+      "shape depends on its `key` (e.g. \"prose\" → {content}, \"checklist\" → {intro, items}, " +
+      "\"data_table\" → {caption, columns, rows}, \"callout\" → {tone, headline, body}) — read the " +
+      "document's existing sections (via Foundry's editor, or ask for them) to match the shapes " +
+      "already in use. Omitted fields are left untouched. Requires the 'Manage documents' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        documentId: { type: "string", description: "The document's id (from create_document's response, or the /app/docs/{id} URL)." },
+        title: { type: "string", description: "New title (1–200 chars)." },
+        status: {
+          type: "string",
+          enum: ["DRAFT", "PRODUCT_SIGN_OFF", "TECH_SIGN_OFF", "IN_REVIEW", "APPROVED", "SENT", "ACCEPTED", "DECLINED", "ARCHIVED"],
+          description: "New document status.",
+        },
+        summary: { type: "string", description: "Short summary shown in document lists." },
+        productName: { type: "string", description: "Product / project name shown on the cover." },
+        clientName: { type: "string", description: "Display name of the client shown on the cover." },
+        sections: {
+          type: "array",
+          description: "Full replacement list of sections, in order. Omit to leave sections untouched.",
+          items: {
+            type: "object",
+            properties: {
+              key: { type: "string", description: "Section type, e.g. \"prose\", \"checklist\", \"data_table\", \"callout\", \"cover\"." },
+              title: { type: "string", description: "Section heading shown in the editor/preview." },
+              description: { type: "string" },
+              isVisible: { type: "boolean", description: "Defaults to true." },
+              data: { type: "object", description: "Shape depends on `key` — see tool description." },
+              speakerNotes: { type: "string" },
+            },
+            required: ["key", "title", "data"],
+            additionalProperties: false,
+          },
+        },
+        labels: { type: "array", items: { type: "string" }, description: "Up to 20 short tag labels." },
+      },
+      required: ["documentId"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = updateDocumentSchema.parse(args);
+      const { documentId, sections, ...rest } = parsed;
+      const proposal = await updateDocument(user, documentId, {
+        ...rest,
+        sections: sections?.map((section, index) => ({
+          key: section.key,
+          title: section.title,
+          description: section.description,
+          sortOrder: index,
+          isVisible: section.isVisible ?? true,
+          data: section.data,
+          speakerNotes: section.speakerNotes,
+        })),
+      });
+      return textResult(
+        {
+          id: proposal.id,
+          title: proposal.title,
+          documentNumber: proposal.documentNumber,
+          documentType: proposal.documentType,
+          status: proposal.status,
+          editUrl: `/app/docs/${proposal.id}`,
+        },
+        `Updated ${proposal.documentType} ${proposal.documentNumber}: "${proposal.title}".`,
       );
     },
   },

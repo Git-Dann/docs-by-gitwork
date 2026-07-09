@@ -7,6 +7,17 @@
 import { randomBytes } from "node:crypto";
 import { DocumentType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
+import { proposalInclude, serializeProposal } from "@/server/proposals";
+import type { proposalUpdateSchema } from "@/server/validators";
+import {
+  allowedDocTypesForUser,
+  assertCan,
+  canManageDocs,
+  canViewCosts,
+  type EffectiveUser,
+} from "@/server/auth/effective-user";
+import type { z } from "zod";
 
 // ── Document numbering ──────────────────────────────────────────────────────
 
@@ -89,6 +100,211 @@ export async function allocateDocumentNumber(
   });
 
   return `${prefix}-${year}-${String(claimed).padStart(3, "0")}`;
+}
+
+// ── Update ───────────────────────────────────────────────────────────────
+//
+// Extracted from the PATCH /api/proposals/[id] route so the web editor's autosave and the
+// MCP `update_document` tool call one path instead of duplicating the transaction. Throws
+// (rather than returning a Response) so each caller can translate to its own response shape;
+// thrown errors carry a `status` field per the `Object.assign(new Error(...), { status })`
+// convention used elsewhere in src/server (see pulse-lite/leads.ts).
+
+export async function updateDocument(
+  actor: EffectiveUser | null,
+  id: string,
+  payload: z.infer<typeof proposalUpdateSchema>,
+) {
+  assertCan(actor, canManageDocs, "edit documents");
+  // Cost write-protection: a user without docs.viewCosts edits non-cost parts of the
+  // document but must NOT be able to wipe costs (their read is blanked). We ignore their
+  // costLineItems and restore the real costing section on save.
+  const showCosts = actor ? canViewCosts(actor) : true;
+
+  const existing = await prisma.document.findFirst({
+    where: { id },
+    include: { sections: true },
+  });
+
+  if (!existing) {
+    throw Object.assign(new Error("Document not found"), { status: 404 });
+  }
+
+  // Type gate: a developer must never edit an admin doc type (mirrors the GET 404).
+  if (actor && !allowedDocTypesForUser(actor).includes(existing.documentType)) {
+    throw Object.assign(new Error("Document not found"), { status: 404 });
+  }
+
+  // Edit lock when document is SENT — it's mid-signature. Block any update that isn't just
+  // changing status (e.g. a revoke that flips status back to DRAFT/APPROVED).
+  if (existing.status === "SENT") {
+    const flippingStatusOnly =
+      payload.status &&
+      payload.status !== "SENT" &&
+      Object.keys(payload).every((k) => k === "status");
+    if (!flippingStatusOnly) {
+      throw Object.assign(
+        new Error("This document is out for signature. Revoke the signature request before editing."),
+        { status: 423 }, // 423 Locked — semantically accurate
+      );
+    }
+  }
+
+  // Protect the client's conversion signal: once a document is ACCEPTED/DECLINED (set from the
+  // public page), an autosave/update carrying a client-derived status must not silently
+  // downgrade it back to DRAFT/APPROVED. Only an explicit ARCHIVE may move it out of a terminal
+  // state. (Same spirit as the SENT edit-lock above, but content edits stay allowed.)
+  const terminalLocked = existing.status === "ACCEPTED" || existing.status === "DECLINED";
+  const nextStatus =
+    terminalLocked && payload.status && payload.status !== "ARCHIVED"
+      ? existing.status
+      : payload.status;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.document.update({
+      where: { id },
+      data: {
+        title: payload.title,
+        status: nextStatus,
+        productName: payload.productName,
+        clientName: payload.clientName,
+        // Link/unlink a Portal client. undefined → leave untouched; null → unlink.
+        clientId: payload.clientId === undefined ? undefined : payload.clientId,
+        summary: payload.summary,
+        version: payload.version,
+        expiresAt: payload.expiresAt ? new Date(payload.expiresAt) : payload.expiresAt,
+        // Only touch metadata when the caller actually sends it — an omitted metadata must
+        // NOT clobber saved values (notes / sign-off flags / client / version) with template
+        // defaults. Defaults are base-only; existing + payload win.
+        ...(payload.metadata !== undefined
+          ? {
+              metadata: {
+                ...DEFAULT_PROPOSAL_METADATA,
+                ...(existing.metadata as Record<string, unknown> | null),
+                ...payload.metadata,
+              },
+            }
+          : {}),
+        exportSettings: payload.exportSettings as unknown as Prisma.InputJsonValue | undefined,
+        labels:
+          payload.labels !== undefined ? (payload.labels as unknown as Prisma.InputJsonValue) : undefined,
+        parentId: payload.parentId === undefined ? undefined : payload.parentId,
+      },
+    });
+
+    if (payload.sections) {
+      // For a no-viewCosts editor, keep the real costing section instead of their blanked
+      // copy — they can't see costs, so they can't be allowed to overwrite them.
+      const existingCosting = existing.sections.find((s) => s.key === "costing");
+      await tx.documentSection.deleteMany({ where: { documentId: id } });
+      await tx.documentSection.createMany({
+        data: payload.sections.map((section, index) => ({
+          documentId: id,
+          key: section.key,
+          title: section.title,
+          description: section.description,
+          sortOrder: section.sortOrder ?? index,
+          isVisible: section.isVisible,
+          speakerNotes: section.speakerNotes ?? null,
+          data:
+            !showCosts && section.key === "costing" && existingCosting
+              ? (existingCosting.data as Prisma.InputJsonValue)
+              : (section.data as unknown as Prisma.InputJsonValue),
+        })),
+      });
+    }
+
+    if (payload.costLineItems && showCosts) {
+      await tx.costLineItem.deleteMany({ where: { documentId: id } });
+      await tx.costLineItem.createMany({
+        data: payload.costLineItems.map((item, index) => ({
+          id: item.id,
+          documentId: id,
+          category: item.category,
+          itemName: item.itemName,
+          description: item.description,
+          quantity: new Prisma.Decimal(item.quantity),
+          unitCost: new Prisma.Decimal(item.unitCost),
+          subtotal: new Prisma.Decimal(item.subtotal ?? item.quantity * item.unitCost),
+          costKind: item.costKind,
+          sortOrder: item.sortOrder ?? index,
+        })),
+      });
+    }
+
+    if (payload.timelinePhases) {
+      await tx.timelinePhase.deleteMany({ where: { documentId: id } });
+      await tx.timelinePhase.createMany({
+        data: payload.timelinePhases.map((phase, index) => ({
+          documentId: id,
+          name: phase.name,
+          duration: phase.duration,
+          summary: phase.summary,
+          deliverables: phase.deliverables as unknown as Prisma.InputJsonValue,
+          sortOrder: phase.sortOrder ?? index,
+          viewMode: phase.viewMode,
+        })),
+      });
+    }
+
+    if (payload.links) {
+      await tx.link.deleteMany({ where: { documentId: id } });
+      await tx.link.createMany({
+        data: payload.links.map((link, index) => ({
+          documentId: id,
+          label: link.label,
+          url: link.url,
+          type: link.type,
+          notes: link.notes,
+          sortOrder: link.sortOrder ?? index,
+        })),
+      });
+    }
+
+    if (payload.ctas) {
+      await tx.cTA.deleteMany({ where: { documentId: id } });
+      await tx.cTA.createMany({
+        data: payload.ctas.map((cta, index) => ({
+          documentId: id,
+          role: cta.role,
+          label: cta.label,
+          destination: cta.destination,
+          destinationType: cta.destinationType,
+          sortOrder: cta.sortOrder ?? index,
+        })),
+      });
+    }
+
+    if (payload.assets) {
+      await tx.asset.deleteMany({ where: { documentId: id } });
+      await tx.asset.createMany({
+        data: payload.assets.map((asset, index) => ({
+          documentId: id,
+          sectionId: asset.sectionId,
+          type: asset.type,
+          title: asset.title,
+          url: asset.url,
+          altText: asset.altText,
+          placement: asset.placement,
+          caption: asset.caption,
+          size: asset.size,
+          alignment: asset.alignment,
+          sortOrder: asset.sortOrder ?? index,
+        })),
+      });
+    }
+  });
+
+  const updated = await prisma.document.findFirst({
+    where: { id },
+    include: proposalInclude,
+  });
+
+  if (!updated) {
+    throw Object.assign(new Error("Document not found after update"), { status: 404 });
+  }
+
+  return serializeProposal(updated);
 }
 
 // ── Share tokens ───────────────────────────────────────────────────────────
