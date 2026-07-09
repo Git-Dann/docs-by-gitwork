@@ -603,30 +603,47 @@ export async function publishRollup(
   };
 }
 
-/**
- * End-of-day "Push to Slack" — compile every developer's PM update (their
- * done-today tasks + their end-of-day note) grouped BY DEVELOPER and post ONE
- * consolidated card to the dedicated PM-updates channel (Settings → Integrations
- * `tasks.updates` route, i.e. #updates). Only devs who have pushed their PM
- * update today are included. Best-effort Slack post; a missing token/channel
- * never fails the request — `configured: false` tells the UI to prompt setup.
- */
-export async function publishPmUpdates(
-  user: EffectiveUser,
-): Promise<{
+export interface PmUpdatesResult {
   ok: boolean;
   channel: string | null;
   configured: boolean;
   devCount: number;
   taskCount: number;
+}
+
+/** Preview payload = the summary counts plus the per-developer breakdown the
+ *  review modal renders before the admin confirms the send. */
+export interface PmUpdatesPreview extends PmUpdatesResult {
+  dateLabel: string;
+  devs: PmUpdateDev[];
+}
+
+/**
+ * Compile every developer's PM update (their done-today tasks + their end-of-day
+ * note) grouped BY DEVELOPER, and resolve the destination channel + bot token.
+ * Only devs who have pushed their PM update today are included. Posts NOTHING —
+ * shared by the review preview and the actual publish so both see identical data.
+ */
+async function compilePmUpdates(user: EffectiveUser): Promise<{
+  devs: PmUpdateDev[];
+  taskCount: number;
+  channel: string | null;
+  botToken: string | null;
+  workDate: Date;
 }> {
-  assertCanPublishTaskRollup(user);
   await ensureBaseRecords();
   const workDate = parseWorkDate();
   const devIds = await getDeveloperUserIds(user.workspaceId);
 
+  const ws = await prisma.workspace.findUnique({
+    where: { id: user.workspaceId },
+    select: { slackBotToken: true, slackBotTokenEncrypted: true, channelRoutes: true },
+  });
+  const botToken = getSlackBotToken(ws);
+  const channel = resolveUpdatesChannel(ws);
+
   if (devIds.length === 0) {
-    return { ok: true, channel: null, configured: true, devCount: 0, taskCount: 0 };
+    return { devs: [], taskCount: 0, channel, botToken, workDate };
   }
 
   const assigneeFilter = [
@@ -698,16 +715,71 @@ export async function publishPmUpdates(
 
   const taskCount = devs.reduce((n, d) => n + d.tasks.length, 0);
 
-  const ws = await prisma.workspace.findUnique({
-    where: { id: user.workspaceId },
-    select: { slackBotToken: true, slackBotTokenEncrypted: true, channelRoutes: true },
-  });
-  const botToken = getSlackBotToken(ws);
-  const channel = resolveUpdatesChannel(ws);
+  return { devs, taskCount, channel, botToken, workDate };
+}
+
+/**
+ * Review preview for the "Push to Slack" flow — compiles the same data
+ * `publishPmUpdates` would post, but sends nothing. Powers the confirmation
+ * modal so the admin can eyeball each dev's update before it goes out.
+ */
+export async function previewPmUpdates(user: EffectiveUser): Promise<PmUpdatesPreview> {
+  assertCanPublishTaskRollup(user);
+  const { devs, taskCount, channel, workDate } = await compilePmUpdates(user);
+  return {
+    ok: true,
+    channel,
+    configured: Boolean(channel),
+    devCount: devs.length,
+    taskCount,
+    dateLabel: ymd(workDate),
+    devs,
+  };
+}
+
+/**
+ * End-of-day "Push to Slack" — compile every developer's PM update (their
+ * done-today tasks + their end-of-day note) grouped BY DEVELOPER and post ONE
+ * consolidated card to the dedicated PM-updates channel (Settings → Integrations
+ * `tasks.updates` route, i.e. #updates). Only devs who have pushed their PM
+ * update today are included. Best-effort Slack post; a missing token/channel
+ * never fails the request — `configured: false` tells the UI to prompt setup.
+ *
+ * The posted card carries a "🗑 Delete update" button. We pre-mint a
+ * `SlackMessageRef` (placeholder ts) so its id can be embedded in that button,
+ * then patch in the real message ts once Slack returns it — the interactivity
+ * handler resolves the ref on click and runs chat.delete.
+ */
+export async function publishPmUpdates(user: EffectiveUser): Promise<PmUpdatesResult> {
+  assertCanPublishTaskRollup(user);
+  const { devs, taskCount, channel, botToken, workDate } = await compilePmUpdates(user);
 
   if (botToken && channel) {
-    const card = buildPmUpdatesCard({ dateLabel: ymd(workDate), devs });
-    await postMessage(botToken, { channel, text: card.text, blocks: card.blocks });
+    // Pre-mint the ref (placeholder ts) so the delete button can carry its id.
+    const ref = await prisma.slackMessageRef.create({
+      data: {
+        workspaceId: user.workspaceId,
+        channelId: channel,
+        messageTs: cryptoRandomId(),
+        taskId: null,
+        kind: "PM_UPDATES",
+        postedById: user.id,
+      },
+    });
+
+    const card = buildPmUpdatesCard({ dateLabel: ymd(workDate), devs, deleteRefId: ref.id });
+    const result = await postMessage(botToken, { channel, text: card.text, blocks: card.blocks });
+
+    if (result.ok && result.data.ts) {
+      // Swap the placeholder for the real ts so chat.delete targets the message.
+      await prisma.slackMessageRef
+        .update({ where: { id: ref.id }, data: { messageTs: result.data.ts } })
+        .catch(() => undefined);
+    } else {
+      // Post failed — drop the orphan ref so it can't back a dead delete button.
+      await prisma.slackMessageRef.delete({ where: { id: ref.id } }).catch(() => undefined);
+    }
+
     await prisma.workspace
       .update({ where: { id: user.workspaceId }, data: { lastSlackPostAt: new Date() } })
       .catch(() => undefined);

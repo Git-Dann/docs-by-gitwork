@@ -27,6 +27,7 @@ import {
   getRollupRoster,
   publishRollup,
   pushPmUpdates,
+  previewPmUpdates,
   listMemberClients,
   setMemberClients,
   listFeatureBlocks,
@@ -335,6 +336,18 @@ export function usePublishRollup() {
   return useMutation({
     mutationFn: (override: boolean = false) => publishRollup(override),
     onSuccess: () => void qc.invalidateQueries({ queryKey: QK.roster }),
+  });
+}
+
+/** Review preview for "Push to Slack" — compiles the PM update without posting.
+ *  Enabled only while the review modal is open so it refetches on each open. */
+export function usePmUpdatesPreview(enabled: boolean) {
+  return useQuery({
+    queryKey: [...QK.roster, "pm-preview"] as const,
+    queryFn: () => previewPmUpdates(),
+    enabled,
+    staleTime: 0,
+    gcTime: 0,
   });
 }
 

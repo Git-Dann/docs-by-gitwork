@@ -9,8 +9,14 @@ import {
   ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/format";
-import { useRollupRoster, usePublishRollup, usePushPmUpdates } from "@/hooks/use-tasks";
+import {
+  useRollupRoster,
+  usePublishRollup,
+  usePushPmUpdates,
+  usePmUpdatesPreview,
+} from "@/hooks/use-tasks";
 import { TaskAvatar } from "@/components/tasks/task-avatar";
 
 const PAGE_SIZE = 5;
@@ -37,6 +43,9 @@ export function DailyRollup({
   const [result, setResult] = useState<string | null>(null);
   const [pmResult, setPmResult] = useState<string | null>(null);
   const [page, setPage] = useState(0);
+  // Review-before-send: opening the modal fetches the compiled preview.
+  const [reviewing, setReviewing] = useState(false);
+  const preview = usePmUpdatesPreview(reviewing);
 
   const devs = data?.devs ?? [];
   const total = devs.length;
@@ -75,6 +84,7 @@ export function DailyRollup({
           `Pushed ${r.devCount} dev update${r.devCount === 1 ? "" : "s"} (${r.taskCount} task${r.taskCount === 1 ? "" : "s"}) to #updates.`,
         );
       }
+      setReviewing(false);
     } catch (e) {
       setPmResult(e instanceof Error ? e.message : "Push failed");
     }
@@ -203,9 +213,11 @@ export function DailyRollup({
                   type="button"
                   variant="secondary"
                   leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
-                  onClick={doPushPm}
+                  onClick={() => {
+                    setPmResult(null);
+                    setReviewing(true);
+                  }}
                   disabled={pushPm.isPending}
-                  loading={pushPm.isPending}
                 >
                   Push to Slack
                 </Button>
@@ -220,6 +232,90 @@ export function DailyRollup({
           </>
         )}
       </div>
+
+      <Modal
+        open={reviewing}
+        onClose={() => setReviewing(false)}
+        title="REVIEW END-OF-DAY UPDATE"
+        panelClassName="w-full max-w-lg"
+      >
+        <div className="widget-body space-y-3">
+          {preview.isPending ? (
+            <div className="h-40 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
+          ) : preview.isError ? (
+            <p className="rounded-[6px] border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              Couldn&apos;t load the preview — {preview.error instanceof Error ? preview.error.message : "please try again."}
+            </p>
+          ) : !preview.data?.configured ? (
+            <p className="rounded-[6px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              No <strong>#updates</strong> channel is set. Pick one in Settings → Integrations
+              (&ldquo;Daily PM updates&rdquo;) before sending.
+            </p>
+          ) : preview.data.devCount === 0 ? (
+            <p className="rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-2 text-xs text-[var(--text-3)]">
+              No developers have posted a PM update yet today — nothing to send.
+            </p>
+          ) : (
+            <>
+              <p className="text-[11px] text-[var(--text-4)]">
+                This posts to <strong>#updates</strong> — {preview.data.devCount} dev
+                {preview.data.devCount === 1 ? "" : "s"}, {preview.data.taskCount} task
+                {preview.data.taskCount === 1 ? "" : "s"} done today. Review before sending.
+              </p>
+              <div className="max-h-[46vh] space-y-2 overflow-y-auto">
+                {preview.data.devs.map((d) => (
+                  <div
+                    key={d.name}
+                    className="rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2"
+                  >
+                    <p className="text-sm font-medium text-[var(--text-1)]">{d.name}</p>
+                    {d.tasks.length > 0 ? (
+                      <ul className="mt-1 space-y-0.5">
+                        {d.tasks.map((t) => (
+                          <li key={t.taskId} className="text-[12px] text-[var(--text-2)]">
+                            • {t.title}{" "}
+                            <span className="text-[var(--text-4)]">· {t.clientName}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-[12px] italic text-[var(--text-4)]">
+                        No tasks marked done today.
+                      </p>
+                    )}
+                    {d.note?.trim() ? (
+                      <p className="mt-1 border-l-2 border-[var(--border-2)] pl-2 text-[12px] text-[var(--text-3)]">
+                        {d.note.trim()}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          <div className="flex items-center justify-end gap-2 border-t border-[var(--border-2)] pt-3">
+            <Button type="button" variant="secondary" onClick={() => setReviewing(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
+              onClick={doPushPm}
+              disabled={
+                pushPm.isPending ||
+                preview.isPending ||
+                !preview.data?.configured ||
+                (preview.data?.devCount ?? 0) === 0
+              }
+              loading={pushPm.isPending}
+            >
+              Send to #updates
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </section>
   );
 }

@@ -2912,6 +2912,28 @@ export function pushPmUpdates(): Promise<{
   return apiFetch(`/api/tasks/pm-updates`, { method: "POST" });
 }
 
+export interface PmUpdatePreviewDev {
+  name: string;
+  note: string | null;
+  tasks: Array<{ title: string; clientName: string; clientSlug: string; taskId: string }>;
+}
+
+export interface PmUpdatesPreview {
+  ok: boolean;
+  channel: string | null;
+  configured: boolean;
+  devCount: number;
+  taskCount: number;
+  dateLabel: string;
+  devs: PmUpdatePreviewDev[];
+}
+
+/** Preview the end-of-day PM updates without posting — feeds the review modal so
+ *  the admin can confirm before it goes to #updates. */
+export function previewPmUpdates(): Promise<PmUpdatesPreview> {
+  return apiFetch(`/api/tasks/pm-updates`);
+}
+
 // ─── Ad-hoc Slack pushes (Tasks-page composer + DevOps broadcast) ────────────
 
 export function getSlackPushPrefs(): Promise<SlackPushPrefs> {

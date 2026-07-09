@@ -13,7 +13,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { getSlackBotToken, openView, updateMessage } from "./client";
+import { getSlackBotToken, openView, updateMessage, deleteMessage } from "./client";
 import {
   SLACK_ACTIONS,
   buildAddCommentModal,
@@ -170,10 +170,53 @@ async function refreshStandupCard(opts: {
   });
 }
 
+/**
+ * Delete a posted PM-updates card. The button's `value` is the SlackMessageRef
+ * id (no taskId), so this is handled ahead of the task-based action parsing.
+ * Anyone in the channel may click (guarded by a Slack confirm dialog) — there is
+ * no Slack↔Foundry user mapping yet, so we can't scope it to a Foundry role. We
+ * still authorise structurally: the ref must exist, belong to this workspace,
+ * and be a PM_UPDATES card. Slack's channel/ts are used for the actual delete.
+ */
+async function handlePmUpdatesDelete(
+  payload: SlackInteractionPayload,
+  action: NonNullable<SlackInteractionPayload["actions"]>[number],
+): Promise<void> {
+  const refId = action.value;
+  if (!refId) return;
+
+  const ws = await resolveWorkspaceForPayload(payload);
+  if (!ws) {
+    console.info("[slack] no workspace token for pm-updates delete");
+    return;
+  }
+
+  const ref = await prisma.slackMessageRef.findUnique({
+    where: { id: refId },
+    select: { id: true, workspaceId: true, channelId: true, messageTs: true, kind: true },
+  });
+  if (!ref || ref.workspaceId !== ws.workspaceId || ref.kind !== "PM_UPDATES") {
+    console.info("[slack] pm-updates delete ref mismatch", { refId });
+    return;
+  }
+
+  const channel = payload.channel?.id ?? ref.channelId;
+  const ts = payload.message?.ts ?? ref.messageTs;
+  await deleteMessage(ws.token, { channel, ts }).catch(() => undefined);
+  await prisma.slackMessageRef.delete({ where: { id: ref.id } }).catch(() => undefined);
+}
+
 async function handleBlockAction(
   payload: SlackInteractionPayload,
   action: NonNullable<SlackInteractionPayload["actions"]>[number],
 ): Promise<void> {
+  // PM-updates delete carries just a ref id in `value` — resolve it before the
+  // task-based parsing below (which expects "<messageRefId>:<taskId>").
+  if (action.action_id === SLACK_ACTIONS.PM_UPDATES_DELETE) {
+    await handlePmUpdatesDelete(payload, action);
+    return;
+  }
+
   // The overflow menu packs the action into selected_option.value as
   // "<actionId>|<messageRefId>:<taskId>". A bare button uses action.value.
   const parsed =

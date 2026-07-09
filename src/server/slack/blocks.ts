@@ -294,6 +294,10 @@ export interface PmUpdateDev {
 export function buildPmUpdatesCard(input: {
   dateLabel: string;
   devs: PmUpdateDev[];
+  /** When set, a "🗑 Delete update" button (with a confirm dialog) is appended,
+   *  carrying this SlackMessageRef id so the interactivity handler can resolve
+   *  the message and run chat.delete. Omit for previews / unsaved renders. */
+  deleteRefId?: string | null;
 }): { text: string; blocks: SlackBlock[] } {
   const friendlyDate = formatFriendlyDate(input.dateLabel);
   const text = `End-of-day updates · ${input.dateLabel}`;
@@ -321,6 +325,30 @@ export function buildPmUpdatesCard(input: {
     blocks.push({ type: "section", text: { type: "mrkdwn", text: body } });
   }
   blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: `Posted from Foundry` }] });
+  if (input.deleteRefId) {
+    blocks.push({
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "🗑 Delete update", emoji: true },
+          style: "danger",
+          action_id: SLACK_ACTIONS.PM_UPDATES_DELETE,
+          value: input.deleteRefId,
+          confirm: {
+            title: { type: "plain_text", text: "Delete this update?" },
+            text: {
+              type: "mrkdwn",
+              text: "This removes the end-of-day update from this channel for everyone. This can't be undone.",
+            },
+            confirm: { type: "plain_text", text: "Delete" },
+            deny: { type: "plain_text", text: "Keep" },
+            style: "danger",
+          },
+        },
+      ],
+    });
+  }
   return { text, blocks };
 }
 
@@ -555,6 +583,7 @@ export const SLACK_ACTIONS = {
   TASK_MARK_DONE: "task.markDone",
   TASK_MARK_IN_REVIEW: "task.markInReview",
   TASK_OPEN_IN_FOUNDRY: "task.openInFoundry",
+  PM_UPDATES_DELETE: "pmUpdates.delete",
 } as const;
 
 export type SlackActionId = (typeof SLACK_ACTIONS)[keyof typeof SLACK_ACTIONS];
