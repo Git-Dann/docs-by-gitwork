@@ -11,6 +11,7 @@ import puppeteer from "puppeteer-core";
 import { NextRequest } from "next/server";
 import { apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { originFrom } from "@/lib/request-origin";
 import { assertCan, canManagePulse, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const maxDuration = 60;
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sca
       return apiError("Share this report before exporting a PDF.", 409);
     }
 
-    const target = `${request.nextUrl.origin}/report/${scan.shareToken}?print=1`;
+    const target = `${originFrom(request)}/report/${scan.shareToken}?print=1`;
     const browser = await puppeteer.launch({
       args: chromium.args,
       executablePath: await chromium.executablePath(),

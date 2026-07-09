@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { originFrom } from "@/lib/request-origin";
 import { signMobileToken } from "@/server/auth/mobile-jwt";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions";
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest) {
 
   // Not signed in → bounce through the normal NextAuth sign-in, returning here afterwards.
   if (!email) {
-    const signInUrl = new URL("/api/auth/signin", request.nextUrl.origin);
+    const signInUrl = new URL("/api/auth/signin", originFrom(request));
     signInUrl.searchParams.set("callbackUrl", request.url);
     return NextResponse.redirect(signInUrl);
   }

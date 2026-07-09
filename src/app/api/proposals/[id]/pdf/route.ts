@@ -18,6 +18,7 @@ import puppeteer from "puppeteer-core";
 import { NextRequest } from "next/server";
 import { apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { originFrom } from "@/lib/request-origin";
 import { assertCan, canManageDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const maxDuration = 60;
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return apiError("Enable sharing for this document before exporting a PDF.", 409);
     }
 
-    const origin = request.nextUrl.origin;
+    const origin = originFrom(request);
     const target = `${origin}/docs/${doc.shareToken}?print=1`;
 
     const browser = await puppeteer.launch({

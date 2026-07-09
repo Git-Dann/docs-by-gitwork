@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { originFrom } from "@/lib/request-origin";
 import { assertCan, canManagePulse, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { sendWorkspaceEmail, escapeHtml } from "@/server/email";
 import type { PulseAnalysisOutput } from "@/types/pulse";
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sc
     }
 
     const llm = scan.llmAnalysis as PulseAnalysisOutput | null;
-    const origin = request.nextUrl.origin;
+    const origin = originFrom(request);
     const reportUrl = `${origin}/report/${shareToken}`;
     const intro = body.message?.trim();
 

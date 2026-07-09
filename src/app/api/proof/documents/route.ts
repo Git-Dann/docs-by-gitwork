@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { originFrom } from "@/lib/request-origin";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import {
   createProofAccessToken,
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
     const { workspace, user } = await ensureBaseRecords();
     const slug = createProofSlug(body.title);
     const accessToken = createProofAccessToken();
-    const { shareUrl, tokenUrl } = createProofUrls(request.nextUrl.origin, slug, accessToken);
+    const { shareUrl, tokenUrl } = createProofUrls(originFrom(request), slug, accessToken);
 
     const document = await prisma.proofDocument.create({
       data: {
