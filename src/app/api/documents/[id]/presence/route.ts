@@ -15,6 +15,7 @@ import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -31,7 +32,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
     const body = heartbeatSchema.parse(await request.json());
-    const { user } = await ensureBaseRecords();
+
+    // Identify the real signed-in operator so "editing now" shows the actual teammate, not the
+    // bootstrap workspace-owner placeholder. Falls back to ensureBaseRecords() only for requests
+    // with no session at all (e.g. a direct API-key call with no user context).
+    const actor = await getEffectiveUserOrNull(request);
+    const user = actor ?? (await ensureBaseRecords()).user;
 
     const userName = body.userName?.trim() || user.name || user.email;
 
