@@ -7,6 +7,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { isAtLeast } from "@/types/auth";
 import { recomputeMember } from "@/server/permissions";
+import { isSeedAccountEmail } from "@/server/seed-accounts";
 
 const CreateMemberSchema = z.object({
   name: z.string().min(1),
@@ -39,15 +40,21 @@ export async function GET() {
 
   if (!workspace) return apiError("Workspace not found", 404);
 
-  const members = workspace.members.map((m) => ({
-    userId: m.userId,
-    memberId: m.id,
-    name: m.user.name,
-    email: m.user.email,
-    role: m.role,
-    permissions: (m.permissions as string[]) ?? [],
-    createdAt: m.createdAt,
-  }));
+  // Exclude seed/bootstrap accounts (owner@gitwork.io, admin@example.com, INITIAL_ADMIN_EMAIL) —
+  // they exist to make the app usable pre-first-real-admin, not to show up as pickable teammates
+  // (this mirrors the filtering src/server/team.ts's listMembers() already does; this route is a
+  // separate, older query path that never picked up the same convention).
+  const members = workspace.members
+    .filter((m) => !isSeedAccountEmail(m.user.email))
+    .map((m) => ({
+      userId: m.userId,
+      memberId: m.id,
+      name: m.user.name,
+      email: m.user.email,
+      role: m.role,
+      permissions: (m.permissions as string[]) ?? [],
+      createdAt: m.createdAt,
+    }));
 
   return apiOk({ members });
 }

@@ -103,7 +103,11 @@ export function BlockPalette({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-40">
+    // z-50 (not z-40): the persistent "On Your Desk" bottom drawer (src/components/desk/
+    // desk-drawer.tsx) also docks at z-40 — sharing that value let its dock-bar text bleed
+    // through underneath this palette. A transient overlay like this one must outrank
+    // persistent bottom chrome, matching the z-50 convention used by the generic Modal.
+    <div className="fixed inset-0 z-50">
       {/* Backdrop */}
       <button
         type="button"
