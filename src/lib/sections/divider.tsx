@@ -14,7 +14,7 @@ const VARIANT_LABEL: Record<DividerSectionData["variant"], string> = {
 const VARIANT_HINT: Record<DividerSectionData["variant"], string> = {
   rule: "A subtle hairline rule between sections.",
   spacer: "Empty whitespace — control with the spacing slider.",
-  "page-break": "Forces the next section onto a new page when printed.",
+  "page-break": "Starts the next block on a new A4 page in the paged preview and print.",
 };
 
 export const dividerSection = defineSection<DividerSectionData>({

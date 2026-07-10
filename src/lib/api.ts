@@ -3323,6 +3323,34 @@ export async function promoteWikiIntakeItemApi(
   );
 }
 
+async function postImageFile<T>(url: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(url, { method: "POST", body: form });
+  const data = (await res.json()) as Record<string, unknown>;
+  if (!res.ok) {
+    const msg = typeof data?.error === "string" ? data.error : `Upload failed: ${res.status}`;
+    throw new Error(msg);
+  }
+  return data as T;
+}
+
+export function uploadWikiIntakeItemImage(
+  slug: string,
+  id: string,
+  file: File,
+): Promise<WikiIntakeItemRecord> {
+  return postImageFile(`/api/clients/${slug}/wiki/intake-items/${id}/image`, file);
+}
+
+export function uploadPublicWikiIntakeItemImage(
+  token: string,
+  id: string,
+  file: File,
+): Promise<WikiIntakeItemRecord> {
+  return postImageFile(`/api/wiki/${token}/intake-items/${id}/image`, file);
+}
+
 export async function getClientWiki(slug: string): Promise<WikiDTO> {
   return apiFetch<WikiDTO>(`/api/clients/${slug}/wiki`);
 }

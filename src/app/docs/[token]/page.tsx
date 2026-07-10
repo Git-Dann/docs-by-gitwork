@@ -96,7 +96,8 @@ export default async function PublicDocumentPage({ params, searchParams }: PageP
             proposal={proposal}
             showTableOfContents={false}
             frame={false}
-            className="mx-auto w-full max-w-[880px] print:max-w-none"
+            pageMode="paged"
+            className="mx-auto w-full max-w-none"
           />
         </div>
       </main>
@@ -117,7 +118,8 @@ export default async function PublicDocumentPage({ params, searchParams }: PageP
           showTableOfContents={false}
           frame
           trackSections
-          className="mx-auto w-full max-w-[880px]"
+          pageMode="paged"
+          className="mx-auto w-full max-w-none"
         />
       </div>
 

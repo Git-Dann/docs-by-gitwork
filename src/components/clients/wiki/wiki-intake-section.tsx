@@ -1,7 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowTopRightOnSquareIcon, CheckCircleIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { useRef, useState } from "react";
+import {
+  ArrowTopRightOnSquareIcon,
+  CheckCircleIcon,
+  PhotoIcon,
+  PlusIcon,
+  TrashIcon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
 import type { WikiIntakeItemRecord } from "@/lib/api";
 import {
   useCreatePublicWikiIntakeItem,
@@ -9,6 +16,8 @@ import {
   useDeleteWikiIntakeItem,
   usePromoteWikiIntakeItem,
   useUpdateWikiIntakeItem,
+  useUploadWikiIntakeItemImage,
+  useUploadPublicWikiIntakeItemImage,
 } from "@/hooks/use-wiki";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -46,6 +55,8 @@ export function WikiIntakeSection({
   const updateItem = useUpdateWikiIntakeItem(slug);
   const deleteItem = useDeleteWikiIntakeItem(slug);
   const promoteItem = usePromoteWikiIntakeItem(slug);
+  const uploadImageInternal = useUploadWikiIntakeItemImage(slug);
+  const uploadImagePublic = useUploadPublicWikiIntakeItemImage(token ?? "");
 
   const [localItems, setLocalItems] = useState(items);
   const [type, setType] = useState<ItemType>("FEEDBACK");
@@ -53,10 +64,21 @@ export function WikiIntakeSection({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [requestedBy, setRequestedBy] = useState("");
+  const [image, setImage] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [viewingImageId, setViewingImageId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const visibleItems = isInternal ? items : localItems;
   const busy = createInternal.isPending || createPublic.isPending;
+  const uploadingImage = uploadImageInternal.isPending || uploadImagePublic.isPending;
+
+  function imageSrc(itemId: string, opts: { thumb?: boolean } = {}) {
+    const qs = opts.thumb ? "?thumb=1" : "";
+    return isInternal
+      ? `/api/clients/${slug}/wiki/intake-items/${itemId}/image${qs}`
+      : `/api/wiki/${token}/intake-items/${itemId}/image${qs}`;
+  }
 
   async function submit() {
     setError(null);
@@ -75,19 +97,27 @@ export function WikiIntakeSection({
       const created = isInternal
         ? await createInternal.mutateAsync(payload)
         : await createPublic.mutateAsync(payload);
-      if (!isInternal) setLocalItems((prev) => [created, ...prev]);
+      if (image) {
+        const withImage = isInternal
+          ? await uploadImageInternal.mutateAsync({ id: created.id, file: image })
+          : await uploadImagePublic.mutateAsync({ id: created.id, file: image });
+        if (!isInternal) setLocalItems((prev) => [withImage, ...prev]);
+      } else if (!isInternal) {
+        setLocalItems((prev) => [created, ...prev]);
+      }
       setTitle("");
       setDescription("");
       setRequestedBy("");
       setPriority("MEDIUM");
       setType("FEEDBACK");
+      setImage(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not submit this item.");
     }
   }
 
   return (
-    <div className="space-y-4">
+    <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
       {/* ── 01 // ADD REQUEST ── */}
       <section className="widget-card">
         <div className="widget-header">
@@ -148,17 +178,54 @@ export function WikiIntakeSection({
             />
           </div>
 
+          {/* Screenshot — optional, attached after the item is created. */}
+          <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => setImage(e.target.files?.[0] ?? null)}
+            />
+            {image ? (
+              <div className="flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
+                <PhotoIcon className="h-4 w-4 shrink-0 text-[var(--text-3)]" />
+                <span className="min-w-0 flex-1 truncate text-sm text-[var(--text-2)]">{image.name}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImage(null);
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                  }}
+                  aria-label="Remove image"
+                  className="shrink-0 text-[var(--text-4)] transition hover:text-[var(--text-2)]"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+              >
+                <PhotoIcon className="h-4 w-4" />
+                Attach a screenshot (optional)
+              </button>
+            )}
+          </div>
+
           {error && <p className="text-sm text-[var(--danger-600,#dc2626)]">{error}</p>}
 
           <div className="flex justify-end">
             <button
               type="button"
               onClick={() => void submit()}
-              disabled={busy}
+              disabled={busy || uploadingImage}
               className="inline-flex items-center gap-2 rounded-[8px] bg-[var(--brand-600)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60"
             >
               <PlusIcon className="h-4 w-4" />
-              {busy ? "Adding…" : "Add request"}
+              {uploadingImage ? "Uploading image…" : busy ? "Adding…" : "Add request"}
             </button>
           </div>
         </div>
@@ -209,6 +276,20 @@ export function WikiIntakeSection({
                     {item.description && (
                       <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-[var(--text-3)]">{item.description}</p>
                     )}
+                    {item.hasImage ? (
+                      <button
+                        type="button"
+                        onClick={() => setViewingImageId(item.id)}
+                        className="mt-2 block overflow-hidden rounded-[6px] border border-[var(--border-2)]"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={imageSrc(item.id, { thumb: true })}
+                          alt={item.imageFilename ?? "Attached screenshot"}
+                          className="h-16 w-16 object-cover transition hover:opacity-90"
+                        />
+                      </button>
+                    ) : null}
                     <p className="mt-2 text-[12px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
                       {item.requestedBy ? `${item.requestedBy} · ` : ""}
                       {new Date(item.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
@@ -261,6 +342,40 @@ export function WikiIntakeSection({
           )}
         </div>
       </section>
+
+      {viewingImageId ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setViewingImageId(null)}
+        >
+          <div
+            className="relative max-h-[90vh] w-full max-w-2xl overflow-auto rounded-[10px] bg-white shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-[var(--border-2)] px-4 py-2.5">
+              <span className="text-xs text-[var(--text-3)]" style={{ fontFamily: MONO }}>
+                Attached screenshot
+              </span>
+              <button
+                type="button"
+                onClick={() => setViewingImageId(null)}
+                aria-label="Close"
+                className="rounded-[6px] p-1.5 text-[var(--text-3)] transition hover:bg-[var(--surface-1)]"
+              >
+                <XMarkIcon className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="bg-[var(--surface-1)] p-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imageSrc(viewingImageId)}
+                alt="Attached screenshot"
+                className="mx-auto max-h-[70vh] w-auto rounded-[6px] border border-[var(--border-2)] bg-white"
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

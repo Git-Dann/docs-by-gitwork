@@ -1306,6 +1306,46 @@ button {
   color: var(--doc-accent);
 }
 
+/* On-screen "paged" A4 view — real per-page containers, used by the print/public-share/preview
+   surfaces that opt into the paged renderer (<PagedDocument>); the editor canvas and sign page
+   keep the plain continuous flow untouched. Each .doc-a4-page mimics a physical A4 sheet so
+   "clear A4 sized separations" are visible before printing/sharing, not just at print time. */
+.doc-a4-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+.doc-a4-page {
+  position: relative;
+  width: 100%;
+  max-width: 210mm;
+  min-height: 297mm;
+  background: var(--doc-paper);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.08),
+    0 8px 24px -8px rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.doc-a4-page__inner {
+  padding: 16mm 18mm 18mm;
+}
+.doc-a4-page__inner--cover {
+  padding: 0;
+  min-height: 297mm;
+}
+.doc-a4-page__number {
+  position: absolute;
+  bottom: 8mm;
+  right: 12mm;
+  font-family: var(--font-mono), "SF Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--doc-muted);
+}
+
 @media print {
   /* Default page keeps a margin (Pulse report + any other print surface unchanged). Documents use
      a dedicated named page with ZERO margin → no white paper frame around the cream, and Chrome
@@ -1349,11 +1389,16 @@ button {
     box-shadow: none !important;
     background: var(--doc-paper) !important;
   }
-  .proposal-document > div {
+  /* Flow mode's direct child is the flat section stack — give it the page inset. Paged mode's
+     direct child is .doc-a4-stack instead, which gets its own per-page insets below, so this
+     must NOT also match it (the :not() keeps the two modes' print rules from colliding). */
+  .proposal-document > div:not(.doc-a4-stack) {
     padding: 16mm 18mm 18mm !important;
   }
-  .proposal-document .proposal-cover {
+  .proposal-document > div:not(.doc-a4-stack) .proposal-cover {
     margin: -16mm -18mm 0 !important;
+    break-after: page;
+    page-break-after: always;
   }
   /* A section that lands at the top of a fresh page keeps some breathing room (break-inside:avoid
      keeps each section whole, so this reads as top-of-page padding on continuation pages). */
@@ -1361,14 +1406,37 @@ button {
     padding-top: 6mm;
   }
 
-  .proposal-cover {
-    break-after: page;
-    page-break-after: always;
-  }
-
   .proposal-block-avoid {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  /* Paged mode: each .doc-a4-page IS a physical print page — one hard break per page instead of
+     relying on natural reflow, and the on-screen sheet chrome (shadow/margin/rounding) drops away
+     since the real page boundary now does that job. */
+  .doc-a4-stack {
+    gap: 0;
+  }
+  .doc-a4-page {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    break-after: page;
+    page-break-after: always;
+  }
+  .doc-a4-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+  .doc-a4-page__inner {
+    padding: 16mm 18mm 18mm !important;
+  }
+  .doc-a4-page__inner--cover {
+    padding: 0 !important;
+  }
+  .doc-a4-page__number {
+    display: none;
   }
 }
 

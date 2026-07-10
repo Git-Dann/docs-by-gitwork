@@ -1,6 +1,7 @@
 import { TableOfContents } from "@/components/proposals/table-of-contents";
 import { ProposalSectionPreview } from "@/components/proposals/proposal-section-preview";
 import { PaginatedSectionList } from "@/components/proposals/paginated-section-list";
+import { PagedDocument } from "@/components/proposals/paged-document";
 import { resolveProposalMergeVariables } from "@/lib/merge-variables";
 import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
@@ -15,6 +16,7 @@ export function ProposalPreview({
   editable = false,
   onSectionChange,
   paginate = false,
+  pageMode = "flow",
 }: {
   proposal: ProposalDocument;
   className?: string;
@@ -37,6 +39,10 @@ export function ProposalPreview({
   /** Editor-only: show approximate "Page N" seams between sections (visual guide, never reflows
    *  content — see paginated-section-list.tsx). Off everywhere except the editor canvas. */
   paginate?: boolean;
+  /** "paged" renders real A4 page sheets via `<PagedDocument>` (print, public share, internal
+   *  preview). "flow" (default) is today's continuous scroll — used by the editor canvas and the
+   *  sign page, where a hard multi-container layout would fight live editing/scroll-to-sign. */
+  pageMode?: "flow" | "paged";
 }) {
   // Substitute merge variables ({{client_name}}, {{total}}, …) for the rendered/exported view.
   // In editable mode we render the RAW proposal so inline edits bind to the real template text
@@ -45,7 +51,11 @@ export function ProposalPreview({
   const sortedSections = [...resolved.sections].sort((left, right) => left.sortOrder - right.sortOrder);
   const visibleSections = sortedSections.filter((section) => section.isVisible);
 
-  const documentBody = (
+  const documentBody = pageMode === "paged" ? (
+    <article className="proposal-document mx-auto w-full max-w-[210mm]">
+      <PagedDocument proposal={resolved} sections={visibleSections} trackSections={trackSections} />
+    </article>
+  ) : (
     <article
       className={
         frame

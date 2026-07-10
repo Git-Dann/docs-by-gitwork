@@ -72,6 +72,9 @@ export interface WikiIntakeItemRecord {
   externalRef: string | null;
   source: string | null;
   taskId: string | null;
+  /** True when an image is attached — bytes are served via a separate route. */
+  hasImage: boolean;
+  imageFilename: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -256,6 +259,8 @@ function serializeWikiIntakeItem(item: {
   externalRef: string | null;
   source: string | null;
   taskId: string | null;
+  mime?: string | null;
+  filename?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }): WikiIntakeItemRecord {
@@ -270,6 +275,8 @@ function serializeWikiIntakeItem(item: {
     externalRef: item.externalRef,
     source: item.source,
     taskId: item.taskId,
+    hasImage: Boolean(item.mime),
+    imageFilename: item.filename ?? null,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
   };
@@ -572,7 +579,27 @@ const WIKI_INCLUDE = {
   pages: true,
   changelog: true,
   courseRequests: true,
-  intakeItems: true,
+  // Explicit select (not `true`) — excludes `image`/`thumb` so the workspace
+  // load doesn't ship every request's screenshot bytes; `mime` alone tells the
+  // UI whether one exists (served separately via the image byte-stream route).
+  intakeItems: {
+    select: {
+      id: true,
+      type: true,
+      title: true,
+      description: true,
+      priority: true,
+      status: true,
+      requestedBy: true,
+      externalRef: true,
+      source: true,
+      taskId: true,
+      mime: true,
+      filename: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  },
   wikiUsers: { select: { id: true, email: true, name: true, createdAt: true } },
   // platforms is a scalar Json field — included automatically via `include` on
   // the parent model, not via a relation. Listed here as a reminder.
@@ -1179,11 +1206,130 @@ export async function promoteWikiIntakeItemToTask(
     },
     select: { id: true },
   });
+
+  // Carry the request's screenshot over to the task so the dev picking it up
+  // sees it immediately, instead of having to go dig it up in the wiki.
+  if (item.image && item.mime) {
+    await prisma.taskAttachment.create({
+      data: {
+        taskId: task.id,
+        uploadedById: userId,
+        image: item.image,
+        thumb: item.thumb,
+        mime: item.mime,
+        filename: item.filename,
+      },
+    });
+  }
+
   const updated = await prisma.clientWikiIntakeItem.update({
     where: { id: item.id },
     data: { status: "PROMOTED", taskId: task.id },
   });
   return { item: serializeWikiIntakeItem(updated), taskId: task.id };
+}
+
+// ─── Request image (screenshot) ─────────────────────────────────────────────
+
+const INTAKE_IMAGE_THUMB_SIZE = 320;
+
+async function transcodeIntakeImage(
+  bytes: Buffer,
+  mime: string,
+): Promise<{ bytes: Buffer; thumb: Buffer; mime: string }> {
+  const sharp = (await import("sharp")).default;
+  let storedBytes = bytes;
+  let storedMime = mime;
+  // Transcode HEIC/HEIF (common on iOS) → JPEG; browsers can't render HEIC.
+  if (mime === "image/heic" || mime === "image/heif") {
+    storedBytes = await sharp(bytes).rotate().jpeg({ quality: 85 }).toBuffer();
+    storedMime = "image/jpeg";
+  }
+  const thumb = await sharp(storedBytes)
+    .rotate()
+    .resize(INTAKE_IMAGE_THUMB_SIZE, INTAKE_IMAGE_THUMB_SIZE, { fit: "inside" })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+  return { bytes: storedBytes, thumb, mime: storedMime };
+}
+
+/** Attach (or replace) a screenshot on a request — internal, workspace-authed path. */
+export async function attachWikiIntakeItemImage(
+  clientId: string,
+  itemId: string,
+  bytes: Buffer,
+  mime: string,
+  filename: string | null,
+): Promise<WikiIntakeItemRecord> {
+  const item = await prisma.clientWikiIntakeItem.findFirst({
+    where: { id: itemId, wiki: { clientId } },
+    select: { id: true },
+  });
+  if (!item) throw new Error("Wiki intake item not found");
+  const transcoded = await transcodeIntakeImage(bytes, mime);
+  const row = await prisma.clientWikiIntakeItem.update({
+    where: { id: itemId },
+    data: { image: transcoded.bytes, thumb: transcoded.thumb, mime: transcoded.mime, filename },
+  });
+  return serializeWikiIntakeItem(row);
+}
+
+/** Attach a screenshot on a request — public, token-authed path (client-submitted requests). */
+export async function attachWikiIntakeItemImageByToken(
+  token: string,
+  itemId: string,
+  bytes: Buffer,
+  mime: string,
+  filename: string | null,
+): Promise<WikiIntakeItemRecord | null> {
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { courseIngestToken: token },
+    select: { id: true, intakeEnabled: true },
+  });
+  if (!wiki || !wiki.intakeEnabled) return null;
+  const item = await prisma.clientWikiIntakeItem.findFirst({
+    where: { id: itemId, wikiId: wiki.id },
+    select: { id: true },
+  });
+  if (!item) return null;
+  const transcoded = await transcodeIntakeImage(bytes, mime);
+  const row = await prisma.clientWikiIntakeItem.update({
+    where: { id: itemId },
+    data: { image: transcoded.bytes, thumb: transcoded.thumb, mime: transcoded.mime, filename },
+  });
+  return serializeWikiIntakeItem(row);
+}
+
+/** Serve a request's screenshot — the full image, or its thumb when `variant === "thumb"`. */
+export async function getWikiIntakeItemImageBytes(
+  clientId: string,
+  itemId: string,
+  variant: "full" | "thumb" = "full",
+): Promise<{ bytes: Buffer; mime: string } | null> {
+  const row = await prisma.clientWikiIntakeItem.findFirst({
+    where: { id: itemId, wiki: { clientId } },
+    select: { image: true, thumb: true, mime: true },
+  });
+  if (!row || !row.mime || !row.image) return null;
+  if (variant === "thumb") return { bytes: Buffer.from(row.thumb ?? row.image), mime: "image/jpeg" };
+  return { bytes: Buffer.from(row.image), mime: row.mime };
+}
+
+/** Serve a request's screenshot — public, token-authed path. */
+export async function getWikiIntakeItemImageBytesByToken(
+  token: string,
+  itemId: string,
+  variant: "full" | "thumb" = "full",
+): Promise<{ bytes: Buffer; mime: string } | null> {
+  const wiki = await prisma.clientWiki.findUnique({ where: { courseIngestToken: token }, select: { id: true } });
+  if (!wiki) return null;
+  const row = await prisma.clientWikiIntakeItem.findFirst({
+    where: { id: itemId, wikiId: wiki.id },
+    select: { image: true, thumb: true, mime: true },
+  });
+  if (!row || !row.mime || !row.image) return null;
+  if (variant === "thumb") return { bytes: Buffer.from(row.thumb ?? row.image), mime: "image/jpeg" };
+  return { bytes: Buffer.from(row.image), mime: row.mime };
 }
 
 /** Toggle public sharing. Mints a share token on first enable. */

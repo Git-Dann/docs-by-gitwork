@@ -155,10 +155,13 @@ export function PresentationMode({
           </>
         ) : null}
 
-        <div className="absolute inset-0 overflow-auto px-4 py-6 sm:px-10 sm:py-10">
+        {/* Fills the stage height (not just wide-as-needed) — a short slide's card still reaches
+            the full viewport height, and a tall one scrolls INSIDE the card instead of the whole
+            stage growing past the viewport. */}
+        <div className="absolute inset-0 flex items-stretch justify-center px-4 py-6 sm:px-10 sm:py-10">
           {current ? (
-            <div className="mx-auto w-full max-w-[1000px] overflow-hidden rounded-[14px] bg-white text-[var(--text-1)] shadow-[0_24px_64px_-12px_rgba(0,0,0,0.5)]">
-              <div className="p-8 sm:p-12">
+            <div className="mx-auto flex h-full w-full max-w-[1000px] flex-col overflow-hidden rounded-[14px] bg-white text-[var(--text-1)] shadow-[0_24px_64px_-12px_rgba(0,0,0,0.5)]">
+              <div className="min-h-0 flex-1 overflow-y-auto p-8 sm:p-12">
                 <ProposalSectionPreview section={current} proposal={resolved} index={index} />
               </div>
             </div>

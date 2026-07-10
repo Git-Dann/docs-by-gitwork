@@ -1436,6 +1436,13 @@ model ClientWikiIntakeItem {
   externalRef String?
   source      String?
   taskId      String?
+  /// Optional screenshot/image attached to the request (client or internal).
+  /// `thumb` is a small server-generated preview; both are dropped-in Bytes,
+  /// same lifecycle reasoning as Expense.receiptImage / TaskAttachment.
+  image       Bytes?
+  thumb       Bytes?
+  mime        String?
+  filename    String?
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
 
