@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -238,7 +238,13 @@ export function TaskBoard({
   );
 }
 
-function BoardColumn({
+// Memoized: with hundreds of tasks on a large client's board, an unmemoized
+// column re-renders (and re-runs every card's dnd-kit hooks) on any unrelated
+// state change in an ancestor — e.g. opening the task detail drawer — which is
+// expensive enough to noticeably block the main thread. `tasks` stays a stable
+// array reference across unrelated re-renders (see `byStatus`'s useMemo in
+// TaskBoard), so this bails out cleanly when nothing about this column changed.
+const BoardColumn = memo(function BoardColumn({
   status,
   index,
   tasks,
@@ -283,7 +289,7 @@ function BoardColumn({
             key={task.id}
             task={task}
             showClient={showClient}
-            onClick={() => onCardClick(task.id)}
+            onCardClick={onCardClick}
             onScribeSourceClick={onScribeSourceClick}
             showIndicator={overId === task.id && activeId != null && activeId !== task.id}
           />
@@ -298,18 +304,21 @@ function BoardColumn({
       </div>
     </section>
   );
-}
+});
 
-function BoardCard({
+// Memoized, with a stable per-card click handler (built here via useCallback
+// instead of an inline arrow function in BoardColumn's .map()) — otherwise the
+// memo would never bail out, since `onClick` would be a new function every render.
+const BoardCard = memo(function BoardCard({
   task,
   showClient,
-  onClick,
+  onCardClick,
   onScribeSourceClick,
   showIndicator = false,
 }: {
   task: TaskDTO;
   showClient: boolean;
-  onClick: () => void;
+  onCardClick: (taskId: string) => void;
   onScribeSourceClick?: (task: TaskDTO) => void;
   showIndicator?: boolean;
 }) {
@@ -320,6 +329,8 @@ function BoardCard({
     setDragRef(node);
     setDropRef(node);
   };
+  const taskId = task.id;
+  const handleClick = useCallback(() => onCardClick(taskId), [onCardClick, taskId]);
   return (
     <div
       ref={setRef}
@@ -335,9 +346,9 @@ function BoardCard({
       <TaskCard
         task={task}
         showClient={showClient}
-        onClick={onClick}
+        onClick={handleClick}
         onScribeSourceClick={onScribeSourceClick}
       />
     </div>
   );
-}
+});

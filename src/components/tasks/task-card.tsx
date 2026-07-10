@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { ChatBubbleLeftIcon, VideoCameraIcon } from "@heroicons/react/24/outline";
 import { FlagIcon, CalendarDaysIcon } from "@heroicons/react/16/solid";
 import { cn, formatDate, taskRef } from "@/lib/format";
@@ -17,7 +18,11 @@ const PRIORITY_FLAG: Record<string, { iconColor: string; label: string }> = {
   LOW:    { iconColor: "text-[var(--text-4)]",  label: "Low" },
 };
 
-export function TaskCard({
+// Memoized: a board can hold hundreds of cards, and without this every card
+// re-renders (and re-registers its dnd-kit hooks) on any unrelated state change
+// in an ancestor — e.g. opening the task detail drawer — which is expensive
+// enough on a large board to noticeably block the main thread.
+export const TaskCard = memo(function TaskCard({
   task,
   onClick,
   showClient = true,
@@ -144,4 +149,4 @@ export function TaskCard({
       </div>
     </div>
   );
-}
+});

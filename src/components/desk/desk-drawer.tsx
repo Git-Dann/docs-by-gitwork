@@ -82,7 +82,7 @@ function useIsDesktop() {
   return isDesktop;
 }
 
-export function DeskDrawer() {
+export function DeskDrawer({ sidebarCollapsed = false }: { sidebarCollapsed?: boolean }) {
   const { open, setOpen, tab, setTab } = useDeskState();
   const isDesktop = useIsDesktop();
 
@@ -148,7 +148,10 @@ export function DeskDrawer() {
           type="button"
           onClick={() => setOpen(true)}
           aria-label={`Open ${WORDMARK}`}
-          className="group fixed bottom-0 left-0 right-0 z-40 flex h-12 items-center justify-between gap-3 border-t border-[var(--border-2)] bg-[var(--surface-0)] px-5 text-left shadow-[0_-4px_16px_-8px_rgba(10,13,18,0.15)] transition hover:bg-[var(--surface-canvas)] lg:left-[280px]"
+          className={cn(
+            "group fixed bottom-0 left-0 right-0 z-40 flex h-12 items-center justify-between gap-3 border-t border-[var(--border-2)] bg-[var(--surface-0)] px-5 text-left shadow-[0_-4px_16px_-8px_rgba(10,13,18,0.15)] transition hover:bg-[var(--surface-canvas)]",
+            sidebarCollapsed ? "lg:left-[76px]" : "lg:left-[280px]",
+          )}
         >
           {/* grab handle */}
           <span className="absolute left-1/2 top-1.5 h-1 w-10 origin-center -translate-x-1/2 transform-gpu rounded-full bg-[var(--border-1)] transition-all duration-300 ease-out group-hover:scale-x-[1.4] group-hover:bg-[var(--brand-500)] motion-reduce:transition-none" />
@@ -173,7 +176,10 @@ export function DeskDrawer() {
       {/* ── Desktop expanded panel ── */}
       {showPanel && (
         <div
-          className="fixed bottom-0 left-0 right-0 z-40 flex flex-col border-t border-[var(--border-2)] bg-[var(--surface-canvas)] shadow-[0_-16px_40px_-12px_rgba(10,13,18,0.22)] lg:left-[280px]"
+          className={cn(
+            "fixed bottom-0 left-0 right-0 z-40 flex flex-col border-t border-[var(--border-2)] bg-[var(--surface-canvas)] shadow-[0_-16px_40px_-12px_rgba(10,13,18,0.22)]",
+            sidebarCollapsed ? "lg:left-[76px]" : "lg:left-[280px]",
+          )}
           style={{ height: "min(66vh, 640px)" }}
           role="region"
           aria-label={WORDMARK}

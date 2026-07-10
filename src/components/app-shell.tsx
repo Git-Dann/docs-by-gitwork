@@ -380,7 +380,7 @@ export function AppShell({
       </div>
 
       {/* The Desk — persistent internal aggregator drawer (fixed to the viewport). */}
-      <DeskDrawer />
+      <DeskDrawer sidebarCollapsed={collapsed} />
     </div>
   );
 }
