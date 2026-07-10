@@ -2,13 +2,18 @@
  * GET /api/proposals/[id]/pdf
  *
  * Real server-side PDF (Phase 3b). Renders the document's public share page with headless
- * Chromium (@sparticuz/chromium + puppeteer-core) and streams back a PDF — pixel-accurate to what
- * the client sees, unlike browser print-to-PDF.
+ * Chromium and streams back a PDF — pixel-accurate to what the client sees, unlike browser
+ * print-to-PDF.
  *
  * Why the public page: /app/* requires a NextAuth session that Chromium can't cleanly carry, so
  * we point it at the token-auth /docs/[token] view instead. That means the document must be
  * SHARED first; we return a clear 409 otherwise. `?print=1` tells the public page to drop the
  * tracker/comments/CTA so the PDF is just the document.
+ *
+ * Chromium binary: production (the Alpine/musl Docker image) sets `PUPPETEER_EXECUTABLE_PATH` to
+ * Alpine's own native Chromium — @sparticuz/chromium's bundled binary is glibc-linked (built for
+ * AWS Lambda) and can't run there at all. Falls back to @sparticuz/chromium's bundled binary
+ * (Lambda/other glibc hosts, or a dev machine with it working) when that env var isn't set.
  *
  * Gated by docs.manage. Node runtime (Chromium needs it), 60s budget for cold starts.
  */
@@ -47,7 +52,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const browser = await puppeteer.launch({
       args: chromium.args,
-      executablePath: await chromium.executablePath(),
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || (await chromium.executablePath()),
       headless: true,
     });
 

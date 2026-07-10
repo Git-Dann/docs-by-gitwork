@@ -29,6 +29,23 @@ RUN npm run build
 FROM base AS runner
 WORKDIR /app
 
+# Native Chromium for the PDF export route (src/app/api/proposals/[id]/pdf).
+# @sparticuz/chromium's bundled binary is glibc-linked (built for AWS Lambda's Amazon
+# Linux) and CANNOT run on this musl-libc Alpine base — no missing library is
+# installable to fix that, the two libc ABIs are incompatible outright ("Error
+# loading shared library libnspr4.so / libnss3.so ... needed by /tmp/chromium").
+# Installing Alpine's own native Chromium and pointing puppeteer-core at it (see
+# PUPPETEER_EXECUTABLE_PATH below, read in the route) is Puppeteer's own documented
+# fix for exactly this Alpine case — https://pptr.dev/troubleshooting.
+RUN apk add --no-cache \
+  chromium \
+  nss \
+  freetype \
+  harfbuzz \
+  ca-certificates \
+  ttf-freefont
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
