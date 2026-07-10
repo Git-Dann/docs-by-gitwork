@@ -1306,10 +1306,10 @@ button {
   color: var(--doc-accent);
 }
 
-/* On-screen "paged" A4 view — real per-page containers, used by the print/public-share/preview
-   surfaces that opt into the paged renderer (<PagedDocument>); the editor canvas and sign page
-   keep the plain continuous flow untouched. Each .doc-a4-page mimics a physical A4 sheet so
-   "clear A4 sized separations" are visible before printing/sharing, not just at print time. */
+/* On-screen "paged" A4 view — real per-page containers, used everywhere a document renders
+   (editor canvas included) except the sign page, which keeps the plain continuous flow. Each
+   .doc-a4-page mimics a physical A4 sheet so "clear A4 sized separations" are visible while
+   building, not just at print time — what sits on a page in the editor is what prints. */
 .doc-a4-stack {
   display: flex;
   flex-direction: column;
@@ -1326,24 +1326,53 @@ button {
     0 1px 3px rgba(0, 0, 0, 0.08),
     0 8px 24px -8px rgba(0, 0, 0, 0.12);
   border-radius: 4px;
-  overflow: hidden;
+  /* No overflow:hidden — this now hosts the editable canvas too, and a block's hover "edit
+     options" affordance (and any per-block popovers) must not get clipped near a page edge. The
+     16mm/18mm inner padding already keeps normal content clear of the rounded corners. */
 }
-.doc-a4-page__inner {
-  padding: 16mm 18mm 18mm;
-}
+/* Cover keeps the old full-bleed, zero-padding treatment — its own masthead already carries the
+   client/doc-number/version/date metadata boldly, so it skips the running header/footer below. */
 .doc-a4-page__inner--cover {
   padding: 0;
   min-height: 297mm;
 }
-.doc-a4-page__number {
-  position: absolute;
-  bottom: 8mm;
-  right: 12mm;
+/* Every other page: a generous, uniform 20mm margin on all four sides (this was the "isn't good"
+   complaint — 16/18mm asymmetric insets read as cramped, especially with a header/footer now
+   living in that space too), holding a header/body/footer column so the footer always sits at
+   the true bottom of the sheet regardless of how much the body content fills. */
+.doc-a4-page__margin {
+  display: flex;
+  min-height: 297mm;
+  flex-direction: column;
+  padding: 20mm;
+}
+.doc-a4-page__header,
+.doc-a4-page__footer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
   font-family: var(--font-mono), "SF Mono", Menlo, Consolas, monospace;
-  font-size: 10px;
+  font-size: 9px;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--doc-muted);
+}
+.doc-a4-page__header {
+  padding-bottom: 8px;
+  margin-bottom: 10mm;
+  border-bottom: 1px solid var(--doc-line-soft);
+}
+.doc-a4-page__footer {
+  padding-top: 8px;
+  margin-top: 10mm;
+  border-top: 1px solid var(--doc-line-soft);
+}
+.doc-a4-page__body {
+  flex: 1;
+  min-height: 0;
 }
 
 @media print {
@@ -1429,14 +1458,18 @@ button {
     break-after: auto;
     page-break-after: auto;
   }
-  .doc-a4-page__inner {
-    padding: 16mm 18mm 18mm !important;
+  .doc-a4-page__margin {
+    padding: 20mm !important;
+    min-height: 0 !important;
   }
   .doc-a4-page__inner--cover {
     padding: 0 !important;
   }
-  .doc-a4-page__number {
-    display: none;
+  /* The running header/footer prints on every page (that's the point) — no print:hidden here. */
+  .doc-a4-page__header,
+  .doc-a4-page__footer {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
 

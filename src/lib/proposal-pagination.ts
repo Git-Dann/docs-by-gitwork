@@ -5,10 +5,8 @@
  * a `cover` section always starts (and is alone on) its own page, and a
  * `divider` section with `variant: "page-break"` forces everything after it
  * onto a new page. There is no height measurement or overflow guessing here:
- * that's what the editor canvas's `PaginatedSectionList` seam guide already
- * does, and even it documents itself as "a guide, not a reflow" — pagination
- * that's actually printed or shown to a client needs to be predictable and
- * fully in the author's control, not an estimate.
+ * a page is exactly what the author put on it, so the builder, the print
+ * view, and the client-facing share page always agree on where pages break.
  */
 
 import type { ProposalSection } from "@/types/proposal";

@@ -44,14 +44,14 @@ function Pop({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="relative">
+    <div className="relative shrink-0">
       <button
         type="button"
         disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+        className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[7px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
       >
         {icon}
         {label}
@@ -151,20 +151,20 @@ export function TaskBatchBar({
 
   return (
     <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-[12px] border border-[var(--border-2)] bg-white px-3 py-2 shadow-[0_12px_36px_-6px_rgba(0,0,0,0.30)]">
-      <span className="whitespace-nowrap text-sm font-semibold text-[var(--brand-800)]">{n} selected</span>
+      <span className="shrink-0 whitespace-nowrap text-sm font-semibold text-[var(--brand-800)]">{n} selected</span>
       <button
         type="button"
         onClick={onClear}
-        className="inline-flex items-center gap-1 rounded-[6px] px-1.5 py-1 text-xs font-medium text-[var(--brand-800)] hover:bg-[var(--surface-1)]"
+        className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-[6px] px-1.5 py-1 text-xs font-medium text-[var(--brand-800)] hover:bg-[var(--surface-1)]"
       >
         <XMarkIcon className="h-3.5 w-3.5" />
         Clear
       </button>
 
-      <span className="mx-0.5 h-5 w-px bg-[var(--border-2)]" />
+      <span className="mx-0.5 h-5 w-px shrink-0 bg-[var(--border-2)]" />
 
       <div className="flex items-center gap-1.5">
-        <span className="hidden text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)] md:inline">
+        <span className="hidden shrink-0 whitespace-nowrap text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)] md:inline">
           Bulk edit
         </span>
 
@@ -279,8 +279,8 @@ export function TaskBatchBar({
           }
         </Pop>
 
-        {/* Move to block */}
-        <Pop label="Block" icon={<Squares2X2Icon className="h-3.5 w-3.5" />} disabled={busy}>
+        {/* Move to category */}
+        <Pop label="Category" icon={<Squares2X2Icon className="h-3.5 w-3.5" />} disabled={busy}>
           {(close) => (
             <div className="max-h-60 overflow-y-auto">
               <MenuButton
@@ -289,7 +289,7 @@ export function TaskBatchBar({
                   close();
                 }}
               >
-                <span className="text-[var(--text-4)]">No block</span>
+                <span className="text-[var(--text-4)]">No category</span>
               </MenuButton>
               {blocks.map((b) => (
                 <MenuButton
@@ -346,7 +346,7 @@ export function TaskBatchBar({
           type="button"
           disabled={busy}
           onClick={() => void apply({ archived: mode !== "archived" })}
-          className="inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+          className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[7px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
         >
           {mode === "archived" ? (
             <><ArchiveBoxXMarkIcon className="h-3.5 w-3.5" />Unarchive</>
@@ -357,7 +357,7 @@ export function TaskBatchBar({
 
         {/* Delete */}
         {confirmDelete ? (
-          <div className="inline-flex items-center gap-1.5 rounded-[7px] border border-red-300 bg-red-50 px-2 py-1">
+          <div className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[7px] border border-red-300 bg-red-50 px-2 py-1">
             <span className="text-[11px] font-medium text-red-700">Delete {n}?</span>
             <button
               type="button"
@@ -380,7 +380,7 @@ export function TaskBatchBar({
             type="button"
             disabled={busy}
             onClick={() => setConfirmDelete(true)}
-            className="inline-flex items-center gap-1.5 rounded-[7px] border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[7px] border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
           >
             <TrashIcon className="h-3.5 w-3.5" />
             Delete

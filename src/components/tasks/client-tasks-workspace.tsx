@@ -772,7 +772,7 @@ function TimelineShareControl({ slug }: { slug: string }) {
         <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-80 rounded-[10px] border border-[var(--border-2)] bg-white p-4 shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
           <p className="text-sm font-semibold text-[var(--text-1)]">Public timeline</p>
           <p className="mt-0.5 text-xs text-[var(--text-4)]">
-            A read-only Gantt for the client — feature blocks, task names, and progress. No
+            A read-only Gantt for the client — categories, task names, and progress. No
             assignees or internal notes.
           </p>
           <label className="mt-3 flex cursor-pointer items-center justify-between gap-2 rounded-[8px] border border-[var(--border-2)] px-3 py-2">
