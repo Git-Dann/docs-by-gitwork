@@ -194,7 +194,7 @@ export function TaskFormModal({
         aria-label="Close"
         onClick={onClose}
       />
-      <div className="app-dialog-panel relative z-10 flex h-[640px] max-h-[calc(100dvh-32px)] w-full max-w-4xl flex-col overflow-hidden">
+      <div className="app-dialog-panel relative z-10 flex h-[min(760px,calc(100dvh-32px))] w-full max-w-4xl flex-col overflow-hidden">
         <div className="flex items-start justify-between gap-3 border-b border-[var(--border-2)] px-6 py-4">
           <div>
             <p className="widget-data-label">{isEdit ? "EDIT TASK" : "NEW TASK"}</p>
@@ -280,42 +280,44 @@ export function TaskFormModal({
               </div>
             ) : null}
 
-            {blocks.length > 0 ? (
+            <div className={blocks.length > 0 ? "grid grid-cols-2 gap-3" : "grid grid-cols-1 gap-3"}>
+              {blocks.length > 0 ? (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">
+                    Category
+                  </label>
+                  <select
+                    className="app-select w-full"
+                    value={featureBlockId}
+                    onChange={(e) => setFeatureBlockId(e.target.value)}
+                  >
+                    <option value="">No category</option>
+                    {blocks.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+
               <div>
                 <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">
-                  Category
+                  Label <span className="text-[var(--text-4)]">(optional)</span>
                 </label>
                 <select
                   className="app-select w-full"
-                  value={featureBlockId}
-                  onChange={(e) => setFeatureBlockId(e.target.value)}
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value as TaskLabel | "")}
                 >
-                  <option value="">No category</option>
-                  {blocks.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
+                  <option value="">No label</option>
+                  {TASK_LABELS.map((l) => (
+                    <option key={l} value={l}>
+                      {TASK_LABEL_LABELS[l]}
                     </option>
                   ))}
                 </select>
               </div>
-            ) : null}
-
-            <div>
-              <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">
-                Label <span className="text-[var(--text-4)]">(optional)</span>
-              </label>
-              <select
-                className="app-select w-full"
-                value={label}
-                onChange={(e) => setLabel(e.target.value as TaskLabel | "")}
-              >
-                <option value="">No label</option>
-                {TASK_LABELS.map((l) => (
-                  <option key={l} value={l}>
-                    {TASK_LABEL_LABELS[l]}
-                  </option>
-                ))}
-              </select>
             </div>
 
             <div className="flex min-h-[220px] flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] lg:flex-1">
@@ -359,17 +361,16 @@ export function TaskFormModal({
               </div>
             </div>
 
-            <div>
-              <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Due date</label>
-              <input
-                type="date"
-                className="app-input w-full"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-              />
-            </div>
-
             <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Due date</label>
+                <input
+                  type="date"
+                  className="app-input w-full"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                />
+              </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Status</label>
                 <select
@@ -384,20 +385,21 @@ export function TaskFormModal({
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Priority</label>
-                <select
-                  className="app-select w-full"
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value as TaskPriority)}
-                >
-                  {TASK_PRIORITIES.map((p) => (
-                    <option key={p} value={p}>
-                      {TASK_PRIORITY_LABELS[p]}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Priority</label>
+              <select
+                className="app-select w-full"
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as TaskPriority)}
+              >
+                {TASK_PRIORITIES.map((p) => (
+                  <option key={p} value={p}>
+                    {TASK_PRIORITY_LABELS[p]}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {error ? <p className="text-sm text-[var(--danger-500)]">{error}</p> : null}
