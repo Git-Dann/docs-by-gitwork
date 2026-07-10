@@ -2899,39 +2899,52 @@ export function publishRollup(
   return apiFetch(`/api/tasks/rollup${override ? "?override=true" : ""}`, { method: "POST" });
 }
 
-/** Compile every dev's PM update (done-today + note), grouped by developer, and
- *  post it to the dedicated #updates channel. `configured` is false when no
- *  "Daily PM updates" channel route is set in Settings → Integrations. */
-export function pushPmUpdates(): Promise<{
+export type DailyUpdatePhase = "AM" | "PM";
+
+/** Compile every dev's daily update (done-today for PM, in-progress for AM),
+ *  grouped by project then developer, and post it to the dedicated #updates
+ *  channel. `configured` is false when no "Daily PM updates" channel route is
+ *  set in Settings → Integrations. */
+export function pushPmUpdates(phase: DailyUpdatePhase = "PM"): Promise<{
   ok: boolean;
+  phase: DailyUpdatePhase;
   channel: string | null;
   configured: boolean;
   devCount: number;
   taskCount: number;
 }> {
-  return apiFetch(`/api/tasks/pm-updates`, { method: "POST" });
+  return apiFetch(`/api/tasks/pm-updates?phase=${phase}`, { method: "POST" });
 }
 
 export interface PmUpdatePreviewDev {
+  /** Developer display name (rendered as `@name`). */
   name: string;
-  note: string | null;
-  tasks: Array<{ title: string; clientName: string; clientSlug: string; taskId: string }>;
+  tasks: Array<{ title: string; taskId: string }>;
+  note?: string | null;
+}
+
+export interface PmUpdatePreviewProject {
+  clientName: string;
+  clientSlug: string;
+  devs: PmUpdatePreviewDev[];
 }
 
 export interface PmUpdatesPreview {
   ok: boolean;
+  phase: DailyUpdatePhase;
   channel: string | null;
   configured: boolean;
   devCount: number;
   taskCount: number;
   dateLabel: string;
-  devs: PmUpdatePreviewDev[];
+  projects: PmUpdatePreviewProject[];
+  otherDevs: Array<{ name: string; note: string | null }>;
 }
 
-/** Preview the end-of-day PM updates without posting — feeds the review modal so
- *  the admin can confirm before it goes to #updates. */
-export function previewPmUpdates(): Promise<PmUpdatesPreview> {
-  return apiFetch(`/api/tasks/pm-updates`);
+/** Preview the daily updates without posting — feeds the review modal so the
+ *  admin can confirm before it goes to #updates. */
+export function previewPmUpdates(phase: DailyUpdatePhase = "PM"): Promise<PmUpdatesPreview> {
+  return apiFetch(`/api/tasks/pm-updates?phase=${phase}`);
 }
 
 // ─── Ad-hoc Slack pushes (Tasks-page composer + DevOps broadcast) ────────────

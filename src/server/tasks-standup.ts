@@ -6,6 +6,7 @@
 // everyone's pushed. Slack posting is best-effort/fire-and-forget — a missing
 // token or channel never fails the request (mirrors onboarding-notify.ts).
 
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import {
@@ -17,8 +18,8 @@ import { getSlackBotToken, postMessage, deleteMessage } from "@/server/slack/cli
 import {
   buildRollupCard,
   buildStandupCard,
-  buildPmUpdatesCard,
-  type PmUpdateDev,
+  buildDailyUpdatesCard,
+  type DailyUpdateProject,
   type StandupTaskCardInput,
 } from "@/server/slack/blocks";
 import { assertDailyUpdateCooldown } from "@/server/slack-cooldown";
@@ -603,29 +604,41 @@ export async function publishRollup(
   };
 }
 
-export interface PmUpdatesResult {
+export type DailyUpdatePhase = "AM" | "PM";
+
+export interface DailyUpdatesResult {
   ok: boolean;
+  phase: DailyUpdatePhase;
   channel: string | null;
   configured: boolean;
   devCount: number;
   taskCount: number;
 }
 
-/** Preview payload = the summary counts plus the per-developer breakdown the
- *  review modal renders before the admin confirms the send. */
-export interface PmUpdatesPreview extends PmUpdatesResult {
+/** Preview payload = the summary counts plus the project → developer breakdown
+ *  the review modal renders before the admin confirms the send. */
+export interface DailyUpdatesPreview extends DailyUpdatesResult {
   dateLabel: string;
-  devs: PmUpdateDev[];
+  projects: DailyUpdateProject[];
+  otherDevs: Array<{ name: string; note: string | null }>;
 }
 
 /**
- * Compile every developer's PM update (their done-today tasks + their end-of-day
- * note) grouped BY DEVELOPER, and resolve the destination channel + bot token.
- * Only devs who have pushed their PM update today are included. Posts NOTHING —
- * shared by the review preview and the actual publish so both see identical data.
+ * Compile every developer's daily update grouped BY PROJECT first and then BY
+ * DEVELOPER, and resolve the destination channel + bot token. Only devs who
+ * have pushed the given phase's update today are included:
+ *   • PM → each dev's tasks marked done today + their end-of-day note.
+ *   • AM → each dev's in-progress tasks (Doing / In review) + their note.
+ * Posts NOTHING — shared by the review preview and the actual publish so both
+ * see identical data.
  */
-async function compilePmUpdates(user: EffectiveUser): Promise<{
-  devs: PmUpdateDev[];
+async function compileDailyUpdates(
+  user: EffectiveUser,
+  phase: DailyUpdatePhase,
+): Promise<{
+  projects: DailyUpdateProject[];
+  otherDevs: Array<{ name: string; note: string | null }>;
+  devCount: number;
   taskCount: number;
   channel: string | null;
   botToken: string | null;
@@ -643,116 +656,172 @@ async function compilePmUpdates(user: EffectiveUser): Promise<{
   const channel = resolveUpdatesChannel(ws);
 
   if (devIds.length === 0) {
-    return { devs: [], taskCount: 0, channel, botToken, workDate };
+    return { projects: [], otherDevs: [], devCount: 0, taskCount: 0, channel, botToken, workDate };
   }
 
   const assigneeFilter = [
     { assignees: { some: { id: { in: devIds } } } },
     { assigneeId: { in: devIds } },
   ];
-  const [users, updates, doneTasks] = await Promise.all([
+  // PM = done today; AM = whatever's currently in progress.
+  const taskWhere: Prisma.TaskWhereInput =
+    phase === "PM"
+      ? { status: "DONE", completedAt: { gte: workDate, lt: nextUtcDay(workDate) } }
+      : { status: { in: ["DOING", "IN_REVIEW"] } };
+
+  const [users, updates, tasks] = await Promise.all([
     prisma.user.findMany({
       where: { id: { in: devIds } },
       select: { id: true, name: true, email: true },
     }),
-    // Only devs who've pushed their PM update today — that's what "PM updates" means.
+    // Only devs who've pushed this phase's update today.
     prisma.dailyUpdate.findMany({
       where: {
         workspaceId: user.workspaceId,
         workDate,
         userId: { in: devIds },
-        pmPushedAt: { not: null },
+        ...(phase === "PM" ? { pmPushedAt: { not: null } } : { amPushedAt: { not: null } }),
       },
       select: { userId: true, note: true },
     }),
     prisma.task.findMany({
-      where: {
-        workspaceId: user.workspaceId,
-        status: "DONE",
-        completedAt: { gte: workDate, lt: nextUtcDay(workDate) },
-        OR: assigneeFilter,
-      },
+      where: { workspaceId: user.workspaceId, ...taskWhere, OR: assigneeFilter },
       select: {
         id: true,
         title: true,
         assigneeId: true,
         assignees: { select: { id: true } },
-        client: { select: { name: true, slug: true } },
+        client: { select: { id: true, name: true, slug: true } },
       },
-      orderBy: { completedAt: "asc" },
+      orderBy: phase === "PM" ? { completedAt: "asc" } : { createdAt: "asc" },
     }),
   ]);
 
   const userById = new Map(users.map((u) => [u.id, u]));
   const noteByUser = new Map(updates.map((u) => [u.userId, u.note]));
-  const devSet = new Set(devIds);
+  const pushedUserIds = updates.map((u) => u.userId);
+  const pushedSet = new Set(pushedUserIds);
 
-  // Fan each done task out to every assigned dev (m-n + legacy single assignee).
-  const tasksByDev = new Map<string, PmUpdateDev["tasks"]>();
-  for (const t of doneTasks) {
+  // project (client) → dev → tasks. A task is fanned out to every assigned dev
+  // (m-n + legacy single assignee) who has actually pushed this phase.
+  type ProjectAcc = {
+    clientName: string;
+    clientSlug: string;
+    devs: Map<string, { name: string; tasks: Array<{ title: string; taskId: string }> }>;
+  };
+  const projectMap = new Map<string, ProjectAcc>();
+  const devsWithTasks = new Set<string>();
+
+  for (const t of tasks) {
     const ids = new Set<string>(t.assignees.map((a) => a.id));
     if (t.assigneeId) ids.add(t.assigneeId);
     for (const id of ids) {
-      if (!devSet.has(id)) continue;
-      const arr = tasksByDev.get(id) ?? [];
-      arr.push({ title: t.title, clientName: t.client.name, clientSlug: t.client.slug, taskId: t.id });
-      tasksByDev.set(id, arr);
+      if (!pushedSet.has(id)) continue; // dev hasn't posted this phase → skip
+      const row = userById.get(id);
+      if (!row) continue;
+      devsWithTasks.add(id);
+      let proj = projectMap.get(t.client.id);
+      if (!proj) {
+        proj = { clientName: t.client.name, clientSlug: t.client.slug, devs: new Map() };
+        projectMap.set(t.client.id, proj);
+      }
+      let dev = proj.devs.get(id);
+      if (!dev) {
+        dev = { name: row.name?.trim() || row.email, tasks: [] };
+        proj.devs.set(id, dev);
+      }
+      dev.tasks.push({ title: t.title, taskId: t.id });
     }
   }
 
-  const devs: PmUpdateDev[] = updates
-    .map((u): PmUpdateDev | null => {
-      const row = userById.get(u.userId);
-      if (!row) return null;
-      return {
-        name: row.name?.trim() || row.email,
-        tasks: tasksByDev.get(u.userId) ?? [],
-        note: noteByUser.get(u.userId) ?? null,
-      };
+  // Sort projects by name; within each, devs by name, and attach each dev's note.
+  const projects: DailyUpdateProject[] = Array.from(projectMap.values())
+    .map((p) => ({
+      clientName: p.clientName,
+      clientSlug: p.clientSlug,
+      devs: Array.from(p.devs.entries())
+        .map(([userId, d]) => ({
+          name: d.name,
+          tasks: d.tasks,
+          note: noteByUser.get(userId) ?? null,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    }))
+    .sort((a, b) => a.clientName.localeCompare(b.clientName));
+
+  // Devs who pushed but landed in no project (no tasks this phase) — surface them
+  // (with their note) so their participation isn't dropped from the report.
+  const otherDevs = pushedUserIds
+    .filter((id) => !devsWithTasks.has(id))
+    .map((id) => {
+      const row = userById.get(id);
+      return row ? { name: row.name?.trim() || row.email, note: noteByUser.get(id) ?? null } : null;
     })
-    .filter((d): d is PmUpdateDev => d !== null)
+    .filter((d): d is { name: string; note: string | null } => d !== null)
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const taskCount = devs.reduce((n, d) => n + d.tasks.length, 0);
+  const taskCount = projects.reduce(
+    (n, p) => n + p.devs.reduce((m, d) => m + d.tasks.length, 0),
+    0,
+  );
 
-  return { devs, taskCount, channel, botToken, workDate };
-}
-
-/**
- * Review preview for the "Push to Slack" flow — compiles the same data
- * `publishPmUpdates` would post, but sends nothing. Powers the confirmation
- * modal so the admin can eyeball each dev's update before it goes out.
- */
-export async function previewPmUpdates(user: EffectiveUser): Promise<PmUpdatesPreview> {
-  assertCanPublishTaskRollup(user);
-  const { devs, taskCount, channel, workDate } = await compilePmUpdates(user);
   return {
-    ok: true,
-    channel,
-    configured: Boolean(channel),
-    devCount: devs.length,
+    projects,
+    otherDevs,
+    devCount: pushedUserIds.length,
     taskCount,
-    dateLabel: ymd(workDate),
-    devs,
+    channel,
+    botToken,
+    workDate,
   };
 }
 
 /**
- * End-of-day "Push to Slack" — compile every developer's PM update (their
- * done-today tasks + their end-of-day note) grouped BY DEVELOPER and post ONE
- * consolidated card to the dedicated PM-updates channel (Settings → Integrations
- * `tasks.updates` route, i.e. #updates). Only devs who have pushed their PM
- * update today are included. Best-effort Slack post; a missing token/channel
- * never fails the request — `configured: false` tells the UI to prompt setup.
+ * Review preview for the "Push to Slack" flow — compiles the same data
+ * `publishDailyUpdates` would post, but sends nothing. Powers the confirmation
+ * modal so the admin can eyeball each project's updates before they go out.
+ */
+export async function previewDailyUpdates(
+  user: EffectiveUser,
+  phase: DailyUpdatePhase,
+): Promise<DailyUpdatesPreview> {
+  assertCanPublishTaskRollup(user);
+  const { projects, otherDevs, devCount, taskCount, channel, workDate } =
+    await compileDailyUpdates(user, phase);
+  return {
+    ok: true,
+    phase,
+    channel,
+    configured: Boolean(channel),
+    devCount,
+    taskCount,
+    dateLabel: ymd(workDate),
+    projects,
+    otherDevs,
+  };
+}
+
+/**
+ * "Push to Slack" — compile every developer's daily update grouped BY PROJECT
+ * then BY DEVELOPER and post ONE consolidated card to the dedicated updates
+ * channel (Settings → Integrations `tasks.updates` route, i.e. #updates). PM
+ * carries done-today tasks + notes; AM carries in-progress tasks + notes. Both
+ * use the identical layout. Only devs who have pushed that phase today are
+ * included. Best-effort Slack post; a missing token/channel never fails the
+ * request — `configured: false` tells the UI to prompt setup.
  *
  * The posted card carries a "🗑 Delete update" button. We pre-mint a
  * `SlackMessageRef` (placeholder ts) so its id can be embedded in that button,
  * then patch in the real message ts once Slack returns it — the interactivity
  * handler resolves the ref on click and runs chat.delete.
  */
-export async function publishPmUpdates(user: EffectiveUser): Promise<PmUpdatesResult> {
+export async function publishDailyUpdates(
+  user: EffectiveUser,
+  phase: DailyUpdatePhase,
+): Promise<DailyUpdatesResult> {
   assertCanPublishTaskRollup(user);
-  const { devs, taskCount, channel, botToken, workDate } = await compilePmUpdates(user);
+  const { projects, otherDevs, devCount, taskCount, channel, botToken, workDate } =
+    await compileDailyUpdates(user, phase);
 
   if (botToken && channel) {
     // Pre-mint the ref (placeholder ts) so the delete button can carry its id.
@@ -762,12 +831,18 @@ export async function publishPmUpdates(user: EffectiveUser): Promise<PmUpdatesRe
         channelId: channel,
         messageTs: cryptoRandomId(),
         taskId: null,
-        kind: "PM_UPDATES",
+        kind: phase === "PM" ? "PM_UPDATES" : "AM_UPDATES",
         postedById: user.id,
       },
     });
 
-    const card = buildPmUpdatesCard({ dateLabel: ymd(workDate), devs, deleteRefId: ref.id });
+    const card = buildDailyUpdatesCard({
+      phase,
+      dateLabel: ymd(workDate),
+      projects,
+      otherDevs,
+      deleteRefId: ref.id,
+    });
     const result = await postMessage(botToken, { channel, text: card.text, blocks: card.blocks });
 
     if (result.ok && result.data.ts) {
@@ -787,9 +862,10 @@ export async function publishPmUpdates(user: EffectiveUser): Promise<PmUpdatesRe
 
   return {
     ok: true,
+    phase,
     channel,
     configured: Boolean(channel),
-    devCount: devs.length,
+    devCount,
     taskCount,
   };
 }

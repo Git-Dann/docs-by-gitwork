@@ -28,6 +28,7 @@ import {
   publishRollup,
   pushPmUpdates,
   previewPmUpdates,
+  type DailyUpdatePhase,
   listMemberClients,
   setMemberClients,
   listFeatureBlocks,
@@ -339,24 +340,25 @@ export function usePublishRollup() {
   });
 }
 
-/** Review preview for "Push to Slack" — compiles the PM update without posting.
- *  Enabled only while the review modal is open so it refetches on each open. */
-export function usePmUpdatesPreview(enabled: boolean) {
+/** Review preview for "Push to Slack" — compiles the daily update without
+ *  posting. Enabled only while the review modal is open so it refetches on each
+ *  open; keyed by phase so switching AM/PM refetches the right compilation. */
+export function usePmUpdatesPreview(enabled: boolean, phase: DailyUpdatePhase = "PM") {
   return useQuery({
-    queryKey: [...QK.roster, "pm-preview"] as const,
-    queryFn: () => previewPmUpdates(),
+    queryKey: [...QK.roster, "pm-preview", phase] as const,
+    queryFn: () => previewPmUpdates(phase),
     enabled,
     staleTime: 0,
     gcTime: 0,
   });
 }
 
-/** "Push to Slack" — compile every dev's PM update grouped by developer and post
- *  it to the dedicated #updates channel. */
+/** "Push to Slack" — compile every dev's daily update grouped by project then
+ *  developer and post it to the dedicated #updates channel. */
 export function usePushPmUpdates() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => pushPmUpdates(),
+    mutationFn: (phase: DailyUpdatePhase = "PM") => pushPmUpdates(phase),
     onSuccess: () => void qc.invalidateQueries({ queryKey: QK.roster }),
   });
 }
