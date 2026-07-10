@@ -4,6 +4,8 @@ import {
   ArrowRightOnRectangleIcon,
   Bars3Icon,
   BookOpenIcon,
+  ChevronDoubleLeftIcon,
+  ChevronDoubleRightIcon,
   CodeBracketIcon,
   ChevronUpDownIcon,
   Cog8ToothIcon,
@@ -45,6 +47,8 @@ type NavItem = {
 // sidebar renders the CORRECT filtered nav on first paint — before /api/account
 // resolves — instead of flashing the full list then collapsing it.
 const NAV_CACHE_KEY = "gitwork.nav.modules.v1";
+// Persists the desktop sidebar's collapsed/expanded state across sessions.
+const SIDEBAR_COLLAPSED_KEY = "gitwork.sidebar.collapsed.v1";
 // Every module key a nav item can gate on. Admins/super-admins with full access
 // cache this whole set. Keep in sync with the `module` fields in `primaryNav`.
 const ALL_NAV_MODULES = [
@@ -73,6 +77,25 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
+    } catch {
+      /* storage unavailable — stays expanded */
+    }
+  }, []);
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        /* storage unavailable — non-fatal, just won't persist */
+      }
+      return next;
+    });
+  }
   const account = useAccount();
   const isAdmin = isAtLeast(account.data?.role ?? "", "ADMIN");
   const { viewAs, viewAsUser, setViewAs, setViewAsUser, effectivePermissions, previewLabel } = useViewAs(isAdmin);
@@ -285,7 +308,12 @@ export function AppShell({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 w-full lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
+      <div
+        className={cn(
+          "min-h-0 flex-1 w-full lg:grid",
+          collapsed ? "lg:grid-cols-[76px_minmax(0,1fr)]" : "lg:grid-cols-[280px_minmax(0,1fr)]",
+        )}
+      >
         {/* ── Desktop sidebar (full height, always visible) ── */}
         <aside className="hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_38%)] lg:flex lg:min-h-0">
           <ExpandedRail
@@ -297,6 +325,8 @@ export function AppShell({
             setViewAs={setViewAs}
             setViewAsUser={setViewAsUser}
             isAdmin={isAdmin}
+            collapsed={collapsed}
+            onToggleCollapsed={toggleCollapsed}
           />
         </aside>
 
@@ -364,6 +394,8 @@ function ExpandedRail({
   setViewAs,
   setViewAsUser,
   isAdmin,
+  collapsed,
+  onToggleCollapsed,
 }: {
   pathname: string | null;
   primaryNav: ReadonlyArray<NavItem>;
@@ -373,12 +405,34 @@ function ExpandedRail({
   setViewAs: (role: "STAFF" | "DEVELOPER" | null) => void;
   setViewAsUser: (name: string, permissions: string[], role?: string) => void;
   isAdmin: boolean;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }) {
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div className="flex shrink-0 items-center justify-center border-b border-[var(--border-2)] px-6 pb-5 pt-7">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/foundry-logo.svg" alt="Foundry" className="h-12 w-auto dark:brightness-0 dark:invert" />
+      <div
+        className={cn(
+          "flex shrink-0 items-center border-b border-[var(--border-2)] px-3 pb-5 pt-7",
+          collapsed ? "justify-center" : "justify-between",
+        )}
+      >
+        {!collapsed ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src="/foundry-logo.svg" alt="Foundry" className="h-12 w-auto dark:brightness-0 dark:invert" />
+        ) : null}
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="shrink-0 rounded-[6px] p-1.5 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
+        >
+          {collapsed ? (
+            <ChevronDoubleRightIcon className="h-4 w-4" />
+          ) : (
+            <ChevronDoubleLeftIcon className="h-4 w-4" />
+          )}
+        </button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col px-3 py-4">
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
@@ -388,6 +442,7 @@ function ExpandedRail({
                 key={item.label}
                 item={item}
                 active={Boolean(item.href && isActivePath(pathname, item.href))}
+                collapsed={collapsed}
               />
             ))}
           </nav>
@@ -398,13 +453,14 @@ function ExpandedRail({
                 key={item.label}
                 item={item}
                 active={Boolean(item.href && isActivePath(pathname, item.href))}
+                collapsed={collapsed}
               />
             ))}
           </div>
         </div>
 
         <div className="mt-4">
-          <AiSpendCard />
+          {!collapsed ? <AiSpendCard /> : null}
           <div className="space-y-2">
             <SidebarNavItem
               item={{
@@ -414,12 +470,21 @@ function ExpandedRail({
                 icon: BookOpenIcon,
               }}
               active={Boolean(isActivePath(pathname, "/app/handbook"))}
+              collapsed={collapsed}
             />
             <SidebarNavItem
               item={{ href: "/app/settings/account", label: "Settings", icon: Cog8ToothIcon }}
               active={Boolean(isActivePath(pathname, "/app/settings"))}
+              collapsed={collapsed}
             />
-            <ProfileMenu viewAs={viewAs} viewAsUser={viewAsUser} setViewAs={setViewAs} setViewAsUser={setViewAsUser} isAdmin={isAdmin} />
+            <ProfileMenu
+              viewAs={viewAs}
+              viewAsUser={viewAsUser}
+              setViewAs={setViewAs}
+              setViewAsUser={setViewAsUser}
+              isAdmin={isAdmin}
+              collapsed={collapsed}
+            />
           </div>
         </div>
       </div>
@@ -430,27 +495,37 @@ function ExpandedRail({
 function SidebarNavItem({
   item,
   active,
+  collapsed = false,
 }: {
   item: NavItem;
   active: boolean;
+  /** Icon-only mode for the collapsed sidebar rail. */
+  collapsed?: boolean;
 }) {
   const Icon = item.icon;
   const classes = cn(
     "flex w-full items-start gap-3 rounded-[6px] border px-3 py-2 text-sm font-medium transition",
+    collapsed && "items-center justify-center px-2 py-2.5",
     active
       ? "border-[var(--brand-300)] bg-[var(--surface-brand)] text-[var(--brand-800)] shadow-[var(--shadow-xs)]"
       : "border-transparent text-[var(--text-2)] hover:bg-[var(--surface-1)]",
     item.disabled ? "cursor-default opacity-70 hover:bg-transparent" : "",
   );
 
-  const content = (
+  const icon = (
+    <Icon
+      className={cn(
+        collapsed ? "h-5 w-5 shrink-0" : "mt-0.5 h-5 w-5 shrink-0",
+        active ? "text-[var(--brand-700)]" : "text-[var(--text-4)]",
+      )}
+    />
+  );
+
+  const content = collapsed ? (
+    icon
+  ) : (
     <>
-      <Icon
-        className={cn(
-          "mt-0.5 h-5 w-5 shrink-0",
-          active ? "text-[var(--brand-700)]" : "text-[var(--text-4)]",
-        )}
-      />
+      {icon}
       <span className="min-w-0">
         <span className="block">{item.label}</span>
         {item.description ? (
@@ -464,14 +539,14 @@ function SidebarNavItem({
 
   if (!item.href || item.disabled) {
     return (
-      <div aria-disabled="true" className={classes}>
+      <div aria-disabled="true" className={classes} title={collapsed ? item.label : undefined}>
         {content}
       </div>
     );
   }
 
   return (
-    <Link href={item.href} className={classes}>
+    <Link href={item.href} className={classes} title={collapsed ? item.label : undefined}>
       {content}
     </Link>
   );
@@ -510,12 +585,14 @@ function ProfileMenu({
   setViewAs,
   setViewAsUser,
   isAdmin,
+  collapsed = false,
 }: {
   viewAs: ViewAsRole;
   viewAsUser: ViewAsUser | null;
   setViewAs: (role: "STAFF" | "DEVELOPER" | null) => void;
   setViewAsUser: (name: string, permissions: string[], role?: string) => void;
   isAdmin: boolean;
+  collapsed?: boolean;
 }) {
   const { data: session } = useSession();
   const accountQuery = useAccount();
@@ -578,18 +655,31 @@ function ProfileMenu({
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="flex w-full items-center gap-3 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-3 text-left transition hover:bg-[var(--surface-1)]"
+        title={collapsed ? displayName : undefined}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-3 text-left transition hover:bg-[var(--surface-1)]",
+          collapsed && "justify-center px-2",
+        )}
       >
         <Avatar name={displayName} url={displayAvatar} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-[var(--text-1)]">{displayName}</p>
-          <p className="truncate text-xs text-[var(--text-4)]">{displayEmail}</p>
-        </div>
-        <ChevronUpDownIcon className="h-4 w-4 shrink-0 text-[var(--text-4)]" />
+        {!collapsed ? (
+          <>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-[var(--text-1)]">{displayName}</p>
+              <p className="truncate text-xs text-[var(--text-4)]">{displayEmail}</p>
+            </div>
+            <ChevronUpDownIcon className="h-4 w-4 shrink-0 text-[var(--text-4)]" />
+          </>
+        ) : null}
       </button>
 
       {open ? (
-        <div className="absolute bottom-[calc(100%+12px)] left-0 right-0 z-50 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-2 shadow-[var(--shadow-lg)]">
+        <div
+          className={cn(
+            "absolute bottom-[calc(100%+12px)] z-50 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-2 shadow-[var(--shadow-lg)]",
+            collapsed ? "left-0 w-72" : "left-0 right-0",
+          )}
+        >
 
           {/* View as — Super Admin only, tucked away */}
           {isAdmin && (

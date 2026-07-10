@@ -203,6 +203,7 @@ model User {
   tasksCreated              Task[]                  @relation("TaskCreator")
   designSystemsUpdated      ClientDesignSystem[]    @relation("DesignSystemUpdatedBy")
   taskComments              TaskComment[]
+  taskAttachments           TaskAttachment[]
   dailyUpdates              DailyUpdate[]
   slackUpdateLogs           SlackUpdateLog[]
   // MCP / OAuth (Phase 3) — Foundry as an OAuth 2.1 authorization server.
@@ -3129,6 +3130,17 @@ enum TaskPriority {
   HIGH
 }
 
+/// Freeform ticket-type tag (Backend/Frontend/UI-UX/Research/Design), distinct from
+/// `featureBlockId` ("Category" in the UI, a project list/grouping). Nullable — most
+/// existing tasks (and any that don't need one) stay untagged.
+enum TaskLabel {
+  BACKEND
+  FRONTEND
+  UI_UX
+  RESEARCH
+  DESIGN
+}
+
 /// Links a team member to a specific client. Backs the `seeAllClients=off`
 /// feature flag: a developer with this flag off only sees clients they're
 /// assigned to here (Portal, task board, standups). Admins / `seeAllClients`
@@ -3165,6 +3177,8 @@ model Task {
   acceptanceCriteria String?      @db.Text
   status             TaskStatus   @default(BACKLOG)
   priority           TaskPriority @default(MEDIUM)
+  /// Optional ticket-type tag (Backend/Frontend/UI-UX/Research/Design). See enum doc.
+  label              TaskLabel?
   /// Fractional sort key for drag-ordering within a status column. New cards
   /// get (max+1); a card dropped between two others gets the midpoint.
   orderKey           Float        @default(0)
@@ -3196,6 +3210,7 @@ model Task {
   parent           Task?             @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
   subtasks         Task[]            @relation("Subtasks")
   comments         TaskComment[]
+  attachments      TaskAttachment[]
   slackMessageRefs SlackMessageRef[]
 
   @@index([workspaceId, clientId, status])
@@ -3276,6 +3291,26 @@ model TaskComment {
   createdAt DateTime @default(now())
   task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   author    User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([taskId, createdAt])
+}
+
+/// Image/screenshot attached directly to a task (separate from note/comment bodies).
+/// `image` is the full (client-compressed) upload; `thumb` is a small server-generated
+/// preview for the attachments grid. Both are Postgres `Bytes` — same lifecycle
+/// reasoning as `Expense.receiptImage`, revisit if volume grows (CLAUDE.md §11).
+model TaskAttachment {
+  id           String   @id @default(cuid())
+  taskId       String
+  uploadedById String?
+  image        Bytes
+  thumb        Bytes?
+  mime         String
+  filename     String?
+  createdAt    DateTime @default(now())
+
+  task       Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploadedBy User? @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
 
   @@index([taskId, createdAt])
 }

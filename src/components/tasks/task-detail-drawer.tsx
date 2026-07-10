@@ -32,8 +32,9 @@ import {
 } from "@/hooks/use-tasks";
 import { TASK_STATUSES, TASK_STATUS_LABELS, type TaskDTO, type TaskDetailDTO, type TaskStatus } from "@/types/tasks";
 import { TaskAvatar, AssigneeStack } from "@/components/tasks/task-avatar";
-import { TaskPriorityBadge } from "@/components/tasks/task-badges";
+import { TaskPriorityBadge, TaskLabelBadge } from "@/components/tasks/task-badges";
 import { TaskFormModal } from "@/components/tasks/task-form";
+import { TaskAttachments } from "@/components/tasks/task-attachments";
 import { MentionInput, MentionText, type MentionCandidate } from "@/components/tasks/mention-input";
 import { useBackstageTeam } from "@/hooks/use-backstage";
 import { useAccount } from "@/hooks/use-account";
@@ -359,6 +360,9 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
                 <MetaRow icon={<TagIcon className="h-3.5 w-3.5" />} label="Category">
                   {task.featureBlock?.name ?? <span className="text-[var(--text-4)]">—</span>}
                 </MetaRow>
+                <MetaRow icon={<TagIcon className="h-3.5 w-3.5" />} label="Label">
+                  {task.label ? <TaskLabelBadge label={task.label} /> : <span className="text-[var(--text-4)]">—</span>}
+                </MetaRow>
                 <MetaRow icon={<CalendarDaysIcon className="h-3.5 w-3.5" />} label="Due">
                   <span style={MONO}>{task.dueDate ? formatDate(task.dueDate) : "—"}</span>
                 </MetaRow>
@@ -449,6 +453,9 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
                   </Button>
                 </div>
               </div>
+
+              {/* Attachments */}
+              <TaskAttachments taskId={task.id} attachments={task.attachments} />
 
               {/* Notes */}
               <div>

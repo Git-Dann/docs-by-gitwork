@@ -942,6 +942,8 @@ export const taskStatusSchema = z.enum([
 
 export const taskPrioritySchema = z.enum(["LOW", "MEDIUM", "HIGH"]);
 
+export const taskLabelSchema = z.enum(["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN"]);
+
 export const taskInputSchema = z.object({
   clientId: z.string().cuid(),
   title: z.string().min(1).max(200),
@@ -949,6 +951,7 @@ export const taskInputSchema = z.object({
   acceptanceCriteria: z.string().max(10000).nullable().optional(),
   status: taskStatusSchema.optional().default("BACKLOG"),
   priority: taskPrioritySchema.optional().default("MEDIUM"),
+  label: taskLabelSchema.nullable().optional(),
   assigneeIds: z.array(z.string().cuid()).optional(),
   featureBlockId: z.string().cuid().nullable().optional(),
   parentId: z.string().cuid().nullable().optional(),
@@ -962,6 +965,7 @@ export const taskUpdateSchema = z.object({
   acceptanceCriteria: z.string().max(10000).nullable().optional(),
   status: taskStatusSchema.optional(),
   priority: taskPrioritySchema.optional(),
+  label: taskLabelSchema.nullable().optional(),
   assigneeIds: z.array(z.string().cuid()).optional(),
   featureBlockId: z.string().cuid().nullable().optional(),
   dueDate: isoDateString.nullable().optional(),

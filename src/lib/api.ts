@@ -2672,8 +2672,10 @@ import type {
   TaskDTO,
   TaskDetailDTO,
   TaskCommentDTO,
+  TaskAttachmentDTO,
   TaskStatus,
   TaskPriority,
+  TaskLabel,
   ClientTaskSummary,
   TaskAttentionDTO,
   MyDayDTO,
@@ -2719,6 +2721,7 @@ export function createTask(input: {
   acceptanceCriteria?: string | null;
   status?: TaskStatus;
   priority?: TaskPriority;
+  label?: TaskLabel | null;
   assigneeIds?: string[];
   featureBlockId?: string | null;
   parentId?: string | null;
@@ -2740,6 +2743,7 @@ export function updateTask(
     acceptanceCriteria?: string | null;
     status?: TaskStatus;
     priority?: TaskPriority;
+    label?: TaskLabel | null;
     assigneeIds?: string[];
     featureBlockId?: string | null;
     dueDate?: string | null;
@@ -2752,6 +2756,25 @@ export function updateTask(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+export async function uploadTaskAttachment(taskId: string, file: File): Promise<TaskAttachmentDTO> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`/api/tasks/${taskId}/attachments`, {
+    method: "POST",
+    body: form,
+  });
+  const data = (await res.json()) as Record<string, unknown>;
+  if (!res.ok) {
+    const msg = typeof data?.error === "string" ? data.error : `Upload failed: ${res.status}`;
+    throw new Error(msg);
+  }
+  return data as TaskAttachmentDTO;
+}
+
+export function deleteTaskAttachment(taskId: string, attachmentId: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/tasks/${taskId}/attachments/${attachmentId}`, { method: "DELETE" });
 }
 
 export function moveTask(

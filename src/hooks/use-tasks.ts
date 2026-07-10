@@ -19,6 +19,8 @@ import {
   batchCreateTasks,
   importTasks,
   addTaskComment,
+  uploadTaskAttachment,
+  deleteTaskAttachment,
   getClientTaskSummary,
   getTaskAttention,
   getMyDay,
@@ -280,6 +282,27 @@ export function useAddTaskComment() {
       success("Note added");
     },
     onError: () => error("Couldn't add note", "Please try again."),
+  });
+}
+
+export function useUploadTaskAttachment() {
+  const qc = useQueryClient();
+  const { error } = useToast();
+  return useMutation({
+    mutationFn: ({ taskId, file }: { taskId: string; file: File }) => uploadTaskAttachment(taskId, file),
+    onSuccess: (_data, vars) => void qc.invalidateQueries({ queryKey: QK.task(vars.taskId) }),
+    onError: () => error("Couldn't attach image", "Please try again."),
+  });
+}
+
+export function useDeleteTaskAttachment() {
+  const qc = useQueryClient();
+  const { error } = useToast();
+  return useMutation({
+    mutationFn: ({ taskId, attachmentId }: { taskId: string; attachmentId: string }) =>
+      deleteTaskAttachment(taskId, attachmentId),
+    onSuccess: (_data, vars) => void qc.invalidateQueries({ queryKey: QK.task(vars.taskId) }),
+    onError: () => error("Couldn't remove attachment", "Please try again."),
   });
 }
 

@@ -19,8 +19,10 @@ import type {
   TaskDTO,
   TaskDetailDTO,
   TaskCommentDTO,
+  TaskAttachmentDTO,
   TaskStatus,
   TaskPriority,
+  TaskLabel,
   TaskUserRef,
   TaskScribeSourceRef,
   ClientTaskSummary,
@@ -38,13 +40,24 @@ const taskInclude = {
   assignees: userSelect,
   createdBy: userSelect,
   featureBlock: { select: { id: true, name: true } },
-  _count: { select: { comments: true, subtasks: true } },
+  _count: { select: { comments: true, subtasks: true, attachments: true } },
 } satisfies Prisma.TaskInclude;
 
 type TaskRow = Prisma.TaskGetPayload<{ include: typeof taskInclude }>;
 
 type CommentRow = Prisma.TaskCommentGetPayload<{
   include: { author: { select: { id: true; name: true; email: true; avatarUrl: true } } };
+}>;
+
+type AttachmentRow = Prisma.TaskAttachmentGetPayload<{
+  select: {
+    id: true;
+    taskId: true;
+    mime: true;
+    filename: true;
+    createdAt: true;
+    uploadedBy: { select: { id: true; name: true; email: true; avatarUrl: true } };
+  };
 }>;
 
 function displayName(u: { name: string | null; email: string }): string {
@@ -78,6 +91,7 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
     acceptanceCriteria: row.acceptanceCriteria,
     status: row.status as TaskStatus,
     priority: row.priority as TaskPriority,
+    label: row.label as TaskLabel | null,
     orderKey: row.orderKey,
     dueDate: row.dueDate ? row.dueDate.toISOString() : null,
     startedAt: row.startedAt ? row.startedAt.toISOString() : null,
@@ -86,6 +100,7 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
     commentCount: row._count.comments,
     subtaskCount: row._count.subtasks,
     subtaskDoneCount: 0,
+    attachmentCount: row._count.attachments,
     metadata: (row.metadata as Record<string, unknown> | null) ?? null,
     scribeSource: null,
     createdAt: row.createdAt.toISOString(),
@@ -197,6 +212,17 @@ function commentRowToDTO(row: CommentRow): TaskCommentDTO {
     author: userRef(row.author),
     body: row.body,
     mentions: Array.isArray(row.mentions) ? (row.mentions as string[]) : [],
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function attachmentRowToDTO(row: AttachmentRow): TaskAttachmentDTO {
+  return {
+    id: row.id,
+    taskId: row.taskId,
+    uploadedBy: userRef(row.uploadedBy),
+    mime: row.mime,
+    filename: row.filename,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -327,7 +353,7 @@ export async function getTask(user: EffectiveUser, id: string): Promise<TaskDeta
   if (!row) throw new ForbiddenError("Task not found");
   await assertClientInScope(user, row.clientId);
 
-  const [comments, subtaskRows] = await Promise.all([
+  const [comments, subtaskRows, attachmentRows] = await Promise.all([
     prisma.taskComment.findMany({
       where: { taskId: id },
       orderBy: { createdAt: "asc" },
@@ -338,13 +364,30 @@ export async function getTask(user: EffectiveUser, id: string): Promise<TaskDeta
       orderBy: [{ orderKey: "asc" }, { createdAt: "asc" }],
       include: taskInclude,
     }),
+    prisma.taskAttachment.findMany({
+      where: { taskId: id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        taskId: true,
+        mime: true,
+        filename: true,
+        createdAt: true,
+        uploadedBy: userSelect,
+      },
+    }),
   ]);
   const subtasks = subtaskRows.map(taskRowToDTO);
   const [dtoWithSource] = await attachScribeSources(user.workspaceId, [taskRowToDTO(row)]);
   const dto = dtoWithSource ?? taskRowToDTO(row);
   dto.subtaskCount = subtasks.length;
   dto.subtaskDoneCount = subtasks.filter((s) => s.status === "DONE").length;
-  return { ...dto, comments: comments.map(commentRowToDTO), subtasks };
+  return {
+    ...dto,
+    comments: comments.map(commentRowToDTO),
+    subtasks,
+    attachments: attachmentRows.map(attachmentRowToDTO),
+  };
 }
 
 /** Status counts for a single client — powers the compact card on client detail. */
@@ -460,6 +503,7 @@ export async function createTask(
     acceptanceCriteria?: string | null;
     status?: TaskStatus;
     priority?: TaskPriority;
+    label?: TaskLabel | null;
     assigneeIds?: string[];
     featureBlockId?: string | null;
     parentId?: string | null;
@@ -473,13 +517,25 @@ export async function createTask(
   if (input.featureBlockId) {
     await assertBlockInClient(user.workspaceId, input.clientId, input.featureBlockId);
   }
+  // A subtask with no explicit assignees inherits the parent's current assignees
+  // (falling back to the legacy single-assignee column) so "assign the parent,
+  // subtasks follow" holds at creation time without extra clicks.
+  let parentAssigneeIds: string[] = [];
   if (input.parentId) {
     const parent = await prisma.task.findFirst({
       where: { id: input.parentId, workspaceId: user.workspaceId, clientId: input.clientId },
-      select: { id: true },
+      select: { id: true, assigneeId: true, assignees: { select: { id: true } } },
     });
     if (!parent) throw new ForbiddenError("Parent task not found for this client");
+    parentAssigneeIds =
+      parent.assignees.length > 0
+        ? parent.assignees.map((a) => a.id)
+        : parent.assigneeId
+          ? [parent.assigneeId]
+          : [];
   }
+  const effectiveAssigneeIds =
+    input.assigneeIds && input.assigneeIds.length > 0 ? input.assigneeIds : parentAssigneeIds;
   const status = input.status ?? "BACKLOG";
   const ts = statusTimestamps(null, status, { startedAt: null });
 
@@ -495,6 +551,7 @@ export async function createTask(
       acceptanceCriteria: input.acceptanceCriteria ?? null,
       status,
       priority: input.priority ?? "MEDIUM",
+      label: input.label ?? null,
       orderKey: await nextOrderKey(user.workspaceId, input.clientId, status),
       dueDate: input.dueDate ? new Date(input.dueDate) : null,
       startedAt: ts.startedAt ?? null,
@@ -503,8 +560,8 @@ export async function createTask(
       ...(input.metadata !== undefined && input.metadata !== null
         ? { metadata: input.metadata as Prisma.InputJsonValue }
         : {}),
-      ...(input.assigneeIds && input.assigneeIds.length > 0
-        ? { assignees: { connect: input.assigneeIds.map((id) => ({ id })) } }
+      ...(effectiveAssigneeIds.length > 0
+        ? { assignees: { connect: effectiveAssigneeIds.map((id) => ({ id })) } }
         : {}),
     },
     include: taskInclude,
@@ -603,6 +660,7 @@ export async function updateTask(
     acceptanceCriteria?: string | null;
     status?: TaskStatus;
     priority?: TaskPriority;
+    label?: TaskLabel | null;
     assigneeIds?: string[];
     featureBlockId?: string | null;
     dueDate?: string | null;
@@ -622,6 +680,7 @@ export async function updateTask(
   if (input.description !== undefined) data.description = input.description;
   if (input.acceptanceCriteria !== undefined) data.acceptanceCriteria = input.acceptanceCriteria;
   if (input.priority !== undefined) data.priority = input.priority;
+  if (input.label !== undefined) data.label = input.label;
   if (input.metadata !== undefined && input.metadata !== null) {
     data.metadata = input.metadata as Prisma.InputJsonValue;
   }
@@ -647,6 +706,26 @@ export async function updateTask(
   }
 
   const row = await prisma.task.update({ where: { id }, data, include: taskInclude });
+
+  // Reassigning the parent task also reassigns its direct subtasks — "the main
+  // task is assigned to a user, all of its subtasks should be assigned too".
+  if (input.assigneeIds !== undefined) {
+    const subtasks = await prisma.task.findMany({ where: { parentId: id }, select: { id: true } });
+    if (subtasks.length > 0) {
+      await Promise.all(
+        subtasks.map((s) =>
+          prisma.task.update({
+            where: { id: s.id },
+            data: {
+              assignees: { set: input.assigneeIds!.map((aid) => ({ id: aid })) },
+              assignee: { disconnect: true },
+            },
+          }),
+        ),
+      );
+    }
+  }
+
   const [task] = await attachScribeSources(user.workspaceId, [taskRowToDTO(row)]);
   return task;
 }
@@ -952,4 +1031,104 @@ export async function addTaskComment(
   }
 
   return commentRowToDTO(row);
+}
+
+// ─── Attachments ───────────────────────────────────────────────────────────
+
+const ATTACHMENT_THUMB_SIZE = 320;
+
+/** Attach a screenshot/image to a task. Bytes arrive pre-compressed client-side;
+ * a small thumbnail is generated here for the attachments grid. */
+export async function addTaskAttachment(
+  user: EffectiveUser,
+  taskId: string,
+  bytes: Buffer,
+  mime: string,
+  filename: string | null,
+): Promise<TaskAttachmentDTO> {
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, workspaceId: user.workspaceId },
+    select: { clientId: true },
+  });
+  if (!task) throw new ForbiddenError("Task not found");
+  await assertClientInScope(user, task.clientId);
+
+  const sharp = (await import("sharp")).default;
+  let storedBytes = bytes;
+  let storedMime = mime;
+  // Transcode HEIC → JPEG (iOS screenshots/photos); browsers can't render HEIC.
+  if (mime === "image/heic" || mime === "image/heif") {
+    storedBytes = await sharp(bytes).rotate().jpeg({ quality: 85 }).toBuffer();
+    storedMime = "image/jpeg";
+  }
+  const thumb = await sharp(storedBytes)
+    .rotate()
+    .resize(ATTACHMENT_THUMB_SIZE, ATTACHMENT_THUMB_SIZE, { fit: "inside" })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+
+  const row = await prisma.taskAttachment.create({
+    data: {
+      taskId,
+      uploadedById: user.id,
+      image: storedBytes,
+      thumb,
+      mime: storedMime,
+      filename,
+    },
+    select: {
+      id: true,
+      taskId: true,
+      mime: true,
+      filename: true,
+      createdAt: true,
+      uploadedBy: userSelect,
+    },
+  });
+  return attachmentRowToDTO(row);
+}
+
+/** Serve attachment bytes — the full image, or its thumb when `variant === "thumb"`. */
+export async function getTaskAttachmentBytes(
+  user: EffectiveUser,
+  taskId: string,
+  attachmentId: string,
+  variant: "full" | "thumb" = "full",
+): Promise<{ bytes: Buffer; mime: string } | null> {
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, workspaceId: user.workspaceId },
+    select: { clientId: true },
+  });
+  if (!task) throw new ForbiddenError("Task not found");
+  await assertClientInScope(user, task.clientId);
+
+  const row = await prisma.taskAttachment.findFirst({
+    where: { id: attachmentId, taskId },
+    select: { image: true, thumb: true, mime: true },
+  });
+  if (!row) return null;
+  if (variant === "thumb") {
+    return { bytes: Buffer.from(row.thumb ?? row.image), mime: "image/jpeg" };
+  }
+  return { bytes: Buffer.from(row.image), mime: row.mime };
+}
+
+export async function deleteTaskAttachment(
+  user: EffectiveUser,
+  taskId: string,
+  attachmentId: string,
+): Promise<void> {
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, workspaceId: user.workspaceId },
+    select: { clientId: true },
+  });
+  if (!task) throw new ForbiddenError("Task not found");
+  await assertClientInScope(user, task.clientId);
+
+  const existing = await prisma.taskAttachment.findFirst({
+    where: { id: attachmentId, taskId },
+    select: { id: true },
+  });
+  if (!existing) throw new ForbiddenError("Attachment not found");
+  await prisma.taskAttachment.delete({ where: { id: attachmentId } });
 }

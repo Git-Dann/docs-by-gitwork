@@ -5,6 +5,7 @@
 
 export type TaskStatus = "BACKLOG" | "TODO" | "DOING" | "IN_REVIEW" | "DONE";
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
+export type TaskLabel = "BACKEND" | "FRONTEND" | "UI_UX" | "RESEARCH" | "DESIGN";
 
 /** Board column order. */
 export const TASK_STATUSES: TaskStatus[] = [
@@ -29,6 +30,16 @@ export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
   LOW: "Low",
   MEDIUM: "Medium",
   HIGH: "High",
+};
+
+export const TASK_LABELS: TaskLabel[] = ["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN"];
+
+export const TASK_LABEL_LABELS: Record<TaskLabel, string> = {
+  BACKEND: "Backend",
+  FRONTEND: "Frontend",
+  UI_UX: "UI/UX",
+  RESEARCH: "Research",
+  DESIGN: "Design",
 };
 
 export type TaskUserRef = { id: string; name: string; avatarUrl: string | null };
@@ -59,6 +70,8 @@ export type TaskDTO = {
   acceptanceCriteria: string | null;
   status: TaskStatus;
   priority: TaskPriority;
+  /** Optional ticket-type tag (Backend/Frontend/UI-UX/Research/Design). */
+  label: TaskLabel | null;
   orderKey: number;
   dueDate: string | null;
   startedAt: string | null;
@@ -68,6 +81,7 @@ export type TaskDTO = {
   commentCount: number;
   subtaskCount: number;
   subtaskDoneCount: number;
+  attachmentCount: number;
   metadata: Record<string, unknown> | null;
   scribeSource: TaskScribeSourceRef | null;
   createdAt: string;
@@ -84,9 +98,19 @@ export type TaskCommentDTO = {
   createdAt: string;
 };
 
+export type TaskAttachmentDTO = {
+  id: string;
+  taskId: string;
+  uploadedBy: TaskUserRef | null;
+  mime: string;
+  filename: string | null;
+  createdAt: string;
+};
+
 export type TaskDetailDTO = TaskDTO & {
   comments: TaskCommentDTO[];
   subtasks: TaskDTO[];
+  attachments: TaskAttachmentDTO[];
 };
 
 /** Per-dev/day standup record. `id` is null before the first push of the day. */

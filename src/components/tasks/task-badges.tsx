@@ -1,6 +1,6 @@
 import { cn } from "@/lib/format";
-import type { TaskStatus, TaskPriority } from "@/types/tasks";
-import { TASK_STATUS_LABELS, TASK_PRIORITY_LABELS } from "@/types/tasks";
+import type { TaskStatus, TaskPriority, TaskLabel } from "@/types/tasks";
+import { TASK_STATUS_LABELS, TASK_PRIORITY_LABELS, TASK_LABEL_LABELS } from "@/types/tasks";
 
 // Status badge — modelled on the app-wide StatusBadge (rounded border + dot + label).
 const STATUS_TONE: Record<TaskStatus, { wrapper: string; dot: string }> = {
@@ -55,6 +55,30 @@ export function TaskPriorityBadge({ priority, className }: { priority: TaskPrior
     >
       <TaskPriorityDot priority={priority} />
       {TASK_PRIORITY_LABELS[priority]}
+    </span>
+  );
+}
+
+// Ticket-type label — a quiet tinted chip, one tone per label so a board/list scan
+// tells Backend/Frontend/UI-UX/Research/Design apart at a glance.
+const LABEL_TONE: Record<TaskLabel, string> = {
+  BACKEND: "border-violet-200 bg-violet-50 text-violet-700",
+  FRONTEND: "border-sky-200 bg-sky-50 text-sky-700",
+  UI_UX: "border-pink-200 bg-pink-50 text-pink-700",
+  RESEARCH: "border-amber-200 bg-amber-50 text-amber-700",
+  DESIGN: "border-emerald-200 bg-emerald-50 text-emerald-700",
+};
+
+export function TaskLabelBadge({ label, className }: { label: TaskLabel; className?: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center truncate rounded-[4px] border px-1.5 py-0.5 text-[10px] font-medium",
+        LABEL_TONE[label],
+        className,
+      )}
+    >
+      {TASK_LABEL_LABELS[label]}
     </span>
   );
 }

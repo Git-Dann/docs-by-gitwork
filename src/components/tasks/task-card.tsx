@@ -3,7 +3,7 @@ import { FlagIcon, CalendarDaysIcon } from "@heroicons/react/16/solid";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import type { TaskDTO } from "@/types/tasks";
 import { AssigneeStack } from "@/components/tasks/task-avatar";
-import { TaskPriorityDot, TaskStatusBadge } from "@/components/tasks/task-badges";
+import { TaskPriorityDot, TaskStatusBadge, TaskLabelBadge } from "@/components/tasks/task-badges";
 
 /** Is the due date in the past and the task still open? */
 function isOverdue(task: TaskDTO): boolean {
@@ -92,6 +92,7 @@ export function TaskCard({
       {/* Footer meta row */}
       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
         {showStatus ? <TaskStatusBadge status={task.status} /> : null}
+        {task.label ? <TaskLabelBadge label={task.label} /> : null}
 
         <span className="text-[10px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
           {taskRef(task.id)}

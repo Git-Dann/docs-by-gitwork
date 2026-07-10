@@ -14,10 +14,13 @@ import {
   TASK_STATUS_LABELS,
   TASK_PRIORITIES,
   TASK_PRIORITY_LABELS,
+  TASK_LABELS,
+  TASK_LABEL_LABELS,
   type TaskDTO,
   type TaskUserRef,
   type TaskStatus,
   type TaskPriority,
+  type TaskLabel,
 } from "@/types/tasks";
 
 const ADMIN_ROLES = new Set(["ADMIN", "SUPER_ADMIN"]);
@@ -75,6 +78,7 @@ export function TaskFormModal({
   );
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? defaultStatus ?? "BACKLOG");
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? "MEDIUM");
+  const [label, setLabel] = useState<TaskLabel | "">(task?.label ?? "");
   // New tasks default the date to today (saves a click when logging same-day
   // work); editing keeps the task's existing date (blank stays blank).
   const [dueDate, setDueDate] = useState(
@@ -145,6 +149,7 @@ export function TaskFormModal({
             acceptanceCriteria: acceptanceCriteria.trim() || null,
             status,
             priority,
+            label: label || null,
             assigneeIds,
             featureBlockId: featureBlockId || null,
             dueDate: dueDate || null,
@@ -159,6 +164,7 @@ export function TaskFormModal({
           acceptanceCriteria: acceptanceCriteria.trim() || null,
           status,
           priority,
+          label: label || null,
           assigneeIds,
           featureBlockId: featureBlockId || null,
           dueDate: dueDate || null,
@@ -293,6 +299,24 @@ export function TaskFormModal({
                 </select>
               </div>
             ) : null}
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">
+                Label <span className="text-[var(--text-4)]">(optional)</span>
+              </label>
+              <select
+                className="app-select w-full"
+                value={label}
+                onChange={(e) => setLabel(e.target.value as TaskLabel | "")}
+              >
+                <option value="">No label</option>
+                {TASK_LABELS.map((l) => (
+                  <option key={l} value={l}>
+                    {TASK_LABEL_LABELS[l]}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <div className="flex min-h-[220px] flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] lg:flex-1">
               <div className="border-b border-[var(--border-2)] px-3 py-2.5">

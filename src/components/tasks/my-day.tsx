@@ -10,7 +10,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { useMyDay, usePushDailyUpdate, useDeleteStandupUpdate, useUpdateTask } from "@/hooks/use-tasks";
-import type { TaskDTO } from "@/types/tasks";
+import { TaskPriorityBadge, TaskLabelBadge } from "@/components/tasks/task-badges";
+import { TASK_STATUS_LABELS, type TaskDTO } from "@/types/tasks";
 
 function timeOf(iso: string | null): string | null {
   if (!iso) return null;
@@ -29,6 +30,8 @@ export function MyDay() {
   // Phase awaiting confirmation in the pre-send modal (null = modal closed).
   const [confirm, setConfirm] = useState<null | "AM" | "PM">(null);
   const [pushMsg, setPushMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  // Task the Quick View modal is showing (null = closed).
+  const [viewTask, setViewTask] = useState<TaskDTO | null>(null);
   // Synchronous guard against duplicate submits — React's `disabled` prop only
   // takes effect after a re-render commits, which leaves a window for a fast
   // double-click (or a retried click after an error) to fire mutateAsync twice.
@@ -124,14 +127,14 @@ export function MyDay() {
             <Empty>Nothing in progress yet — start something from “Up next”.</Empty>
           ) : (
             data.doing.map((t) => (
-              <Row key={t.id} task={t}>
+              <Row key={t.id} task={t} onOpen={() => setViewTask(t)}>
                 <button
                   type="button"
                   onClick={() => markDone(t)}
                   disabled={update.isPending}
                   className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 transition hover:text-emerald-800"
                 >
-                  <CheckCircleIcon className="h-4 w-4" /> Done
+                  <CheckCircleIcon className="h-4 w-4" /> Mark as Done
                 </button>
               </Row>
             ))
@@ -142,7 +145,7 @@ export function MyDay() {
         {data.upcoming.length > 0 ? (
           <Group title="Up next" count={data.upcoming.length}>
             {data.upcoming.slice(0, 8).map((t) => (
-              <Row key={t.id} task={t}>
+              <Row key={t.id} task={t} onOpen={() => setViewTask(t)}>
                 <button
                   type="button"
                   onClick={() => start(t)}
@@ -245,7 +248,106 @@ export function MyDay() {
         onCancel={() => setConfirm(null)}
         onSend={() => confirm && pushUpdate(confirm)}
       />
+
+      {/* Quick View — details + status action for a Doing/Up next task, no navigation away. */}
+      <TaskQuickViewModal
+        task={viewTask}
+        busy={update.isPending}
+        onClose={() => setViewTask(null)}
+        onStart={(t) => start(t).then(() => setViewTask(null))}
+        onMarkDone={(t) => markDone(t).then(() => setViewTask(null))}
+      />
     </section>
+  );
+}
+
+/** Lightweight details + status-change modal for a task in the Doing/Up next lists. */
+function TaskQuickViewModal({
+  task,
+  busy,
+  onClose,
+  onStart,
+  onMarkDone,
+}: {
+  task: TaskDTO | null;
+  busy: boolean;
+  onClose: () => void;
+  onStart: (task: TaskDTO) => void;
+  onMarkDone: (task: TaskDTO) => void;
+}) {
+  return (
+    <Modal open={task !== null} onClose={onClose} title="Task details">
+      {task ? (
+        <div className="space-y-4 p-5">
+          <div>
+            <p className="text-sm font-semibold text-[var(--text-1)]">{task.title}</p>
+            <p className="mt-0.5 text-[11px] text-[var(--text-4)]">{task.client.name}</p>
+          </div>
+
+          {task.description ? (
+            <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--text-2)]">
+              {task.description}
+            </p>
+          ) : null}
+
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5 text-[13px]">
+            <div>
+              <dt className="app-eyebrow mb-1">Status</dt>
+              <dd className="text-[var(--text-1)]">{TASK_STATUS_LABELS[task.status]}</dd>
+            </div>
+            <div>
+              <dt className="app-eyebrow mb-1">Priority</dt>
+              <dd><TaskPriorityBadge priority={task.priority} /></dd>
+            </div>
+            <div>
+              <dt className="app-eyebrow mb-1">Label</dt>
+              <dd>
+                {task.label ? <TaskLabelBadge label={task.label} /> : <span className="text-[var(--text-4)]">—</span>}
+              </dd>
+            </div>
+            <div>
+              <dt className="app-eyebrow mb-1">Due</dt>
+              <dd className="text-[var(--text-1)]">
+                {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "No due date"}
+              </dd>
+            </div>
+            <div className="col-span-2">
+              <dt className="app-eyebrow mb-1">Assignees</dt>
+              <dd className="text-[var(--text-1)]">
+                {task.assignees.length ? task.assignees.map((a) => a.name).join(", ") : "Unassigned"}
+              </dd>
+            </div>
+          </dl>
+
+          <div className="flex justify-end gap-2 border-t border-[var(--border-2)] pt-3">
+            <Button type="button" variant="tertiary" onClick={onClose}>
+              Close
+            </Button>
+            {task.status === "DOING" || task.status === "IN_REVIEW" ? (
+              <Button
+                type="button"
+                variant="primary"
+                leadingIcon={<CheckCircleIcon className="h-4 w-4" />}
+                loading={busy}
+                onClick={() => onMarkDone(task)}
+              >
+                Mark as Done
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="primary"
+                leadingIcon={<ArrowRightCircleIcon className="h-4 w-4" />}
+                loading={busy}
+                onClick={() => onStart(task)}
+              >
+                Start
+              </Button>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </Modal>
   );
 }
 
@@ -386,14 +488,40 @@ function Group({ title, count, children }: { title: string; count: number; child
   );
 }
 
-function Row({ task, children }: { task: TaskDTO; children: React.ReactNode }) {
+function Row({
+  task,
+  children,
+  onOpen,
+}: {
+  task: TaskDTO;
+  children: React.ReactNode;
+  /** When set, the row (excluding the action button) opens the Quick View on click. */
+  onOpen?: () => void;
+}) {
   return (
-    <div className="flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2">
+    <div
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onClick={onOpen}
+      onKeyDown={
+        onOpen
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onOpen();
+              }
+            }
+          : undefined
+      }
+      className={`flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 ${
+        onOpen ? "cursor-pointer transition hover:border-[var(--brand-300)]" : ""
+      }`}
+    >
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm text-[var(--text-1)]">{task.title}</p>
         <p className="truncate text-[11px] text-[var(--text-4)]">{task.client.name}</p>
       </div>
-      {children}
+      <div onClick={(e) => e.stopPropagation()}>{children}</div>
     </div>
   );
 }
