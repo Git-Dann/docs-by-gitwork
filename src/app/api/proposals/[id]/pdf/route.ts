@@ -15,6 +15,13 @@
  * AWS Lambda) and can't run there at all. Falls back to @sparticuz/chromium's bundled binary
  * (Lambda/other glibc hosts, or a dev machine with it working) when that env var isn't set.
  *
+ * Launch args: `chromium.args` bakes in GL flags (`--use-gl=angle`, `--use-angle=swiftshader`,
+ * `--in-process-gpu`) tuned for the bundled Lambda binary's own ANGLE/SwiftShader build — pointed
+ * at Alpine's native Chromium they crash the browser process immediately after launch (surfaces
+ * as `Protocol error (Target.setDiscoverTargets): Target closed`, since Puppeteer's first CDP call
+ * lands after Chromium has already died). Native Alpine Chromium gets its own conservative,
+ * software-rendering arg set instead.
+ *
  * Gated by docs.manage. Node runtime (Chromium needs it), 60s budget for cold starts.
  */
 
@@ -50,8 +57,18 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const origin = originFrom(request);
     const target = `${origin}/docs/${doc.shareToken}?print=1`;
 
+    const usingNativeChromium = Boolean(process.env.PUPPETEER_EXECUTABLE_PATH);
     const browser = await puppeteer.launch({
-      args: chromium.args,
+      args: usingNativeChromium
+        ? [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-software-rasterizer",
+            "--no-zygote",
+          ]
+        : chromium.args,
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || (await chromium.executablePath()),
       headless: true,
     });
