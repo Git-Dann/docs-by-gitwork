@@ -14,12 +14,15 @@ import {
   Squares2X2Icon,
   ListBulletIcon,
   CalendarDaysIcon,
+  TagIcon,
   ArchiveBoxIcon,
   ShareIcon,
   CheckIcon,
   ClipboardDocumentIcon,
   VideoCameraIcon,
   XMarkIcon,
+  PencilSquareIcon,
+  TrashIcon,
 } from "@heroicons/react/24/outline";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -29,6 +32,7 @@ import {
   useTasks,
   useUpdateTask,
   useFeatureBlocks,
+  useDeleteFeatureBlock,
   useMilestones,
   useTimelineShare,
   useSetTimelineShare,
@@ -75,6 +79,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [creatingTask, setCreatingTask] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [managingCategories, setManagingCategories] = useState(false);
   const [pushingToSlack, setPushingToSlack] = useState(false);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [scribeSourceTask, setScribeSourceTask] = useState<TaskDTO | null>(null);
@@ -124,6 +129,14 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
     { clientId: clientId ?? undefined, archived: true },
     { enabled: view === "archived" && Boolean(clientId) },
   );
+
+  useEffect(() => {
+    const validCategoryIds = new Set(blocks.map((block) => block.id));
+    setFilters((current) => {
+      const categoryIds = current.categoryIds.filter((id) => id === "none" || validCategoryIds.has(id));
+      return categoryIds.length === current.categoryIds.length ? current : { ...current, categoryIds };
+    });
+  }, [blocks]);
 
   // Board + List honour the search/filter bar; Gantt always shows everything.
   const filtered = useMemo(() => {
@@ -271,13 +284,24 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
 
       {/* Search + filters (board + list only) */}
       {view !== "gantt" && view !== "archived" ? (
-        <TaskFilterBar
-          tasks={tasks}
-          categories={blocks}
-          sourceMeetings={meetingsData?.meetings ?? []}
-          value={filters}
-          onChange={setFilters}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <TaskFilterBar
+            tasks={tasks}
+            categories={blocks}
+            sourceMeetings={meetingsData?.meetings ?? []}
+            value={filters}
+            onChange={setFilters}
+            onManageCategories={() => setManagingCategories(true)}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            leadingIcon={<TagIcon className="h-4 w-4" />}
+            onClick={() => setManagingCategories(true)}
+          >
+            Categories
+          </Button>
+        </div>
       ) : null}
 
       {/* Content */}
@@ -369,6 +393,14 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           onClose={() => setPushingToSlack(false)}
         />
       ) : null}
+      {managingCategories && clientId ? (
+        <CategoryManagerModal
+          blocks={blocks}
+          onClose={() => setManagingCategories(false)}
+          onAdd={() => setBlockModal({ open: true, block: null })}
+          onEdit={(block) => setBlockModal({ open: true, block })}
+        />
+      ) : null}
       {openTaskId ? <TaskDetailDrawer taskId={openTaskId} onClose={closeTaskDrawer} /> : null}
       {scribeSourceTask ? (
         <TaskScribeSourceModal
@@ -393,6 +425,158 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
       ) : null}
     </div>
   );
+}
+
+function CategoryManagerModal({
+  blocks,
+  onClose,
+  onAdd,
+  onEdit,
+}: {
+  blocks: FeatureBlockDTO[];
+  onClose: () => void;
+  onAdd: () => void;
+  onEdit: (block: FeatureBlockDTO) => void;
+}) {
+  const del = useDeleteFeatureBlock();
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const sortedBlocks = [...blocks].sort((a, b) => a.orderKey - b.orderKey || a.name.localeCompare(b.name));
+
+  async function handleDelete(block: FeatureBlockDTO) {
+    await del.mutateAsync(block.id);
+    setConfirmingId(null);
+  }
+
+  return (
+    <div className="app-dialog-backdrop fixed inset-0 z-[70] flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="app-dialog-panel flex max-h-[min(720px,calc(100dvh-32px))] w-full max-w-2xl flex-col overflow-hidden"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-[var(--border-2)] px-6 py-4">
+          <div className="min-w-0">
+            <p className="widget-data-label">TASK CATEGORIES</p>
+            <h3 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+              Manage categories
+            </h3>
+            <p className="mt-0.5 text-xs leading-5 text-[var(--text-4)]">
+              Categories power the board filter, task labels, and dated Gantt bars. Deleting one keeps its tasks and moves them to No category.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="shrink-0 rounded-[6px] p-1 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          {sortedBlocks.length > 0 ? (
+            <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)]">
+              {sortedBlocks.map((block, index) => {
+                const isConfirming = confirmingId === block.id;
+                return (
+                  <div
+                    key={block.id}
+                    className={cn(
+                      "flex flex-col gap-3 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
+                      index > 0 && "border-t border-[var(--border-2)]",
+                    )}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", categoryDotClass(block.color))} />
+                        <p className="truncate text-sm font-semibold text-[var(--text-1)]">{block.name}</p>
+                      </div>
+                      <p className="mt-1 text-xs text-[var(--text-4)]">
+                        {block.taskCount} {block.taskCount === 1 ? "task" : "tasks"}
+                        {block.startDate && block.endDate
+                          ? ` · ${formatDate(block.startDate)} - ${formatDate(block.endDate)}`
+                          : " · Board only"}
+                      </p>
+                    </div>
+
+                    {isConfirming ? (
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="text-xs text-[var(--text-3)]">Delete?</span>
+                        <Button
+                          type="button"
+                          variant="danger"
+                          onClick={() => void handleDelete(block)}
+                          loading={del.isPending}
+                        >
+                          Yes
+                        </Button>
+                        <Button type="button" variant="tertiary" onClick={() => setConfirmingId(null)}>
+                          No
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onEdit(block)}
+                          className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                        >
+                          <PencilSquareIcon className="h-3.5 w-3.5" />
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingId(block.id)}
+                          className="inline-flex items-center gap-1.5 rounded-[6px] border border-rose-200 bg-white px-2.5 py-1.5 text-xs font-medium text-rose-600 transition hover:bg-rose-50"
+                        >
+                          <TrashIcon className="h-3.5 w-3.5" />
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-[10px] border border-dashed border-[var(--border-2)] px-5 py-8 text-center">
+              <p className="text-sm font-semibold text-[var(--text-1)]">No categories yet</p>
+              <p className="mt-1 text-xs text-[var(--text-4)]">
+                Add categories to group tasks and filter the board.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t border-[var(--border-2)] px-6 py-4">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Done
+          </Button>
+          <Button type="button" variant="primary" leadingIcon={<PlusIcon className="h-4 w-4" />} onClick={onAdd}>
+            Add category
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function categoryDotClass(color: string | null | undefined) {
+  switch (color) {
+    case "violet":
+      return "bg-violet-500";
+    case "emerald":
+      return "bg-emerald-500";
+    case "amber":
+      return "bg-amber-500";
+    case "rose":
+      return "bg-rose-500";
+    case "slate":
+      return "bg-slate-500";
+    case "blue":
+    default:
+      return "bg-blue-500";
+  }
 }
 
 function scribeSourceFileUrl(meeting: Pick<ScribeMeeting, "conferenceRecordName"> | null | undefined): string | null {

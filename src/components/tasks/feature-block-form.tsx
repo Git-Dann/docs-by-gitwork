@@ -91,12 +91,12 @@ export function FeatureBlockFormModal({
       <div className="app-dialog-panel relative z-10 flex max-h-full w-full max-w-lg flex-col">
         <div className="flex items-start justify-between gap-3 border-b border-[var(--border-2)] px-6 py-4">
           <div>
-            <p className="widget-data-label">{isEdit ? "EDIT BLOCK" : "NEW FEATURE BLOCK"}</p>
+            <p className="widget-data-label">{isEdit ? "EDIT CATEGORY" : "NEW CATEGORY"}</p>
             <h3 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-              {isEdit ? "Update feature block" : "Add a feature block"}
+              {isEdit ? "Update category" : "Add a category"}
             </h3>
             <p className="mt-0.5 text-xs text-[var(--text-4)]">
-              A block (“list”) is one bar on the timeline. Tasks live inside it.
+              A category groups tasks on the board. Add both dates to place it on the Gantt.
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="text-[var(--text-4)] hover:text-[var(--text-1)]">
@@ -157,11 +157,11 @@ export function FeatureBlockFormModal({
                 onClick={() => setConfirmDelete(true)}
                 className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-4)] transition hover:text-[var(--danger-500)]"
               >
-                <TrashIcon className="h-4 w-4" /> Delete block
+                <TrashIcon className="h-4 w-4" /> Delete category
               </button>
             ) : (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-[var(--text-3)]">Delete? Tasks stay (unassigned).</span>
+                <span className="text-xs text-[var(--text-3)]">Delete? Tasks move to No category.</span>
                 <Button type="button" variant="danger" onClick={handleDelete} loading={del.isPending}>
                   Yes
                 </Button>
@@ -178,7 +178,7 @@ export function FeatureBlockFormModal({
               Cancel
             </Button>
             <Button type="button" variant="primary" onClick={handleSave} loading={saving}>
-              {isEdit ? "Save" : "Add block"}
+              {isEdit ? "Save" : "Add category"}
             </Button>
           </div>
         </div>

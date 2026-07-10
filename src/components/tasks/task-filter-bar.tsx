@@ -34,10 +34,12 @@ function Dropdown({
   label,
   count,
   children,
+  footer,
 }: {
   label: string;
   count: number;
   children: React.ReactNode;
+  footer?: (close: () => void) => React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -61,6 +63,7 @@ function Dropdown({
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute left-0 top-[calc(100%+6px)] z-50 max-h-64 min-w-[200px] overflow-y-auto rounded-[10px] border border-[var(--border-2)] bg-white p-1.5 shadow-[0_4px_16px_rgba(0,0,0,0.1)]">
             {children}
+            {footer?.(() => setOpen(false))}
           </div>
         </>
       ) : null}
@@ -94,12 +97,14 @@ export function TaskFilterBar({
   sourceMeetings = [],
   value,
   onChange,
+  onManageCategories,
 }: {
   tasks: TaskDTO[];
   categories: { id: string; name: string }[];
   sourceMeetings?: { id: string; title: string; startedAt?: string | null; createdAt?: string | null }[];
   value: TaskFilters;
   onChange: (f: TaskFilters) => void;
+  onManageCategories?: () => void;
 }) {
   // Assignee options derived from the tasks actually present.
   const assigneeMap = new Map<string, string>();
@@ -147,7 +152,28 @@ export function TaskFilterBar({
         />
       </div>
 
-      <Dropdown label="Category" count={value.categoryIds.length}>
+      <Dropdown
+        label="Category"
+        count={value.categoryIds.length}
+        footer={
+          onManageCategories
+            ? (close) => (
+                <div className="mt-1 border-t border-[var(--border-2)] pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      close();
+                      onManageCategories();
+                    }}
+                    className="flex w-full items-center rounded-[6px] px-2 py-1.5 text-left text-xs font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-brand)]"
+                  >
+                    Manage categories
+                  </button>
+                </div>
+              )
+            : undefined
+        }
+      >
         <CheckRow
           on={value.categoryIds.includes("none")}
           label="No category"
