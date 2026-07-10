@@ -277,53 +277,121 @@ export function buildRollupCard(input: {
   return { text, blocks };
 }
 
-export interface PmUpdateDev {
+/** One developer's contribution to a single project in the daily-updates card. */
+export interface DailyUpdateProjectDev {
+  /** Developer display name — the card renders it as `@name`. */
   name: string;
-  /** This dev's tasks marked done today. */
-  tasks: Array<{ title: string; clientName: string; clientSlug: string; taskId: string }>;
-  /** The dev's end-of-day note ("One thing I need"), when they left one. */
+  /** This dev's tasks for THIS project (done-today for PM, in-progress for AM). */
+  tasks: Array<{ title: string; taskId: string }>;
+  /** The dev's note ("One thing I need"), when they left one. */
   note?: string | null;
 }
 
+/** A project (client) group in the daily-updates card — its contributing devs. */
+export interface DailyUpdateProject {
+  clientName: string;
+  clientSlug: string;
+  devs: DailyUpdateProjectDev[];
+}
+
+/** How many projects the card renders before folding the rest into "+N more". */
+const MAX_PROJECTS_PER_CARD = 18;
+
+/** Render one project's developers as a single mrkdwn block: each dev headed by
+ *  `*@name*`, their tasks bulleted underneath, and their note quoted. */
+function projectDevsText(devs: DailyUpdateProjectDev[]): string {
+  const chunks = devs.map((dev) => {
+    const taskLines = dev.tasks.length
+      ? dev.tasks.map((t) => `• ${escapeMrkdwn(t.title)}`).join("\n")
+      : "_No tasks._";
+    let block = `*@${escapeMrkdwn(dev.name)}*\n${taskLines}`;
+    if (dev.note?.trim()) block += `\n> ${escapeMrkdwn(truncate(dev.note.trim(), 500))}`;
+    return block;
+  });
+  return truncate(chunks.join("\n\n"), 2900);
+}
+
 /**
- * End-of-day PM roll-up — one consolidated card compiling each developer's PM
- * update (their done-today tasks + note), grouped BY DEVELOPER. Posted to the
- * dedicated "Daily PM updates" channel (Settings → Integrations route
- * `tasks.updates`), distinct from the client-grouped `buildRollupCard`.
+ * Daily-updates roll-up — one consolidated card compiling every developer's
+ * update, grouped BY PROJECT first and then BY DEVELOPER (each dev prefixed
+ * `@name`). Posted to the dedicated "Daily PM updates" channel (Settings →
+ * Integrations route `tasks.updates`), distinct from the client-grouped
+ * `buildRollupCard`. `phase` selects the PM (done-today) or AM (in-progress)
+ * framing — the layout is identical either way.
  */
-export function buildPmUpdatesCard(input: {
+export function buildDailyUpdatesCard(input: {
+  phase: "AM" | "PM";
   dateLabel: string;
-  devs: PmUpdateDev[];
+  projects: DailyUpdateProject[];
+  /** Devs who posted but have no tasks in any project — surfaced (with their
+   *  note) in a trailing "Other updates" section so nothing is silently lost. */
+  otherDevs?: Array<{ name: string; note?: string | null }>;
   /** When set, a "🗑 Delete update" button (with a confirm dialog) is appended,
    *  carrying this SlackMessageRef id so the interactivity handler can resolve
    *  the message and run chat.delete. Omit for previews / unsaved renders. */
   deleteRefId?: string | null;
 }): { text: string; blocks: SlackBlock[] } {
+  const isAm = input.phase === "AM";
+  const heading = isAm ? "Morning updates" : "End-of-day updates";
+  const emoji = isAm ? ":sunrise:" : ":memo:";
   const friendlyDate = formatFriendlyDate(input.dateLabel);
-  const text = `End-of-day updates · ${input.dateLabel}`;
+  const text = `${heading} · ${input.dateLabel}`;
+  const otherDevs = input.otherDevs ?? [];
+
   const blocks: SlackBlock[] = [
-    { type: "header", text: { type: "plain_text", text: `:memo: End-of-day updates` } },
+    { type: "header", text: { type: "plain_text", text: `${emoji} ${heading}`, emoji: true } },
     { type: "context", elements: [{ type: "mrkdwn", text: escapeMrkdwn(friendlyDate) }] },
   ];
-  if (input.devs.length === 0) {
+
+  if (input.projects.length === 0 && otherDevs.length === 0) {
     blocks.push({
       type: "section",
-      text: { type: "mrkdwn", text: "_No developers have posted a PM update yet today._" },
+      text: {
+        type: "mrkdwn",
+        text: isAm
+          ? "_No developers have posted a morning update yet today._"
+          : "_No developers have posted a PM update yet today._",
+      },
     });
     return { text, blocks };
   }
-  for (const dev of input.devs) {
-    const taskLines = dev.tasks.length
-      ? dev.tasks
-          .map((t) => `• ${escapeMrkdwn(t.title)}  _· ${escapeMrkdwn(t.clientName)}_`)
-          .join("\n")
-      : "_No tasks marked done today._";
-    let body = `*${escapeMrkdwn(dev.name)}*\n${taskLines}`;
-    if (dev.note?.trim()) {
-      body += `\n> ${escapeMrkdwn(truncate(dev.note.trim(), 600))}`;
-    }
-    blocks.push({ type: "section", text: { type: "mrkdwn", text: body } });
+
+  const visibleProjects = input.projects.slice(0, MAX_PROJECTS_PER_CARD);
+  const projectOverflow = Math.max(0, input.projects.length - MAX_PROJECTS_PER_CARD);
+  for (const project of visibleProjects) {
+    blocks.push({
+      type: "header",
+      text: { type: "plain_text", text: truncate(project.clientName, 150), emoji: true },
+    });
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: projectDevsText(project.devs) },
+      accessory: {
+        type: "button",
+        text: { type: "plain_text", text: "View board ↗" },
+        url: `${APP_BASE_URL}/app/portal/${encodeURIComponent(project.clientSlug)}/tasks`,
+        action_id: `dailyUpdates.openBoard.${project.clientSlug}`,
+      },
+    });
   }
+  if (projectOverflow > 0) {
+    blocks.push({
+      type: "context",
+      elements: [{ type: "mrkdwn", text: `_+${projectOverflow} more project${projectOverflow === 1 ? "" : "s"}_` }],
+    });
+  }
+
+  if (otherDevs.length > 0) {
+    const lines = otherDevs.map((d) => {
+      let s = `*@${escapeMrkdwn(d.name)}*`;
+      if (d.note?.trim()) s += `\n> ${escapeMrkdwn(truncate(d.note.trim(), 500))}`;
+      else s += isAm ? " — _no tasks in progress_" : " — _no tasks done today_";
+      return s;
+    });
+    blocks.push({ type: "header", text: { type: "plain_text", text: "Other updates", emoji: true } });
+    blocks.push({ type: "section", text: { type: "mrkdwn", text: truncate(lines.join("\n\n"), 2900) } });
+  }
+
   blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: `Posted from Foundry` }] });
   if (input.deleteRefId) {
     blocks.push({
@@ -339,7 +407,7 @@ export function buildPmUpdatesCard(input: {
             title: { type: "plain_text", text: "Delete this update?" },
             text: {
               type: "mrkdwn",
-              text: "This removes the end-of-day update from this channel for everyone. This can't be undone.",
+              text: "This removes the update from this channel for everyone. This can't be undone.",
             },
             confirm: { type: "plain_text", text: "Delete" },
             deny: { type: "plain_text", text: "Keep" },

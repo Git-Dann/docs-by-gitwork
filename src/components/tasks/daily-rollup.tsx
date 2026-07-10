@@ -5,12 +5,15 @@ import {
   CheckCircleIcon,
   MegaphoneIcon,
   PaperAirplaneIcon,
+  SunIcon,
+  MoonIcon,
   ChevronUpIcon,
   ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/format";
+import type { DailyUpdatePhase } from "@/lib/api";
 
 import {
   useRollupRoster,
@@ -45,9 +48,11 @@ export function DailyRollup({
   const [result, setResult] = useState<string | null>(null);
   const [pmResult, setPmResult] = useState<string | null>(null);
   const [page, setPage] = useState(0);
-  // Review-before-send: opening the modal fetches the compiled preview.
+  // Review-before-send: opening the modal fetches the compiled preview for the
+  // chosen phase (AM = in-progress, PM = done-today).
   const [reviewing, setReviewing] = useState(false);
-  const preview = usePmUpdatesPreview(reviewing);
+  const [phase, setPhase] = useState<DailyUpdatePhase>("PM");
+  const preview = usePmUpdatesPreview(reviewing, phase);
 
   const devs = data?.devs ?? [];
   const total = devs.length;
@@ -76,20 +81,27 @@ export function DailyRollup({
   async function doPushPm() {
     setPmResult(null);
     try {
-      const r = await pushPm.mutateAsync();
+      const r = await pushPm.mutateAsync(phase);
+      const phaseWord = phase === "AM" ? "morning" : "end-of-day";
       if (!r.configured) {
         setPmResult("No #updates channel set — pick one in Settings → Integrations (Daily PM updates).");
       } else if (r.devCount === 0) {
-        setPmResult("No developers have posted a PM update yet today.");
+        setPmResult(`No developers have posted a ${phaseWord} update yet today.`);
       } else {
         setPmResult(
-          `Pushed ${r.devCount} dev update${r.devCount === 1 ? "" : "s"} (${r.taskCount} task${r.taskCount === 1 ? "" : "s"}) to #updates.`,
+          `Pushed ${r.devCount} ${phaseWord} update${r.devCount === 1 ? "" : "s"} (${r.taskCount} task${r.taskCount === 1 ? "" : "s"}) to #updates.`,
         );
       }
       setReviewing(false);
     } catch (e) {
       setPmResult(e instanceof Error ? e.message : "Push failed");
     }
+  }
+
+  function openReview(next: DailyUpdatePhase) {
+    setPmResult(null);
+    setPhase(next);
+    setReviewing(true);
   }
 
   return (
@@ -198,31 +210,40 @@ export function DailyRollup({
             </div>
             ) : null}
 
-            {/* Push to Slack — compiles each dev's PM update (done today + note),
-                grouped by developer, to the dedicated #updates channel. Shown to
+            {/* Push to Slack — compiles each dev's update grouped by project then
+                developer, to the dedicated #updates channel. AM = in-progress,
+                PM = done-today; both use the identical card format. Shown to
                 anyone who can see this card (admins monitoring + the DevOps lead),
                 unlike the client-grouped "Publish roll-up" above which is the
                 lead's tool only. */}
             <div className="border-t border-[var(--border-2)] pt-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-xs font-medium text-[var(--text-2)]">End-of-day PM updates</p>
+                  <p className="text-xs font-medium text-[var(--text-2)]">Daily updates</p>
                   <p className="text-[11px] text-[var(--text-4)]">
-                    Compile every dev&apos;s PM update to #updates
+                    Compile every dev&apos;s update to #updates, by project
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
-                  onClick={() => {
-                    setPmResult(null);
-                    setReviewing(true);
-                  }}
-                  disabled={pushPm.isPending}
-                >
-                  Push to Slack
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    leadingIcon={<SunIcon className="h-4 w-4" />}
+                    onClick={() => openReview("AM")}
+                    disabled={pushPm.isPending}
+                  >
+                    Morning
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    leadingIcon={<MoonIcon className="h-4 w-4" />}
+                    onClick={() => openReview("PM")}
+                    disabled={pushPm.isPending}
+                  >
+                    End of day
+                  </Button>
+                </div>
               </div>
               {pmResult ? (
                 <span className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[var(--text-2)]">
@@ -238,7 +259,7 @@ export function DailyRollup({
       <Modal
         open={reviewing}
         onClose={() => setReviewing(false)}
-        title="REVIEW END-OF-DAY UPDATE"
+        title={phase === "AM" ? "REVIEW MORNING UPDATE" : "REVIEW END-OF-DAY UPDATE"}
         panelClassName="w-full max-w-lg"
       >
         <div className="widget-body space-y-3">
@@ -255,43 +276,69 @@ export function DailyRollup({
             </p>
           ) : preview.data.devCount === 0 ? (
             <p className="rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-2 text-xs text-[var(--text-3)]">
-              No developers have posted a PM update yet today — nothing to send.
+              No developers have posted a {phase === "AM" ? "morning" : "PM"} update yet today — nothing to send.
             </p>
           ) : (
             <>
               <p className="text-[11px] text-[var(--text-4)]">
                 This posts to <strong>#updates</strong> — {preview.data.devCount} dev
                 {preview.data.devCount === 1 ? "" : "s"}, {preview.data.taskCount} task
-                {preview.data.taskCount === 1 ? "" : "s"} done today. Review before sending.
+                {preview.data.taskCount === 1 ? "" : "s"} {phase === "AM" ? "in progress" : "done today"}.
+                Grouped by project. Review before sending.
               </p>
-              <div className="max-h-[46vh] space-y-2 overflow-y-auto">
-                {preview.data.devs.map((d) => (
+              <div className="max-h-[46vh] space-y-3 overflow-y-auto">
+                {preview.data.projects.map((p) => (
                   <div
-                    key={d.name}
+                    key={p.clientSlug}
                     className="rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2"
                   >
-                    <p className="text-sm font-medium text-[var(--text-1)]">{d.name}</p>
-                    {d.tasks.length > 0 ? (
-                      <ul className="mt-1 space-y-0.5">
-                        {d.tasks.map((t) => (
-                          <li key={t.taskId} className="text-[12px] text-[var(--text-2)]">
-                            • {t.title}{" "}
-                            <span className="text-[var(--text-4)]">· {t.clientName}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-1 text-[12px] italic text-[var(--text-4)]">
-                        No tasks marked done today.
-                      </p>
-                    )}
-                    {d.note?.trim() ? (
-                      <p className="mt-1 border-l-2 border-[var(--border-2)] pl-2 text-[12px] text-[var(--text-3)]">
-                        {d.note.trim()}
-                      </p>
-                    ) : null}
+                    <p className="text-sm font-semibold text-[var(--text-1)]">{p.clientName}</p>
+                    <div className="mt-1.5 space-y-2">
+                      {p.devs.map((d) => (
+                        <div key={d.name}>
+                          <p className="text-[12px] font-medium text-[var(--text-2)]">@{d.name}</p>
+                          {d.tasks.length > 0 ? (
+                            <ul className="mt-0.5 space-y-0.5">
+                              {d.tasks.map((t) => (
+                                <li key={t.taskId} className="text-[12px] text-[var(--text-2)]">
+                                  • {t.title}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="mt-0.5 text-[12px] italic text-[var(--text-4)]">No tasks.</p>
+                          )}
+                          {d.note?.trim() ? (
+                            <p className="mt-1 border-l-2 border-[var(--border-2)] pl-2 text-[12px] text-[var(--text-3)]">
+                              {d.note.trim()}
+                            </p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
+                {preview.data.otherDevs.length > 0 ? (
+                  <div className="rounded-[8px] border border-dashed border-[var(--border-2)] bg-white px-3 py-2">
+                    <p className="text-sm font-semibold text-[var(--text-1)]">Other updates</p>
+                    <div className="mt-1.5 space-y-1.5">
+                      {preview.data.otherDevs.map((d) => (
+                        <div key={d.name}>
+                          <p className="text-[12px] font-medium text-[var(--text-2)]">@{d.name}</p>
+                          {d.note?.trim() ? (
+                            <p className="mt-0.5 border-l-2 border-[var(--border-2)] pl-2 text-[12px] text-[var(--text-3)]">
+                              {d.note.trim()}
+                            </p>
+                          ) : (
+                            <p className="mt-0.5 text-[12px] italic text-[var(--text-4)]">
+                              {phase === "AM" ? "No tasks in progress." : "No tasks done today."}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </>
           )}

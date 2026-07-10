@@ -195,8 +195,8 @@ async function handlePmUpdatesDelete(
     where: { id: refId },
     select: { id: true, workspaceId: true, channelId: true, messageTs: true, kind: true },
   });
-  if (!ref || ref.workspaceId !== ws.workspaceId || ref.kind !== "PM_UPDATES") {
-    console.info("[slack] pm-updates delete ref mismatch", { refId });
+  if (!ref || ref.workspaceId !== ws.workspaceId || (ref.kind !== "PM_UPDATES" && ref.kind !== "AM_UPDATES")) {
+    console.info("[slack] daily-updates delete ref mismatch", { refId });
     return;
   }
 
