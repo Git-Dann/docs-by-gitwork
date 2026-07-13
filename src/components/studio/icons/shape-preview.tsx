@@ -11,6 +11,7 @@ export function ShapePreview({
   fgScale,
   shape,
   grayscale = false,
+  imageFilter,
 }: {
   size: number;
   fill: Fill;
@@ -18,10 +19,11 @@ export function ShapePreview({
   fgScale: number;
   shape: ShapeId;
   grayscale?: boolean;
+  imageFilter?: string;
 }) {
   return (
     <div style={{ width: size, height: size, borderRadius: shapeRadius(shape, size), overflow: "hidden" }}>
-      <IconArt size={size} fill={fill} image={image} fgScale={fgScale} layer="composite" grayscale={grayscale} />
+      <IconArt size={size} fill={fill} image={image} fgScale={fgScale} layer="composite" grayscale={grayscale} imageFilter={imageFilter} />
     </div>
   );
 }

@@ -10,11 +10,24 @@ import { ArrowDownTrayIcon } from "@heroicons/react/24/outline";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BackgroundEditor, Slider } from "../controls";
 import { brandBackgroundSwatches, useStudioBrand } from "../brand";
-import { btnPrimary, btnSecondary, Field, PanelHeader, SectionRule, Toggle } from "../studio-ui";
+import { btnPrimary, btnSecondary, Field, PanelHeader, SectionRule, Segmented, Toggle } from "../studio-ui";
 import { exportIcons } from "./export-icons";
 import { IconArt } from "./icon-art";
 import { ShapePreview } from "./shape-preview";
-import { DEFAULT_ICON_STATE, SHAPES, STORAGE_KEY_ICONS, type BackgroundTheme, type IconState } from "./config";
+import {
+  DARK_ART_MODES,
+  DEFAULT_ICON_STATE,
+  ICON_UPLOAD_HINT,
+  MAX_ICON_UPLOAD_BYTES,
+  MAX_ICON_UPLOAD_LABEL,
+  RECOMMENDED_ICON_SIZE,
+  SHAPES,
+  STORAGE_KEY_ICONS,
+  darkArtFilter,
+  type BackgroundTheme,
+  type DarkArtMode,
+  type IconState,
+} from "./config";
 
 function loadState(): IconState {
   if (typeof window === "undefined") return DEFAULT_ICON_STATE;
@@ -27,6 +40,7 @@ function loadState(): IconState {
       ...parsed,
       light: parsed.light ?? DEFAULT_ICON_STATE.light,
       dark: parsed.dark ?? DEFAULT_ICON_STATE.dark,
+      darkArt: { ...DEFAULT_ICON_STATE.darkArt, ...(parsed.darkArt ?? {}) },
       platforms: { ...DEFAULT_ICON_STATE.platforms, ...(parsed.platforms ?? {}) },
     };
   } catch {
@@ -44,9 +58,14 @@ export function IconsWorkspace() {
   const [hydrated, setHydrated] = useState(false);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [uploadNote, setUploadNote] = useState<{ kind: "error" | "warn"; text: string } | null>(null);
   const nodeRefs = useRef<Map<string, HTMLElement>>(new Map());
   const { brand } = useStudioBrand();
   const brandSwatches = brand.source === "client" ? brandBackgroundSwatches(brand) : undefined;
+
+  // Dark background reuses the light artwork (optionally recoloured), or a separately-uploaded one.
+  const darkImage = state.darkArt.mode === "upload" ? state.darkArt.image ?? state.foreground : state.foreground;
+  const darkFilter = state.darkArt.mode === "upload" ? undefined : darkArtFilter(state.darkArt.mode);
 
   useEffect(() => {
     setState(loadState());
@@ -63,10 +82,32 @@ export function IconsWorkspace() {
 
   const patch = useCallback((p: Partial<IconState>) => setState((s) => ({ ...s, ...p })), []);
 
-  const onForeground = useCallback((file: File | null) => {
-    if (!file) return setState((s) => ({ ...s, foreground: null }));
+  // Shared upload: enforce the max size, then read as a data URL and (for raster art) warn if it's
+  // below the recommended resolution. `target` routes to the light or the separate dark artwork.
+  const onUpload = useCallback((file: File | null, target: "light" | "dark") => {
+    if (!file) {
+      setUploadNote(null);
+      return setState((s) => (target === "dark" ? { ...s, darkArt: { ...s.darkArt, image: null } } : { ...s, foreground: null }));
+    }
+    if (file.size > MAX_ICON_UPLOAD_BYTES) {
+      setUploadNote({ kind: "error", text: `That file is ${(file.size / 1024 / 1024).toFixed(1)} MB — keep it under ${MAX_ICON_UPLOAD_LABEL}.` });
+      return;
+    }
     const reader = new FileReader();
-    reader.onload = () => setState((s) => ({ ...s, foreground: String(reader.result) }));
+    reader.onload = () => {
+      const dataUrl = String(reader.result);
+      setState((s) => (target === "dark" ? { ...s, darkArt: { ...s.darkArt, image: dataUrl } } : { ...s, foreground: dataUrl }));
+      setUploadNote(null);
+      if (file.type !== "image/svg+xml") {
+        const probe = new Image();
+        probe.onload = () => {
+          if (Math.min(probe.naturalWidth, probe.naturalHeight) < RECOMMENDED_ICON_SIZE) {
+            setUploadNote({ kind: "warn", text: `Artwork is ${probe.naturalWidth}×${probe.naturalHeight}. For crisp icons use ${RECOMMENDED_ICON_SIZE}×${RECOMMENDED_ICON_SIZE} or larger (or an SVG).` });
+          }
+        };
+        probe.src = dataUrl;
+      }
+    };
     reader.readAsDataURL(file);
   }, []);
 
@@ -76,13 +117,13 @@ export function IconsWorkspace() {
   }, []);
 
   const appearances = useMemo(() => {
-    const rows: { key: string; label: string; fill: BackgroundTheme["fill"]; grayscale?: boolean }[] = [
-      { key: "light", label: "Light", fill: state.light.fill },
-      { key: "dark", label: "Dark", fill: state.dark.fill },
+    const rows: { key: string; label: string; fill: BackgroundTheme["fill"]; image: string | null; imageFilter?: string; grayscale?: boolean }[] = [
+      { key: "light", label: "Light", fill: state.light.fill, image: state.foreground },
+      { key: "dark", label: "Dark", fill: state.dark.fill, image: darkImage, imageFilter: darkFilter },
     ];
-    if (state.tinted) rows.push({ key: "tinted", label: "Tinted", fill: state.light.fill, grayscale: true });
+    if (state.tinted) rows.push({ key: "tinted", label: "Tinted", fill: state.light.fill, image: state.foreground, grayscale: true });
     return rows;
-  }, [state.light.fill, state.dark.fill, state.tinted]);
+  }, [state.light.fill, state.dark.fill, state.tinted, state.foreground, darkImage, darkFilter]);
 
   const doDownload = useCallback(async () => {
     if (!state.foreground) return;
@@ -105,7 +146,7 @@ export function IconsWorkspace() {
       <aside className="widget-card flex w-full shrink-0 flex-col overflow-hidden lg:w-[380px]">
         <PanelHeader label="01 // CONTROLS" />
         <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5">
-          <Field label="App icon artwork" hint="transparent PNG or SVG">
+          <Field label="App icon artwork" hint={ICON_UPLOAD_HINT}>
             <div className="flex items-center gap-3">
               <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[12px] border border-[var(--border-2)]" style={{ background: CHECKER }}>
                 {state.foreground ? (
@@ -117,17 +158,47 @@ export function IconsWorkspace() {
               </div>
               <label className={btnSecondary + " cursor-pointer"}>
                 {state.foreground ? "Replace" : "Upload"}
-                <input type="file" accept="image/png,image/svg+xml,image/*" className="hidden" onChange={(e) => onForeground(e.target.files?.[0] ?? null)} />
+                <input type="file" accept="image/png,image/svg+xml,image/*" className="hidden" onChange={(e) => onUpload(e.target.files?.[0] ?? null, "light")} />
               </label>
               {state.foreground ? (
-                <button type="button" className="text-[12px] font-medium text-[var(--danger-500)]" onClick={() => onForeground(null)}>
+                <button type="button" className="text-[12px] font-medium text-[var(--danger-500)]" onClick={() => onUpload(null, "light")}>
                   Remove
                 </button>
               ) : null}
             </div>
+            {uploadNote ? (
+              <p className="mt-2 text-[11px]" style={{ color: uploadNote.kind === "error" ? "var(--danger-500)" : "#B45309" }}>
+                {uploadNote.text}
+              </p>
+            ) : null}
           </Field>
 
           <Slider label="Artwork size" value={state.fgScale} min={30} max={100} step={1} suffix="%" onChange={(v) => patch({ fgScale: v })} />
+
+          <Field label="Dark-mode artwork" hint="on the dark background">
+            <Segmented full value={state.darkArt.mode} options={DARK_ART_MODES.map((m) => ({ value: m.id, label: m.label }))} onChange={(mode) => patch({ darkArt: { ...state.darkArt, mode: mode as DarkArtMode } })} />
+            {state.darkArt.mode === "upload" ? (
+              <div className="mt-3 flex items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-[var(--border-2)]" style={{ background: "#0A0A0E" }}>
+                  {state.darkArt.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={state.darkArt.image} alt="" className="h-full w-full object-contain p-1" />
+                  ) : (
+                    <ArrowDownTrayIcon className="h-4 w-4 rotate-180 text-[var(--text-4)]" />
+                  )}
+                </div>
+                <label className={btnSecondary + " cursor-pointer"}>
+                  {state.darkArt.image ? "Replace" : "Upload dark"}
+                  <input type="file" accept="image/png,image/svg+xml,image/*" className="hidden" onChange={(e) => onUpload(e.target.files?.[0] ?? null, "dark")} />
+                </label>
+                {state.darkArt.image ? (
+                  <button type="button" className="text-[12px] font-medium text-[var(--danger-500)]" onClick={() => onUpload(null, "dark")}>
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </Field>
 
           <Field label="Platforms">
             <div className="space-y-2.5">
@@ -168,7 +239,7 @@ export function IconsWorkspace() {
                     {SHAPES.map((shape) => (
                       <div key={shape.id} className="flex flex-col items-center gap-2">
                         <div className="rounded-[18px] p-2" style={{ background: CHECKER }}>
-                          <ShapePreview size={112} fill={ap.fill} image={state.foreground} fgScale={state.fgScale} shape={shape.id} grayscale={ap.grayscale} />
+                          <ShapePreview size={112} fill={ap.fill} image={ap.image} fgScale={state.fgScale} shape={shape.id} grayscale={ap.grayscale} imageFilter={ap.imageFilter} />
                         </div>
                         <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]">{shape.label}</span>
                       </div>
@@ -188,7 +259,7 @@ export function IconsWorkspace() {
           <IconArt size={MASTER} fill={state.light.fill} image={state.foreground} fgScale={state.fgScale} layer="composite" />
         </div>
         <div ref={(el) => register("dark", el)} style={{ width: MASTER, height: MASTER }}>
-          <IconArt size={MASTER} fill={state.dark.fill} image={state.foreground} fgScale={state.fgScale} layer="composite" />
+          <IconArt size={MASTER} fill={state.dark.fill} image={darkImage} fgScale={state.fgScale} layer="composite" imageFilter={darkFilter} />
         </div>
         <div ref={(el) => register("tinted", el)} style={{ width: MASTER, height: MASTER }}>
           <IconArt size={MASTER} fill={state.light.fill} image={state.foreground} fgScale={state.fgScale} layer="composite" grayscale />

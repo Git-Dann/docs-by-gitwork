@@ -20,6 +20,7 @@ export function IconArt({
   fgScale,
   layer = "composite",
   grayscale = false,
+  imageFilter,
 }: {
   size: number;
   fill?: Fill;
@@ -27,6 +28,7 @@ export function IconArt({
   fgScale: number; // %
   layer?: Layer;
   grayscale?: boolean;
+  imageFilter?: string; // CSS filter applied to the foreground (dark-mode recolour)
 }) {
   const showBg = (layer === "composite" || layer === "background") && !!fill;
   const showFg = layer === "composite" || layer === "foreground" || layer === "mono";
@@ -57,7 +59,7 @@ export function IconArt({
               height: fgW,
               objectFit: "contain",
               display: "block",
-              filter: layer === "mono" ? "brightness(0) saturate(100%) invert(1)" : undefined,
+              filter: layer === "mono" ? "brightness(0) saturate(100%) invert(1)" : imageFilter,
             }}
           />
         </div>

@@ -68,9 +68,41 @@ export const ANDROID_PLAY_PX = 512;
 // Fraction of the adaptive 108dp layer that is guaranteed visible after masking (safe zone ≈ 66dp).
 export const ANDROID_SAFE_ZONE = 66 / 108;
 
+// ── Upload limits / guidance ──
+export const MAX_ICON_UPLOAD_BYTES = 3 * 1024 * 1024; // 3 MB
+export const MAX_ICON_UPLOAD_LABEL = "3 MB";
+export const RECOMMENDED_ICON_SIZE = 1024; // px — warn below this for raster art
+export const ICON_UPLOAD_HINT = "Transparent PNG or SVG · 1024×1024+ · under 3 MB";
+
+// ── Dark-mode artwork treatment ──
+// Reuse the SAME uploaded artwork on the dark background, optionally recoloured with a CSS filter,
+// so a second upload usually isn't needed. "upload" reveals a separate dark artwork for the cases
+// where recolouring can't work (e.g. a full-colour logo that must change art in dark).
+export type DarkArtMode = "same" | "invert" | "white" | "black" | "upload";
+export const DARK_ART_MODES: { id: DarkArtMode; label: string }[] = [
+  { id: "same", label: "Same" },
+  { id: "invert", label: "Invert" },
+  { id: "white", label: "White" },
+  { id: "black", label: "Black" },
+  { id: "upload", label: "Separate" },
+];
+export function darkArtFilter(mode: DarkArtMode): string | undefined {
+  switch (mode) {
+    case "invert":
+      return "invert(1)";
+    case "white":
+      return "brightness(0) saturate(100%) invert(1)";
+    case "black":
+      return "brightness(0)";
+    default:
+      return undefined; // "same" / "upload" use the artwork as-is
+  }
+}
+
 // ── State ──
 export interface IconState {
   foreground: string | null; // uploaded transparent PNG/SVG, data URL
+  darkArt: { mode: DarkArtMode; image: string | null }; // dark-background treatment (+ optional separate art)
   fgScale: number; // foreground width as a % of the icon (30–100)
   light: { fill: Fill };
   dark: { fill: Fill };
@@ -83,6 +115,7 @@ export const STORAGE_KEY_ICONS = "gitwork.studio.icons.v1";
 
 export const DEFAULT_ICON_STATE: IconState = {
   foreground: null,
+  darkArt: { mode: "same", image: null },
   fgScale: 62,
   light: { fill: { kind: "linear", angle: 155, stops: [{ color: "#3B82F6", at: 0 }, { color: "#122043", at: 100 }] } },
   dark: { fill: { kind: "linear", angle: 155, stops: [{ color: "#1E2A4A", at: 0 }, { color: "#05080F", at: 100 }] } },
