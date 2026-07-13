@@ -8,9 +8,23 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { useCodeClearCandidates, useCodeClearStats } from "@/hooks/use-codeclear";
 import { useClientList } from "@/hooks/use-proposals";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/format";
 import { CodeClearTabs, WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { ClientAvatar } from "@/components/codeclear/client-avatar";
+
+/** Whole-currency format, e.g. 6200 USD → "$6,200". Mirrors the Portal card helper. */
+function formatMoney(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch {
+    return `${amount} ${currency}`;
+  }
+}
 
 export function CodeClearOverview() {
   const statsQuery = useCodeClearStats();
@@ -26,6 +40,7 @@ export function CodeClearOverview() {
     sortDir: "desc",
   });
   const clientsQuery = useClientList();
+  const { canViewClientFinancials } = usePermissions();
 
   const stats = statsQuery.data;
   // Wrap the `?? []` fallbacks in useMemo so the downstream `useMemo`s
@@ -115,6 +130,62 @@ export function CodeClearOverview() {
     () => new Map(allClients.map((c) => [c.id, c.slug])),
     [allClients],
   );
+  // Per-client monthly cost (present only for financial viewers — the API
+  // attaches it server-side based on `clients.viewFinancials`). Used for the
+  // per-card readout on Client Coverage, mirroring the Portal cards.
+  const clientCostById = useMemo(
+    () => new Map(allClients.map((c) => [c.id, c.monthlyCost ?? null])),
+    [allClients],
+  );
+
+  // ─── MD snapshot — aggregate financials across the deployed team ──────────
+  // Gated to financial viewers. Sums monthly cost per currency (rates can span
+  // GBP/USD); the headline uses the dominant-currency total and flags the rest.
+  const financials = useMemo(() => {
+    if (!canViewClientFinancials) return null;
+    const byCurrency = new Map<
+      string,
+      { total: number; clients: number; devs: number }
+    >();
+    let unpricedDevs = 0;
+    for (const c of allClients) {
+      const mc = c.monthlyCost;
+      if (!mc) continue;
+      unpricedDevs += mc.unpricedDevs;
+      if (mc.pricedDevs > 0) {
+        const cur = byCurrency.get(mc.currency) ?? { total: 0, clients: 0, devs: 0 };
+        cur.total += mc.amount;
+        cur.clients += 1;
+        cur.devs += mc.pricedDevs;
+        byCurrency.set(mc.currency, cur);
+      }
+    }
+    let currency = "GBP";
+    let total = 0;
+    let clients = 0;
+    let pricedDevs = 0;
+    for (const [cur, v] of byCurrency) {
+      if (v.total > total) {
+        currency = cur;
+        total = v.total;
+        clients = v.clients;
+        pricedDevs = v.devs;
+      }
+    }
+    return {
+      total,
+      currency,
+      clients,
+      pricedDevs,
+      unpricedDevs,
+      multiCurrency: byCurrency.size > 1,
+    };
+  }, [canViewClientFinancials, allClients]);
+
+  // Sequential NN// numbering across the bento — computed inline so the
+  // (financial-only) MD row doesn't leave gaps for viewers who can't see it.
+  let widgetSeq = 0;
+  const nextNum = () => String(++widgetSeq).padStart(2, "0");
 
   return (
     <div className="space-y-6">
@@ -149,7 +220,7 @@ export function CodeClearOverview() {
       <div className="bento-grid">
         {/* Row 1 — four headline stats about the bench itself. */}
         <StatWidget
-          number="01"
+          number={nextNum()}
           name="ROSTER"
           value={String(total)}
           unit="DEVELOPERS"
@@ -157,7 +228,7 @@ export function CodeClearOverview() {
           className="col-span-12 md:col-span-6 xl:col-span-3"
         />
         <StatWidget
-          number="02"
+          number={nextNum()}
           name="ENGAGED"
           value={String(engaged)}
           unit={`OF ${total}`}
@@ -170,7 +241,7 @@ export function CodeClearOverview() {
           className="col-span-12 md:col-span-6 xl:col-span-3"
         />
         <StatWidget
-          number="03"
+          number={nextNum()}
           name="AVG CALIBRE"
           value={avgCalibre != null ? String(avgCalibre) : "—"}
           unit="/ 100"
@@ -183,7 +254,7 @@ export function CodeClearOverview() {
           className="col-span-12 md:col-span-6 xl:col-span-3"
         />
         <StatWidget
-          number="04"
+          number={nextNum()}
           name="VALIDATED"
           value={String(validated)}
           unit={`OF ${total}`}
@@ -196,10 +267,86 @@ export function CodeClearOverview() {
           className="col-span-12 md:col-span-6 xl:col-span-3"
         />
 
+        {/* MD snapshot — financial top-line, shown only to viewers who may see
+            client financials (Super Admins + `clients.viewFinancials`, e.g. Harry).
+            Numbers slot into the same NN// sequence so there's no gap for others. */}
+        {canViewClientFinancials && financials ? (
+          <>
+            <StatWidget
+              number={nextNum()}
+              name="MONTHLY BURN"
+              value={
+                financials.pricedDevs > 0
+                  ? formatMoney(financials.total, financials.currency)
+                  : "—"
+              }
+              unit="/ MONTH"
+              caption={
+                financials.pricedDevs > 0
+                  ? `Across ${financials.clients} client${financials.clients === 1 ? "" : "s"}` +
+                    (financials.multiCurrency ? " · dominant currency" : "") +
+                    (financials.unpricedDevs > 0 ? ` · ${financials.unpricedDevs} unpriced` : "")
+                  : "No dev rates on file yet"
+              }
+              className="col-span-12 md:col-span-6 xl:col-span-3"
+            />
+            <StatWidget
+              number={nextNum()}
+              name="AVG / CLIENT"
+              value={
+                financials.clients > 0
+                  ? formatMoney(
+                      Math.round(financials.total / financials.clients),
+                      financials.currency,
+                    )
+                  : "—"
+              }
+              unit="/ MONTH"
+              caption={
+                financials.clients > 0
+                  ? "Mean monthly spend per client"
+                  : "No priced clients yet"
+              }
+              className="col-span-12 md:col-span-6 xl:col-span-3"
+            />
+            <StatWidget
+              number={nextNum()}
+              name="AVG / DEV"
+              value={
+                financials.pricedDevs > 0
+                  ? formatMoney(
+                      Math.round(financials.total / financials.pricedDevs),
+                      financials.currency,
+                    )
+                  : "—"
+              }
+              unit="/ MONTH"
+              caption={
+                financials.pricedDevs > 0
+                  ? `Across ${financials.pricedDevs} priced dev${financials.pricedDevs === 1 ? "" : "s"}`
+                  : "No priced devs yet"
+              }
+              className="col-span-12 md:col-span-6 xl:col-span-3"
+            />
+            <StatWidget
+              number={nextNum()}
+              name="UNPRICED"
+              value={String(financials.unpricedDevs)}
+              unit={financials.unpricedDevs === 1 ? "DEV" : "DEVS"}
+              caption={
+                financials.unpricedDevs === 0
+                  ? "Every deployed dev has a rate"
+                  : "Deployed with no rate on file"
+              }
+              className="col-span-12 md:col-span-6 xl:col-span-3"
+            />
+          </>
+        ) : null}
+
         {/* Row 2 — bench composition (tier mix) + how the team is
             deployed (clients with dev counts). */}
         <WidgetCard
-          number="05"
+          number={nextNum()}
           name="TIER MIX"
           className="col-span-12 xl:col-span-4"
           status={`${total} TOTAL`}
@@ -231,7 +378,7 @@ export function CodeClearOverview() {
         </WidgetCard>
 
         <WidgetCard
-          number="06"
+          number={nextNum()}
           name="CLIENT COVERAGE"
           className="col-span-12 xl:col-span-8"
           status={
@@ -250,6 +397,15 @@ export function CodeClearOverview() {
               {clientCoverage.slice(0, 8).map((entry) => {
                 const logo = entry.id ? clientLogoById.get(entry.id) ?? null : null;
                 const slug = entry.id ? clientSlugById.get(entry.id) ?? null : null;
+                const cost = entry.id ? clientCostById.get(entry.id) ?? null : null;
+                // Cost readout — financial viewers only, mirroring the Portal card.
+                let costLabel: string | null = null;
+                if (canViewClientFinancials && cost) {
+                  if (cost.mixedCurrency) costLabel = "mixed";
+                  else if (cost.pricedDevs > 0)
+                    costLabel = `${formatMoney(cost.amount, cost.currency)}/mo`;
+                  else if (cost.unpricedDevs > 0) costLabel = "rates n/a";
+                }
                 const inner = (
                   <>
                     <ClientAvatar name={entry.name} logoUrl={logo} size="md" />
@@ -259,6 +415,9 @@ export function CodeClearOverview() {
                       </p>
                       <p className="widget-timestamp mt-0.5">
                         {entry.count} DEV{entry.count > 1 ? "S" : ""}
+                        {costLabel ? (
+                          <span className="text-[var(--text-2)]"> · {costLabel}</span>
+                        ) : null}
                       </p>
                     </div>
                     <span className="font-display text-[22px] font-normal leading-none tracking-[-0.02em] text-[var(--text-1)]">
