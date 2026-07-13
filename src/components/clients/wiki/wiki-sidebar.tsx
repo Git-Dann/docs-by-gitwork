@@ -321,10 +321,15 @@ export function WikiSidebar({
         )}
       </div>
 
-      {/* Pinned footer — Settings anchored to the very bottom on md+ */}
-      <div className="flex shrink-0 md:mt-2 md:border-t md:border-[var(--border-1)] md:pt-2">
-        {navItem("settings", "Settings", <Cog6ToothIcon />)}
-      </div>
+      {/* Pinned footer — Settings anchored to the very bottom on md+. Only render
+          when Settings is actually visible (staff/edit view); on the client-facing
+          wiki it's hidden, so skip the whole footer — otherwise its top border
+          renders as a stray divider line with no item beneath it. */}
+      {visibleSections.has("settings") && (
+        <div className="flex shrink-0 md:mt-2 md:border-t md:border-[var(--border-1)] md:pt-2">
+          {navItem("settings", "Settings", <Cog6ToothIcon />)}
+        </div>
+      )}
     </div>
   );
 }
