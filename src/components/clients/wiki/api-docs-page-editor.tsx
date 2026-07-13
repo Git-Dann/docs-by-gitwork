@@ -22,6 +22,19 @@ import { cn } from "@/lib/format";
 import type { WikiPageEditorHandle } from "./wiki-page-editor";
 
 type ApiMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+type ApiParamLocation = "path" | "query" | "header";
+
+const BODY_METHODS: ApiMethod[] = ["POST", "PUT", "PATCH"];
+function methodHasBody(method: ApiMethod): boolean {
+  return BODY_METHODS.includes(method);
+}
+
+export interface ApiDocsParam {
+  name: string;
+  in: ApiParamLocation;
+  required: boolean;
+  description: string;
+}
 
 export interface ApiDocsEndpoint {
   tag: string;
@@ -30,6 +43,9 @@ export interface ApiDocsEndpoint {
   operationId: string;
   auth: boolean;
   summary: string;
+  parameters: ApiDocsParam[];
+  requestBody: string;
+  responseExample: string;
 }
 
 export interface ApiDocsServer {
@@ -78,6 +94,12 @@ const DEFAULT_API_DOCS: ApiDocsContent = {
       operationId: "analytics_reports_retrieve",
       auth: true,
       summary: "Retrieve analytics reports.",
+      parameters: [
+        { name: "from", in: "query", required: false, description: "Start date (ISO 8601)." },
+        { name: "to", in: "query", required: false, description: "End date (ISO 8601)." },
+      ],
+      requestBody: "",
+      responseExample: '{\n  "results": [\n    { "date": "2026-07-01", "total": 128 }\n  ]\n}',
     },
     {
       tag: "analytics",
@@ -86,6 +108,9 @@ const DEFAULT_API_DOCS: ApiDocsContent = {
       operationId: "analytics_subscriptions_retrieve",
       auth: true,
       summary: "Retrieve subscription analytics.",
+      parameters: [],
+      requestBody: "",
+      responseExample: '{\n  "active": 42,\n  "cancelled": 3\n}',
     },
     {
       tag: "users",
@@ -94,6 +119,9 @@ const DEFAULT_API_DOCS: ApiDocsContent = {
       operationId: "users_create",
       auth: true,
       summary: "Create a user record.",
+      parameters: [],
+      requestBody: '{\n  "email": "user@example.com",\n  "name": "Jane Doe"\n}',
+      responseExample: '{\n  "id": "usr_123",\n  "email": "user@example.com",\n  "name": "Jane Doe"\n}',
     },
   ],
 };
@@ -121,6 +149,24 @@ function methodValue(value: unknown): ApiMethod {
     : "GET";
 }
 
+function paramLocationValue(value: unknown): ApiParamLocation {
+  const location = stringValue(value, "query").toLowerCase();
+  return location === "path" || location === "header" ? location : "query";
+}
+
+function normalizeParams(value: unknown): ApiDocsParam[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(isRecord)
+    .map((param) => ({
+      name: stringValue(param.name).trim(),
+      in: paramLocationValue(param.in),
+      required: typeof param.required === "boolean" ? param.required : false,
+      description: stringValue(param.description).trim(),
+    }))
+    .filter((param) => param.name);
+}
+
 export function normalizeApiDocsContent(content: unknown, fallbackTitle = "API Docs"): ApiDocsContent {
   if (!isRecord(content)) return { ...DEFAULT_API_DOCS, title: fallbackTitle };
   const servers = Array.isArray(content.servers)
@@ -144,6 +190,9 @@ export function normalizeApiDocsContent(content: unknown, fallbackTitle = "API D
             stringValue(endpoint.path, "resource").replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, ""),
           auth: typeof endpoint.auth === "boolean" ? endpoint.auth : true,
           summary: stringValue(endpoint.summary).trim(),
+          parameters: normalizeParams(endpoint.parameters),
+          requestBody: stringValue(endpoint.requestBody).trim(),
+          responseExample: stringValue(endpoint.responseExample).trim(),
         }))
     : DEFAULT_API_DOCS.endpoints;
 
@@ -262,6 +311,9 @@ export const ApiDocsPageEditor = forwardRef<WikiPageEditorHandle, Props>(
             operationId: "resource_retrieve",
             auth: true,
             summary: "",
+            parameters: [],
+            requestBody: "",
+            responseExample: "",
           },
         ],
       }));
@@ -272,6 +324,45 @@ export const ApiDocsPageEditor = forwardRef<WikiPageEditorHandle, Props>(
       setDoc((current) => ({
         ...current,
         endpoints: current.endpoints.filter((_, i) => i !== index),
+      }));
+      scheduleAutoSave();
+    }
+
+    function addParam(endpointIndex: number) {
+      setDoc((current) => ({
+        ...current,
+        endpoints: current.endpoints.map((endpoint, i) =>
+          i === endpointIndex
+            ? { ...endpoint, parameters: [...endpoint.parameters, { name: "", in: "query", required: false, description: "" }] }
+            : endpoint,
+        ),
+      }));
+      scheduleAutoSave();
+    }
+
+    function patchParam(endpointIndex: number, paramIndex: number, patch: Partial<ApiDocsParam>) {
+      setDoc((current) => ({
+        ...current,
+        endpoints: current.endpoints.map((endpoint, i) =>
+          i === endpointIndex
+            ? {
+                ...endpoint,
+                parameters: endpoint.parameters.map((param, j) => (j === paramIndex ? { ...param, ...patch } : param)),
+              }
+            : endpoint,
+        ),
+      }));
+      scheduleAutoSave();
+    }
+
+    function removeParam(endpointIndex: number, paramIndex: number) {
+      setDoc((current) => ({
+        ...current,
+        endpoints: current.endpoints.map((endpoint, i) =>
+          i === endpointIndex
+            ? { ...endpoint, parameters: endpoint.parameters.filter((_, j) => j !== paramIndex) }
+            : endpoint,
+        ),
       }));
       scheduleAutoSave();
     }
@@ -467,6 +558,88 @@ export const ApiDocsPageEditor = forwardRef<WikiPageEditorHandle, Props>(
                     Requires auth
                   </label>
                 </div>
+
+                <div className="mt-3 space-y-2 border-t border-[var(--border-1)] pt-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className={labelCls}>Parameters (path / query / header)</span>
+                    <button
+                      type="button"
+                      onClick={() => addParam(index)}
+                      className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                    >
+                      <PlusIcon className="h-3 w-3" />
+                      Add parameter
+                    </button>
+                  </div>
+                  {endpoint.parameters.map((param, paramIndex) => (
+                    <div
+                      key={paramIndex}
+                      className="grid gap-2 rounded-[7px] border border-[var(--border-2)] bg-[var(--surface-1)] p-2 md:grid-cols-[minmax(0,0.9fr)_100px_minmax(0,1.6fr)_auto_auto]"
+                    >
+                      <input
+                        value={param.name}
+                        onChange={(event) => patchParam(index, paramIndex, { name: event.target.value })}
+                        placeholder="Name"
+                        className={`${inputCls} font-mono`}
+                      />
+                      <select
+                        value={param.in}
+                        onChange={(event) => patchParam(index, paramIndex, { in: paramLocationValue(event.target.value) })}
+                        className="app-select w-full text-sm"
+                      >
+                        <option value="path">path</option>
+                        <option value="query">query</option>
+                        <option value="header">header</option>
+                      </select>
+                      <input
+                        value={param.description}
+                        onChange={(event) => patchParam(index, paramIndex, { description: event.target.value })}
+                        placeholder="Description"
+                        className={inputCls}
+                      />
+                      <label className="flex items-center gap-1.5 whitespace-nowrap px-1 text-xs text-[var(--text-2)]">
+                        <input
+                          type="checkbox"
+                          checked={param.required}
+                          onChange={(event) => patchParam(index, paramIndex, { required: event.target.checked })}
+                          className="accent-[var(--brand-700)]"
+                        />
+                        Required
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => removeParam(index, paramIndex)}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-rose-50 hover:text-rose-600"
+                        title="Remove parameter"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-3 grid gap-3 border-t border-[var(--border-1)] pt-3 md:grid-cols-2">
+                  {methodHasBody(endpoint.method) ? (
+                    <label className="space-y-1.5">
+                      <span className={labelCls}>Request body (example JSON)</span>
+                      <textarea
+                        value={endpoint.requestBody}
+                        onChange={(event) => patchEndpoint(index, { requestBody: event.target.value })}
+                        placeholder={'{\n  "field": "value"\n}'}
+                        className={`${inputCls} min-h-[110px] font-mono`}
+                      />
+                    </label>
+                  ) : null}
+                  <label className="space-y-1.5">
+                    <span className={labelCls}>Response example (JSON)</span>
+                    <textarea
+                      value={endpoint.responseExample}
+                      onChange={(event) => patchEndpoint(index, { responseExample: event.target.value })}
+                      placeholder={'{\n  "field": "value"\n}'}
+                      className={`${inputCls} min-h-[110px] font-mono`}
+                    />
+                  </label>
+                </div>
               </div>
             ))}
           </div>
@@ -633,6 +806,52 @@ export function ApiDocsReference({ content }: { content: ApiDocsContent }) {
                             <dd className="mt-1 truncate font-mono text-[var(--text-1)]">{selectedServer}</dd>
                           </div>
                         </dl>
+
+                        {endpoint.parameters.length ? (
+                          <div className="mt-4">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-4)]">Parameters</p>
+                            <div className="mt-2 overflow-hidden rounded-[6px] border border-[var(--border-2)]">
+                              <table className="w-full text-left text-xs">
+                                <thead className="bg-[var(--surface-1)] text-[var(--text-4)]">
+                                  <tr>
+                                    <th className="px-2.5 py-1.5 font-semibold">Name</th>
+                                    <th className="px-2.5 py-1.5 font-semibold">In</th>
+                                    <th className="px-2.5 py-1.5 font-semibold">Required</th>
+                                    <th className="px-2.5 py-1.5 font-semibold">Description</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {endpoint.parameters.map((param, paramIndex) => (
+                                    <tr key={paramIndex} className="border-t border-[var(--border-1)]">
+                                      <td className="px-2.5 py-1.5 font-mono text-[var(--text-1)]">{param.name}</td>
+                                      <td className="px-2.5 py-1.5 text-[var(--text-2)]">{param.in}</td>
+                                      <td className="px-2.5 py-1.5 text-[var(--text-2)]">{param.required ? "Yes" : "No"}</td>
+                                      <td className="px-2.5 py-1.5 text-[var(--text-2)]">{param.description || "—"}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {methodHasBody(endpoint.method) && endpoint.requestBody ? (
+                          <div className="mt-4">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-4)]">Request body</p>
+                            <pre className="mt-2 max-h-[280px] overflow-auto rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2.5 font-mono text-[12px] leading-relaxed text-[var(--text-1)]">
+                              {endpoint.requestBody}
+                            </pre>
+                          </div>
+                        ) : null}
+
+                        {endpoint.responseExample ? (
+                          <div className="mt-4">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-4)]">Response example</p>
+                            <pre className="mt-2 max-h-[280px] overflow-auto rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2.5 font-mono text-[12px] leading-relaxed text-[var(--text-1)]">
+                              {endpoint.responseExample}
+                            </pre>
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
