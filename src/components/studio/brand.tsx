@@ -10,9 +10,9 @@
 // font that isn't bundled falls back to the nearest generic — proprietary fonts don't embed.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { useClientList } from "@/hooks/use-proposals";
+import { useQuery } from "@tanstack/react-query";
+import { listDesignSystemClients, type DesignSystemClient } from "@/lib/api";
 import { useClientDesignSystem } from "@/hooks/use-design-system";
-import type { ClientListItem } from "@/types/client";
 import type { DesignTokens } from "@/types/design-tokens";
 import type { Fill } from "./screenshots/config";
 import { fontStack } from "./screenshots/config";
@@ -150,7 +150,7 @@ export function buildSocialPreset(brand: StudioBrand): StylePreset {
 // ── context ──
 interface BrandCtx {
   brand: StudioBrand;
-  clients: ClientListItem[];
+  clients: DesignSystemClient[];
   selectedSlug: string | null;
   setSelectedSlug: (slug: string | null) => void;
   loadingDs: boolean;
@@ -178,7 +178,7 @@ export function StudioBrandProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const { data } = useClientList();
+  const { data } = useQuery({ queryKey: ["studio", "design-system-clients"], queryFn: listDesignSystemClients, staleTime: 60_000 });
   const clients = useMemo(() => data?.clients ?? [], [data]);
   const ds = useClientDesignSystem(hydrated ? selectedSlug : null);
   const tokens = ds.data?.tokens ?? null;

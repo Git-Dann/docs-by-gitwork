@@ -83,6 +83,35 @@ export async function getClientDesignSystem(
   return row ? toDTO(row) : EMPTY_DTO;
 }
 
+export interface DesignSystemClient {
+  slug: string;
+  name: string;
+  logoUrl: string | null;
+  primary: string | null; // first primary colour, for a picker swatch
+}
+
+/** Clients in the workspace that actually HAVE a design system (tokens present). Used by the
+ * Studio brand picker so only branded clients are listed. Filtered in JS to sidestep JSON-null
+ * query nuances — the client count is small. */
+export async function listClientsWithDesignSystem(user: EffectiveUser): Promise<DesignSystemClient[]> {
+  const rows = await prisma.clientDesignSystem.findMany({
+    where: { client: { workspaceId: user.workspaceId } },
+    select: { tokens: true, client: { select: { name: true, slug: true, logoUrl: true } } },
+  });
+  return rows
+    .filter((r) => Boolean(r.tokens))
+    .map((r) => {
+      const t = r.tokens as unknown as DesignTokens;
+      return {
+        slug: r.client.slug,
+        name: r.client.name,
+        logoUrl: r.client.logoUrl ?? null,
+        primary: t?.colours?.primary?.[0]?.hex ?? null,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export async function saveClientDesignSystem(
   user: EffectiveUser,
   clientId: string,

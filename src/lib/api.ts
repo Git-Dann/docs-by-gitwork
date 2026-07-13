@@ -3161,6 +3161,18 @@ export function deleteMilestone(id: string): Promise<{ ok: boolean }> {
 
 // ── Per-client design system (brand tokens) ──────────────────────────────────
 
+export interface DesignSystemClient {
+  slug: string;
+  name: string;
+  logoUrl: string | null;
+  primary: string | null;
+}
+
+/** Only clients that HAVE a design system — for the Studio brand picker. */
+export async function listDesignSystemClients(): Promise<{ clients: DesignSystemClient[] }> {
+  return apiFetch<{ clients: DesignSystemClient[] }>(`/api/design-systems`);
+}
+
 export async function getClientDesignSystem(slug: string): Promise<DesignSystemDTO> {
   return apiFetch<DesignSystemDTO>(`/api/clients/${slug}/design-system`);
 }
