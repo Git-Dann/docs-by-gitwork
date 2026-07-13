@@ -4,6 +4,7 @@ import { Fragment } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import { SettingsCard } from "@/components/settings/settings-card";
+import { useWebPush } from "@/hooks/use-web-push";
 import {
   useNotificationPreferences,
   useUpdateNotificationPreferences,
@@ -120,9 +121,10 @@ export function NotificationsSection() {
     <div className="proposal-form-theme space-y-6">
       <div className="rounded-[10px] border border-[var(--brand-300)] bg-[var(--brand-200)]/40 px-4 py-3 text-sm text-[var(--text-2)]">
         <p>
-          <strong>Preview.</strong> Channel preferences save to your account immediately. The
-          dispatcher that actually sends events down these channels ships next — until then
-          Foundry still pings you the way it always has.
+          <strong>In-app</strong> and <strong>push</strong> delivery are live — every event below
+          fires the bell, and (with push enabled on a device) a browser notification even when
+          Foundry is closed. <strong>Email</strong> and <strong>Slack</strong> routing through the
+          dispatcher ship next.
         </p>
       </div>
 
@@ -327,6 +329,56 @@ export function NotificationsSection() {
           </Button>
         </div>
       </SettingsCard>
+
+      <PushDeviceCard />
     </div>
+  );
+}
+
+/**
+ * Per-device browser push toggle. Registers the service worker + PushManager
+ * subscription for THIS browser (native Web Push, no third party). Hidden unless
+ * the server has VAPID keys configured and the browser supports push.
+ */
+function PushDeviceCard() {
+  const { supported, enabled, permission, subscribed, loading, busy, subscribe, unsubscribe } =
+    useWebPush();
+
+  // Nothing to show until we know the server is push-enabled and the browser can do it.
+  if (loading || !enabled || !supported) return null;
+
+  const blocked = permission === "denied";
+
+  return (
+    <SettingsCard number="04" title="Push on this device">
+      <p className="text-sm leading-6 text-[var(--text-3)]">
+        Get a browser notification for events routed to <strong>Push</strong> above — even when
+        Foundry isn&apos;t open. Enable it per browser/device you want alerts on.
+      </p>
+
+      <div className="mt-5 flex items-center justify-between gap-4 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-[var(--text-1)]">
+            {subscribed ? "Push is on for this device" : "Push is off for this device"}
+          </p>
+          <p className="mt-0.5 text-xs text-[var(--text-4)]">
+            {blocked
+              ? "Notifications are blocked in your browser settings — re-allow them for this site, then try again."
+              : subscribed
+                ? "You'll see notifications here even when the tab is closed."
+                : "You'll be asked to allow notifications."}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant={subscribed ? "secondary" : "primary"}
+          size="sm"
+          disabled={busy || blocked}
+          onClick={() => (subscribed ? void unsubscribe() : void subscribe())}
+        >
+          {busy ? "Working…" : subscribed ? "Turn off" : "Enable push"}
+        </Button>
+      </div>
+    </SettingsCard>
   );
 }

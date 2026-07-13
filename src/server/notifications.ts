@@ -22,6 +22,7 @@ import {
   type NotificationEvent,
 } from "@/server/notification-events";
 import type { NotificationDTO } from "@/types/notifications";
+import { isWebPushEnabled, sendWebPushToUser } from "@/server/web-push";
 
 // ─── Dispatcher ──────────────────────────────────────────────────────────────
 
@@ -65,11 +66,22 @@ export function dispatchNotification(input: DispatchInput): void {
     try {
       const recipients = await resolveRecipients(input);
       if (recipients.length === 0) return;
+      const pushLive = isWebPushEnabled();
       // Per-recipient isolation — one bad write can't poison delivery to the others.
       await Promise.allSettled(
         recipients.map(async (userId) => {
-          if (!(await inAppEnabledFor(userId, input.event))) return;
-          await persistInApp(userId, input);
+          const channels = await resolveUserChannels(userId, input.event);
+          if (channels.includes("inApp")) await persistInApp(userId, input);
+          // Browser push — best-effort, only when VAPID keys are configured and the
+          // user routes this event to `push`. sendWebPushToUser self-guards + prunes.
+          if (pushLive && channels.includes("push")) {
+            await sendWebPushToUser(userId, {
+              title: input.title,
+              body: input.body ?? null,
+              url: input.actionUrl ?? "/app",
+              tag: input.groupKey,
+            }).catch(() => undefined);
+          }
         }),
       );
     } catch (err) {
@@ -162,14 +174,19 @@ async function intersectClientScope(
 
 /** Whether this recipient wants `event` in their in-app feed. Lazy-defaults to the shared
  *  routing map when no preference row / per-event override exists. */
-async function inAppEnabledFor(userId: string, event: NotificationEvent): Promise<boolean> {
+async function resolveUserChannels(
+  userId: string,
+  event: NotificationEvent,
+): Promise<NotificationChannel[]> {
   const pref = await prisma.notificationPreference.findUnique({
     where: { userId },
     select: { inAppEnabled: true, events: true },
   });
-  if (pref && !pref.inAppEnabled) return false; // master switch off
   const routing = readEventRouting(pref?.events, event) ?? DEFAULT_EVENT_ROUTING[event] ?? ["inApp"];
-  return routing.includes("inApp");
+  // `inAppEnabled` is the in-app master switch — when off it suppresses only the
+  // bell/feed, not push (push is gated separately by VAPID keys + a live sub).
+  if (pref && !pref.inAppEnabled) return routing.filter((c) => c !== "inApp");
+  return routing;
 }
 
 function readEventRouting(

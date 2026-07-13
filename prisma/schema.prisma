@@ -187,6 +187,7 @@ model User {
   proofDocuments            ProofDocument[]
   signatureRequestsCreated  SignatureRequest[]      @relation("SignatureRequestCreator")
   deviceTokens              DeviceToken[]
+  webPushSubscriptions      WebPushSubscription[]
   triggeredPulseScans       PulseScan[]             @relation("PulseScanTriggeredBy")
   notificationPreference    NotificationPreference?
   notifications             Notification[]
@@ -223,6 +224,25 @@ model User {
 
 // APNs device registrations. One row per (user, device).
 // Push delivery: lookup by userId for personal scans, by workspaceId for monitor scans.
+// Browser Web Push subscription (VAPID). One row per browser/device the user
+// enabled push on. Endpoint is the unique push-service URL; p256dh + auth are
+// the client's public key + auth secret used to encrypt the payload (RFC 8291).
+// Mirrors DeviceToken (native APNs) but for the web app — sent via `web-push`.
+model WebPushSubscription {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime  @default(now())
+  failedAt   DateTime? // set when the push service returns 404/410 — soft-dead
+
+  @@index([userId])
+}
+
 model DeviceToken {
   id          String    @id @default(cuid())
   userId      String
