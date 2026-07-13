@@ -64,7 +64,7 @@ export async function runOrchestratedScan(input: {
 
     if (homepageUrl) {
       const [urlResult, deployResult] = await Promise.all([
-        runUrlChecks(homepageUrl, input.platform),
+        runUrlChecks(homepageUrl, input.platform, undefined, undefined, { githubTechStack: infraResult.techStack }),
         runDeployAgent(homepageUrl),
       ]);
       urlChecks = urlResult.checks;

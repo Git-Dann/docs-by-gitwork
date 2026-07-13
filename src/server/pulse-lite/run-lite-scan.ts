@@ -141,7 +141,7 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
               .then((r) => { browserInsights = r.insights; pending.push(ingest(r.checks)); })
               .catch(() => {})
           : Promise.resolve();
-        const urlResult = await runUrlChecks(safeHome, input.platform, onWave, input.targetMarkets);
+        const urlResult = await runUrlChecks(safeHome, input.platform, onWave, input.targetMarkets, { githubTechStack: techStack });
         if (urlResult.techStack.length > 0) techStack = urlResult.techStack;
         detectedMarkets = urlResult.detectedMarkets;
         pending.push(ingest(urlResult.checks));

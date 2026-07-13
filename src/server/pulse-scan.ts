@@ -192,6 +192,7 @@ type ProjectContext = {
   isSaas: boolean;
   isMobileApp: boolean;
   hasBackend: boolean;
+  authMethod: "password" | "otp" | "both" | "unknown";
 };
 
 function detectProjectContext(html: string, headers: Record<string, string>): ProjectContext {
@@ -208,6 +209,29 @@ function detectProjectContext(html: string, headers: Record<string, string>): Pr
     ["/login", "/signin", "/sign-in", "/signup", "/sign-up", "/auth", "/register"].some(
       (p) => lower.includes(`href="${p}`) || lower.includes(`href='${p}`),
     ) || ["clerk", "next-auth", "nextauth", "supabase", "auth0", "lucia", "kinde"].some((p) => lower.includes(p));
+
+  // Auth *method* — password vs. OTP/passwordless — so checks that only make
+  // sense for traditional passwords (strength rules, breach-password lookups)
+  // don't ding projects built around OTP/magic-link auth, and so OTP-specific
+  // checks (code expiry, resend cooldown) only fire when relevant. "unknown"
+  // (auth enabled via a provider, method not visible in static HTML) must NOT
+  // be treated the same as "otp" downstream — only skip on a confident "otp".
+  const hasPasswordField = /type=["']password["']/i.test(html);
+  const hasOtpSignal = [
+    "one-time password", "one time password", "verification code", "enter the code",
+    "enter your code", "we sent you a code", "we've sent a code", "we have sent a code",
+    "magic link", "passwordless", "sign in with a code", "otp code", "6-digit code",
+    "authentication code", "check your email for a code", "check your phone for a code",
+  ].some((s) => lower.includes(s));
+  const authMethod: ProjectContext["authMethod"] = !isAuthEnabled
+    ? "unknown"
+    : hasPasswordField && hasOtpSignal
+      ? "both"
+      : hasOtpSignal
+        ? "otp"
+        : hasPasswordField
+          ? "password"
+          : "unknown";
 
   const isSaas =
     (isPaymentEnabled || isAuthEnabled) &&
@@ -226,7 +250,7 @@ function detectProjectContext(html: string, headers: Record<string, string>): Pr
     !!headers["x-powered-by"] || !!headers["x-vercel-id"] || !!headers["cf-ray"] ||
     lower.includes("/api/") || isAuthEnabled || isPaymentEnabled;
 
-  return { isPaymentEnabled, isAuthEnabled, isSaas, isMobileApp, hasBackend };
+  return { isPaymentEnabled, isAuthEnabled, isSaas, isMobileApp, hasBackend, authMethod };
 }
 
 function skipChecks(
@@ -581,6 +605,11 @@ export async function runUrlChecks(
   platform?: string,
   onWave?: (checks: PulseScanCheckInput[]) => void,
   targetMarkets?: JurisdictionCode[],
+  // Signals from a companion GitHub-source scan (when the input is a connected
+  // repo, runGithubChecks resolves before this runs on the homepage — see
+  // orchestrator.ts / run-lite-scan.ts). Lets package.json deps correct a
+  // homepage-HTML-only false negative (e.g. Stripe used server-side only).
+  contextHints?: { githubTechStack?: string[] },
 ): Promise<{ checks: PulseScanCheckInput[]; techStack: string[]; detectedMarkets: JurisdictionCode[] }> {
   const urlType = detectUrlType(url);
   if (urlType === "app_store" || urlType === "play_store") {
@@ -604,6 +633,7 @@ export async function runUrlChecks(
 
   const httpsUrl = url.startsWith("http://") ? url.replace("http://", "https://") : url;
   const httpUrl = httpsUrl.replace("https://", "http://");
+  const baseUrl = httpsUrl.replace(/\/$/, "");
 
   const pageResult = await fetchPage(httpsUrl);
 
@@ -618,14 +648,31 @@ export async function runUrlChecks(
   });
 
   if (pageResult) {
-    const ctx = detectProjectContext(pageResult.html, pageResult.headers);
+    let ctx = detectProjectContext(pageResult.html, pageResult.headers);
 
     // Catch-all baseline — probe a random nonexistent path. If the host returns
     // 200 (the app shell) for a URL that cannot exist, it serves catch-all 200s
     // (typical of SPAs / Vercel / Next.js frontends). The exposed-file checks
     // below use this so a soft-200 isn't mistaken for a real exposure.
-    const baselineProbe = await probePath(`${httpsUrl.replace(/\/$/, "")}/__pulse_probe_${Math.random().toString(36).slice(2, 10)}`);
+    const baselineProbe = await probePath(`${baseUrl}/__pulse_probe_${Math.random().toString(36).slice(2, 10)}`);
     const catchAll200 = baselineProbe.status === 200;
+
+    // Correct the payment-integration signal beyond a single homepage-HTML
+    // scrape: a project can use Stripe/Paddle purely server-side (checkout
+    // only on a sub-page, script injected post-hydration, or Stripe used only
+    // in API routes) with no client-visible marker on the homepage — the HTML
+    // scrape alone then false-negatives, and every Payments check gets
+    // skipped downstream. Two independent signals correct this: the
+    // companion GitHub scan's package.json deps (when connected), and a live
+    // probe of the Stripe webhook route (skipped on catch-all hosts, where
+    // every path 200s and presence can't be determined).
+    const repoPaymentSignal = contextHints?.githubTechStack?.some((t) => t === "Stripe" || t === "Paddle") ?? false;
+    const liveStripeWebhookStatus = !catchAll200 ? await headRequest(`${baseUrl}/api/webhooks/stripe`) : 0;
+    const liveStripeSignal = liveStripeWebhookStatus > 0 && liveStripeWebhookStatus < 500;
+    const correctedPaymentSignal = repoPaymentSignal || liveStripeSignal;
+    if (correctedPaymentSignal && !ctx.isPaymentEnabled) {
+      ctx = { ...ctx, isPaymentEnabled: true, hasBackend: true };
+    }
 
     // Build a "does this HTML route exist?" check honestly. A real page and a
     // catch-all soft-200 are both HTML, so on a catch-all host presence can't be
@@ -893,13 +940,20 @@ export async function runUrlChecks(
     });
 
     // Payments & Auth
-    const hasStripe = pageResult.html.includes("js.stripe.com") || pageResult.html.includes("stripe");
+    const hasStripeInHtml = pageResult.html.includes("js.stripe.com") || pageResult.html.includes("stripe");
+    const hasStripe = hasStripeInHtml || repoPaymentSignal || liveStripeSignal;
     checks.push({
       category: CATEGORIES.PAYMENTS,
       checkKey: "stripe_signals",
       label: "Stripe integration",
       status: hasStripe ? "PASS" : "WARN",
-      detail: hasStripe ? "Stripe detected in page source." : "No Stripe integration detected.",
+      detail: hasStripeInHtml
+        ? "Stripe detected in page source."
+        : repoPaymentSignal
+          ? "Stripe dependency detected in the connected repo's package.json (not referenced in the homepage HTML — likely used server-side only)."
+          : liveStripeSignal
+            ? `Stripe webhook route responded live (status ${liveStripeWebhookStatus}) though not referenced in the homepage HTML — integration appears server-side only.`
+            : "No Stripe integration detected.",
     });
 
     const paymentLinks = ["/pricing", "/billing", "/subscribe", "/checkout", "/plans"];
@@ -1042,7 +1096,6 @@ export async function runUrlChecks(
     });
 
     // Missing Pages — batch HEAD requests in parallel
-    const baseUrl = httpsUrl.replace(/\/$/, "");
     const [aboutStatus, contactStatus, faqStatus, statusPageStatus, changelogStatus] = await Promise.all([
       headRequest(`${baseUrl}/about`),
       headRequest(`${baseUrl}/contact`),
@@ -1343,17 +1396,16 @@ export async function runUrlChecks(
       // Can't probe a webhook route on a catch-all host (every path 200s).
       checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "stripe_webhook", label: "Stripe webhook endpoint", status: "SKIPPED", detail: "Host serves catch-all 200s — webhook route presence can't be probed reliably." });
     } else if (ctx.isPaymentEnabled) {
-      const stripeWebhookStatus = await headRequest(`${baseUrl}/api/webhooks/stripe`);
-      const stripeWebhookExists = stripeWebhookStatus > 0 && stripeWebhookStatus < 500;
+      // Reuses the probe already taken above (to correct the payment signal) — avoids a second request.
       checks.push({
         category: CATEGORIES.PAYMENTS,
         checkKey: "stripe_webhook",
         label: "Stripe webhook endpoint",
-        status: stripeWebhookExists ? "PASS" : "WARN",
-        detail: stripeWebhookExists
+        status: liveStripeSignal ? "PASS" : "WARN",
+        detail: liveStripeSignal
           ? "Stripe webhook endpoint found — subscription lifecycle events will be processed."
           : "No Stripe webhook detected — subscription upgrades, failures, and cancellations won't be handled automatically.",
-        evidence: stripeWebhookStatus ? `Status: ${stripeWebhookStatus}` : undefined,
+        evidence: liveStripeWebhookStatus ? `Status: ${liveStripeWebhookStatus}` : undefined,
       });
     } else {
       checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "stripe_webhook", label: "Stripe webhook endpoint", status: "SKIPPED", detail: "Skipped — no payment integration detected on this project." });

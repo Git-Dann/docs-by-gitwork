@@ -19,6 +19,11 @@ export type ProjectContext = {
   isSaas: boolean;
   isMobileApp: boolean;
   hasBackend: boolean;
+  // How this project authenticates users, best-effort detected from homepage
+  // signals. "unknown" means auth is enabled (via a provider like Clerk/Auth0)
+  // but the method isn't visible in static HTML — checks should NOT skip on
+  // "unknown", only on a confident "otp" (no password field found).
+  authMethod: "password" | "otp" | "both" | "unknown";
 };
 
 export interface ExtendedCheckContext {

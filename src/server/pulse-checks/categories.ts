@@ -132,7 +132,7 @@ export const CATEGORY_META: CategoryMeta[] = [
   { name: CATEGORIES.ROLES, domain: "Roles & Permissions", weighted: false, aiEra: false, blurb: "RBAC, tenant isolation, audit logs, SCIM, least-privilege tokens, invite workflows" },
   { name: CATEGORIES.EMAIL, domain: "Email Deliverability", weighted: false, aiEra: false, blurb: "SPF, DKIM, DMARC, BIMI, MTA-STS, TLS-RPT, reputable ESP signals" },
   { name: CATEGORIES.BUSINESS_OPS, domain: "Business Operations", weighted: false, aiEra: false, blurb: "Company registration, VAT, SLAs, ROPA, modern-slavery & anti-bribery policies" },
-  { name: CATEGORIES.API_QUALITY, domain: "API Quality", weighted: false, aiEra: false, blurb: "Versioning, RFC 7807 errors, rate-limit headers, OpenAPI spec, sandbox, SDKs" },
+  { name: CATEGORIES.API_QUALITY, domain: "API Quality", weighted: false, aiEra: false, blurb: "Versioning, RFC 7807 errors, rate-limit headers, OpenAPI spec, sandbox, SDKs, live endpoint health (broken/incomplete/unverified)" },
 ];
 
 // ── Derived — do not hand-maintain any of these ──────────────────────────────

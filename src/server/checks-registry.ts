@@ -355,6 +355,9 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "device_management", category: CATEGORIES.AUTHENTICATION, label: "Trusted device management" },
   { key: "concurrent_session_policy", category: CATEGORIES.AUTHENTICATION, label: "Concurrent session limiting" },
   { key: "token_expiry_short", category: CATEGORIES.AUTHENTICATION, label: "Short-lived access tokens (< 1hr)" },
+  { key: "otp_expiry_configured", category: CATEGORIES.AUTHENTICATION, label: "OTP code expiry" },
+  { key: "otp_resend_cooldown", category: CATEGORIES.AUTHENTICATION, label: "OTP resend cooldown" },
+  { key: "otp_attempt_limiting", category: CATEGORIES.AUTHENTICATION, label: "OTP attempt / brute-force limiting" },
 
   // ─── Roles & Permissions (20) ───────────────────────────────────────────────
   { key: "rbac_signals", category: CATEGORIES.ROLES, label: "Role-based access control (RBAC) UI" },
@@ -568,6 +571,9 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "api_sla_documented", category: CATEGORIES.API_QUALITY, label: "API SLA / uptime guarantee" },
   { key: "graphql_depth_limiting", category: CATEGORIES.API_QUALITY, label: "GraphQL depth / complexity limiting" },
   { key: "openapi_spec_served", category: CATEGORIES.API_QUALITY, label: "OpenAPI 3.x spec at /openapi.json" },
+  { key: "api_endpoint_broken", category: CATEGORIES.API_QUALITY, label: "Referenced API endpoints don't error" },
+  { key: "api_endpoint_incomplete", category: CATEGORIES.API_QUALITY, label: "API errors return structured responses" },
+  { key: "api_endpoint_unverified", category: CATEGORIES.API_QUALITY, label: "No dead API references" },
 
   // ─── AEO & AI Discoverability (8) ───────────────────────────────────────────
   { key: "aeo_llms_txt", category: CATEGORIES.AEO, label: "llms.txt AI guidance file" },

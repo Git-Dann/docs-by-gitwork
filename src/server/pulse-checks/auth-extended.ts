@@ -23,12 +23,22 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
       ["device_management", "Trusted device management"],
       ["concurrent_session_policy", "Concurrent session limiting"],
       ["token_expiry_short", "Short-lived access tokens (< 1hr)"],
+      ["otp_expiry_configured", "OTP code expiry"],
+      ["otp_resend_cooldown", "OTP resend cooldown"],
+      ["otp_attempt_limiting", "OTP attempt / brute-force limiting"],
     ];
     return authChecks.map(([checkKey, label]) => ({
       category: CATEGORIES.AUTHENTICATION, checkKey, label, status: "SKIPPED" as const,
       detail: "Not applicable — no authentication detected on this site.",
     }));
   }
+
+  // Only a confident "otp" (OTP/magic-link signals found, no password field) skips
+  // the password-specific checks below. "unknown" (auth via a provider like Clerk/
+  // Auth0 with the method not visible in static HTML) still gets scored — we can't
+  // tell it apart from "password" from the homepage alone, so don't guess N/A.
+  const isOtpOnly = pctx.authMethod === "otp";
+  const isOtpRelevant = pctx.authMethod === "otp" || pctx.authMethod === "both";
 
   // Session timeout
   const hasSessionTimeout = /session.*expir|timeout.*setting|session.*length|auto.*log.*out|idle.*timeout/i.test(html);
@@ -38,17 +48,17 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
   const hasLockout = /account.*lock|too many.*attempt|temporarily.*disabled|lockout.*policy/i.test(html);
   checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "account_lockout_policy", label: "Account lockout policy", status: hasLockout ? "PASS" : "WARN", detail: hasLockout ? "Account lockout signals detected." : "No account lockout signals — implement lockout after repeated failed login attempts to prevent credential stuffing." });
 
-  // Password strength
+  // Password strength — not applicable to a confident OTP/passwordless-only project.
   const hasPasswordStrength = /password.*must|password.*require|at least.*character|must contain.*uppercase|strong.*password/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "password_strength_enforced", label: "Password strength requirements", status: hasPasswordStrength ? "PASS" : "WARN", detail: hasPasswordStrength ? "Password strength requirements detected." : "No password strength requirements visible — enforce minimum length (≥12 chars) and complexity; consider NIST SP 800-63B guidance." });
+  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "password_strength_enforced", label: "Password strength requirements", status: isOtpOnly ? "SKIPPED" : (hasPasswordStrength ? "PASS" : "WARN"), detail: isOtpOnly ? "Not applicable — this project authenticates via OTP/passwordless login, not traditional passwords." : (hasPasswordStrength ? "Password strength requirements detected." : "No password strength requirements visible — enforce minimum length (≥12 chars) and complexity; consider NIST SP 800-63B guidance.") });
 
   // Passkeys / WebAuthn
   const hasWebAuthn = /webauthn|passkey|passkeys|fido2|security key|biometric.*login|face id.*login|fingerprint.*login/i.test(html);
   checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "passkey_webauthn_support", label: "Passkeys / WebAuthn support", status: hasWebAuthn ? "PASS" : "WARN", detail: hasWebAuthn ? "WebAuthn / Passkey support signals detected." : "No passkey or WebAuthn support — passkeys are phishing-resistant, faster than passwords, and now supported by all major platforms." });
 
-  // Breach password detection
+  // Breach password detection — not applicable to a confident OTP/passwordless-only project.
   const hasBreachDetection = /haveibeenpwned|pwned.*password|breached.*password|compromised.*password|known.*breach/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "breach_password_detection", label: "Breach password detection", status: hasBreachDetection ? "PASS" : "WARN", detail: hasBreachDetection ? "Breach password detection signals detected." : "No breach password detection — integrating with HaveIBeenPwned (k-anonymity API) to reject known-breached passwords is recommended by NIST." });
+  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "breach_password_detection", label: "Breach password detection", status: isOtpOnly ? "SKIPPED" : (hasBreachDetection ? "PASS" : "WARN"), detail: isOtpOnly ? "Not applicable — this project authenticates via OTP/passwordless login; there are no user passwords to check against breach corpora." : (hasBreachDetection ? "Breach password detection signals detected." : "No breach password detection — integrating with HaveIBeenPwned (k-anonymity API) to reject known-breached passwords is recommended by NIST.") });
 
   // Account recovery
   const hasRecovery = /backup.*code|recovery.*code|security.*question|phone.*verify|backup.*email|recovery.*options/i.test(html);
@@ -90,6 +100,16 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
   // Short-lived tokens
   const hasShortTokens = /expires.*in.*(?:60|120|300|600|900|1800|3600)\s*(?:s|seconds)|access.*token.*expir|token.*ttl.*(?:[1-9][0-9]?(?:\s*min|h))/i.test(html);
   checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "token_expiry_short", label: "Short-lived access tokens (< 1hr)", status: hasShortTokens ? "PASS" : "WARN", detail: hasShortTokens ? "Short-lived token expiry signals detected." : "No short token expiry signals — access tokens should expire within 15–60 minutes; use refresh tokens for long-lived sessions." });
+
+  // OTP-specific checks — only relevant when OTP/magic-link auth was actually detected.
+  const hasOtpExpiry = /code.*expir|expir.*code|expires.*in.*(?:\d+\s*(?:minute|second|min|sec))|valid.*for.*(?:\d+\s*(?:minute|second))/i.test(html);
+  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "otp_expiry_configured", label: "OTP code expiry", status: !isOtpRelevant ? "SKIPPED" : (hasOtpExpiry ? "PASS" : "WARN"), detail: !isOtpRelevant ? "Not applicable — no OTP/magic-link authentication detected." : (hasOtpExpiry ? "OTP/code expiry signals detected." : "No OTP expiry signals visible — codes should expire within 5–10 minutes to limit the window for interception or brute-forcing.") });
+
+  const hasOtpResendCooldown = /resend.*code|resend.*in.*\d+|didn.?t.*receive.*code|wait.*(?:\d+\s*(?:second|minute)).*resend|resend.*(?:\d+\s*(?:second|minute))/i.test(html);
+  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "otp_resend_cooldown", label: "OTP resend cooldown", status: !isOtpRelevant ? "SKIPPED" : (hasOtpResendCooldown ? "PASS" : "WARN"), detail: !isOtpRelevant ? "Not applicable — no OTP/magic-link authentication detected." : (hasOtpResendCooldown ? "OTP resend cooldown signals detected." : "No resend cooldown visible — without a cooldown between code requests, an attacker (or an impatient user) can trigger unlimited SMS/email sends, driving up cost and enabling spam.") });
+
+  const hasOtpAttemptLimiting = /too many.*(?:attempt|code|tries)|invalid.*code.*(?:attempt|remaining)|locked.*out.*(?:attempt|code)|maximum.*attempt/i.test(html);
+  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "otp_attempt_limiting", label: "OTP attempt / brute-force limiting", status: !isOtpRelevant ? "SKIPPED" : (hasOtpAttemptLimiting ? "PASS" : "WARN"), detail: !isOtpRelevant ? "Not applicable — no OTP/magic-link authentication detected." : (hasOtpAttemptLimiting ? "OTP attempt-limiting signals detected." : "No attempt-limiting signals visible — a short numeric OTP without a cap on guesses is brute-forceable; lock out or invalidate the code after a handful of failed attempts.") });
 
   return checks;
 }

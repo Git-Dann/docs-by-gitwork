@@ -26,6 +26,7 @@ import { runCodeQualityExtended } from "./pulse-checks/code-quality-extended";
 import { runMobileExtended } from "./pulse-checks/mobile-extended";
 import { runBusinessOperationsChecks } from "./pulse-checks/business-operations";
 import { runApiQualityChecks } from "./pulse-checks/api-quality";
+import { runApiHealthChecks } from "./pulse-checks/api-health";
 import { runAiReadinessChecks } from "./pulse-checks/ai-readiness";
 import { runAiAeoChecks } from "./pulse-checks/ai-aeo";
 import { runVibeCodeHygieneChecks } from "./pulse-checks/vibe-code-hygiene";
@@ -67,6 +68,7 @@ export async function runExtendedChecks(
     runMobileExtended,
     runBusinessOperationsChecks,
     runApiQualityChecks,
+    runApiHealthChecks,
     runAiReadinessChecks,
     runAiAeoChecks,
     runVibeCodeHygieneChecks,
