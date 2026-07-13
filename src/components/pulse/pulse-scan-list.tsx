@@ -20,8 +20,6 @@ import type { PulseScanListItem, PulseScanStatus, PulseScanInputType } from "@/t
 import {
   PulseScanStatusBadge,
   PulseEmptyState,
-  MiniSparkline,
-  TrendDelta,
   HealthScorePill,
   MonitorDot,
 } from "@/components/pulse/pulse-shared";
@@ -328,13 +326,11 @@ function ScanRow({
   scan,
   selected,
   onToggle,
-  trend,
   monitor,
 }: {
   scan: PulseScanListItem;
   selected: boolean;
   onToggle: () => void;
-  trend?: { delta: number | null; sparkline: number[] };
   monitor?: MonitorStatus;
 }) {
   const inputLabel =
@@ -377,12 +373,6 @@ function ScanRow({
           {inputLabel}
           {scan.clientName && <span className="ml-2 text-[var(--text-3)]">· {scan.clientName}</span>}
         </p>
-        {trend && (trend.sparkline.length >= 2 || trend.delta !== null) && (
-          <div className="mt-1.5 flex items-center gap-2">
-            <MiniSparkline scores={trend.sparkline} />
-            <TrendDelta delta={trend.delta} />
-          </div>
-        )}
         <div className="mt-1.5 flex items-center gap-2 sm:hidden">
           <HealthScorePill score={scan.healthScore} />
           <PulseScanStatusBadge status={scan.status} />
@@ -461,14 +451,17 @@ export function PulseScanListView() {
     return map;
   }, [monitorsData?.monitors]);
 
-  const scanTrends = useMemo<Map<string, { delta: number | null; sparkline: number[] }>>(() => {
+  // Score delta vs. the previous completed scan of the same project — powers
+  // the Improved/Regressed filter below (the sparkline + delta chip that used
+  // to render inline on each row were removed; this is filter-only now).
+  const scanTrends = useMemo<Map<string, number | null>>(() => {
     const projectMap = new Map<string, PulseScanListItem[]>();
     for (const s of allScans) {
       const list = projectMap.get(targetKey(s)) ?? [];
       list.push(s);
       projectMap.set(targetKey(s), list);
     }
-    const trends = new Map<string, { delta: number | null; sparkline: number[] }>();
+    const trends = new Map<string, number | null>();
     for (const [, scansForProject] of projectMap) {
       const completed = [...scansForProject]
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
@@ -480,8 +473,7 @@ export function PulseScanListView() {
           prev && curr.healthScore !== null && prev.healthScore !== null
             ? curr.healthScore - prev.healthScore
             : null;
-        const sparkline = completed.slice(Math.max(0, i - 4), i + 1).map((s) => s.healthScore as number);
-        trends.set(curr.id, { delta, sparkline });
+        trends.set(curr.id, delta);
       }
     }
     return trends;
@@ -514,7 +506,7 @@ export function PulseScanListView() {
 
     if (moveFilter !== "ALL") {
       list = list.filter((s) => {
-        const d = scanTrends.get(s.id)?.delta ?? null;
+        const d = scanTrends.get(s.id) ?? null;
         if (d === null) return false;
         return moveFilter === "REGRESSED" ? d < 0 : d > 0;
       });
@@ -745,7 +737,6 @@ export function PulseScanListView() {
                   scan={scan}
                   selected={selected.has(scan.id)}
                   onToggle={() => toggleOne(scan.id)}
-                  trend={scanTrends.get(scan.id)}
                   monitor={monitorByTarget.get(targetKey(scan))}
                 />
               ))}

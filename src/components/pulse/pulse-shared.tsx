@@ -102,46 +102,6 @@ export function PulseFrameworkCoverage() {
   );
 }
 
-// ── Shared liveness primitives (used by the scan list + portfolio) ───────────────
-
-/** Tiny inline score-history sparkline. Colour follows direction of travel. */
-export function MiniSparkline({ scores, width = 56, height = 18 }: { scores: number[]; width?: number; height?: number }) {
-  if (scores.length < 2) return null;
-  const min = Math.min(...scores);
-  const max = Math.max(...scores);
-  const range = max - min || 1;
-  const points = scores
-    .map((s, i) => {
-      const x = (i / (scores.length - 1)) * (width - 2) + 1;
-      const y = height - ((s - min) / range) * (height - 4) - 2;
-      return `${x},${y}`;
-    })
-    .join(" ");
-  const last = scores[scores.length - 1];
-  const first = scores[0];
-  const color = last > first ? "#10b981" : last < first ? "#ef4444" : "#94a3b8";
-  return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} fill="none" className="shrink-0">
-      <polyline points={points} stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-/** Score-delta chip (+5 / −3 / →). */
-export function TrendDelta({ delta }: { delta: number | null }) {
-  if (delta === null) return null;
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
-        delta > 0 ? "bg-emerald-50 text-emerald-700" : delta < 0 ? "bg-red-50 text-red-700" : "bg-[var(--surface-2)] text-[var(--text-3)]",
-      )}
-    >
-      {delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : "→"}
-    </span>
-  );
-}
-
 /** Health-score pill (X/100). */
 export function HealthScorePill({ score }: { score: number | null }) {
   if (score === null) return <span className="text-xs text-[var(--text-4)]">—</span>;
