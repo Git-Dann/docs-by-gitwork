@@ -26,6 +26,15 @@ function formatMoney(amount: number, currency: string): string {
   }
 }
 
+/** Approximate static FX to GBP — matches DEFAULT_FX_FROM_USD in pulse-pricing.ts.
+ *  Directional only, for the internal MD cost snapshot; the live ECB rate lives in
+ *  src/server/fx.ts and could be threaded through the API if precise figures are ever
+ *  needed. Unknown currencies pass through 1:1. */
+const FX_TO_GBP: Record<string, number> = { GBP: 1, USD: 0.79, EUR: 0.85 };
+function fxToGbp(currency: string): number {
+  return FX_TO_GBP[currency] ?? 1;
+}
+
 export function CodeClearOverview() {
   const statsQuery = useCodeClearStats();
   // The overview now derives from the full roster (pageSize 100 covers
@@ -143,42 +152,40 @@ export function CodeClearOverview() {
   // GBP/USD); the headline uses the dominant-currency total and flags the rest.
   const financials = useMemo(() => {
     if (!canViewClientFinancials) return null;
-    const byCurrency = new Map<
-      string,
-      { total: number; clients: number; devs: number }
-    >();
+    // Sum monthly cost per currency across clients (dev rates can be USD or GBP).
+    const byCurrency = new Map<string, number>();
     let unpricedDevs = 0;
+    let pricedDevs = 0;
+    let clientsWithCost = 0;
     for (const c of allClients) {
       const mc = c.monthlyCost;
       if (!mc) continue;
       unpricedDevs += mc.unpricedDevs;
       if (mc.pricedDevs > 0) {
-        const cur = byCurrency.get(mc.currency) ?? { total: 0, clients: 0, devs: 0 };
-        cur.total += mc.amount;
-        cur.clients += 1;
-        cur.devs += mc.pricedDevs;
-        byCurrency.set(mc.currency, cur);
+        byCurrency.set(mc.currency, (byCurrency.get(mc.currency) ?? 0) + mc.amount);
+        pricedDevs += mc.pricedDevs;
+        clientsWithCost += 1;
       }
     }
-    let currency = "GBP";
-    let total = 0;
-    let clients = 0;
-    let pricedDevs = 0;
-    for (const [cur, v] of byCurrency) {
-      if (v.total > total) {
-        currency = cur;
-        total = v.total;
-        clients = v.clients;
-        pricedDevs = v.devs;
+    // Headline in GBP: convert every currency block and sum.
+    let gbpTotal = 0;
+    for (const [cur, amt] of byCurrency) gbpTotal += Math.round(amt * fxToGbp(cur));
+    // Sub-figure: the largest single non-GBP block, shown in its own currency (usually USD).
+    let nativeCurrency = "";
+    let nativeTotal = 0;
+    for (const [cur, amt] of byCurrency) {
+      if (cur !== "GBP" && amt > nativeTotal) {
+        nativeCurrency = cur;
+        nativeTotal = amt;
       }
     }
     return {
-      total,
-      currency,
-      clients,
+      gbpTotal,
+      nativeCurrency,
+      nativeTotal,
       pricedDevs,
       unpricedDevs,
-      multiCurrency: byCurrency.size > 1,
+      clientsWithCost,
     };
   }, [canViewClientFinancials, allClients]);
 
@@ -240,19 +247,58 @@ export function CodeClearOverview() {
           progress={engagedPct}
           className="col-span-12 md:col-span-6 xl:col-span-3"
         />
-        <StatWidget
-          number={nextNum()}
-          name="AVG CALIBRE"
-          value={avgCalibre != null ? String(avgCalibre) : "—"}
-          unit="/ 100"
-          caption={
-            calibreSamples.length > 0
-              ? `From ${calibreSamples.length} scored dev${calibreSamples.length > 1 ? "s" : ""}`
-              : "No devs scored yet"
-          }
-          progress={avgCalibre ?? undefined}
-          className="col-span-12 md:col-span-6 xl:col-span-3"
-        />
+        {/* Slot 03 — COSTS for financial viewers (Super Admins + `clients.viewFinancials`),
+            else the AVG CALIBRE stat for everyone else. One card either way, so the NN//
+            sequence stays gapless. GBP headline, native (USD) sub, unpriced as a line item. */}
+        {canViewClientFinancials && financials ? (
+          <WidgetCard
+            number={nextNum()}
+            name="COSTS"
+            className="col-span-12 md:col-span-6 xl:col-span-3"
+          >
+            <div className="space-y-1.5">
+              <div className="flex items-baseline gap-1.5">
+                <span className="font-display text-[28px] leading-none tracking-[-0.02em] text-[var(--text-1)]">
+                  {financials.pricedDevs > 0 ? formatMoney(financials.gbpTotal, "GBP") : "—"}
+                </span>
+                <span className="widget-data-label">/ MO</span>
+              </div>
+              {financials.pricedDevs > 0 && financials.nativeCurrency ? (
+                <p className="widget-timestamp">
+                  ≈ {formatMoney(financials.nativeTotal, financials.nativeCurrency)} ·{" "}
+                  {financials.clientsWithCost} client{financials.clientsWithCost === 1 ? "" : "s"}
+                </p>
+              ) : financials.pricedDevs > 0 ? (
+                <p className="widget-timestamp">
+                  Across {financials.clientsWithCost} client
+                  {financials.clientsWithCost === 1 ? "" : "s"}
+                </p>
+              ) : (
+                <p className="widget-timestamp">No dev rates on file yet</p>
+              )}
+              {financials.unpricedDevs > 0 ? (
+                <p className="text-xs text-[var(--text-4)]">
+                  {financials.unpricedDevs} dev{financials.unpricedDevs === 1 ? "" : "s"} with no
+                  rate on file
+                </p>
+              ) : null}
+            </div>
+          </WidgetCard>
+        ) : (
+          <StatWidget
+            number={nextNum()}
+            name="AVG CALIBRE"
+            value={avgCalibre != null ? String(avgCalibre) : "—"}
+            unit="/ 100"
+            caption={
+              calibreSamples.length > 0
+                ? `From ${calibreSamples.length} scored dev${calibreSamples.length > 1 ? "s" : ""}`
+                : "No devs scored yet"
+            }
+            progress={avgCalibre ?? undefined}
+            className="col-span-12 md:col-span-6 xl:col-span-3"
+          />
+        )}
         <StatWidget
           number={nextNum()}
           name="VALIDATED"
@@ -266,82 +312,6 @@ export function CodeClearOverview() {
           progress={validatedPct}
           className="col-span-12 md:col-span-6 xl:col-span-3"
         />
-
-        {/* MD snapshot — financial top-line, shown only to viewers who may see
-            client financials (Super Admins + `clients.viewFinancials`, e.g. Harry).
-            Numbers slot into the same NN// sequence so there's no gap for others. */}
-        {canViewClientFinancials && financials ? (
-          <>
-            <StatWidget
-              number={nextNum()}
-              name="MONTHLY BURN"
-              value={
-                financials.pricedDevs > 0
-                  ? formatMoney(financials.total, financials.currency)
-                  : "—"
-              }
-              unit="/ MONTH"
-              caption={
-                financials.pricedDevs > 0
-                  ? `Across ${financials.clients} client${financials.clients === 1 ? "" : "s"}` +
-                    (financials.multiCurrency ? " · dominant currency" : "") +
-                    (financials.unpricedDevs > 0 ? ` · ${financials.unpricedDevs} unpriced` : "")
-                  : "No dev rates on file yet"
-              }
-              className="col-span-12 md:col-span-6 xl:col-span-3"
-            />
-            <StatWidget
-              number={nextNum()}
-              name="AVG / CLIENT"
-              value={
-                financials.clients > 0
-                  ? formatMoney(
-                      Math.round(financials.total / financials.clients),
-                      financials.currency,
-                    )
-                  : "—"
-              }
-              unit="/ MONTH"
-              caption={
-                financials.clients > 0
-                  ? "Mean monthly spend per client"
-                  : "No priced clients yet"
-              }
-              className="col-span-12 md:col-span-6 xl:col-span-3"
-            />
-            <StatWidget
-              number={nextNum()}
-              name="AVG / DEV"
-              value={
-                financials.pricedDevs > 0
-                  ? formatMoney(
-                      Math.round(financials.total / financials.pricedDevs),
-                      financials.currency,
-                    )
-                  : "—"
-              }
-              unit="/ MONTH"
-              caption={
-                financials.pricedDevs > 0
-                  ? `Across ${financials.pricedDevs} priced dev${financials.pricedDevs === 1 ? "" : "s"}`
-                  : "No priced devs yet"
-              }
-              className="col-span-12 md:col-span-6 xl:col-span-3"
-            />
-            <StatWidget
-              number={nextNum()}
-              name="UNPRICED"
-              value={String(financials.unpricedDevs)}
-              unit={financials.unpricedDevs === 1 ? "DEV" : "DEVS"}
-              caption={
-                financials.unpricedDevs === 0
-                  ? "Every deployed dev has a rate"
-                  : "Deployed with no rate on file"
-              }
-              className="col-span-12 md:col-span-6 xl:col-span-3"
-            />
-          </>
-        ) : null}
 
         {/* Row 2 — bench composition (tier mix) + how the team is
             deployed (clients with dev counts). */}
@@ -403,7 +373,7 @@ export function CodeClearOverview() {
                 if (canViewClientFinancials && cost) {
                   if (cost.mixedCurrency) costLabel = "mixed";
                   else if (cost.pricedDevs > 0)
-                    costLabel = `${formatMoney(cost.amount, cost.currency)}/mo`;
+                    costLabel = `${formatMoney(Math.round(cost.amount * fxToGbp(cost.currency)), "GBP")}/mo`;
                   else if (cost.unpricedDevs > 0) costLabel = "rates n/a";
                 }
                 const inner = (
