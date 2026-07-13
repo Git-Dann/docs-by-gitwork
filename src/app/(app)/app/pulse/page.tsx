@@ -3,7 +3,6 @@ import { PulseChecksDisclosure } from "@/components/pulse/pulse-overview";
 import { PulseTopCards } from "@/components/pulse/pulse-top-cards";
 import { PulseScanListView } from "@/components/pulse/pulse-scan-list";
 import { PulseLeadsPanel } from "@/components/pulse/pulse-leads-panel";
-import { PulseEmbedPanel } from "@/components/pulse/pulse-embed-panel";
 import { PulseMonitorsPanel } from "@/components/pulse/pulse-monitors-panel";
 
 export default function PulsePage() {
@@ -13,10 +12,9 @@ export default function PulsePage() {
       subtitle="Validate and audit client projects — from prompt to production."
     >
       <div className="space-y-8">
-        {/* Three equal-height widget cards across the top (collapse-in-unison, collapsed by default). */}
+        {/* Four equal-height widget cards across the top (collapse-in-unison, collapsed by default). */}
         <PulseTopCards />
         <PulseChecksDisclosure />
-        <PulseEmbedPanel />
         <PulseLeadsPanel />
         <PulseMonitorsPanel />
         <PulseScanListView />

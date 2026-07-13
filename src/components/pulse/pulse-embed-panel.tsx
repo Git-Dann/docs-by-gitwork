@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDownIcon, ChevronRightIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
+import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { usePulseEmbedConfig, useSetPulseEmbedConfig } from "@/hooks/use-pulse";
 import { CHECKS_REGISTRY } from "@/server/checks-registry";
 import { DEFAULT_EMBED_CHECK_KEYS } from "@/server/pulse-embed-config";
 import { cn } from "@/lib/format";
+import { CardHeader } from "@/components/pulse/pulse-overview";
 
 /** Toggle switch — mirrors the pattern used elsewhere (e.g. settings-panel.tsx's dev-rates toggle). */
 function ToggleSwitch({ checked, disabled, onChange }: { checked: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
@@ -17,24 +18,35 @@ function ToggleSwitch({ checked, disabled, onChange }: { checked: boolean; disab
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-700)] disabled:opacity-50",
+        "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-700)] disabled:opacity-50",
         checked ? "bg-[var(--brand-700)]" : "bg-[var(--border-1)]",
       )}
     >
       <span
         className={cn(
-          "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
-          checked ? "translate-x-5" : "translate-x-0",
+          "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+          checked ? "translate-x-4" : "translate-x-0",
         )}
       />
     </button>
   );
 }
 
-export function PulseEmbedPanel() {
+/**
+ * `04 // PUBLIC EMBED` — controls for the /embed/pulse widget used on gitwork.co.uk.
+ * Collapsed (default): the enabled toggle + a one-line "N checks shown" summary.
+ * Expanded: adds a searchable, category-grouped picker for which checks are in the
+ * free public teaser (backed by Workspace.pulseEmbedCheckKeys).
+ */
+export function PulseEmbedTopCard({
+  collapsed = false,
+  onToggle,
+}: {
+  collapsed?: boolean;
+  onToggle?: () => void;
+}) {
   const { data, isLoading } = usePulseEmbedConfig();
   const { mutate: save, isPending } = useSetPulseEmbedConfig();
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [search, setSearch] = useState("");
 
   const checkKeys = useMemo(() => new Set(data?.checkKeys ?? DEFAULT_EMBED_CHECK_KEYS), [data?.checkKeys]);
@@ -57,34 +69,37 @@ export function PulseEmbedPanel() {
     save({ checkKeys: [...next] });
   }
 
-  if (isLoading || !data) return null;
-
   return (
-    <div className="app-card p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <p className="text-sm font-semibold text-[var(--text-1)]">Public embed</p>
-          <p className="mt-0.5 text-xs text-[var(--text-4)]">
-            Controls the /embed/pulse widget used on gitwork.co.uk.
-          </p>
+    <article className="widget-card h-full">
+      <CardHeader
+        number="04"
+        title="PUBLIC EMBED"
+        status={data ? (data.enabled ? "Enabled" : "Disabled") : undefined}
+        collapsed={collapsed}
+        onToggle={onToggle}
+      />
+
+      {isLoading || !data ? (
+        <div className="flex flex-1 items-center p-4">
+          <span className="text-xs text-[var(--text-4)]">Loading…</span>
         </div>
-        <ToggleSwitch checked={data.enabled} disabled={isPending} onChange={(v) => save({ enabled: v })} />
-      </div>
+      ) : collapsed ? (
+        <div className="flex flex-1 items-center justify-between gap-3 p-4">
+          <span className="min-w-0 truncate text-xs text-[var(--text-4)]">
+            {checkKeys.size} check{checkKeys.size === 1 ? "" : "s"} shown on gitwork.co.uk
+          </span>
+          <ToggleSwitch checked={data.enabled} disabled={isPending} onChange={(v) => save({ enabled: v })} />
+        </div>
+      ) : (
+        <div className="flex flex-1 flex-col p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[12px] leading-snug text-[var(--text-4)]">
+              Which checks show in the free /embed/pulse teaser on gitwork.co.uk.
+            </p>
+            <ToggleSwitch checked={data.enabled} disabled={isPending} onChange={(v) => save({ enabled: v })} />
+          </div>
 
-      <button
-        type="button"
-        onClick={() => setPickerOpen((v) => !v)}
-        className="flex w-full items-center justify-between rounded-[8px] border border-[var(--border-2)] px-3 py-2 text-left text-xs font-medium text-[var(--text-3)] hover:bg-[var(--surface-1)]"
-      >
-        <span>
-          Checks shown in the free teaser — <span className="font-semibold text-[var(--text-1)]">{checkKeys.size} selected</span>
-        </span>
-        {pickerOpen ? <ChevronDownIcon className="size-4" /> : <ChevronRightIcon className="size-4" />}
-      </button>
-
-      {pickerOpen && (
-        <div className="mt-3">
-          <div className="relative mb-3">
+          <div className="relative mt-3">
             <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--text-4)]" />
             <input
               value={search}
@@ -93,10 +108,11 @@ export function PulseEmbedPanel() {
               className="app-input w-full pl-8 text-xs"
             />
           </div>
-          <div className="max-h-80 overflow-y-auto rounded-[8px] border border-[var(--border-2)]">
+
+          <div className="mt-2 max-h-64 flex-1 overflow-y-auto rounded-[6px] border border-[var(--border-2)]">
             {[...grouped.entries()].map(([category, checks]) => (
               <div key={category} className="border-b border-[var(--border-2)] last:border-b-0">
-                <div className="bg-[var(--surface-1)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">
+                <div className="bg-[var(--surface-1)] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">
                   {category}
                 </div>
                 {checks.map((c) => (
@@ -119,8 +135,10 @@ export function PulseEmbedPanel() {
               <p className="px-3 py-4 text-center text-xs text-[var(--text-4)]">No checks match &quot;{search}&quot;.</p>
             )}
           </div>
+
+          <p className="mt-2 text-[11px] text-[var(--text-4)]">{checkKeys.size} selected</p>
         </div>
       )}
-    </div>
+    </article>
   );
 }
