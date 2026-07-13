@@ -70,6 +70,6 @@ async function run(ctx: SyncContext): Promise<SyncResult> {
 }
 
 export const analyticsAdapter: ChannelAdapter = {
-  key: "analytics",
+  key: "ANALYTICS",
   run,
 };

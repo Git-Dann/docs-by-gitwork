@@ -16,39 +16,48 @@ Authorization: Bearer $CRON_SECRET
 
 ## Crontab
 
-Install with `crontab -e` on the VPS (as the deploy user). `BASE` is the app's
-internal URL (localhost inside the compose network, or the public host).
+Edit with `crontab -e` on the VPS **as the `deploy` user** (`sudo crontab -l` as root
+is empty — that's a false alarm; the jobs live in `deploy`'s crontab). The jobs do
+**not** call `curl` directly — they go through the `run-cron.sh` wrapper, which reads
+`CRON_SECRET` from the app `.env` and hits the endpoint on the internal host, logging
+to `/tmp/foundry-cron.log`. This is what's actually installed on the box:
 
 ```cron
-CRON_SECRET=<same value as the app .env>
-BASE=https://foundry.gitwork.co.uk
+0 2 * * *  /opt/apps/foundry/run-cron.sh docs-gdrive-backup   >> /tmp/foundry-cron.log 2>&1
+0 3 * * *  /opt/apps/foundry/run-cron.sh auto-archive-tasks   >> /tmp/foundry-cron.log 2>&1
+0 4 * * *  /opt/apps/foundry/run-cron.sh pulse-reconcile      >> /tmp/foundry-cron.log 2>&1
+0 5 * * *  /opt/apps/foundry/run-cron.sh pulse-run-monitors   >> /tmp/foundry-cron.log 2>&1
+0 6 * * *  /opt/apps/foundry/run-cron.sh analytics-snapshot   >> /tmp/foundry-cron.log 2>&1
+0 7 * * *  /opt/apps/foundry/run-cron.sh embed-conversations  >> /tmp/foundry-cron.log 2>&1
+0 8 * * *  /opt/apps/foundry/run-cron.sh support-sync         >> /tmp/foundry-cron.log 2>&1
+0 9 * * *  /opt/apps/foundry/run-cron.sh meet-transcripts     >> /tmp/foundry-cron.log 2>&1
+0 10 * * * /opt/apps/foundry/run-cron.sh care-digest          >> /tmp/foundry-cron.log 2>&1
 
-# Uptime monitors — probe due wiki monitors + prune old history. Runs often;
-# each monitor self-throttles to its own intervalMinutes.
-*/5 * * * *  curl -fsS -H "Authorization: Bearer $CRON_SECRET" $BASE/api/cron/wiki-monitors >/dev/null
-
-# Daily jobs
-0 2 * * *   curl -fsS -H "Authorization: Bearer $CRON_SECRET" $BASE/api/cron/docs-gdrive-backup >/dev/null
-0 3 * * *   curl -fsS -H "Authorization: Bearer $CRON_SECRET" $BASE/api/cron/auto-archive-tasks >/dev/null
-0 4 * * *   curl -fsS -H "Authorization: Bearer $CRON_SECRET" $BASE/api/cron/pulse-reconcile >/dev/null
-0 5 * * *   curl -fsS -H "Authorization: Bearer $CRON_SECRET" $BASE/api/cron/pulse-run-monitors >/dev/null
-0 6 * * *   curl -fsS -H "Authorization: Bearer $CRON_SECRET" $BASE/api/cron/analytics-snapshot >/dev/null
-0 7 * * *   curl -fsS -H "Authorization: Bearer $CRON_SECRET" $BASE/api/cron/embed-conversations >/dev/null
-0 8 * * *   curl -fsS -H "Authorization: Bearer $CRON_SECRET" $BASE/api/cron/support-sync >/dev/null
-0 9 * * *   curl -fsS -H "Authorization: Bearer $CRON_SECRET" $BASE/api/cron/meet-transcripts >/dev/null
-0 10 * * *  curl -fsS -H "Authorization: Bearer $CRON_SECRET" $BASE/api/cron/care-digest >/dev/null
+# Weekly DB backup (Sunday 01:30) — separate script, its own log
+30 1 * * 0 /opt/apps/foundry/deploy/db-backup.sh >> /opt/apps/foundry/backups/backup.log 2>&1
 ```
+
+### Optional: twice-daily Care sync (per PR #351)
+
+`support-sync` runs once daily above. PR #351 wanted it **twice** (09:00 + 13:00 GMT)
+for fresher Care reports. To adopt, replace the `0 8` line with:
+
+```cron
+0 9  * * * /opt/apps/foundry/run-cron.sh support-sync >> /tmp/foundry-cron.log 2>&1
+0 13 * * * /opt/apps/foundry/run-cron.sh support-sync >> /tmp/foundry-cron.log 2>&1
+```
+
+(`support-sync` self-throttles per connector via `scraperConfig.syncIntervalMinutes`,
+so running it more often is safe. Note 09:00 collides with `meet-transcripts` — fine,
+they're independent, but the crontab otherwise staggers one job per hour.)
 
 ## Notes
 
-- **Wiki monitors** (`/api/cron/wiki-monitors`) is the only sub-daily job — uptime
-  needs frequent probing. It reads every enabled `WikiMonitor`, runs the ones whose
-  interval has elapsed (HTTP/TCP connectors, SSRF-guarded), records a
-  `WikiMonitorCheck`, and prunes checks older than 30 days. "Check now" in the wiki
-  workspace and the probe on monitor creation work without the cron; only the
-  rolling history/uptime needs it.
-- Other backups (DB `pg_dump`) and the Let's Encrypt renewer are separate host
-  concerns — see CLAUDE.md §23.
-- `vercel.json` lists `wiki-monitors` at `*/5` too; that entry only matters to the
-  vestigial Vercel deploy (Hobby caps crons at daily, so it may warn there — the
-  VPS crontab above is authoritative).
+- All app jobs are **daily** — the VPS has no sub-daily cron installed. (`vercel.json`
+  is the vestigial source-of-truth *list* of jobs and may list finer schedules, e.g.
+  `wiki-monitors` at `*/5`; those only mattered on Vercel and are **not** wired on the
+  box. Add a `*/5 * * * * /opt/apps/foundry/run-cron.sh wiki-monitors …` line here if
+  uptime monitoring is wanted.)
+- The **DB backup** is the weekly `db-backup.sh` above; the Fasthosts panel also runs a
+  VM-level backup. The Let's Encrypt renewer is a separate host concern — see CLAUDE.md §23.
+- Tail `/tmp/foundry-cron.log` to see recent runs (each line is the endpoint's JSON result).
