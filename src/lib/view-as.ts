@@ -7,7 +7,10 @@ import { useState, useEffect, useCallback } from "react";
 // "STAFF" / "DEVELOPER" = preset role previews
 export type ViewAsRole = "USER" | "STAFF" | "DEVELOPER" | null;
 
-export type ViewAsUser = { name: string; permissions: string[]; role?: string };
+// `id` is the target teammate's USER id — sent to the server as `x-view-as-user`
+// so a Super Admin's preview is scoped to that person's real data (not just a UI
+// permission mask). Optional for backward-compat with older stored previews.
+export type ViewAsUser = { name: string; permissions: string[]; role?: string; id?: string };
 
 const ROLE_KEY = "foundry_view_as_role";
 const USER_KEY = "foundry_view_as_user"; // JSON: { name, permissions }
@@ -51,8 +54,8 @@ export function useViewAs(isAdmin: boolean) {
   }, [isAdmin]);
 
   // Preview as a specific teammate (admin, staff or developer) using their real permissions
-  const setViewAsUser = useCallback((name: string, permissions: string[], role?: string) => {
-    const user: ViewAsUser = { name, permissions, role };
+  const setViewAsUser = useCallback((name: string, permissions: string[], role?: string, id?: string) => {
+    const user: ViewAsUser = { name, permissions, role, id };
     setViewAsState("USER");
     setViewAsUserState(user);
     try {

@@ -167,10 +167,29 @@ export async function seedProjectPlan(input: ProjectPlanRequest): Promise<{ resu
   });
 }
 
+// "View as" preview: when a Super Admin is previewing as a specific teammate,
+// tell the server whose data to scope this request to. Mirrors the localStorage
+// keys in src/lib/view-as.ts (USER-mode preview stores the target's user id).
+// The server only honours it for a real Super Admin caller (see effective-user.ts).
+function viewAsHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const role = window.localStorage.getItem("foundry_view_as_role");
+    if (role !== "USER" && role !== "ADMIN_USER") return {};
+    const raw = window.localStorage.getItem("foundry_view_as_user");
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as { id?: unknown };
+    return typeof parsed?.id === "string" && parsed.id ? { "x-view-as-user": parsed.id } : {};
+  } catch {
+    return {};
+  }
+}
+
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...options,
     headers: {
+      ...viewAsHeaders(),
       ...(options?.headers as Record<string, string> | undefined),
     },
   });
