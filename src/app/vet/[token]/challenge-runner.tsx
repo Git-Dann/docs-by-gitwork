@@ -149,38 +149,38 @@ export function ChallengeRunner({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <span className="font-mono text-xs uppercase tracking-wider text-neutral-500">
+        <span className="font-mono text-xs uppercase tracking-wider text-[#6B6B6B]">
           {challenge.difficulty} · {challenge.language} · {challenge.testCount} tests
         </span>
-        <span className="font-mono text-sm text-neutral-700">⏱ {timeLabel}</span>
+        <span className="font-mono text-sm text-[#46464C]">⏱ {timeLabel}</span>
       </div>
 
-      <div className="rounded-lg border border-neutral-200 bg-white p-4">
-        <h3 className="mb-2 text-lg font-semibold text-neutral-900">{challenge.title}</h3>
-        <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-neutral-700">
+      <div className="rounded-lg border border-[rgba(12,12,24,0.1)] bg-white p-4">
+        <h3 className="mb-2 text-lg font-semibold text-[#1A1A1E]">{challenge.title}</h3>
+        <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#46464C]">
           {challenge.promptMarkdown}
         </pre>
         <div className="mt-3 space-y-1">
           {challenge.tests
             .filter((t) => !t.hidden)
             .map((t) => (
-              <div key={t.name} className="font-mono text-xs text-neutral-500">
+              <div key={t.name} className="font-mono text-xs text-[#6B6B6B]">
                 {challenge.functionName}({JSON.stringify(t.args).slice(1, -1)}) → {JSON.stringify(t.expected)}
               </div>
             ))}
           {challenge.tests.some((t) => t.hidden) && (
-            <div className="font-mono text-xs text-neutral-400">
+            <div className="font-mono text-xs text-[#9a978f]">
               + {challenge.tests.filter((t) => t.hidden).length} hidden tests
             </div>
           )}
         </div>
       </div>
 
-      <div className="flex h-72 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-950 font-mono text-sm focus-within:border-blue-500">
+      <div className="flex h-72 overflow-hidden rounded-lg border border-[rgba(255,255,255,0.12)] bg-[#0C0C18] font-mono text-sm focus-within:border-[#6B52FF]">
         <div
           ref={gutterRef}
           aria-hidden
-          className="select-none overflow-hidden bg-white/[0.03] px-2.5 py-4 text-right text-neutral-600"
+          className="select-none overflow-hidden bg-white/[0.03] px-2.5 py-4 text-right text-[#6B6B6B]"
         >
           {Array.from({ length: code.split("\n").length }, (_, i) => (
             <div key={i} className="leading-6">{i + 1}</div>
@@ -221,16 +221,16 @@ export function ChallengeRunner({
       {error && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
       {results && (
-        <div className="rounded-lg border border-neutral-200 bg-white p-4">
-          <p className="mb-2 font-mono text-xs uppercase tracking-wider text-neutral-500">
+        <div className="rounded-lg border border-[rgba(12,12,24,0.1)] bg-white p-4">
+          <p className="mb-2 font-mono text-xs uppercase tracking-wider text-[#6B6B6B]">
             {passedCount}/{results.length} passing
           </p>
           <div className="space-y-1">
             {results.map((r, i) => (
               <div key={i} className="flex items-center gap-2 text-sm">
-                <span className={r.passed ? "text-green-600" : "text-red-600"}>{r.passed ? "✓" : "✗"}</span>
-                <span className="text-neutral-700">{r.hidden ? `Hidden test ${i + 1}` : r.name}</span>
-                {r.message && <span className="font-mono text-xs text-neutral-400">{r.message}</span>}
+                <span className={r.passed ? "text-[#3f8f5b]" : "text-[#d14343]"}>{r.passed ? "✓" : "✗"}</span>
+                <span className="text-[#46464C]">{r.hidden ? `Hidden test ${i + 1}` : r.name}</span>
+                {r.message && <span className="font-mono text-xs text-[#9a978f]">{r.message}</span>}
               </div>
             ))}
           </div>
@@ -242,7 +242,7 @@ export function ChallengeRunner({
           type="button"
           onClick={runTests}
           disabled={running}
-          className="rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
+          className="rounded-md border border-[rgba(12,12,24,0.16)] bg-white px-4 py-2 text-sm font-medium text-[#46464C] hover:bg-[#FBFAF7] disabled:opacity-50"
         >
           {running ? "Running…" : "Run tests"}
         </button>
@@ -250,11 +250,11 @@ export function ChallengeRunner({
           type="button"
           onClick={submit}
           disabled={submitting || results === null}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className="rounded-md bg-[#6B52FF] px-4 py-2 text-sm font-medium text-white hover:bg-[#5a43e6] disabled:opacity-50"
         >
           {submitting ? "Submitting…" : "Submit solution"}
         </button>
-        <span className="text-xs text-neutral-400">Run your tests before submitting.</span>
+        <span className="text-xs text-[#9a978f]">Run your tests before submitting.</span>
       </div>
     </div>
   );

@@ -1,7 +1,16 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  BrandButton,
+  BrandCard,
+  BrandField,
+  FadeIn,
+  Lede,
+  OnboardingShell,
+  brandInputClass,
+} from "@/components/onboarding/brand";
 
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -33,20 +42,23 @@ export function ApplyFlow() {
       .catch(() => setPhase("locked"));
   }, []);
 
-  // Redirect to the candidate's own resumable /vet/[token] URL (also emailed to them).
   const onStarted = (token: string) => {
     setPhase("starting");
     router.push(`/vet/${token}`);
   };
 
   return (
-    <Shell>
-      {(phase === "loading" || phase === "starting") && (
-        <p className="text-sm text-neutral-500">{phase === "starting" ? "Setting up your assessment…" : "Loading…"}</p>
-      )}
-      {phase === "locked" && <PasswordGate onUnlock={() => setPhase("start")} />}
-      {phase === "start" && <StartCard onStarted={onStarted} />}
-    </Shell>
+    <OnboardingShell meta="Apply">
+      <FadeIn key={phase}>
+        {(phase === "loading" || phase === "starting") && (
+          <p className="font-mono text-xs uppercase tracking-[0.12em] text-[#6B6B6B]">
+            {phase === "starting" ? "Setting up your assessment…" : "Loading…"}
+          </p>
+        )}
+        {phase === "locked" && <PasswordGate onUnlock={() => setPhase("start")} />}
+        {phase === "start" && <StartCard onStarted={onStarted} />}
+      </FadeIn>
+    </OnboardingShell>
   );
 }
 
@@ -69,10 +81,8 @@ function PasswordGate({ onUnlock }: { onUnlock: () => void }) {
   };
 
   return (
-    <Panel eyebrow="Access" title="This assessment is invite-protected">
-      <p className="text-sm leading-relaxed text-neutral-600">
-        Enter the access password you were given to begin your DevSignal assessment.
-      </p>
+    <BrandCard eyebrow="Access" title="This assessment is invite-protected.">
+      <Lede>Enter the access password you were given to begin your Gitwork developer assessment.</Lede>
       <form onSubmit={submit} className="mt-5 space-y-3">
         <input
           type="password"
@@ -80,18 +90,14 @@ function PasswordGate({ onUnlock }: { onUnlock: () => void }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Access password"
-          className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+          className={brandInputClass(error ?? undefined)}
         />
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button
-          type="submit"
-          disabled={busy || !password.trim()}
-          className="w-full rounded-md bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
-        >
-          {busy ? "Checking…" : "Continue"}
-        </button>
+        {error && <p className="text-sm text-[#d14343]">{error}</p>}
+        <BrandButton type="submit" onClick={() => {}} disabled={busy || !password.trim()} className="w-full">
+          {busy ? "Checking…" : "Continue →"}
+        </BrandButton>
       </form>
-    </Panel>
+    </BrandCard>
   );
 }
 
@@ -135,17 +141,17 @@ function StartCard({ onStarted }: { onStarted: (token: string) => void }) {
   };
 
   return (
-    <Panel eyebrow="DevSignal" title="Prove your calibre">
-      <p className="text-sm leading-relaxed text-neutral-600">
+    <BrandCard eyebrow="DevSignal · Developer assessment" title="Prove your calibre.">
+      <Lede>
         A short, fair assessment of how you actually work — your GitHub, a real coding task, and a
         quick intro. Use whatever tools you normally would, including AI. Takes about 30–40 minutes,
         and you can pick up where you left off.
-      </p>
-      <ol className="mt-4 space-y-1.5">
+      </Lede>
+      <ol className="mt-4 space-y-2">
         {["A bit about you", "Connect your GitHub", "A timed coding challenge", "A short recorded answer"].map((s, i) => (
-          <li key={s} className="flex items-center gap-2.5 text-sm text-neutral-700">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-50 font-mono text-[10px] text-blue-700">
-              {i + 1}
+          <li key={s} className="flex items-center gap-3 text-sm text-[#46464C]">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#6B52FF]/10 font-[family-name:var(--font-playfair)] text-xs italic text-[#6B52FF]">
+              {["i", "ii", "iii", "iv"][i]}
             </span>
             {s}
           </li>
@@ -153,68 +159,23 @@ function StartCard({ onStarted }: { onStarted: (token: string) => void }) {
       </ol>
 
       <form onSubmit={submit} className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <FormField label="Full name" error={errors.name}>
-          <input value={form.name} onChange={set("name")} className={inputCls(errors.name)} />
-        </FormField>
-        <FormField label="Email" error={errors.email}>
-          <input type="email" value={form.email} onChange={set("email")} className={inputCls(errors.email)} />
-        </FormField>
-        <FormField label="GitHub username" error={errors.githubHandle}>
-          <input value={form.githubHandle} onChange={set("githubHandle")} placeholder="octocat" className={inputCls(errors.githubHandle)} />
-        </FormField>
-        <FormField label="Primary stack (optional)" error={undefined}>
-          <input value={form.primaryStack} onChange={set("primaryStack")} placeholder="React / TypeScript" className={inputCls()} />
-        </FormField>
-        {fatal && <p className="sm:col-span-2 text-sm text-red-600">{fatal}</p>}
-        <button
-          type="submit"
-          disabled={busy}
-          className="sm:col-span-2 mt-1 rounded-md bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
-        >
-          {busy ? "Starting…" : "Begin assessment →"}
-        </button>
-      </form>
-    </Panel>
-  );
-}
-
-// ─── shared shell + primitives (match the candidate VetFlow aesthetic) ──────────
-
-function inputCls(error?: string) {
-  return `w-full rounded-md border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
-    error ? "border-red-400 focus:border-red-500 focus:ring-red-100" : "border-neutral-300 focus:border-blue-500 focus:ring-blue-100"
-  }`;
-}
-
-function FormField({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block font-mono text-xs uppercase tracking-wider text-neutral-500">{label}</span>
-      {children}
-      {error && <span className="mt-1 block text-xs text-red-600">{error}</span>}
-    </label>
-  );
-}
-
-function Shell({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-[#F7F6F3] px-4 py-12">
-      <div className="w-full max-w-xl">
-        <div className="mb-6 text-center font-mono text-xs uppercase tracking-[0.2em] text-blue-600">
-          Gitwork · DevSignal
+        <BrandField label="Full name" error={errors.name}>
+          <input value={form.name} onChange={set("name")} className={brandInputClass(errors.name)} />
+        </BrandField>
+        <BrandField label="Email" error={errors.email}>
+          <input type="email" value={form.email} onChange={set("email")} className={brandInputClass(errors.email)} />
+        </BrandField>
+        <BrandField label="GitHub username" error={errors.githubHandle}>
+          <input value={form.githubHandle} onChange={set("githubHandle")} placeholder="octocat" className={brandInputClass(errors.githubHandle)} />
+        </BrandField>
+        <BrandField label="Primary stack (optional)">
+          <input value={form.primaryStack} onChange={set("primaryStack")} placeholder="React / TypeScript" className={brandInputClass()} />
+        </BrandField>
+        {fatal && <p className="text-sm text-[#d14343] sm:col-span-2">{fatal}</p>}
+        <div className="sm:col-span-2">
+          <BrandButton type="submit" onClick={() => {}} disabled={busy}>{busy ? "Starting…" : "Begin assessment →"}</BrandButton>
         </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function Panel({ eyebrow, title, children }: { eyebrow: string; title: string; children: ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-neutral-200 bg-white p-7 shadow-sm">
-      <p className="font-mono text-xs uppercase tracking-wider text-neutral-400">{eyebrow}</p>
-      <h1 className="mt-1 font-serif text-3xl leading-tight tracking-[-0.02em] text-neutral-900">{title}</h1>
-      <div className="mt-4">{children}</div>
-    </div>
+      </form>
+    </BrandCard>
   );
 }
