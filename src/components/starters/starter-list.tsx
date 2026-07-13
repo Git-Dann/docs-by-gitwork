@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   PlusIcon,
@@ -11,10 +11,6 @@ import {
   SparklesIcon,
   ArrowRightIcon,
   ArrowDownTrayIcon,
-  CommandLineIcon,
-  ClipboardIcon,
-  CheckIcon,
-  InformationCircleIcon,
   MagnifyingGlassIcon,
   StarIcon as StarOutline,
 } from "@heroicons/react/24/outline";
@@ -175,79 +171,6 @@ function StarterCard({
   );
 }
 
-// Two ways into a Claude chat: per-starter Skill zip (the download arrow on each card), or connect
-// Foundry's MCP server once so every starter appears as a slash-command prompt in Claude Desktop.
-// A compact (i) button in the "01" header opens this as a popover instead of a standing card, so
-// it doesn't eat vertical space once you already know how it works.
-function UseInClaudeInfo() {
-  const [open, setOpen] = useState(false);
-  const [origin, setOrigin] = useState("");
-  const [copied, setCopied] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => setOrigin(window.location.origin), []);
-  const snippet = `claude mcp add --transport http foundry ${origin || "https://foundry.gitwork.co.uk"}/api/mcp`;
-
-  useEffect(() => {
-    if (!open) return;
-    function handlePointerDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, [open]);
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(snippet);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard blocked — the snippet is still selectable */
-    }
-  }
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)] transition hover:text-[var(--brand-700)]"
-        title="Use in Claude"
-        aria-label="Use in Claude"
-      >
-        <InformationCircleIcon className="h-4 w-4" />
-        Use in Claude
-      </button>
-      {open && (
-        <div className="absolute right-0 top-7 z-20 w-80 space-y-3 rounded-[8px] border border-[var(--border-2)] bg-white p-4 text-left shadow-[var(--shadow-lg)]">
-          <p className="text-xs leading-5 text-[var(--text-3)]">
-            <span className="font-medium text-[var(--text-2)]">Per starter</span> — hit the download arrow on any
-            card for a Skill <span className="font-mono">.zip</span>, then upload it in Claude → Settings →
-            Capabilities → Skills.
-            <br />
-            <span className="font-medium text-[var(--text-2)]">All at once</span> — connect Foundry to Claude
-            Desktop and every starter shows up as a slash-command prompt. Needs MCP enabled in Settings →
-            Workspace.
-          </p>
-          <div className="flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
-            <CommandLineIcon className="h-4 w-4 shrink-0 text-[var(--text-4)]" />
-            <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--text-2)]">{snippet}</code>
-            <button
-              type="button"
-              onClick={copy}
-              className="shrink-0 rounded-[6px] p-1 text-[var(--text-4)] transition hover:bg-[var(--surface-2)] hover:text-[var(--text-1)]"
-              title="Copy connect command"
-              aria-label="Copy connect command"
-            >
-              {copied ? <CheckIcon className="h-3.5 w-3.5 text-emerald-600" /> : <ClipboardIcon className="h-3.5 w-3.5" />}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function StarterList() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -354,10 +277,7 @@ export function StarterList() {
             <span className="widget-header__label--number">01</span>
             {" // STARTERS"}
           </span>
-          <span className="flex items-center gap-3">
-            {canManageStarters && !scan && all.length > 0 && <UseInClaudeInfo />}
-            <span className="widget-header__status">{all.length} TOTAL</span>
-          </span>
+          <span className="widget-header__status">{all.length} TOTAL</span>
         </div>
         <div className="space-y-3 px-5 py-4">
           <div className="relative">
