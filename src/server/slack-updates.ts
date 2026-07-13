@@ -2,12 +2,13 @@
 //
 // Two surfaces, separate from the daily AM/PM standup cadence in tasks-standup.ts:
 //   • pushProjectUpdate — any assigned dev posts THIS client's current board state
-//     to its internal channel, on demand, with per-dev customisation (which
+//     to its internal channel (and its linked external/Slack-Connect channel, at
+//     the same time, if one is set), on demand, with per-dev customisation (which
 //     categories, titles vs descriptions, which status groups, a note). Can also
 //     stamp the dev's shared AM/PM standup dot (markPhases) and cross-post to the
 //     roll-up channel.
 //   • broadcastUpdate — the DevOps lead (tasks.publish) posts a free-form message
-//     to one or many client channels, no tasks required.
+//     to one or many client channels (internal + linked external), no tasks required.
 //
 // Slack posting is best-effort/fire-and-forget — a missing token or channel never
 // fails the request (mirrors tasks-standup.ts). Every post is logged to
@@ -132,7 +133,14 @@ export async function pushProjectUpdate(
   const [client, allTasks] = await Promise.all([
     prisma.workspaceClient.findFirst({
       where: { id: input.clientId, workspaceId: user.workspaceId },
-      select: { id: true, name: true, slug: true, slackChannelId: true, slackInternalChannelId: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        slackChannelId: true,
+        slackInternalChannelId: true,
+        slackExternalChannelId: true,
+      },
     }),
     listTasks(user, { clientId: input.clientId }),
   ]);
@@ -247,6 +255,13 @@ export async function pushProjectUpdate(
     return { ok: false, channel, taskCount: flat.length };
   }
 
+  // Cross-post to the client's external (Slack Connect) channel at the same
+  // time, when one is linked (snapshot copy; actions still resolve via the
+  // embedded messageRefIds).
+  if (client.slackExternalChannelId && client.slackExternalChannelId !== channel) {
+    await postMessage(botToken, { channel: client.slackExternalChannelId, text: card.text, blocks: card.blocks });
+  }
+
   // Optional cross-post to the roll-up channel (snapshot copy; actions still
   // resolve via the embedded messageRefIds).
   if (input.toRollup) {
@@ -346,7 +361,13 @@ export async function broadcastUpdate(
   const [clients, ws] = await Promise.all([
     prisma.workspaceClient.findMany({
       where: { workspaceId: user.workspaceId, id: { in: input.clientIds } },
-      select: { id: true, name: true, slackChannelId: true, slackInternalChannelId: true },
+      select: {
+        id: true,
+        name: true,
+        slackChannelId: true,
+        slackInternalChannelId: true,
+        slackExternalChannelId: true,
+      },
     }),
     prisma.workspace.findUnique({
       where: { id: user.workspaceId },
@@ -387,6 +408,29 @@ export async function broadcastUpdate(
             message,
           },
         });
+      }
+
+      // Cross-post to the client's linked external (Slack Connect) channel at
+      // the same time.
+      if (client.slackExternalChannelId && client.slackExternalChannelId !== channel) {
+        const externalResult = await postMessage(botToken, {
+          channel: client.slackExternalChannelId,
+          text: card.text,
+          blocks: card.blocks,
+        });
+        if (externalResult.ok) {
+          postedChannels.push(client.slackExternalChannelId);
+          await prisma.slackUpdateLog.create({
+            data: {
+              workspaceId: user.workspaceId,
+              userId: user.id,
+              kind: "BROADCAST",
+              clientId: client.id,
+              channelId: client.slackExternalChannelId,
+              message,
+            },
+          });
+        }
       }
     }
 

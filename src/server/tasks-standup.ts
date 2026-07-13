@@ -1,7 +1,8 @@
 // Daily standups + DevOps roll-up.
 //
 // Devs push an AM "Doing" (+ Monday "This week") and a PM "Done" update; each
-// posts to the involved clients' internal Slack channels. The DevOps lead
+// posts to the involved clients' internal Slack channels, and to each
+// client's linked external (Slack Connect) channel at the same time. The DevOps lead
 // (tasks.publish) publishes one consolidated roll-up to the master channel once
 // everyone's pushed. Slack posting is best-effort/fire-and-forget — a missing
 // token or channel never fails the request (mirrors onboarding-notify.ts).
@@ -265,8 +266,9 @@ export async function deleteStandupUpdate(
   return updateToDTO(row, workDate);
 }
 
-/** Post the standup to each involved client's internal channel. Returns the
- *  number of channels a message was posted to (0 = nothing to say / no channel). */
+/** Post the standup to each involved client's internal channel, and its linked
+ *  external (Slack Connect) channel if one is set. Returns the number of
+ *  channels a message was posted to (0 = nothing to say / no channel). */
 async function postStandupToSlack(
   user: EffectiveUser,
   workDate: Date,
@@ -286,16 +288,25 @@ async function postStandupToSlack(
     return 0; // nothing to say
   }
 
-  // Resolve each involved client's internal channel — prefer the new dual-channel
-  // field (slackInternalChannelId), fall back to the legacy single channel.
+  // Resolve each involved client's channels — prefer the new dual-channel field
+  // (slackInternalChannelId), fall back to the legacy single channel. If a
+  // Slack Connect external channel is linked, the standup goes out to both at
+  // the same time.
   const clientIds = Array.from(new Set(sectionTasks.map((t) => t.client.id)));
   const clients = await prisma.workspaceClient.findMany({
     where: { workspaceId: user.workspaceId, id: { in: clientIds } },
-    select: { id: true, slug: true, slackChannelId: true, slackInternalChannelId: true },
+    select: {
+      id: true,
+      slug: true,
+      slackChannelId: true,
+      slackInternalChannelId: true,
+      slackExternalChannelId: true,
+    },
   });
   const channelByClient = new Map(
     clients.map((c) => [c.id, c.slackInternalChannelId ?? c.slackChannelId] as const),
   );
+  const externalChannelByClient = new Map(clients.map((c) => [c.id, c.slackExternalChannelId] as const));
 
   const who = user.name?.trim() || user.email;
   const weekday = WEEKDAYS[workDate.getUTCDay()];
@@ -333,28 +344,35 @@ async function postStandupToSlack(
       tasks: cardTasks,
     });
 
-    const result = await postMessage(botToken, {
-      channel,
-      text: card.text,
-      blocks: card.blocks,
-    });
-    if (result.ok && result.data.ts) {
-      postedCount += 1;
-      // Record the posted message so the dev can retract this update later
-      // (chat.delete). taskId is null — this is a per-channel standup card, not a
-      // per-task ref. Best-effort; a fresh post always has a unique ts.
-      await prisma.slackMessageRef
-        .create({
-          data: {
-            workspaceId: user.workspaceId,
-            channelId: channel,
-            messageTs: result.data.ts,
-            taskId: null,
-            kind: input.phase === "AM" ? "STANDUP_AM" : "STANDUP_PM",
-            postedById: user.id,
-          },
-        })
-        .catch(() => undefined);
+    // Post to the internal channel and, when linked, the client's external
+    // (Slack Connect) channel at the same time.
+    const externalChannel = externalChannelByClient.get(clientId);
+    const targets = Array.from(new Set([channel, ...(externalChannel ? [externalChannel] : [])]));
+
+    for (const target of targets) {
+      const result = await postMessage(botToken, {
+        channel: target,
+        text: card.text,
+        blocks: card.blocks,
+      });
+      if (result.ok && result.data.ts) {
+        postedCount += 1;
+        // Record the posted message so the dev can retract this update later
+        // (chat.delete). taskId is null — this is a per-channel standup card, not a
+        // per-task ref. Best-effort; a fresh post always has a unique ts.
+        await prisma.slackMessageRef
+          .create({
+            data: {
+              workspaceId: user.workspaceId,
+              channelId: target,
+              messageTs: result.data.ts,
+              taskId: null,
+              kind: input.phase === "AM" ? "STANDUP_AM" : "STANDUP_PM",
+              postedById: user.id,
+            },
+          })
+          .catch(() => undefined);
+      }
     }
   }
 
