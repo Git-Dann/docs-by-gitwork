@@ -3,7 +3,7 @@
 // section order of Dia's brief: greeting → push-forward → to-dos → updates → your day.
 
 import type { CalendarEvent } from "@/lib/api";
-import type { DeskActionItemDTO, DeskSlackResult } from "@/types/desk";
+import type { DeskActionItemDTO, DeskSlackMessage, DeskSlackResult } from "@/types/desk";
 import type { MyDayDTO, TaskAttentionDTO, TaskDTO } from "@/types/tasks";
 import type {
   Brief,
@@ -158,17 +158,7 @@ function buildTodos(input: BuildBriefInput, pushForward: BriefPushForward | null
 
 function buildUpdates(input: BuildBriefInput): BriefUpdate[] {
   const messages = input.slack?.messages ?? [];
-  if (messages.length > 0) {
-    return messages.slice(0, 4).map((m) => ({
-      id: m.id,
-      title: m.author,
-      body: truncate(m.text, 220),
-      label: m.clientName,
-      labelStyle: "outline" as const,
-      href: `/app/portal/${m.clientSlug}`,
-      source: "slack" as const,
-    }));
-  }
+  if (messages.length > 0) return collateSlack(messages);
 
   // No Slack chatter (or Slack not configured) → surface recent meeting action items.
   const items = input.actionItems ?? [];
@@ -181,6 +171,62 @@ function buildUpdates(input: BuildBriefInput): BriefUpdate[] {
     href: it.clientSlug ? `/app/portal/${it.clientSlug}` : undefined,
     source: "scribe" as const,
   }));
+}
+
+/** Low-signal one-liners we don't want to headline an update with. */
+const CHATTER =
+  /^(thanks?|thank you|ok(ay)?|sure|on it|great|perfect|done|got it|noted|yes|yep|nope?|no problem|np|will do|cool|sounds good|awesome|nice|ty|👍|🙏|🎉)\b/i;
+
+function isSubstantive(text: string): boolean {
+  const t = text.replace(/\s+/g, " ").trim();
+  return t.length >= 15 && !CHATTER.test(t);
+}
+
+/**
+ * Collate raw Slack messages into one update per client (channel), most-recent-first.
+ * Each entry leads with the client, a message count, and the single most substantive
+ * recent line — so the section reads as "what's happening per client", not a dump of
+ * every "thanks"/"on it" reply.
+ */
+function collateSlack(messages: DeskSlackMessage[]): BriefUpdate[] {
+  type Group = { clientName: string; clientSlug: string; msgs: DeskSlackMessage[]; latest: number };
+  const groups = new Map<string, Group>();
+  for (const m of messages) {
+    const g = groups.get(m.clientSlug) ?? {
+      clientName: m.clientName,
+      clientSlug: m.clientSlug,
+      msgs: [],
+      latest: 0,
+    };
+    g.msgs.push(m);
+    g.latest = Math.max(g.latest, +new Date(m.ts));
+    groups.set(m.clientSlug, g);
+  }
+
+  return [...groups.values()]
+    .sort((a, b) => b.latest - a.latest)
+    .slice(0, 4)
+    .map((g) => {
+      const recent = g.msgs.slice().sort((a, b) => +new Date(b.ts) - +new Date(a.ts));
+      const lead = recent.find((m) => isSubstantive(m.text)) ?? recent[0];
+      const authors = [...new Set(g.msgs.map((m) => firstName(m.author)))];
+      const body = lead
+        ? `${firstName(lead.author)}: ${truncate(lead.text, 200)}`
+        : `${g.msgs.length} quick ${g.msgs.length === 1 ? "reply" : "replies"} from ${authors.join(", ")}.`;
+      return {
+        id: g.clientSlug,
+        title: g.clientName,
+        body,
+        label: `${g.msgs.length} ${g.msgs.length === 1 ? "message" : "messages"}`,
+        labelStyle: "outline" as const,
+        href: `/app/portal/${g.clientSlug}`,
+        source: "slack" as const,
+      };
+    });
+}
+
+function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] || name;
 }
 
 // ── Your day ─────────────────────────────────────────────────────────────────
