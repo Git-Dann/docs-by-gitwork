@@ -5,12 +5,13 @@
 // control primitives (studio-ui.tsx); only their config/state/templates differ. The chosen mode
 // persists to localStorage. Admin/Super-Admin gated at the route/nav/middleware layer.
 
-import { PhotoIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
+import { DevicePhoneMobileIcon, PhotoIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
 import { useEffect, useState } from "react";
+import { IconsWorkspace } from "./icons/icons-workspace";
 import { ScreenshotsWorkspace } from "./screenshots/screenshots-workspace";
 import { StudioWorkspace } from "./studio-workspace";
 
-type Mode = "social" | "screenshots";
+type Mode = "social" | "screenshots" | "icons";
 const MODE_KEY = "gitwork.studio.mode.v1";
 
 export function StudioRoot() {
@@ -19,7 +20,7 @@ export function StudioRoot() {
 
   useEffect(() => {
     const raw = typeof window !== "undefined" ? window.localStorage.getItem(MODE_KEY) : null;
-    if (raw === "social" || raw === "screenshots") setMode(raw);
+    if (raw === "social" || raw === "screenshots" || raw === "icons") setMode(raw);
     setHydrated(true);
   }, []);
   useEffect(() => {
@@ -37,8 +38,9 @@ export function StudioRoot() {
       <div className="flex shrink-0 items-center gap-1 self-start rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-1">
         <ModeButton active={mode === "social"} onClick={() => setMode("social")} icon={<Squares2X2Icon className="h-4 w-4" />} label="Social" />
         <ModeButton active={mode === "screenshots"} onClick={() => setMode("screenshots")} icon={<PhotoIcon className="h-4 w-4" />} label="App Screenshots" />
+        <ModeButton active={mode === "icons"} onClick={() => setMode("icons")} icon={<DevicePhoneMobileIcon className="h-4 w-4" />} label="App Icons" />
       </div>
-      <div className="min-h-0 flex-1">{mode === "social" ? <StudioWorkspace /> : <ScreenshotsWorkspace />}</div>
+      <div className="min-h-0 flex-1">{mode === "social" ? <StudioWorkspace /> : mode === "screenshots" ? <ScreenshotsWorkspace /> : <IconsWorkspace />}</div>
     </div>
   );
 }
