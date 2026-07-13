@@ -56,11 +56,14 @@ export const authConfig = {
         token.role = (user as any).role;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         token.permissions = (user as any).permissions;
+        // Default to a remembered (30-day) session. Only an explicit remember:false
+        // (legacy email/password sign-in with the box unticked) falls back to the
+        // short 8h window; Google sign-ins have no such flag, so teammates stay
+        // signed in for 30 days and aren't bounced back to the consent screen daily.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        token.remember = (user as any).remember ?? false;
-        // Shorten expiry when "remember me" is not checked
+        token.remember = (user as any).remember ?? true;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (!(user as any).remember) {
+        if ((user as any).remember === false) {
           token.exp = Math.floor(Date.now() / 1000) + SESSION_MAX_AGE;
         }
       }

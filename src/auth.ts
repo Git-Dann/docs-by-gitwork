@@ -31,13 +31,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             "https://www.googleapis.com/auth/drive.readonly " +
             "https://www.googleapis.com/auth/drive.file",
           access_type: "offline",
-          // Force the consent prompt every sign-in so Google always returns a refresh_token.
-          // Without this, Google only returns refresh_token on the *first* consent — which
-          // meant the workspace held whichever person signed in first, and personal widgets
-          // would cross-pollute as people re-signed in. With per-user tokens, each member
-          // gets their own refresh_token captured on each sign-in, so the dashboard always
-          // shows their own data.
-          prompt: "consent",
+          // Only ask for consent when it's actually needed (first grant, or a new
+          // scope) — NOT on every sign-in. Google shows the full scopes screen only
+          // when `prompt: "consent"` is set; without it, a teammate who has already
+          // granted breezes straight through, so Harry stops re-approving Gmail on
+          // each login. `include_granted_scopes` keeps previously-granted scopes
+          // attached to the incremental grant.
+          //
+          // Trade-off: Google only returns a refresh_token on a consent, so the token
+          // is captured on first sign-in and then reused. That's durable ONLY if the
+          // token doesn't expire — which requires the OAuth consent screen to be
+          // "Internal" (org-only). In "Testing" mode Google expires refresh tokens
+          // after 7 days AND a plain re-login won't re-issue one (no forced consent),
+          // so the consent screen MUST be set to Internal for this to hold. If a token
+          // is ever lost, revoking Foundry's access at myaccount.google.com forces a
+          // fresh consent on the next sign-in.
+          include_granted_scopes: "true",
         },
       },
     }),
