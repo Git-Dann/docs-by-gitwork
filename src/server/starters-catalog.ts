@@ -103,6 +103,8 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "Wire the commands into the team workflow",
       ],
       techStack: ["Node.js", "Go", "Python", "React", "Vue", "Django"],
+      promptText:
+        "Scaffold a new project using the Gitwork Launch Kit.\n\n1. Set up battle-tested project rules covering security, TypeScript, database access, testing and deploy.\n2. Wire in the lifecycle hooks so quality gates (lint, type-check, tests) run automatically on every change.\n3. Add the slash-command library for common workflows (review, debug, test, ship).\n4. Enable the context-aware skills for review, debugging and testing.\n5. Scaffold the project structure for the target stack.\n\nTarget stack: <Node.js / Go / Python / React / Vue / Django — pick one>.",
       _buildRef: "mastery-project-starter-kit",
     },
   },
@@ -121,6 +123,8 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "A framework handoff for exporting to code",
       ],
       install: ["Define the design tokens + voice", "Run the audit lanes on each screen", "Hand off to the target framework"],
+      promptText:
+        "Set up a Gitwork Design System harness for this project.\n\n1. Define the design tokens (colour, type, spacing, radius) and the brand voice, and bind them so every component reads from one source.\n2. Wire the audit skills — accessibility, mobile, copy, styling, visual, layout — to run against each screen.\n3. Add a framework handoff so the tokens/components export cleanly to the target framework's code.\n\nRun the audit lanes on every new screen before calling it done.",
       _buildRef: "claude-design-premium",
     },
   },
@@ -141,6 +145,8 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
       ],
       install: ["Deploy the server", "Model the content types", "Build and publish pages from the visual editor"],
       techStack: ["TypeScript", "React", "PostgreSQL"],
+      promptText:
+        "Stand up a Gitwork Sites instance (self-hosted visual CMS) for this project.\n\n1. Deploy the server — editor, content engine and publisher run together.\n2. Model the content types and data tables this site needs.\n3. Build the pages in the visual canvas editor, using the built-in forms where needed.\n4. Publish — output is clean semantic HTML with no framework runtime left in the page.\n5. Deploy with the one-click deploy path.\n\nDescribe the site: <what it's for, the content types, the pages>.",
       _buildRef: "instatic",
     },
   },
@@ -239,6 +245,8 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "Multi-agent workflows and orchestration patterns",
         "The source we curate individual agent starters from",
       ],
+      promptText:
+        "You are picking a Gitwork subagent for this project.\n\nGiven the task below, recommend the single best-fit role-specialised subagent (or a short multi-agent workflow if the task needs more than one), and say in one line why a general-purpose agent wouldn't do as well.\n\nTask: <describe the task>",
       _buildRef: "wshobson/agents",
     },
   },
@@ -256,6 +264,8 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "Mappings to recognised security & compliance frameworks",
         "A natural companion to Pulse's security checks",
       ],
+      promptText:
+        "Run a Gitwork security review pass on this project.\n\nUsing the security & audit skill set (threat modelling, hardening, incident response, compliance), identify the top 3 risks for this build, map each to the relevant framework/control, and give one concrete fix per risk. Flag anything a Pulse security scan would also catch.",
       _buildRef: "Anthropic-Cybersecurity-Skills (Apache-2.0)",
     },
   },
@@ -274,6 +284,8 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "Deploy + logs via Vercel; data via Supabase",
         "Tracking (Linear), monitoring (Sentry) and payments (Stripe)",
       ],
+      promptText:
+        "Wire up production integrations for this project using the Gitwork Integrations set.\n\nGiven the stack below, recommend which of Figma (design→code), Playwright (E2E), Vercel (deploy), Supabase (data), Linear (tracking), Sentry (monitoring) and Stripe (payments) this project actually needs, in priority order, and the first concrete step for each.\n\nStack / project: <describe it>",
       _buildRef: "official Claude Code marketplace partners (Figma/Playwright/Vercel/Supabase/Linear/Sentry/Stripe)",
     },
   },
@@ -292,6 +304,8 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "Copywriting across ads, email and site",
         "Analytics and growth-engineering methods",
       ],
+      promptText:
+        "Plan the go-to-market pass for this project using the Gitwork Marketing skill set.\n\nCover conversion-rate optimisation, SEO, copywriting and analytics/growth engineering — recommend the 3 highest-leverage actions to take first, and the one metric that would prove each is working.\n\nProject / audience: <describe it>",
       _buildRef: "marketingskills",
     },
   },
@@ -347,6 +361,8 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "Accurate natural-language querying with full company context",
         "Data-engineering and BI groundwork",
       ],
+      promptText:
+        "Answer this data question accurately using the Gitwork Analytics context layer.\n\nBuild (or use) the semantic layer over the client's analytical database plus their company context, then answer the question below with the exact query/logic used — never guess or hallucinate a number.\n\nQuestion: <the data question>",
       _buildRef: "ktx",
     },
   },
@@ -365,6 +381,8 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "Deploy and rollback playbooks",
         "Monitoring and alerting setup",
       ],
+      promptText:
+        "Set up the production side of this project using the Gitwork DevOps collection.\n\n1. Stand up CI/CD (build, test, deploy) for the stack below.\n2. Containerise the app if it isn't already.\n3. Add a deploy + rollback playbook.\n4. Wire monitoring and alerting so failures are caught, not discovered by users.\n\nStack / hosting target: <describe it>",
       _buildRef: "gitwork-authored",
     },
   },
@@ -382,6 +400,8 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "Jetpack Compose / Kotlin Multiplatform patterns",
         "Mobile testing, accessibility and performance",
       ],
+      promptText:
+        "Build this mobile feature using the Gitwork Mobile skill set.\n\nFor iOS: apply SwiftUI + iOS architecture, networking and concurrency patterns. For Android: apply Jetpack Compose / Kotlin Multiplatform patterns. Either way, cover testing, accessibility and performance before calling it done.\n\nPlatform + feature: <e.g. iOS — offline-first sync for X>",
       _buildRef: "ios-agent-skills + compose-skill",
     },
   },
@@ -406,6 +426,8 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "Run the hardening audit (RLS, secrets, auth)",
         "Apply the fixes and eject to a production repo",
       ],
+      promptText:
+        "Harden this vibe-coded app (Lovable / Bolt / Replit) for production using the Gitwork Ship It kit.\n\n1. Run the hardening audit: enable Row-Level Security with owner-scoped policies on every Supabase table, and sweep the bundle for exposed anon/API keys.\n2. Move any client-only authorisation checks server-side.\n3. Eject the code into a real repo with CI/CD and a baseline test suite.\n4. Wire a custom domain, SEO, analytics and error monitoring.\n\nProject to harden: <link to the exported Lovable/Bolt/Replit project>.",
       _buildRef: "database-sentinel + supabase-pentest-skills + supashield + vibe-security",
     },
   },

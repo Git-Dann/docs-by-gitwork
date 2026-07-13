@@ -56,6 +56,7 @@ export function StarterPromptEditor({
   const [previewResolved, setPreviewResolved] = useState(false);
   const [copied, setCopied] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const insertMenuRef = useRef<HTMLDivElement>(null);
 
   const clientSlug = picked.client?.kind === "client" ? picked.client.slug : "";
   const documentId = picked.document?.kind === "document" ? picked.document.id : "";
@@ -75,6 +76,21 @@ export function StarterPromptEditor({
     // only the picks themselves should trigger this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientSlug, documentId, scanId]);
+
+  // Dismiss the Insert dropdown on any click outside it (button + panel) — it otherwise only
+  // closed on picking a token, so it stayed floating over the prompt if you clicked elsewhere.
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handlePointerDown(e: MouseEvent) {
+      if (insertMenuRef.current && !insertMenuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+        setMenuGroup(null);
+        setShowPickerFor(null);
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [menuOpen]);
 
   const vars = useMemo(() => {
     let v: Record<string, string> = {};
@@ -164,7 +180,7 @@ export function StarterPromptEditor({
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-6 py-2">
-        <div className="relative">
+        <div className="relative" ref={insertMenuRef}>
           <button
             type="button"
             onClick={() => {
