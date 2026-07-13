@@ -26,13 +26,15 @@ function formatMoney(amount: number, currency: string): string {
   }
 }
 
-/** Approximate static FX to GBP — matches DEFAULT_FX_FROM_USD in pulse-pricing.ts.
- *  Directional only, for the internal MD cost snapshot; the live ECB rate lives in
- *  src/server/fx.ts and could be threaded through the API if precise figures are ever
- *  needed. Unknown currencies pass through 1:1. */
+/** Approximate static FX table (GBP-anchored) — matches DEFAULT_FX_FROM_USD in
+ *  pulse-pricing.ts. Directional only, for the internal MD cost snapshot; the live ECB
+ *  rate lives in src/server/fx.ts and could be threaded through the API if precise
+ *  figures are ever needed. Unknown currencies pass through 1:1. */
 const FX_TO_GBP: Record<string, number> = { GBP: 1, USD: 0.79, EUR: 0.85 };
-function fxToGbp(currency: string): number {
-  return FX_TO_GBP[currency] ?? 1;
+/** Convert a whole-currency amount between currencies via the static table. */
+function convertCurrency(amount: number, from: string, to: string): number {
+  const inGbp = amount * (FX_TO_GBP[from] ?? 1);
+  return inGbp / (FX_TO_GBP[to] ?? 1);
 }
 
 export function CodeClearOverview() {
@@ -167,22 +169,16 @@ export function CodeClearOverview() {
         clientsWithCost += 1;
       }
     }
-    // Headline in GBP: convert every currency block and sum.
+    // Headline in USD, GBP as the sub-figure — convert every currency block and sum.
+    let usdTotal = 0;
     let gbpTotal = 0;
-    for (const [cur, amt] of byCurrency) gbpTotal += Math.round(amt * fxToGbp(cur));
-    // Sub-figure: the largest single non-GBP block, shown in its own currency (usually USD).
-    let nativeCurrency = "";
-    let nativeTotal = 0;
     for (const [cur, amt] of byCurrency) {
-      if (cur !== "GBP" && amt > nativeTotal) {
-        nativeCurrency = cur;
-        nativeTotal = amt;
-      }
+      usdTotal += Math.round(convertCurrency(amt, cur, "USD"));
+      gbpTotal += Math.round(convertCurrency(amt, cur, "GBP"));
     }
     return {
+      usdTotal,
       gbpTotal,
-      nativeCurrency,
-      nativeTotal,
       pricedDevs,
       unpricedDevs,
       clientsWithCost,
@@ -249,7 +245,7 @@ export function CodeClearOverview() {
         />
         {/* Slot 03 — COSTS for financial viewers (Super Admins + `clients.viewFinancials`),
             else the AVG CALIBRE stat for everyone else. One card either way, so the NN//
-            sequence stays gapless. GBP headline, native (USD) sub, unpriced as a line item. */}
+            sequence stays gapless. USD headline, GBP sub, unpriced as a line item. */}
         {canViewClientFinancials && financials ? (
           <WidgetCard
             number={nextNum()}
@@ -259,19 +255,14 @@ export function CodeClearOverview() {
             <div className="space-y-1.5">
               <div className="flex items-baseline gap-1.5">
                 <span className="font-display text-[28px] leading-none tracking-[-0.02em] text-[var(--text-1)]">
-                  {financials.pricedDevs > 0 ? formatMoney(financials.gbpTotal, "GBP") : "—"}
+                  {financials.pricedDevs > 0 ? formatMoney(financials.usdTotal, "USD") : "—"}
                 </span>
                 <span className="widget-data-label">/ MO</span>
               </div>
-              {financials.pricedDevs > 0 && financials.nativeCurrency ? (
+              {financials.pricedDevs > 0 ? (
                 <p className="widget-timestamp">
-                  ≈ {formatMoney(financials.nativeTotal, financials.nativeCurrency)} ·{" "}
+                  ≈ {formatMoney(financials.gbpTotal, "GBP")} ·{" "}
                   {financials.clientsWithCost} client{financials.clientsWithCost === 1 ? "" : "s"}
-                </p>
-              ) : financials.pricedDevs > 0 ? (
-                <p className="widget-timestamp">
-                  Across {financials.clientsWithCost} client
-                  {financials.clientsWithCost === 1 ? "" : "s"}
                 </p>
               ) : (
                 <p className="widget-timestamp">No dev rates on file yet</p>
@@ -373,7 +364,7 @@ export function CodeClearOverview() {
                 if (canViewClientFinancials && cost) {
                   if (cost.mixedCurrency) costLabel = "mixed";
                   else if (cost.pricedDevs > 0)
-                    costLabel = `${formatMoney(Math.round(cost.amount * fxToGbp(cost.currency)), "GBP")}/mo`;
+                    costLabel = `${formatMoney(Math.round(convertCurrency(cost.amount, cost.currency, "USD")), "USD")}/mo`;
                   else if (cost.unpricedDevs > 0) costLabel = "rates n/a";
                 }
                 const inner = (
