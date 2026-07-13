@@ -106,16 +106,19 @@ export function CourseRequestsSection({
   const [busy, setBusy] = useState(false);
   const [showAdded, setShowAdded] = useState(false);
 
-  const activeRequests = requests.filter((r) => r.status !== "ADDED");
+  // "All active" = still needs attention (New/Rejected). Sent is done-for-now —
+  // stays fully reachable via its own tab, just not bundled into the default view.
+  const nonAddedRequests = requests.filter((r) => r.status !== "ADDED");
+  const activeRequests = requests.filter((r) => r.status === "NEW" || r.status === "REJECTED");
   const addedRequests = requests.filter((r) => r.status === "ADDED");
 
   const filtered =
     filter === "ALL"
       ? activeRequests
-      : activeRequests.filter((r) => r.status === filter);
+      : nonAddedRequests.filter((r) => r.status === filter);
 
   const allVisibleSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.id));
-  const selectedRows = activeRequests.filter((r) => selected.has(r.id));
+  const selectedRows = nonAddedRequests.filter((r) => selected.has(r.id));
 
   const counts = STATUSES.reduce<Record<Status, number>>(
     (acc, s) => ({ ...acc, [s]: requests.filter((r) => r.status === s).length }),
