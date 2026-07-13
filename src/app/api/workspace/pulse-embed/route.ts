@@ -21,12 +21,18 @@ const patchSchema = z.object({
   checkKeys: z.array(z.string()).min(1).optional(),
 });
 
+/** Never expose the secret itself — just whether both Turnstile env vars are set. */
+function turnstileConfigured(): boolean {
+  return Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) && Boolean(process.env.TURNSTILE_SECRET_KEY);
+}
+
 export async function GET() {
   try {
     const { workspace } = await ensureBaseRecords();
     return apiOk({
       enabled: workspace.pulseEmbedEnabled,
       checkKeys: resolveEmbedCheckKeys(workspace.pulseEmbedCheckKeys),
+      turnstileConfigured: turnstileConfigured(),
     });
   } catch (error) {
     return fromError(error);
@@ -65,6 +71,7 @@ export async function PATCH(request: NextRequest) {
     return apiOk({
       enabled: updated.pulseEmbedEnabled,
       checkKeys: resolveEmbedCheckKeys(updated.pulseEmbedCheckKeys),
+      turnstileConfigured: turnstileConfigured(),
     });
   } catch (error) {
     return fromError(error);

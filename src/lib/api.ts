@@ -1435,6 +1435,7 @@ export async function importPulseLead(leadId: string): Promise<{ scanId: string 
 export interface PulseEmbedConfig {
   enabled: boolean;
   checkKeys: string[];
+  turnstileConfigured: boolean;
 }
 
 export async function getPulseEmbedConfig(): Promise<PulseEmbedConfig> {
