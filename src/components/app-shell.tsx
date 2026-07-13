@@ -403,7 +403,7 @@ function ExpandedRail({
   viewAs: ViewAsRole;
   viewAsUser: ViewAsUser | null;
   setViewAs: (role: "STAFF" | "DEVELOPER" | null) => void;
-  setViewAsUser: (name: string, permissions: string[], role?: string) => void;
+  setViewAsUser: (name: string, permissions: string[], role?: string, id?: string) => void;
   isAdmin: boolean;
   collapsed: boolean;
   onToggleCollapsed: () => void;
@@ -590,7 +590,7 @@ function ProfileMenu({
   viewAs: ViewAsRole;
   viewAsUser: ViewAsUser | null;
   setViewAs: (role: "STAFF" | "DEVELOPER" | null) => void;
-  setViewAsUser: (name: string, permissions: string[], role?: string) => void;
+  setViewAsUser: (name: string, permissions: string[], role?: string, id?: string) => void;
   isAdmin: boolean;
   collapsed?: boolean;
 }) {
@@ -717,7 +717,7 @@ function ProfileMenu({
                       <button
                         key={m.memberId}
                         type="button"
-                        onClick={() => { setViewAsUser(label, perms, m.role); setOpen(false); }}
+                        onClick={() => { setViewAsUser(label, perms, m.role, m.userId); setOpen(false); }}
                         className={`flex w-full items-start justify-between gap-2 rounded-[6px] px-3 py-2 text-left transition ${
                           active ? "bg-[var(--surface-brand)] text-[var(--brand-700)]" : "text-[var(--text-2)] hover:bg-[var(--surface-1)]"
                         }`}
@@ -751,7 +751,7 @@ function ProfileMenu({
                       onChange={(e) => {
                         const m = teammateMembers.find((x) => (x.name ?? x.email) === e.target.value);
                         if (!m) return;
-                        setViewAsUser(m.name ?? m.email, m.permissions as string[], m.role);
+                        setViewAsUser(m.name ?? m.email, m.permissions as string[], m.role, m.userId);
                         setOpen(false);
                       }}
                       className="app-select-compact w-full text-sm"

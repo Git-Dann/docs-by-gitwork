@@ -95,7 +95,7 @@ export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
   const overrides = normalizeOverrides(membership.permissionOverrides);
   const permissions = resolveEffectivePermissions(membership.role, matrix, overrides);
 
-  return {
+  const real: EffectiveUser = {
     id: dbUser.id,
     email: dbUser.email,
     name: dbUser.name,
@@ -104,6 +104,49 @@ export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
     permissions,
     workspaceId: membership.workspaceId,
     membershipId: membership.id,
+  };
+
+  return applyViewAs(req, real);
+}
+
+/**
+ * "View as" preview — server side. A Super Admin can preview the platform AS a
+ * specific teammate; the web client sends their user id in `x-view-as-user`. When
+ * that header is present AND the real caller is a Super Admin, resolve the
+ * effective user to the *target* member (same workspace) so every scope/gate —
+ * assignedClientIds, financials, seeAllClients, etc. — reflects what that person
+ * would actually see. Ignored (returns the real user) for anyone who isn't a
+ * Super Admin, an unknown target, or a target outside the workspace, so it can
+ * never be used for privilege escalation. "Exit preview" simply stops sending the
+ * header. NOTE: this swaps the *whole* effective user, so a write performed while
+ * previewing is attributed to (and gated as) the target teammate.
+ */
+async function applyViewAs(req: Request, real: EffectiveUser): Promise<EffectiveUser> {
+  const targetUserId = req.headers.get("x-view-as-user");
+  if (!targetUserId || targetUserId === real.id || !isSuperAdmin(real.role)) return real;
+
+  const member = await prisma.workspaceMember.findFirst({
+    where: { workspaceId: real.workspaceId, userId: targetUserId },
+    include: {
+      user: { select: { id: true, email: true, name: true, avatarUrl: true } },
+      workspace: { select: { rolePermissions: true } },
+    },
+  });
+  if (!member) return real;
+
+  const matrix = normalizeMatrix(member.workspace?.rolePermissions);
+  const overrides = normalizeOverrides(member.permissionOverrides);
+  const permissions = resolveEffectivePermissions(member.role, matrix, overrides);
+
+  return {
+    id: member.user.id,
+    email: member.user.email,
+    name: member.user.name,
+    avatarUrl: member.user.avatarUrl,
+    role: member.role,
+    permissions,
+    workspaceId: member.workspaceId,
+    membershipId: member.id,
   };
 }
 
