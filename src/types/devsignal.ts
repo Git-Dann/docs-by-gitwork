@@ -141,6 +141,7 @@ export interface PublicVetSession {
   challengeSubmitted: boolean;
   videoQuestion: string;
   videoSubmitted: boolean;
+  identitySubmitted: boolean;
   expired: boolean;
 }
 

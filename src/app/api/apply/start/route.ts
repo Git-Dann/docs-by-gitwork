@@ -32,12 +32,16 @@ export async function POST(request: NextRequest) {
       return apiError("Enter the access password first.", 401);
     }
     const body = startSchema.parse(await request.json());
-    const { token } = await startPublicApplication({
-      name: body.name,
-      githubHandle: body.githubHandle.replace(/^@/, ""),
-      email: body.email,
-      primaryStack: body.primaryStack || undefined,
-    });
+    const origin = request.nextUrl.origin;
+    const { token } = await startPublicApplication(
+      {
+        name: body.name,
+        githubHandle: body.githubHandle.replace(/^@/, ""),
+        email: body.email,
+        primaryStack: body.primaryStack || undefined,
+      },
+      { origin },
+    );
     if (!token) return apiError("Could not start the assessment.", 500);
     return apiOk({ token });
   } catch (error) {

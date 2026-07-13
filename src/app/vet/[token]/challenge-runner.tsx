@@ -69,6 +69,7 @@ export function ChallengeRunner({
 
   const telemetry = useRef<TelemetryEvent[]>([]);
   const startedAt = useRef<number>(Date.now());
+  const gutterRef = useRef<HTMLDivElement>(null);
 
   const record = (type: TelemetryEvent["type"], size?: number) => {
     telemetry.current.push({ t: Date.now() - startedAt.current, type, size });
@@ -175,21 +176,47 @@ export function ChallengeRunner({
         </div>
       </div>
 
-      <textarea
-        value={code}
-        spellCheck={false}
-        onChange={(e) => {
-          setCode(e.target.value);
-          record("edit", Math.abs(e.target.value.length - code.length));
-        }}
-        onKeyDown={(e) => {
-          if (e.key.length === 1) record("keystroke", 1);
-        }}
-        onPaste={(e) => record("paste", e.clipboardData.getData("text").length)}
-        onFocus={() => record("focus")}
-        onBlur={() => record("blur")}
-        className="h-72 w-full rounded-lg border border-neutral-300 bg-neutral-950 p-4 font-mono text-sm text-neutral-100 focus:border-blue-500 focus:outline-none"
-      />
+      <div className="flex h-72 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-950 font-mono text-sm focus-within:border-blue-500">
+        <div
+          ref={gutterRef}
+          aria-hidden
+          className="select-none overflow-hidden bg-white/[0.03] px-2.5 py-4 text-right text-neutral-600"
+        >
+          {Array.from({ length: code.split("\n").length }, (_, i) => (
+            <div key={i} className="leading-6">{i + 1}</div>
+          ))}
+        </div>
+        <textarea
+          value={code}
+          spellCheck={false}
+          onScroll={(e) => {
+            if (gutterRef.current) gutterRef.current.scrollTop = e.currentTarget.scrollTop;
+          }}
+          onChange={(e) => {
+            setCode(e.target.value);
+            record("edit", Math.abs(e.target.value.length - code.length));
+          }}
+          onKeyDown={(e) => {
+            if (e.key.length === 1) record("keystroke", 1);
+            if (e.key === "Tab") {
+              e.preventDefault();
+              const ta = e.currentTarget;
+              const start = ta.selectionStart;
+              const end = ta.selectionEnd;
+              const nextValue = code.slice(0, start) + "  " + code.slice(end);
+              setCode(nextValue);
+              record("edit", 2);
+              requestAnimationFrame(() => {
+                ta.selectionStart = ta.selectionEnd = start + 2;
+              });
+            }
+          }}
+          onPaste={(e) => record("paste", e.clipboardData.getData("text").length)}
+          onFocus={() => record("focus")}
+          onBlur={() => record("blur")}
+          className="flex-1 resize-none bg-transparent p-4 leading-6 text-neutral-100 focus:outline-none"
+        />
+      </div>
 
       {error && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 

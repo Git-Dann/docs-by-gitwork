@@ -7,8 +7,21 @@ import { summarizeTelemetry, type TelemetryEvent } from "./telemetry";
 import { evaluateChallenge } from "./challenge-eval";
 import { scoreVideoTranscript } from "./video-scoring";
 import { getTranscriptionProvider } from "./providers/transcription";
+import { MockIdentityProvider } from "./providers/identity/mock";
 import { applyStageResult } from "./assessment";
 import { DEV_SIGNAL_STAGE_NAMES, type DevSignalStageId } from "./stages/types";
+import { safeGithubRequest } from "@/lib/github";
+
+/** Does this GitHub username resolve to a real public account? */
+export async function githubUserExists(handle: string): Promise<boolean> {
+  const clean = handle.trim().replace(/^@+/, "");
+  if (!clean) return false;
+  const user = await safeGithubRequest<{ login?: string } | null>(
+    `/users/${encodeURIComponent(clean)}`,
+    null,
+  );
+  return Boolean(user?.login);
+}
 
 /**
  * Public candidate flow (/vet/[token]). Token-gated, no auth. Returns ONLY safe
@@ -109,6 +122,7 @@ async function buildSession(a: LoadedAssessment): Promise<PublicVetSession> {
     challengeSubmitted: doneStages.has("coding_challenge"),
     videoQuestion: DEFAULT_VIDEO_QUESTION,
     videoSubmitted: doneStages.has("video_assessment"),
+    identitySubmitted: doneStages.has("identity_verification"),
     expired: isExpired(a),
   };
 }
@@ -149,9 +163,12 @@ export async function connectGithub(token: string, handle: string): Promise<Publ
   const a = await loadByToken(token);
   if (!a || isExpired(a)) return null;
   const clean = handle.trim().replace(/^@+/, "");
-  if (clean) {
-    await prisma.candidate.update({ where: { id: a.candidateId }, data: { githubHandle: clean } });
+  if (!clean) throw new Error("Enter your GitHub username.");
+  // Validate the account actually exists before saving — real per-step validation.
+  if (!(await githubUserExists(clean))) {
+    throw new Error(`We couldn't find a GitHub user named "${clean}". Check the spelling.`);
   }
+  await prisma.candidate.update({ where: { id: a.candidateId }, data: { githubHandle: clean } });
   const reloaded = await loadByToken(token);
   return reloaded ? buildSession(reloaded) : null;
 }
@@ -270,6 +287,38 @@ export async function submitVideo(token: string, submission: VideoSubmission): P
     subScores: scored.subScores,
     rawSignals,
     flags: scored.flags,
+  });
+  return { ok: true };
+}
+
+/**
+ * Identity verification (stage 6). Uses the IdentityVerificationProvider
+ * abstraction. Today only the mock is wired (no Stripe keys) — it records a
+ * PENDING_HUMAN result so nothing is faked; a real Stripe Identity provider
+ * slots in behind the same interface. NO raw ID documents are ever stored.
+ */
+export async function submitIdentity(token: string): Promise<{ ok: boolean }> {
+  const a = await loadByToken(token);
+  if (!a || isExpired(a)) return { ok: false };
+
+  const provider = new MockIdentityProvider();
+  const result = await provider.verify({ candidateId: a.candidateId, email: a.candidate.email });
+
+  const stageId: DevSignalStageId = "identity_verification";
+  // Mock provider isn't real verification → keep it advisory + flag for a human.
+  await applyStageResult(a.workspace.id, a.id, {
+    stageId,
+    stageName: DEV_SIGNAL_STAGE_NAMES[stageId],
+    stageVersion: `${result.provider}-v1`,
+    status: "PENDING_HUMAN",
+    weight: 0,
+    subScores: [],
+    // Store ONLY provider ref + status — never document data.
+    rawSignals: { provider: result.provider, verificationId: result.verificationId, status: result.status },
+    evidence: [],
+    flags: [
+      { severity: "info", code: "identity_mock", message: "Identity provider is mock — verify manually until Stripe Identity is wired." },
+    ],
   });
   return { ok: true };
 }
