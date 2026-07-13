@@ -20,6 +20,7 @@ import type {
   SupportReportPayload,
 } from "@/types/support";
 import { prisma } from "@/lib/prisma";
+import { dispatchNotification } from "@/server/notifications";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { seedAccountEmails } from "@/server/seed-accounts";
 import type { EffectiveUser } from "@/server/auth/effective-user";
@@ -1061,6 +1062,22 @@ export async function createTicket(
       conversationId: data.conversationId ?? null,
     },
   });
+  // Notify the Care team (support.manage) that a ticket landed.
+  const ticketClient = await prisma.supportClient.findUnique({
+    where: { id: clientId },
+    select: { workspaceId: true },
+  });
+  if (ticketClient) {
+    dispatchNotification({
+      event: "care.ticket_created",
+      workspaceId: ticketClient.workspaceId,
+      target: { kind: "permission", permission: "support.manage" },
+      title: `New ticket: ${data.title}`,
+      titleForCount: (n) => (n === 1 ? `New ticket: ${data.title}` : `${n} new tickets`),
+      actionUrl: "/app/care",
+      groupKey: "care.ticket_created",
+    });
+  }
   return serializeTicket(row);
 }
 

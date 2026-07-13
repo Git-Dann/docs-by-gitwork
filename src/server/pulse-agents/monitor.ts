@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { prisma } from "@/lib/prisma";
+import { dispatchNotification } from "@/server/notifications";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { createPulseScanRecord, runAnalysis } from "@/server/pulse";
 import { githubHeaders } from "@/lib/github";
@@ -239,6 +240,16 @@ async function sendMonitorAlert(
   const scanUrl = appUrl ? `${appUrl}/app/pulse/${alert.scanId}` : null;
   const headline = alert.reasons.join(" · ") || `Pulse change on ${monitor.projectName}`;
   const reasonsHtml = alert.reasons.map((r) => `<li style="margin:0 0 4px">${escapeHtml(r)}</li>`).join("");
+
+  // In-app bell/Desk alert to the Pulse team.
+  dispatchNotification({
+    event: "pulse.monitor_drift",
+    workspaceId: monitor.workspaceId,
+    target: { kind: "permission", permission: "pulse.manage" },
+    title: `${monitor.projectName} — ${headline}`,
+    actionUrl: `/app/pulse/${alert.scanId}`,
+    groupKey: `pulse.monitor_drift:${alert.scanId}`,
+  });
 
   // 1. Email the team (every monitor type). Best-effort.
   try {

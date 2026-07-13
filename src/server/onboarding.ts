@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { dispatchNotification } from "@/server/notifications";
 import { encryptNullable, decryptNullable } from "@/lib/encryption";
 import { slugifyClientName } from "@/lib/clients";
 import { ensureBaseRecords } from "@/server/bootstrap";
@@ -787,6 +788,14 @@ export async function submitOnboarding(
       submittedAt: new Date(),
       workspaceClientId: client.id,
     },
+  });
+  dispatchNotification({
+    event: "clients.onboarded",
+    workspaceId: workspace.id,
+    target: { kind: "permission", permission: "clients.manage" },
+    title: `New client onboarded: ${row.companyName?.trim() || "New client"}`,
+    actionUrl: `/app/portal/${client.slug}`,
+    groupKey: "clients.onboarded",
   });
   return getOnboardingByTokenPublic(token);
 }

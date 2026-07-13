@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { dispatchNotification } from "@/server/notifications";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { BUILT_IN_PERSONAS, getPersonaById } from "@/config/study-personas";
 import { generateResearchPlan, generateFollowUps } from "@/server/study-agents/researcher";
@@ -533,6 +534,14 @@ export async function runStudy(studyId: string): Promise<void> {
       where: { studyId },
       create: { studyId, payload: reportPayload as object },
       update: { payload: reportPayload as object },
+    });
+    dispatchNotification({
+      event: "study.report_ready",
+      workspaceId: study.workspaceId,
+      target: { kind: "admins" },
+      title: `"${study.title}" report is ready`,
+      actionUrl: `/app/study/${studyId}`,
+      groupKey: `study.report_ready:${studyId}`,
     });
   } catch {
     // Non-fatal: study still completes, just without a report

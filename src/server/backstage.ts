@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { dispatchNotification } from "@/server/notifications";
 import type { Prisma } from "@prisma/client";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import {
@@ -296,6 +297,19 @@ export async function createLeaveRequest(
   void notifyLeaveSubmitted(user.workspaceId, dto, targetUserId).catch((err) =>
     console.error("[backstage] notifyLeaveSubmitted failed", err),
   );
+  dispatchNotification({
+    event: "backstage.leave_submitted",
+    workspaceId: user.workspaceId,
+    actorId: user.id,
+    target: { kind: "backstageApprovers" },
+    title: `${dto.user.name ?? "A teammate"} requested leave`,
+    titleForCount: (n) =>
+      n === 1
+        ? `${dto.user.name ?? "A teammate"} requested leave`
+        : `${n} leave requests awaiting approval`,
+    actionUrl: "/app/backstage",
+    groupKey: "backstage.leave_submitted",
+  });
   return dto;
 }
 
@@ -433,6 +447,15 @@ export async function approveLeaveRequest(
     where: { workspaceId: user.workspaceId, userId: row.userId },
     select: { countryCode: true },
   });
+  dispatchNotification({
+    event: "backstage.leave_decided",
+    workspaceId: user.workspaceId,
+    actorId: user.id,
+    target: { kind: "users", userIds: [row.userId] },
+    title: "Your leave request was approved",
+    actionUrl: "/app/backstage",
+    groupKey: `backstage.leave_decided:${row.id}`,
+  });
   return leaveRowToDTO(row, member?.countryCode ?? "GB");
 }
 
@@ -469,6 +492,15 @@ export async function rejectLeaveRequest(
   const member = await prisma.workspaceMember.findFirst({
     where: { workspaceId: user.workspaceId, userId: row.userId },
     select: { countryCode: true },
+  });
+  dispatchNotification({
+    event: "backstage.leave_decided",
+    workspaceId: user.workspaceId,
+    actorId: user.id,
+    target: { kind: "users", userIds: [row.userId] },
+    title: "Your leave request was rejected",
+    actionUrl: "/app/backstage",
+    groupKey: `backstage.leave_decided:${row.id}`,
   });
   return leaveRowToDTO(row, member?.countryCode ?? "GB");
 }
@@ -634,6 +666,19 @@ export async function createExpense(
   void notifyExpenseSubmitted(user.workspaceId, dto, targetUserId).catch((err) =>
     console.error("[backstage] notifyExpenseSubmitted failed", err),
   );
+  dispatchNotification({
+    event: "backstage.expense_submitted",
+    workspaceId: user.workspaceId,
+    actorId: user.id,
+    target: { kind: "backstageApprovers" },
+    title: `${dto.user.name ?? "A teammate"} submitted an expense`,
+    titleForCount: (n) =>
+      n === 1
+        ? `${dto.user.name ?? "A teammate"} submitted an expense`
+        : `${n} expenses awaiting approval`,
+    actionUrl: "/app/backstage",
+    groupKey: "backstage.expense_submitted",
+  });
   return dto;
 }
 
@@ -839,6 +884,15 @@ export async function reviewExpense(
       user: { select: { id: true, name: true, email: true, avatarUrl: true } },
       reviewedBy: { select: { id: true, name: true, email: true } },
     },
+  });
+  dispatchNotification({
+    event: "backstage.expense_decided",
+    workspaceId: user.workspaceId,
+    actorId: user.id,
+    target: { kind: "users", userIds: [row.userId] },
+    title: `Your expense was ${decision.toLowerCase()}`,
+    actionUrl: "/app/backstage",
+    groupKey: `backstage.expense_decided:${row.id}`,
   });
   return expenseRowToDTO(row);
 }

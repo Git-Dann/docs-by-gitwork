@@ -12,6 +12,7 @@
 import { google } from "googleapis";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { dispatchNotification } from "@/server/notifications";
 import { findGeminiNotesForEvent, extractMeetingCode } from "@/server/google-drive-notes";
 import { resolveAiConfig, completeText, parseJsonObject, type WorkspaceAiFields } from "@/server/ai-provider";
 import type { EffectiveUser } from "@/server/auth/effective-user";
@@ -174,7 +175,7 @@ Use empty arrays when there are no decisions or action items.`;
 export async function summariseMeeting(meetingId: string): Promise<void> {
   const meeting = await prisma.meeting.findUnique({
     where: { id: meetingId },
-    select: { id: true, workspaceId: true, title: true, transcriptText: true },
+    select: { id: true, workspaceId: true, clientId: true, title: true, transcriptText: true },
   });
   if (!meeting?.transcriptText) return;
 
@@ -248,6 +249,19 @@ export async function summariseMeeting(meetingId: string): Promise<void> {
       ? [prisma.meetingActionItem.createMany({ data: actionItems.map((a) => ({ meetingId, title: a.title, text: a.text, owner: a.owner })) })]
       : []),
   ]);
+
+  // Notes are ready — tell the client's team (only when attributed to a client).
+  if (meeting.clientId) {
+    dispatchNotification({
+      event: "meetings.notes_ready",
+      workspaceId: meeting.workspaceId,
+      target: { kind: "clientTeam" },
+      clientId: meeting.clientId,
+      title: `Notes ready: ${meeting.title ?? "meeting"}`,
+      actionUrl: "/app/portal",
+      groupKey: `meetings.notes_ready:${meeting.id}`,
+    });
+  }
 }
 
 // ── Reads / mutations used by the API routes ─────────────────────────────────

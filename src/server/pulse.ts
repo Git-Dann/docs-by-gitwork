@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { dispatchNotification } from "@/server/notifications";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import {
   getDefaultSectionPayload,
@@ -1227,6 +1228,17 @@ export async function runAnalysis(
           triggeredByUserId: failedScan.triggeredByUserId,
           projectName: failedScan.projectName,
           errorMessage: failedScan.errorMessage,
+        });
+        dispatchNotification({
+          event: "pulse.scan_failed",
+          workspaceId: failedScan.workspaceId,
+          target: failedScan.triggeredByUserId
+            ? { kind: "users", userIds: [failedScan.triggeredByUserId] }
+            : { kind: "permission", permission: "pulse.manage" },
+          title: `${failedScan.projectName} — scan failed`,
+          body: failedScan.errorMessage?.slice(0, 140) ?? null,
+          actionUrl: `/app/pulse/${failedScan.id}/report`,
+          groupKey: `pulse.scan_failed:${failedScan.id}`,
         });
       }
     } catch (pushError) {
