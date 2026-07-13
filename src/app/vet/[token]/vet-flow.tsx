@@ -127,6 +127,14 @@ function IntakeStep({ token, session, onSaved }: { token: string; session: Publi
   const [err, setErr] = useState<string | null>(null);
 
   const save = async () => {
+    if (!form.name.trim()) {
+      setErr("Your name is required.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      setErr("Enter a valid email address.");
+      return;
+    }
     setSaving(true);
     setErr(null);
     try {

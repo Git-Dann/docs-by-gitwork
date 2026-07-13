@@ -78,6 +78,9 @@ const PUBLIC_API_PATHS = [
   "/api/onboarding",
   // Public DevSignal candidate flow — token in /api/vet/[token] is its own auth.
   "/api/vet",
+  // Public self-serve apply front door — shared-password gate + cookie, enforced
+  // inside the handlers (rate-limited). No API key.
+  "/api/apply",
   "/api/internal/resolve-host",
   // Public Pulse lite scanner (embeddable widget). SSRF-guarded + rate-limited
   // inside the handlers; no API key. CORS '*' (below) lets it run cross-origin.
@@ -240,7 +243,10 @@ export default auth(async (req) => {
   // crawler (Slackbot etc.) reading metadata to render a card, or the path
   // itself is a public OG image asset. Both bypass the auth redirect so the
   // unfurl reflects the entity, not the login page.
-  if (pathname.startsWith("/app")) {
+  // Anchor on the segment boundary so sibling public routes like /apply are NOT
+  // treated as app pages (`"/apply".startsWith("/app")` is true — the bug this
+  // guards against). Gate exactly `/app` and any `/app/**`.
+  if (pathname === "/app" || pathname.startsWith("/app/")) {
     const userAgent = req.headers.get("user-agent");
     if (isOgAssetPath(pathname) || isUnfurlBot(userAgent)) {
       return NextResponse.next();
