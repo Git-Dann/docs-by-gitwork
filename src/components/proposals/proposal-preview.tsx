@@ -47,7 +47,10 @@ export function ProposalPreview({
   const visibleSections = sortedSections.filter((section) => section.isVisible);
 
   const documentBody = pageMode === "paged" ? (
-    <article className="proposal-document mx-auto w-full max-w-[210mm]">
+    // Transparent backdrop (overrides .proposal-document's cream) so the neutral page canvas shows
+    // in the gaps between sheets — otherwise cream-on-cream hides the shadow and the pages blur
+    // together. Each .doc-a4-page paints its own cream, so the sheets still read as paper.
+    <article className="proposal-document mx-auto w-full max-w-[210mm]" style={{ background: "transparent" }}>
       <PagedDocument
         proposal={resolved}
         sections={visibleSections}
