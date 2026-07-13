@@ -12,6 +12,7 @@ export type ModuleKey =
   | "FOUNDRY"
   | "PULSE"
   | "CODE"
+  | "DEVSIGNAL"
   | "DOCS"
   | "PORTAL"
   | "CARE"
