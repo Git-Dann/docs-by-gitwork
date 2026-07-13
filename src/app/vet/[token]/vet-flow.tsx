@@ -418,7 +418,7 @@ function ResumeNote() {
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
           }}
-          className="shrink-0 rounded-full border border-[rgba(12,12,24,0.2)] bg-white px-3 py-1 text-xs font-medium text-[#1A1A1E] transition hover:bg-[rgba(12,12,24,0.04)]"
+          className="shrink-0 rounded-full border border-[rgba(12,12,24,0.2)] bg-[#FFFFFF] px-3 py-1 text-xs font-medium text-[#1A1A1E] transition hover:bg-[rgba(12,12,24,0.04)]"
         >
           {copied ? "Copied ✓" : "Copy"}
         </button>
