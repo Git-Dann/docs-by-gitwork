@@ -24,6 +24,7 @@ import {
 import { WorldClocks, TeamOverlap, HQ_TZ, TEAM_TZ } from "./desk-time";
 import { DeskNeedsReply } from "./desk-needs-reply";
 import { PurgeReviewBanner } from "./desk-purge-review";
+import { BriefPeek } from "@/components/brief/brief-peek";
 
 type Counterpart = { tz: string; label: string };
 
@@ -74,6 +75,9 @@ export function DeskToday({ onNavigate }: { onNavigate?: (tab: DeskTab) => void 
 
   return (
     <div>
+      {/* The Monday Brief — peeks from the top of the desk; opens the full page. */}
+      <BriefPeek />
+
       {/* Masthead */}
       <div className="mb-2">
         <div className="flex items-center justify-between gap-3">
