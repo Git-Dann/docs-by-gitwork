@@ -10,7 +10,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ProposalSectionPreview } from "@/components/proposals/proposal-section-preview";
+import { PresentationSlide } from "@/components/proposals/presentation-slide";
 import { resolveProposalMergeVariables } from "@/lib/merge-variables";
 import { cn } from "@/lib/format";
 import type { ProposalDocument } from "@/types/proposal";
@@ -155,16 +155,11 @@ export function PresentationMode({
           </>
         ) : null}
 
-        {/* Fills the stage height (not just wide-as-needed) — a short slide's card still reaches
-            the full viewport height, and a tall one scrolls INSIDE the card instead of the whole
-            stage growing past the viewport. */}
-        <div className="absolute inset-0 flex items-stretch justify-center px-4 py-6 sm:px-10 sm:py-10">
+        {/* Each slide is scaled to fit the stage (never scrolls) — a slide that fits renders 1×,
+            a tall one shrinks uniformly. See <PresentationSlide>. */}
+        <div className="absolute inset-0 flex items-center justify-center px-4 py-6 sm:px-10 sm:py-10">
           {current ? (
-            <div className="mx-auto flex h-full w-full max-w-[1000px] flex-col overflow-hidden rounded-[14px] bg-white text-[var(--text-1)] shadow-[0_24px_64px_-12px_rgba(0,0,0,0.5)]">
-              <div className="min-h-0 flex-1 overflow-y-auto p-8 sm:p-12">
-                <ProposalSectionPreview section={current} proposal={resolved} index={index} />
-              </div>
-            </div>
+            <PresentationSlide section={current} proposal={resolved} index={index} />
           ) : (
             <div className="flex h-full items-center justify-center text-white/60">
               This document has no visible blocks to present.
