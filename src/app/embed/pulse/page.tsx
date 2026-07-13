@@ -41,7 +41,7 @@ declare global {
 const ACCENT = "#6B52FF"; // Gitwork purple
 const NAVY_GRADIENT = "linear-gradient(160deg, #17172a 0%, #0C0C18 100%)";
 const SERIF = "var(--font-fraunces), 'Fraunces', Georgia, serif";
-const CALENDLY_URL = "https://calendly.com/gitworkgroup/30min";
+const BOOKING_URL = "https://calendar.google.com/calendar/appointments/schedules/AcZssZ3uLzvxU1kbocUtjtGtYTTLqKuGCCjnvHAM1dLRJsbMhvYjOdaamfywtrHEHQxqEQTZ_YbNLGEf?gv=true";
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
 function scoreColor(score: number | null): string {
@@ -427,7 +427,7 @@ export default function EmbedPulsePage() {
                     Each email gets one free unlock. Want the full picture for this site too?
                   </p>
                   <a
-                    href={CALENDLY_URL}
+                    href={BOOKING_URL}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ display: "inline-block", background: ACCENT, color: "white", fontSize: 14, fontWeight: 700, padding: "11px 18px", borderRadius: 10, textDecoration: "none" }}
@@ -520,7 +520,7 @@ export default function EmbedPulsePage() {
                     Gitwork builds and ships products — from fast fixes to full-stack delivery.
                   </p>
                   <a
-                    href={CALENDLY_URL}
+                    href={BOOKING_URL}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ display: "inline-block", background: "white", color: "#111827", fontSize: 14, fontWeight: 700, padding: "10px 22px", borderRadius: 10, textDecoration: "none" }}

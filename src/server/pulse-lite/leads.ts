@@ -15,7 +15,7 @@ import { calculateHealthScore } from "@/server/pulse-scan";
 import { resolveEmbedCheckKeys, filterToEmbedChecks } from "@/server/pulse-embed-config";
 import type { PulseScanCheckInput } from "@/types/pulse";
 
-const CALENDLY_URL = "https://calendly.com/gitworkgroup/30min";
+const BOOKING_URL = "https://calendar.google.com/calendar/appointments/schedules/AcZssZ3uLzvxU1kbocUtjtGtYTTLqKuGCCjnvHAM1dLRJsbMhvYjOdaamfywtrHEHQxqEQTZ_YbNLGEf?gv=true";
 
 function notFound(message: string): Error {
   return Object.assign(new Error(message), { status: 404 });
@@ -141,6 +141,6 @@ async function notifyVisitorOfResults(leadId: string): Promise<void> {
       <p><strong>Critical issues:</strong> ${criticalCount}</p>
       ${findingsHtml}
       <p>Want help fixing these, or a full deep-dive across 100+ checks?
-        <a href="${CALENDLY_URL}">Book a call</a> with Gitwork.</p>`,
+        <a href="${BOOKING_URL}">Book a call</a> with Gitwork.</p>`,
   });
 }
