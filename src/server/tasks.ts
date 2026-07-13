@@ -28,7 +28,7 @@ import type {
   ClientTaskSummary,
   TaskAttentionDTO,
 } from "@/types/tasks";
-import { TASK_STATUSES } from "@/types/tasks";
+import { TASK_STATUSES, TASK_STATUS_LABELS } from "@/types/tasks";
 
 // ─── Row shapes + mappers ──────────────────────────────────────────────────
 
@@ -494,6 +494,11 @@ async function nextOrderKey(workspaceId: string, clientId: string, status: TaskS
   return (top?.orderKey ?? 0) + 1;
 }
 
+// ─── Notification helpers (in-app bell/Desk) ────────────────────────────────
+const clientTasksUrl = (slug: string) => `/app/portal/${slug}/tasks`;
+const assignedTitle = (n: number) =>
+  n === 1 ? "You were assigned a task" : `You were assigned ${n} tasks`;
+
 export async function createTask(
   user: EffectiveUser,
   input: {
@@ -566,6 +571,24 @@ export async function createTask(
     },
     include: taskInclude,
   });
+  // Notify anyone assigned at creation (excluding the creator).
+  const createdAssignees = effectiveAssigneeIds.filter((aid) => aid !== user.id);
+  if (createdAssignees.length > 0) {
+    dispatchNotification({
+      event: "tasks.assigned",
+      workspaceId: user.workspaceId,
+      actorId: user.id,
+      target: { kind: "users", userIds: createdAssignees },
+      clientId: input.clientId,
+      title: assignedTitle(1),
+      titleForCount: assignedTitle,
+      body: row.title,
+      actionUrl: clientTasksUrl(row.client.slug),
+      groupKey: "tasks.assigned",
+      metadata: { taskIds: [row.id] },
+    });
+  }
+
   const [task] = await attachScribeSources(user.workspaceId, [taskRowToDTO(row)]);
   return task;
 }
@@ -670,7 +693,13 @@ export async function updateTask(
 ): Promise<TaskDTO> {
   const existing = await prisma.task.findFirst({
     where: { id, workspaceId: user.workspaceId },
-    select: { clientId: true, status: true, startedAt: true },
+    select: {
+      clientId: true,
+      status: true,
+      startedAt: true,
+      assigneeId: true,
+      assignees: { select: { id: true } },
+    },
   });
   if (!existing) throw new ForbiddenError("Task not found");
   await assertClientInScope(user, existing.clientId);
@@ -726,6 +755,51 @@ export async function updateTask(
     }
   }
 
+  // Notify newly-added assignees (excluding the actor and anyone already assigned).
+  if (input.assigneeIds !== undefined) {
+    const prior = new Set(
+      existing.assignees.length > 0
+        ? existing.assignees.map((a) => a.id)
+        : existing.assigneeId
+          ? [existing.assigneeId]
+          : [],
+    );
+    const added = input.assigneeIds.filter((aid) => !prior.has(aid) && aid !== user.id);
+    if (added.length > 0) {
+      dispatchNotification({
+        event: "tasks.assigned",
+        workspaceId: user.workspaceId,
+        actorId: user.id,
+        target: { kind: "users", userIds: added },
+        clientId: existing.clientId,
+        title: assignedTitle(1),
+        titleForCount: assignedTitle,
+        body: row.title,
+        actionUrl: clientTasksUrl(row.client.slug),
+        groupKey: "tasks.assigned",
+        metadata: { taskIds: [row.id] },
+      });
+    }
+  }
+
+  // Notify the task's assignees when its status changes (excluding the actor).
+  if (input.status !== undefined && input.status !== existing.status) {
+    const recipients = row.assignees.map((a) => a.id).filter((aid) => aid !== user.id);
+    if (recipients.length > 0) {
+      dispatchNotification({
+        event: "tasks.status_changed",
+        workspaceId: user.workspaceId,
+        actorId: user.id,
+        target: { kind: "users", userIds: recipients },
+        clientId: row.clientId,
+        title: `"${row.title}" → ${TASK_STATUS_LABELS[input.status]}`,
+        actionUrl: clientTasksUrl(row.client.slug),
+        groupKey: `tasks.status_changed:${row.id}`,
+        metadata: { taskId: row.id, status: input.status },
+      });
+    }
+  }
+
   const [task] = await attachScribeSources(user.workspaceId, [taskRowToDTO(row)]);
   return task;
 }
@@ -752,6 +826,24 @@ export async function moveTask(
     },
     include: taskInclude,
   });
+
+  if (input.status !== existing.status) {
+    const recipients = row.assignees.map((a) => a.id).filter((aid) => aid !== user.id);
+    if (recipients.length > 0) {
+      dispatchNotification({
+        event: "tasks.status_changed",
+        workspaceId: user.workspaceId,
+        actorId: user.id,
+        target: { kind: "users", userIds: recipients },
+        clientId: row.clientId,
+        title: `"${row.title}" → ${TASK_STATUS_LABELS[input.status]}`,
+        actionUrl: clientTasksUrl(row.client.slug),
+        groupKey: `tasks.status_changed:${row.id}`,
+        metadata: { taskId: row.id, status: input.status },
+      });
+    }
+  }
+
   return taskRowToDTO(row);
 }
 
@@ -988,7 +1080,13 @@ export async function addTaskComment(
 ): Promise<TaskCommentDTO> {
   const task = await prisma.task.findFirst({
     where: { id: taskId, workspaceId: user.workspaceId },
-    select: { clientId: true, title: true, client: { select: { slug: true } } },
+    select: {
+      clientId: true,
+      title: true,
+      client: { select: { slug: true } },
+      assigneeId: true,
+      assignees: { select: { id: true } },
+    },
   });
   if (!task) throw new ForbiddenError("Task not found");
   await assertClientInScope(user, task.clientId);
@@ -1027,6 +1125,33 @@ export async function addTaskComment(
       clientId: task.clientId,
       groupKey: `task-mention:${taskId}`,
       metadata: { taskId, commentId: row.id, actorId: user.id },
+    });
+  }
+
+  // Notify the task's assignees of the new comment (excluding the author and
+  // anyone already @mentioned — they got the mention notification above).
+  const assigneeIds = task.assignees.length > 0
+    ? task.assignees.map((a) => a.id)
+    : task.assigneeId
+      ? [task.assigneeId]
+      : [];
+  const commentRecipients = assigneeIds.filter(
+    (aid) => aid !== user.id && !mentionIds.includes(aid),
+  );
+  if (commentRecipients.length > 0) {
+    dispatchNotification({
+      event: "tasks.commented",
+      workspaceId: user.workspaceId,
+      actorId: user.id,
+      target: { kind: "users", userIds: commentRecipients },
+      clientId: task.clientId,
+      title: `New comment on "${task.title}"`,
+      titleForCount: (n) =>
+        n === 1 ? `New comment on "${task.title}"` : `${n} new comments on "${task.title}"`,
+      body: body.slice(0, 140),
+      actionUrl: `/app/portal/${task.client.slug}/tasks?task=${taskId}`,
+      groupKey: `tasks.commented:${taskId}`,
+      metadata: { taskId, commentId: row.id },
     });
   }
 
