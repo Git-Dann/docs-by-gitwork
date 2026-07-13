@@ -1771,6 +1771,39 @@ function OverviewCanvas({
     !assetsCount &&
     !ctaCount;
 
+  // Reports are not commercial documents — show a report-appropriate overview instead of the
+  // proposal bento (no value / VAT / phases / proposal-coverage, which are meaningless here).
+  if (proposal.documentType === "REPORT") {
+    return (
+      <section className="grid gap-3 xl:grid-cols-2">
+        <OverviewWidget
+          number="02"
+          name="REPORT"
+          rightSlot="SUMMARY"
+          figure={String(visibleSectionsCount)}
+          figureLabel="VISIBLE MODULES"
+        >
+          <OverviewStatRow label="Status" value={<StatusBadge status={proposal.status} />} />
+          <OverviewStatRow label="Version" value={proposal.version || "—"} />
+          <OverviewStatRow label="Last updated" value={formatDate(proposal.updatedAt)} />
+        </OverviewWidget>
+
+        <OverviewWidget
+          number="03"
+          name="CLIENT"
+          rightSlot="OWNERSHIP"
+          figure={clientName || "—"}
+          figureLabel="CLIENT · OWNERSHIP"
+          figureLong
+        >
+          <OverviewStatRow label="Prepared by" value={preparedByLine || "Not set"} />
+          <OverviewStatRow label="Primary CTA" value={primaryCta?.label || "Not set"} />
+          <OverviewStatRow label="Expiry" value={formatDate(expiryDate)} />
+        </OverviewWidget>
+      </section>
+    );
+  }
+
   if (isEmptyProposal) {
     return (
       <section className="widget-card overflow-hidden">

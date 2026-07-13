@@ -1687,20 +1687,45 @@ export async function getReport(reportId: string): Promise<SupportReport | null>
 
 // ─── Workspace Members ────────────────────────────────────────────────────────
 
-export async function listWorkspaceMembers(): Promise<
-  { id: string; name: string; email: string; role: string }[]
-> {
+export async function listWorkspaceMembers(
+  clientId?: string,
+): Promise<{ id: string; name: string; email: string; role: string }[]> {
   const workspaceId = await getWorkspaceId();
   const rows = await prisma.workspaceMember.findMany({
     where: { workspaceId },
     include: { user: true },
   });
-  return rows.map((m) => ({
+  const all = rows.map((m) => ({
     id: m.user.id,
     name: m.user.name ?? m.user.email,
     email: m.user.email,
     role: m.role,
   }));
+
+  // When a Care client is given, scope to the devs assigned to that client — via Care
+  // membership (SupportClientMembership) and/or the general dev↔client link (ClientAssignment
+  // on the linked WorkspaceClient). Falls back to all members when nothing is assigned yet, so
+  // the picker is never empty during setup.
+  if (!clientId) return all;
+
+  const client = await prisma.supportClient.findUnique({
+    where: { id: clientId },
+    select: { workspaceClientId: true },
+  });
+
+  const [memberships, assignments] = await Promise.all([
+    prisma.supportClientMembership.findMany({ where: { clientId }, select: { userId: true } }),
+    client?.workspaceClientId
+      ? prisma.clientAssignment.findMany({ where: { clientId: client.workspaceClientId }, select: { userId: true } })
+      : Promise.resolve([] as { userId: string }[]),
+  ]);
+
+  const assignedIds = new Set<string>([
+    ...memberships.map((m) => m.userId),
+    ...assignments.map((a) => a.userId),
+  ]);
+  if (assignedIds.size === 0) return all;
+  return all.filter((m) => assignedIds.has(m.id));
 }
 
 // ─── Workflow rule evaluation ─────────────────────────────────────────────────

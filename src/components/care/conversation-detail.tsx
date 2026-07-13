@@ -189,9 +189,9 @@ export function ConversationDetail({
             {/* Quick actions */}
             <div className="space-y-2 border-t border-[var(--border-2)] pt-3">
               <div className="flex gap-1.5">
-                <button onClick={() => snoozeFor(24)} className="flex-1 rounded-[6px] border border-[var(--border-2)] px-2 py-1.5 text-xs hover:bg-[var(--surface-1)]">Snooze 1d</button>
-                <button onClick={() => snoozeFor(72)} className="flex-1 rounded-[6px] border border-[var(--border-2)] px-2 py-1.5 text-xs hover:bg-[var(--surface-1)]">3d</button>
-                <button onClick={() => snoozeFor(168)} className="flex-1 rounded-[6px] border border-[var(--border-2)] px-2 py-1.5 text-xs hover:bg-[var(--surface-1)]">1w</button>
+                <button onClick={() => snoozeFor(24)} className="flex-1 whitespace-nowrap rounded-[6px] border border-[var(--border-2)] px-2 py-1.5 text-xs hover:bg-[var(--surface-1)]">Snooze 1d</button>
+                <button onClick={() => snoozeFor(72)} className="flex-1 whitespace-nowrap rounded-[6px] border border-[var(--border-2)] px-2 py-1.5 text-xs hover:bg-[var(--surface-1)]">3d</button>
+                <button onClick={() => snoozeFor(168)} className="flex-1 whitespace-nowrap rounded-[6px] border border-[var(--border-2)] px-2 py-1.5 text-xs hover:bg-[var(--surface-1)]">1w</button>
               </div>
               {isClosed ? (
                 <button
