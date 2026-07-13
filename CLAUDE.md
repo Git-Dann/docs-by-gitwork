@@ -1003,3 +1003,38 @@ link. Everything Study did still works.
 - **Deferred:** Study code/routes/API were deliberately **not** relocated under `/app/pulse/*` (kept
   at `/app/study`, no redirect stubs); no back-link chip rendered *on* the study detail page yet
   (the link is stored + surfaced from the Pulse side). Verified via `tsc` + `eslint`.
+
+## 27. Recent Changes (July 2026) — "The Monday Brief" (daily editorial digest, peeks from the Desk)
+
+A faithful rebuild of **Dia's morning brief**, wrapped in `DESIGN.md` and wired to **live data**.
+It's a **pure aggregator view** (like §22 On Your Desk — no live AI, no new persistence): it maps
+data other modules already own into one narrative shape. Surfaced as a **peek** at the top of the
+Desk **TODAY** tab that opens a **full-page overlay**; dismissable from **both** levels.
+
+- **Peek** — `src/components/brief/brief-peek.tsx`, mounted at the top of `desk-today.tsx`. A framed
+  card: painting thumbnail + mono eyebrow (`MON 13 JUL // THE BRIEF`) + DM Serif title + a live
+  one-line readout (overdue / in-flight / due-soon, from `useTaskAttention`). Click → full page. Its
+  **✕ dismisses it for the day** (`localStorage` `gitwork.brief.peek-dismissed.<date>`; returns
+  tomorrow). Cheap — only light reads run until the brief is opened.
+- **Full page** — `src/components/brief/morning-brief.tsx`. A `z-[200]` overlay, dismissable via **✕
+  (fixed top-right), Esc**, or the peek. Sections mirror Dia but on brand: **painting hero** (kept,
+  approved) with `The {Weekday} Brief` in **DM Serif Display**, accent in **Gitwork Blue (never
+  yellow)**, vertical **JetBrains Mono** date/time rails; **Push your work forward** (blue scalloped
+  `Stamp` CTA → board); **Top to-dos** (checkable, `localStorage` ticks keyed by date + todo id, with
+  an **all-done card + blue confetti** — WebAudio chime dropped on purpose); **New updates** (numbered
+  `01/02/03`); **Your day** (two-column schedule + hover/click detail panel, a "Join" stamp for Meet
+  links). Reuses the Desk's `EditorialRow` + `Stamp` primitives so it reads as part of the platform.
+- **Data** — `useBrief(enabled)` (`src/hooks/use-brief.ts`) composes `useMyDay` + `useTaskAttention`
+  (push-forward + to-dos), `useDeskCalendar` (schedule), `useDeskSlack` → `useDeskActionItems`
+  fallback (updates). The Google/Slack reads are **gated on `enabled`** so opening the brief is what
+  triggers them, not mounting the peek. `buildBrief` (`src/lib/brief/build-brief.ts`) is a **pure**
+  DTO→`Brief` mapper (`src/types/brief.ts`); `dia-report://` chat deep-links became board/Meet links
+  (Foundry has no generic chat surface).
+- **Paintings** — `src/lib/brief/paintings.ts`: curated public-domain works served from **Wikimedia
+  Commons** (`Special:FilePath`, one per day, deterministic), with a **blue→navy gradient fallback**
+  if an image 404s or a CSP blocks it. To pin exact art, drop files in `public/brief/` and point `src`
+  at `/brief/<name>.jpg`.
+- **No schema change, no new env, no cron.** Ticks + peek-dismissal are `localStorage` only. Verified
+  via `tsc` + `eslint` (app is auth-gated with no local DB — no browser verification). **Deferred:**
+  no re-open entry point once dismissed (returns next day); wiring to a server-composed brief; an
+  optional dedicated route.
