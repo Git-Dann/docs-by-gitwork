@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { VetFlow } from "@/app/vet/[token]/vet-flow";
+import { useRouter } from "next/navigation";
 
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -24,8 +24,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const GH_RE = /^@?[a-zA-Z0-9-]+$/;
 
 export function ApplyFlow() {
-  const [phase, setPhase] = useState<"loading" | "locked" | "start">("loading");
-  const [token, setToken] = useState<string | null>(null);
+  const router = useRouter();
+  const [phase, setPhase] = useState<"loading" | "locked" | "start" | "starting">("loading");
 
   useEffect(() => {
     getJson<{ unlocked: boolean }>("/api/apply/unlock")
@@ -33,13 +33,19 @@ export function ApplyFlow() {
       .catch(() => setPhase("locked"));
   }, []);
 
-  if (token) return <VetFlow token={token} />;
+  // Redirect to the candidate's own resumable /vet/[token] URL (also emailed to them).
+  const onStarted = (token: string) => {
+    setPhase("starting");
+    router.push(`/vet/${token}`);
+  };
 
   return (
     <Shell>
-      {phase === "loading" && <p className="text-sm text-neutral-500">Loading…</p>}
+      {(phase === "loading" || phase === "starting") && (
+        <p className="text-sm text-neutral-500">{phase === "starting" ? "Setting up your assessment…" : "Loading…"}</p>
+      )}
       {phase === "locked" && <PasswordGate onUnlock={() => setPhase("start")} />}
-      {phase === "start" && <StartCard onStarted={setToken} />}
+      {phase === "start" && <StartCard onStarted={onStarted} />}
     </Shell>
   );
 }

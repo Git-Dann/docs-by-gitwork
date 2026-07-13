@@ -1485,6 +1485,7 @@ const demoVetSession = {
   videoQuestion:
     "Tell us about a recent project you shipped: what problem it solved, the trickiest technical decision you made, and how you'd approach it differently next time.",
   videoSubmitted: false,
+  identitySubmitted: false,
   expired: false,
 };
 
@@ -1605,7 +1606,7 @@ export function resolveDemoApi(pathname: string): unknown {
 
   // Public candidate /vet flow (the 8-step funnel). Challenge/video submits are
   // benign successes; session GET + intake/connect return the mock session.
-  if (/^\/api\/vet\/[^/]+\/(challenge|video)$/.test(pathname)) return { ok: true };
+  if (/^\/api\/vet\/[^/]+\/(challenge|video|identity)$/.test(pathname)) return { ok: true };
   if (/^\/api\/vet\/[^/]+(\/connect)?$/.test(pathname)) return { session: demoVetSession };
 
   return {};

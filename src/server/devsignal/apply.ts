@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { sendWorkspaceEmail } from "@/server/email";
 import { createAssessment } from "./assessment";
 import type { NewCandidateInput } from "./assessment";
 
@@ -37,8 +38,31 @@ export function isAccessCookieValid(value: string | undefined | null): boolean {
  */
 export async function startPublicApplication(
   candidate: NewCandidateInput,
+  opts: { origin?: string | null } = {},
 ): Promise<{ token: string | null; assessmentId: string }> {
   const { workspace } = await ensureBaseRecords();
   const assessment = await createAssessment({ workspaceId: workspace.id, candidate });
-  return { token: assessment.publicToken ?? null, assessmentId: assessment.id };
+  const token = assessment.publicToken ?? null;
+
+  // Resume-by-email: best-effort send the candidate their own resume link so
+  // they can pick up where they left off. No-ops silently if email is unconfigured.
+  if (token && candidate.email && opts.origin) {
+    const url = `${opts.origin.replace(/\/$/, "")}/vet/${token}`;
+    void sendWorkspaceEmail({
+      workspaceId: workspace.id,
+      to: candidate.email,
+      subject: "Your Gitwork DevSignal assessment — resume link",
+      html: [
+        `<p>Hi ${escapeHtml(candidate.name)},</p>`,
+        `<p>Thanks for starting your Gitwork developer assessment. You can pause any time and resume from this private link:</p>`,
+        `<p><a href="${url}">${url}</a></p>`,
+        `<p>It expires in 30 days. If you didn't start this, you can ignore this email.</p>`,
+      ].join(""),
+    }).catch(() => {});
+  }
+  return { token, assessmentId: assessment.id };
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
 }
