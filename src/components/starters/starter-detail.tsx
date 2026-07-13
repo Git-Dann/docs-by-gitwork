@@ -25,6 +25,7 @@ import { cn } from "@/lib/format";
 import { Markdown } from "@/lib/markdown";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { StarterForm } from "@/components/starters/starter-form";
+import { StarterPromptEditor, type StarterEditorPicks } from "@/components/starters/starter-prompt-editor";
 import type { StarterType } from "@/server/starters";
 
 const TYPE_LABEL: Record<StarterType, string> = {
@@ -55,6 +56,9 @@ export function StarterDetail({ starterId }: { starterId: string }) {
   const { mutateAsync: duplicate, isPending: duplicating } = useDuplicateStarter();
   const { mutateAsync: adopt, isPending: adopting } = useAdoptStarter();
   const [editing, setEditing] = useState(false);
+  // Session-only picks from the prompt editor (PROMPT/SKILL only) — threaded onto the download
+  // link so the downloaded Skill resolves the same client/document/scan shown on screen.
+  const [editorPicks, setEditorPicks] = useState<StarterEditorPicks>({});
 
   if (isLoading) {
     return <div className="h-64 animate-pulse rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]" />;
@@ -92,7 +96,14 @@ export function StarterDetail({ starterId }: { starterId: string }) {
   const sourceUrl = starter.content?.sourceUrl;
   const sourceLabel = starter.content?.sourceLabel;
   const isSkillLike = starter.type === "SKILL" || starter.type === "PROMPT";
-  const downloadUrl = `/api/starters/${starter.id}/download`;
+  const downloadParams = new URLSearchParams();
+  if (isSkillLike) {
+    if (editorPicks.clientSlug) downloadParams.set("clientSlug", editorPicks.clientSlug);
+    if (editorPicks.documentId) downloadParams.set("documentId", editorPicks.documentId);
+    if (editorPicks.scanId) downloadParams.set("scanId", editorPicks.scanId);
+  }
+  const downloadQs = downloadParams.toString();
+  const downloadUrl = `/api/starters/${starter.id}/download${downloadQs ? `?${downloadQs}` : ""}`;
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
@@ -317,9 +328,13 @@ export function StarterDetail({ starterId }: { starterId: string }) {
               {" // PROMPT"}
             </span>
           </div>
-          <div className="whitespace-pre-wrap px-6 py-5 font-mono text-[13px] leading-6 text-[var(--text-2)]">
-            {promptText}
-          </div>
+          {isSkillLike ? (
+            <StarterPromptEditor initialPromptText={promptText} onPicksChange={setEditorPicks} />
+          ) : (
+            <div className="whitespace-pre-wrap px-6 py-5 font-mono text-[13px] leading-6 text-[var(--text-2)]">
+              {promptText}
+            </div>
+          )}
         </section>
       )}
 
