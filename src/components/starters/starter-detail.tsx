@@ -96,8 +96,14 @@ export function StarterDetail({ starterId }: { starterId: string }) {
   const sourceUrl = starter.content?.sourceUrl;
   const sourceLabel = starter.content?.sourceLabel;
   const isSkillLike = starter.type === "SKILL" || starter.type === "PROMPT";
+  // Every Kit/Collection in the catalog now carries a promptText too (a kickoff/recommendation
+  // prompt synthesized from its whatYouGet/install steps), so the live editor (insert client/doc/
+  // scan data, preview + copy resolved) is available whenever there's a prompt to work with —
+  // not just for SKILL/PROMPT types. isSkillLike above stays type-based: it only decides the
+  // download button's label ("Add to Claude" vs "Download source"), a separate concern.
+  const hasEditablePrompt = Boolean(promptText);
   const downloadParams = new URLSearchParams();
-  if (isSkillLike) {
+  if (hasEditablePrompt) {
     if (editorPicks.clientSlug) downloadParams.set("clientSlug", editorPicks.clientSlug);
     if (editorPicks.documentId) downloadParams.set("documentId", editorPicks.documentId);
     if (editorPicks.scanId) downloadParams.set("scanId", editorPicks.scanId);
@@ -328,13 +334,7 @@ export function StarterDetail({ starterId }: { starterId: string }) {
               {" // PROMPT"}
             </span>
           </div>
-          {isSkillLike ? (
-            <StarterPromptEditor initialPromptText={promptText} onPicksChange={setEditorPicks} />
-          ) : (
-            <div className="whitespace-pre-wrap px-6 py-5 font-mono text-[13px] leading-6 text-[var(--text-2)]">
-              {promptText}
-            </div>
-          )}
+          <StarterPromptEditor initialPromptText={promptText} onPicksChange={setEditorPicks} />
         </section>
       )}
 
