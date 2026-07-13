@@ -15,6 +15,7 @@ import Link from "next/link";
 import { SessionProvider } from "next-auth/react";
 import {
   HomeIcon,
+  CodeBracketIcon,
   DocumentTextIcon,
   UsersIcon,
   LifebuoyIcon,
@@ -32,6 +33,7 @@ type NavEntry = { label: string; icon: typeof HomeIcon; href?: string };
 
 const NAV: NavEntry[] = [
   { label: "Foundry HQ", icon: HomeIcon, href: "/demo/dev" },
+  { label: "Code", icon: CodeBracketIcon, href: "/demo/devsignal" },
   { label: "Docs", icon: DocumentTextIcon, href: "/demo/docs" },
   { label: "Portal", icon: UsersIcon, href: "/demo/portal" },
   { label: "Care", icon: LifebuoyIcon, href: "/demo/care" },
@@ -84,12 +86,14 @@ export function DemoShell({
           <aside className="hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_38%)] lg:flex lg:min-h-0">
             <div className="flex h-full min-h-0 w-full flex-col">
               <div className="flex shrink-0 items-center justify-center border-b border-[var(--border-2)] px-6 pb-5 pt-7">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/foundry-logo.svg"
-                  alt="Foundry"
-                  className="h-12 w-auto dark:brightness-0 dark:invert"
-                />
+                <Link href="/demo" aria-label="All demos">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="/foundry-logo.svg"
+                    alt="Foundry"
+                    className="h-12 w-auto dark:brightness-0 dark:invert"
+                  />
+                </Link>
               </div>
               <div className="flex min-h-0 flex-1 flex-col px-3 py-4">
                 <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
