@@ -1,9 +1,11 @@
 import { after, NextRequest } from "next/server";
-import { apiOk, fromError } from "@/lib/api-response";
+import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { assertScannableUrl } from "@/server/pulse-lite/url-guard";
 import { assertWithinLiteScanQuota, clientIpFrom } from "@/server/pulse-lite/rate-limit";
 import { runPublicLiteScan } from "@/server/pulse-lite/public-scan";
+import { assertPulseEmbedEnabled } from "@/server/pulse-lite/kill-switch";
+import { assertValidTurnstileToken } from "@/server/pulse-lite/turnstile";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // lite scan (no PageSpeed) finishes well within this
@@ -17,13 +19,20 @@ const LITE_SCAN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json().catch(() => ({}))) as { url?: string };
+    // Cheapest checks first: kill-switch → honeypot → Turnstile → SSRF-guard/rate-limit.
+    await assertPulseEmbedEnabled();
+
+    const body = (await request.json().catch(() => ({}))) as { url?: string; honeypot?: string; turnstileToken?: string };
+
+    if (body.honeypot) return apiError("Couldn't start the scan.", 400);
+
+    const ip = clientIpFrom(request.headers);
+    await assertValidTurnstileToken(body.turnstileToken, ip);
 
     // SSRF guard + normalisation (throws 400 on unsafe input).
     const { url, hostname } = await assertScannableUrl(body.url ?? "");
 
     // Abuse protection (throws 429 when over quota).
-    const ip = clientIpFrom(request.headers);
     await assertWithinLiteScanQuota({ ip, targetHost: hostname });
 
     const lite = await prisma.pulseLiteScan.create({

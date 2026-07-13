@@ -1432,6 +1432,23 @@ export async function importPulseLead(leadId: string): Promise<{ scanId: string 
   return apiFetch<{ scanId: string }>(`/api/pulse/leads/${leadId}/import`, { method: "POST" });
 }
 
+export interface PulseEmbedConfig {
+  enabled: boolean;
+  checkKeys: string[];
+}
+
+export async function getPulseEmbedConfig(): Promise<PulseEmbedConfig> {
+  return apiFetch<PulseEmbedConfig>("/api/workspace/pulse-embed");
+}
+
+export async function updatePulseEmbedConfig(patch: { enabled?: boolean; checkKeys?: string[] }): Promise<PulseEmbedConfig> {
+  return apiFetch<PulseEmbedConfig>("/api/workspace/pulse-embed", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
 export interface FixAgentResult {
   proposedFixes: Array<{ checkKey: string; filePath: string; newContent: string; explanation: string }>;
   prUrl: string | null;

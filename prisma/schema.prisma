@@ -329,6 +329,12 @@ model Workspace {
   defaultAnnualLeaveDays      Int                        @default(25)
   expenseCategories           Json? // Optional override of the hardcoded category list
   pulsePricingConfig          Json? // PulsePricingConfig — { fxFromUsd, dayRateOverrideGbp?, seniority? } for Pulse engagement pricing
+  /// Master switch for the public Pulse embed (/embed/pulse + its API routes). Off = all
+  /// public scan/unlock requests are rejected with a "temporarily unavailable" message.
+  pulseEmbedEnabled           Boolean                    @default(true)
+  /// checkKey[] shown in the public embed's free teaser (score/counts/findings all derive
+  /// from this subset, not the full scan). Null → DEFAULT_EMBED_CHECK_KEYS (pulse-embed-config.ts).
+  pulseEmbedCheckKeys         Json?
   /// ISO-3166-1 alpha-2 country codes whose public/religious holidays show on the
   /// team calendar for EVERYONE (workspace-wide), independent of where each member
   /// is based. Defaults to UK + Pakistan; admins can extend to other countries.

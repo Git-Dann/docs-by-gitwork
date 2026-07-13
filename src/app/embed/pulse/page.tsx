@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Script from "next/script";
 
 // ── Types (mirror PublicScanView from /api/public/pulse/scan/[id]) ─────────────
 type Check = {
@@ -26,7 +27,22 @@ type View = {
   errorMessage: string | null;
 };
 
-const ACCENT = "#4f46e5";
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        container: HTMLElement,
+        options: { sitekey: string; callback: (token: string) => void; "expired-callback"?: () => void },
+      ) => string;
+    };
+  }
+}
+
+const ACCENT = "#6B52FF"; // Gitwork purple
+const NAVY_GRADIENT = "linear-gradient(160deg, #17172a 0%, #0C0C18 100%)";
+const SERIF = "var(--font-fraunces), 'Fraunces', Georgia, serif";
+const CALENDLY_URL = "https://calendly.com/gitworkgroup/30min";
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
 function scoreColor(score: number | null): string {
   if (score == null) return "#9ca3af";
@@ -68,6 +84,23 @@ function ScoreRing({ score }: { score: number | null }) {
   );
 }
 
+/** Off-screen honeypot input — real visitors never see or fill it; naive bots that
+ * fill every field will, and the server rejects the request when it's non-empty. */
+function Honeypot({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <input
+      type="text"
+      name="company"
+      tabIndex={-1}
+      autoComplete="off"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{ position: "absolute", left: -9999, width: 1, height: 1, opacity: 0 }}
+      aria-hidden="true"
+    />
+  );
+}
+
 export default function EmbedPulsePage() {
   const [url, setUrl] = useState("");
   const [scanId, setScanId] = useState<string | null>(null);
@@ -79,8 +112,29 @@ export default function EmbedPulsePage() {
   const [unlocking, setUnlocking] = useState(false);
   const [displayScore, setDisplayScore] = useState<number | null>(null);
   const [unlockError, setUnlockError] = useState<string | null>(null);
+  const [emailAlreadyUsed, setEmailAlreadyUsed] = useState(false);
+
+  const [scanHoneypot, setScanHoneypot] = useState("");
+  const [unlockHoneypot, setUnlockHoneypot] = useState("");
+  const [turnstileReady, setTurnstileReady] = useState(false);
+  const [scanToken, setScanToken] = useState<string | null>(null);
+  const [unlockToken, setUnlockToken] = useState<string | null>(null);
+  const scanTurnstileRef = useRef<HTMLDivElement>(null);
+  const unlockTurnstileRef = useRef<HTMLDivElement>(null);
+
+  const [source, setSource] = useState<"gitwork.co.uk" | "foundry-demo">("foundry-demo");
 
   const rootRef = useRef<HTMLDivElement>(null);
+
+  // Which site referred this embed — attributes leads to a placement in the Foundry
+  // leads dashboard. Same-origin (e.g. /pulse-overview's self-embed) or no referrer
+  // falls back to "foundry-demo".
+  useEffect(() => {
+    try {
+      const ref = document.referrer;
+      if (ref && /(^|\.)gitwork\.co\.uk$/.test(new URL(ref).hostname)) setSource("gitwork.co.uk");
+    } catch { /* not embedded / no referrer */ }
+  }, []);
 
   // Auto-resize the host iframe as content grows/shrinks.
   useEffect(() => {
@@ -97,6 +151,20 @@ export default function EmbedPulsePage() {
     if (rootRef.current) ro.observe(rootRef.current);
     return () => ro.disconnect();
   });
+
+  // Render the Turnstile widgets once the script has loaded. Re-runs as the DOM
+  // changes (e.g. the unlock form's container only exists once a scan completes),
+  // guarding against double-render with a hasChildNodes() check.
+  useEffect(() => {
+    if (!turnstileReady || !TURNSTILE_SITE_KEY || !window.turnstile) return;
+    if (scanTurnstileRef.current && !scanTurnstileRef.current.hasChildNodes()) {
+      window.turnstile.render(scanTurnstileRef.current, { sitekey: TURNSTILE_SITE_KEY, callback: setScanToken });
+    }
+    if (unlockTurnstileRef.current && !unlockTurnstileRef.current.hasChildNodes()) {
+      window.turnstile.render(unlockTurnstileRef.current, { sitekey: TURNSTILE_SITE_KEY, callback: setUnlockToken });
+    }
+    // Re-check whenever the conditionally-rendered containers might have (dis)appeared.
+  }, [turnstileReady, view?.status, view?.emailCaptured, emailAlreadyUsed]);
 
   // Poll while a scan is running.
   useEffect(() => {
@@ -153,7 +221,7 @@ export default function EmbedPulsePage() {
       const res = await fetch("/api/public/pulse/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify({ url: url.trim(), honeypot: scanHoneypot, turnstileToken: scanToken }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "Couldn't start the scan.");
@@ -163,20 +231,24 @@ export default function EmbedPulsePage() {
     } finally {
       setStarting(false);
     }
-  }, [url, starting]);
+  }, [url, starting, scanHoneypot, scanToken]);
 
   const unlock = useCallback(async () => {
     if (!scanId || unlocking) return;
     setUnlocking(true);
     setUnlockError(null);
+    setEmailAlreadyUsed(false);
     try {
       const res = await fetch(`/api/public/pulse/scan/${scanId}/unlock`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({ email: email.trim(), honeypot: unlockHoneypot, turnstileToken: unlockToken, source }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Couldn't verify that email.");
+      if (!res.ok) {
+        if (res.status === 409) { setEmailAlreadyUsed(true); return; }
+        throw new Error(data?.error ?? "Couldn't verify that email.");
+      }
       // Re-fetch to pull the now-unlocked detail.
       const refreshed = await fetch(`/api/public/pulse/scan/${scanId}`, { cache: "no-store" });
       if (refreshed.ok) setView((await refreshed.json()) as View);
@@ -185,7 +257,7 @@ export default function EmbedPulsePage() {
     } finally {
       setUnlocking(false);
     }
-  }, [scanId, email, unlocking]);
+  }, [scanId, email, unlocking, unlockHoneypot, unlockToken, source]);
 
   const running = view?.status === "RUNNING" || (scanId !== null && !view);
   const done = view?.status === "COMPLETED";
@@ -208,6 +280,14 @@ export default function EmbedPulsePage() {
         margin: "0 auto",
       }}
     >
+      {TURNSTILE_SITE_KEY && (
+        <Script
+          src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+          strategy="afterInteractive"
+          onLoad={() => setTurnstileReady(true)}
+        />
+      )}
+
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, color: ACCENT, textTransform: "uppercase" }}>
@@ -215,11 +295,11 @@ export default function EmbedPulsePage() {
         </span>
       </div>
 
-      <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 6px", lineHeight: 1.2 }}>
+      <h1 style={{ fontFamily: SERIF, fontSize: 26, fontWeight: 700, margin: "0 0 6px", lineHeight: 1.2 }}>
         Free site health check
       </h1>
       <p style={{ fontSize: 14, color: "#6b7280", margin: "0 0 18px" }}>
-        100+ checks across performance, SEO, security, accessibility & compliance — in seconds. No signup to see your score.
+        A quick check across performance, SEO, security & mobile — in seconds. No signup to see your score.
       </p>
 
       {/* Input */}
@@ -241,6 +321,7 @@ export default function EmbedPulsePage() {
             outline: "none",
           }}
         />
+        <Honeypot value={scanHoneypot} onChange={setScanHoneypot} />
         <button
           onClick={startScan}
           disabled={running || starting || !url.trim()}
@@ -258,6 +339,7 @@ export default function EmbedPulsePage() {
           {running ? "Scanning…" : starting ? "Starting…" : "Scan my site"}
         </button>
       </div>
+      {TURNSTILE_SITE_KEY && <div ref={scanTurnstileRef} style={{ marginTop: 10 }} />}
 
       {error && (
         <p style={{ marginTop: 12, fontSize: 13, color: "#dc2626" }}>{error}</p>
@@ -335,8 +417,28 @@ export default function EmbedPulsePage() {
                 </div>
               )}
 
+              {/* Already claimed their free scan with this email */}
+              {done && !view.emailCaptured && emailAlreadyUsed && (
+                <div style={{ marginTop: 22, border: "1px solid #e5e7eb", borderRadius: 12, padding: 18, background: "#f9fafb" }}>
+                  <p style={{ fontSize: 15, fontWeight: 700, margin: "0 0 4px" }}>
+                    You&apos;ve already used your free scan.
+                  </p>
+                  <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 12px" }}>
+                    Each email gets one free unlock. Want the full picture for this site too?
+                  </p>
+                  <a
+                    href={CALENDLY_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ display: "inline-block", background: ACCENT, color: "white", fontSize: 14, fontWeight: 700, padding: "11px 18px", borderRadius: 10, textDecoration: "none" }}
+                  >
+                    Book a call →
+                  </a>
+                </div>
+              )}
+
               {/* Email gate (detail locked) */}
-              {done && !view.emailCaptured && (
+              {done && !view.emailCaptured && !emailAlreadyUsed && (
                 <div style={{ marginTop: 22, border: "1px solid #e5e7eb", borderRadius: 12, padding: 18, background: "#f9fafb" }}>
                   <p style={{ fontSize: 15, fontWeight: 700, margin: "0 0 4px" }}>
                     {view.fail > 0
@@ -356,6 +458,7 @@ export default function EmbedPulsePage() {
                       onKeyDown={(e) => { if (e.key === "Enter") unlock(); }}
                       style={{ flex: "1 1 220px", padding: "11px 13px", border: "1px solid #d1d5db", borderRadius: 10, fontSize: 14, outline: "none" }}
                     />
+                    <Honeypot value={unlockHoneypot} onChange={setUnlockHoneypot} />
                     <button
                       onClick={unlock}
                       disabled={unlocking || !email.trim()}
@@ -373,6 +476,7 @@ export default function EmbedPulsePage() {
                       {unlocking ? "Unlocking…" : "Show me the issues"}
                     </button>
                   </div>
+                  {TURNSTILE_SITE_KEY && <div ref={unlockTurnstileRef} style={{ marginTop: 10 }} />}
                   {unlockError && <p style={{ marginTop: 8, fontSize: 13, color: "#dc2626" }}>{unlockError}</p>}
                 </div>
               )}
@@ -397,7 +501,7 @@ export default function EmbedPulsePage() {
                     ))}
                     {findings.length > 5 && (
                       <p style={{ fontSize: 12, color: "#6b7280", textAlign: "center", margin: 0 }}>
-                        +{findings.length - 5} more issues — talk to Gitwork to get them all fixed.
+                        +{findings.length - 5} more issues — book a call to get them all fixed.
                       </p>
                     )}
                   </div>
@@ -406,8 +510,8 @@ export default function EmbedPulsePage() {
 
               {/* CTA */}
               {done && (
-                <div style={{ marginTop: 22, textAlign: "center", background: "#111827", borderRadius: 12, padding: 20 }}>
-                  <p style={{ fontSize: 14, fontWeight: 700, color: "white", margin: "0 0 4px" }}>
+                <div style={{ marginTop: 22, textAlign: "center", background: NAVY_GRADIENT, borderRadius: 12, padding: 20 }}>
+                  <p style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 700, color: "white", margin: "0 0 4px" }}>
                     {view.fail > 0
                       ? `${view.fail} failing check${view.fail === 1 ? "" : "s"}. We can fix them.`
                       : "Ready to take this further?"}
@@ -416,12 +520,12 @@ export default function EmbedPulsePage() {
                     Gitwork builds and ships products — from fast fixes to full-stack delivery.
                   </p>
                   <a
-                    href="https://gitwork.co.uk"
+                    href={CALENDLY_URL}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ display: "inline-block", background: "white", color: "#111827", fontSize: 14, fontWeight: 700, padding: "10px 22px", borderRadius: 10, textDecoration: "none" }}
                   >
-                    Talk to Gitwork →
+                    Book a call →
                   </a>
                 </div>
               )}

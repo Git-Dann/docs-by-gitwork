@@ -30,6 +30,8 @@ import {
   deleteMonitor,
   listPulseLeads,
   importPulseLead,
+  getPulseEmbedConfig,
+  updatePulseEmbedConfig,
 } from "@/lib/api";
 
 export function useSharePulseScan() {
@@ -330,6 +332,24 @@ export function usePulseLeads() {
     queryKey: ["pulse-leads"],
     queryFn: listPulseLeads,
     staleTime: 1000 * 30,
+  });
+}
+
+export function usePulseEmbedConfig() {
+  return useQuery({
+    queryKey: ["pulse-embed-config"],
+    queryFn: getPulseEmbedConfig,
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useSetPulseEmbedConfig() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: updatePulseEmbedConfig,
+    onSuccess: (data) => {
+      queryClient.setQueryData(["pulse-embed-config"], data);
+    },
   });
 }
 

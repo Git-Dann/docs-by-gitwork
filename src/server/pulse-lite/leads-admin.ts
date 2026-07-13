@@ -6,12 +6,15 @@
 import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createPulseScanRecord, runAnalysis } from "@/server/pulse";
+import type { PulseScanCheckInput } from "@/types/pulse";
 
 export interface PulseLeadView {
   id: string;
   email: string;
   targetUrl: string;
   healthScore: number | null;
+  source: string;
+  criticalCount: number | null;
   createdAt: string;
   importedScanId: string | null;
 }
@@ -20,17 +23,26 @@ export async function listPulseLeads(): Promise<PulseLeadView[]> {
   const leads = await prisma.pulseLead.findMany({ orderBy: { createdAt: "desc" }, take: 100 });
   const liteIds = leads.map((l) => l.liteScanId).filter((v): v is string => Boolean(v));
   const lites = liteIds.length
-    ? await prisma.pulseLiteScan.findMany({ where: { id: { in: liteIds } }, select: { id: true, importedScanId: true } })
+    ? await prisma.pulseLiteScan.findMany({ where: { id: { in: liteIds } }, select: { id: true, importedScanId: true, checks: true } })
     : [];
-  const importedByLite = new Map(lites.map((l) => [l.id, l.importedScanId]));
-  return leads.map((l) => ({
-    id: l.id,
-    email: l.email,
-    targetUrl: l.targetUrl,
-    healthScore: l.healthScore,
-    createdAt: l.createdAt.toISOString(),
-    importedScanId: l.liteScanId ? importedByLite.get(l.liteScanId) ?? null : null,
-  }));
+  const liteById = new Map(lites.map((l) => [l.id, l]));
+  return leads.map((l) => {
+    const lite = l.liteScanId ? liteById.get(l.liteScanId) : undefined;
+    // Deliberately the FULL, unfiltered scan — the team triaging leads should see the
+    // real severity, not the curated subset the public widget teased. See the plan's
+    // note on this split in src/app/api/public/pulse/scan/[id]/route.ts.
+    const checks = (lite?.checks as PulseScanCheckInput[] | null) ?? null;
+    return {
+      id: l.id,
+      email: l.email,
+      targetUrl: l.targetUrl,
+      healthScore: l.healthScore,
+      source: l.source,
+      criticalCount: checks ? checks.filter((c) => c.status === "FAIL").length : null,
+      createdAt: l.createdAt.toISOString(),
+      importedScanId: lite?.importedScanId ?? null,
+    };
+  });
 }
 
 /**

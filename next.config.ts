@@ -58,11 +58,12 @@ const nextConfig: NextConfig = {
         headers: securityHeaders,
       },
       {
-        // The public Pulse scanner is a shareable lead-gen widget — allow it to
-        // be embedded as an <iframe> on any site (it exposes no authed actions).
-        // No X-Frame-Options here (it can't express a wildcard allow).
+        // The public Pulse scanner is a lead-gen widget for the gitwork.co.uk marketing
+        // site — restricted to Gitwork's own domains, plus 'self' so /pulse-overview's
+        // same-origin self-embed keeps working. No X-Frame-Options here (it can't
+        // express this multi-origin allow-list the way CSP frame-ancestors can).
         source: "/embed/:path*",
-        headers: [{ key: "Content-Security-Policy", value: "frame-ancestors *;" }],
+        headers: [{ key: "Content-Security-Policy", value: "frame-ancestors 'self' https://gitwork.co.uk https://www.gitwork.co.uk;" }],
       },
     ];
   },

@@ -19,6 +19,7 @@ export type AuditAction =
   | "settings.branding.updated"
   | "settings.defaults.updated"
   | "settings.pulse_pricing.updated"
+  | "settings.pulse_embed.updated"
   // Team
   | "team.member.invited"
   | "team.member.role_changed"

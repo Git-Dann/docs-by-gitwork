@@ -38,8 +38,18 @@ export function PulseLeadsPanel() {
           <div key={lead.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-[var(--text-1)]">{lead.email}</p>
-              <p className="truncate text-xs text-[var(--text-4)]">{lead.targetUrl}</p>
+              <p className="truncate text-xs text-[var(--text-4)]">
+                {lead.targetUrl}
+                <span className="ml-2 rounded-full bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-4)]">
+                  {lead.source}
+                </span>
+              </p>
             </div>
+            {lead.criticalCount != null && lead.criticalCount > 0 && (
+              <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">
+                {lead.criticalCount} critical
+              </span>
+            )}
             <span className={cn("text-sm font-bold tabular-nums", scoreTone(lead.healthScore))}>
               {lead.healthScore ?? "—"}
             </span>
