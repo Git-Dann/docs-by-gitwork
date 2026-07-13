@@ -252,7 +252,7 @@ export function ScreenshotsWorkspace() {
       {/* ── Control rail ── */}
       <aside className="widget-card flex w-full shrink-0 flex-col overflow-hidden lg:w-[380px]">
         <PanelHeader label="01 // CONTROLS" />
-        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
           <Field label="Store targets" hint={`${state.targets.length} selected`}>
             <TargetPicker selected={state.targets} onToggle={toggleTarget} />
           </Field>

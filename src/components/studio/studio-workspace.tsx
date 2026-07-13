@@ -236,7 +236,7 @@ export function StudioWorkspace() {
       {/* ── Control rail ── */}
       <aside className="widget-card flex w-full shrink-0 flex-col overflow-hidden lg:w-[360px]">
         <PanelHeader label="01 // CONTROLS" />
-        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
           <Field label="Platforms" hint={state.custom.enabled ? "custom size on" : "one or more"}>
             <PlatformDropdown
               assetType={assetType}

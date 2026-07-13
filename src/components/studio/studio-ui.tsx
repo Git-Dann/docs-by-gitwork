@@ -22,7 +22,7 @@ export function PanelHeader({ label }: { label: string }) {
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div>
-      <div className="mb-2 flex items-baseline justify-between gap-2">
+      <div className="mb-1.5 flex items-baseline justify-between gap-2">
         <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-3)]">{label}</span>
         {hint ? <span className="text-[10px] text-[var(--text-4)]">{hint}</span> : null}
       </div>
@@ -120,7 +120,7 @@ export function Segmented<T extends string | number>({
             type="button"
             onClick={() => onChange(o.value)}
             className={
-              "rounded-[6px] px-2.5 py-1.5 text-[12px] font-medium transition " +
+              "rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition " +
               (active ? "bg-[var(--surface-0)] text-[var(--text-1)] shadow-sm" : "text-[var(--text-3)] hover:text-[var(--text-1)]")
             }
           >

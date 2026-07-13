@@ -58,33 +58,27 @@ function StudioRootInner() {
 }
 
 function ClientBrandPicker() {
-  const { brand, clients, selectedSlug, setSelectedSlug, hasDesignSystem, loadingDs } = useStudioBrand();
-  const noDs = selectedSlug && !hasDesignSystem && !loadingDs;
+  const { brand, clients, selectedSlug, setSelectedSlug } = useStudioBrand();
   return (
     <div className="flex items-center gap-2">
       <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-4)]">Brand</span>
-      <select
-        className="app-select-compact min-w-[190px]"
-        value={selectedSlug ?? ""}
-        onChange={(e) => setSelectedSlug(e.target.value || null)}
-      >
-        <option value="">Gitwork (default)</option>
-        {clients.map((c) => (
-          <option key={c.slug} value={c.slug}>
-            {c.name}
-          </option>
-        ))}
-      </select>
-      {loadingDs ? (
-        <span className="text-[11px] text-[var(--text-4)]">loading…</span>
-      ) : brand.source === "client" ? (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--brand-50)] px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)]">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: brand.colors.primary }} />
-          {brand.name} brand
-        </span>
-      ) : noDs ? (
-        <span className="text-[11px] text-[var(--text-4)]">no design system — using Gitwork</span>
-      ) : null}
+      <div className="relative">
+        {brand.source === "client" ? (
+          <span className="pointer-events-none absolute left-2.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full" style={{ backgroundColor: brand.colors.primary }} />
+        ) : null}
+        <select
+          className={"app-select-compact min-w-[190px] " + (brand.source === "client" ? "pl-6" : "")}
+          value={selectedSlug ?? ""}
+          onChange={(e) => setSelectedSlug(e.target.value || null)}
+        >
+          <option value="">Gitwork (default)</option>
+          {clients.map((c) => (
+            <option key={c.slug} value={c.slug}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }

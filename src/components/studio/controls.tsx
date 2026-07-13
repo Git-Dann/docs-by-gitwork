@@ -36,7 +36,7 @@ export function Slider({
           </span>
         </div>
       ) : null}
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-[var(--brand-700)]" />
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="studio-range" />
     </div>
   );
 }
