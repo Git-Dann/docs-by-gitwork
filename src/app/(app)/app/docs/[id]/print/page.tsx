@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { CertificateOfCompletion } from "@/components/proposals/certificate-of-completion";
 import { PrintToolbar } from "@/components/proposals/print-toolbar";
@@ -18,22 +18,29 @@ export default function ProposalPrintPage() {
   // states (SENT / DECLINED / REVOKED / DRAFT) do not warrant a certificate.
   const completedRequest = (signaturesQuery.data ?? []).find((r) => r.status === "COMPLETED");
 
+  // Auto-print once the document has loaded AND the client height pagination has settled (the
+  // paged renderer sets window.__docPaginated) — otherwise print() fires mid-measure and the
+  // pages are wrong. Hard fallback at 6s so a stuck signal never blocks the print dialog.
+  const printedRef = useRef(false);
+  const hasDoc = Boolean(data?.proposal);
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
+    if (typeof window === "undefined" || !hasDoc || printedRef.current) return;
+    if (new URLSearchParams(window.location.search).get("autoprint") !== "1") return;
 
-    const searchParams = new URLSearchParams(window.location.search);
-    if (searchParams.get("autoprint") !== "1") {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      window.print();
-    }, 200);
-
+    const start = Date.now();
+    let timer = 0;
+    const tick = () => {
+      const paginated = (window as unknown as { __docPaginated?: boolean }).__docPaginated;
+      if (paginated || Date.now() - start > 6000) {
+        printedRef.current = true;
+        window.print();
+        return;
+      }
+      timer = window.setTimeout(tick, 150);
+    };
+    timer = window.setTimeout(tick, 300);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [hasDoc]);
 
   if (isPending) {
     return <p className="p-8 text-sm text-[var(--text-3)]">Loading document...</p>;

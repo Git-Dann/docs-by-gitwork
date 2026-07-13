@@ -76,6 +76,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
     try {
       const page = await browser.newPage();
       await page.goto(target, { waitUntil: "networkidle0", timeout: 45_000 });
+      // Wait for the client-side height pagination to settle so each block lands on its final page
+      // before we snapshot (the renderer sets window.__docPaginated once measured). Best-effort:
+      // if it never fires we fall through and still capture rather than failing the export.
+      await page
+        .waitForFunction("window.__docPaginated === true", { timeout: 15_000 })
+        .catch(() => undefined);
       // Zero margins → full-bleed cream to the page edge (no white frame) and no header/footer
       // band. The document's own print CSS supplies the page inset, so content still breathes.
       const pdf = await page.pdf({

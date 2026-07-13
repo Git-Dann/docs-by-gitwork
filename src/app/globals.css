@@ -1450,7 +1450,9 @@ button {
     box-shadow: none !important;
     border-radius: 0 !important;
     max-width: none !important;
-    min-height: 0 !important;
+    /* One .doc-a4-page = exactly one physical A4 sheet. Clip any overflow (a rare block taller than
+       a page) so it can't bleed onto the next sheet. */
+    overflow: hidden;
     break-after: page;
     page-break-after: always;
   }
@@ -1458,9 +1460,11 @@ button {
     break-after: auto;
     page-break-after: auto;
   }
+  /* Full sheet height so the running footer pins to the true bottom of every physical page (a
+     min-height:0 here was the print "floating footer" — the footer sat right under the content). */
   .doc-a4-page__margin {
     padding: 20mm !important;
-    min-height: 0 !important;
+    min-height: 297mm !important;
   }
   .doc-a4-page__inner--cover {
     padding: 0 !important;
