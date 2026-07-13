@@ -61,19 +61,31 @@ function resolveSwatch(fill: Fill): CSSProperties {
   return fill.kind === "linear" ? { backgroundImage: `linear-gradient(${fill.angle}deg, ${stops})` } : { backgroundImage: `radial-gradient(circle, ${stops})` };
 }
 
-export function BackgroundEditor({ theme, onChange, presets = true }: { theme: BackgroundTheme; onChange: (t: BackgroundTheme) => void; presets?: boolean }) {
+export function BackgroundEditor({
+  theme,
+  onChange,
+  presets = true,
+  swatches,
+}: {
+  theme: BackgroundTheme;
+  onChange: (t: BackgroundTheme) => void;
+  presets?: boolean;
+  // When provided (e.g. a client's brand palette), these replace the built-in preset swatches.
+  swatches?: { label: string; fill: Fill }[];
+}) {
   const fill = theme.fill;
   const setFill = (f: Fill) => onChange({ fill: f });
   const setStop = (i: number, color: string) => {
     if (fill.kind === "solid") return;
     setFill({ ...fill, stops: fill.stops.map((s, j) => (j === i ? { ...s, color } : s)) });
   };
+  const shownSwatches = swatches ?? (presets ? BACKGROUND_PRESETS.map((p) => ({ label: p.label, fill: p.theme.fill })) : []);
   return (
     <div className="space-y-3">
-      {presets ? (
+      {shownSwatches.length ? (
         <div className="flex flex-wrap gap-2">
-          {BACKGROUND_PRESETS.map((p) => (
-            <button key={p.id} type="button" title={p.label} onClick={() => onChange(p.theme)} className="h-8 w-8 rounded-[8px] border border-[var(--border-1)] transition hover:border-[var(--text-4)]" style={resolveSwatch(p.theme.fill)} />
+          {shownSwatches.map((p, i) => (
+            <button key={`${p.label}-${i}`} type="button" title={p.label} onClick={() => onChange({ fill: p.fill })} className="h-8 w-8 rounded-[8px] border border-[var(--border-1)] transition hover:border-[var(--text-4)]" style={resolveSwatch(p.fill)} />
           ))}
         </div>
       ) : null}

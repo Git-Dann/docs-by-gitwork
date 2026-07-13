@@ -5,7 +5,9 @@
 
 export type AssetTypeId = "carousel" | "banner" | "post" | "avatar";
 export type PlatformId = "instagram" | "linkedin" | "facebook" | "twitter";
-export type StylePresetId = "navy" | "cream";
+// "navy" | "cream" are the built-ins; a client design system injects a dynamic "client" preset
+// (the `& {}` keeps literal autocomplete while allowing the dynamic id).
+export type StylePresetId = "navy" | "cream" | (string & {});
 export type WordmarkId = "gitwork" | "foundry" | "none";
 export type ExportFormat = "png" | "jpeg";
 export type ExportScale = 1 | 2;

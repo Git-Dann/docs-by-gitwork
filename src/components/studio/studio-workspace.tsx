@@ -26,6 +26,7 @@ import {
   type WordmarkId,
 } from "./config";
 import { exportAllZip, exportOne } from "./export";
+import { buildSocialPreset, useStudioBrand } from "./brand";
 import { btnPrimary, btnSecondary, Field, IconBtn, NumberInput, PanelHeader, SectionRule, Segmented, Toggle } from "./studio-ui";
 import { ArtboardBody } from "./templates";
 
@@ -93,6 +94,14 @@ export function StudioWorkspace() {
   const [zoom, setZoom] = useState(1);
   const [editingSlide, setEditingSlide] = useState(0);
   const nodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const { brand } = useStudioBrand();
+
+  // When a client design system is active it fully replaces the built-in navy/cream presets with a
+  // single brand-derived preset; otherwise the built-ins apply.
+  const clientPreset = useMemo(() => (brand.source === "client" ? buildSocialPreset(brand) : null), [brand]);
+  const availableStyles = useMemo(() => (clientPreset ? [clientPreset] : ALL_STYLES), [clientPreset]);
+  const presetById = useMemo(() => Object.fromEntries(availableStyles.map((p) => [p.id, p])), [availableStyles]);
+  const stylesForBoards = useMemo(() => (clientPreset ? [clientPreset.id] : state.styles), [clientPreset, state.styles]);
 
   useEffect(() => {
     setState(loadState());
@@ -146,8 +155,8 @@ export function StudioWorkspace() {
       ? [{ label: "Custom", slug: "custom", size: { w: state.custom.w, h: state.custom.h } }]
       : state.platforms.map((p) => ({ label: PLATFORMS.find((x) => x.id === p)!.label, slug: p, size: SIZES[assetType][p] }));
     const out: Board[] = [];
-    for (const styleId of state.styles) {
-      const preset = STYLE_PRESETS[styleId];
+    for (const styleId of stylesForBoards) {
+      const preset = presetById[styleId] ?? availableStyles[0];
       for (const t of targets) {
         for (let i = 0; i < slideCount; i++) {
           out.push({
@@ -163,7 +172,7 @@ export function StudioWorkspace() {
       }
     }
     return out;
-  }, [assetType, content.slides.length, state.platforms, state.styles, state.custom]);
+  }, [assetType, content.slides.length, state.platforms, stylesForBoards, presetById, availableStyles, state.custom]);
 
   const groups = useMemo(() => {
     const map = new Map<string, Board[]>();
@@ -246,10 +255,15 @@ export function StudioWorkspace() {
             />
           </Field>
 
-          <Field label="Style" hint="one or more">
+          <Field label="Style" hint={clientPreset ? `${brand.name} brand` : "one or more"}>
             <div className="grid grid-cols-2 gap-2.5">
-              {ALL_STYLES.map((p) => (
-                <StyleCard key={p.id} preset={p} active={state.styles.includes(p.id)} onClick={() => patch({ styles: toggleIn(state.styles, p.id) })} />
+              {availableStyles.map((p) => (
+                <StyleCard
+                  key={p.id}
+                  preset={p}
+                  active={clientPreset ? true : state.styles.includes(p.id)}
+                  onClick={() => (clientPreset ? undefined : patch({ styles: toggleIn(state.styles, p.id) }))}
+                />
               ))}
             </div>
           </Field>
@@ -319,7 +333,7 @@ export function StudioWorkspace() {
                     key={i}
                     index={i}
                     slide={sl}
-                    preset={STYLE_PRESETS[state.styles[0]]}
+                    preset={presetById[stylesForBoards[0]] ?? availableStyles[0]}
                     open={editingSlide === i}
                     canRemove={content.slides.length > 1}
                     onToggle={() => setEditingSlide(editingSlide === i ? -1 : i)}

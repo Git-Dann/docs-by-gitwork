@@ -10,6 +10,7 @@ import { ArrowDownTrayIcon, ChevronDownIcon, ChevronUpIcon, MinusIcon, PlusIcon,
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { exportAllZip, exportOne } from "../export";
 import { BackgroundEditor, ColorField, Slider } from "../controls";
+import { brandBackgroundSwatches, useStudioBrand } from "../brand";
 import { btnPrimary, btnSecondary, Field, IconBtn, PanelHeader, SectionRule, Segmented, Toggle } from "../studio-ui";
 import { Scene } from "./scene";
 import {
@@ -25,6 +26,7 @@ import {
   layoutById,
   newScene,
   newTextLayer,
+  type Fill,
   type DeviceId,
   type LayoutId,
   type ScreenshotState,
@@ -71,6 +73,9 @@ export function ScreenshotsWorkspace() {
   const [zoom, setZoom] = useState(1);
   const [openScene, setOpenScene] = useState(0);
   const nodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const { brand } = useStudioBrand();
+  const brandSwatches = brand.source === "client" ? brandBackgroundSwatches(brand) : undefined;
+  const defaultTextFont = brand.source === "client" ? brand.fontIds.display : "serif-dm";
 
   useEffect(() => {
     setState(loadState());
@@ -147,8 +152,8 @@ export function ScreenshotsWorkspace() {
     [updateScene],
   );
   const addText = useCallback(
-    (sceneId: string) => setState((s) => ({ ...s, scenes: s.scenes.map((sc) => (sc.id === sceneId ? { ...sc, texts: [...sc.texts, newTextLayer(s.layout, { text: "New text" })] } : sc)) })),
-    [],
+    (sceneId: string) => setState((s) => ({ ...s, scenes: s.scenes.map((sc) => (sc.id === sceneId ? { ...sc, texts: [...sc.texts, newTextLayer(s.layout, { text: "New text", font: defaultTextFont })] } : sc)) })),
+    [defaultTextFont],
   );
   const removeText = useCallback(
     (sceneId: string, textId: string) => setState((s) => ({ ...s, scenes: s.scenes.map((sc) => (sc.id === sceneId ? { ...sc, texts: sc.texts.filter((t) => t.id !== textId) } : sc)) })),
@@ -268,7 +273,7 @@ export function ScreenshotsWorkspace() {
           </Field>
 
           <SectionRule label="Background" />
-          <BackgroundEditor theme={state.background} onChange={(t) => patch({ background: t })} />
+          <BackgroundEditor theme={state.background} onChange={(t) => patch({ background: t })} swatches={brandSwatches} />
 
           {anyFramed ? (
             <>
@@ -324,6 +329,7 @@ export function ScreenshotsWorkspace() {
                 onUpdateText={(tid, p) => updateText(sc.id, tid, p)}
                 onRemoveText={(tid) => removeText(sc.id, tid)}
                 onMoveText={(idx, dir) => moveText(sc.id, idx, dir)}
+                swatches={brandSwatches}
               />
             ))}
             <button type="button" className={btnSecondary + " w-full"} onClick={addScene}>
@@ -458,6 +464,7 @@ function SceneCard({
   onUpdateText,
   onRemoveText,
   onMoveText,
+  swatches,
 }: {
   index: number;
   scene: SceneModel;
@@ -471,6 +478,7 @@ function SceneCard({
   onUpdateText: (textId: string, p: Partial<TextLayerModel>) => void;
   onRemoveText: (textId: string) => void;
   onMoveText: (index: number, dir: -1 | 1) => void;
+  swatches?: { label: string; fill: Fill }[];
 }) {
   const [openText, setOpenText] = useState<string | null>(null);
   return (
@@ -531,7 +539,7 @@ function SceneCard({
             onChange={(v) => onChange({ bgOverride: v ? { fill: { kind: "solid", color: "#0A1533" } } : null })}
             label="Override background for this scene"
           />
-          {scene.bgOverride ? <BackgroundEditor theme={scene.bgOverride} onChange={(t) => onChange({ bgOverride: t })} /> : null}
+          {scene.bgOverride ? <BackgroundEditor theme={scene.bgOverride} onChange={(t) => onChange({ bgOverride: t })} swatches={swatches} /> : null}
 
           {canRemove ? (
             <button type="button" onClick={onRemove} className="text-[11px] font-medium text-[var(--danger-500)] hover:underline">

@@ -9,6 +9,7 @@
 import { ArrowDownTrayIcon } from "@heroicons/react/24/outline";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BackgroundEditor, Slider } from "../controls";
+import { brandBackgroundSwatches, useStudioBrand } from "../brand";
 import { btnPrimary, btnSecondary, Field, PanelHeader, SectionRule, Toggle } from "../studio-ui";
 import { exportIcons } from "./export-icons";
 import { IconArt } from "./icon-art";
@@ -44,6 +45,8 @@ export function IconsWorkspace() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const nodeRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const { brand } = useStudioBrand();
+  const brandSwatches = brand.source === "client" ? brandBackgroundSwatches(brand) : undefined;
 
   useEffect(() => {
     setState(loadState());
@@ -136,10 +139,10 @@ export function IconsWorkspace() {
           <Toggle checked={state.tinted} onChange={(v) => patch({ tinted: v })} label="Tinted / monochrome layer" />
 
           <SectionRule label="Light background" />
-          <BackgroundEditor theme={state.light} onChange={(t) => patch({ light: t })} />
+          <BackgroundEditor theme={state.light} onChange={(t) => patch({ light: t })} swatches={brandSwatches} />
 
           <SectionRule label="Dark background" />
-          <BackgroundEditor theme={state.dark} onChange={(t) => patch({ dark: t })} />
+          <BackgroundEditor theme={state.dark} onChange={(t) => patch({ dark: t })} swatches={brandSwatches} />
         </div>
       </aside>
 
