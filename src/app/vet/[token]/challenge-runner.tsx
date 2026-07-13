@@ -155,7 +155,7 @@ export function ChallengeRunner({
         <span className="font-mono text-sm text-[#46464C]">⏱ {timeLabel}</span>
       </div>
 
-      <div className="rounded-lg border border-[rgba(12,12,24,0.1)] bg-white p-4">
+      <div className="rounded-lg border border-[rgba(12,12,24,0.1)] bg-[#FFFFFF] p-4">
         <h3 className="mb-2 text-lg font-semibold text-[#1A1A1E]">{challenge.title}</h3>
         <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#46464C]">
           {challenge.promptMarkdown}
@@ -180,7 +180,7 @@ export function ChallengeRunner({
         <div
           ref={gutterRef}
           aria-hidden
-          className="select-none overflow-hidden bg-white/[0.03] px-2.5 py-4 text-right text-[#6B6B6B]"
+          className="select-none overflow-hidden bg-[#FFFFFF]/[0.03] px-2.5 py-4 text-right text-[#6B6B6B]"
         >
           {Array.from({ length: code.split("\n").length }, (_, i) => (
             <div key={i} className="leading-6">{i + 1}</div>
@@ -218,10 +218,10 @@ export function ChallengeRunner({
         />
       </div>
 
-      {error && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {error && <p className="rounded-md bg-[#F8E3E3] p-3 text-sm text-[#b3261e]">{error}</p>}
 
       {results && (
-        <div className="rounded-lg border border-[rgba(12,12,24,0.1)] bg-white p-4">
+        <div className="rounded-lg border border-[rgba(12,12,24,0.1)] bg-[#FFFFFF] p-4">
           <p className="mb-2 font-mono text-xs uppercase tracking-wider text-[#6B6B6B]">
             {passedCount}/{results.length} passing
           </p>
@@ -242,7 +242,7 @@ export function ChallengeRunner({
           type="button"
           onClick={runTests}
           disabled={running}
-          className="rounded-md border border-[rgba(12,12,24,0.16)] bg-white px-4 py-2 text-sm font-medium text-[#46464C] hover:bg-[#FBFAF7] disabled:opacity-50"
+          className="rounded-md border border-[rgba(12,12,24,0.16)] bg-[#FFFFFF] px-4 py-2 text-sm font-medium text-[#46464C] hover:bg-[#FBFAF7] disabled:opacity-50"
         >
           {running ? "Running…" : "Run tests"}
         </button>

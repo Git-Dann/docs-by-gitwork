@@ -46,7 +46,14 @@ export function OnboardingShell({
   meta?: string;
 }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#F2EDE4] px-4 py-10">
+    // The candidate onboarding is a Gitwork MARKETING surface — always light,
+    // regardless of the viewer's app theme. `data-theme="light"` resets the app
+    // tokens for this subtree and `colorScheme: light` keeps native controls light.
+    <div
+      data-theme="light"
+      style={{ colorScheme: "light" }}
+      className="flex min-h-screen items-center justify-center bg-[#F2EDE4] px-4 py-10"
+    >
       <div className="w-full max-w-xl">
         <div className="mb-6 flex items-end justify-between">
           <Wordmark className="text-xl" />
@@ -86,7 +93,7 @@ export function BrandCard({
   const clean = title.replace(/\s*\.\s*$/, "");
   const hasPeriod = /\.\s*$/.test(title);
   return (
-    <section className="rounded-2xl border border-[rgba(12,12,24,0.1)] bg-white p-6 shadow-[0_1px_2px_rgba(12,12,24,0.04),0_12px_32px_-16px_rgba(12,12,24,0.18)] sm:p-8">
+    <section className="rounded-2xl border border-[rgba(12,12,24,0.1)] bg-[#FFFFFF] p-6 shadow-[0_1px_2px_rgba(12,12,24,0.04),0_12px_32px_-16px_rgba(12,12,24,0.18)] sm:p-8">
       <Eyebrow>{eyebrow}</Eyebrow>
       <h1 className={`${SERIF} mt-3 text-[28px] font-semibold leading-[1.1] tracking-[-0.02em] text-[#1A1A1E] sm:text-[34px]`}>
         {clean}
