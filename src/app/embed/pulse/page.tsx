@@ -409,25 +409,23 @@ export default function EmbedPulsePage() {
             </p>
           ) : (
             <>
-              {/* Score + stat strip */}
-              <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+              {/* Score + stat strip — centered column */}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
                 <ScoreRing score={displayScore} />
-                <div style={{ flex: "1 1 200px" }}>
-                  <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 8px", wordBreak: "break-all" }}>
-                    {view.targetUrl}
-                  </p>
-                  <div style={{ display: "flex", gap: 14, fontSize: 14, fontWeight: 700 }}>
-                    <span style={{ color: "#16a34a" }}>✓ {view.pass}</span>
-                    <span style={{ color: "#d97706" }}>! {view.warn}</span>
-                    <span style={{ color: "#dc2626" }}>✕ {view.fail}</span>
-                    <span style={{ color: "#9ca3af", fontWeight: 500 }}>{view.totalChecks} checks</span>
-                  </div>
-                  {running && (
-                    <p style={{ fontSize: 12, color: ACCENT, marginTop: 8 }}>
-                      Running checks live… {view.totalChecks} done
-                    </p>
-                  )}
+                <p style={{ fontSize: 13, color: "#6b7280", margin: "14px 0 8px", wordBreak: "break-all" }}>
+                  {view.targetUrl}
+                </p>
+                <div style={{ display: "flex", justifyContent: "center", gap: 14, fontSize: 14, fontWeight: 700, flexWrap: "wrap" }}>
+                  <span style={{ color: "#16a34a" }}>✓ {view.pass}</span>
+                  <span style={{ color: "#d97706" }}>! {view.warn}</span>
+                  <span style={{ color: "#dc2626" }}>✕ {view.fail}</span>
+                  <span style={{ color: "#9ca3af", fontWeight: 500 }}>{view.totalChecks} checks</span>
                 </div>
+                {running && (
+                  <p style={{ fontSize: 12, color: ACCENT, marginTop: 8 }}>
+                    Running checks live… {view.totalChecks} done
+                  </p>
+                )}
               </div>
 
               {/* Category tiles (fill in live) */}
