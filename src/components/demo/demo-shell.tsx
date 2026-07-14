@@ -20,6 +20,7 @@ import {
   UsersIcon,
   LifebuoyIcon,
   BuildingOffice2Icon,
+  SwatchIcon,
   Cog8ToothIcon,
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
@@ -37,6 +38,7 @@ const NAV: NavEntry[] = [
   { label: "Docs", icon: DocumentTextIcon, href: "/demo/docs" },
   { label: "Portal", icon: UsersIcon, href: "/demo/portal" },
   { label: "Care", icon: LifebuoyIcon, href: "/demo/care" },
+  { label: "Studio", icon: SwatchIcon, href: "/demo/studio" },
   { label: "Backstage", icon: BuildingOffice2Icon, href: "/demo/backstage" },
 ];
 
@@ -72,6 +74,24 @@ export function DemoShell({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  // White-label brand for a prospect demo: pass `?client=Acme Corp` once and it persists across
+  // the whole demo (nav links don't carry the query), showing the client's name in the sidebar
+  // with "powered by Foundry" beneath instead of the Foundry logo. Unset → the Foundry logo.
+  const [brand, setBrand] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const KEY = "gitwork.demo.brand";
+    const param = new URLSearchParams(window.location.search).get("client");
+    if (param !== null) {
+      const trimmed = param.trim();
+      if (trimmed) window.localStorage.setItem(KEY, trimmed);
+      else window.localStorage.removeItem(KEY); // `?client=` clears it
+      setBrand(trimmed || null);
+    } else {
+      setBrand(window.localStorage.getItem(KEY));
+    }
+  }, []);
+
   // Reroute the reused components' hardcoded /app/* links to their /demo equivalents.
   const handleDemoNav = useDemoLinkReroute();
 
@@ -86,13 +106,24 @@ export function DemoShell({
           <aside className="hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_38%)] lg:flex lg:min-h-0">
             <div className="flex h-full min-h-0 w-full flex-col">
               <div className="flex shrink-0 items-center justify-center border-b border-[var(--border-2)] px-6 pb-5 pt-7">
-                <Link href="/demo" aria-label="All demos">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src="/foundry-logo.svg"
-                    alt="Foundry"
-                    className="h-12 w-auto dark:brightness-0 dark:invert"
-                  />
+                <Link href="/demo" aria-label="All demos" className="block text-center">
+                  {brand ? (
+                    <span className="block">
+                      <span className="block font-[family-name:var(--font-display)] text-[26px] leading-[1.1] tracking-[-0.5px] text-[var(--text-1)]">
+                        {brand}
+                      </span>
+                      <span className="mt-1.5 block font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--text-4)]">
+                        Powered by Foundry
+                      </span>
+                    </span>
+                  ) : (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src="/foundry-logo.svg"
+                      alt="Foundry"
+                      className="h-12 w-auto dark:brightness-0 dark:invert"
+                    />
+                  )}
                 </Link>
               </div>
               <div className="flex min-h-0 flex-1 flex-col px-3 py-4">
