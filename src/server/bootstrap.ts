@@ -18,6 +18,7 @@ import {
 } from "@/lib/onboarding/default-form";
 import { prisma } from "@/lib/prisma";
 import { buildDefaultConfigRow } from "@/server/devsignal/config";
+import { seedChallenges } from "@/server/devsignal/challenge-store";
 import {
   DEFAULT_TEMPLATE_SLUG,
   DEFAULT_USER_EMAIL,
@@ -426,6 +427,10 @@ async function _ensureBaseRecords() {
         publishedAt: new Date(),
       },
     });
+
+    // Seed the DevSignal coding-challenge bank from the in-code catalog.
+    // Upsert with `update: {}` so UI edits to seeded challenges survive re-boot.
+    await seedChallenges(workspace.id);
   }
 
   await prisma.rateCardPerson.createMany({

@@ -3,15 +3,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createDevSignalAssessment,
+  createDevSignalChallenge,
   createDevSignalOutcomeLink,
   getDevSignalAnalytics,
   getDevSignalAssessment,
   listDevSignalAssessments,
+  listDevSignalChallenges,
   listDevSignalConfigs,
   promoteDevSignalToCode,
   recordDevSignalDecision,
   recordDevSignalInterview,
   runDevSignalAssessment,
+  updateDevSignalChallenge,
+  type DevSignalChallengeInput,
 } from "@/lib/api";
 
 const KEY = "devsignal";
@@ -99,4 +103,31 @@ export function useCreateDevSignalOutcomeLink(id: string | null) {
     (input: Parameters<typeof createDevSignalOutcomeLink>[0]) => createDevSignalOutcomeLink(input),
     id,
   );
+}
+
+// ─── Challenge bank ──────────────────────────────────────────────────────────
+
+export function useDevSignalChallenges() {
+  return useQuery({
+    queryKey: [KEY, "challenges"],
+    queryFn: listDevSignalChallenges,
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useCreateDevSignalChallenge() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DevSignalChallengeInput) => createDevSignalChallenge(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY, "challenges"] }),
+  });
+}
+
+export function useUpdateDevSignalChallenge() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, input }: { slug: string; input: Partial<Omit<DevSignalChallengeInput, "slug">> }) =>
+      updateDevSignalChallenge(slug, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY, "challenges"] }),
+  });
 }
