@@ -1016,10 +1016,27 @@ Desk **TODAY** tab that opens a **full-page overlay**; dismissable from **both**
   triggers them, not mounting the peek. `buildBrief` (`src/lib/brief/build-brief.ts`) is a **pure**
   DTO→`Brief` mapper (`src/types/brief.ts`); `dia-report://` chat deep-links became board/Meet links
   (Foundry has no generic chat surface).
-- **Paintings** — `src/lib/brief/paintings.ts`: curated public-domain works served from **Wikimedia
-  Commons** (`Special:FilePath`, one per day, deterministic), with a **blue→navy gradient fallback**
-  if an image 404s or a CSP blocks it. To pin exact art, drop files in `public/brief/` and point `src`
+- **Paintings** — `src/lib/brief/paintings.ts`: curated public-domain works (one per day,
+  deterministic) hotlinked via **direct `upload.wikimedia.org` thumbnail URLs** (the earlier
+  `Special:FilePath` form 404'd on any filename mismatch → always fell back). **Blue→navy gradient
+  fallback** if an image ever fails. To pin exact art, drop files in `public/brief/` and point `src`
   at `/brief/<name>.jpg`.
+- **Hero contrast + logos (Jul 14 pass).** The painting hero carries a **soft dark scrim** (even
+  darken + centre vignette) so the **white** title (with a Gitwork-Blue accent bar) reads on any
+  artwork. Real **source brand marks** (`src/components/brief/source-icons.tsx` — Slack/Gmail/Google
+  Calendar/Drive + Tasks/Scribe glyphs) sit beside each update and inline in the footer credit
+  ("using your [Slack] Slack, [cal] Google Calendar and [tasks] Tasks"), mirroring Dia. **Updates are
+  collated** by client (grouped, de-noised — drops "thanks"/"on it" acks — leading with client +
+  message count + the most substantive recent line) rather than a raw last-N dump (`collateSlack` in
+  `build-brief.ts`).
+- **Timezone globe (Jul 14).** `src/components/desk/desk-globe.tsx` replaced the Desk's flat
+  `TeamOverlap` bars in "Around the team": a **dependency-free SVG orthographic globe** — graticule,
+  **real continents** (Natural Earth 110m coastlines, public-domain, simplified to `src/lib/desk/
+  world-land.ts` ~28KB, rendered as horizon-clipped strokes), a **live day/night terminator** from
+  the computed sub-solar point, and a **dot + local-time label per city**. Centred on the viewer's
+  home hub, **drag to spin**, **Add city** from a global preset set (`localStorage`
+  `gitwork.desk.globe.cities.v1`). Keeps the "your 9am is their 1pm" readout + overlap window.
+  `TeamOverlap` stays exported in `desk-time.tsx` (now unused). All pure `Intl`/trig — no globe lib.
 - **No schema change, no new env, no cron.** Ticks + peek-dismissal are `localStorage` only. Verified
   via `tsc` + `eslint` (app is auth-gated with no local DB — no browser verification). **Deferred:**
   no re-open entry point once dismissed (returns next day); wiring to a server-composed brief; an

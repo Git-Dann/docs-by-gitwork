@@ -16,6 +16,7 @@ import { useMemo, useRef, useState, useEffect } from "react";
 import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { useNow } from "./desk-time";
+import { WORLD_LAND } from "@/lib/desk/world-land";
 
 const MONO = { fontFamily: "var(--font-mono)" } as const;
 const STORE_KEY = "gitwork.desk.globe.cities.v1";
@@ -34,16 +35,22 @@ const HUBS: Record<string, City> = {
   "Asia/Karachi": { id: "islamabad", name: "Islamabad", lat: 33.68, lon: 73.05, tz: "Asia/Karachi" },
 };
 
+// A well-distributed global set (Americas → Europe/Africa → ME/Asia → Oceania), with
+// a bias toward hubs a UK/PK dev agency actually works across.
 const PRESETS: City[] = [
-  { id: "london", name: "London", lat: 51.51, lon: -0.13, tz: "Europe/London" },
-  { id: "new-york", name: "New York", lat: 40.71, lon: -74.01, tz: "America/New_York" },
   { id: "san-francisco", name: "San Francisco", lat: 37.77, lon: -122.42, tz: "America/Los_Angeles" },
-  { id: "dubai", name: "Dubai", lat: 25.2, lon: 55.27, tz: "Asia/Dubai" },
+  { id: "new-york", name: "New York", lat: 40.71, lon: -74.01, tz: "America/New_York" },
+  { id: "toronto", name: "Toronto", lat: 43.65, lon: -79.38, tz: "America/Toronto" },
+  { id: "sao-paulo", name: "São Paulo", lat: -23.55, lon: -46.63, tz: "America/Sao_Paulo" },
+  { id: "london", name: "London", lat: 51.51, lon: -0.13, tz: "Europe/London" },
   { id: "berlin", name: "Berlin", lat: 52.52, lon: 13.4, tz: "Europe/Berlin" },
+  { id: "lagos", name: "Lagos", lat: 6.52, lon: 3.38, tz: "Africa/Lagos" },
+  { id: "cape-town", name: "Cape Town", lat: -33.92, lon: 18.42, tz: "Africa/Johannesburg" },
+  { id: "dubai", name: "Dubai", lat: 25.2, lon: 55.27, tz: "Asia/Dubai" },
+  { id: "mumbai", name: "Mumbai", lat: 19.08, lon: 72.88, tz: "Asia/Kolkata" },
   { id: "singapore", name: "Singapore", lat: 1.35, lon: 103.82, tz: "Asia/Singapore" },
   { id: "tokyo", name: "Tokyo", lat: 35.68, lon: 139.65, tz: "Asia/Tokyo" },
   { id: "sydney", name: "Sydney", lat: -33.87, lon: 151.21, tz: "Australia/Sydney" },
-  { id: "sao-paulo", name: "São Paulo", lat: -23.55, lon: -46.63, tz: "America/Sao_Paulo" },
 ];
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
@@ -95,14 +102,18 @@ function isDay(lat: number, lon: number, sun: { lat: number; lon: number }): boo
   return c[0] * s[0] + c[1] * s[1] + c[2] * s[2] > 0;
 }
 
-/** Build graticule polyline path segments (breaking where the arc dips behind the globe). */
-function graticule(lat0: number, lon0: number): string {
+/**
+ * Project a set of [lon,lat] rings to an SVG path, breaking each polyline where it
+ * dips behind the globe (so only the near hemisphere is drawn). Shared by the
+ * graticule and the coastlines.
+ */
+function strokePath(rings: number[][][], lat0: number, lon0: number): string {
   const segs: string[] = [];
-  const push = (pts: { lat: number; lon: number }[]) => {
+  for (const ring of rings) {
     let started = false;
     let d = "";
-    for (const p of pts) {
-      const pr = project(p.lat, p.lon, lat0, lon0);
+    for (const [lon, lat] of ring) {
+      const pr = project(lat, lon, lat0, lon0);
       if (pr.visible) {
         d += `${started ? "L" : "M"}${pr.x.toFixed(1)} ${pr.y.toFixed(1)}`;
         started = true;
@@ -111,21 +122,25 @@ function graticule(lat0: number, lon0: number): string {
       }
     }
     if (d) segs.push(d);
-  };
-  // Meridians
-  for (let lon = -180; lon < 180; lon += 30) {
-    const pts = [];
-    for (let lat = -80; lat <= 80; lat += 4) pts.push({ lat, lon });
-    push(pts);
-  }
-  // Parallels
-  for (let lat = -60; lat <= 60; lat += 30) {
-    const pts = [];
-    for (let lon = -180; lon <= 180; lon += 4) pts.push({ lat, lon });
-    push(pts);
   }
   return segs.join(" ");
 }
+
+/** Meridians (every 30°) + parallels (every 30°) as [lon,lat] rings — static. */
+const GRATICULE_RINGS: number[][][] = (() => {
+  const rings: number[][][] = [];
+  for (let lon = -180; lon < 180; lon += 30) {
+    const r: number[][] = [];
+    for (let lat = -80; lat <= 80; lat += 4) r.push([lon, lat]);
+    rings.push(r);
+  }
+  for (let lat = -60; lat <= 60; lat += 30) {
+    const r: number[][] = [];
+    for (let lon = -180; lon <= 180; lon += 4) r.push([lon, lat]);
+    rings.push(r);
+  }
+  return rings;
+})();
 
 // ── Time ──────────────────────────────────────────────────────────────────────
 
@@ -209,7 +224,8 @@ export function DeskGlobe({
 
   const sun = subsolar(now);
   const sunProj = project(sun.lat, sun.lon, rot.lat, rot.lon);
-  const grat = useMemo(() => graticule(rot.lat, rot.lon), [rot.lat, rot.lon]);
+  const grat = useMemo(() => strokePath(GRATICULE_RINGS, rot.lat, rot.lon), [rot.lat, rot.lon]);
+  const land = useMemo(() => strokePath(WORLD_LAND, rot.lat, rot.lon), [rot.lat, rot.lon]);
 
   // Overlap sentence (home ↔ counterpart), reused from the old TeamOverlap.
   const diff = tzOffsetHours(now, counterpart.tz) - tzOffsetHours(now, localTz);
@@ -285,8 +301,18 @@ export function DeskGlobe({
           <circle cx={CX} cy={CY} r={R} fill="url(#globe-ocean)" />
 
           <g clipPath="url(#globe-clip)">
-            {/* Graticule */}
-            <path d={grat} fill="none" stroke="#fff" strokeOpacity={0.14} strokeWidth={0.6} />
+            {/* Graticule (faint, for orientation) */}
+            <path d={grat} fill="none" stroke="#fff" strokeOpacity={0.09} strokeWidth={0.5} />
+            {/* Coastlines — real continents (Natural Earth 110m), near hemisphere only. */}
+            <path
+              d={land}
+              fill="none"
+              stroke="#e8e2cf"
+              strokeOpacity={0.62}
+              strokeWidth={0.8}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
             {/* Day/night: warm near the sun, dark on the far side (flat dark if sun is behind). */}
             {sunProj.visible ? (
               <circle cx={CX} cy={CY} r={R} fill="url(#globe-sun)" />
