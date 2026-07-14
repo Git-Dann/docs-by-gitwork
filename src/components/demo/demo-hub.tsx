@@ -9,56 +9,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  HomeIcon,
-  CodeBracketIcon,
-  DocumentTextIcon,
-  UsersIcon,
-  LifebuoyIcon,
-  BuildingOffice2Icon,
-  ArrowRightIcon,
-} from "@heroicons/react/24/outline";
-
-const DEMOS = [
-  {
-    href: "/demo/dev",
-    icon: HomeIcon,
-    label: "Foundry HQ",
-    description: "A developer's day — standup, tasks due, meetings, and the client roster.",
-  },
-  {
-    href: "/demo/devsignal",
-    icon: CodeBracketIcon,
-    label: "Code — DevSignal",
-    description: "Vet a candidate with automated GitHub signal, a timed challenge, and a video screen — then walk the assessment yourself.",
-  },
-  {
-    href: "/demo/docs",
-    icon: DocumentTextIcon,
-    label: "Docs",
-    description: "Handovers, reports and briefs — the documents a developer works with day to day.",
-  },
-  {
-    href: "/demo/portal",
-    icon: UsersIcon,
-    label: "Portal",
-    description: "A client's page — tasks, wiki, and the shared timeline they see.",
-  },
-  {
-    href: "/demo/care",
-    icon: LifebuoyIcon,
-    label: "Care",
-    description: "Client support — triage conversations from every channel in one place.",
-  },
-  {
-    href: "/demo/backstage",
-    icon: BuildingOffice2Icon,
-    label: "Backstage",
-    description: "Internal ops — leave booking, expenses, and staffing alerts.",
-  },
-] as const;
+import { ArrowRightIcon } from "@heroicons/react/24/outline";
+import { filterModules, readDemoModules } from "@/lib/demo/demo-config";
 
 export function DemoHub() {
+  // Cards mirror the demo sidebar — filtered by the config (URL ?modules= / localStorage).
+  const [demos] = useState(() => filterModules(readDemoModules()));
   return (
     <div className="min-h-[100dvh] bg-[var(--surface-canvas)] text-[var(--text-1)]">
       <header className="border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_100%)] px-6 pb-10 pt-12 sm:px-8">
@@ -86,7 +42,7 @@ export function DemoHub() {
 
       <main className="mx-auto max-w-5xl px-6 py-10 sm:px-8">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {DEMOS.map(({ href, icon: Icon, label, description }) => (
+          {demos.map(({ href, icon: Icon, label, description }) => (
             <Link
               key={href}
               href={href}

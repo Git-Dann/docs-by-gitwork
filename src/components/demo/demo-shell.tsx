@@ -13,34 +13,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { SessionProvider } from "next-auth/react";
-import {
-  HomeIcon,
-  CodeBracketIcon,
-  DocumentTextIcon,
-  UsersIcon,
-  LifebuoyIcon,
-  BuildingOffice2Icon,
-  SwatchIcon,
-  Cog8ToothIcon,
-} from "@heroicons/react/24/outline";
+import { Cog8ToothIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { DeskDrawer } from "@/components/desk/desk-drawer";
 import { DemoErrorBoundary } from "@/components/demo/demo-error-boundary";
 import "@/lib/demo/demo-fetch";
 import { demoSession } from "@/lib/demo/dev-demo-data";
 import { useDemoLinkReroute } from "@/lib/demo/use-demo-nav";
-
-type NavEntry = { label: string; icon: typeof HomeIcon; href?: string };
-
-const NAV: NavEntry[] = [
-  { label: "Foundry HQ", icon: HomeIcon, href: "/demo/dev" },
-  { label: "Code", icon: CodeBracketIcon, href: "/demo/devsignal" },
-  { label: "Docs", icon: DocumentTextIcon, href: "/demo/docs" },
-  { label: "Portal", icon: UsersIcon, href: "/demo/portal" },
-  { label: "Care", icon: LifebuoyIcon, href: "/demo/care" },
-  { label: "Studio", icon: SwatchIcon, href: "/demo/studio" },
-  { label: "Backstage", icon: BuildingOffice2Icon, href: "/demo/backstage" },
-];
+import { filterModules, readDemoModules } from "@/lib/demo/demo-config";
 
 export function DemoShell({
   active,
@@ -68,6 +48,10 @@ export function DemoShell({
     }
     return null;
   });
+
+  // Sidebar modules — filtered by the demo config (URL ?modules= / localStorage). Read
+  // synchronously so it's correct on the first render (no flash).
+  const [nav] = useState(() => filterModules(readDemoModules()));
 
   // Mount content only after hydration: guarantees the interceptor is live before any
   // query runs, and avoids SSR/CSR drift from the relative demo dates.
@@ -133,7 +117,7 @@ export function DemoShell({
               </div>
               <div className="flex min-h-0 flex-1 flex-col px-3 py-4">
                 <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
-                  {NAV.map(({ label, icon: Icon, href }) => {
+                  {nav.map(({ label, icon: Icon, href }) => {
                     const isActive = label === active;
                     const classes = cn(
                       "flex w-full items-center gap-3 rounded-[6px] border px-3 py-2 text-sm font-medium transition",
