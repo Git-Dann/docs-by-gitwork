@@ -90,6 +90,7 @@ export function EditorialRow({
   caption,
   stamp,
   count,
+  index,
   first,
   children,
 }: {
@@ -97,6 +98,8 @@ export function EditorialRow({
   caption?: string;
   stamp?: React.ReactNode;
   count?: number;
+  /** Optional mono editorial label shown above the title (e.g. "Focus"). */
+  index?: string;
   /** First row skips the top divider. */
   first?: boolean;
   children: React.ReactNode;
@@ -110,6 +113,14 @@ export function EditorialRow({
     >
       <div className="flex flex-col gap-3">
         <div>
+          {index ? (
+            <span
+              className="mb-1.5 block text-[10px] uppercase tracking-[1.6px] text-[var(--text-4)]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              {index}
+            </span>
+          ) : null}
           <h3
             className="text-[21px] leading-[1.15] text-[var(--text-1)]"
             style={{ fontFamily: "var(--font-display)", fontStyle: "italic" }}

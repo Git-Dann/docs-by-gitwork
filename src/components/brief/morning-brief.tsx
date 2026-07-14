@@ -21,9 +21,15 @@ import { cn } from "@/lib/format";
 import { useBrief } from "@/hooks/use-brief";
 import { EditorialRow, Stamp } from "@/components/desk/desk-shared";
 import { SourceIcon, sourceKindFromLabel } from "@/components/brief/source-icons";
+import { CornerTicks, FoundryMark, GitworkSeal } from "@/components/brief/brief-ornaments";
 import type { Brief, BriefEvent, BriefTodo, BriefUpdate } from "@/types/brief";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+
+/** Day-of-year, for the masthead "N°". */
+function dayOfYear(d: Date): number {
+  return Math.floor((d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 0)) / 86_400_000);
+}
 
 export function MorningBrief({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { brief, isPending, calendarConnected } = useBrief(open);
@@ -62,7 +68,19 @@ export function MorningBrief({ open, onClose }: { open: boolean; onClose: () => 
         <XMarkIcon className="h-5 w-5" />
       </button>
 
-      <div className="mx-auto w-full max-w-[1040px] px-5 pb-24 sm:px-8">
+      <style>{`
+        @keyframes briefFade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+        @keyframes briefZoom { from { transform: scale(1.05); } to { transform: scale(1); } }
+        @media (prefers-reduced-motion: reduce) {
+          .brief-fade, .brief-zoom { animation: none !important; }
+        }
+      `}</style>
+
+      <div
+        className="brief-fade mx-auto w-full max-w-[1040px] px-5 pb-24 sm:px-8"
+        style={{ animation: "briefFade 0.5s cubic-bezier(0.22,1,0.36,1) both" }}
+      >
+        <BriefMasthead brief={brief} />
         <BriefHero brief={brief} />
 
         <div className="mt-2">
@@ -82,6 +100,29 @@ export function MorningBrief({ open, onClose }: { open: boolean; onClose: () => 
   );
 }
 
+// ── Masthead ────────────────────────────────────────────────────────────────
+
+function BriefMasthead({ brief }: { brief: Brief }) {
+  const date = new Date(brief.dateISO);
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-[var(--border-2)] pb-3 pt-14 sm:pt-16">
+      <span
+        className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[1.6px] text-[var(--text-3)]"
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
+        <FoundryMark className="h-3.5 w-3.5" />
+        The Foundry Brief
+      </span>
+      <span
+        className="text-[10px] uppercase tracking-[1.6px] text-[var(--text-4)]"
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
+        N° {String(dayOfYear(date)).padStart(3, "0")} · {brief.weekday.slice(0, 3)}
+      </span>
+    </div>
+  );
+}
+
 // ── Hero ──────────────────────────────────────────────────────────────────────
 
 function BriefHero({ brief }: { brief: Brief }) {
@@ -93,7 +134,7 @@ function BriefHero({ brief }: { brief: Brief }) {
     .replace(/\s?([AP]M)/, " $1");
 
   return (
-    <header className="relative pt-16">
+    <header className="relative pt-8">
       {/* Vertical mono rails — date left, time right, hugging the painting. */}
       <span
         className="pointer-events-none absolute left-0 top-1/2 hidden -translate-y-1/2 text-[13px] tracking-[0.15em] text-[var(--text-3)] sm:block"
@@ -123,7 +164,8 @@ function BriefHero({ brief }: { brief: Brief }) {
           <img
             src={brief.painting.src}
             alt=""
-            className="absolute inset-0 h-full w-full object-cover"
+            className="brief-zoom absolute inset-0 h-full w-full object-cover"
+            style={{ animation: "briefZoom 16s ease-out both" }}
             onError={() => setImgOk(false)}
           />
         ) : null}
@@ -178,41 +220,63 @@ function BriefHero({ brief }: { brief: Brief }) {
 
 function PushForwardRow({ brief }: { brief: Brief }) {
   const pf = brief.pushForward;
-
-  // Clear-runway fallback — so the section always carries something warm, even on a
-  // day with nothing overdue or in flight (otherwise the brief reads empty).
-  if (!pf) {
-    return (
-      <EditorialRow
-        title="Push your work forward"
-        caption="The one thing to move first."
-        stamp={<Stamp label="My board" href="/app" />}
-      >
-        <div className="flex items-start gap-3.5 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-brand)] p-5">
-          <SunIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--brand-600)]" />
-          <div>
-            <h4 className="text-[17px] font-semibold leading-snug text-[var(--text-1)]">A clear runway</h4>
-            <p className="mt-2 text-[15px] leading-relaxed text-[var(--text-2)]">
-              Nothing overdue and nothing mid-flight. Pick the one thing that&apos;ll make today
-              count — then protect the time for it.
-            </p>
-          </div>
-        </div>
-      </EditorialRow>
-    );
-  }
+  const clear = !pf;
 
   return (
     <EditorialRow
+      index="Focus"
       title="Push your work forward"
       caption="The one thing to move first."
-      stamp={pf.href ? <Stamp label={pf.ctaLabel} href={pf.href} /> : undefined}
+      first
+      stamp={<Stamp label={pf?.ctaLabel ?? "My board"} href={pf?.href ?? "/app"} />}
     >
-      <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-brand)] p-5">
-        <h4 className="text-[17px] font-semibold leading-snug text-[var(--text-1)]">{pf.title}</h4>
-        <p className="mt-2 text-[15px] leading-relaxed text-[var(--text-2)]">{pf.body}</p>
-      </div>
+      <PushCard
+        kicker={clear ? "Clear runway" : "Today · the one thing"}
+        title={clear ? "A clear runway" : pf!.title}
+        body={
+          clear
+            ? "Nothing overdue and nothing mid-flight. Pick the one thing that'll make today count — then protect the time for it."
+            : pf!.body
+        }
+        icon={clear ? <SunIcon className="h-4 w-4 text-[var(--brand-600)]" /> : null}
+      />
     </EditorialRow>
+  );
+}
+
+/** The signature card — a subtly-tinted, drafting-framed panel (no flat colour block). */
+function PushCard({
+  kicker,
+  title,
+  body,
+  icon,
+}: {
+  kicker: string;
+  title: string;
+  body: string;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-gradient-to-br from-[var(--surface-brand)] to-[var(--surface-0)] p-6">
+      <CornerTicks />
+      <div className="relative">
+        <span
+          className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[1.6px] text-[var(--brand-700)]"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          {icon}
+          {kicker}
+        </span>
+        <span aria-hidden className="mt-2.5 block h-[2px] w-9 rounded-full bg-[var(--brand-500)]" />
+        <h4
+          className="mt-3 text-[24px] leading-[1.15] tracking-[-0.01em] text-[var(--text-1)]"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
+          {title}
+        </h4>
+        <p className="mt-2.5 max-w-2xl text-[15px] leading-relaxed text-[var(--text-2)]">{body}</p>
+      </div>
+    </div>
   );
 }
 
@@ -258,7 +322,7 @@ function TodosRow({ todos, dateISO }: { todos: BriefTodo[]; dateISO: string }) {
   if (todos.length === 0) return null;
 
   return (
-    <EditorialRow title="Top to-dos" caption="Your board, distilled to three.">
+    <EditorialRow index="To-do" title="Top to-dos" caption="Your board, distilled to three.">
       <div className="relative">
         <div className={cn("space-y-5 transition", allDone && "pointer-events-none blur-[6px] opacity-30")}>
           {todos.map((t) => (
@@ -387,7 +451,7 @@ function Confetti() {
 function UpdatesRow({ updates }: { updates: BriefUpdate[] }) {
   if (updates.length === 0) return null;
   return (
-    <EditorialRow title="New updates" caption="What moved since you last looked.">
+    <EditorialRow index="Signals" title="New updates" caption="What moved since you last looked.">
       <div className="space-y-6">
         {updates.map((u, i) => (
           <article key={u.id} className="grid grid-cols-[28px_minmax(0,1fr)] gap-3">
@@ -520,7 +584,7 @@ function ScheduleRow({
   }
 
   return (
-    <EditorialRow title="Your day" caption="Today's agenda, hour by hour.">
+    <EditorialRow index="Agenda" title="Your day" caption="Today's agenda, hour by hour.">
       {body}
     </EditorialRow>
   );
@@ -560,10 +624,18 @@ function BriefFooter({ sources }: { sources: string[] }) {
           WebkitMaskImage: "radial-gradient(ellipse 65% 100% at 50% 120%, #000 0%, transparent 72%)",
         }}
       />
-      <p className="relative text-[15px] leading-relaxed text-[var(--text-3)]" style={{ fontFamily: "var(--font-display)" }}>
-        <span className="text-[var(--text-4)]">Assembled for you by </span>
-        <span className="font-medium text-[var(--text-1)]">Foundry</span>
-        {sources.length ? <span className="text-[var(--text-4)]"> using your </span> : null}
+      <p className="relative text-[18px] leading-relaxed text-[var(--text-3)]" style={{ fontFamily: "var(--font-display)" }}>
+        <span className="text-[var(--text-4)]">Made for you by </span>
+        <span className="whitespace-nowrap font-medium text-[var(--text-1)]">
+          <FoundryMark className="mr-1.5 inline-block h-[18px] w-[18px] align-[-3px]" />
+          Foundry
+        </span>
+        {sources.length ? (
+          <>
+            <span className="text-[var(--text-4)]"> using </span>
+            <span className="italic text-[var(--text-4)]">your </span>
+          </>
+        ) : null}
         {sources.map((s, i) => (
           <span key={s} className="whitespace-nowrap">
             {i === 0 ? null : i === sources.length - 1 ? (
@@ -573,15 +645,16 @@ function BriefFooter({ sources }: { sources: string[] }) {
             )}
             <SourceIcon
               kind={sourceKindFromLabel(s)}
-              className="mr-1 inline-block h-[15px] w-[15px] align-[-3px] text-[var(--text-3)]"
+              className="mr-1 inline-block h-[16px] w-[16px] align-[-3px] text-[var(--text-3)]"
             />
             <span className="text-[var(--text-2)]">{s}</span>
           </span>
         ))}
         <span className="text-[var(--text-4)]">.</span>
       </p>
-      <p className="mt-2 text-[11px] tracking-[0.3px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-        With care, from Gitwork
+      <p className="relative mt-3 flex items-center justify-center gap-1.5 text-[13px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-display)" }}>
+        <span>With love from</span>
+        <GitworkSeal />
       </p>
     </footer>
   );

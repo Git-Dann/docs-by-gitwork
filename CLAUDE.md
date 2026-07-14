@@ -1039,6 +1039,14 @@ Desk **TODAY** tab that opens a **full-page overlay**; dismissable from **both**
   **drag to spin**, **Add city** from a global preset set (`localStorage` `gitwork.desk.globe.cities.v1`).
   Keeps the "your 9am is their 1pm" readout + overlap window. `TeamOverlap` stays exported in
   `desk-time.tsx` (now unused). All pure `Intl`/trig — no globe lib.
+- **Editorial craft pass (Jul 14).** Borrowed the blueprint/drafting language (oryzo.ai / Lusion) on
+  Foundry's terms via `src/components/brief/brief-ornaments.tsx`: a **magazine masthead**
+  (`The Foundry Brief` · `N° {day-of-year}`), **drafting corner-ticks** + a mono kicker + serif title
+  on the "Push your work forward" card (a subtle brand→canvas gradient panel, **not** a flat colour
+  block), **mono section index labels** (`Focus` / `To-do` / `Signals` / `Agenda` — via a new optional
+  `index` prop on the shared `EditorialRow`), a **slow painting zoom** + overlay fade-in (reduced-motion
+  safe), and a Dia-style **footer**: "Made for you by [mark] Foundry using your [Slack]…[cal]…. **With
+  love from** [G][I][T][W][O][R][K]" — circle-letter seal that waves on hover.
 - **No schema change, no new env, no cron.** Ticks + peek-dismissal are `localStorage` only. Verified
   via `tsc` + `eslint` (app is auth-gated with no local DB — no browser verification). **Deferred:**
   no re-open entry point once dismissed (returns next day); wiring to a server-composed brief; an
