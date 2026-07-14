@@ -1567,3 +1567,15 @@ button {
   text-transform: uppercase;
   color: var(--hb-blue);
 }
+
+/* Native colour input that fills its box edge-to-edge (no default white padding
+   around the swatch). Used by the demo builder's brand-colour picker. */
+.color-input-fill {
+  padding: 0;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+.color-input-fill::-webkit-color-swatch-wrapper { padding: 0; }
+.color-input-fill::-webkit-color-swatch { border: none; border-radius: 6px; }
+.color-input-fill::-moz-color-swatch { border: none; border-radius: 6px; }

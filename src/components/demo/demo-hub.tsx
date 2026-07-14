@@ -98,9 +98,9 @@ export function DemoHub() {
             {eyebrow} · Live product
           </p>
           <h1 className="max-w-3xl text-[40px] font-normal leading-[1.08] tracking-[-0.03em] text-[var(--text-1)] sm:text-[54px]">
-            See {name} running.
+            See what {name} can do —
             <br />
-            <span className="text-[var(--text-3)]">Not another slide deck.</span>
+            <span className="text-[var(--text-3)]">by using the real thing, right now.</span>
           </h1>
           <p className="mt-5 max-w-xl text-base leading-7 text-[var(--text-3)]">
             Every module below is the real product — the same platform Gitwork uses to take a build

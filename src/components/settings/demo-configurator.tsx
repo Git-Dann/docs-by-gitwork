@@ -148,14 +148,20 @@ export function DemoConfigurator() {
             aria-label="Brand colour"
             value={color ?? DEFAULT_BRAND_COLOR}
             onChange={(e) => setColor(e.target.value)}
-            className="h-10 w-14 cursor-pointer rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] p-1"
+            className="color-input-fill h-10 w-14 cursor-pointer overflow-hidden rounded-[8px] border border-[var(--border-2)]"
           />
           <input
             type="text"
-            value={color ?? ""}
-            onChange={(e) => setColor(e.target.value.trim() || null)}
-            placeholder={`${DEFAULT_BRAND_COLOR} · Foundry blue`}
-            className="w-48 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3.5 py-2.5 font-mono text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-400)] focus:ring-2 focus:ring-[var(--brand-100)]"
+            inputMode="text"
+            value={color ?? "#"}
+            onChange={(e) => {
+              // Always keep a single leading "#" so the field is pre-filled and the user
+              // types only the hex digits. A bare "#" means "no colour" (Foundry blue).
+              let v = e.target.value.trim();
+              if (!v.startsWith("#")) v = "#" + v.replace(/#/g, "");
+              setColor(v === "#" ? null : v);
+            }}
+            className="w-48 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3.5 py-2.5 font-mono text-sm uppercase text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-400)] focus:ring-2 focus:ring-[var(--brand-100)]"
           />
           {color ? (
             <button
