@@ -30,10 +30,12 @@ export class EmailAlreadyUsedError extends Error {
 }
 
 /**
- * Capture an email against a lite scan → unlocks detail + records the lead. Idempotent
- * per scan (re-polling the same scan with the same email just returns the existing lead).
- * But each email gets exactly ONE lifetime unlock across ALL scans — a second email
- * capture attempt (even against a different URL) is rejected with EmailAlreadyUsedError.
+ * Capture an email against a lite scan. Called at scan-START time now (email is
+ * required up front to run a scan at all) — so this does NOT send notifications
+ * itself, since the scan hasn't produced results yet. Call `notifyLeadOfScanResult`
+ * once the scan actually completes. Idempotent per scan; each email gets exactly
+ * ONE lifetime capture across ALL scans — a second attempt (even a different URL)
+ * is rejected with EmailAlreadyUsedError.
  */
 export async function capturePulseLead(params: { liteScanId: string; email: string; source?: string }): Promise<{ leadId: string }> {
   const lite = await prisma.pulseLiteScan.findUnique({
@@ -61,10 +63,22 @@ export async function capturePulseLead(params: { liteScanId: string; email: stri
     data: { emailCaptured: true, leadId: lead.id },
   });
 
-  // Fire-and-forget — never block the unlock response on email delivery.
-  void notifyTeamOfLead(lead.id).catch(() => {});
-  void notifyVisitorOfResults(lead.id).catch(() => {});
   return { leadId: lead.id };
+}
+
+/**
+ * Fires both notification emails (internal admin + visitor) — call once the scan has
+ * actually finished, so the visitor's copy and PulseLead.healthScore reflect the real
+ * result instead of the null/in-progress state captured at scan-start.
+ */
+export async function notifyLeadOfScanResult(leadId: string): Promise<void> {
+  const lead = await prisma.pulseLead.findUnique({ where: { id: leadId }, select: { liteScanId: true } });
+  if (lead?.liteScanId) {
+    const lite = await prisma.pulseLiteScan.findUnique({ where: { id: lead.liteScanId }, select: { healthScore: true } });
+    if (lite) await prisma.pulseLead.update({ where: { id: leadId }, data: { healthScore: lite.healthScore } }).catch(() => {});
+  }
+  void notifyTeamOfLead(leadId).catch(() => {});
+  void notifyVisitorOfResults(leadId).catch(() => {});
 }
 
 async function notifyTeamOfLead(leadId: string): Promise<void> {

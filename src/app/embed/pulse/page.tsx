@@ -54,33 +54,58 @@ function scoreColor(score: number | null): string {
 }
 
 function ScoreRing({ score }: { score: number | null }) {
-  const r = 52;
+  const r = 58;
   const c = 2 * Math.PI * r;
   const pct = score == null ? 0 : Math.max(0, Math.min(100, score)) / 100;
   const color = scoreColor(score);
   return (
-    <div style={{ position: "relative", width: 128, height: 128 }}>
-      <svg width={128} height={128} viewBox="0 0 128 128">
-        <circle cx={64} cy={64} r={r} fill="none" stroke="#e5e7eb" strokeWidth={10} />
+    <div style={{ position: "relative", width: 148, height: 148, filter: `drop-shadow(0 6px 16px ${color}33)` }}>
+      <svg width={148} height={148} viewBox="0 0 148 148">
+        <circle cx={74} cy={74} r={r} fill="none" stroke="#eef0f4" strokeWidth={11} />
         <circle
-          cx={64}
-          cy={64}
+          cx={74}
+          cy={74}
           r={r}
           fill="none"
           stroke={color}
-          strokeWidth={10}
+          strokeWidth={11}
           strokeLinecap="round"
           strokeDasharray={c}
           strokeDashoffset={c * (1 - pct)}
-          transform="rotate(-90 64 64)"
-          style={{ transition: "stroke-dashoffset 600ms ease, stroke 300ms ease" }}
+          transform="rotate(-90 74 74)"
+          style={{ transition: "stroke-dashoffset 700ms ease, stroke 300ms ease" }}
         />
       </svg>
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ fontSize: 30, fontWeight: 800, color, fontVariantNumeric: "tabular-nums" }}>
+        <span style={{ fontFamily: SERIF, fontSize: 38, fontWeight: 400, color, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
           {score ?? "—"}
         </span>
-        <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: 1, color: "#9ca3af" }}>/ 100</span>
+        <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: 1, color: "#9ca3af", marginTop: 2 }}>/ 100</span>
+      </div>
+    </div>
+  );
+}
+
+function CategoryTile({ cat }: { cat: { category: string; pass: number; warn: number; fail: number } }) {
+  const total = cat.pass + cat.warn + cat.fail;
+  const s = total > 0 ? Math.round(((cat.pass + cat.warn * 0.5) / total) * 100) : 100;
+  const tone = s >= 75 ? "#16a34a" : s >= 50 ? "#d97706" : "#dc2626";
+  return (
+    <div style={{ display: "flex", background: "#ffffff", border: "1px solid #eceef2", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+      <div style={{ width: 4, background: tone, flexShrink: 0 }} />
+      <div style={{ flex: 1, padding: "10px 12px" }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: "#374151" }}>{cat.category}</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: tone, fontVariantNumeric: "tabular-nums" }}>{s}%</span>
+        </div>
+        <div style={{ background: "#eef0f4", borderRadius: 4, height: 4, marginBottom: 6, overflow: "hidden" }}>
+          <div style={{ height: "100%", borderRadius: 4, background: tone, width: `${s}%`, transition: "width 600ms ease" }} />
+        </div>
+        <div style={{ display: "flex", gap: 8, fontSize: 10.5, fontWeight: 600, color: "#9ca3af" }}>
+          {cat.pass > 0 && <span style={{ color: "#16a34a" }}>{cat.pass} pass</span>}
+          {cat.warn > 0 && <span style={{ color: "#d97706" }}>{cat.warn} warn</span>}
+          {cat.fail > 0 && <span style={{ color: "#dc2626" }}>{cat.fail} fail</span>}
+        </div>
       </div>
     </div>
   );
@@ -105,24 +130,18 @@ function Honeypot({ value, onChange }: { value: string; onChange: (v: string) =>
 
 export default function EmbedPulsePage() {
   const [url, setUrl] = useState("");
+  const [email, setEmail] = useState("");
   const [scanId, setScanId] = useState<string | null>(null);
   const [view, setView] = useState<View | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
-
-  const [email, setEmail] = useState("");
-  const [unlocking, setUnlocking] = useState(false);
-  const [displayScore, setDisplayScore] = useState<number | null>(null);
-  const [unlockError, setUnlockError] = useState<string | null>(null);
   const [emailAlreadyUsed, setEmailAlreadyUsed] = useState(false);
+  const [displayScore, setDisplayScore] = useState<number | null>(null);
 
-  const [scanHoneypot, setScanHoneypot] = useState("");
-  const [unlockHoneypot, setUnlockHoneypot] = useState("");
+  const [honeypot, setHoneypot] = useState("");
   const [turnstileReady, setTurnstileReady] = useState(false);
   const [scanToken, setScanToken] = useState<string | null>(null);
-  const [unlockToken, setUnlockToken] = useState<string | null>(null);
   const scanTurnstileRef = useRef<HTMLDivElement>(null);
-  const unlockTurnstileRef = useRef<HTMLDivElement>(null);
 
   const [source, setSource] = useState<"gitwork.co.uk" | "foundry-demo">("foundry-demo");
   const [remoteConfig, setRemoteConfig] = useState<{ turnstileSiteKey: string | null; bookingUrl: string } | null>(null);
@@ -166,19 +185,14 @@ export default function EmbedPulsePage() {
     return () => ro.disconnect();
   });
 
-  // Render the Turnstile widgets once the script has loaded. Re-runs as the DOM
-  // changes (e.g. the unlock form's container only exists once a scan completes),
-  // guarding against double-render with a hasChildNodes() check.
+  // Render the Turnstile widget once the script has loaded, guarding against
+  // double-render with a hasChildNodes() check.
   useEffect(() => {
     if (!turnstileReady || !turnstileSiteKey || !window.turnstile) return;
     if (scanTurnstileRef.current && !scanTurnstileRef.current.hasChildNodes()) {
       window.turnstile.render(scanTurnstileRef.current, { sitekey: turnstileSiteKey, callback: setScanToken });
     }
-    if (unlockTurnstileRef.current && !unlockTurnstileRef.current.hasChildNodes()) {
-      window.turnstile.render(unlockTurnstileRef.current, { sitekey: turnstileSiteKey, callback: setUnlockToken });
-    }
-    // Re-check whenever the conditionally-rendered containers might have (dis)appeared.
-  }, [turnstileReady, turnstileSiteKey, view?.status, view?.emailCaptured, emailAlreadyUsed]);
+  }, [turnstileReady, turnstileSiteKey]);
 
   // Poll while a scan is running.
   useEffect(() => {
@@ -225,68 +239,51 @@ export default function EmbedPulsePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view?.healthScore]);
 
+  // Email is required up front — one combined submission starts the scan and
+  // captures the lead in the same call (see POST /api/public/pulse/scan).
   const startScan = useCallback(async () => {
-    if (!url.trim() || starting) return;
+    if (!url.trim() || !email.trim() || starting) return;
     setStarting(true);
     setError(null);
+    setEmailAlreadyUsed(false);
     setView(null);
     setScanId(null);
     try {
       const res = await fetch("/api/public/pulse/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim(), honeypot: scanHoneypot, turnstileToken: scanToken }),
+        body: JSON.stringify({ url: url.trim(), email: email.trim(), honeypot, turnstileToken: scanToken, source }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Couldn't start the scan.");
+      if (!res.ok) {
+        if (res.status === 409) { setEmailAlreadyUsed(true); return; }
+        throw new Error(data?.error ?? "Couldn't start the scan.");
+      }
       setScanId(data.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
       setStarting(false);
     }
-  }, [url, starting, scanHoneypot, scanToken]);
-
-  const unlock = useCallback(async () => {
-    if (!scanId || unlocking) return;
-    setUnlocking(true);
-    setUnlockError(null);
-    setEmailAlreadyUsed(false);
-    try {
-      const res = await fetch(`/api/public/pulse/scan/${scanId}/unlock`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), honeypot: unlockHoneypot, turnstileToken: unlockToken, source }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        if (res.status === 409) { setEmailAlreadyUsed(true); return; }
-        throw new Error(data?.error ?? "Couldn't verify that email.");
-      }
-      // Re-fetch to pull the now-unlocked detail.
-      const refreshed = await fetch(`/api/public/pulse/scan/${scanId}`, { cache: "no-store" });
-      if (refreshed.ok) setView((await refreshed.json()) as View);
-    } catch (e) {
-      setUnlockError(e instanceof Error ? e.message : "Something went wrong.");
-    } finally {
-      setUnlocking(false);
-    }
-  }, [scanId, email, unlocking, unlockHoneypot, unlockToken, source]);
+  }, [url, email, starting, honeypot, scanToken, source]);
 
   const running = view?.status === "RUNNING" || (scanId !== null && !view);
   const done = view?.status === "COMPLETED";
   const failedScan = view?.status === "FAILED";
-  const issues = view ? view.warn + view.fail : 0;
 
-  // When Turnstile is configured, don't let a click through before it's actually
-  // produced a token — submitting without one always fails server-side ("Verification
-  // failed"), which reads as a broken form rather than "still checking you're human".
-  const awaitingScanVerification = Boolean(turnstileSiteKey) && !scanToken;
-  const awaitingUnlockVerification = Boolean(turnstileSiteKey) && !unlockToken;
+  // Don't let a click through before Turnstile has actually produced a token —
+  // submitting without one always fails server-side ("Verification failed"),
+  // which reads as a broken form rather than "still checking you're human".
+  const awaitingVerification = Boolean(turnstileSiteKey) && !scanToken;
 
+  // Findings are visible as soon as they're discovered — email was already
+  // required to start the scan, so there's no separate "unlock" gate anymore.
   const findings = (view?.checks ?? [])
     .filter((c) => c.status === "FAIL" || c.status === "WARN")
     .sort((a, b) => (a.status === "FAIL" ? 0 : 1) - (b.status === "FAIL" ? 0 : 1));
+
+  const formDisabled = running || starting;
+  const submitDisabled = formDisabled || !url.trim() || !email.trim() || awaitingVerification;
 
   return (
     <div
@@ -319,11 +316,11 @@ export default function EmbedPulsePage() {
         Free site health check
       </h1>
       <p style={{ fontSize: 14, color: "#6b7280", margin: "0 0 18px" }}>
-        A quick check across performance, SEO, security & mobile — in seconds. No signup to see your score.
+        A quick check across performance, SEO, security & mobile — in seconds.
       </p>
 
-      {/* Input */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {/* Form — URL, then email directly underneath. Both required to run a scan. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <input
           type="url"
           inputMode="url"
@@ -331,9 +328,8 @@ export default function EmbedPulsePage() {
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") startScan(); }}
-          disabled={running || starting}
+          disabled={formDisabled}
           style={{
-            flex: "1 1 240px",
             padding: "12px 14px",
             border: "1px solid #d1d5db",
             borderRadius: 10,
@@ -341,31 +337,70 @@ export default function EmbedPulsePage() {
             outline: "none",
           }}
         />
-        <Honeypot value={scanHoneypot} onChange={setScanHoneypot} />
+        <input
+          type="email"
+          inputMode="email"
+          placeholder="you@company.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") startScan(); }}
+          disabled={formDisabled}
+          style={{
+            padding: "12px 14px",
+            border: "1px solid #d1d5db",
+            borderRadius: 10,
+            fontSize: 15,
+            outline: "none",
+          }}
+        />
+        <Honeypot value={honeypot} onChange={setHoneypot} />
         <button
           onClick={startScan}
-          disabled={running || starting || !url.trim() || awaitingScanVerification}
+          disabled={submitDisabled}
           style={{
-            padding: "12px 20px",
+            padding: "13px 20px",
             borderRadius: 10,
             border: "none",
-            background: running || starting || !url.trim() || awaitingScanVerification ? "#a5b4fc" : ACCENT,
+            background: submitDisabled ? "#a5b4fc" : ACCENT,
             color: "white",
             fontSize: 15,
             fontWeight: 700,
-            cursor: running || starting || !url.trim() || awaitingScanVerification ? "default" : "pointer",
+            cursor: submitDisabled ? "default" : "pointer",
           }}
         >
-          {running ? "Scanning…" : starting ? "Starting…" : awaitingScanVerification ? "Verifying…" : "Scan my site"}
+          {running ? "Scanning…" : starting ? "Starting…" : awaitingVerification ? "Verifying…" : "Scan my site"}
         </button>
       </div>
       {turnstileSiteKey && <div ref={scanTurnstileRef} style={{ marginTop: 10 }} />}
+      <p style={{ marginTop: 8, fontSize: 11.5, color: "#9ca3af" }}>
+        We&apos;ll email you the full results too — no spam, just your report.
+      </p>
 
       {error && (
         <p style={{ marginTop: 12, fontSize: 13, color: "#dc2626" }}>{error}</p>
       )}
 
-      {/* Results */}
+      {/* Already claimed their free scan with this email */}
+      {emailAlreadyUsed && (
+        <div style={{ marginTop: 22, border: "1px solid #eceef2", borderRadius: 12, padding: 18, background: "#f9fafb" }}>
+          <p style={{ fontSize: 15, fontWeight: 700, margin: "0 0 4px" }}>
+            You&apos;ve already used your free scan.
+          </p>
+          <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 12px" }}>
+            Each email gets one free unlock. Want the full picture for this site too?
+          </p>
+          <a
+            href={bookingUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "inline-block", background: ACCENT, color: "white", fontSize: 14, fontWeight: 700, padding: "11px 18px", borderRadius: 10, textDecoration: "none" }}
+          >
+            Book a call →
+          </a>
+        </div>
+      )}
+
+      {/* Results — updates live as the scan runs */}
       {(running || done || failedScan) && view && (
         <div style={{ marginTop: 24 }}>
           {failedScan ? (
@@ -401,108 +436,18 @@ export default function EmbedPulsePage() {
                   style={{
                     marginTop: 18,
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
-                    gap: 8,
+                    gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+                    gap: 10,
                   }}
                 >
-                  {view.categories.map((cat) => {
-                    const total = cat.pass + cat.warn + cat.fail;
-                    const s = total > 0 ? Math.round(((cat.pass + cat.warn * 0.5) / total) * 100) : 100;
-                    const barColor = s >= 75 ? "#16a34a" : s >= 50 ? "#d97706" : "#dc2626";
-                    const bg = s >= 75 ? "#f0fdf4" : s >= 50 ? "#fffbeb" : "#fef2f2";
-                    const bd = s >= 75 ? "#bbf7d0" : s >= 50 ? "#fde68a" : "#fecaca";
-                    return (
-                      <div key={cat.category} style={{ border: `1px solid ${bd}`, background: bg, borderRadius: 10, padding: "8px 10px" }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 6 }}>{cat.category}</div>
-                        <div style={{ background: "#e5e7eb", borderRadius: 4, height: 4, marginBottom: 6, overflow: "hidden" }}>
-                          <div style={{
-                            height: "100%",
-                            borderRadius: 4,
-                            background: barColor,
-                            width: `${s}%`,
-                            transition: "width 600ms ease",
-                          }} />
-                        </div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <div style={{ display: "flex", gap: 6, fontSize: 11, fontWeight: 700 }}>
-                            {cat.pass > 0 && <span style={{ color: "#16a34a" }}>{cat.pass}P</span>}
-                            {cat.warn > 0 && <span style={{ color: "#d97706" }}>{cat.warn}W</span>}
-                            {cat.fail > 0 && <span style={{ color: "#dc2626" }}>{cat.fail}F</span>}
-                          </div>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: barColor }}>{s}%</span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {view.categories.map((cat) => (
+                    <CategoryTile key={cat.category} cat={cat} />
+                  ))}
                 </div>
               )}
 
-              {/* Already claimed their free scan with this email */}
-              {done && !view.emailCaptured && emailAlreadyUsed && (
-                <div style={{ marginTop: 22, border: "1px solid #e5e7eb", borderRadius: 12, padding: 18, background: "#f9fafb" }}>
-                  <p style={{ fontSize: 15, fontWeight: 700, margin: "0 0 4px" }}>
-                    You&apos;ve already used your free scan.
-                  </p>
-                  <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 12px" }}>
-                    Each email gets one free unlock. Want the full picture for this site too?
-                  </p>
-                  <a
-                    href={bookingUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ display: "inline-block", background: ACCENT, color: "white", fontSize: 14, fontWeight: 700, padding: "11px 18px", borderRadius: 10, textDecoration: "none" }}
-                  >
-                    Book a call →
-                  </a>
-                </div>
-              )}
-
-              {/* Email gate (detail locked) */}
-              {done && !view.emailCaptured && !emailAlreadyUsed && (
-                <div style={{ marginTop: 22, border: "1px solid #e5e7eb", borderRadius: 12, padding: 18, background: "#f9fafb" }}>
-                  <p style={{ fontSize: 15, fontWeight: 700, margin: "0 0 4px" }}>
-                    {view.fail > 0
-                      ? `${view.fail} check${view.fail === 1 ? "" : "s"} failing — here's what to fix.`
-                      : `${issues} thing${issues === 1 ? "" : "s"} to improve before you launch.`}
-                  </p>
-                  <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 12px" }}>
-                    Drop your email to unlock the full breakdown — exactly what&apos;s broken, why it matters, and how to fix it.
-                  </p>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <input
-                      type="email"
-                      inputMode="email"
-                      placeholder="you@company.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") unlock(); }}
-                      style={{ flex: "1 1 220px", padding: "11px 13px", border: "1px solid #d1d5db", borderRadius: 10, fontSize: 14, outline: "none" }}
-                    />
-                    <Honeypot value={unlockHoneypot} onChange={setUnlockHoneypot} />
-                    <button
-                      onClick={unlock}
-                      disabled={unlocking || !email.trim() || awaitingUnlockVerification}
-                      style={{
-                        padding: "11px 18px",
-                        borderRadius: 10,
-                        border: "none",
-                        background: unlocking || !email.trim() || awaitingUnlockVerification ? "#a5b4fc" : ACCENT,
-                        color: "white",
-                        fontSize: 14,
-                        fontWeight: 700,
-                        cursor: unlocking || !email.trim() || awaitingUnlockVerification ? "default" : "pointer",
-                      }}
-                    >
-                      {unlocking ? "Unlocking…" : awaitingUnlockVerification ? "Verifying…" : "Show me the issues"}
-                    </button>
-                  </div>
-                  {turnstileSiteKey && <div ref={unlockTurnstileRef} style={{ marginTop: 10 }} />}
-                  {unlockError && <p style={{ marginTop: 8, fontSize: 13, color: "#dc2626" }}>{unlockError}</p>}
-                </div>
-              )}
-
-              {/* Unlocked findings */}
-              {done && view.emailCaptured && findings.length > 0 && (
+              {/* Findings — appear as they're discovered */}
+              {findings.length > 0 && (
                 <div style={{ marginTop: 22 }}>
                   <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 10px" }}>
                     {`What to fix (${findings.length})`}

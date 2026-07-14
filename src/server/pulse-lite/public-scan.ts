@@ -10,6 +10,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { runLiteScan } from "./run-lite-scan";
+import { notifyLeadOfScanResult } from "./leads";
 import type { PulseScanCheckInput } from "@/types/pulse";
 
 export interface LiteCategorySummary {
@@ -91,7 +92,7 @@ export async function runPublicLiteScan(liteScanId: string, url: string): Promis
       onChecks: (batch) => { acc.push(...batch); dirty = true; },
     });
     clearInterval(flusher);
-    await prisma.pulseLiteScan.update({
+    const updated = await prisma.pulseLiteScan.update({
       where: { id: liteScanId },
       data: {
         status: "COMPLETED",
@@ -99,7 +100,11 @@ export async function runPublicLiteScan(liteScanId: string, url: string): Promis
         healthScore: result.healthScore,
         techStack: result.techStack as unknown as object,
       },
+      select: { leadId: true },
     });
+    // Email is required up front now, so a lead almost always exists by completion —
+    // this is where the visitor + internal notifications actually fire, with real results.
+    if (updated.leadId) void notifyLeadOfScanResult(updated.leadId).catch(() => {});
   } catch (e) {
     clearInterval(flusher);
     await prisma.pulseLiteScan
