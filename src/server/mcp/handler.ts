@@ -14,10 +14,11 @@
 // Claude reads natively.
 
 import { z, ZodError } from "zod";
-import { DocumentType, type Prisma as PrismaTypes } from "@prisma/client";
+import { DocumentType, DocumentStatus, type Prisma as PrismaTypes } from "@prisma/client";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import {
   assertCan,
+  allowedDocTypesForUser,
   canManageClients,
   canManageDocs,
   canManagePulse,
@@ -29,11 +30,19 @@ import {
 import { listStarters, getStarterBySlug } from "@/server/starters";
 import { buildSkillMarkdown } from "@/server/starters-package";
 import { runAgentScan, buildAgentVerdict } from "@/server/pulse-agent";
-import { getPulseScan } from "@/server/pulse";
+import { getPulseScan, listPulseScans } from "@/server/pulse";
 import type { CheckCategory } from "@/server/pulse-checks/categories";
 import { listDerivedClients, createClientRecord } from "@/server/clients";
-import { assignedClientIds, listTasks, createTask, updateTask } from "@/server/tasks";
+import {
+  assignedClientIds,
+  listTasks,
+  getTask,
+  createTask,
+  updateTask,
+  addTaskComment,
+} from "@/server/tasks";
 import { listMembers } from "@/server/team";
+import { proposalListSelect, serializeProposalListItem } from "@/server/proposals";
 import { listClientMeetings } from "@/server/meetings";
 import { allocateDocumentNumber, updateDocument } from "@/server/documents";
 import { prisma } from "@/lib/prisma";
@@ -212,6 +221,16 @@ const listTasksSchema = z.object({
   client: z.string().optional(),
   status: TASK_STATUS.optional(),
   assigneeId: z.string().optional(),
+  q: z.string().trim().min(1).max(200).optional(),
+  includeArchived: z.boolean().optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+});
+
+const getTaskSchema = z.object({ taskId: z.string().min(1) });
+
+const commentTaskSchema = z.object({
+  taskId: z.string().min(1),
+  body: z.string().min(1).max(10000),
 });
 
 const createTaskSchema = z.object({
@@ -300,11 +319,23 @@ const updateDocumentSchema = z.object({
   labels: z.array(z.string().min(1).max(40)).max(20).optional(),
 });
 
+const listDocumentsSchema = z.object({
+  client: z.string().optional(),
+  documentType: DOCUMENT_TYPE.optional(),
+  status: DOCUMENT_STATUS.optional(),
+  search: z.string().trim().min(1).max(200).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+});
+
 const pulseScanToolSchema = z.object({
   url: z.string().url(),
   targetMarkets: z.array(z.string().trim().min(1).max(16)).max(30).optional(),
 });
 const pulseResultToolSchema = z.object({ scanId: z.string().min(1) });
+const listPulseScansSchema = z.object({
+  client: z.string().optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+});
 
 const TASK_STATUS_VALUES = ["BACKLOG", "TODO", "DOING", "IN_REVIEW", "DONE"];
 const TASK_PRIORITY_VALUES = ["LOW", "MEDIUM", "HIGH"];
@@ -373,7 +404,9 @@ const TOOLS: ToolDef[] = [
   {
     name: "list_tasks",
     description:
-      "List tasks. Filter by client (slug/name/cuid), status, or assignee id. " +
+      "List tasks. Filter by client (slug/name/cuid), status, assignee id ('me' works), " +
+      "or a text query `q` (matches title/description). Returns active tasks by default; pass " +
+      "includeArchived to include archived. Capped at `limit` (default 100) to stay lean. " +
       "Use to answer 'what's in progress?' or 'what's on Speakify's board?'.",
     inputSchema: {
       type: "object",
@@ -384,6 +417,9 @@ const TOOLS: ToolDef[] = [
         },
         status: { type: "string", enum: TASK_STATUS_VALUES, description: "Filter by board column." },
         assigneeId: { type: "string", description: "User cuid (from list_members), or 'me'." },
+        q: { type: "string", description: "Case-insensitive substring of task title / description." },
+        includeArchived: { type: "boolean", description: "Include archived tasks (default false)." },
+        limit: { type: "integer", description: "Max tasks to return (default 100, max 200)." },
       },
       additionalProperties: false,
     },
@@ -396,15 +432,29 @@ const TOOLS: ToolDef[] = [
         clientId = c.id;
         clientLabel = ` on ${c.name}`;
       }
-      const tasks = await listTasks(user, {
+      let tasks = await listTasks(user, {
         clientId,
         status: parsed.status,
         assigneeId: parsed.assigneeId,
+        archived: parsed.includeArchived ?? false,
       });
-      const summary = `${tasks.length} task${tasks.length === 1 ? "" : "s"}${clientLabel}${
+      if (parsed.q) {
+        const needle = parsed.q.toLowerCase();
+        tasks = tasks.filter(
+          (t) =>
+            t.title.toLowerCase().includes(needle) ||
+            (t.description ?? "").toLowerCase().includes(needle),
+        );
+      }
+      const total = tasks.length;
+      const cap = parsed.limit ?? 100;
+      const trimmed = tasks.slice(0, cap);
+      const summary = `${trimmed.length} task${trimmed.length === 1 ? "" : "s"}${clientLabel}${
         parsed.status ? ` (${parsed.status})` : ""
+      }${parsed.q ? ` matching "${parsed.q}"` : ""}${
+        total > cap ? ` (of ${total} — raise limit to see more)` : ""
       }.`;
-      return textResult(tasks, summary);
+      return textResult(trimmed, summary);
     },
   },
   {
@@ -813,6 +863,179 @@ const TOOLS: ToolDef[] = [
         detectedMarkets: (scan.detectedMarkets ?? undefined) as undefined | import("@/server/pulse-checks/jurisdictions").JurisdictionCode[],
       });
       return textResult(verdict, verdict.summary);
+    },
+  },
+  {
+    name: "whoami",
+    description:
+      "Return the Foundry user Claude is acting as — id, name, email, role, and key " +
+      "capabilities. Zero args. Use it to resolve 'me' (e.g. for list_tasks assigneeId) and to " +
+      "know what you're allowed to do before calling other tools.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    handler: async (user) => {
+      const me = {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        workspaceId: user.workspaceId,
+        capabilities: {
+          manageClients: canManageClients(user),
+          manageDocs: canManageDocs(user),
+          managePulse: canManagePulse(user),
+          seeAllClients: canSeeAllClients(user),
+        },
+      };
+      return textResult(me, `You are ${user.name ?? user.email} (${user.role}).`);
+    },
+  },
+  {
+    name: "get_task",
+    description:
+      "Get one task in full — description, acceptance criteria, assignees, subtasks, and the " +
+      "comment thread. Pass the task cuid (from list_tasks). Honors your client-scoping.",
+    inputSchema: {
+      type: "object",
+      properties: { taskId: { type: "string", description: "Cuid of the task." } },
+      required: ["taskId"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = getTaskSchema.parse(args);
+      const task = await getTask(user, parsed.taskId);
+      return textResult(task, `Task "${task.title}" (${task.status}) on ${task.client.name}.`);
+    },
+  },
+  {
+    name: "comment_task",
+    description:
+      "Add a comment / note to a task's thread (supports @mentions of workspace members). " +
+      "Use to leave an update, ask a question, or record a decision on a task.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Cuid of the task to comment on." },
+        body: { type: "string", description: "Comment text (markdown; @name to mention)." },
+      },
+      required: ["taskId", "body"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = commentTaskSchema.parse(args);
+      const comment = await addTaskComment(user, parsed.taskId, parsed.body);
+      return textResult(comment, `Added comment to task ${parsed.taskId}.`);
+    },
+  },
+  {
+    name: "list_documents",
+    description:
+      "List documents (proposals / SOW / SLA / NDA / …). Filter by client, documentType, status, " +
+      "or a text `search` (title / client / product). Only shows document types your role may see. " +
+      "Capped at `limit` (default 50). Use create_document to make one, update_document to edit it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid to scope to." },
+        documentType: {
+          type: "string",
+          enum: ["PROPOSAL", "SLA", "SOW", "MSA", "NDA", "CO", "DSA", "HANDOVER", "REPORT", "BRIEF", "OTHER"],
+        },
+        status: {
+          type: "string",
+          enum: ["DRAFT", "PRODUCT_SIGN_OFF", "TECH_SIGN_OFF", "IN_REVIEW", "APPROVED", "SENT", "ACCEPTED", "DECLINED", "ARCHIVED"],
+        },
+        search: { type: "string", description: "Case-insensitive substring of title / client / product name." },
+        limit: { type: "integer", description: "Max documents to return (default 50, max 100)." },
+      },
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = listDocumentsSchema.parse(args);
+      const allowed = allowedDocTypesForUser(user);
+      const allowedSet = new Set<string>(allowed);
+      // Intersect the requested type with what the role may see — never leak admin doc types.
+      let documentType: PrismaTypes.DocumentWhereInput["documentType"] = { in: allowed };
+      if (parsed.documentType) {
+        documentType = allowedSet.has(parsed.documentType)
+          ? (parsed.documentType as DocumentType)
+          : { in: [] as DocumentType[] };
+      }
+      let clientId: string | undefined;
+      let clientLabel = "";
+      if (parsed.client) {
+        const c = await resolveClient(user, parsed.client);
+        clientId = c.id;
+        clientLabel = ` for ${c.name}`;
+      }
+      const where: PrismaTypes.DocumentWhereInput = {
+        workspaceId: user.workspaceId,
+        documentType,
+        ...(parsed.status ? { status: parsed.status as DocumentStatus } : {}),
+        ...(clientId ? { clientId } : {}),
+        ...(parsed.search
+          ? {
+              OR: [
+                { title: { contains: parsed.search, mode: "insensitive" } },
+                { clientName: { contains: parsed.search, mode: "insensitive" } },
+                { productName: { contains: parsed.search, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      };
+      const cap = parsed.limit ?? 50;
+      const rows = await prisma.document.findMany({
+        where,
+        orderBy: { updatedAt: "desc" },
+        take: cap + 1,
+        select: proposalListSelect,
+      });
+      const hasMore = rows.length > cap;
+      const docs = rows.slice(0, cap).map((d) => serializeProposalListItem(d));
+      const summary = `${docs.length} document${docs.length === 1 ? "" : "s"}${clientLabel}${
+        parsed.documentType ? ` (${parsed.documentType})` : ""
+      }${hasMore ? " (more available — raise limit)" : ""}.`;
+      return textResult(docs, summary);
+    },
+  },
+  {
+    name: "list_pulse_scans",
+    description:
+      "List recent Pulse scans (id, project, url/repo, health score, status, date). Optionally " +
+      "scope to a client. Pass a returned scanId to pulse_scan_result for the full verdict. " +
+      "Requires the 'Manage Pulse' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid to scope to." },
+        limit: { type: "integer", description: "Max scans to return (default 50, max 100)." },
+      },
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManagePulse, "read Pulse scans");
+      const parsed = listPulseScansSchema.parse(args);
+      let clientId: string | undefined;
+      let clientLabel = "";
+      if (parsed.client) {
+        const c = await resolveClient(user, parsed.client);
+        clientId = c.id;
+        clientLabel = ` for ${c.name}`;
+      }
+      const scans = await listPulseScans(clientId ? { clientId } : undefined);
+      const cap = parsed.limit ?? 50;
+      const trimmed = scans.slice(0, cap).map((s) => ({
+        id: s.id,
+        projectName: s.projectName,
+        clientName: s.clientName,
+        target: s.inputUrl ?? s.inputGithubRepo,
+        status: s.status,
+        healthScore: s.healthScore,
+        createdAt: s.createdAt,
+      }));
+      const summary = `${trimmed.length} Pulse scan${trimmed.length === 1 ? "" : "s"}${clientLabel}${
+        scans.length > cap ? ` (of ${scans.length} — raise limit)` : ""
+      }. Pass a scanId to pulse_scan_result for the full verdict.`;
+      return textResult(trimmed, summary);
     },
   },
 ];

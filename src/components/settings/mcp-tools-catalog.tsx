@@ -59,6 +59,24 @@ const TOOLS: Tool[] = [
     examples: ["Who's in the workspace?", "Find Harry's user id."],
   },
   {
+    name: "whoami",
+    blurb:
+      "Tells Claude which Foundry account it's acting as, your role, and what you're allowed to do. Handy so 'assign it to me' just works.",
+    examples: ["Who am I in Foundry?", "What can I do here?"],
+  },
+  {
+    name: "get_task",
+    blurb:
+      "Open one task in full — description, acceptance criteria, subtasks, and the comment thread.",
+    examples: ["Show me the full detail of that onboarding task.", "What are the acceptance criteria on task abc123?"],
+  },
+  {
+    name: "comment_task",
+    blurb:
+      "Add a note or comment to a task's thread (you can @mention teammates).",
+    examples: ["Comment on task abc123: 'blocked on design sign-off'.", "Leave a note on the analytics task @Harry to review."],
+  },
+  {
     name: "find_meetings",
     blurb:
       "Search Scribe meeting notes for a client. Returns titles, dates, AI summary, decisions, and action items.",
@@ -78,6 +96,24 @@ const TOOLS: Tool[] = [
     ],
   },
   {
+    name: "update_document",
+    blurb:
+      "Fill in or edit a document's content — title, status, summary, and section bodies. Requires the 'Manage documents' permission.",
+    examples: [
+      "Draft the scope and pricing sections of that Speakify proposal.",
+      "Mark the Big Wedge SOW as SENT.",
+    ],
+  },
+  {
+    name: "list_documents",
+    blurb:
+      "List documents (proposals, SOWs, contracts, …). Filter by client, type, status, or search. Only shows the document types your role can see.",
+    examples: [
+      "What proposals are out for Speakify?",
+      "Show me every document in DRAFT.",
+    ],
+  },
+  {
     name: "pulse_scan",
     blurb:
       "Run a Pulse production-readiness + security scan on a URL and get a compact verdict — health score, confirmed issues, security/TLS/accessibility grades, and top fixes. Requires the 'Manage Pulse' permission.",
@@ -91,6 +127,12 @@ const TOOLS: Tool[] = [
     blurb:
       "Fetch the verdict for an existing Pulse scan by its id — handy to pull an in-app scan's findings into a chat.",
     examples: ["Summarise Pulse scan clx123 for me."],
+  },
+  {
+    name: "list_pulse_scans",
+    blurb:
+      "List recent Pulse scans (score, status, date), optionally for one client. Requires the 'Manage Pulse' permission.",
+    examples: ["What Pulse scans have we run for Big Wedge?", "Show me the latest scans and their scores."],
   },
 ];
 
