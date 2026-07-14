@@ -21,7 +21,8 @@ import {
   DeskConnectGoogle,
   RevealList,
 } from "./desk-shared";
-import { WorldClocks, TeamOverlap, HQ_TZ, TEAM_TZ } from "./desk-time";
+import { WorldClocks, HQ_TZ, TEAM_TZ } from "./desk-time";
+import { DeskGlobe } from "./desk-globe";
 import { DeskNeedsReply } from "./desk-needs-reply";
 import { PurgeReviewBanner } from "./desk-purge-review";
 import { BriefPeek } from "@/components/brief/brief-peek";
@@ -200,7 +201,7 @@ function AroundTheTeam({ counterpart }: { counterpart: Counterpart }) {
         <HolidayChip cc="PK" h={holidays.data?.pk} />
       </div>
       <div className="mt-3">
-        <TeamOverlap counterpartTz={counterpart.tz} counterpartLabel={counterpart.label} />
+        <DeskGlobe counterpartTz={counterpart.tz} counterpartLabel={counterpart.label} />
       </div>
     </EditorialRow>
   );
