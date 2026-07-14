@@ -1064,28 +1064,29 @@ export function ClientDetail({ slug }: { slug: string }) {
         </>
       )}
 
-      {/* ── 13 // NOTES (client view; leads show notes in the 03/04 row above) ── */}
-      {!isLead && client.notes && (
-        <section className="widget-card">
-          <div className="widget-header">
-            <span className="widget-header__label">
-              <span className="widget-header__label--number">13</span>
-              {" // NOTES"}
-            </span>
-          </div>
-          <div className="p-6">
-            <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
-              {client.notes}
-            </p>
-          </div>
-        </section>
-      )}
-
       {!isLead && (
         <>
-      {/* ── ACTIVITY — 2×2 grid on desktop, stacked on mobile ── */}
-      {/* Row 1: Documents + Pulse */}
+      {/* ── ACTIVITY — 2-col rows on desktop, stacked on mobile ── */}
+      {/* Row 1: Notes + Documents side by side (Pulse follows when visible) so neither sits alone
+          with a large empty half — leads show notes in the 03/04 row above instead. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+
+        {/* 13 // NOTES */}
+        {client.notes ? (
+          <section className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header__label">
+                <span className="widget-header__label--number">13</span>
+                {" // NOTES"}
+              </span>
+            </div>
+            <div className="p-6">
+              <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
+                {client.notes}
+              </p>
+            </div>
+          </section>
+        ) : null}
 
         {/* 14 // DOCUMENTS */}
         <section className="widget-card">
@@ -3055,7 +3056,11 @@ function DesignCard({
     <>
       <article
         className="group relative flex flex-row items-center gap-3 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-3 cursor-pointer hover:border-[var(--brand-400)] hover:shadow-sm transition-all"
-        onClick={() => setEditing(true)}
+        onClick={() =>
+          design.url
+            ? window.open(design.url, "_blank", "noopener,noreferrer")
+            : setEditing(true)
+        }
       >
         {/* Icon badge */}
         <div
@@ -3077,21 +3082,6 @@ function DesignCard({
             <p className="mt-0.5 truncate text-[11px] text-[var(--text-3)]">{design.notes}</p>
           )}
         </div>
-
-        {/* Open link */}
-        {design.url && (
-          <div onClick={(e) => e.stopPropagation()}>
-            <a
-              href={design.url}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] transition"
-              title="Open design file"
-            >
-              <ArrowTopRightOnSquareIcon className="h-3 w-3" />
-            </a>
-          </div>
-        )}
 
         {/* Edit / delete — appear on hover */}
         <div
