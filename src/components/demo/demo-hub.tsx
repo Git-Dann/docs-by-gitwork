@@ -55,7 +55,7 @@ export function DemoHub() {
   const eyebrow = brand ? "Powered by Foundry" : "Foundry by Gitwork";
 
   return (
-    <div className="min-h-[100dvh] bg-[var(--surface-canvas)] text-[var(--text-1)]" suppressHydrationWarning>
+    <div className="flex min-h-[100dvh] flex-col bg-[var(--surface-canvas)] text-[var(--text-1)]" suppressHydrationWarning>
       {brandColor ? (
         <style dangerouslySetInnerHTML={{ __html: `:root{${brandCssVars(brandColor)}}` }} />
       ) : null}
@@ -98,7 +98,7 @@ export function DemoHub() {
             {eyebrow} · Live product
           </p>
           <h1 className="max-w-3xl text-[40px] font-normal leading-[1.08] tracking-[-0.03em] text-[var(--text-1)] sm:text-[54px]">
-            {name}, running.
+            See {name} running.
             <br />
             <span className="text-[var(--text-3)]">Not another slide deck.</span>
           </h1>
@@ -126,7 +126,7 @@ export function DemoHub() {
       </header>
 
       {/* ── Module cards ── */}
-      <main className="mx-auto max-w-5xl px-6 py-12 sm:px-8 sm:py-14">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-12 sm:px-8 sm:py-14">
         <div className="mb-5 flex items-center gap-2">
           <span
             className="text-[11px] uppercase tracking-[1.4px] text-[var(--text-4)]"
@@ -160,9 +160,11 @@ export function DemoHub() {
             </Link>
           ))}
         </div>
+      </main>
 
-        {/* Footer — Gitwork credit + positioning line */}
-        <footer className="mt-14 flex flex-col items-start justify-between gap-4 border-t border-[var(--border-2)] pt-6 sm:flex-row sm:items-center">
+      {/* Footer — pinned to the bottom of the viewport (main flex-1); Gitwork credit + tagline */}
+      <footer className="border-t border-[var(--border-2)]">
+        <div className="mx-auto flex w-full max-w-5xl flex-col items-start justify-between gap-4 px-6 py-6 sm:flex-row sm:items-center sm:px-8">
           <p className="text-sm text-[var(--text-4)]">
             Built with <span className="font-medium text-[var(--text-2)]">Foundry</span> — the
             agency platform by Gitwork.
@@ -176,8 +178,8 @@ export function DemoHub() {
             From prompt to production
             <ArrowRightIcon className="h-3.5 w-3.5" />
           </a>
-        </footer>
-      </main>
+        </div>
+      </footer>
     </div>
   );
 }
