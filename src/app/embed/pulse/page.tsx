@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Script from "next/script";
-import Image from "next/image";
 
 // ── Types (mirror PublicScanView from /api/public/pulse/scan/[id]) ─────────────
 type Check = {
@@ -279,6 +278,12 @@ export default function EmbedPulsePage() {
   const failedScan = view?.status === "FAILED";
   const issues = view ? view.warn + view.fail : 0;
 
+  // When Turnstile is configured, don't let a click through before it's actually
+  // produced a token — submitting without one always fails server-side ("Verification
+  // failed"), which reads as a broken form rather than "still checking you're human".
+  const awaitingScanVerification = Boolean(turnstileSiteKey) && !scanToken;
+  const awaitingUnlockVerification = Boolean(turnstileSiteKey) && !unlockToken;
+
   const findings = (view?.checks ?? [])
     .filter((c) => c.status === "FAIL" || c.status === "WARN")
     .sort((a, b) => (a.status === "FAIL" ? 0 : 1) - (b.status === "FAIL" ? 0 : 1));
@@ -305,7 +310,6 @@ export default function EmbedPulsePage() {
 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-        <Image src="/gitwork-logo-home-page.png" alt="Gitwork" width={168} height={31} style={{ height: 20, width: "auto" }} priority />
         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, color: ACCENT, textTransform: "uppercase" }}>
           Pulse
         </span>
@@ -340,19 +344,19 @@ export default function EmbedPulsePage() {
         <Honeypot value={scanHoneypot} onChange={setScanHoneypot} />
         <button
           onClick={startScan}
-          disabled={running || starting || !url.trim()}
+          disabled={running || starting || !url.trim() || awaitingScanVerification}
           style={{
             padding: "12px 20px",
             borderRadius: 10,
             border: "none",
-            background: running || starting || !url.trim() ? "#a5b4fc" : ACCENT,
+            background: running || starting || !url.trim() || awaitingScanVerification ? "#a5b4fc" : ACCENT,
             color: "white",
             fontSize: 15,
             fontWeight: 700,
-            cursor: running || starting || !url.trim() ? "default" : "pointer",
+            cursor: running || starting || !url.trim() || awaitingScanVerification ? "default" : "pointer",
           }}
         >
-          {running ? "Scanning…" : starting ? "Starting…" : "Scan my site"}
+          {running ? "Scanning…" : starting ? "Starting…" : awaitingScanVerification ? "Verifying…" : "Scan my site"}
         </button>
       </div>
       {turnstileSiteKey && <div ref={scanTurnstileRef} style={{ marginTop: 10 }} />}
@@ -477,19 +481,19 @@ export default function EmbedPulsePage() {
                     <Honeypot value={unlockHoneypot} onChange={setUnlockHoneypot} />
                     <button
                       onClick={unlock}
-                      disabled={unlocking || !email.trim()}
+                      disabled={unlocking || !email.trim() || awaitingUnlockVerification}
                       style={{
                         padding: "11px 18px",
                         borderRadius: 10,
                         border: "none",
-                        background: unlocking || !email.trim() ? "#a5b4fc" : ACCENT,
+                        background: unlocking || !email.trim() || awaitingUnlockVerification ? "#a5b4fc" : ACCENT,
                         color: "white",
                         fontSize: 14,
                         fontWeight: 700,
-                        cursor: unlocking || !email.trim() ? "default" : "pointer",
+                        cursor: unlocking || !email.trim() || awaitingUnlockVerification ? "default" : "pointer",
                       }}
                     >
-                      {unlocking ? "Unlocking…" : "Show me the issues"}
+                      {unlocking ? "Unlocking…" : awaitingUnlockVerification ? "Verifying…" : "Show me the issues"}
                     </button>
                   </div>
                   {turnstileSiteKey && <div ref={unlockTurnstileRef} style={{ marginTop: 10 }} />}
