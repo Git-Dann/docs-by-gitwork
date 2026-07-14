@@ -43,6 +43,57 @@ export const DEMO_MODULES: DemoModule[] = [
 
 export const BRAND_KEY = "gitwork.demo.brand";
 export const MODULES_KEY = "gitwork.demo.modules";
+export const COLOR_KEY = "gitwork.demo.color";
+
+/** Foundry's default accent (—brand-600/700), shown as the colour-picker default. */
+export const DEFAULT_BRAND_COLOR = "#1D4ED8";
+
+/** Strict hex validation — also guards against CSS injection via the `color` param. */
+export function isHexColor(v: string): boolean {
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(v.trim());
+}
+
+/** Resolve the brand accent colour: URL `?color=` (persisted) → localStorage → null (Foundry blue). */
+export function readDemoColor(): string | null {
+  if (typeof window === "undefined") return null;
+  const param = new URLSearchParams(window.location.search).get("color");
+  if (param !== null) {
+    const v = param.trim();
+    if (isHexColor(v)) {
+      window.localStorage.setItem(COLOR_KEY, v);
+      return v;
+    }
+    window.localStorage.removeItem(COLOR_KEY); // invalid / `?color=` clears it
+    return null;
+  }
+  const stored = window.localStorage.getItem(COLOR_KEY);
+  return stored && isHexColor(stored) ? stored : null;
+}
+
+/** Derive a full light-mode `--brand-*` scale from one hex, keeping tints light. Returns the CSS
+ *  declaration body for a `:root { … }` override (empty string when the hex is invalid). */
+export function brandCssVars(hex: string): string {
+  if (!isHexColor(hex)) return "";
+  const H = hex.trim();
+  const mixW = (pct: number) => `color-mix(in srgb, ${H} ${pct}%, white)`;
+  const mixB = (pct: number) => `color-mix(in srgb, ${H}, black ${pct}%)`;
+  return [
+    `--brand-600:${H}`,
+    `--brand-700:${H}`,
+    `--brand-500:${mixW(90)}`,
+    `--brand-400:${mixW(78)}`,
+    `--brand-300:${mixW(32)}`,
+    `--brand-200:${mixW(16)}`,
+    `--brand-100:${mixW(16)}`,
+    `--brand-50:${mixW(8)}`,
+    `--brand-800:${mixB(22)}`,
+    `--brand-900:${mixB(22)}`,
+    `--surface-brand:${mixW(8)}`,
+    `--surface-brand-soft:${mixW(6)}`,
+    `--surface-brand-strong:${mixW(16)}`,
+    `--accent:${H}`,
+  ].join(";") + ";";
+}
 
 /** Resolve the enabled module ids: URL `?modules=` (persisted) → localStorage → null (all). */
 export function readDemoModules(): string[] | null {
@@ -64,8 +115,14 @@ export function filterModules(enabled: string[] | null): DemoModule[] {
   return DEMO_MODULES.filter((m) => enabled.includes(m.id));
 }
 
-/** Build a shareable demo URL. Omits `modules` when every module is enabled. */
-export function buildDemoLink(origin: string, client: string, enabledIds: string[]): string {
+/** Build a shareable demo URL. Omits `modules` when every module is enabled, and `color` when
+ *  it's the Foundry default / invalid. */
+export function buildDemoLink(
+  origin: string,
+  client: string,
+  enabledIds: string[],
+  color?: string | null,
+): string {
   const params = new URLSearchParams();
   const trimmed = client.trim();
   if (trimmed) params.set("client", trimmed);
@@ -73,6 +130,9 @@ export function buildDemoLink(origin: string, client: string, enabledIds: string
     // Preserve canonical order.
     const ordered = DEMO_MODULES.filter((m) => enabledIds.includes(m.id)).map((m) => m.id);
     params.set("modules", ordered.join(","));
+  }
+  if (color && isHexColor(color) && color.toUpperCase() !== DEFAULT_BRAND_COLOR) {
+    params.set("color", color);
   }
   const qs = params.toString();
   return `${origin}/demo${qs ? `?${qs}` : ""}`;

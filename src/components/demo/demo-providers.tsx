@@ -16,11 +16,13 @@ import "@/lib/demo/demo-fetch";
 import { demoSession } from "@/lib/demo/dev-demo-data";
 import { DemoErrorBoundary } from "@/components/demo/demo-error-boundary";
 import { useDemoLinkReroute } from "@/lib/demo/use-demo-nav";
+import { readDemoColor, brandCssVars } from "@/lib/demo/demo-config";
 
 export function DemoProviders({ children }: { children: ReactNode }) {
   const handleDemoNav = useDemoLinkReroute();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  const [brandColor] = useState(() => readDemoColor());
 
   return (
     <SessionProvider session={demoSession as never}>
@@ -28,6 +30,9 @@ export function DemoProviders({ children }: { children: ReactNode }) {
         onClickCapture={handleDemoNav}
         className="min-h-[100dvh] bg-[var(--surface-canvas)] text-[var(--text-1)]"
       >
+        {brandColor ? (
+          <style dangerouslySetInnerHTML={{ __html: `:root{${brandCssVars(brandColor)}}` }} />
+        ) : null}
         {mounted ? (
           <DemoErrorBoundary>{children}</DemoErrorBoundary>
         ) : (

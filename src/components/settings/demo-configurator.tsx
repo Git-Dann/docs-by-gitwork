@@ -10,17 +10,18 @@
 
 import { useState } from "react";
 import { CheckIcon, ClipboardIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
-import { DEMO_MODULES, buildDemoLink } from "@/lib/demo/demo-config";
+import { DEMO_MODULES, buildDemoLink, DEFAULT_BRAND_COLOR } from "@/lib/demo/demo-config";
 import { cn } from "@/lib/format";
 
 export function DemoConfigurator() {
   const [client, setClient] = useState("");
   const [enabled, setEnabled] = useState<Set<string>>(() => new Set(DEMO_MODULES.map((m) => m.id)));
+  const [color, setColor] = useState<string | null>(null); // null = Foundry blue
   const [copied, setCopied] = useState(false);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "https://foundry.gitwork.co.uk";
   const enabledIds = DEMO_MODULES.filter((m) => enabled.has(m.id)).map((m) => m.id);
-  const link = buildDemoLink(origin, client, enabledIds);
+  const link = buildDemoLink(origin, client, enabledIds, color);
 
   function toggle(id: string) {
     setEnabled((prev) => {
@@ -131,6 +132,42 @@ export function DemoConfigurator() {
               </button>
             );
           })}
+        </div>
+      </section>
+
+      {/* Brand colour */}
+      <section className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-5 shadow-[var(--shadow-xs)]">
+        <h3 className="text-sm font-medium text-[var(--text-1)]">Brand colour</h3>
+        <p className="mt-1 text-xs text-[var(--text-4)]">
+          Swaps the accent — buttons, links, active states. Everything stays light; only the blue
+          changes. Leave as Foundry blue to keep the default.
+        </p>
+        <div className="mt-3 flex items-center gap-3">
+          <input
+            type="color"
+            aria-label="Brand colour"
+            value={color ?? DEFAULT_BRAND_COLOR}
+            onChange={(e) => setColor(e.target.value)}
+            className="h-10 w-14 cursor-pointer rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] p-1"
+          />
+          <input
+            type="text"
+            value={color ?? ""}
+            onChange={(e) => setColor(e.target.value.trim() || null)}
+            placeholder={`${DEFAULT_BRAND_COLOR} · Foundry blue`}
+            className="w-48 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3.5 py-2.5 font-mono text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-400)] focus:ring-2 focus:ring-[var(--brand-100)]"
+          />
+          {color ? (
+            <button
+              type="button"
+              onClick={() => setColor(null)}
+              className="rounded-[8px] border border-[var(--border-2)] px-3 py-2.5 text-sm font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)]"
+            >
+              Reset
+            </button>
+          ) : (
+            <span className="text-xs text-[var(--text-4)]">Using Foundry blue</span>
+          )}
         </div>
       </section>
 

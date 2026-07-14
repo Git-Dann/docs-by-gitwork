@@ -20,7 +20,7 @@ import { DemoErrorBoundary } from "@/components/demo/demo-error-boundary";
 import "@/lib/demo/demo-fetch";
 import { demoSession } from "@/lib/demo/dev-demo-data";
 import { useDemoLinkReroute } from "@/lib/demo/use-demo-nav";
-import { filterModules, readDemoModules } from "@/lib/demo/demo-config";
+import { filterModules, readDemoModules, readDemoColor, brandCssVars } from "@/lib/demo/demo-config";
 
 export function DemoShell({
   active,
@@ -52,6 +52,9 @@ export function DemoShell({
   // Sidebar modules — filtered by the demo config (URL ?modules= / localStorage). Read
   // synchronously so it's correct on the first render (no flash).
   const [nav] = useState(() => filterModules(readDemoModules()));
+
+  // Brand accent colour override (URL ?color= / localStorage) — swaps the blue for the client's.
+  const [brandColor] = useState(() => readDemoColor());
 
   // Mount content only after hydration: guarantees the interceptor is live before any
   // query runs, and avoids SSR/CSR drift from the relative demo dates.
@@ -90,6 +93,9 @@ export function DemoShell({
         className="relative flex h-[100dvh] flex-col overflow-hidden bg-[var(--surface-canvas)] text-[var(--text-1)]"
         onClickCapture={handleDemoNav}
       >
+        {brandColor ? (
+          <style dangerouslySetInnerHTML={{ __html: `:root{${brandCssVars(brandColor)}}` }} />
+        ) : null}
         <div className="flex min-h-0 w-full flex-1 flex-col lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
           {/* ── Sidebar (mirrors the real app shell) ── */}
           <aside className="hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_38%)] lg:flex lg:min-h-0">
