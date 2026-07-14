@@ -100,3 +100,63 @@ export const DATA_REQUEST_LABELS: Record<DataRequestType, string> = {
   APPEAL: "Appeal for human re-review",
   ERASURE: "Delete my data",
 };
+
+// ─── Editable notice content ─────────────────────────────────────────────────
+// The above constants are the DEFAULT. Once edited in-app, the active content
+// lives in the DevSignalNotice table (versioned) and is served through the
+// candidate session. The two consent-item KEYS (processing, humanReview) are
+// structural — the server gate requires both — so only their label text is
+// editable; explanation stages, data-handling points and the contact email are
+// fully editable.
+
+export interface NoticeContent {
+  contactEmail: string;
+  explanationStages: ExplanationStage[];
+  dataHandlingPoints: string[];
+  consentItems: ConsentItem[];
+}
+
+export const DEFAULT_NOTICE_CONTENT: NoticeContent = {
+  contactEmail: DATA_CONTACT_EMAIL,
+  explanationStages: EXPLANATION_STAGES,
+  dataHandlingPoints: DATA_HANDLING_POINTS,
+  consentItems: CONSENT_ITEMS,
+};
+
+/** The two consent keys the server contract depends on (labels are editable, keys are not). */
+export const REQUIRED_CONSENT_KEYS: ReadonlyArray<ConsentItem["key"]> = ["processing", "humanReview"];
+
+/**
+ * Coerce arbitrary stored/submitted JSON into a valid NoticeContent, backfilling
+ * from the default and guaranteeing the two required consent items always exist
+ * (so an edit can never break the consent gate).
+ */
+export function normalizeNoticeContent(input: unknown): NoticeContent {
+  const raw = (input ?? {}) as Partial<NoticeContent>;
+  const contactEmail =
+    typeof raw.contactEmail === "string" && raw.contactEmail.trim()
+      ? raw.contactEmail.trim()
+      : DEFAULT_NOTICE_CONTENT.contactEmail;
+
+  const explanationStages = Array.isArray(raw.explanationStages)
+    ? raw.explanationStages
+        .filter((s) => s && typeof s.title === "string")
+        .map((s) => ({ title: String(s.title), measures: String(s.measures ?? ""), automated: Boolean(s.automated) }))
+    : DEFAULT_NOTICE_CONTENT.explanationStages;
+
+  const dataHandlingPoints = Array.isArray(raw.dataHandlingPoints)
+    ? raw.dataHandlingPoints.map((p) => String(p)).filter((p) => p.trim())
+    : DEFAULT_NOTICE_CONTENT.dataHandlingPoints;
+
+  // Rebuild the two consent items from their keys, taking only the label from input.
+  const byKey = new Map(
+    (Array.isArray(raw.consentItems) ? raw.consentItems : []).map((c) => [c?.key, c?.label]),
+  );
+  const consentItems: ConsentItem[] = REQUIRED_CONSENT_KEYS.map((key) => {
+    const fallback = DEFAULT_NOTICE_CONTENT.consentItems.find((c) => c.key === key)!;
+    const label = byKey.get(key);
+    return { key, required: true, label: typeof label === "string" && label.trim() ? label : fallback.label };
+  });
+
+  return { contactEmail, explanationStages, dataHandlingPoints, consentItems };
+}

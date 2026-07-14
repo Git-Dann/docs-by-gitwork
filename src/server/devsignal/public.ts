@@ -14,11 +14,8 @@ import { DEV_SIGNAL_STAGE_NAMES, type DevSignalStageId } from "./stages/types";
 import { safeGithubRequest } from "@/lib/github";
 import { isAtLeast } from "@/types/auth";
 import { sendWorkspaceEmail, escapeHtml } from "@/server/email";
-import {
-  PROCESSING_NOTICE_VERSION,
-  type DataRequestType,
-  DATA_REQUEST_LABELS,
-} from "@/lib/devsignal/processing-notice";
+import { type DataRequestType, DATA_REQUEST_LABELS } from "@/lib/devsignal/processing-notice";
+import { getActiveNotice } from "./notice-store";
 
 /** Does this GitHub username resolve to a real public account? */
 export async function githubUserExists(handle: string): Promise<boolean> {
@@ -128,6 +125,7 @@ async function buildSession(a: LoadedAssessment): Promise<PublicVetSession> {
   });
   const doneStages = new Set(stageRows.map((r) => r.stageId));
   const c = a.candidate;
+  const notice = await getActiveNotice(a.workspace.id);
   // Serve the challenge that best matches what the candidate declared, not one
   // default task for everyone. Deterministic; falls back to the first active one.
   const challenge = await pickChallengeFor(a.workspace.id, {
@@ -152,6 +150,7 @@ async function buildSession(a: LoadedAssessment): Promise<PublicVetSession> {
       availability: c.availability,
     },
     consentGiven: hasConsent(a),
+    notice: { version: notice.version, ...notice.content },
     githubConnected: Boolean(c.githubHandle && c.githubHandle.trim() && c.githubHandle !== "unknown"),
     challenge: toPublicChallenge(challenge),
     challengeSubmitted: doneStages.has("coding_challenge"),
@@ -384,8 +383,10 @@ export async function recordConsent(
   if (!submission.processing || !submission.humanReview) {
     throw new Error("Both consents are required to continue.");
   }
+  // Stamp the version the candidate actually saw (the active notice at consent time).
+  const active = await getActiveNotice(a.workspace.id);
   const record: ConsentRecord = {
-    noticeVersion: PROCESSING_NOTICE_VERSION,
+    noticeVersion: active.version,
     processing: true,
     humanReview: true,
     agreedAt: new Date().toISOString(),

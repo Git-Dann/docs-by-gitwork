@@ -161,6 +161,14 @@ export interface DevSignalChallengeDTO {
   tests: Array<{ name: string; args: unknown[]; expected: unknown; hidden?: boolean }>;
 }
 
+export interface PublicVetNotice {
+  version: string;
+  contactEmail: string;
+  explanationStages: Array<{ title: string; measures: string; automated: boolean }>;
+  dataHandlingPoints: string[];
+  consentItems: Array<{ key: "processing" | "humanReview"; required: boolean; label: string }>;
+}
+
 export interface PublicVetCandidate {
   name: string;
   email: string | null;
@@ -182,6 +190,8 @@ export interface PublicVetSession {
   candidate: PublicVetCandidate;
   /** True once the candidate has accepted the processing notice (required first). */
   consentGiven: boolean;
+  /** The (editable) consent + right-to-explanation notice content shown to the candidate. */
+  notice: PublicVetNotice;
   githubConnected: boolean;
   challenge: PublicChallengeDTO | null;
   challengeSubmitted: boolean;

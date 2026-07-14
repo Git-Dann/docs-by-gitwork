@@ -14,14 +14,7 @@ import {
   ProgressBar,
   brandInputClass,
 } from "@/components/onboarding/brand";
-import {
-  CONSENT_ITEMS,
-  DATA_HANDLING_POINTS,
-  DATA_REQUEST_LABELS,
-  DATA_CONTACT_EMAIL,
-  EXPLANATION_STAGES,
-  type DataRequestType,
-} from "@/lib/devsignal/processing-notice";
+import { DATA_REQUEST_LABELS, type DataRequestType } from "@/lib/devsignal/processing-notice";
 
 type Step = "welcome" | "consent" | "intake" | "connect" | "challenge" | "video" | "identity" | "done";
 const STEPS: Step[] = ["welcome", "consent", "intake", "connect", "challenge", "video", "identity", "done"];
@@ -170,7 +163,7 @@ export function VetFlow({ token }: { token: string }) {
               for review. A person — not a machine — makes the final call. We&apos;ll be in touch about
               next steps, and we&apos;ve emailed you a copy of your link.
             </Lede>
-            <DataRightsFooter token={token} />
+            <DataRightsFooter token={token} contactEmail={session.notice.contactEmail} />
           </BrandCard>
         )}
       </FadeIn>
@@ -435,14 +428,15 @@ function IdentityStep({ token, onDone, onSkip }: { token: string; onDone: () => 
 // ─── consent (GDPR) ───────────────────────────────────────────────────────────
 
 function ConsentStep({ token, session, onSaved }: { token: string; session: PublicVetSession; onSaved: () => void }) {
+  const { consentItems, dataHandlingPoints, explanationStages } = session.notice;
   const [checks, setChecks] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(CONSENT_ITEMS.map((c) => [c.key, session.consentGiven])),
+    Object.fromEntries(consentItems.map((c) => [c.key, session.consentGiven])),
   );
   const [showHow, setShowHow] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const allRequired = CONSENT_ITEMS.every((c) => !c.required || checks[c.key]);
+  const allRequired = consentItems.every((c) => !c.required || checks[c.key]);
 
   const save = async () => {
     if (!allRequired) {
@@ -476,7 +470,7 @@ function ConsentStep({ token, session, onSaved }: { token: string; session: Publ
       </button>
       {showHow && (
         <ol className="mt-3 space-y-2 border-l-2 border-[#6B52FF] pl-4">
-          {EXPLANATION_STAGES.map((s) => (
+          {explanationStages.map((s) => (
             <li key={s.title}>
               <p className="text-sm font-medium text-[#1A1A1E]">
                 {s.title}{" "}
@@ -491,7 +485,7 @@ function ConsentStep({ token, session, onSaved }: { token: string; session: Publ
       )}
 
       <ul className="mt-4 space-y-1.5">
-        {DATA_HANDLING_POINTS.map((p) => (
+        {dataHandlingPoints.map((p) => (
           <li key={p} className="flex gap-2 text-sm leading-relaxed text-[#46464C]">
             <span className="text-[#6B52FF]">•</span>
             <span>{p}</span>
@@ -500,7 +494,7 @@ function ConsentStep({ token, session, onSaved }: { token: string; session: Publ
       </ul>
 
       <div className="mt-5 space-y-3">
-        {CONSENT_ITEMS.map((item) => (
+        {consentItems.map((item) => (
           <label key={item.key} className="flex items-start gap-2.5 text-sm leading-relaxed text-[#46464C]">
             <input
               type="checkbox"
@@ -528,7 +522,7 @@ function ConsentStep({ token, session, onSaved }: { token: string; session: Publ
 
 // ─── data rights (explanation / appeal / erasure) ────────────────────────────
 
-function DataRightsFooter({ token }: { token: string }) {
+function DataRightsFooter({ token, contactEmail }: { token: string; contactEmail: string }) {
   const [open, setOpen] = useState<DataRequestType | null>(null);
   const [message, setMessage] = useState("");
   const [sent, setSent] = useState<DataRequestType | null>(null);
@@ -556,7 +550,7 @@ function DataRightsFooter({ token }: { token: string }) {
       <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#6B6B6B]">Your rights</p>
       <p className="mt-1.5 text-sm leading-relaxed text-[#46464C]">
         You can ask us to explain your assessment, appeal for a person to re-review it, or delete your
-        data. We&apos;ll confirm by email ({DATA_CONTACT_EMAIL}).
+        data. We&apos;ll confirm by email ({contactEmail}).
       </p>
       {sent ? (
         <p className="mt-3 text-sm text-[#3f8f5b]">

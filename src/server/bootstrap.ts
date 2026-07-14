@@ -19,6 +19,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { buildDefaultConfigRow } from "@/server/devsignal/config";
 import { seedChallenges } from "@/server/devsignal/challenge-store";
+import { seedNotice } from "@/server/devsignal/notice-store";
 import {
   DEFAULT_TEMPLATE_SLUG,
   DEFAULT_USER_EMAIL,
@@ -431,6 +432,8 @@ async function _ensureBaseRecords() {
     // Seed the DevSignal coding-challenge bank from the in-code catalog.
     // Upsert with `update: {}` so UI edits to seeded challenges survive re-boot.
     await seedChallenges(workspace.id);
+    // Seed the editable consent/processing notice (same discipline).
+    await seedNotice(workspace.id);
   }
 
   await prisma.rateCardPerson.createMany({

@@ -1597,3 +1597,26 @@ export const vetDataRequestSchema = z.object({
 export const devSignalDataRequestUpdateSchema = z.object({
   status: z.enum(["OPEN", "ACKNOWLEDGED", "RESOLVED"]),
 });
+
+export const devSignalNoticeUpdateSchema = z.object({
+  contactEmail: z.string().email().max(320),
+  explanationStages: z
+    .array(
+      z.object({
+        title: z.string().min(1).max(200),
+        measures: z.string().max(1200),
+        automated: z.boolean(),
+      }),
+    )
+    .max(20),
+  dataHandlingPoints: z.array(z.string().min(1).max(1200)).max(20),
+  consentItems: z
+    .array(
+      z.object({
+        key: z.enum(["processing", "humanReview"]),
+        required: z.boolean(),
+        label: z.string().min(1).max(2000),
+      }),
+    )
+    .max(4),
+});
