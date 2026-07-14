@@ -920,7 +920,18 @@ function buildApiHandoverDoc(item: (typeof demoProposals.proposals)[number]) {
 }
 
 const demoDocsById: Record<string, unknown> = Object.fromEntries(
-  demoProposals.proposals.map((p) => [p.id, p.id === "d1" ? buildApiHandoverDoc(p) : buildDemoDoc(p)]),
+  demoProposals.proposals.map((p) => {
+    const doc = p.id === "d1" ? buildApiHandoverDoc(p) : buildDemoDoc(p);
+    // The editor's outline + scroll-spy key off each section's id (section.id ?? section.key).
+    // These demo section literals omit ids, so a doc with several same-key blocks (e.g. multiple
+    // `prose`) would collide on "prose" and all highlight/track together. Give each section a
+    // unique id here. (Live docs always carry unique DB ids, so this only affects the demo.)
+    if (doc && typeof doc === "object" && Array.isArray((doc as { sections?: unknown }).sections)) {
+      const d = doc as { sections: Array<Record<string, unknown>> };
+      d.sections = d.sections.map((s, i) => ({ id: `${p.id}-s${i}-${String(s.key)}`, ...s }));
+    }
+    return [p.id, doc];
+  }),
 );
 
 /** Full renderable document for the Docs preview page, by id (falls back to d1). */
