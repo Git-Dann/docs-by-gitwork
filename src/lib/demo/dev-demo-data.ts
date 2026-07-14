@@ -849,14 +849,14 @@ function buildApiHandoverDoc(item: (typeof demoProposals.proposals)[number]) {
         data: { eyebrow: "Reference", text: "Getting started", level: 2 },
       },
       {
-        key: "prose", title: "Base URLs & environments", sortOrder: 2, isVisible: true,
+        id: "sec-base-urls", key: "prose", title: "Base URLs & environments", sortOrder: 2, isVisible: true,
         data: {
           content:
             "The API is versioned under `/v1`. There are two environments:\n\n- **Production** — `https://api.northwind.co/v1`\n- **Staging** — `https://api.staging.northwind.co/v1`\n\nAll requests and responses are JSON (`Content-Type: application/json`). Timestamps are ISO-8601 in UTC. Use **staging** for integration testing — it's reset nightly and safe to hammer.",
         },
       },
       {
-        key: "prose", title: "Authentication", sortOrder: 3, isVisible: true,
+        id: "sec-auth", key: "prose", title: "Authentication", sortOrder: 3, isVisible: true,
         data: {
           content:
             "Authenticate with a **bearer token** in the `Authorization` header:\n\n`Authorization: Bearer nw_live_xxx`\n\nTokens are issued per-integration from the Northwind dashboard (Settings → API keys). Live keys are prefixed `nw_live_`, test keys `nw_test_`. **Never** ship a live key in a mobile or web client — proxy through your backend.",
@@ -871,14 +871,14 @@ function buildApiHandoverDoc(item: (typeof demoProposals.proposals)[number]) {
         },
       },
       {
-        key: "prose", title: "Core endpoints", sortOrder: 5, isVisible: true,
+        id: "sec-endpoints", key: "prose", title: "Core endpoints", sortOrder: 5, isVisible: true,
         data: {
           content:
             "The resources you'll use most:\n\n- `GET /v1/titles` — list catalogue titles (paginated, `?cursor=` + `?limit=`)\n- `GET /v1/titles/{id}` — a single title with credits and artwork\n- `GET /v1/collections` — curated rails (New releases, Because you watched…)\n- `GET /v1/search?q=` — full-text search across titles, people and collections\n- `POST /v1/watch-events` — record a playback position (powers continue-watching)\n\nList endpoints are **cursor-paginated**: follow `next_cursor` until it's null.",
         },
       },
       {
-        key: "prose", title: "Webhooks", sortOrder: 6, isVisible: true,
+        id: "sec-webhooks", key: "prose", title: "Webhooks", sortOrder: 6, isVisible: true,
         data: {
           content:
             "Subscribe to events in the dashboard. We POST a signed JSON payload to your endpoint:\n\n- `title.published` · `title.updated` · `title.removed`\n- `collection.updated`\n\nEvery delivery includes an `X-Northwind-Signature` header (HMAC-SHA256 of the raw body with your signing secret) — **verify it** before trusting the payload. We retry failed deliveries with exponential backoff for 24h.",
@@ -897,7 +897,7 @@ function buildApiHandoverDoc(item: (typeof demoProposals.proposals)[number]) {
         },
       },
       {
-        key: "prose", title: "Handover checklist", sortOrder: 8, isVisible: true,
+        id: "sec-checklist", key: "prose", title: "Handover checklist", sortOrder: 8, isVisible: true,
         data: {
           content:
             "Before we close this out, confirm:\n\n- [x] Staging API key issued to your team\n- [x] Postman collection shared in **#northwind-dev**\n- [x] Webhook endpoint registered + signature verification tested\n- [ ] Production key issued (on go-live)\n- [ ] On-call rota confirmed for launch week",
