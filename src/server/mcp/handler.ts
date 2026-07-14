@@ -904,10 +904,13 @@ async function handleToolCall(
 
 async function listStarterPrompts(
   user: EffectiveUser,
-): Promise<Array<{ name: string; description: string; arguments: [] }>> {
+): Promise<Array<{ name: string; title: string; description: string; arguments: [] }>> {
   if (!canManageStarters(user)) return [];
   const starters = await listStarters();
-  return starters.map((s) => ({ name: s.slug, description: s.summary, arguments: [] }));
+  // `name` stays the slug (handlePromptGet looks starters up by it); `title` is the human-readable
+  // display name — without it, clients that render `name` directly show raw slugs like
+  // "prompt-cd2-animation" instead of "Chat Digest".
+  return starters.map((s) => ({ name: s.slug, title: s.name, description: s.summary, arguments: [] }));
 }
 
 async function handlePromptGet(
