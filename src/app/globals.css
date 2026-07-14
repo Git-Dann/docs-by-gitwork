@@ -1456,6 +1456,16 @@ button {
 .proposal-document[data-doc-theme="gitwork"] .doc-a4-page__footer {
   color: #68686b;
 }
+/* Gitwork content pages: a short purple accent rule under each section header (title + eyebrow),
+   matching the brand PDFs' underlined section titles. Foundry omits it. */
+.proposal-document[data-doc-theme="gitwork"] .doc-a4-page section.proposal-block-avoid > header::after {
+  content: "";
+  display: block;
+  width: 44px;
+  height: 2px;
+  margin-top: 12px;
+  background: var(--doc-accent);
+}
 
 @media print {
   /* Default page keeps a margin (Pulse report + any other print surface unchanged). Documents use
