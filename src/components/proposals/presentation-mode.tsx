@@ -11,9 +11,9 @@ import {
 } from "@heroicons/react/24/outline";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  CARD_MARGIN,
+  FALLBACK_DIMS,
   PresentationSlide,
-  SLIDE_CONTENT_H,
-  SLIDE_CONTENT_W,
   SLIDE_GAP,
 } from "@/components/proposals/presentation-slide";
 import { ProposalSectionPreview } from "@/components/proposals/proposal-section-preview";
@@ -32,10 +32,10 @@ function isPageBreak(section: ProposalSection): boolean {
 
 /**
  * Group the ordered sections into slides: the cover (and any explicit page-break) stands alone,
- * and content blocks are greedily packed by measured height so each slide fills the (tall) content
- * box rather than showing one sparse block per slide.
+ * and content blocks are greedily packed by measured height into `availH` so each slide fills the
+ * (tall) content box rather than showing one sparse block per slide.
  */
-function packSlides(ordered: SlideItem[], heights: Map<number, number>): SlideItem[][] {
+function packSlides(ordered: SlideItem[], heights: Map<number, number>, availH: number): SlideItem[][] {
   const groups: SlideItem[][] = [];
   let current: SlideItem[] = [];
   let currentH = 0;
@@ -58,7 +58,7 @@ function packSlides(ordered: SlideItem[], heights: Map<number, number>): SlideIt
     }
     const h = heights.get(item.index) ?? 0;
     const add = current.length ? h + SLIDE_GAP : h;
-    if (current.length > 0 && currentH + add > SLIDE_CONTENT_H) {
+    if (current.length > 0 && currentH + add > availH) {
       // Carry a stranded heading to the next slide so it leads its content instead of sitting
       // orphaned at the foot of this one.
       const lead: SlideItem[] = [];
@@ -127,6 +127,13 @@ export function PresentationMode({
     return [...cover, ...(rest.length ? [rest] : [])];
   });
 
+  // Live content-box dims reported by the slide card (which fills the stage). Drives the measurer
+  // width + the packing height so slides fill the actual card. Falls back before the card measures.
+  const [dims, setDims] = useState(FALLBACK_DIMS);
+  const onDims = useCallback((next: { contentW: number; availH: number }) => {
+    setDims((prev) => (prev.contentW === next.contentW && prev.availH === next.availH ? prev : next));
+  }, []);
+
   const measureRef = useRef<HTMLDivElement>(null);
   // `ordered` is a fresh reference each render (merge-resolve builds a new doc), so the measure
   // effect keys off the stable `signature` STRING and reads the latest `ordered` via a ref — else
@@ -154,7 +161,7 @@ export function PresentationMode({
         heights.set(Number(el.dataset.measureIndex), el.offsetHeight);
       });
       if (heights.size === 0) return;
-      const next = packSlides(orderedRef.current, heights);
+      const next = packSlides(orderedRef.current, heights, dims.availH);
       if (!next.length) return;
       const key = (gs: SlideItem[][]) => gs.map((g) => g.map((x) => x.index).join(".")).join("|");
       const nextKey = key(next);
@@ -165,7 +172,7 @@ export function PresentationMode({
     ro.observe(measure);
     document.fonts?.ready.then(recompute).catch(() => {});
     return () => ro.disconnect();
-  }, [signature]);
+  }, [signature, dims.availH]);
 
   const total = groups.length;
 
@@ -290,9 +297,9 @@ export function PresentationMode({
         <div
           ref={measureRef}
           aria-hidden="true"
-          style={{ position: "absolute", left: "-99999px", top: 0, width: SLIDE_CONTENT_W, visibility: "hidden", pointerEvents: "none" }}
+          style={{ position: "absolute", left: "-99999px", top: 0, width: dims.contentW, visibility: "hidden", pointerEvents: "none" }}
         >
-          <div className="proposal-document" data-doc-theme={docTheme} style={{ width: SLIDE_CONTENT_W }}>
+          <div className="proposal-document" data-doc-theme={docTheme} style={{ width: dims.contentW }}>
             <div className="space-y-7">
               {measurable.map(({ section, index: sectionIndex }) => (
                 <div key={section.id ?? section.key} data-measure-index={sectionIndex}>
@@ -303,13 +310,15 @@ export function PresentationMode({
           </div>
         </div>
 
-        {/* The current slide — a tall master card scaled to fit the stage (never scrolls). */}
-        <div className="absolute inset-0 flex items-center justify-center px-4 py-4 sm:px-8 sm:py-6">
+        {/* The current slide — a card that fills the stage (minus a margin): near-full-width AND
+            tall on any screen. */}
+        <div className="absolute" style={{ inset: CARD_MARGIN }}>
           {currentGroup.length ? (
             <PresentationSlide
               sections={currentGroup}
               isCover={isCoverSlide}
               proposal={resolved}
+              onDims={onDims}
               slideKey={clampedIndex}
             />
           ) : (
