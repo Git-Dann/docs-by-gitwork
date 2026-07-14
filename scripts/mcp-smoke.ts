@@ -64,19 +64,24 @@ console.log("tools/list");
   });
   if (res && "result" in res) {
     const tools = (res.result as { tools: Array<{ name: string; inputSchema: object }> }).tools;
-    check("returns 11 tools", tools.length === 11, `got ${tools.length}`);
+    check("returns 16 tools", tools.length === 16, `got ${tools.length}`);
     const expected = [
       "list_clients",
       "create_client",
       "list_tasks",
+      "get_task",
       "create_task",
       "update_task",
+      "comment_task",
       "list_members",
+      "whoami",
       "find_meetings",
       "create_document",
       "update_document",
+      "list_documents",
       "pulse_scan",
       "pulse_scan_result",
+      "list_pulse_scans",
     ];
     for (const name of expected) {
       check(`includes ${name}`, tools.some((t) => t.name === name));
