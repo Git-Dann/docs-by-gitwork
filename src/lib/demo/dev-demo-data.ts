@@ -763,6 +763,29 @@ const demoProposals = {
 
 /** Build a full, renderable document (for the Docs preview) from a list item.
  *  Uses only non-financial section types (dev docs: handovers/reports/briefs/notes). */
+// A cover section for the demo docs (real docs always have one; the demo omitted it, so the
+// builder/preview/present never showed the themed cover). sortOrder -1 keeps it first.
+function demoCoverSection(item: (typeof demoProposals.proposals)[number]) {
+  const label = (item.documentType ?? "DOCUMENT").replace(/_/g, " ");
+  return {
+    key: "cover",
+    title: "Cover",
+    sortOrder: -1,
+    isVisible: true,
+    data: {
+      proposalTitle: item.title.replace(/^.*—\s*/, "").trim() || item.title,
+      productName: item.clientName,
+      clientName: item.clientName,
+      subtitle: label,
+      date: item.updatedAt,
+      confidentiality: "Confidential. Prepared for the client named above.",
+      confidentialityMode: "EXTERNAL",
+      coverStyle: "light",
+      brandLockup: "CLIENT_X_GITWORK",
+    },
+  };
+}
+
 function buildDemoDoc(item: (typeof demoProposals.proposals)[number]) {
   const t = item.documentType;
   const statement =
@@ -791,6 +814,7 @@ function buildDemoDoc(item: (typeof demoProposals.proposals)[number]) {
     updatedAt: item.updatedAt,
     createdAt: atDays(-30),
     sections: [
+      demoCoverSection(item),
       {
         key: "introduction", title: "Overview", sortOrder: 0, isVisible: true,
         data: { statement, summary: "Structured so anyone on the team can pick this up without a handover call.", graphic: "" },
@@ -838,6 +862,7 @@ function buildApiHandoverDoc(item: (typeof demoProposals.proposals)[number]) {
     updatedAt: item.updatedAt,
     createdAt: atDays(-14),
     sections: [
+      demoCoverSection(item),
       {
         key: "introduction", title: "Overview", description: "What this document covers.", sortOrder: 0, isVisible: true,
         data: {

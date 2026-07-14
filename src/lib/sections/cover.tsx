@@ -278,6 +278,7 @@ export const coverSection = defineSection<CoverSectionData>({
               : undefined
           }
           variant="print"
+          docTheme={proposal.metadata.docTheme ?? "foundry"}
           watermark={watermark}
           watermarkTone={watermarkTone}
         />

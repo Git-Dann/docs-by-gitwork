@@ -118,6 +118,12 @@ export interface DocumentCoverProps {
   classification?: string[];
   /** Statement cover (light/minimal): the company footer strip — left + right mono caps lines. */
   companyFooter?: { left?: string[]; right?: string[] };
+  /**
+   * Document theme for the statement cover. `"foundry"` (default) → warm cream + periwinkle +
+   * DM-Serif. `"gitwork"` → the brand-guide look: a FULL NAVY cover with a round "G." mark,
+   * Fraunces cream title + purple periods, and Inter labels. Matches the Gitwork PDFs.
+   */
+  docTheme?: "foundry" | "gitwork";
 }
 
 const TONE_PALETTE: Record<NonNullable<DocumentCoverCallout["tone"]>, { border: string; text: string }> = {
@@ -125,6 +131,41 @@ const TONE_PALETTE: Record<NonNullable<DocumentCoverCallout["tone"]>, { border: 
   amber:   { border: "#D97706", text: "#92400E" },
   neutral: { border: "#475569", text: "#475569" },
 };
+
+/**
+ * The Gitwork round "G." mark — a cream circle with a navy Fraunces "G" and a purple period.
+ * Pure inline (no asset). Used on the Gitwork cover + the navy running-header bar.
+ */
+export function GitworkMark({ size = 44 }: { size?: number }) {
+  return (
+    <span
+      aria-label="Gitwork"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: "#F2EDE4",
+        flexShrink: 0,
+      }}
+    >
+      <span
+        style={{
+          fontFamily: "var(--font-fraunces), 'Fraunces', Georgia, serif",
+          fontSize: Math.round(size * 0.5),
+          fontWeight: 600,
+          lineHeight: 1,
+          color: "#0C0C18",
+          transform: "translateY(-1px)",
+        }}
+      >
+        G<span style={{ color: "#6B52FF" }}>.</span>
+      </span>
+    </span>
+  );
+}
 
 export function DocumentCover({
   eyebrow,
@@ -148,28 +189,35 @@ export function DocumentCover({
   onSubtitleChange,
   classification,
   companyFooter,
+  docTheme = "foundry",
 }: DocumentCoverProps) {
   const isPrint = variant === "print";
+  const isGitwork = docTheme === "gitwork";
   const callTone = callout ? TONE_PALETTE[callout.tone ?? "neutral"] : null;
   const watermarkAlpha = watermarkTone === "danger" ? "0.13" : watermarkTone === "warning" ? "0.14" : "0.10";
 
   const mono = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
   const serif = "var(--font-display), 'DM Serif Display', 'Times New Roman', Georgia, serif";
 
-  // ── Statement cover (light / minimal) — Gitwork's actual brand system (gitwork-brandguide):
-  // Fraunces display serif, Cream paper, Purple accent, Dark Navy ink. Bold (Pulse) falls through
-  // to the legacy blue-gradient hero below and is intentionally untouched by this palette. ──
+  // ── Statement cover (light / minimal) — THEME-AWARE. Foundry: warm cream paper, periwinkle
+  // accent, DM-Serif title, mono labels. Gitwork (brand PDFs): FULL NAVY page, purple accent,
+  // Fraunces cream title + purple periods, Inter labels, a round "G." mark. Bold (Pulse) falls
+  // through to the legacy blue-gradient hero below and is untouched. ──
   if (coverStyle !== "bold") {
-    // Shadows the outer `serif` (DM Serif Display) for this branch only — Fraunces is already
-    // loaded site-wide as --font-fraunces (src/app/layout.tsx), just unused here until now.
-    const serif = "var(--font-fraunces), 'Fraunces', Georgia, serif";
-    const paper = "#F2EDE4"; // Cream
-    const panel = "#EAE5DC"; // Warm Subtle
-    const ink = "#1A1A1E"; // Primary Text
-    const inkSoft = "#46464C";
-    const muted = "#6B6B6B"; // Muted
-    const line = "rgba(12,12,24,0.12)"; // hairline tinted toward Dark Navy
-    const accent = "#6B52FF"; // Purple
+    // Shadow the outer font consts for this branch so labels/title follow the theme.
+    const serif = isGitwork
+      ? "var(--font-fraunces), 'Fraunces', Georgia, serif"
+      : "var(--font-display), 'DM Serif Display', 'Times New Roman', Georgia, serif";
+    const mono = isGitwork
+      ? "var(--font-sans), 'Inter', system-ui, sans-serif"
+      : "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
+    const paper = isGitwork ? "#0C0C18" : "#F0EEE8"; // navy | cream
+    const panel = isGitwork ? "#17172a" : "#F7F5EF";
+    const ink = isGitwork ? "#F2EDE4" : "#1A1A17"; // cream | near-black
+    const inkSoft = isGitwork ? "#C9C7D2" : "#4B4A44";
+    const muted = isGitwork ? "#8E8CA0" : "#8A867C";
+    const line = isGitwork ? "rgba(242,237,228,0.16)" : "rgba(0,0,0,0.12)";
+    const accent = isGitwork ? "#6B52FF" : "#4F5BD5"; // purple | periwinkle
     // Strip a trailing period so we can render it in the accent colour.
     const cleanTitle = (title || "").replace(/\s*\.\s*$/, "");
     // Minimal = bare front page: logo + eyebrow + title (+ footer). Drops the meta grid,
@@ -186,7 +234,9 @@ export function DocumentCover({
           flexDirection: "column",
           background: paper,
           color: ink,
-          minHeight: isPrint ? "100vh" : undefined,
+          // Pin to one A4 sheet (paged/print). The presentation slide overrides this to full-bleed
+          // via CSS on its wrapper.
+          minHeight: "297mm",
           breakAfter: isPrint ? "page" : undefined,
           pageBreakAfter: isPrint ? "always" : undefined,
           padding: pad,
@@ -227,8 +277,14 @@ export function DocumentCover({
             gap: 24,
           }}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={logoUrl} alt="Gitwork" style={{ height: 26, objectFit: "contain", display: "block" }} />
+          {isGitwork ? (
+            <GitworkMark size={44} />
+          ) : (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={logoUrl} alt="Gitwork" style={{ height: 26, objectFit: "contain", display: "block" }} />
+            </>
+          )}
           {classification && classification.length ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 3, textAlign: "right" }}>
               {classification.map((row, i) => (
@@ -282,7 +338,7 @@ export function DocumentCover({
                   fontSize: isPrint ? 46 : 36,
                   fontWeight: 400,
                   letterSpacing: "-0.02em",
-                  lineHeight: 1.08,
+                  lineHeight: 1.16,
                   color: ink,
                 }}
               />
@@ -295,7 +351,7 @@ export function DocumentCover({
                 fontSize: isPrint ? 46 : 36,
                 fontWeight: 400,
                 letterSpacing: "-0.02em",
-                lineHeight: 1.08,
+                lineHeight: 1.16,
                 color: ink,
                 maxWidth: "92%",
               }}
@@ -672,7 +728,7 @@ export function DocumentCover({
                   fontSize: isPrint ? 54 : 40,
                   fontWeight: 400,
                   letterSpacing: "-0.025em",
-                  lineHeight: 1.08,
+                  lineHeight: 1.16,
                   color: hero.title,
                 }}
               />
@@ -685,7 +741,7 @@ export function DocumentCover({
                 fontSize: isPrint ? 54 : 40,
                 fontWeight: 400,
                 letterSpacing: "-0.025em",
-                lineHeight: 1.08,
+                lineHeight: 1.16,
                 color: hero.title,
                 maxWidth: "80%",
               }}

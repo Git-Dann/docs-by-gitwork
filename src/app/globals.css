@@ -1399,7 +1399,10 @@ button {
    client/doc-number/version/date metadata boldly, so it skips the running header/footer below. */
 .doc-a4-page__inner--cover {
   padding: 0;
-  min-height: 297mm;
+  /* Pin the cover to exactly one A4 sheet (the DocumentCover section fills it and clips overflow),
+     so it's never taller/shorter than a page. */
+  height: 297mm;
+  overflow: hidden;
 }
 /* Every other page: a generous, uniform 20mm margin on all four sides (this was the "isn't good"
    complaint — 16/18mm asymmetric insets read as cramped, especially with a header/footer now
@@ -1438,6 +1441,20 @@ button {
 .doc-a4-page__body {
   flex: 1;
   min-height: 0;
+}
+/* Gitwork theme: the running header becomes a full-bleed NAVY bar (matches the brand PDFs) —
+   it breaks out of the 20mm margin box to the page edges, with cream text + the round "G." mark.
+   Foundry keeps the quiet hairline header above. */
+.proposal-document[data-doc-theme="gitwork"] .doc-a4-page__header {
+  margin: -20mm -20mm 12mm;
+  padding: 9mm 20mm;
+  background: #0c0c18;
+  color: #f2ede4;
+  border-bottom: 0;
+  align-items: center;
+}
+.proposal-document[data-doc-theme="gitwork"] .doc-a4-page__footer {
+  color: #68686b;
 }
 
 @media print {

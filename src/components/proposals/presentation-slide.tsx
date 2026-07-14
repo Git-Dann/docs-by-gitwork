@@ -26,6 +26,8 @@ export function PresentationSlide({
   const [scale, setScale] = useState(1);
   // The cover renders its own full-bleed layout — every other section gets page margins.
   const isCover = section.key === "cover";
+  // Carry the doc theme so slide content (tokens + Fraunces/Inter fonts) matches the document.
+  const docTheme = proposal.metadata.docTheme ?? "foundry";
 
   useEffect(() => {
     const pad = padRef.current;
@@ -59,9 +61,20 @@ export function PresentationSlide({
     // Re-run when the slide changes so the new section is measured fresh.
   }, [index]);
 
+  // The cover fills the whole slide edge-to-edge (full-bleed, no cream band, no scale) — the
+  // cover's own background fills. The `[&_.document-cover]` / `[&_.proposal-cover]` forces override
+  // the cover section's fixed 297mm min-height so it stretches to the slide instead.
+  if (isCover) {
+    return (
+      <div data-doc-theme={docTheme} className="proposal-document relative h-full w-full overflow-hidden rounded-[16px] shadow-[0_24px_64px_-12px_rgba(0,0,0,0.5)] [&_.document-cover]:!h-full [&_.document-cover]:!min-h-0 [&_.proposal-cover]:h-full">
+        <ProposalSectionPreview section={section} proposal={proposal} index={index} />
+      </div>
+    );
+  }
+
   return (
-    <div className="proposal-document relative h-full w-full max-w-[1280px] overflow-hidden rounded-[16px] shadow-[0_24px_64px_-12px_rgba(0,0,0,0.5)]">
-      <div className="absolute inset-0" ref={padRef} style={{ padding: isCover ? 0 : "56px 64px" }}>
+    <div data-doc-theme={docTheme} className="proposal-document relative h-full w-full max-w-[1280px] overflow-hidden rounded-[16px] shadow-[0_24px_64px_-12px_rgba(0,0,0,0.5)]">
+      <div className="absolute inset-0" ref={padRef} style={{ padding: "56px 64px" }}>
         <div style={{ transform: `scale(${scale})`, transformOrigin: "top left", width: "100%" }}>
           <div ref={contentRef} style={{ width: "100%" }}>
             <ProposalSectionPreview section={section} proposal={proposal} index={index} />

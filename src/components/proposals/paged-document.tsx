@@ -20,6 +20,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { formatDate } from "@/lib/format";
 import { paginateSections } from "@/lib/proposal-pagination";
 import { ProposalSectionPreview } from "@/components/proposals/proposal-section-preview";
+import { GitworkMark } from "@/components/document-cover";
 import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
 const DOC_TYPE_LABEL: Record<string, string> = {
@@ -164,6 +165,7 @@ export function PagedDocument({
 
   const contentPageCount = pages.filter((p) => !isCoverPage(p)).length;
   const docTypeLabel = DOC_TYPE_LABEL[proposal.documentType] ?? "Document";
+  const isGitwork = proposal.metadata.docTheme === "gitwork";
   const dateFmt = formatDate(proposal.updatedAt);
   let contentPageNumber = 0;
 
@@ -248,7 +250,8 @@ export function PagedDocument({
           <div key={pageIndex} className="doc-a4-page">
             <div className="doc-a4-page__margin">
               <header className="doc-a4-page__header">
-                <span className="truncate">
+                <span className="flex items-center gap-2.5 truncate">
+                  {isGitwork ? <GitworkMark size={20} /> : null}
                   GITWORK{proposal.clientName ? ` · ${proposal.clientName}` : ""}
                 </span>
                 <span className="shrink-0">{proposal.documentNumber ?? proposal.title}</span>

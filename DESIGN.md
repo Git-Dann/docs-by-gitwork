@@ -532,6 +532,37 @@ dropdowns/toggles in the block's Options** — the canvas stays clean.
   summary, **stat tiles** (rounded panels, one dark), an accent-ruled confidentiality callout, and
   a **company footer** strip (Gitwork letterhead left, contact right).
 
+### Per-document theme — Foundry vs Gitwork
+
+Every document carries a **theme** (`ProposalMetadata.docTheme`, default `"foundry"`), chosen with a
+Foundry·Gitwork toggle in the editor header. It sets `data-doc-theme` on `.proposal-document`; the
+`globals.css` block remaps the `--doc-*` tokens **and the font vars** within that scope, so every
+block re-derives with no per-file edits. Two themes:
+
+- **Foundry** (default) — the statement style above: warm cream paper `#F0EEE8`, periwinkle accent
+  `#4F5BD5`, **DM Serif Display** headings, **JetBrains Mono body** (the signature mono look), mono
+  uppercase labels. Cover = cream with the **Foundry wordmark**.
+- **Gitwork** — the brand-guide look (see `gitwork-brandguide` + the `SWG Brain Platform` delivery
+  PDF). Palette: navy `#0C0C18`, cream `#F2EDE4`, purple `#6B52FF`, muted `#68686B`, white `#FFFFFF`.
+  Type: **Fraunces** display + **Inter** body AND labels (the mono-var remaps to Inter, so the
+  uppercase-tracked labels are Inter caps, per brand). Signature elements:
+  - **Round "G." mark** (`GitworkMark` in `document-cover.tsx`) — cream circle, navy Fraunces "G", a
+    purple period. Used on the cover header + the running-header bar.
+  - **Full-navy cover** — the whole A4 page is navy, cream ink; purple accent bar + eyebrow
+    (`CLIENT / DOC TYPE`); Fraunces cream **title with a purple period**; italic/Inter subtitle; the
+    mono→Inter **meta row** (Client · Prepared by · Date · Version); a purple-ruled confidentiality
+    callout; and the company footer (`GITWORK GROUP LTD …` left, `…GITWORK.CO.UK` right).
+  - **Content pages** — cream paper; a full-bleed **navy running-header bar** (the "G." mark +
+    `GITWORK · {client}` left, doc number right); Fraunces section titles with a purple period +
+    purple underline; Inter body; mono→Inter labels; purple left-border recommendation callouts;
+    footer with the reg line + `page N of N`.
+
+**Cover sizing + presentation.** The cover is pinned to exactly one A4 sheet
+(`.doc-a4-page__inner--cover { height: 297mm; overflow: hidden }`; the `DocumentCover` section is
+`min-height: 297mm`). In **presentation** mode the cover renders **full-bleed** (fills the slide, no
+scale, no surrounding card) so it goes edge-to-edge; other slides scale-to-fit. Title `line-height`
+is `1.16` (not `1.08`) so serif descenders never clip.
+
 ---
 
 ## Golf Data Console (Wedge wiki)
