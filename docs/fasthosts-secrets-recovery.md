@@ -121,7 +121,6 @@ Only needed for iOS push notifications. From [Apple Developer](https://developer
 | `GEMINI_API_KEY` | Alt AI provider | Google AI Studio |
 | `GOOGLE_PSI_API_KEY` | Better Pulse PageSpeed quota | Google Cloud → PageSpeed Insights API |
 | `PROOF_SERVER_URL` | Proof module (currently hidden) | internal |
-| `CLICKUP_TOKEN` | One-time ClickUp import only | omit — migration is done |
 
 ---
 

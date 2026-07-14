@@ -177,7 +177,7 @@ Behaviour:
 - Converts each proposal `TimelinePhase` into a `FeatureBlock`.
 - Converts each phase deliverable into a `Task`.
 - Adds a phase-end `Milestone`.
-- Uses `clickupId` provenance keys like `foundry-plan:<documentId>:<phaseId>` so repeat runs skip previously generated records.
+- Reuses the existing `clickupId` column as a generic provenance key (`foundry-plan:<documentId>:<phaseId>`) so repeat runs skip previously generated records.
 - The seed write path now reuses the preview payload shape so the reviewed records and created records do not drift.
 - Successful seed runs record how many blocks, tasks, and milestones were created or skipped.
 
