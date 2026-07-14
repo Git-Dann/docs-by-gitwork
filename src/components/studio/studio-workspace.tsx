@@ -577,7 +577,7 @@ function SlideCard({
         </span>
         <span className="min-w-0 flex-1 truncate" style={{ fontFamily: preset.serif, fontSize: 13, color: "var(--text-1)" }}>
           {slide.headline || "Untitled"}
-          {slide.accent ? <span style={{ color: preset.accent }}> {slide.accent}</span> : null}
+          {slide.accent ? <span style={{ color: preset.twoToneHeadline ? preset.accent : preset.ink }}> {slide.accent}</span> : null}
         </span>
         <ChevronDownIcon className={"h-4 w-4 shrink-0 text-[var(--text-4)] transition " + (open ? "rotate-180" : "")} />
       </button>

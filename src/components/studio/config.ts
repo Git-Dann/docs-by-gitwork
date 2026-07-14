@@ -77,6 +77,9 @@ export interface StylePreset {
   mono: string; // eyebrow / data labels
   body: string; // body copy font
   numeral: string; // decorative step numeral (carousel)
+  // Render the headline's trailing "accent phrase" in the accent colour (two-tone). On for the
+  // built-in brand presets; OFF for client design systems, where an arbitrary accent often clashes.
+  twoToneHeadline: boolean;
 }
 
 const F = {
@@ -104,6 +107,7 @@ export const STYLE_PRESETS: Record<StylePresetId, StylePreset> = {
     mono: F.mono,
     body: F.sans,
     numeral: F.serifDm,
+    twoToneHeadline: true,
   },
   // The marketing board: warm cream, purple accent, Fraunces headline, Playfair italic numerals.
   cream: {
@@ -120,6 +124,7 @@ export const STYLE_PRESETS: Record<StylePresetId, StylePreset> = {
     mono: F.mono,
     body: F.sans,
     numeral: F.playfair,
+    twoToneHeadline: true,
   },
 };
 

@@ -144,6 +144,9 @@ export function buildSocialPreset(brand: StudioBrand): StylePreset {
     mono: fontStack(brand.fontIds.mono),
     body: fontStack(brand.fontIds.body),
     numeral: fontStack(brand.fontIds.display),
+    // Single-colour headline for client brands — a two-tone accent phrase doesn't reliably read
+    // against an arbitrary brand palette.
+    twoToneHeadline: false,
   };
 }
 

@@ -143,7 +143,7 @@ export function Headline({
       {accent ? (
         <>
           {" "}
-          <span style={{ color: preset.accent }}>{accent}</span>
+          <span style={{ color: preset.twoToneHeadline ? preset.accent : preset.ink }}>{accent}</span>
         </>
       ) : null}
     </h1>
