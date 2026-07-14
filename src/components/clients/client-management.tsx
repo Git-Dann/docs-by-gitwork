@@ -451,7 +451,7 @@ function ClientCard({
             "CLIENT"
           )}
         </span>
-        {/* Drive + ClickUp quick-links — right-aligned, no trash here */}
+        {/* Drive quick-link — right-aligned, no trash here */}
         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
           {client.health && (
             <span
@@ -500,22 +500,6 @@ function ClientCard({
               <img
                 src="https://www.google.com/s2/favicons?domain=drive.google.com&sz=16"
                 alt="Google Drive"
-                className="h-3.5 w-3.5 grayscale"
-              />
-            </a>
-          )}
-          {client.clickupUrl && (
-            <a
-              href={client.clickupUrl}
-              target="_blank"
-              rel="noreferrer"
-              title="ClickUp"
-              className="opacity-40 hover:opacity-70 transition-opacity"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="https://www.google.com/s2/favicons?domain=app.clickup.com&sz=16"
-                alt="ClickUp"
                 className="h-3.5 w-3.5 grayscale"
               />
             </a>

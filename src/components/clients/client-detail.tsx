@@ -92,7 +92,6 @@ type EditFormState = {
   primaryContactEmail: string;
   primaryContactPhone: string;
   googleDriveFolderUrl: string;
-  clickupUrl: string;
   slackChannelId: string;
   slackInternalChannelId: string;
   slackExternalChannelId: string;
@@ -114,7 +113,6 @@ function validateEditForm(f: EditFormState): string | null {
   }
   for (const [label, url] of [
     ["Google Drive folder", f.googleDriveFolderUrl],
-    ["ClickUp folder", f.clickupUrl],
   ] as const) {
     const v = url.trim();
     if (v && !/^https?:\/\/\S+\.\S+/i.test(v)) {
@@ -382,7 +380,6 @@ export function ClientDetail({ slug }: { slug: string }) {
       primaryContactEmail: client.primaryContactEmail ?? "",
       primaryContactPhone: client.primaryContactPhone ?? "",
       googleDriveFolderUrl: client.googleDriveFolderUrl ?? "",
-      clickupUrl: client.clickupUrl ?? "",
       slackChannelId: client.slackChannelId ?? "",
       slackInternalChannelId: client.slackInternalChannelId ?? "",
       slackExternalChannelId: client.slackExternalChannelId ?? "",
@@ -416,7 +413,6 @@ export function ClientDetail({ slug }: { slug: string }) {
         primaryContactEmail: editForm.primaryContactEmail || undefined,
         primaryContactPhone: editForm.primaryContactPhone || undefined,
         googleDriveFolderUrl: editForm.googleDriveFolderUrl || undefined,
-        clickupUrl: editForm.clickupUrl || undefined,
         slackChannelId: editForm.slackChannelId || undefined,
         slackInternalChannelId: editForm.slackInternalChannelId || undefined,
         slackExternalChannelId: editForm.slackExternalChannelId || undefined,
@@ -544,22 +540,6 @@ export function ClientDetail({ slug }: { slug: string }) {
                 />
               </a>
             )}
-            {client.clickupUrl && (
-              <a
-                href={client.clickupUrl}
-                target="_blank"
-                rel="noreferrer"
-                title="Open ClickUp folder"
-                className="opacity-40 hover:opacity-80 transition-opacity"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="https://www.google.com/s2/favicons?domain=app.clickup.com&sz=16"
-                  alt="ClickUp"
-                  className="h-4 w-4 grayscale"
-                />
-              </a>
-            )}
             {canManageClients && !isSuggested && client.status === "LEAD" && (
               <Button type="button" variant="primary" size="xs" onClick={() => changeStatus("ACTIVE")} disabled={setStatus.isPending}>
                 <ArrowRightCircleIcon className="h-3 w-3" />
@@ -658,7 +638,7 @@ export function ClientDetail({ slug }: { slug: string }) {
               </h2>
 
               {/* External links */}
-              {(client.website || client.googleDriveFolderUrl || client.clickupUrl) && (
+              {(client.website || client.googleDriveFolderUrl) && (
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   {client.website && (
                     <a
@@ -680,17 +660,6 @@ export function ClientDetail({ slug }: { slug: string }) {
                     >
                       <ArrowTopRightOnSquareIcon className="h-4 w-4" />
                       Google Drive
-                    </a>
-                  )}
-                  {client.clickupUrl && (
-                    <a
-                      href={client.clickupUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm text-[var(--text-3)] hover:text-[var(--text-1)] transition-colors"
-                    >
-                      <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-                      ClickUp
                     </a>
                   )}
                 </div>
@@ -3462,16 +3431,6 @@ function ClientEditModal({
                       type="url"
                     />
                   </label>
-                  <label className="block">
-                    <span className="app-field-label">ClickUp folder URL</span>
-                    <input
-                      value={form.clickupUrl}
-                      onChange={(e) => set("clickupUrl", e.target.value)}
-                      className="app-input"
-                      placeholder="https://app.clickup.com/…"
-                      type="url"
-                    />
-                  </label>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <label className="block">
                       <span className="app-field-label flex items-center gap-1.5">
@@ -3744,7 +3703,6 @@ function buildActivationChecklist({
   const contactReady = Boolean(client.primaryContactName && client.primaryContactEmail);
   const deliveryReady = Boolean(
     client.googleDriveFolderUrl ||
-      client.clickupUrl ||
       client.slackInternalChannelId ||
       client.slackChannelId ||
       platforms.length > 0 ||

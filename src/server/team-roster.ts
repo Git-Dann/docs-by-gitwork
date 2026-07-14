@@ -3,9 +3,9 @@
 //
 // The roster data + name/alias resolution now live in the lib module (no prisma)
 // so client components — notably the CSV task importer — can cross-reference a
-// ClickUp custom-dropdown assignee name against the same aliases. This file
-// re-exports them for back-compat with existing server consumers
-// (clickup-import, task-cleanse, tasks-standup, the seed route).
+// custom-dropdown assignee name against the same aliases. This file re-exports
+// them for back-compat with existing server consumers (task-cleanse,
+// tasks-standup, the seed route).
 
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";

@@ -4,7 +4,6 @@ export type SupportSource =
   | "instagram"
   | "youtube"
   | "discord"
-  | "clickup"
   | "stripe"
   | "analytics"
   | "app_reviews"

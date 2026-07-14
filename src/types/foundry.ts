@@ -33,7 +33,6 @@ export type ProgressState = "progress" | "no_progress";
 
 export type IntegrationSource =
   | "slack"
-  | "clickup"
   | "github"
   | "google_drive"
   | "email";

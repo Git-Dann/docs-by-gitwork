@@ -163,8 +163,8 @@ const tasks: TaskRecord[] = [
     workstreamId: "ws_acme_docs",
     title: "Confirm client access copy",
     status: "active",
-    source: "clickup",
-    externalRef: "CU-7712",
+    source: "google_drive",
+    externalRef: "Drive access doc",
   },
   {
     id: "task_pollen_release",
@@ -304,8 +304,8 @@ const decisions: DecisionRecord[] = [
   {
     id: "decision_acme_1",
     projectId: "project_acme",
-    title: "Keep ClickUp and GitHub as system-of-record tools",
-    outcome: "Foundry will read their signals rather than replace them.",
+    title: "Keep GitHub as the system-of-record tool",
+    outcome: "Foundry will read its signals rather than replace it.",
     decidedAt: "2026-05-15T13:00:00.000Z",
   },
 ];
@@ -435,7 +435,7 @@ const integrationSignals: IntegrationSignalRecord[] = [
   {
     id: "signal_acme_1",
     projectId: "project_acme",
-    source: "clickup",
+    source: "google_drive",
     label: "Task movement stalled",
     detail: "No status change on the beta access tasks for three working days.",
     capturedAt: "2026-05-20T07:50:00.000Z",

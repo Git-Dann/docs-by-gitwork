@@ -1,6 +1,6 @@
 // One-shot, admin-driven task cleanse for migrated client boards.
 //
-// The ClickUp CSV import landed tasks UNASSIGNED and (for undated lists) without
+// The original CSV import landed tasks UNASSIGNED and (for undated lists) without
 // dates. This module applies a small, explicit, versioned set of cleanse
 // operations to ONE client's tasks — assigning owners by title/section, setting
 // due dates, fixing statuses, optionally purging junk — authored from the

@@ -218,8 +218,6 @@ function SourceIcon({ source, className }: { source: SupportSource; className?: 
       return <BoltIcon className={cls} />;
     case "stripe":
       return <KeyIcon className={cls} />;
-    case "clickup":
-      return <ClipboardDocumentListIcon className={cls} />;
     case "analytics":
       return <ChartBarIcon className={cls} />;
     case "app_reviews":
@@ -237,7 +235,6 @@ const SOURCE_LABEL: Record<SupportSource, string> = {
   instagram: "Instagram",
   youtube: "YouTube",
   discord: "Discord",
-  clickup: "ClickUp",
   stripe: "Stripe",
   analytics: "Analytics API",
   app_reviews: "App Reviews",

@@ -6,7 +6,6 @@ import {
   ArrowUpTrayIcon,
   ChartBarIcon,
   KeyIcon,
-  ClipboardDocumentListIcon,
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import type {
@@ -29,8 +28,6 @@ export function SourceIcon({ source, className }: { source: SupportSource; class
       return <BoltIcon className={cls} />;
     case "stripe":
       return <KeyIcon className={cls} />;
-    case "clickup":
-      return <ClipboardDocumentListIcon className={cls} />;
     case "analytics":
       return <ChartBarIcon className={cls} />;
     case "app_reviews":
@@ -48,7 +45,6 @@ export const SOURCE_LABEL: Record<SupportSource, string> = {
   instagram: "Instagram",
   youtube: "YouTube",
   discord: "Discord",
-  clickup: "ClickUp",
   stripe: "Stripe",
   analytics: "Analytics API",
   app_reviews: "App Reviews",
