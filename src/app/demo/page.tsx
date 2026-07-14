@@ -11,10 +11,10 @@ import { demoMetadata } from "@/lib/demo/demo-metadata";
 export async function generateMetadata({
   searchParams,
 }: {
-  searchParams: Promise<{ client?: string }>;
+  searchParams: Promise<{ client?: string; color?: string }>;
 }): Promise<Metadata> {
-  const { client } = await searchParams;
-  return demoMetadata(client);
+  const { client, color } = await searchParams;
+  return demoMetadata(client, color);
 }
 
 export default function DemoHubPage() {

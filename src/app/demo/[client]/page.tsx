@@ -12,17 +12,20 @@ import { demoMetadata } from "@/lib/demo/demo-metadata";
  */
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ client: string }>;
+  searchParams: Promise<{ color?: string }>;
 }): Promise<Metadata> {
   const { client } = await params;
+  const { color } = await searchParams;
   let name = client;
   try {
     name = decodeURIComponent(client);
   } catch {
     /* malformed encoding — use the raw segment */
   }
-  return demoMetadata(name);
+  return demoMetadata(name, color);
 }
 
 export default function DemoClientHubPage() {
