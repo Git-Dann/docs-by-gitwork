@@ -38,6 +38,8 @@ export function usePermissions() {
     canManageCode: can("code.manage"),
     // DevSignal vetting pipeline — admin-only feature perm (default-off).
     canManageDevSignal: can("devsignal"),
+    // Editing scoring weights + calibration is Super Admin only.
+    canCalibrateDevSignal: isSuperAdmin(role),
     canManageDocs: can("docs.manage"),
     canShareDocs: can("docs.share"),
     canManageClients: can("clients.manage"),

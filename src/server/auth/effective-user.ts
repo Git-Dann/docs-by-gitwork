@@ -335,6 +335,11 @@ export function canManageCode(user: EffectiveUser): boolean {
 export function canManageDevSignal(user: EffectiveUser): boolean {
   return can(user, "devsignal");
 }
+/** Edit scoring weights + view calibration. Super Admin ONLY — changing how
+ *  every candidate is scored is a platform-owner action, not delegable. */
+export function canCalibrateDevSignal(user: EffectiveUser): boolean {
+  return isSuperAdmin(user.role);
+}
 /** Create/edit/delete documents in Docs. */
 export function canManageDocs(user: EffectiveUser): boolean {
   return can(user, "docs.manage");

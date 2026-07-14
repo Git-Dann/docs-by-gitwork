@@ -3849,22 +3849,31 @@ model DevSignalPipelineConfig {
 }
 
 model DevSignalOutcomeLink {
-  id              String              @id @default(cuid())
-  workspaceId     String
-  workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  assessmentId    String
-  assessment      DevSignalAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
-  candidateId     String
+  id                String              @id @default(cuid())
+  workspaceId       String
+  workspace         Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assessmentId      String
+  assessment        DevSignalAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  candidateId       String
   /// Links an intake score to a real delivery placement — the future training
   /// label. We capture it now; recalibration is deliberately NOT built yet.
-  placementId     String?
-  placement       Placement?          @relation(fields: [placementId], references: [id], onDelete: SetNull)
-  deliveryMetrics Json?
-  linkedAt        DateTime?
-  source          String?
-  notes           String?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  placementId       String?
+  placement         Placement?          @relation(fields: [placementId], references: [id], onDelete: SetNull)
+  deliveryMetrics   Json?
+  /// Structured outcome signals — the CRITERION the score is validated against
+  /// (criterion-related validity, Sackett et al. 2022). All optional; a link
+  /// only feeds calibration once at least one is recorded.
+  retained          Boolean?
+  tenureDays        Int?
+  /// Client satisfaction 1–5 (the strongest single criterion signal).
+  clientRating      Int?
+  churned           Boolean?
+  outcomeRecordedAt DateTime?
+  linkedAt          DateTime?
+  source            String?
+  notes             String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
 
   @@index([workspaceId])
   @@index([assessmentId])

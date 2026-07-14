@@ -23,6 +23,10 @@ export async function POST(request: NextRequest) {
       deliveryMetrics: body.deliveryMetrics,
       source: body.source,
       notes: body.notes,
+      retained: body.retained,
+      tenureDays: body.tenureDays,
+      clientRating: body.clientRating,
+      churned: body.churned,
       actorId: user?.id ?? null,
     });
     if (!link) return apiError("Assessment not found", 404);

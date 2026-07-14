@@ -48,6 +48,7 @@ import type {
   DevSignalChallengeDTO,
   DevSignalPipelineConfigDTO,
 } from "@/types/devsignal";
+import type { CalibrationReport } from "@/lib/devsignal/calibration";
 import type { NotificationDTO } from "@/types/notifications";
 import type {
   DeskActionItemDTO,
@@ -3891,8 +3892,28 @@ export async function createDevSignalOutcomeLink(input: {
   placementId?: string;
   source?: string;
   notes?: string;
+  retained?: boolean;
+  tenureDays?: number;
+  clientRating?: number;
+  churned?: boolean;
 }) {
   return apiFetch<{ link: { id: string } }>("/api/devsignal/outcome-links", jsonPost(input));
+}
+
+export async function getDevSignalCalibration() {
+  return apiFetch<{ report: CalibrationReport }>("/api/devsignal/calibration");
+}
+
+export async function createDevSignalPipelineConfig(input: {
+  name: string;
+  version: string;
+  isDefault?: boolean;
+  enabledStages: string[];
+  stageOrder: string[];
+  stageWeights: Record<string, number>;
+  blockingRules?: Record<string, boolean>;
+}) {
+  return apiFetch<{ config: DevSignalPipelineConfigDTO }>("/api/devsignal/pipeline-configs", jsonPost(input));
 }
 
 // ─── DevSignal challenge bank ────────────────────────────────────────────────

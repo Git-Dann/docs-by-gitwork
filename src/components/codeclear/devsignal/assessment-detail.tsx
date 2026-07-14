@@ -8,6 +8,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/format";
 import { useNotice } from "./notice";
 import {
+  useDevSignalAnalytics,
   useDevSignalAssessment,
   usePromoteDevSignalToCode,
   useRecordDevSignalDecision,
@@ -201,6 +202,8 @@ function StageTimeline({ stages }: { stages: DevSignalStageResultDTO[] }) {
 
 function ScoreBreakdown({ a }: { a: DevSignalAssessmentDTO }) {
   const b = a.scoreBreakdown;
+  const analytics = useDevSignalAnalytics();
+  const model = analytics.data?.analytics.modelStatus;
   if (!b) return null;
   return (
     <WidgetCard number="03" name="Score breakdown">
@@ -208,6 +211,12 @@ function ScoreBreakdown({ a }: { a: DevSignalAssessmentDTO }) {
         {b.formulaVersion} · weighted {b.weightedScore}
         {b.cap !== null ? ` · capped to ${b.cap} by ${b.cappedByStageId}` : ""}
       </p>
+      {model && model.status !== "calibrated" && (
+        <p className="mt-2 rounded-[6px] border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+          Provisional score — the model isn&apos;t yet calibrated on outcomes (n={model.n}). Weights are
+          starting estimates until enough delivery outcomes are recorded.
+        </p>
+      )}
       <table className="mt-3 w-full text-sm">
         <tbody>
           {b.stages
