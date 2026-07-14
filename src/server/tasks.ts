@@ -298,7 +298,7 @@ function statusTimestamps(
 
 export async function listTasks(
   user: EffectiveUser,
-  opts: { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string; archived?: boolean } = {},
+  opts: { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string; archived?: boolean; includeSubtasks?: boolean } = {},
 ): Promise<TaskDTO[]> {
   await ensureBaseRecords();
   const where = await clientScopeWhere(user);
@@ -311,8 +311,9 @@ export async function listTasks(
     where.clientId = opts.clientId;
   }
   if (opts.status) where.status = opts.status;
-  // Board / list show top-level tasks only; subtasks live in the detail drawer.
-  where.parentId = null;
+  // Board / list show top-level tasks only; subtasks live in the detail drawer. The standup
+  // opts into subtasks so a parent's updated subtasks each appear in the Slack update.
+  if (!opts.includeSubtasks) where.parentId = null;
   if (opts.assigneeId) {
     const id = opts.assigneeId === "me" ? user.id : opts.assigneeId;
     where.OR = [{ assignees: { some: { id } } }, { assigneeId: id }];

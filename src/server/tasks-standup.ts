@@ -281,9 +281,22 @@ async function postStandupToSlack(
   const botToken = getSlackBotToken(ws);
   if (!botToken) return 0;
 
-  const tasks = await listTasks(user, { assigneeId: "me" });
+  const tasks = await listTasks(user, { assigneeId: "me", includeSubtasks: true });
   const { doing, done } = partition(tasks, workDate);
   const sectionTasks = input.phase === "AM" ? doing : done;
+
+  // Resolve parent titles so an updated subtask reads "Parent → Subtask" in the card
+  // (rather than a bare subtask title with no context).
+  const parentIds = Array.from(
+    new Set(sectionTasks.map((t) => t.parentId).filter((id): id is string => Boolean(id))),
+  );
+  const parentRows = parentIds.length
+    ? await prisma.task.findMany({
+        where: { id: { in: parentIds }, workspaceId: user.workspaceId },
+        select: { id: true, title: true },
+      })
+    : [];
+  const parentTitleById = new Map(parentRows.map((p) => [p.id, p.title]));
   if (sectionTasks.length === 0 && !(input.phase === "AM" && isMonday(workDate) && input.weekPlan)) {
     return 0; // nothing to say
   }
@@ -326,7 +339,9 @@ async function postStandupToSlack(
     // to pre-mint. The single "View board" button covers "open in Foundry".
     const cardTasks: StandupTaskCardInput[] = mine.map((t) => ({
       taskId: t.id,
-      title: t.title,
+      title: t.parentId && parentTitleById.get(t.parentId)
+        ? `${parentTitleById.get(t.parentId)} → ${t.title}`
+        : t.title,
       clientName: t.client.name,
       clientSlug: t.client.slug,
       blockName: t.featureBlock?.name ?? null,
