@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type {
   DevSignalAssessmentDTO,
   DevSignalDataRequestStatus,
@@ -691,14 +691,22 @@ export async function createOutcomeLink(
 // ─── analytics ────────────────────────────────────────────────────────────
 
 export async function getAssessmentAnalytics(workspaceId: string) {
-  const [rows, promoted, outcomeLinks] = await Promise.all([
+  const [rows, promoted, outcomeLinks, consented, stageCounts] = await Promise.all([
     prisma.devSignalAssessment.findMany({
       where: { workspaceId },
       select: { status: true, decision: true, finalScore: true },
     }),
     prisma.devSignalAssessment.count({ where: { workspaceId, promotedToCode: true } }),
     prisma.devSignalOutcomeLink.count({ where: { workspaceId } }),
+    prisma.devSignalAssessment.count({ where: { workspaceId, consent: { not: Prisma.DbNull } } }),
+    // One StageResult row per (assessment, stage) → count = assessments that reached each stage.
+    prisma.devSignalStageResult.groupBy({
+      by: ["stageId"],
+      where: { workspaceId, stageId: { in: ["coding_challenge", "video_assessment", "identity_verification"] } },
+      _count: { _all: true },
+    }),
   ]);
+  const stageReached = (id: string) => stageCounts.find((s) => s.stageId === id)?._count._all ?? 0;
 
   const byStatus: Record<string, number> = {};
   const byDecision: Record<string, number> = {};
@@ -716,6 +724,18 @@ export async function getAssessmentAnalytics(workspaceId: string) {
   // any DevSignal admin) so score views can honestly flag "provisional".
   const calibration = await getCalibrationReport(workspaceId);
 
+  // Completion funnel — where candidates drop off. "Submitted" = reached a
+  // terminal state (a human is reviewing or it's done), not still in-flight.
+  const submitted = rows.filter((r) => r.status !== "DRAFT" && r.status !== "RUNNING").length;
+  const funnel = [
+    { key: "invited", label: "Invited", n: rows.length },
+    { key: "consented", label: "Consented", n: consented },
+    { key: "challenge", label: "Challenge", n: stageReached("coding_challenge") },
+    { key: "video", label: "Intro", n: stageReached("video_assessment") },
+    { key: "identity", label: "Identity", n: stageReached("identity_verification") },
+    { key: "submitted", label: "Submitted", n: submitted },
+  ];
+
   return {
     total: rows.length,
     byStatus,
@@ -728,5 +748,6 @@ export async function getAssessmentAnalytics(workspaceId: string) {
       n: calibration.n,
       overallValidity: calibration.overallValidity,
     },
+    funnel,
   };
 }
