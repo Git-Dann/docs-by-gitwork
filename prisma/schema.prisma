@@ -424,6 +424,7 @@ model Workspace {
   devSignalConfigs            DevSignalPipelineConfig[]
   devSignalOutcomeLinks       DevSignalOutcomeLink[]
   devSignalAuditEvents        DevSignalAuditEvent[]
+  devSignalChallenges         DevSignalChallenge[]
   backgroundJobs              BackgroundJob[]
   coldArchives                ColdArchive[]
   handbookArticles            HandbookArticle[]
@@ -3854,4 +3855,46 @@ model DevSignalAuditEvent {
 
   @@index([workspaceId, createdAt])
   @@index([assessmentId, createdAt])
+}
+
+/// The coding-challenge bank. Each row is one authored challenge, tagged by the
+/// role(s), stack(s), seniority, and competencies it measures, so an assessment
+/// can serve the RIGHT challenge for the candidate instead of one default task.
+/// The in-code CHALLENGES array (src/server/devsignal/challenges.ts) seeds this
+/// on boot; the accessors read the DB with the in-code set as a fallback. Tests
+/// are stored as JSON — execution is browser-only, so the suite just travels to
+/// the candidate's sandbox at run time (unchanged mechanics).
+model DevSignalChallenge {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Stable human-readable id, unique per workspace. Matches the in-code seed id.
+  slug           String
+  title          String
+  language       String    @default("javascript")
+  /// junior | mid | senior | staff
+  difficulty     String    @default("mid")
+  /// Tags the matcher uses — all editable data, no hardcoded taxonomy.
+  roles          String[]  @default([])
+  stacks         String[]  @default([])
+  competencies   String[]  @default([])
+  promptMarkdown String
+  /// The function the candidate implements; the test suite calls it.
+  functionName   String
+  starterCode    String
+  timeLimitSec   Int       @default(1800)
+  /// [{ name, args, expected, hidden }] — see ChallengeTest in challenges.ts.
+  tests          Json
+  isActive       Boolean   @default(true)
+  /// Bumped when the prompt/tests change so historical attempts stay interpretable.
+  version        String    @default("v1")
+  /// "seed" (from the in-code catalog) | "authored" (created in the UI).
+  source         String    @default("authored")
+  orderKey       Int       @default(0)
+  createdBy      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId, isActive])
 }

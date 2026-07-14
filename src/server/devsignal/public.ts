@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import type { PublicVetSession } from "@/types/devsignal";
-import { defaultChallenge, getChallenge, toPublicChallenge } from "./challenges";
+import { defaultChallenge, toPublicChallenge } from "./challenges";
+import { getChallengeBySlug, pickChallengeFor } from "./challenge-store";
 import { summarizeTelemetry, type TelemetryEvent } from "./telemetry";
 import { evaluateChallenge } from "./challenge-eval";
 import { scoreVideoTranscript } from "./video-scoring";
@@ -99,7 +100,12 @@ async function buildSession(a: LoadedAssessment): Promise<PublicVetSession> {
   });
   const doneStages = new Set(stageRows.map((r) => r.stageId));
   const c = a.candidate;
-  const challenge = defaultChallenge();
+  // Serve the challenge that best matches what the candidate declared, not one
+  // default task for everyone. Deterministic; falls back to the first active one.
+  const challenge = await pickChallengeFor(a.workspace.id, {
+    primaryStack: c.primaryStack,
+    yearsExperience: c.yearsExperience,
+  });
 
   return {
     token: a.publicToken ?? "",
@@ -189,7 +195,7 @@ export async function submitChallenge(
   const a = await loadByToken(token);
   if (!a || isExpired(a)) return { ok: false };
 
-  const challenge = getChallenge(submission.challengeId) ?? defaultChallenge();
+  const challenge = (await getChallengeBySlug(a.workspace.id, submission.challengeId)) ?? defaultChallenge();
   const telemetry = summarizeTelemetry(submission.telemetry ?? []);
   const evalResult = evaluateChallenge({
     testsPassed: submission.testsPassed,

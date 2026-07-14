@@ -1538,3 +1538,41 @@ export const vetVideoSubmitSchema = z
   .refine((v) => Boolean(v.audioBase64) || Boolean(v.transcript), {
     message: "Provide audio or a transcript.",
   });
+
+// ─── DevSignal challenge bank ────────────────────────────────────────────────
+
+const challengeTestSchema = z.object({
+  name: z.string().min(1).max(120),
+  args: z.array(z.unknown()).max(20),
+  expected: z.unknown(),
+  hidden: z.boolean().optional(),
+});
+
+export const devSignalChallengeSchema = z.object({
+  slug: z
+    .string()
+    .min(2)
+    .max(80)
+    .regex(/^[a-z0-9-]+$/, "Use lowercase letters, numbers and hyphens only."),
+  title: z.string().min(2).max(160),
+  language: z.enum(["javascript", "typescript"]),
+  difficulty: z.enum(["junior", "mid", "senior", "staff"]),
+  roles: z.array(z.string().min(1).max(40)).max(12).default([]),
+  stacks: z.array(z.string().min(1).max(40)).max(12).default([]),
+  competencies: z.array(z.string().min(1).max(40)).max(12).default([]),
+  promptMarkdown: z.string().min(1).max(8000),
+  functionName: z
+    .string()
+    .min(1)
+    .max(80)
+    .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, "Must be a valid function name."),
+  starterCode: z.string().min(1).max(8000),
+  timeLimitSec: z.number().int().min(60).max(14_400),
+  tests: z.array(challengeTestSchema).min(1).max(40),
+  isActive: z.boolean().default(true),
+});
+
+/** Partial update — the slug is the path key, everything else is optional. */
+export const devSignalChallengeUpdateSchema = devSignalChallengeSchema
+  .omit({ slug: true })
+  .partial();

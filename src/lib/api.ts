@@ -45,6 +45,7 @@ import type {
 import type {
   DevSignalAnalyticsDTO,
   DevSignalAssessmentDTO,
+  DevSignalChallengeDTO,
   DevSignalPipelineConfigDTO,
 } from "@/types/devsignal";
 import type { NotificationDTO } from "@/types/notifications";
@@ -3892,4 +3893,41 @@ export async function createDevSignalOutcomeLink(input: {
   notes?: string;
 }) {
   return apiFetch<{ link: { id: string } }>("/api/devsignal/outcome-links", jsonPost(input));
+}
+
+// ─── DevSignal challenge bank ────────────────────────────────────────────────
+
+export async function listDevSignalChallenges() {
+  return apiFetch<{ items: DevSignalChallengeDTO[] }>("/api/devsignal/challenges");
+}
+
+export type DevSignalChallengeInput = {
+  slug: string;
+  title: string;
+  language: "javascript" | "typescript";
+  difficulty: "junior" | "mid" | "senior" | "staff";
+  roles: string[];
+  stacks: string[];
+  competencies: string[];
+  promptMarkdown: string;
+  functionName: string;
+  starterCode: string;
+  timeLimitSec: number;
+  tests: Array<{ name: string; args: unknown[]; expected: unknown; hidden?: boolean }>;
+  isActive: boolean;
+};
+
+export async function createDevSignalChallenge(input: DevSignalChallengeInput) {
+  return apiFetch<{ challenge: DevSignalChallengeDTO }>("/api/devsignal/challenges", jsonPost(input));
+}
+
+export async function updateDevSignalChallenge(
+  slug: string,
+  input: Partial<Omit<DevSignalChallengeInput, "slug">>,
+) {
+  return apiFetch<{ challenge: DevSignalChallengeDTO }>(`/api/devsignal/challenges/${encodeURIComponent(slug)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }

@@ -107,7 +107,7 @@ export interface PublicChallengeDTO {
   id: string;
   title: string;
   language: "javascript" | "typescript";
-  difficulty: "junior" | "mid" | "senior";
+  difficulty: "junior" | "mid" | "senior" | "staff";
   promptMarkdown: string;
   functionName: string;
   starterCode: string;
@@ -115,6 +115,22 @@ export interface PublicChallengeDTO {
   testCount: number;
   /** Full suite (runs in-browser). `hidden` = not detailed in the UI as an example. */
   tests: Array<{ name: string; args: unknown[]; expected: unknown; hidden: boolean }>;
+}
+
+/** Admin view of a bank challenge (id === slug; full tests incl. hidden flags). */
+export interface DevSignalChallengeDTO {
+  id: string;
+  title: string;
+  language: "javascript" | "typescript";
+  difficulty: "junior" | "mid" | "senior" | "staff";
+  roles: string[];
+  stacks: string[];
+  competencies: string[];
+  promptMarkdown: string;
+  functionName: string;
+  starterCode: string;
+  timeLimitSec: number;
+  tests: Array<{ name: string; args: unknown[]; expected: unknown; hidden?: boolean }>;
 }
 
 export interface PublicVetCandidate {
