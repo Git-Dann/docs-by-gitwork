@@ -335,6 +335,15 @@ model Workspace {
   /// checkKey[] shown in the public embed's free teaser (score/counts/findings all derive
   /// from this subset, not the full scan). Null → DEFAULT_EMBED_CHECK_KEYS (pulse-embed-config.ts).
   pulseEmbedCheckKeys         Json?
+  /// "Book a call" CTA link shown on the public embed + the visitor results email.
+  /// Null → DEFAULT_BOOKING_URL (pulse-embed-config.ts). Not a secret — plain text.
+  pulseEmbedBookingUrl        String?
+  /// Cloudflare Turnstile site key (public, safe to send to the client) for the public
+  /// Pulse embed's bot protection. Null → falls back to NEXT_PUBLIC_TURNSTILE_SITE_KEY.
+  turnstileSiteKey            String?
+  /// Cloudflare Turnstile secret key, AES-256-GCM encrypted (src/lib/encryption.ts), same
+  /// convention as slackBotTokenEncrypted. Null → falls back to TURNSTILE_SECRET_KEY env.
+  turnstileSecretKeyEncrypted String?
   /// ISO-3166-1 alpha-2 country codes whose public/religious holidays show on the
   /// team calendar for EVERYONE (workspace-wide), independent of where each member
   /// is based. Defaults to UK + Pakistan; admins can extend to other countries.

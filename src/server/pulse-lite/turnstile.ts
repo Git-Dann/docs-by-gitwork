@@ -19,19 +19,19 @@ export class TurnstileError extends Error {
 
 /**
  * Throws if the token is missing/invalid. Fails OPEN (logs a warning, allows the
- * request through) when TURNSTILE_SECRET_KEY isn't configured — so local dev works
- * without real Cloudflare keys, but a missing key in production is noticeable in logs.
+ * request through) when no secret is configured (neither the workspace's Turnstile
+ * settings nor TURNSTILE_SECRET_KEY) — so local dev works without real Cloudflare
+ * keys, but a missing key in production is noticeable in logs.
  */
-export async function assertValidTurnstileToken(token: string | undefined, ip: string | null): Promise<void> {
-  const secret = process.env.TURNSTILE_SECRET_KEY;
-  if (!secret) {
-    console.warn("[turnstile] TURNSTILE_SECRET_KEY not set — skipping verification (fail-open).");
+export async function assertValidTurnstileToken(token: string | undefined, ip: string | null, secretKey: string | null): Promise<void> {
+  if (!secretKey) {
+    console.warn("[turnstile] No Turnstile secret key configured — skipping verification (fail-open).");
     return;
   }
   if (!token) throw new TurnstileError();
 
   try {
-    const body = new URLSearchParams({ secret, response: token });
+    const body = new URLSearchParams({ secret: secretKey, response: token });
     if (ip) body.set("remoteip", ip);
     const res = await fetch(SITEVERIFY_URL, { method: "POST", body });
     const data = (await res.json()) as { success?: boolean };

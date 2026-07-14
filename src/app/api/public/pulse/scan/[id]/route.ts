@@ -3,8 +3,8 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { summarise, type PublicScanView } from "@/server/pulse-lite/public-scan";
 import { calculateHealthScore } from "@/server/pulse-scan";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
-import { resolveEmbedCheckKeys, filterToEmbedChecks } from "@/server/pulse-embed-config";
+import { filterToEmbedChecks } from "@/server/pulse-embed-config";
+import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
 import type { PulseScanCheckInput } from "@/types/pulse";
 
 export const dynamic = "force-dynamic";
@@ -40,13 +40,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     });
     if (!lite) return apiError("Scan not found", 404);
 
-    const workspace = await prisma.workspace.findFirst({
-      where: { slug: DEFAULT_WORKSPACE_SLUG },
-      select: { pulseEmbedCheckKeys: true },
-    });
+    const config = await getPulseEmbedWorkspaceConfig();
     const allChecks = (lite.checks as PulseScanCheckInput[] | null) ?? [];
-    const checkKeys = resolveEmbedCheckKeys(workspace?.pulseEmbedCheckKeys);
-    const checks = filterToEmbedChecks(allChecks, checkKeys);
+    const checks = filterToEmbedChecks(allChecks, config.checkKeys);
     const { categories, pass, warn, fail } = summarise(checks);
     const healthScore = checks.length > 0 ? calculateHealthScore(checks) : lite.healthScore;
 

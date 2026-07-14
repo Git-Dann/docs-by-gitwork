@@ -1435,6 +1435,8 @@ export async function importPulseLead(leadId: string): Promise<{ scanId: string 
 export interface PulseEmbedConfig {
   enabled: boolean;
   checkKeys: string[];
+  bookingUrl: string;
+  turnstileSiteKey: string | null;
   turnstileConfigured: boolean;
 }
 
@@ -1442,7 +1444,13 @@ export async function getPulseEmbedConfig(): Promise<PulseEmbedConfig> {
   return apiFetch<PulseEmbedConfig>("/api/workspace/pulse-embed");
 }
 
-export async function updatePulseEmbedConfig(patch: { enabled?: boolean; checkKeys?: string[] }): Promise<PulseEmbedConfig> {
+export async function updatePulseEmbedConfig(patch: {
+  enabled?: boolean;
+  checkKeys?: string[];
+  bookingUrl?: string;
+  turnstileSiteKey?: string;
+  turnstileSecretKey?: string;
+}): Promise<PulseEmbedConfig> {
   return apiFetch<PulseEmbedConfig>("/api/workspace/pulse-embed", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

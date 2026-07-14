@@ -12,10 +12,9 @@ import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { sendWorkspaceEmail, escapeHtml } from "@/server/email";
 import { isAtLeast } from "@/types/auth";
 import { calculateHealthScore } from "@/server/pulse-scan";
-import { resolveEmbedCheckKeys, filterToEmbedChecks } from "@/server/pulse-embed-config";
+import { filterToEmbedChecks } from "@/server/pulse-embed-config";
+import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
 import type { PulseScanCheckInput } from "@/types/pulse";
-
-const BOOKING_URL = "https://calendar.google.com/calendar/appointments/schedules/AcZssZ3uLzvxU1kbocUtjtGtYTTLqKuGCCjnvHAM1dLRJsbMhvYjOdaamfywtrHEHQxqEQTZ_YbNLGEf?gv=true";
 
 function notFound(message: string): Error {
   return Object.assign(new Error(message), { status: 404 });
@@ -107,16 +106,13 @@ async function notifyTeamOfLead(leadId: string): Promise<void> {
 async function notifyVisitorOfResults(leadId: string): Promise<void> {
   const lead = await prisma.pulseLead.findUnique({ where: { id: leadId } });
   if (!lead || !lead.liteScanId) return;
-  const workspace = await prisma.workspace.findFirst({
-    where: { slug: DEFAULT_WORKSPACE_SLUG },
-    select: { id: true, pulseEmbedCheckKeys: true },
-  });
+  const workspace = await prisma.workspace.findFirst({ where: { slug: DEFAULT_WORKSPACE_SLUG }, select: { id: true } });
   if (!workspace) return;
+  const config = await getPulseEmbedWorkspaceConfig();
 
   const lite = await prisma.pulseLiteScan.findUnique({ where: { id: lead.liteScanId }, select: { checks: true } });
   const allChecks = (lite?.checks as PulseScanCheckInput[] | null) ?? [];
-  const checkKeys = resolveEmbedCheckKeys(workspace.pulseEmbedCheckKeys);
-  const embedChecks = filterToEmbedChecks(allChecks, checkKeys);
+  const embedChecks = filterToEmbedChecks(allChecks, config.checkKeys);
   const score = calculateHealthScore(embedChecks);
   const findings = embedChecks
     .filter((c) => c.status === "FAIL" || c.status === "WARN")
@@ -141,6 +137,6 @@ async function notifyVisitorOfResults(leadId: string): Promise<void> {
       <p><strong>Critical issues:</strong> ${criticalCount}</p>
       ${findingsHtml}
       <p>Want help fixing these, or a full deep-dive across 100+ checks?
-        <a href="${BOOKING_URL}">Book a call</a> with Gitwork.</p>`,
+        <a href="${config.bookingUrl}">Book a call</a> with Gitwork.</p>`,
   });
 }

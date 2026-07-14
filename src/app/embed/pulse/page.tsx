@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Script from "next/script";
+import Image from "next/image";
 
 // ── Types (mirror PublicScanView from /api/public/pulse/scan/[id]) ─────────────
 type Check = {
@@ -41,8 +42,10 @@ declare global {
 const ACCENT = "#6B52FF"; // Gitwork purple
 const NAVY_GRADIENT = "linear-gradient(160deg, #17172a 0%, #0C0C18 100%)";
 const SERIF = "var(--font-fraunces), 'Fraunces', Georgia, serif";
-const BOOKING_URL = "https://calendar.google.com/calendar/appointments/schedules/AcZssZ3uLzvxU1kbocUtjtGtYTTLqKuGCCjnvHAM1dLRJsbMhvYjOdaamfywtrHEHQxqEQTZ_YbNLGEf?gv=true";
-const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+// Fallback only — used for the brief window before /api/public/pulse/config resolves.
+// Mirrors DEFAULT_BOOKING_URL in src/server/pulse-embed-config.ts (can't import a
+// server module from this client component).
+const FALLBACK_BOOKING_URL = "https://calendar.google.com/calendar/appointments/schedules/AcZssZ3uLzvxU1kbocUtjtGtYTTLqKuGCCjnvHAM1dLRJsbMhvYjOdaamfywtrHEHQxqEQTZ_YbNLGEf?gv=true";
 
 function scoreColor(score: number | null): string {
   if (score == null) return "#9ca3af";
@@ -123,6 +126,9 @@ export default function EmbedPulsePage() {
   const unlockTurnstileRef = useRef<HTMLDivElement>(null);
 
   const [source, setSource] = useState<"gitwork.co.uk" | "foundry-demo">("foundry-demo");
+  const [remoteConfig, setRemoteConfig] = useState<{ turnstileSiteKey: string | null; bookingUrl: string } | null>(null);
+  const turnstileSiteKey = remoteConfig?.turnstileSiteKey ?? null;
+  const bookingUrl = remoteConfig?.bookingUrl ?? FALLBACK_BOOKING_URL;
 
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -134,6 +140,15 @@ export default function EmbedPulsePage() {
       const ref = document.referrer;
       if (ref && /(^|\.)gitwork\.co\.uk$/.test(new URL(ref).hostname)) setSource("gitwork.co.uk");
     } catch { /* not embedded / no referrer */ }
+  }, []);
+
+  // Workspace-configurable Turnstile site key + CTA link — fetched once, not baked
+  // in at build time, since they're editable from Settings → Public Embed.
+  useEffect(() => {
+    fetch("/api/public/pulse/config")
+      .then((r) => r.json())
+      .then((d) => setRemoteConfig({ turnstileSiteKey: d.turnstileSiteKey ?? null, bookingUrl: d.bookingUrl ?? FALLBACK_BOOKING_URL }))
+      .catch(() => {});
   }, []);
 
   // Auto-resize the host iframe as content grows/shrinks.
@@ -156,15 +171,15 @@ export default function EmbedPulsePage() {
   // changes (e.g. the unlock form's container only exists once a scan completes),
   // guarding against double-render with a hasChildNodes() check.
   useEffect(() => {
-    if (!turnstileReady || !TURNSTILE_SITE_KEY || !window.turnstile) return;
+    if (!turnstileReady || !turnstileSiteKey || !window.turnstile) return;
     if (scanTurnstileRef.current && !scanTurnstileRef.current.hasChildNodes()) {
-      window.turnstile.render(scanTurnstileRef.current, { sitekey: TURNSTILE_SITE_KEY, callback: setScanToken });
+      window.turnstile.render(scanTurnstileRef.current, { sitekey: turnstileSiteKey, callback: setScanToken });
     }
     if (unlockTurnstileRef.current && !unlockTurnstileRef.current.hasChildNodes()) {
-      window.turnstile.render(unlockTurnstileRef.current, { sitekey: TURNSTILE_SITE_KEY, callback: setUnlockToken });
+      window.turnstile.render(unlockTurnstileRef.current, { sitekey: turnstileSiteKey, callback: setUnlockToken });
     }
     // Re-check whenever the conditionally-rendered containers might have (dis)appeared.
-  }, [turnstileReady, view?.status, view?.emailCaptured, emailAlreadyUsed]);
+  }, [turnstileReady, turnstileSiteKey, view?.status, view?.emailCaptured, emailAlreadyUsed]);
 
   // Poll while a scan is running.
   useEffect(() => {
@@ -280,7 +295,7 @@ export default function EmbedPulsePage() {
         margin: "0 auto",
       }}
     >
-      {TURNSTILE_SITE_KEY && (
+      {turnstileSiteKey && (
         <Script
           src="https://challenges.cloudflare.com/turnstile/v0/api.js"
           strategy="afterInteractive"
@@ -290,8 +305,9 @@ export default function EmbedPulsePage() {
 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+        <Image src="/gitwork-logo-home-page.png" alt="Gitwork" width={168} height={31} style={{ height: 20, width: "auto" }} priority />
         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, color: ACCENT, textTransform: "uppercase" }}>
-          ⚡ Gitwork Pulse
+          Pulse
         </span>
       </div>
 
@@ -339,7 +355,7 @@ export default function EmbedPulsePage() {
           {running ? "Scanning…" : starting ? "Starting…" : "Scan my site"}
         </button>
       </div>
-      {TURNSTILE_SITE_KEY && <div ref={scanTurnstileRef} style={{ marginTop: 10 }} />}
+      {turnstileSiteKey && <div ref={scanTurnstileRef} style={{ marginTop: 10 }} />}
 
       {error && (
         <p style={{ marginTop: 12, fontSize: 13, color: "#dc2626" }}>{error}</p>
@@ -427,7 +443,7 @@ export default function EmbedPulsePage() {
                     Each email gets one free unlock. Want the full picture for this site too?
                   </p>
                   <a
-                    href={BOOKING_URL}
+                    href={bookingUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ display: "inline-block", background: ACCENT, color: "white", fontSize: 14, fontWeight: 700, padding: "11px 18px", borderRadius: 10, textDecoration: "none" }}
@@ -476,7 +492,7 @@ export default function EmbedPulsePage() {
                       {unlocking ? "Unlocking…" : "Show me the issues"}
                     </button>
                   </div>
-                  {TURNSTILE_SITE_KEY && <div ref={unlockTurnstileRef} style={{ marginTop: 10 }} />}
+                  {turnstileSiteKey && <div ref={unlockTurnstileRef} style={{ marginTop: 10 }} />}
                   {unlockError && <p style={{ marginTop: 8, fontSize: 13, color: "#dc2626" }}>{unlockError}</p>}
                 </div>
               )}
@@ -520,7 +536,7 @@ export default function EmbedPulsePage() {
                     Gitwork builds and ships products — from fast fixes to full-stack delivery.
                   </p>
                   <a
-                    href={BOOKING_URL}
+                    href={bookingUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ display: "inline-block", background: "white", color: "#111827", fontSize: 14, fontWeight: 700, padding: "10px 22px", borderRadius: 10, textDecoration: "none" }}
@@ -535,10 +551,7 @@ export default function EmbedPulsePage() {
       )}
 
       <p style={{ marginTop: 20, fontSize: 11, color: "#9ca3af", textAlign: "center" }}>
-        Powered by{" "}
-        <a href="https://foundry.gitwork.co.uk/pulse-overview" target="_blank" rel="noopener noreferrer" style={{ color: "#6b7280", fontWeight: 600 }}>
-          Gitwork Pulse
-        </a>
+        Powered by <span style={{ color: "#6b7280", fontWeight: 600 }}>Gitwork Foundry</span>
       </p>
     </div>
   );

@@ -35,3 +35,11 @@ export function filterToEmbedChecks<T extends { checkKey: string }>(checks: T[],
   const allowed = new Set(checkKeys);
   return checks.filter((c) => allowed.has(c.checkKey));
 }
+
+/** Default "Book a call" link — used until a workspace sets its own via the settings page. */
+export const DEFAULT_BOOKING_URL =
+  "https://calendar.google.com/calendar/appointments/schedules/AcZssZ3uLzvxU1kbocUtjtGtYTTLqKuGCCjnvHAM1dLRJsbMhvYjOdaamfywtrHEHQxqEQTZ_YbNLGEf?gv=true";
+
+export function resolveBookingUrl(raw: unknown): string {
+  return typeof raw === "string" && raw.trim().length > 0 ? raw : DEFAULT_BOOKING_URL;
+}

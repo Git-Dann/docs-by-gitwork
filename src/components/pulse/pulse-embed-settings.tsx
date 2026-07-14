@@ -8,8 +8,6 @@ import { DEFAULT_EMBED_CHECK_KEYS } from "@/server/pulse-embed-config";
 import { cn } from "@/lib/format";
 import { ToggleSwitch } from "@/components/pulse/pulse-embed-panel";
 
-const BOOKING_URL = "https://calendar.google.com/calendar/appointments/schedules/AcZssZ3uLzvxU1kbocUtjtGtYTTLqKuGCCjnvHAM1dLRJsbMhvYjOdaamfywtrHEHQxqEQTZ_YbNLGEf?gv=true";
-
 function StatusPill({ ok, okLabel, offLabel }: { ok: boolean; okLabel: string; offLabel: string }) {
   return (
     <span className="widget-header__status">
@@ -44,6 +42,11 @@ export function PulseEmbedSettings() {
   const [previewKey, setPreviewKey] = useState(0);
   const previewRootRef = useRef<HTMLDivElement>(null);
 
+  const [bookingUrlDraft, setBookingUrlDraft] = useState("");
+  const [siteKeyDraft, setSiteKeyDraft] = useState("");
+  const [secretKeyDraft, setSecretKeyDraft] = useState("");
+  const seededDrafts = useRef(false);
+
   const checkKeys = useMemo(() => new Set(data?.checkKeys ?? DEFAULT_EMBED_CHECK_KEYS), [data?.checkKeys]);
 
   useEffect(() => {
@@ -52,6 +55,30 @@ export function PulseEmbedSettings() {
     setExpanded(new Set(CHECKS_REGISTRY.filter((c) => checkKeys.has(c.key)).map((c) => c.category)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
+
+  useEffect(() => {
+    if (seededDrafts.current || !data) return;
+    seededDrafts.current = true;
+    setBookingUrlDraft(data.bookingUrl);
+    setSiteKeyDraft(data.turnstileSiteKey ?? "");
+  }, [data]);
+
+  function saveBookingUrl() {
+    const next = bookingUrlDraft.trim();
+    if (next && next !== data?.bookingUrl) save({ bookingUrl: next });
+  }
+
+  function saveSiteKey() {
+    const next = siteKeyDraft.trim();
+    if (next !== (data?.turnstileSiteKey ?? "")) save({ turnstileSiteKey: next });
+  }
+
+  function saveSecretKey() {
+    const next = secretKeyDraft.trim();
+    if (!next) return; // blank means "leave the stored key untouched"
+    save({ turnstileSecretKey: next });
+    setSecretKeyDraft(""); // never redisplay it, even the value just typed
+  }
 
   // Auto-resize the preview iframe to its content height (same protocol embed.js uses).
   useEffect(() => {
@@ -124,26 +151,56 @@ export function PulseEmbedSettings() {
             <ToggleSwitch checked={data.enabled} disabled={isPending} onChange={(v) => save({ enabled: v })} />
           </div>
 
-          <div className="flex items-center justify-between gap-3 py-3">
-            <div>
+          <div className="border-b border-[var(--border-2)] py-3">
+            <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-medium text-[var(--text-1)]">Bot protection (Cloudflare Turnstile)</p>
-              <p className="mt-0.5 text-xs text-[var(--text-4)]">
-                {data.turnstileConfigured
-                  ? "Verifying real visitors on both the scan and unlock forms."
-                  : "Not set up — verification fails open until NEXT_PUBLIC_TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY are added to the environment."}
-              </p>
+              <StatusPill ok={data.turnstileConfigured} okLabel="Configured" offLabel="Not configured" />
             </div>
-            <StatusPill ok={data.turnstileConfigured} okLabel="Configured" offLabel="Not configured" />
+            <p className="mt-0.5 text-xs text-[var(--text-4)]">
+              Cloudflare dashboard → Turnstile → Add widget (Managed mode), allow-listing gitwork.co.uk /
+              www.gitwork.co.uk / foundry.gitwork.co.uk — then paste both keys here.
+            </p>
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label className="block">
+                <span className="text-[11px] font-medium text-[var(--text-3)]">Site key</span>
+                <input
+                  value={siteKeyDraft}
+                  onChange={(e) => setSiteKeyDraft(e.target.value)}
+                  onBlur={saveSiteKey}
+                  placeholder="0x4AAA..."
+                  className="app-input mt-1 w-full text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[11px] font-medium text-[var(--text-3)]">Secret key</span>
+                <input
+                  type="password"
+                  value={secretKeyDraft}
+                  onChange={(e) => setSecretKeyDraft(e.target.value)}
+                  onBlur={saveSecretKey}
+                  placeholder={data.turnstileConfigured ? "•••••••• (leave blank to keep)" : "0x4AAA..."}
+                  autoComplete="off"
+                  className="app-input mt-1 w-full text-sm"
+                />
+              </label>
+            </div>
           </div>
 
-          <div className="border-t border-[var(--border-2)] pt-3">
+          <div className="border-b border-[var(--border-2)] py-3">
             <p className="text-sm font-medium text-[var(--text-1)]">Free-scan limit</p>
             <p className="widget-timestamp mt-0.5">One lifetime unlock per email — fixed, not editable here.</p>
           </div>
 
-          <div className="border-t border-[var(--border-2)] pt-3 mt-3">
-            <p className="text-sm font-medium text-[var(--text-1)]">&quot;Book a call&quot; CTA</p>
-            <p className="widget-timestamp mt-0.5 break-all">{BOOKING_URL} — fixed, not editable here.</p>
+          <div className="pt-3">
+            <label className="block">
+              <span className="text-sm font-medium text-[var(--text-1)]">&quot;Book a call&quot; CTA link</span>
+              <input
+                value={bookingUrlDraft}
+                onChange={(e) => setBookingUrlDraft(e.target.value)}
+                onBlur={saveBookingUrl}
+                className="app-input mt-1 w-full text-sm"
+              />
+            </label>
           </div>
         </Widget>
 

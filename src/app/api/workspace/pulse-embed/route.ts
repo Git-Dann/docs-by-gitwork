@@ -1,9 +1,11 @@
 /**
- * GET   /api/workspace/pulse-embed → public Pulse embed config (kill-switch + curated
- *                                    check set, with defaults)
+ * GET   /api/workspace/pulse-embed → public Pulse embed config (kill-switch, curated
+ *                                    check set, booking link, Turnstile credentials)
  * PATCH /api/workspace/pulse-embed → merge-update it
  *
  * Single workspace today (per ensureBaseRecords), same pattern as pulse-pricing/route.ts.
+ * The Turnstile secret is never returned in the GET/PATCH response — only whether one
+ * is currently configured (from the workspace or the env var fallback).
  */
 
 import { Prisma } from "@prisma/client";
@@ -14,25 +16,30 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { recordAuditEntry } from "@/server/audit-log";
-import { resolveEmbedCheckKeys } from "@/server/pulse-embed-config";
+import { encryptNullable } from "@/lib/encryption";
+import { resolveEmbedCheckKeys, resolveBookingUrl } from "@/server/pulse-embed-config";
+import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
 
 const patchSchema = z.object({
   enabled: z.boolean().optional(),
   checkKeys: z.array(z.string()).min(1).optional(),
+  bookingUrl: z.string().url().optional(),
+  turnstileSiteKey: z.string().optional(),
+  // Only sent when the user actually types a new secret — omitted (not empty-stringed)
+  // to leave the stored one untouched.
+  turnstileSecretKey: z.string().min(1).optional(),
 });
-
-/** Never expose the secret itself — just whether both Turnstile env vars are set. */
-function turnstileConfigured(): boolean {
-  return Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) && Boolean(process.env.TURNSTILE_SECRET_KEY);
-}
 
 export async function GET() {
   try {
     const { workspace } = await ensureBaseRecords();
+    const config = await getPulseEmbedWorkspaceConfig();
     return apiOk({
       enabled: workspace.pulseEmbedEnabled,
       checkKeys: resolveEmbedCheckKeys(workspace.pulseEmbedCheckKeys),
-      turnstileConfigured: turnstileConfigured(),
+      bookingUrl: resolveBookingUrl(workspace.pulseEmbedBookingUrl),
+      turnstileSiteKey: config.turnstileSiteKey,
+      turnstileConfigured: Boolean(config.turnstileSiteKey) && Boolean(config.turnstileSecretKey),
     });
   } catch (error) {
     return fromError(error);
@@ -55,8 +62,16 @@ export async function PATCH(request: NextRequest) {
       data: {
         ...(parsed.data.enabled !== undefined ? { pulseEmbedEnabled: parsed.data.enabled } : {}),
         ...(parsed.data.checkKeys !== undefined ? { pulseEmbedCheckKeys: parsed.data.checkKeys as unknown as Prisma.InputJsonValue } : {}),
+        ...(parsed.data.bookingUrl !== undefined ? { pulseEmbedBookingUrl: parsed.data.bookingUrl } : {}),
+        ...(parsed.data.turnstileSiteKey !== undefined ? { turnstileSiteKey: parsed.data.turnstileSiteKey } : {}),
+        ...(parsed.data.turnstileSecretKey !== undefined ? { turnstileSecretKeyEncrypted: encryptNullable(parsed.data.turnstileSecretKey) } : {}),
       },
-      select: { pulseEmbedEnabled: true, pulseEmbedCheckKeys: true },
+      select: {
+        pulseEmbedEnabled: true,
+        pulseEmbedCheckKeys: true,
+        pulseEmbedBookingUrl: true,
+        turnstileSiteKey: true,
+      },
     });
 
     const session = await auth();
@@ -65,13 +80,17 @@ export async function PATCH(request: NextRequest) {
       actorId: session?.user?.id ?? null,
       action: "settings.pulse_embed.updated",
       target: "workspace.pulseEmbedConfig",
-      metadata: { ...parsed.data },
+      // Never log the raw secret key — just note whether one was set this call.
+      metadata: { ...parsed.data, turnstileSecretKey: parsed.data.turnstileSecretKey ? "[set]" : undefined },
     });
 
+    const config = await getPulseEmbedWorkspaceConfig();
     return apiOk({
       enabled: updated.pulseEmbedEnabled,
       checkKeys: resolveEmbedCheckKeys(updated.pulseEmbedCheckKeys),
-      turnstileConfigured: turnstileConfigured(),
+      bookingUrl: resolveBookingUrl(updated.pulseEmbedBookingUrl),
+      turnstileSiteKey: updated.turnstileSiteKey,
+      turnstileConfigured: Boolean(config.turnstileSiteKey) && Boolean(config.turnstileSecretKey),
     });
   } catch (error) {
     return fromError(error);

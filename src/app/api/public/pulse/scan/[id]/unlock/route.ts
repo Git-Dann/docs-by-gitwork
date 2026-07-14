@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { capturePulseLead } from "@/server/pulse-lite/leads";
-import { assertPulseEmbedEnabled } from "@/server/pulse-lite/kill-switch";
+import { PulseEmbedDisabledError } from "@/server/pulse-lite/kill-switch";
 import { assertValidTurnstileToken } from "@/server/pulse-lite/turnstile";
 import { clientIpFrom } from "@/server/pulse-lite/rate-limit";
+import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,8 @@ const KNOWN_SOURCES = new Set(["gitwork.co.uk", "foundry-demo"]);
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     // Cheapest checks first: kill-switch → honeypot → Turnstile → email validation.
-    await assertPulseEmbedEnabled();
+    const config = await getPulseEmbedWorkspaceConfig();
+    if (!config.enabled) throw new PulseEmbedDisabledError();
 
     const { id } = await params;
     const body = (await request.json().catch(() => ({}))) as { email?: string; source?: string; honeypot?: string; turnstileToken?: string };
@@ -28,7 +30,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // same generic shape as a normal validation failure, no "bot detected" tell.
     if (body.honeypot) return apiError("Enter a valid email address.", 400);
 
-    await assertValidTurnstileToken(body.turnstileToken, clientIpFrom(request.headers));
+    await assertValidTurnstileToken(body.turnstileToken, clientIpFrom(request.headers), config.turnstileSecretKey);
 
     const email = (body.email ?? "").trim().toLowerCase();
     if (!EMAIL_RE.test(email) || email.length > 200) {
