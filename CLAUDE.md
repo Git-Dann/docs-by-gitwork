@@ -1049,13 +1049,15 @@ Desk **TODAY** tab that opens a **full-page overlay**; dismissable from **both**
   `index` prop on the shared `EditorialRow`), a **slow painting zoom** + overlay fade-in (reduced-motion
   safe), and a Dia-style **footer**: "Made for you by [mark] Foundry using your [Slack]…[cal]…. **With
   love from** [G][I][T][W][O][R][K]" — circle-letter seal that waves on hover.
-- **Weather instrument (Jul 14).** An "Overhead" row in the brief: a **dependency-free procedural
-  SVG** scene (`src/components/brief/weather-scene.tsx` — amber sun rays, drifting clouds, rain/snow
-  drops, fog, lightning; reduced-motion safe, token-based for light/dark) + a DM Serif temp and mono
-  readout (H/L · wind · humidity). Data from **Open-Meteo** (`src/hooks/use-weather.ts` — free, no
-  API key, no attribution, CORS; home hub by timezone → Manchester/Islamabad). Ambient: a failed
-  fetch just drops the row. Deliberately **not** the three.js procedural-weather approach (would add
-  ~600KB + WebGL, off-ethos). Verified live via `/demo/dev`.
+- **Weather instrument (Jul 14).** A **one-line** weather readout (`WeatherLine` in `morning-brief.tsx`)
+  in the hero — below the masthead, above the art card, aligned to the art width: a small
+  **dependency-free procedural SVG** glyph (`src/components/brief/weather-scene.tsx` — amber sun rays,
+  drifting clouds, rain/snow drops, fog, lightning; reduced-motion safe, token-based for light/dark) +
+  `{temp}° {condition} · {city}` and a mono `H/L · wind · humidity`. Data from **Open-Meteo**
+  (`src/hooks/use-weather.ts` — free, no API key, no attribution, CORS; home hub by timezone →
+  Manchester/Islamabad). Ambient: renders nothing until data arrives, and a failed fetch just drops
+  it. Deliberately **not** the three.js procedural-weather approach (~600KB + WebGL, off-ethos).
+  Verified live via `/demo/dev`.
 - **No schema change, no new env, no cron.** Ticks + peek-dismissal are `localStorage` only. Verified
   via `tsc` + `eslint` (app is auth-gated with no local DB — no browser verification). **Deferred:**
   no re-open entry point once dismissed (returns next day); wiring to a server-composed brief; an

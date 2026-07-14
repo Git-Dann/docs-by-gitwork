@@ -93,7 +93,6 @@ export function MorningBrief({ open, onClose }: { open: boolean; onClose: () => 
             pending={isPending}
             calendarConnected={calendarConnected}
           />
-          <WeatherRow />
         </div>
 
         <BriefFooter sources={brief.sources} />
@@ -152,6 +151,9 @@ function BriefHero({ brief }: { brief: Brief }) {
           N° {String(dayOfYear(date)).padStart(3, "0")} · {brief.weekday.slice(0, 3)}
         </span>
       </div>
+
+      {/* One-line weather — below the masthead, above the art. */}
+      <WeatherLine />
 
       {/* Painting + vertical rails, wrapped so both rails centre on the artwork
           (and share one vertical centre line — no double-translate). */}
@@ -622,38 +624,30 @@ function fmtRail(time: string): string {
   return time.replace(/\s?AM/i, "a").replace(/\s?PM/i, "p");
 }
 
-// ── Weather (procedural SVG instrument) ──────────────────────────────────────
+// ── Weather (compact one-line instrument, in the hero) ───────────────────────
 
-function WeatherRow() {
-  const { data, isPending, isError } = useWeather(true);
-  if (isError) return null; // ambient only — a failed fetch just drops the row
-
-  const cond = data ? condition(data.code) : null;
+/** One-line weather readout: sits between the masthead and the art card, aligned
+ *  to the art width. Ambient — renders nothing until data arrives (no skeleton). */
+function WeatherLine() {
+  const { data, isError } = useWeather(true);
+  if (isError || !data) return null;
+  const cond = condition(data.code);
 
   return (
-    <EditorialRow index="Weather" title="Overhead" caption="Your sky, right now.">
-      {isPending || !data || !cond ? (
-        <div className="h-28 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
-      ) : (
-        <div className="flex items-center gap-5 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-5">
-          <WeatherScene kind={cond.kind} isDay={data.isDay} className="h-24 w-24 shrink-0" />
-          <div className="min-w-0">
-            <div className="flex items-baseline gap-2.5">
-              <span className="text-[40px] leading-none text-[var(--text-1)]" style={{ fontFamily: "var(--font-display)" }}>
-                {data.tempC}°
-              </span>
-              <span className="text-[15px] text-[var(--text-2)]">{cond.label}</span>
-            </div>
-            <p className="mt-1.5 text-[11px] uppercase tracking-[1.2px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-              {data.city}
-            </p>
-            <p className="mt-2 text-[12px] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
-              H {data.highC}° · L {data.lowC}° · WIND {data.windMph}MPH · {data.humidity}% RH
-            </p>
-          </div>
-        </div>
-      )}
-    </EditorialRow>
+    <div className="mx-auto mb-3 flex w-full items-center justify-between gap-3 sm:w-[calc(100%-96px)]">
+      <span className="flex min-w-0 items-center gap-2 text-[13px] text-[var(--text-2)]">
+        <WeatherScene kind={cond.kind} isDay={data.isDay} className="h-6 w-6 shrink-0" />
+        <span className="font-semibold text-[var(--text-1)]">{data.tempC}°</span>
+        <span className="truncate">{cond.label}</span>
+        <span className="shrink-0 text-[var(--text-4)]">· {data.city}</span>
+      </span>
+      <span
+        className="hidden shrink-0 text-[11px] uppercase tracking-[1px] text-[var(--text-4)] sm:inline"
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
+        H {data.highC}° · L {data.lowC}° · WIND {data.windMph}MPH · {data.humidity}% RH
+      </span>
+    </div>
   );
 }
 
