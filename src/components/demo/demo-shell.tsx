@@ -98,10 +98,10 @@ export function DemoShell({
   return (
     <SessionProvider session={demoSession as never}>
       <div
-        className="relative flex h-[100dvh] flex-col bg-[var(--surface-canvas)] text-[var(--text-1)]"
+        className="relative flex h-[100dvh] flex-col overflow-hidden bg-[var(--surface-canvas)] text-[var(--text-1)]"
         onClickCapture={handleDemoNav}
       >
-        <div className="min-h-0 flex-1 w-full lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="flex min-h-0 w-full flex-1 flex-col lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
           {/* ── Sidebar (mirrors the real app shell) ── */}
           <aside className="hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_38%)] lg:flex lg:min-h-0">
             <div className="flex h-full min-h-0 w-full flex-col">
@@ -173,7 +173,7 @@ export function DemoShell({
           </aside>
 
           {/* ── Content column ── */}
-          <div className="flex min-h-0 flex-col bg-[var(--surface-canvas)]">
+          <div className="flex min-h-0 flex-1 flex-col bg-[var(--surface-canvas)]">
             <div className="flex items-center justify-between gap-4 border-b border-[var(--brand-200)] bg-[var(--surface-brand)] px-6 py-2 sm:px-8">
               <p className="text-xs font-medium text-[var(--brand-800)]">
                 <span
