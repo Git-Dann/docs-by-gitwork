@@ -23,7 +23,9 @@ import {
   canManageDocs,
   canManagePulse,
   canManageStarters,
+  canManageSupport,
   canSeeAllClients,
+  canViewClientFinancials,
   ForbiddenError,
   UnauthorizedError,
 } from "@/server/auth/effective-user";
@@ -32,7 +34,8 @@ import { buildSkillMarkdown } from "@/server/starters-package";
 import { runAgentScan, buildAgentVerdict } from "@/server/pulse-agent";
 import { getPulseScan, listPulseScans } from "@/server/pulse";
 import type { CheckCategory } from "@/server/pulse-checks/categories";
-import { listDerivedClients, createClientRecord } from "@/server/clients";
+import { listDerivedClients, createClientRecord, getDerivedClientDetail } from "@/server/clients";
+import { listConversations, listSupportClients } from "@/server/support";
 import {
   assignedClientIds,
   listTasks,
@@ -198,6 +201,36 @@ async function resolveClient(
   throw new Error(`No client matches "${input}". Use list_clients to see what's visible.`);
 }
 
+/** Resolve a Care client (SupportClient — distinct from the Portal WorkspaceClient) by id,
+ *  slug, or fuzzy name against the user's visible Care scope. */
+async function resolveSupportClient(
+  user: EffectiveUser,
+  input: string,
+): Promise<{ id: string; name: string }> {
+  const needle = input.trim();
+  if (!needle) throw new Error("Care client identifier is required.");
+  const clients = await listSupportClients(user);
+  const lower = needle.toLowerCase();
+
+  const byId = clients.find((c) => c.id === needle);
+  if (byId) return { id: byId.id, name: byId.name };
+  const bySlug = clients.find((c) => c.slug === lower);
+  if (bySlug) return { id: bySlug.id, name: bySlug.name };
+  const exactName = clients.find((c) => c.name.toLowerCase() === lower);
+  if (exactName) return { id: exactName.id, name: exactName.name };
+
+  const partial = clients.filter(
+    (c) => c.name.toLowerCase().includes(lower) || c.slug.includes(lower),
+  );
+  if (partial.length === 1) return { id: partial[0].id, name: partial[0].name };
+  if (partial.length > 1) {
+    throw new Error(
+      `"${input}" matched ${partial.length} Care clients (${partial.map((p) => p.slug).join(", ")}). Pass an exact slug.`,
+    );
+  }
+  throw new Error(`No Care client matches "${input}".`);
+}
+
 // ── tool definitions ───────────────────────────────────────────────────────
 
 const TASK_STATUS = z.enum(["BACKLOG", "TODO", "DOING", "IN_REVIEW", "DONE"]);
@@ -324,6 +357,15 @@ const listDocumentsSchema = z.object({
   documentType: DOCUMENT_TYPE.optional(),
   status: DOCUMENT_STATUS.optional(),
   search: z.string().trim().min(1).max(200).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+});
+
+const getClientSchema = z.object({ client: z.string().min(1) });
+
+const CONVERSATION_STATUS = z.enum(["new", "open", "snoozed", "closed", "ignored"]);
+const listConversationsSchema = z.object({
+  client: z.string().min(1),
+  status: CONVERSATION_STATUS.optional(),
   limit: z.number().int().min(1).max(100).optional(),
 });
 
@@ -1036,6 +1078,110 @@ const TOOLS: ToolDef[] = [
         scans.length > cap ? ` (of ${scans.length} — raise limit)` : ""
       }. Pass a scanId to pulse_scan_result for the full verdict.`;
       return textResult(trimmed, summary);
+    },
+  },
+  {
+    name: "get_client",
+    description:
+      "Get one client's profile — primary contact, website, notes, active developers, useful " +
+      "links (Drive / ClickUp / repos), and counts (proposals, Pulse scans). Financials (monthly " +
+      "cost, working days, retainer) are included only if you can view client financials. Never " +
+      "returns bank details or platform credentials. Honors your client-scoping.",
+    inputSchema: {
+      type: "object",
+      properties: { client: { type: "string", description: "Client slug, name, or cuid." } },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = getClientSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const detail = await getDerivedClientDetail(resolved.slug);
+      if (!detail) return textResult({ error: "Client not found." }, "Client not found.");
+      const c = detail.client;
+      const activeDevs = detail.placements
+        .filter((p) => !p.endDate)
+        .map((p) => ({ name: p.candidateName, project: p.projectName }));
+      // Explicit allow-list — never spread the raw record (it carries bank + platform creds).
+      const safe: Record<string, unknown> = {
+        id: c.id,
+        slug: c.slug,
+        name: c.name,
+        status: c.status,
+        website: c.website,
+        notes: c.notes,
+        primaryContact: {
+          name: c.primaryContactName,
+          email: c.primaryContactEmail,
+          phone: c.primaryContactPhone,
+        },
+        devCount: c.devCount,
+        activeDevs,
+        links: {
+          googleDrive: c.googleDriveFolderUrl,
+          clickup: c.clickupUrl,
+          repos: c.repoUrls,
+        },
+        counts: { proposals: detail.proposals.length, pulseScans: detail.pulseScans.length },
+        latestPulseScore: c.pulseHealthScore ?? null,
+        careConnected: Boolean(detail.supportClient),
+      };
+      if (canViewClientFinancials(user)) {
+        safe.financials = {
+          monthlyCost: c.monthlyCost ?? null,
+          workingDays: c.workingDays ?? null,
+          retainerDays: c.retainerDays ?? null,
+          retainerDaysUsed: c.retainerDaysUsed ?? null,
+        };
+      }
+      return textResult(safe, `${c.name} — ${activeDevs.length} active dev${activeDevs.length === 1 ? "" : "s"}, ${detail.proposals.length} doc${detail.proposals.length === 1 ? "" : "s"}.`);
+    },
+  },
+  {
+    name: "list_conversations",
+    description:
+      "List a Care client's support conversations (subject, customer, source, status, priority, " +
+      "sentiment). Filter by status. Newest first, capped at `limit` (default 50). Requires the " +
+      "'Manage Care' permission. `client` is the Care client — resolve by name/slug.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Care client name, slug, or id." },
+        status: {
+          type: "string",
+          enum: ["new", "open", "snoozed", "closed", "ignored"],
+          description: "Filter by triage status.",
+        },
+        limit: { type: "integer", description: "Max conversations (default 50, max 100)." },
+      },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageSupport, "read Care conversations");
+      const parsed = listConversationsSchema.parse(args);
+      const c = await resolveSupportClient(user, parsed.client);
+      const { conversations, nextCursor } = await listConversations(c.id, {
+        status: parsed.status,
+        limit: parsed.limit ?? 50,
+      });
+      const projected = conversations.map((conv) => ({
+        id: conv.id,
+        subject: conv.subject,
+        customer: conv.customerLabel,
+        source: conv.source,
+        status: conv.status,
+        priority: conv.priority,
+        sentiment: conv.sentiment,
+        unread: conv.unread,
+        issueType: conv.issueType ?? null,
+        receivedAt: conv.receivedAt,
+        preview: conv.preview,
+      }));
+      const summary = `${projected.length} conversation${projected.length === 1 ? "" : "s"} on ${c.name}${
+        parsed.status ? ` (${parsed.status})` : ""
+      }${nextCursor ? " (more available — raise limit)" : ""}.`;
+      return textResult(projected, summary);
     },
   },
 ];

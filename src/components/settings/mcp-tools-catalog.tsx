@@ -26,6 +26,18 @@ const TOOLS: Tool[] = [
     examples: ["Add a new client called 'Speakify', website speakify.com."],
   },
   {
+    name: "get_client",
+    blurb:
+      "Open one client's profile — contact, website, active devs, links, and counts. Financials show only if you can see them; never returns bank or credentials.",
+    examples: ["Give me the rundown on Big Wedge.", "Who's working on Speakify and what's the drive link?"],
+  },
+  {
+    name: "list_conversations",
+    blurb:
+      "List a Care client's support conversations (subject, customer, status, priority, sentiment). Requires the 'Manage Care' permission.",
+    examples: ["What's open in Care for Fellas?", "Show me urgent conversations for Big Wedge."],
+  },
+  {
     name: "list_tasks",
     blurb: "List tasks. Filter by client, status, or assignee.",
     examples: [
