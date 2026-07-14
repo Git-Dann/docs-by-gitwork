@@ -16,7 +16,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import { XMarkIcon, SunIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { useBrief } from "@/hooks/use-brief";
 import { EditorialRow, Stamp } from "@/components/desk/desk-shared";
@@ -66,7 +66,7 @@ export function MorningBrief({ open, onClose }: { open: boolean; onClose: () => 
         <BriefHero brief={brief} />
 
         <div className="mt-2">
-          {brief.pushForward ? <PushForwardRow brief={brief} /> : null}
+          <PushForwardRow brief={brief} />
           <TodosRow todos={brief.todos} dateISO={brief.dateISO} />
           <UpdatesRow updates={brief.updates} />
           <ScheduleRow
@@ -177,7 +177,31 @@ function BriefHero({ brief }: { brief: Brief }) {
 // ── Push forward ────────────────────────────────────────────────────────────
 
 function PushForwardRow({ brief }: { brief: Brief }) {
-  const pf = brief.pushForward!;
+  const pf = brief.pushForward;
+
+  // Clear-runway fallback — so the section always carries something warm, even on a
+  // day with nothing overdue or in flight (otherwise the brief reads empty).
+  if (!pf) {
+    return (
+      <EditorialRow
+        title="Push your work forward"
+        caption="The one thing to move first."
+        stamp={<Stamp label="My board" href="/app" />}
+      >
+        <div className="flex items-start gap-3.5 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-brand)] p-5">
+          <SunIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--brand-600)]" />
+          <div>
+            <h4 className="text-[17px] font-semibold leading-snug text-[var(--text-1)]">A clear runway</h4>
+            <p className="mt-2 text-[15px] leading-relaxed text-[var(--text-2)]">
+              Nothing overdue and nothing mid-flight. Pick the one thing that&apos;ll make today
+              count — then protect the time for it.
+            </p>
+          </div>
+        </div>
+      </EditorialRow>
+    );
+  }
+
   return (
     <EditorialRow
       title="Push your work forward"
@@ -429,8 +453,9 @@ function ScheduleRow({
     );
   } else if (events.length === 0) {
     body = (
-      <div className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-8 text-center text-sm text-[var(--text-4)]">
-        No meetings today — clear runway.
+      <div className="flex flex-col items-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-9 text-center">
+        <SunIcon className="h-6 w-6 text-[var(--brand-500)]" />
+        <p className="text-sm text-[var(--text-3)]">No meetings today — clear runway.</p>
       </div>
     );
   } else {
@@ -521,8 +546,21 @@ function TagLabel({ label, active }: { label: string; active?: boolean }) {
 
 function BriefFooter({ sources }: { sources: string[] }) {
   return (
-    <footer className="mt-16 border-t border-[var(--border-2)] pt-10 text-center">
-      <p className="text-[15px] leading-relaxed text-[var(--text-3)]" style={{ fontFamily: "var(--font-display)" }}>
+    <footer className="relative mt-16 overflow-hidden border-t border-[var(--border-2)] pb-10 pt-10 text-center">
+      {/* Halftone flourish — a dot field fading up from the base (Dia's finishing touch),
+          in currentColor so it reads on cream or navy. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-32 text-[var(--text-4)]"
+        style={{
+          backgroundImage: "radial-gradient(currentColor 0.6px, transparent 0.6px)",
+          backgroundSize: "7px 7px",
+          opacity: 0.22,
+          maskImage: "radial-gradient(ellipse 65% 100% at 50% 120%, #000 0%, transparent 72%)",
+          WebkitMaskImage: "radial-gradient(ellipse 65% 100% at 50% 120%, #000 0%, transparent 72%)",
+        }}
+      />
+      <p className="relative text-[15px] leading-relaxed text-[var(--text-3)]" style={{ fontFamily: "var(--font-display)" }}>
         <span className="text-[var(--text-4)]">Assembled for you by </span>
         <span className="font-medium text-[var(--text-1)]">Foundry</span>
         {sources.length ? <span className="text-[var(--text-4)]"> using your </span> : null}

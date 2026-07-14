@@ -1031,12 +1031,14 @@ Desk **TODAY** tab that opens a **full-page overlay**; dismissable from **both**
   `build-brief.ts`).
 - **Timezone globe (Jul 14).** `src/components/desk/desk-globe.tsx` replaced the Desk's flat
   `TeamOverlap` bars in "Around the team": a **dependency-free SVG orthographic globe** — graticule,
-  **real continents** (Natural Earth 110m coastlines, public-domain, simplified to `src/lib/desk/
-  world-land.ts` ~28KB, rendered as horizon-clipped strokes), a **live day/night terminator** from
-  the computed sub-solar point, and a **dot + local-time label per city**. Centred on the viewer's
-  home hub, **drag to spin**, **Add city** from a global preset set (`localStorage`
-  `gitwork.desk.globe.cities.v1`). Keeps the "your 9am is their 1pm" readout + overlap window.
-  `TeamOverlap` stays exported in `desk-time.tsx` (now unused). All pure `Intl`/trig — no globe lib.
+  **real continents** (Natural Earth 110m, public-domain, simplified to `src/lib/desk/world-land.ts`
+  ~28KB) rendered timezoneglobe.com-style as a **dot-matrix stipple + crisp coastline outlines** (the
+  **live day/night terminator** is encoded into dot brightness, from the computed sub-solar point),
+  plus a **dot per city** with a local-time legend. Land/coast/graticule paint in **`currentColor`**
+  so it reads on cream **and** navy (light/dark) with no branching. Centred on the viewer's home hub,
+  **drag to spin**, **Add city** from a global preset set (`localStorage` `gitwork.desk.globe.cities.v1`).
+  Keeps the "your 9am is their 1pm" readout + overlap window. `TeamOverlap` stays exported in
+  `desk-time.tsx` (now unused). All pure `Intl`/trig — no globe lib.
 - **No schema change, no new env, no cron.** Ticks + peek-dismissal are `localStorage` only. Verified
   via `tsc` + `eslint` (app is auth-gated with no local DB — no browser verification). **Deferred:**
   no re-open entry point once dismissed (returns next day); wiring to a server-composed brief; an

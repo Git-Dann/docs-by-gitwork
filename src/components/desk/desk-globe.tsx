@@ -3,13 +3,15 @@
 /**
  * On Your Desk — the timezone globe.
  *
- * A dependency-free SVG orthographic globe (inspired by timezoneglobe.com), centred
- * on your home hub. It draws a graticule, a live day/night terminator (shaded from
- * the current sub-solar point), and a dot per teammate/city labelled with its local
- * time. Drag to spin; add cities from a preset list (persisted per browser). On brand:
- * blue ocean, mono readouts, Gitwork-Blue home marker.
+ * A dependency-free SVG orthographic globe (inspired by timezoneglobe.com): a
+ * dot-matrix stipple of the continents + crisp coastline outlines + a graticule,
+ * with a live day/night terminator encoded into the dot brightness. A dot per
+ * teammate/city sits on the surface; a legend lists local times. Drag to spin;
+ * add cities from a preset list (persisted per browser).
  *
- * All maths is pure `Intl` + trig — no globe library, no map tiles, no coastline data.
+ * Light + dark aware: land dots, coastlines and graticule all paint in
+ * `currentColor` (set to the theme ink), so the globe reads on cream or navy with
+ * no per-mode branching. All maths is pure `Intl` + trig — no globe library.
  */
 
 import { useMemo, useRef, useState, useEffect } from "react";
@@ -55,9 +57,9 @@ const PRESETS: City[] = [
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
 
-const R = 104;
-const CX = 128;
-const CY = 118;
+const R = 106;
+const CX = 120;
+const CY = 120;
 const D2R = Math.PI / 180;
 
 interface Projected {
@@ -88,7 +90,6 @@ function subsolar(now: Date): { lat: number; lon: number } {
   return { lat, lon };
 }
 
-/** Unit vector for a lat/lon on the sphere. */
 function vec(lat: number, lon: number): [number, number, number] {
   const phi = lat * D2R;
   const lam = lon * D2R;
@@ -102,11 +103,7 @@ function isDay(lat: number, lon: number, sun: { lat: number; lon: number }): boo
   return c[0] * s[0] + c[1] * s[1] + c[2] * s[2] > 0;
 }
 
-/**
- * Project a set of [lon,lat] rings to an SVG path, breaking each polyline where it
- * dips behind the globe (so only the near hemisphere is drawn). Shared by the
- * graticule and the coastlines.
- */
+/** Project [lon,lat] rings to an SVG path, breaking where they dip behind the globe. */
 function strokePath(rings: number[][][], lat0: number, lon0: number): string {
   const segs: string[] = [];
   for (const ring of rings) {
@@ -126,7 +123,7 @@ function strokePath(rings: number[][][], lat0: number, lon0: number): string {
   return segs.join(" ");
 }
 
-/** Meridians (every 30°) + parallels (every 30°) as [lon,lat] rings — static. */
+/** Meridians + parallels (every 30°) as [lon,lat] rings — static. */
 const GRATICULE_RINGS: number[][][] = (() => {
   const rings: number[][][] = [];
   for (let lon = -180; lon < 180; lon += 30) {
@@ -140,6 +137,40 @@ const GRATICULE_RINGS: number[][][] = (() => {
     rings.push(r);
   }
   return rings;
+})();
+
+/** Ray-casting point-in-polygon (x=lon, y=lat). */
+function pointInRing(x: number, y: number, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0];
+    const yi = ring[i][1];
+    const xj = ring[j][0];
+    const yj = ring[j][1];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+function isLand(lon: number, lat: number): boolean {
+  for (const ring of WORLD_LAND) if (pointInRing(lon, lat, ring)) return true;
+  return false;
+}
+
+/**
+ * Pre-computed stipple: land sample points on a roughly equal-area grid (lon step
+ * scaled by 1/cos(lat) so dots don't crowd the poles). Computed once at import.
+ */
+const LAND_DOTS: [number, number][] = (() => {
+  const dots: [number, number][] = [];
+  const step = 3;
+  for (let lat = -78; lat <= 80; lat += step) {
+    const lonStep = Math.min(step / Math.max(0.18, Math.cos(lat * D2R)), 14);
+    for (let lon = -180; lon < 180; lon += lonStep) {
+      if (isLand(lon, lat)) dots.push([lon, lat]);
+    }
+  }
+  return dots;
 })();
 
 // ── Time ──────────────────────────────────────────────────────────────────────
@@ -190,7 +221,6 @@ export function DeskGlobe({
   const home = HUBS[localTz] ?? HUBS["Europe/London"];
   const counterpart = HUBS[counterpartTz] ?? PRESETS.find((c) => c.tz === counterpartTz) ?? HUBS["Asia/Karachi"];
 
-  // Rotation centred on home; drag to spin.
   const [rot, setRot] = useState({ lat: home.lat * 0.6, lon: home.lon });
   const [added, setAdded] = useState<string[]>([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -214,7 +244,6 @@ export function DeskGlobe({
     }
   }
 
-  // The cities on the globe: home + counterpart + any added presets (deduped by id).
   const cities = useMemo(() => {
     const base = [home, counterpart];
     const extra = added.map((id) => PRESETS.find((p) => p.id === id)).filter((c): c is City => !!c);
@@ -223,11 +252,25 @@ export function DeskGlobe({
   }, [home, counterpart, added]);
 
   const sun = subsolar(now);
-  const sunProj = project(sun.lat, sun.lon, rot.lat, rot.lon);
-  const grat = useMemo(() => strokePath(GRATICULE_RINGS, rot.lat, rot.lon), [rot.lat, rot.lon]);
-  const land = useMemo(() => strokePath(WORLD_LAND, rot.lat, rot.lon), [rot.lat, rot.lon]);
+  const sunKey = `${Math.round(sun.lat)}:${Math.round(sun.lon)}`;
 
-  // Overlap sentence (home ↔ counterpart), reused from the old TeamOverlap.
+  const grat = useMemo(() => strokePath(GRATICULE_RINGS, rot.lat, rot.lon), [rot.lat, rot.lon]);
+  const coast = useMemo(() => strokePath(WORLD_LAND, rot.lat, rot.lon), [rot.lat, rot.lon]);
+  const { dayDots, nightDots } = useMemo(() => {
+    let day = "";
+    let night = "";
+    for (const [lon, lat] of LAND_DOTS) {
+      const p = project(lat, lon, rot.lat, rot.lon);
+      if (!p.visible) continue;
+      const seg = `M${p.x.toFixed(1)} ${p.y.toFixed(1)}h.1`;
+      if (isDay(lat, lon, sun)) day += seg;
+      else night += seg;
+    }
+    return { dayDots: day, nightDots: night };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rot.lat, rot.lon, sunKey]);
+
+  // Overlap sentence (home ↔ counterpart).
   const diff = tzOffsetHours(now, counterpart.tz) - tzOffsetHours(now, localTz);
   const label12 = (h: number) => {
     const hh = (((Math.round(h) % 24) + 24) % 24) % 24;
@@ -256,17 +299,15 @@ export function DeskGlobe({
     drag.current = null;
   }
 
-  const availablePresets = PRESETS.filter(
-    (p) => !cities.some((c) => c.id === p.id) && p.tz !== home.tz,
-  );
+  const availablePresets = PRESETS.filter((p) => !cities.some((c) => c.id === p.id) && p.tz !== home.tz);
 
   return (
     <div className="w-full rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] p-3.5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        {/* Globe */}
+        {/* Globe — inherits `currentColor` (theme ink) for land/coast/graticule. */}
         <svg
-          viewBox="0 0 256 236"
-          className="w-[220px] shrink-0 cursor-grab touch-none select-none active:cursor-grabbing"
+          viewBox="0 0 240 240"
+          className="w-[220px] shrink-0 cursor-grab touch-none select-none text-[var(--text-1)] active:cursor-grabbing"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -278,78 +319,51 @@ export function DeskGlobe({
             <clipPath id="globe-clip">
               <circle cx={CX} cy={CY} r={R} />
             </clipPath>
-            <radialGradient id="globe-ocean" cx="38%" cy="32%" r="80%">
-              <stop offset="0%" stopColor="var(--brand-500)" stopOpacity="0.55" />
-              <stop offset="60%" stopColor="var(--brand-700)" stopOpacity="0.5" />
-              <stop offset="100%" stopColor="#0b1b3a" stopOpacity="0.75" />
-            </radialGradient>
-            <radialGradient
-              id="globe-sun"
-              cx={sunProj.x}
-              cy={sunProj.y}
-              r={R * 1.5}
-              gradientUnits="userSpaceOnUse"
-            >
-              <stop offset="0%" stopColor="#fff6de" stopOpacity="0.16" />
-              <stop offset="42%" stopColor="#fff6de" stopOpacity="0" />
-              <stop offset="100%" stopColor="#04101f" stopOpacity="0.5" />
+            <radialGradient id="globe-shade" cx="34%" cy="30%" r="82%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.10" />
+              <stop offset="55%" stopColor="#ffffff" stopOpacity="0" />
+              <stop offset="100%" stopColor="#000000" stopOpacity="0.22" />
             </radialGradient>
           </defs>
 
-          {/* Outer glow + ocean */}
-          <circle cx={CX} cy={CY} r={R + 4} fill="var(--brand-500)" opacity={0.08} />
-          <circle cx={CX} cy={CY} r={R} fill="url(#globe-ocean)" />
+          {/* Sphere */}
+          <circle cx={CX} cy={CY} r={R + 3} className="fill-[var(--brand-500)]" opacity={0.06} />
+          <circle cx={CX} cy={CY} r={R} className="fill-[var(--surface-1)]" />
 
           <g clipPath="url(#globe-clip)">
-            {/* Graticule (faint, for orientation) */}
-            <path d={grat} fill="none" stroke="#fff" strokeOpacity={0.09} strokeWidth={0.5} />
-            {/* Coastlines — real continents (Natural Earth 110m), near hemisphere only. */}
-            <path
-              d={land}
-              fill="none"
-              stroke="#e8e2cf"
-              strokeOpacity={0.62}
-              strokeWidth={0.8}
-              strokeLinejoin="round"
-              strokeLinecap="round"
-            />
-            {/* Day/night: warm near the sun, dark on the far side (flat dark if sun is behind). */}
-            {sunProj.visible ? (
-              <circle cx={CX} cy={CY} r={R} fill="url(#globe-sun)" />
-            ) : (
-              <circle cx={CX} cy={CY} r={R} fill="#04101f" opacity={0.5} />
-            )}
+            {/* Graticule */}
+            <path d={grat} fill="none" stroke="currentColor" strokeOpacity={0.14} strokeWidth={0.5} />
+            {/* Land stipple — bright on the day side, dim on the night side (the terminator). */}
+            <path d={dayDots} fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth={1.5} strokeOpacity={0.82} />
+            <path d={nightDots} fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth={1.5} strokeOpacity={0.24} />
+            {/* Crisp coastline over the stipple */}
+            <path d={coast} fill="none" stroke="currentColor" strokeOpacity={0.45} strokeWidth={0.7} strokeLinejoin="round" strokeLinecap="round" />
+            {/* Spherical sheen + limb shadow */}
+            <circle cx={CX} cy={CY} r={R} fill="url(#globe-shade)" />
           </g>
 
           {/* Rim */}
-          <circle cx={CX} cy={CY} r={R} fill="none" stroke="var(--border-1)" strokeWidth={1} />
+          <circle cx={CX} cy={CY} r={R} fill="none" stroke="currentColor" strokeOpacity={0.28} strokeWidth={1} />
 
-          {/* City markers (visible hemisphere only) */}
+          {/* City markers (near hemisphere) */}
           {cities.map((c) => {
             const p = project(c.lat, c.lon, rot.lat, rot.lon);
             if (!p.visible) return null;
-            const home_ = c.id === home.id;
+            const isHome = c.id === home.id;
             const day = isDay(c.lat, c.lon, sun);
-            const rightHalf = p.x > CX;
             return (
               <g key={c.id}>
+                {isHome ? <circle cx={p.x} cy={p.y} r={7} className="fill-[var(--brand-500)]" opacity={0.25} /> : null}
                 <circle
                   cx={p.x}
                   cy={p.y}
-                  r={home_ ? 4.5 : 3.5}
-                  fill={home_ ? "var(--brand-600)" : day ? "#fef9ec" : "#93a4bd"}
-                  stroke={home_ ? "#fff" : day ? "var(--brand-600)" : "#5b6b86"}
-                  strokeWidth={1.2}
+                  r={isHome ? 4 : 3.2}
+                  className={cn(
+                    isHome ? "fill-[var(--brand-600)]" : day ? "fill-amber-400" : "fill-slate-400",
+                  )}
+                  stroke="var(--surface-0)"
+                  strokeWidth={1.3}
                 />
-                <text
-                  x={rightHalf ? p.x - 7 : p.x + 7}
-                  y={p.y + 3}
-                  textAnchor={rightHalf ? "end" : "start"}
-                  className="fill-[var(--text-1)]"
-                  style={{ ...MONO, fontSize: 9, paintOrder: "stroke", stroke: "var(--surface-0)", strokeWidth: 3 }}
-                >
-                  {c.name} {fmtCityTime(now, c.tz)}
-                </text>
               </g>
             );
           })}
