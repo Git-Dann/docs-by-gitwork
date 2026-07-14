@@ -54,6 +54,13 @@ export function DevSignalQueue() {
           <p className="mt-1 text-sm text-[var(--text-3)]">
             Candidates are assessed here and only enter Code when a human promotes them.
           </p>
+          {a?.modelStatus && (
+            <p className="mt-2 inline-flex items-center gap-1.5 rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-3)]">
+              Model: {a.modelStatus.status}
+              {a.modelStatus.status !== "calibrated" ? " · scores provisional" : ` · r=${a.modelStatus.overallValidity?.toFixed(2) ?? "—"}`}
+              {` · n=${a.modelStatus.n}`}
+            </p>
+          )}
         </div>
         <Button variant="primary" onClick={() => setModalOpen(true)}>
           New assessment

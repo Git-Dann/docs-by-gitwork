@@ -64,8 +64,8 @@ function dateOnly(days: number): string {
 
 const CLIENTS = [
   { id: "cl-northwind", name: "Northwind Studio", slug: "northwind" },
-  { id: "cl-speakify", name: "Speakify", slug: "speakify" },
-  { id: "cl-bigwedge", name: "Big Wedge Golf", slug: "big-wedge-golf" },
+  { id: "cl-cadenza", name: "Cadenza", slug: "cadenza" },
+  { id: "cl-bigwedge", name: "Fairway Nine", slug: "fairway-nine" },
 ] as const;
 
 const byClient = Object.fromEntries(CLIENTS.map((c) => [c.slug, c])) as Record<
@@ -126,16 +126,16 @@ function mkTask(
 /** The master task list — powers the board, dashboard "My Tasks", standup + attention. */
 export const demoBoardTasks: TaskDTO[] = [
   mkTask({ id: "t1", title: "Harden webhook retry handling", clientSlug: "northwind", status: "DOING", priority: "HIGH", dueDate: atDays(2), startedAt: atDays(-1), commentCount: 3, subtaskCount: 4, subtaskDoneCount: 1, description: "Add idempotent retry handling for dropped delivery webhooks." }),
-  mkTask({ id: "t2", title: "Fix mobile nav overflow on iOS Safari", clientSlug: "speakify", status: "DOING", priority: "HIGH", dueDate: atDays(-1), startedAt: atDays(-2), commentCount: 1 }),
-  mkTask({ id: "t3", title: "Booking calendar timezone bug", clientSlug: "big-wedge-golf", status: "DOING", priority: "MEDIUM", dueDate: atDays(-2), startedAt: atDays(-3), commentCount: 5, subtaskCount: 2, subtaskDoneCount: 2 }),
-  mkTask({ id: "t4", title: "Add rounds-played analytics endpoint", clientSlug: "big-wedge-golf", status: "IN_REVIEW", priority: "MEDIUM", dueDate: atDays(1), commentCount: 2 }),
-  mkTask({ id: "t5", title: "Accessibility pass on onboarding forms", clientSlug: "speakify", status: "IN_REVIEW", priority: "LOW", dueDate: atDays(2) }),
+  mkTask({ id: "t2", title: "Fix mobile nav overflow on iOS Safari", clientSlug: "cadenza", status: "DOING", priority: "HIGH", dueDate: atDays(-1), startedAt: atDays(-2), commentCount: 1 }),
+  mkTask({ id: "t3", title: "Booking calendar timezone bug", clientSlug: "fairway-nine", status: "DOING", priority: "MEDIUM", dueDate: atDays(-2), startedAt: atDays(-3), commentCount: 5, subtaskCount: 2, subtaskDoneCount: 2 }),
+  mkTask({ id: "t4", title: "Add rounds-played analytics endpoint", clientSlug: "fairway-nine", status: "IN_REVIEW", priority: "MEDIUM", dueDate: atDays(1), commentCount: 2 }),
+  mkTask({ id: "t5", title: "Accessibility pass on onboarding forms", clientSlug: "cadenza", status: "IN_REVIEW", priority: "LOW", dueDate: atDays(2) }),
   mkTask({ id: "t6", title: "Migrate image uploads to R2", clientSlug: "northwind", status: "TODO", priority: "MEDIUM", dueDate: atDays(5), subtaskCount: 3 }),
-  mkTask({ id: "t7", title: "Cache PGA leaderboard responses", clientSlug: "big-wedge-golf", status: "TODO", priority: "MEDIUM", dueDate: atDays(3) }),
-  mkTask({ id: "t8", title: "Onboarding email drip copy", clientSlug: "speakify", status: "TODO", priority: "LOW", dueDate: atDays(7) }),
+  mkTask({ id: "t7", title: "Cache PGA leaderboard responses", clientSlug: "fairway-nine", status: "TODO", priority: "MEDIUM", dueDate: atDays(3) }),
+  mkTask({ id: "t8", title: "Onboarding email drip copy", clientSlug: "cadenza", status: "TODO", priority: "LOW", dueDate: atDays(7) }),
   mkTask({ id: "t9", title: "Dark-mode audit across dashboard", clientSlug: "northwind", status: "BACKLOG", priority: "LOW" }),
-  mkTask({ id: "t10", title: "Refactor auth middleware", clientSlug: "big-wedge-golf", status: "BACKLOG", priority: "MEDIUM" }),
-  mkTask({ id: "t11", title: "Ship v2 pricing page", clientSlug: "speakify", status: "DONE", priority: "HIGH", completedAt: todayAt(9, 40) }),
+  mkTask({ id: "t10", title: "Refactor auth middleware", clientSlug: "fairway-nine", status: "BACKLOG", priority: "MEDIUM" }),
+  mkTask({ id: "t11", title: "Ship v2 pricing page", clientSlug: "cadenza", status: "DONE", priority: "HIGH", completedAt: todayAt(9, 40) }),
   mkTask({ id: "t12", title: "Add e2e tests for onboarding", clientSlug: "northwind", status: "DONE", priority: "MEDIUM", completedAt: todayAt(11, 15) }),
 ];
 
@@ -164,10 +164,11 @@ const demoMyDay: MyDayDTO = {
     note: null,
   },
   suggestedWeekPlan:
-    "Land webhook retries for Northwind, clear the Speakify a11y review, and close the Big Wedge timezone bug.",
-  doing,
-  done: doneToday,
-  upcoming,
+    "Land webhook retries for Northwind, clear the Cadenza a11y review, and close the Fairway Nine timezone bug.",
+  // Keep the My Day card compact — the full sets still power the board + attention.
+  doing: doing.slice(0, 2),
+  done: doneToday.slice(0, 1),
+  upcoming: upcoming.slice(0, 3),
 };
 
 // ─── Attention aggregate ─────────────────────────────────────────────────────────
@@ -224,10 +225,10 @@ const demoCalendar = {
     },
     {
       id: "ev3",
-      summary: "Speakify weekly sync",
+      summary: "Cadenza weekly sync",
       start: todayAt(16, 30),
       end: todayAt(17, 0),
-      attendees: ["dana@speakify.io", "alex@gitwork.co.uk"],
+      attendees: ["dana@cadenza.io", "alex@gitwork.co.uk"],
       location: null,
       meetLink: "https://meet.google.com/demo-speak",
     },
@@ -242,7 +243,7 @@ const demoGmail = {
     { id: "m1", subject: "Re: webhook signature mismatch", from: "Priya Shah <priya@northwind.co>", snippet: "Thanks — the retry flow looks right. One question on…", date: atDays(0), unread: true },
     { id: "m2", subject: "Design tokens v3 — handoff", from: "Marco Bianchi <marco@gitwork.co.uk>", snippet: "Pushed the updated tokens, ready when you are.", date: atDays(0), unread: true },
     { id: "m3", subject: "Lunch before the design review?", from: "Sam Okafor <sam@gitwork.co.uk>", snippet: "Fancy grabbing something at 12:30?", date: atDays(0), unread: true },
-    { id: "m4", subject: "[Big Wedge] Staging deploy succeeded", from: "GitHub Actions <ci@github.com>", snippet: "Deployment to staging completed in 4m 12s.", date: atDays(-1), unread: false },
+    { id: "m4", subject: "[Fairway Nine] Staging deploy succeeded", from: "GitHub Actions <ci@github.com>", snippet: "Deployment to staging completed in 4m 12s.", date: atDays(-1), unread: false },
     { id: "m5", subject: "Your weekly Gitwork digest", from: "Foundry <no-reply@gitwork.co.uk>", snippet: "12 tasks moved, 3 shipped, 2 meetings summarised.", date: atDays(-1), unread: false },
   ],
 };
@@ -252,8 +253,8 @@ const demoGmail = {
 const demoActionItems = {
   items: [
     { id: "ai1", title: "Send Priya the updated webhook flow diagram", text: "Send Priya the updated webhook flow diagram after standup.", meetingId: "mtg1", meetingTitle: "Northwind — Sprint planning", meetingStartedAt: atDays(-1), clientSlug: "northwind", clientName: "Northwind Studio", hasTask: false },
-    { id: "ai2", title: "Confirm timezone handling with Big Wedge", text: "Confirm the booking timezone edge cases with the Big Wedge team.", meetingId: "mtg2", meetingTitle: "Big Wedge weekly", meetingStartedAt: atDays(-2), clientSlug: "big-wedge-golf", clientName: "Big Wedge Golf", hasTask: true },
-    { id: "ai3", title: "Draft pricing copy for review", text: "Draft the v2 pricing page copy for Dana to review.", meetingId: "mtg3", meetingTitle: "Speakify weekly sync", meetingStartedAt: atDays(-3), clientSlug: "speakify", clientName: "Speakify", hasTask: false },
+    { id: "ai2", title: "Confirm timezone handling with Fairway Nine", text: "Confirm the booking timezone edge cases with the Fairway Nine team.", meetingId: "mtg2", meetingTitle: "Fairway Nine weekly", meetingStartedAt: atDays(-2), clientSlug: "fairway-nine", clientName: "Fairway Nine", hasTask: true },
+    { id: "ai3", title: "Draft pricing copy for review", text: "Draft the v2 pricing page copy for Dana to review.", meetingId: "mtg3", meetingTitle: "Cadenza weekly sync", meetingStartedAt: atDays(-3), clientSlug: "cadenza", clientName: "Cadenza", hasTask: false },
   ],
 };
 
@@ -264,8 +265,8 @@ const demoSlack = {
   reason: "ok" as const,
   messages: [
     { id: "s1", author: "Priya", text: "Deploy to staging looks good ✅ — going to smoke-test the search flow now.", ts: atDays(0), clientName: "Northwind Studio", clientSlug: "northwind" },
-    { id: "s2", author: "Dana", text: "Can we ship the pricing page today? Marketing wants it live for the campaign.", ts: atDays(0), clientName: "Speakify", clientSlug: "speakify" },
-    { id: "s3", author: "Tom", text: "Leaderboard cache is live 🎉 response times down from 900ms to 40ms.", ts: atDays(0), clientName: "Big Wedge Golf", clientSlug: "big-wedge-golf" },
+    { id: "s2", author: "Dana", text: "Can we ship the pricing page today? Marketing wants it live for the campaign.", ts: atDays(0), clientName: "Cadenza", clientSlug: "cadenza" },
+    { id: "s3", author: "Tom", text: "Leaderboard cache is live 🎉 response times down from 900ms to 40ms.", ts: atDays(0), clientName: "Fairway Nine", clientSlug: "fairway-nine" },
     { id: "s4", author: "Priya", text: "Left a couple of comments on the webhook PR when you get a sec.", ts: atDays(0), clientName: "Northwind Studio", clientSlug: "northwind" },
   ],
 };
@@ -751,11 +752,11 @@ const demoSlackActivity = {
 const demoProposals = {
   proposals: [
     { id: "d1", title: "Northwind — API handover", clientName: "Northwind Studio", status: "ACCEPTED", updatedAt: atDays(-2), documentType: "HANDOVER", documentNumber: "HAND-014", ownerName: "Alex Rivera", sectionCount: 7 },
-    { id: "d2", title: "Speakify — Sprint 8 report", clientName: "Speakify", status: "SENT", updatedAt: atDays(-1), documentType: "REPORT", documentNumber: "REP-032", ownerName: "Alex Rivera", sectionCount: 5 },
-    { id: "d3", title: "Big Wedge — Booking integration brief", clientName: "Big Wedge Golf", status: "DRAFT", updatedAt: atDays(0), documentType: "BRIEF", documentNumber: "BRF-021", ownerName: "Marco Bianchi", sectionCount: 4 },
+    { id: "d2", title: "Cadenza — Sprint 8 report", clientName: "Cadenza", status: "SENT", updatedAt: atDays(-1), documentType: "REPORT", documentNumber: "REP-032", ownerName: "Alex Rivera", sectionCount: 5 },
+    { id: "d3", title: "Fairway Nine — Booking integration brief", clientName: "Fairway Nine", status: "DRAFT", updatedAt: atDays(0), documentType: "BRIEF", documentNumber: "BRF-021", ownerName: "Marco Bianchi", sectionCount: 4 },
     { id: "d4", title: "Northwind — Search rollout report", clientName: "Northwind Studio", status: "APPROVED", updatedAt: atDays(-6), documentType: "REPORT", documentNumber: "REP-031", ownerName: "Alex Rivera", sectionCount: 6 },
-    { id: "d5", title: "Speakify — Component library handover", clientName: "Speakify", status: "IN_REVIEW", updatedAt: atDays(-3), documentType: "HANDOVER", documentNumber: "HAND-013", ownerName: "Marco Bianchi", sectionCount: 9 },
-    { id: "d6", title: "Big Wedge — Data export notes", clientName: "Big Wedge Golf", status: "DRAFT", updatedAt: atDays(-4), documentType: "OTHER", documentNumber: null, ownerName: "Alex Rivera", sectionCount: 3 },
+    { id: "d5", title: "Cadenza — Component library handover", clientName: "Cadenza", status: "IN_REVIEW", updatedAt: atDays(-3), documentType: "HANDOVER", documentNumber: "HAND-013", ownerName: "Marco Bianchi", sectionCount: 9 },
+    { id: "d6", title: "Fairway Nine — Data export notes", clientName: "Fairway Nine", status: "DRAFT", updatedAt: atDays(-4), documentType: "OTHER", documentNumber: null, ownerName: "Alex Rivera", sectionCount: 3 },
   ],
 };
 
@@ -983,7 +984,7 @@ const demoMilestones = demoGanttMilestones.map((m) => ({
 const demoSupportClients = {
   clients: [
     { id: "sup-northwind", name: "Northwind Studio", slug: "northwind", status: "active", unreadCount: 3, supportDaysPerMonth: 5, supportDaysUsed: 2 },
-    { id: "sup-speakify", name: "Speakify", slug: "speakify", status: "active", unreadCount: 1, supportDaysPerMonth: 3, supportDaysUsed: 1 },
+    { id: "sup-cadenza", name: "Cadenza", slug: "cadenza", status: "active", unreadCount: 1, supportDaysPerMonth: 3, supportDaysUsed: 1 },
   ],
 };
 
@@ -994,9 +995,9 @@ const demoConversationsByClient: Record<string, unknown[]> = {
     { id: "cv3", clientId: "sup-northwind", source: "discord", customerLabel: "@dev_sam", subject: "Webhook docs unclear", preview: "The retry section doesn't say what the backoff is…", receivedAt: atDays(-1), unread: true, tags: ["docs"], sentiment: "neutral", status: "open", priority: "low", noteCount: 0 },
     { id: "cv4", clientId: "sup-northwind", source: "gmail", customerLabel: "ops@northwind.co", subject: "Thanks for the quick fix!", preview: "The download bug is gone — appreciate the fast turnaround.", receivedAt: atDays(-2), unread: false, tags: [], sentiment: "positive", status: "closed", priority: "normal", closedAt: atDays(-2), noteCount: 0 },
   ],
-  "sup-speakify": [
-    { id: "cv5", clientId: "sup-speakify", source: "reddit", customerLabel: "u/speakify_fan", subject: "Feature idea: shared playlists", preview: "Would be great to share a playlist with friends…", receivedAt: atDays(0), unread: true, tags: ["feature-request"], sentiment: "positive", status: "new", priority: "normal", noteCount: 0 },
-    { id: "cv6", clientId: "sup-speakify", source: "youtube", customerLabel: "YT comment", subject: "Crash on Android 12", preview: "App crashes when I open settings on my Pixel…", receivedAt: atDays(-1), unread: false, tags: ["bug", "android"], sentiment: "negative", status: "open", priority: "urgent", issueType: "Crash", noteCount: 2 },
+  "sup-cadenza": [
+    { id: "cv5", clientId: "sup-cadenza", source: "reddit", customerLabel: "u/cadenza_fan", subject: "Feature idea: shared playlists", preview: "Would be great to share a playlist with friends…", receivedAt: atDays(0), unread: true, tags: ["feature-request"], sentiment: "positive", status: "new", priority: "normal", noteCount: 0 },
+    { id: "cv6", clientId: "sup-cadenza", source: "youtube", customerLabel: "YT comment", subject: "Crash on Android 12", preview: "App crashes when I open settings on my Pixel…", receivedAt: atDays(-1), unread: false, tags: ["bug", "android"], sentiment: "negative", status: "open", priority: "urgent", issueType: "Crash", noteCount: 2 },
   ],
 };
 
@@ -1379,6 +1380,7 @@ const demoDevSignalAnalytics = {
   promotedToCode: 1,
   averageFinalScore: 74,
   outcomeLinks: 1,
+  modelStatus: { status: "provisional" as const, n: 12, overallValidity: 0.38 },
 };
 
 const demoDevSignalConfig = {

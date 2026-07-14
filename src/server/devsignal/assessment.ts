@@ -27,6 +27,7 @@ import {
   type DevSignalEvidence,
 } from "./stages/types";
 import { DEV_SIGNAL_AUDIT_EVENTS, recordAuditEvent } from "./audit";
+import { getCalibrationReport } from "./calibration-report";
 
 /** Days a minted /vet/[token] link stays valid. */
 const TOKEN_TTL_DAYS = 30;
@@ -277,6 +278,10 @@ export async function getAssessment(
       source: o.source,
       notes: o.notes,
       linkedAt: o.linkedAt?.toISOString() ?? null,
+      retained: o.retained,
+      tenureDays: o.tenureDays,
+      clientRating: o.clientRating,
+      churned: o.churned,
     })),
     dataRequests: requestRows.map((r) => ({
       id: r.id,
@@ -638,6 +643,10 @@ export async function createOutcomeLink(
     deliveryMetrics?: unknown;
     source?: string | null;
     notes?: string | null;
+    retained?: boolean | null;
+    tenureDays?: number | null;
+    clientRating?: number | null;
+    churned?: boolean | null;
     actorId?: string | null;
   },
 ): Promise<{ id: string } | null> {
@@ -656,6 +665,14 @@ export async function createOutcomeLink(
       deliveryMetrics: (args.deliveryMetrics ?? undefined) as Prisma.InputJsonValue | undefined,
       source: args.source ?? "manual",
       notes: args.notes ?? null,
+      retained: args.retained ?? null,
+      tenureDays: args.tenureDays ?? null,
+      clientRating: args.clientRating ?? null,
+      churned: args.churned ?? null,
+      outcomeRecordedAt:
+        args.retained != null || args.tenureDays != null || args.clientRating != null || args.churned != null
+          ? new Date()
+          : null,
       linkedAt: new Date(),
     },
     select: { id: true },
@@ -695,6 +712,10 @@ export async function getAssessmentAnalytics(workspaceId: string) {
       scoreCount += 1;
     }
   }
+  // Model calibration status (not the weights — just status/n/validity, safe for
+  // any DevSignal admin) so score views can honestly flag "provisional".
+  const calibration = await getCalibrationReport(workspaceId);
+
   return {
     total: rows.length,
     byStatus,
@@ -702,5 +723,10 @@ export async function getAssessmentAnalytics(workspaceId: string) {
     promotedToCode: promoted,
     averageFinalScore: scoreCount > 0 ? Math.round(scoreSum / scoreCount) : null,
     outcomeLinks,
+    modelStatus: {
+      status: calibration.status,
+      n: calibration.n,
+      overallValidity: calibration.overallValidity,
+    },
   };
 }

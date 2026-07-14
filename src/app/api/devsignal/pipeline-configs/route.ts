@@ -1,7 +1,12 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { assertCan, canManageDevSignal, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import {
+  assertCan,
+  canCalibrateDevSignal,
+  canManageDevSignal,
+  getEffectiveUserOrNull,
+} from "@/server/auth/effective-user";
 import { createPipelineConfig, listPipelineConfigs } from "@/server/devsignal/config-store";
 import { devSignalPipelineConfigSchema } from "@/server/validators";
 
@@ -20,7 +25,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await getEffectiveUserOrNull(request);
-    assertCan(user, canManageDevSignal, "create a DevSignal config");
+    // Writing weights changes how every candidate is scored → Super Admin only.
+    assertCan(user, canCalibrateDevSignal, "edit DevSignal scoring weights");
     const { workspace } = await ensureBaseRecords();
     const body = devSignalPipelineConfigSchema.parse(await request.json());
     const config = await createPipelineConfig(workspace.id, {

@@ -56,6 +56,10 @@ export interface DevSignalOutcomeLinkDTO {
   source: string | null;
   notes: string | null;
   linkedAt: string | null;
+  retained: boolean | null;
+  tenureDays: number | null;
+  clientRating: number | null;
+  churned: boolean | null;
 }
 
 export interface DevSignalAssessmentDTO {
@@ -194,4 +198,9 @@ export interface DevSignalAnalyticsDTO {
   promotedToCode: number;
   averageFinalScore: number | null;
   outcomeLinks: number;
+  modelStatus: {
+    status: "insufficient" | "provisional" | "calibrated";
+    n: number;
+    overallValidity: number | null;
+  };
 }

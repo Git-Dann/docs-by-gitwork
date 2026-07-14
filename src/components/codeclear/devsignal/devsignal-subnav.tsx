@@ -3,15 +3,20 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/format";
+import { usePermissions } from "@/hooks/use-permissions";
 
-const items = [
+const baseItems = [
   { href: "/app/codeclear/devsignal", label: "Assessments" },
   { href: "/app/codeclear/devsignal/challenges", label: "Challenge bank" },
 ] as const;
 
-/** Sub-nav within DevSignal: the assessment queue vs the challenge bank. */
+/** Sub-nav within DevSignal: assessments · challenge bank · (super-admin) model. */
 export function DevSignalSubNav() {
   const pathname = usePathname();
+  const { canCalibrateDevSignal } = usePermissions();
+  const items = canCalibrateDevSignal
+    ? [...baseItems, { href: "/app/codeclear/devsignal/model", label: "Model" }]
+    : [...baseItems];
   return (
     <div className="flex flex-wrap items-center gap-2">
       {items.map((item) => {

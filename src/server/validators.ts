@@ -1466,6 +1466,11 @@ export const devSignalOutcomeLinkSchema = z.object({
   deliveryMetrics: z.record(z.string(), z.unknown()).optional(),
   source: z.string().max(120).optional(),
   notes: z.string().max(4000).optional(),
+  // Structured outcome signals — the criterion the score is validated against.
+  retained: z.boolean().optional(),
+  tenureDays: z.number().int().min(0).max(20_000).optional(),
+  clientRating: z.number().int().min(1).max(5).optional(),
+  churned: z.boolean().optional(),
 });
 
 export const devSignalPipelineConfigSchema = z.object({

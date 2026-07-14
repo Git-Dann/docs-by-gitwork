@@ -5,7 +5,9 @@ import {
   createDevSignalAssessment,
   createDevSignalChallenge,
   createDevSignalOutcomeLink,
+  createDevSignalPipelineConfig,
   getDevSignalAnalytics,
+  getDevSignalCalibration,
   getDevSignalAssessment,
   listDevSignalAssessments,
   listDevSignalChallenges,
@@ -43,6 +45,27 @@ export function useDevSignalAnalytics() {
 
 export function useDevSignalConfigs() {
   return useQuery({ queryKey: [KEY, "configs"], queryFn: listDevSignalConfigs, staleTime: 1000 * 60 });
+}
+
+export function useDevSignalCalibration(enabled = true) {
+  return useQuery({
+    queryKey: [KEY, "calibration"],
+    queryFn: getDevSignalCalibration,
+    enabled,
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useCreateDevSignalPipelineConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof createDevSignalPipelineConfig>[0]) =>
+      createDevSignalPipelineConfig(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [KEY, "configs"] });
+      qc.invalidateQueries({ queryKey: [KEY, "calibration"] });
+    },
+  });
 }
 
 export function useCreateDevSignalAssessment() {
