@@ -5,7 +5,7 @@
 // requests, notifications. Tool-call success paths hit the database and run
 // end-to-end against a real deploy in Sitting 2's manual verification step.
 
-import { dispatch } from "../src/server/mcp/handler";
+import { dispatch, _testing } from "../src/server/mcp/handler";
 import type { EffectiveUser } from "../src/server/auth/effective-user";
 
 const FAKE_USER: EffectiveUser = {
@@ -88,6 +88,32 @@ console.log("tools/list");
   } else {
     check("tools/list returned a result", false, JSON.stringify(res));
   }
+}
+
+console.log("stripHeavyMedia (no base64 avatar bloat)");
+{
+  const bigDataUrl = "data:image/png;base64," + "A".repeat(100_000);
+  const input = {
+    tasks: [
+      {
+        id: "t1",
+        title: "Do thing",
+        assignees: [{ id: "u1", name: "Ada", avatarUrl: bigDataUrl }],
+        createdBy: { id: "u2", name: "Bob", avatarUrl: bigDataUrl },
+      },
+    ],
+    client: { name: "Acme", logoUri: bigDataUrl },
+  };
+  const cleaned = _testing.stripHeavyMedia(input) as typeof input;
+  const serialized = JSON.stringify(cleaned);
+  check("drops avatarUrl / logoUri keys", !serialized.includes("avatarUrl") && !serialized.includes("logoUri"));
+  check("no base64 data: URL survives", !serialized.includes("data:image"));
+  check("keeps non-media fields", cleaned.tasks[0].title === "Do thing" && cleaned.client.name === "Acme");
+  check("small payload after strip", serialized.length < 1000, `got ${serialized.length}`);
+
+  // Dates must survive (walker leaves non-plain objects alone).
+  const withDate = _testing.stripHeavyMedia({ when: new Date("2026-07-14T00:00:00.000Z") }) as { when: Date };
+  check("preserves Date objects", withDate.when instanceof Date);
 }
 
 console.log("notifications");
