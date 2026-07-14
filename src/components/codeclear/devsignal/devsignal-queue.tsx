@@ -76,10 +76,12 @@ export function DevSignalQueue() {
         <StatCard n="05" label="Avg score" value={a?.averageFinalScore ?? "—"} />
       </div>
 
+      {a?.funnel && a.funnel[0]?.n > 0 && <CompletionFunnel funnel={a.funnel} />}
+
       {/* Queue — starter-style candidate cards (matches /app/starters) */}
       <div>
         <p className="widget-data-label mb-3">
-          <span className="text-[var(--brand-700)]">06</span>
+          <span className="text-[var(--brand-700)]">07</span>
           {" // Assessment queue"}
         </p>
         {assessments.isLoading ? (
@@ -111,7 +113,7 @@ function PipelineConfigCard() {
   const weights = def.stageWeights;
   const stages = def.stageOrder.length ? def.stageOrder : Object.keys(weights);
   return (
-    <WidgetCard number="07" name="Pipeline config">
+    <WidgetCard number="08" name="Pipeline config">
       <p className="text-xs text-[var(--text-4)]">
         {def.name} · {def.version} — snapshotted onto every assessment so historical scores stay
         interpretable. Editing UI is coming; per-client configs are set via the API today.
@@ -126,6 +128,34 @@ function PipelineConfigCard() {
             {def.blockingRules[s] ? <span aria-label="blocking gate">🔒</span> : null}
           </span>
         ))}
+      </div>
+    </WidgetCard>
+  );
+}
+
+function CompletionFunnel({ funnel }: { funnel: Array<{ key: string; label: string; n: number }> }) {
+  const start = funnel[0]?.n || 1;
+  return (
+    <WidgetCard number="06" name="Completion funnel">
+      <p className="text-xs text-[var(--text-4)]">
+        Where candidates drop off across the flow. A big fall between two steps is friction worth
+        fixing.
+      </p>
+      <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
+        {funnel.map((f, i) => {
+          const pct = Math.round((f.n / start) * 100);
+          const prev = i > 0 ? funnel[i - 1].n : f.n;
+          const dropped = prev - f.n;
+          return (
+            <div key={f.key} className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-2.5">
+              <p className="widget-data-label">{f.label}</p>
+              <p className="mt-1 font-mono text-lg text-[var(--text-1)]">{f.n}</p>
+              <p className="font-mono text-[10px] text-[var(--text-4)]">
+                {pct}%{i > 0 && dropped > 0 ? ` · −${dropped}` : ""}
+              </p>
+            </div>
+          );
+        })}
       </div>
     </WidgetCard>
   );

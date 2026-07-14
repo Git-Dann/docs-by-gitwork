@@ -203,4 +203,6 @@ export interface DevSignalAnalyticsDTO {
     n: number;
     overallValidity: number | null;
   };
+  /** Completion funnel — how many assessments reached each step (drop-off). */
+  funnel: Array<{ key: string; label: string; n: number }>;
 }

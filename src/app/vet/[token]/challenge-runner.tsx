@@ -176,7 +176,8 @@ export function ChallengeRunner({
         </div>
       </div>
 
-      <div className="flex h-72 overflow-hidden rounded-lg border border-[rgba(255,255,255,0.12)] bg-[#0C0C18] font-mono text-sm focus-within:border-[#6B52FF]">
+      {/* 16px on mobile stops iOS auto-zooming into the editor; 14px from sm up. */}
+      <div className="flex h-64 overflow-hidden rounded-lg border border-[rgba(255,255,255,0.12)] bg-[#0C0C18] font-mono text-[16px] focus-within:border-[#6B52FF] sm:h-72 sm:text-sm">
         <div
           ref={gutterRef}
           aria-hidden
@@ -237,7 +238,7 @@ export function ChallengeRunner({
         </div>
       )}
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={runTests}
@@ -254,7 +255,7 @@ export function ChallengeRunner({
         >
           {submitting ? "Submitting…" : "Submit solution"}
         </button>
-        <span className="text-xs text-[#9a978f]">Run your tests before submitting.</span>
+        <span className="w-full text-xs text-[#9a978f] sm:w-auto">Run your tests before submitting.</span>
       </div>
     </div>
   );

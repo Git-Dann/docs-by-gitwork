@@ -1381,6 +1381,14 @@ const demoDevSignalAnalytics = {
   averageFinalScore: 74,
   outcomeLinks: 1,
   modelStatus: { status: "provisional" as const, n: 12, overallValidity: 0.38 },
+  funnel: [
+    { key: "invited", label: "Invited", n: 5 },
+    { key: "consented", label: "Consented", n: 5 },
+    { key: "challenge", label: "Challenge", n: 4 },
+    { key: "video", label: "Intro", n: 3 },
+    { key: "identity", label: "Identity", n: 3 },
+    { key: "submitted", label: "Submitted", n: 3 },
+  ],
 };
 
 const demoDevSignalConfig = {

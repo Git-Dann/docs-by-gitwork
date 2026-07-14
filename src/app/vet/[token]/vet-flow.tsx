@@ -53,14 +53,33 @@ async function sendJson<T>(url: string, method: string, body: unknown): Promise<
   return json as T;
 }
 
+/** Resume a returning candidate at the first step they haven't completed. */
+function resumeStep(s: PublicVetSession): Step {
+  if (s.submitted) return "done";
+  if (!s.consentGiven) return "welcome";
+  if (!s.githubConnected) return "intake";
+  if (!s.challengeSubmitted) return "challenge";
+  if (!s.videoSubmitted) return "video";
+  if (!s.identitySubmitted) return "identity";
+  return "done";
+}
+
 export function VetFlow({ token }: { token: string }) {
   const [session, setSession] = useState<PublicVetSession | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("welcome");
+  const didInit = useRef(false);
 
   useEffect(() => {
     getJson<{ session: PublicVetSession }>(`/api/vet/${token}`)
-      .then((d) => setSession(d.session))
+      .then((d) => {
+        setSession(d.session);
+        // On first load only, jump a returning candidate to where they left off.
+        if (!didInit.current) {
+          didInit.current = true;
+          setStep(resumeStep(d.session));
+        }
+      })
       .catch((e) => setLoadError(e.message));
   }, [token]);
 
