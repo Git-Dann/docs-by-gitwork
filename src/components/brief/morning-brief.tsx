@@ -20,6 +20,7 @@ import { XMarkIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { useBrief } from "@/hooks/use-brief";
 import { EditorialRow, Stamp } from "@/components/desk/desk-shared";
+import { SourceIcon, sourceKindFromLabel } from "@/components/brief/source-icons";
 import type { Brief, BriefEvent, BriefTodo, BriefUpdate } from "@/types/brief";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
@@ -108,7 +109,7 @@ function BriefHero({ brief }: { brief: Brief }) {
       </span>
 
       {/* Painting frame — real oil painting, gradient fallback if it can't load. */}
-      <div className="relative mx-auto aspect-[1160/600] w-full overflow-hidden rounded-[10px] sm:w-[calc(100%-96px)]">
+      <div className="relative mx-auto aspect-[1160/600] w-full overflow-hidden rounded-[14px] shadow-[0_24px_70px_-28px_rgba(10,13,18,0.5)] ring-1 ring-inset ring-white/10 sm:w-[calc(100%-96px)]">
         <div
           aria-hidden
           className="absolute inset-0"
@@ -126,22 +127,28 @@ function BriefHero({ brief }: { brief: Brief }) {
             onError={() => setImgOk(false)}
           />
         ) : null}
-        {/* Legibility scrim under the title. */}
+        {/* Soft legibility scrim — an even darken + centre vignette so white text keeps
+            contrast on any painting, light or dark. */}
         <div
           aria-hidden
           className="absolute inset-0"
-          style={{ background: "radial-gradient(ellipse at center, rgba(0,0,0,0.28) 0%, rgba(0,0,0,0.12) 60%, transparent 100%)" }}
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(8,12,24,0.34) 0%, rgba(8,12,24,0.20) 38%, rgba(8,12,24,0.48) 100%), radial-gradient(120% 85% at 50% 46%, rgba(0,0,0,0.16) 0%, rgba(0,0,0,0.46) 100%)",
+          }}
         />
         <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+          {/* Brand accent bar — the pop of Gitwork Blue, kept off the type for contrast. */}
+          <span aria-hidden className="mb-4 h-[3px] w-10 rounded-full bg-[var(--brand-500)] shadow-[0_1px_8px_rgba(0,0,0,0.4)]" />
           <span
-            className="text-[clamp(1.4rem,4cqw,2.6rem)] italic leading-none text-white/90"
-            style={{ fontFamily: "var(--font-display)", textShadow: "0 2px 20px rgba(0,0,0,0.35)" }}
+            className="text-[clamp(1.4rem,4cqw,2.6rem)] italic leading-none text-white/85"
+            style={{ fontFamily: "var(--font-display)", textShadow: "0 2px 24px rgba(0,0,0,0.55)" }}
           >
             The
           </span>
           <h1
-            className="text-[clamp(2.6rem,9vw,5.5rem)] leading-[0.95] tracking-[-0.01em]"
-            style={{ fontFamily: "var(--font-display)", color: "var(--brand-400)", textShadow: "0 2px 30px rgba(0,0,0,0.4)" }}
+            className="text-[clamp(2.6rem,9vw,5.5rem)] leading-[0.95] tracking-[-0.01em] text-white"
+            style={{ fontFamily: "var(--font-display)", textShadow: "0 3px 34px rgba(0,0,0,0.6), 0 1px 3px rgba(0,0,0,0.5)" }}
           >
             {brief.weekday} Brief
           </h1>
@@ -365,6 +372,13 @@ function UpdatesRow({ updates }: { updates: BriefUpdate[] }) {
             </span>
             <div className="min-w-0">
               <div className="flex flex-wrap items-baseline gap-x-2">
+                <SourceIcon
+                  kind={u.source === "slack" ? "slack" : u.source === "calendar" ? "gcal" : "scribe"}
+                  className={cn(
+                    "h-[15px] w-[15px] translate-y-[2px]",
+                    u.source === "scribe" && "text-[var(--text-4)]",
+                  )}
+                />
                 {u.href ? (
                   <Link href={u.href} className="text-[16px] font-semibold text-[var(--text-1)] hover:underline">
                     {u.title}
@@ -506,21 +520,26 @@ function TagLabel({ label, active }: { label: string; active?: boolean }) {
 }
 
 function BriefFooter({ sources }: { sources: string[] }) {
-  const list =
-    sources.length <= 1
-      ? sources.join("")
-      : `${sources.slice(0, -1).join(", ")} and ${sources[sources.length - 1]}`;
   return (
     <footer className="mt-16 border-t border-[var(--border-2)] pt-10 text-center">
-      <p className="text-[15px] text-[var(--text-3)]" style={{ fontFamily: "var(--font-display)" }}>
+      <p className="text-[15px] leading-relaxed text-[var(--text-3)]" style={{ fontFamily: "var(--font-display)" }}>
         <span className="text-[var(--text-4)]">Assembled for you by </span>
         <span className="font-medium text-[var(--text-1)]">Foundry</span>
-        {list ? (
-          <>
-            <span className="text-[var(--text-4)]"> using your </span>
-            <span className="italic text-[var(--text-2)]">{list}</span>
-          </>
-        ) : null}
+        {sources.length ? <span className="text-[var(--text-4)]"> using your </span> : null}
+        {sources.map((s, i) => (
+          <span key={s} className="whitespace-nowrap">
+            {i === 0 ? null : i === sources.length - 1 ? (
+              <span className="text-[var(--text-4)]"> and </span>
+            ) : (
+              <span className="text-[var(--text-4)]">, </span>
+            )}
+            <SourceIcon
+              kind={sourceKindFromLabel(s)}
+              className="mr-1 inline-block h-[15px] w-[15px] align-[-3px] text-[var(--text-3)]"
+            />
+            <span className="text-[var(--text-2)]">{s}</span>
+          </span>
+        ))}
         <span className="text-[var(--text-4)]">.</span>
       </p>
       <p className="mt-2 text-[11px] tracking-[0.3px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
