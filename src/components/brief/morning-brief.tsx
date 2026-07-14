@@ -133,22 +133,25 @@ function BriefHero({ brief }: { brief: Brief }) {
 
   return (
     <header className="relative pt-14 sm:pt-16">
-      {/* Vertical mono rails — date left, time right, hugging the painting. */}
-      <span
-        className="pointer-events-none absolute left-0 top-1/2 hidden -translate-y-1/2 text-[13px] tracking-[0.15em] text-[var(--text-3)] sm:block"
-        style={{ fontFamily: "var(--font-mono)", writingMode: "vertical-rl", transform: "translateY(-50%) rotate(180deg)" }}
-      >
-        {dateRail}
-      </span>
-      <span
-        className="pointer-events-none absolute right-0 top-1/2 hidden -translate-y-1/2 text-[13px] tracking-[0.15em] text-[var(--text-3)] sm:block"
-        style={{ fontFamily: "var(--font-mono)", writingMode: "vertical-rl" }}
-      >
-        {timeRail}
-      </span>
+      {/* Painting + vertical rails, wrapped so both rails centre on the artwork
+          (and share one vertical centre line — no double-translate). */}
+      <div className="relative mx-auto w-full sm:w-[calc(100%-96px)]">
+        {/* Vertical mono rails — date left, time right, centred on the painting. */}
+        <span
+          className="pointer-events-none absolute right-full top-1/2 mr-3 hidden text-[13px] tracking-[0.15em] text-[var(--text-3)] sm:block"
+          style={{ fontFamily: "var(--font-mono)", writingMode: "vertical-rl", transform: "translateY(-50%) rotate(180deg)" }}
+        >
+          {dateRail}
+        </span>
+        <span
+          className="pointer-events-none absolute left-full top-1/2 ml-3 hidden text-[13px] tracking-[0.15em] text-[var(--text-3)] sm:block"
+          style={{ fontFamily: "var(--font-mono)", writingMode: "vertical-rl", transform: "translateY(-50%)" }}
+        >
+          {timeRail}
+        </span>
 
-      {/* Painting frame — real oil painting, gradient fallback if it can't load. */}
-      <div className="relative mx-auto aspect-[1160/600] w-full overflow-hidden rounded-[14px] shadow-[0_24px_70px_-28px_rgba(10,13,18,0.5)] ring-1 ring-inset ring-white/10 sm:w-[calc(100%-96px)]">
+        {/* Painting frame — real oil painting, gradient fallback if it can't load. */}
+        <div className="relative aspect-[1160/600] w-full overflow-hidden rounded-[14px] shadow-[0_24px_70px_-28px_rgba(10,13,18,0.5)] ring-1 ring-inset ring-white/10">
         <div
           aria-hidden
           className="absolute inset-0"
@@ -209,8 +212,9 @@ function BriefHero({ brief }: { brief: Brief }) {
           </h1>
         </div>
 
-        {/* Cutting-mat ruler along the bottom edge. */}
-        <HeroRuler className="absolute inset-x-5 bottom-2.5" />
+          {/* Cutting-mat ruler along the bottom edge. */}
+          <HeroRuler className="absolute inset-x-5 bottom-2.5" />
+        </div>
       </div>
 
       {/* Blurb · dotted leader · caption (editorial byline row). */}
