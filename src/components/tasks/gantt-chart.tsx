@@ -112,6 +112,9 @@ export function GanttChart({
   const [scale, setScale] = useState<GanttScale>(initialScale);
   // Section ids whose task list is expanded. Default: all collapsed (compact rows).
   const [open, setOpen] = useState<Set<string>>(new Set());
+  // Section ids whose task list shows every task instead of the first 6 —
+  // the "+N more" row was previously static text with no way to reveal them.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // Slip overlay on by default (internal). Toggled from the controls bar.
   const [showSlip, setShowSlip] = useState(true);
   const today = useMemo(() => new Date(), []);
@@ -392,7 +395,8 @@ export function GanttChart({
                 const left = Math.max(daysBetween(model.domainStart, start) * pxPerDay, 0);
                 const width = Math.max((daysBetween(start, end) + 1) * pxPerDay, 6);
                 const t = tone(b.color);
-                const shown = b.tasks.slice(0, 6);
+                const isExpanded = expanded.has(b.id);
+                const shown = isExpanded ? b.tasks : b.tasks.slice(0, 6);
                 const dueFmt = fmtShort(b.endDate);
                 const isOpen = open.has(b.id);
                 // Slip = the gap between a block's planned end (bar right edge) and
@@ -482,8 +486,32 @@ export function GanttChart({
                               </li>
                             ))}
                             {b.tasks.length > shown.length ? (
-                              <li className="text-[10px] text-[var(--text-4)]">
-                                +{b.tasks.length - shown.length} more
+                              <li>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpanded((prev) => new Set(prev).add(b.id))
+                                  }
+                                  className="text-[10px] font-medium text-[var(--brand-700)] hover:underline"
+                                >
+                                  +{b.tasks.length - shown.length} more
+                                </button>
+                              </li>
+                            ) : isExpanded && b.tasks.length > 6 ? (
+                              <li>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpanded((prev) => {
+                                      const n = new Set(prev);
+                                      n.delete(b.id);
+                                      return n;
+                                    })
+                                  }
+                                  className="text-[10px] font-medium text-[var(--text-4)] hover:underline"
+                                >
+                                  Show less
+                                </button>
                               </li>
                             ) : null}
                           </ul>
