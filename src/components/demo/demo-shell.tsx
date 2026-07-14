@@ -92,6 +92,11 @@ export function DemoShell({
     return window.localStorage.getItem(KEY);
   });
 
+  // Swap "Foundry" for the white-label brand in visible copy (title / subtitle / banner) so the
+  // client's name shows instead — e.g. "Foundry HQ" → "SWG Platform HQ". The "Powered by Foundry"
+  // credit under the wordmark deliberately keeps the Foundry name.
+  const withBrand = (s: string) => (brand ? s.replace(/Foundry/g, brand) : s);
+
   // Reroute the reused components' hardcoded /app/* links to their /demo equivalents.
   const handleDemoNav = useDemoLinkReroute();
 
@@ -105,8 +110,8 @@ export function DemoShell({
           {/* ── Sidebar (mirrors the real app shell) ── */}
           <aside className="hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_38%)] lg:flex lg:min-h-0">
             <div className="flex h-full min-h-0 w-full flex-col">
-              <div className="flex shrink-0 items-center justify-center border-b border-[var(--border-2)] px-6 pb-5 pt-7">
-                <Link href="/demo" aria-label="All demos" className="block text-center" suppressHydrationWarning>
+              <div className="flex shrink-0 items-center justify-start border-b border-[var(--border-2)] px-6 pb-5 pt-7">
+                <Link href="/demo" aria-label="All demos" className="block text-left" suppressHydrationWarning>
                   {brand ? (
                     <span className="block">
                       <span className="block font-[family-name:var(--font-display)] text-[26px] leading-[1.1] tracking-[-0.5px] text-[var(--text-1)]">
@@ -139,7 +144,7 @@ export function DemoShell({
                     const inner = (
                       <>
                         <Icon className="h-5 w-5 shrink-0" />
-                        {label}
+                        {withBrand(label)}
                       </>
                     );
                     return href ? (
@@ -182,16 +187,16 @@ export function DemoShell({
                 >
                   Demo
                 </span>
-                Foundry — the developer experience, running on sample data.
+                {withBrand("Foundry — the developer experience, running on sample data.")}
               </p>
             </div>
 
             <header className="hidden border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-0)_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8 lg:block">
               <div className="max-w-4xl">
                 <h1 className="text-[44px] font-normal leading-[1.15] tracking-[-0.03em] text-[var(--text-1)]">
-                  {title}
+                  {withBrand(title)}
                 </h1>
-                <p className="mt-1.5 text-sm leading-6 text-[var(--text-3)]">{subtitle}</p>
+                <p className="mt-1.5 text-sm leading-6 text-[var(--text-3)]">{withBrand(subtitle)}</p>
               </div>
             </header>
 
