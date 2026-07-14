@@ -19,6 +19,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   ArrowDownTrayIcon,
+  ArrowLeftIcon,
   ArrowTopRightOnSquareIcon,
   ArrowUturnLeftIcon,
   ArrowUturnRightIcon,
@@ -35,6 +36,7 @@ import {
   PlayIcon,
   PlusIcon,
   QueueListIcon,
+  Squares2X2Icon,
   TrashIcon,
 } from "@heroicons/react/24/outline";
 import dynamic from "next/dynamic";
@@ -72,13 +74,11 @@ import type { DocumentType, ProposalDocument, ProposalSection, SectionKey } from
 type EditorTab = "overview" | "builder";
 type SaveState = "idle" | "saving" | "saved" | "error";
 
-const tabs: Array<{ id: EditorTab; label: string }> = [
-  { id: "overview", label: "Overview" },
-  { id: "builder", label: "Builder" },
-];
-
+// Builder-first: the editor opens straight into the canvas. Overview lives behind the header
+// "Document details" button (a slide-over), not a primary tab — so a missing/unknown ?tab= lands
+// on the builder, and only an explicit ?tab=overview opens the overview.
 function parseEditorTab(value: string | null): EditorTab {
-  return value === "builder" ? "builder" : "overview";
+  return value === "overview" ? "overview" : "builder";
 }
 
 function loadProposalBuilderPanel() {
@@ -327,10 +327,11 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       setActiveTab(tab);
 
       const nextParams = new URLSearchParams(searchParams.toString());
+      // Builder is the default view → clear the param for builder, write it only for overview.
       if (tab === "overview") {
-        nextParams.delete("tab");
-      } else {
         nextParams.set("tab", tab);
+      } else {
+        nextParams.delete("tab");
       }
 
       const nextQuery = nextParams.toString();
@@ -1173,25 +1174,56 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           </div>
         </div>
 
-        <div className="border-t border-[var(--border-2)] px-4 py-4 sm:px-6">
-          <div className="inline-flex items-center rounded-[10px] bg-[var(--surface-1)] p-1">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                className={cn(
-                  "inline-flex h-[36px] min-w-[92px] items-center justify-center rounded-[6px] px-4 text-sm font-medium transition outline-none",
-                  "focus-visible:ring-2 focus-visible:ring-[var(--brand-500)] focus-visible:ring-offset-1 focus-visible:ring-offset-white",
-                  activeTab === tab.id
-                    ? "bg-[var(--brand-focus-ring)] text-[var(--brand-700)]"
-                    : "bg-transparent text-[var(--text-3)] hover:text-[var(--text-1)]",
-                )}
-                onClick={() => handleTabChange(tab.id)}
-              >
-                {tab.label}
-              </button>
-            ))}
+        <div className="flex items-center justify-between gap-3 border-t border-[var(--border-2)] px-4 py-3 sm:px-6">
+          {/* Per-document theme — live-updates the canvas via the draft/autosave path. */}
+          <div className="inline-flex items-center gap-0.5 rounded-[8px] border border-[var(--border-2)] bg-white p-0.5">
+            <span className="px-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+              Theme
+            </span>
+            {(["foundry", "gitwork"] as const).map((theme) => {
+              const themeActive = (draft.metadata.docTheme ?? "foundry") === theme;
+              return (
+                <button
+                  key={theme}
+                  type="button"
+                  onClick={() =>
+                    updateDraft({ ...draft, metadata: { ...draft.metadata, docTheme: theme } })
+                  }
+                  aria-pressed={themeActive}
+                  className={cn(
+                    "rounded-[6px] px-2.5 py-1 text-xs font-medium capitalize transition",
+                    themeActive
+                      ? "bg-[var(--brand-200)] text-[var(--brand-700)]"
+                      : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+                  )}
+                >
+                  {theme}
+                </button>
+              );
+            })}
           </div>
+          <button
+            type="button"
+            onClick={() => handleTabChange(activeTab === "overview" ? "builder" : "overview")}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-sm font-medium transition",
+              activeTab === "overview"
+                ? "border-[var(--brand-600)] bg-[var(--brand-200)] text-[var(--brand-700)]"
+                : "border-[var(--border-2)] bg-white text-[var(--text-2)] hover:border-[var(--border-1)] hover:text-[var(--text-1)]",
+            )}
+          >
+            {activeTab === "overview" ? (
+              <>
+                <ArrowLeftIcon className="h-4 w-4" />
+                Back to editor
+              </>
+            ) : (
+              <>
+                <Squares2X2Icon className="h-4 w-4" />
+                Document details
+              </>
+            )}
+          </button>
         </div>
       </section>
 

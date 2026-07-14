@@ -638,6 +638,13 @@ export interface ProposalMetadata {
    * explicitly to force the review track on or off regardless of type.
    */
   approvalTrackEnabled?: boolean;
+  /**
+   * Per-document visual theme. `"foundry"` (default when undefined) is the cream + DM Serif +
+   * mono-body statement look; `"gitwork"` is the brand-guide look — cream + Fraunces headings +
+   * Inter sans body + purple accent, with a navy cover/running header. Drives `data-doc-theme`
+   * on `.proposal-document`.
+   */
+  docTheme?: "foundry" | "gitwork";
 }
 
 export interface ProposalDocument {

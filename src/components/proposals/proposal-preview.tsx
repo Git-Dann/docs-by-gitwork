@@ -45,12 +45,14 @@ export function ProposalPreview({
   const resolved = editable ? proposal : resolveProposalMergeVariables(proposal);
   const sortedSections = [...resolved.sections].sort((left, right) => left.sortOrder - right.sortOrder);
   const visibleSections = sortedSections.filter((section) => section.isVisible);
+  // Per-document visual theme — drives the token/font overrides in globals.css. Default Foundry.
+  const docTheme = resolved.metadata.docTheme ?? "foundry";
 
   const documentBody = pageMode === "paged" ? (
     // Transparent backdrop (overrides .proposal-document's cream) so the neutral page canvas shows
     // in the gaps between sheets — otherwise cream-on-cream hides the shadow and the pages blur
     // together. Each .doc-a4-page paints its own cream, so the sheets still read as paper.
-    <article className="proposal-document mx-auto w-full max-w-[210mm]" style={{ background: "transparent" }}>
+    <article className="proposal-document mx-auto w-full max-w-[210mm]" data-doc-theme={docTheme} style={{ background: "transparent" }}>
       <PagedDocument
         proposal={resolved}
         sections={visibleSections}
@@ -63,6 +65,7 @@ export function ProposalPreview({
     </article>
   ) : (
     <article
+      data-doc-theme={docTheme}
       className={
         frame
           ? "proposal-document mx-auto w-full max-w-[860px] rounded-[10px] border border-[var(--doc-line-soft)] p-5 shadow-[var(--shadow-sm)] sm:p-8 lg:p-12 print:max-w-none print:rounded-none print:border-0 print:p-0 print:shadow-none"

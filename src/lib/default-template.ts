@@ -48,21 +48,6 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
     },
   },
   {
-    key: "product_overview",
-    title: "Product Overview",
-    description: "What the platform is, who it is for, and why it matters.",
-    data: {
-      platformDescription:
-        "Foundry by Gitwork is a template-driven platform for generating client-ready proposals and documentation from structured content blocks.",
-      audience:
-        "Built for delivery leads, operations teams, and account managers who need consistent and auditable proposal output.",
-      valueProposition:
-        "Reduce proposal turnaround time while increasing quality and reusability across projects.",
-      platformsSupported: "Web (Desktop-first), responsive mobile editing and preview",
-      workflowGraphic: "",
-    },
-  },
-  {
     key: "objectives",
     title: "Objectives",
     description: "Goals and outcomes for the proposal delivery.",
@@ -112,14 +97,6 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
           callout: "Designed for low-friction handover between teams.",
         },
       ],
-    },
-  },
-  {
-    key: "timeline",
-    title: "Timeline",
-    description: "Phases, duration, and deliverables.",
-    data: {
-      viewMode: "LIST",
     },
   },
   {
@@ -237,36 +214,6 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
     data: {
       headline: "Ready to proceed?",
       body: "Choose a next step to keep implementation momentum.",
-    },
-  },
-  {
-    key: "supporting_links_assets",
-    title: "Supporting Links & Assets",
-    description: "External references, decks, and documents.",
-    data: {
-      notes: "Reference material and linked assets used in this proposal.",
-    },
-  },
-  {
-    key: "assumptions",
-    title: "Assumptions",
-    description: "Delivery assumptions that shape scope and price.",
-    data: {
-      items: [
-        "Client stakeholders will provide feedback within two business days.",
-        "Existing brand assets and copy will be provided before phase two.",
-      ],
-    },
-  },
-  {
-    key: "out_of_scope",
-    title: "Out of Scope",
-    description: "Explicitly excluded work items for this proposal.",
-    data: {
-      items: [
-        "Third-party procurement negotiations",
-        "Custom BI dashboard implementation",
-      ],
     },
   },
   {

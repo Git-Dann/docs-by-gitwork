@@ -1340,6 +1340,37 @@ button {
   color: var(--doc-accent);
 }
 
+/* ── Gitwork theme (opt-in per doc via data-doc-theme="gitwork") ──────────────────────────────
+   The brand-guide look: warmer cream paper, purple accent, white card tiles, navy dark tile — and
+   crucially a SANS body (Inter) with Fraunces headings, for a more readable/accessible document
+   than the Foundry mono-body statement style. Only the --doc-* tokens + fonts change; every block
+   re-derives because the app tokens alias --doc-* above. Default (no attribute) stays Foundry. */
+.proposal-document[data-doc-theme="gitwork"] {
+  --doc-paper: #f2ede4;
+  --doc-panel: #ffffff;
+  --doc-panel-dark: #0c0c18;
+  --doc-ink: #1a1a1e;
+  --doc-ink-soft: #3b3b40;
+  --doc-muted: #68686b;
+  --doc-line: rgba(0, 0, 0, 0.12);
+  --doc-line-soft: rgba(0, 0, 0, 0.07);
+  --doc-accent: #6b52ff;
+  --doc-accent-tint: rgba(107, 82, 255, 0.12);
+  /* Remap the two font vars WITHIN the doc scope so every block re-derives with no per-file edits:
+     headings/figures (var(--font-display)) → Fraunces; body AND the mono-caps labels/eyebrows/
+     table headers (var(--font-mono)) → Inter. Gitwork's brand uses Inter for both body and the
+     uppercase-tracked labels, so this is correct — nothing outside .proposal-document is touched. */
+  --font-display: var(--font-fraunces);
+  --font-mono: var(--font-sans);
+  font-family: var(--font-sans);
+}
+.proposal-document[data-doc-theme="gitwork"] h1,
+.proposal-document[data-doc-theme="gitwork"] h2,
+.proposal-document[data-doc-theme="gitwork"] h3,
+.proposal-document[data-doc-theme="gitwork"] h4 {
+  font-weight: 600;
+}
+
 /* On-screen "paged" A4 view — real per-page containers, used everywhere a document renders
    (editor canvas included) except the sign page, which keeps the plain continuous flow. Each
    .doc-a4-page mimics a physical A4 sheet so "clear A4 sized separations" are visible while

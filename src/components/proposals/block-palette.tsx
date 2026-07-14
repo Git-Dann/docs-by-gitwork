@@ -26,6 +26,18 @@ import { SECTION_CATEGORIES } from "@/lib/sections/types";
 import { cn } from "@/lib/format";
 import type { DocumentType, SectionKey } from "@/types/proposal";
 
+// The handful of blocks people reach for most — surfaced in a "Common" tier at the top of the
+// palette so the first thing you see is the everyday set, not a wall of 38 categorised options.
+const COMMON_KEYS: SectionKey[] = [
+  "heading",
+  "prose",
+  "callout",
+  "checklist",
+  "data_table",
+  "image",
+  "kpi_strip",
+];
+
 interface BlockPaletteProps {
   open: boolean;
   onClose: () => void;
@@ -208,6 +220,45 @@ export function BlockPalette({
               </div>
             );
           })()}
+
+          {/* Common tier — everyday blocks first (hidden while searching, which shows flat results). */}
+          {!search.trim() ? (
+            <div className="mb-6">
+              <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+                Common
+              </p>
+              <p className="mt-0.5 text-[11px] text-[var(--text-4)]">The blocks you&rsquo;ll reach for most</p>
+              <ul className="mt-3 grid grid-cols-1 gap-2">
+                {COMMON_KEYS.filter((key) => SECTION_REGISTRY[key]).map((key) => {
+                  const section = SECTION_REGISTRY[key];
+                  const Icon = section.icon;
+                  return (
+                    <li key={`common-${key}`}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onPick(key);
+                          onClose();
+                        }}
+                        className={cn(
+                          "flex w-full items-start gap-3 rounded-[10px] border border-[var(--border-2)] bg-white p-3 text-left transition",
+                          "hover:border-[var(--brand-300)] hover:bg-[var(--brand-200)]/30",
+                        )}
+                      >
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] bg-[var(--surface-1)] text-[var(--brand-700)]">
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-[var(--text-1)]">{section.displayName}</p>
+                          <p className="mt-0.5 text-xs leading-5 text-[var(--text-3)]">{section.description}</p>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
 
           {groups.length === 0 ? (
             <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-6 text-center text-sm text-[var(--text-4)]">
