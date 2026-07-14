@@ -9,11 +9,79 @@ import {
   TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { PresentationSlide } from "@/components/proposals/presentation-slide";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  PresentationSlide,
+  SLIDE_CONTENT_H,
+  SLIDE_CONTENT_W,
+  SLIDE_GAP,
+} from "@/components/proposals/presentation-slide";
+import { ProposalSectionPreview } from "@/components/proposals/proposal-section-preview";
 import { resolveProposalMergeVariables } from "@/lib/merge-variables";
 import { cn } from "@/lib/format";
-import type { ProposalDocument } from "@/types/proposal";
+import type { ProposalDocument, ProposalSection } from "@/types/proposal";
+
+type SlideItem = { section: ProposalSection; index: number };
+
+function isPageBreak(section: ProposalSection): boolean {
+  return (
+    section.key === "divider" &&
+    (section.data as { variant?: string } | undefined)?.variant === "page-break"
+  );
+}
+
+/**
+ * Group the ordered sections into slides: the cover (and any explicit page-break) stands alone,
+ * and content blocks are greedily packed by measured height so each slide fills the 16:9 content
+ * box rather than showing one sparse block per slide. Falls back to a single content group before
+ * heights are measured.
+ */
+function packSlides(ordered: SlideItem[], heights: Map<number, number>): SlideItem[][] {
+  const groups: SlideItem[][] = [];
+  let current: SlideItem[] = [];
+  let currentH = 0;
+  const flush = () => {
+    if (current.length) {
+      groups.push(current);
+      current = [];
+      currentH = 0;
+    }
+  };
+  for (const item of ordered) {
+    if (item.section.key === "cover") {
+      flush();
+      groups.push([item]);
+      continue;
+    }
+    if (isPageBreak(item.section)) {
+      flush();
+      continue;
+    }
+    const h = heights.get(item.index) ?? 0;
+    const add = current.length ? h + SLIDE_GAP : h;
+    if (current.length > 0 && currentH + add > SLIDE_CONTENT_H) {
+      // Carry a stranded heading to the next slide so it leads its content instead of sitting
+      // orphaned at the foot of this one.
+      const lead: SlideItem[] = [];
+      const last = current[current.length - 1];
+      if (current.length > 1 && (last.section.key === "heading" || last.section.key === "divider")) {
+        current.pop();
+        lead.push(last);
+      }
+      flush();
+      current = [...lead, item];
+      currentH = [...lead, item].reduce(
+        (sum, it, i) => sum + (heights.get(it.index) ?? 0) + (i > 0 ? SLIDE_GAP : 0),
+        0,
+      );
+    } else {
+      current.push(item);
+      currentH += add;
+    }
+  }
+  flush();
+  return groups;
+}
 
 type DrawTool = "pen" | "highlighter" | "eraser";
 
@@ -22,10 +90,11 @@ type DrawTool = "pen" | "highlighter" | "eraser";
 const INK_COLORS = ["#EF4444", "#F59E0B", "#1D4ED8", "#16A34A", "#0F172A"] as const;
 
 /**
- * Presentation mode (v1) — renders an existing document as a full-screen slide deck. Each visible
- * top-level block becomes one slide (read-only, merge-variables resolved). Includes a speaker-notes
- * toggle (bottom-left) and an EPHEMERAL drawing/highlighter overlay (never persisted — cleared on
- * slide change and on exit). No bot, no compute; purely a presenter surface over the live doc.
+ * Presentation mode — renders a document as a full-screen slide deck. Every slide shares one fixed
+ * 16:9 frame (scaled to the stage): the cover fills it edge-to-edge, and content blocks are packed
+ * by measured height so each slide is FULL rather than one sparse block per slide. Read-only,
+ * merge-variables resolved. Includes a speaker-notes toggle (bottom-left, aggregated per slide) and
+ * an EPHEMERAL drawing/highlighter overlay (never persisted — cleared on slide change and on exit).
  */
 export function PresentationMode({
   proposal,
@@ -36,14 +105,70 @@ export function PresentationMode({
 }) {
   // Resolve merge variables once so slides read like the shared/exported doc (not raw {{tokens}}).
   const resolved = useMemo(() => resolveProposalMergeVariables(proposal), [proposal]);
-  const slides = useMemo(
+  const docTheme = resolved.metadata.docTheme ?? "foundry";
+  // Visible sections in order, each tagged with its global index (used as the measurement key).
+  const ordered = useMemo<SlideItem[]>(
     () =>
       [...resolved.sections]
         .filter((section) => section.isVisible)
-        .sort((left, right) => left.sortOrder - right.sortOrder),
+        .sort((left, right) => left.sortOrder - right.sortOrder)
+        .map((section, index) => ({ section, index })),
     [resolved.sections],
   );
-  const total = slides.length;
+  // Content blocks to measure (everything except the cover + page-break markers).
+  const measurable = useMemo(
+    () => ordered.filter((o) => o.section.key !== "cover" && !isPageBreak(o.section)),
+    [ordered],
+  );
+
+  // Slide groups — cover alone + height-packed content. Fallback (pre-measure): cover + one group.
+  const [groups, setGroups] = useState<SlideItem[][]>(() => {
+    const cover = ordered.filter((o) => o.section.key === "cover").map((o) => [o]);
+    const rest = ordered.filter((o) => o.section.key !== "cover" && !isPageBreak(o.section));
+    return [...cover, ...(rest.length ? [rest] : [])];
+  });
+
+  const measureRef = useRef<HTMLDivElement>(null);
+  // `ordered` is a fresh reference each render (merge-resolve builds a new doc), so the measure
+  // effect keys off the stable `signature` STRING and reads the latest `ordered` via a ref — else
+  // the effect would be torn down and rebuilt on every render.
+  const orderedRef = useRef(ordered);
+  orderedRef.current = ordered;
+  // Structure-only signature (id/key/visibility/order) from the RAW sections — stable across
+  // renders, unlike the merge-resolved data blob, so the measure effect isn't re-created on every
+  // render (which would defeat the ResizeObserver and re-measure needlessly).
+  const signature = useMemo(
+    () =>
+      JSON.stringify(
+        proposal.sections.map((s) => [s.id ?? s.key, s.key, s.isVisible, s.sortOrder]),
+      ),
+    [proposal.sections],
+  );
+  useLayoutEffect(() => {
+    const measure = measureRef.current;
+    if (!measure) return;
+    // Measure SYNCHRONOUSLY (no rAF) so this works even if the effect re-runs frequently — a
+    // cancellable rAF was being starved. A dedup guard makes redundant runs cheap (no re-render).
+    const recompute = () => {
+      const heights = new Map<number, number>();
+      measure.querySelectorAll<HTMLElement>("[data-measure-index]").forEach((el) => {
+        heights.set(Number(el.dataset.measureIndex), el.offsetHeight);
+      });
+      if (heights.size === 0) return;
+      const next = packSlides(orderedRef.current, heights);
+      if (!next.length) return;
+      const key = (gs: SlideItem[][]) => gs.map((g) => g.map((x) => x.index).join(".")).join("|");
+      const nextKey = key(next);
+      setGroups((prev) => (key(prev) === nextKey ? prev : next));
+    };
+    recompute();
+    const ro = new ResizeObserver(() => recompute());
+    ro.observe(measure);
+    document.fonts?.ready.then(recompute).catch(() => {});
+    return () => ro.disconnect();
+  }, [signature]);
+
+  const total = groups.length;
 
   const [index, setIndex] = useState(0);
   const [showNotes, setShowNotes] = useState(false);
@@ -54,7 +179,9 @@ export function PresentationMode({
   // Bumped on every Clear so the canvas remounts and wipes — also remounts on slide change (keyed).
   const [clearNonce, setClearNonce] = useState(0);
 
-  const current = slides[Math.min(index, Math.max(0, total - 1))];
+  const clampedIndex = Math.min(index, Math.max(0, total - 1));
+  const currentGroup = groups[clampedIndex] ?? [];
+  const isCoverSlide = currentGroup.length === 1 && currentGroup[0]?.section.key === "cover";
 
   const goNext = useCallback(() => setIndex((i) => Math.min(total - 1, i + 1)), [total]);
   const goPrev = useCallback(() => setIndex((i) => Math.max(0, i - 1)), []);
@@ -110,7 +237,11 @@ export function PresentationMode({
     return () => window.removeEventListener("keydown", onKey);
   }, [drawing, goNext, goPrev, onClose]);
 
-  const notes = current?.speakerNotes?.trim() ?? "";
+  // Notes for the slide — aggregated across the blocks on it (a slide can carry several).
+  const noteEntries = currentGroup
+    .map(({ section }) => ({ title: section.title, note: section.speakerNotes?.trim() ?? "" }))
+    .filter((entry) => entry.note);
+  const slideTitle = currentGroup[0]?.section.title ?? "";
 
   return (
     <div className="fixed inset-0 z-[200] flex flex-col bg-[#0F172A] text-white">
@@ -155,11 +286,33 @@ export function PresentationMode({
           </>
         ) : null}
 
-        {/* Each slide is scaled to fit the stage (never scrolls) — a slide that fits renders 1×,
-            a tall one shrinks uniformly. See <PresentationSlide>. */}
-        <div className="absolute inset-0 flex items-center justify-center px-4 py-6 sm:px-10 sm:py-10">
-          {current ? (
-            <PresentationSlide section={current} proposal={resolved} index={index} />
+        {/* Hidden measurer — every content block rendered once at the slide content width so its
+            height can be read and blocks packed into full 16:9 slides (see packSlides). */}
+        <div
+          ref={measureRef}
+          aria-hidden="true"
+          style={{ position: "absolute", left: "-99999px", top: 0, width: SLIDE_CONTENT_W, visibility: "hidden", pointerEvents: "none" }}
+        >
+          <div className="proposal-document" data-doc-theme={docTheme} style={{ width: SLIDE_CONTENT_W }}>
+            <div className="space-y-7">
+              {measurable.map(({ section, index: sectionIndex }) => (
+                <div key={section.id ?? section.key} data-measure-index={sectionIndex}>
+                  <ProposalSectionPreview section={section} proposal={resolved} index={sectionIndex} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* The current slide — a fixed 16:9 card scaled to fit the stage (never scrolls). */}
+        <div className="absolute inset-0 flex items-center justify-center px-4 py-4 sm:px-10 sm:py-8">
+          {currentGroup.length ? (
+            <PresentationSlide
+              sections={currentGroup}
+              isCover={isCoverSlide}
+              proposal={resolved}
+              slideKey={clampedIndex}
+            />
           ) : (
             <div className="flex h-full items-center justify-center text-white/60">
               This document has no visible blocks to present.
@@ -187,9 +340,20 @@ export function PresentationMode({
             </button>
           </div>
           <div className="max-h-[40vh] overflow-y-auto px-4 py-3">
-            <p className="text-[15px] font-semibold text-white">{current?.title}</p>
-            {notes ? (
-              <p className="mt-2 whitespace-pre-wrap text-[13px] leading-6 text-white/75">{notes}</p>
+            <p className="text-[15px] font-semibold text-white">{slideTitle}</p>
+            {noteEntries.length ? (
+              <div className="mt-2 space-y-3">
+                {noteEntries.map((entry, i) => (
+                  <div key={i}>
+                    {noteEntries.length > 1 ? (
+                      <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+                        {entry.title}
+                      </p>
+                    ) : null}
+                    <p className="whitespace-pre-wrap text-[13px] leading-6 text-white/75">{entry.note}</p>
+                  </div>
+                ))}
+              </div>
             ) : (
               <p className="mt-2 text-[13px] leading-6 text-white/40">
                 No notes for this slide. Add presenter notes from a block&rsquo;s options in the editor.

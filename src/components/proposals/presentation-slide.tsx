@@ -1,85 +1,134 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ProposalSectionPreview } from "@/components/proposals/proposal-section-preview";
 import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
 /**
- * One presentation slide — a cream document page (never white) with content anchored TOP-LEFT and
- * consistent margins, so the frame is identical on every slide and nothing jumps around. The page
- * fills the stage at a fixed max width; content that's taller than the page is scaled down
- * uniformly from the top-left corner so the whole slide fits with no scroll (a fitting slide stays
- * 1×). Layout height is read via offsetHeight (pre-transform) so measuring the scaled node isn't
- * circular. The card carries `.proposal-document`, so slides match the real doc palette/type.
+ * Presentation slide — a fixed 16:9 "master" card (never portrait, never 1:1) that is uniformly
+ * scaled to fit the stage. EVERY slide shares this frame, cover included, so the deck is
+ * consistent (the old mix of a full-bleed 16:9 cover and a portrait content card is gone).
+ *
+ * A content slide carries a GROUP of sections (height-packed upstream in <PresentationMode> so a
+ * slide is full, not one sparse block), rendered top-aligned inside the card's margin. If a group
+ * is still taller than the content box (a single very long block), it scales down uniformly so it
+ * always fits with no scroll. The cover fills the card edge-to-edge (its own background/artwork).
  */
+
+// Fixed 16:9 master, in px. Content sections are measured + packed against SLIDE_CONTENT_* upstream.
+export const SLIDE_W = 1280;
+export const SLIDE_H = 720;
+export const SLIDE_PAD_X = 84;
+export const SLIDE_PAD_Y = 72;
+export const SLIDE_CONTENT_W = SLIDE_W - SLIDE_PAD_X * 2; // 1112
+export const SLIDE_CONTENT_H = SLIDE_H - SLIDE_PAD_Y * 2; // 576
+export const SLIDE_GAP = 28; // matches the content stack gap below (space-y-7)
+
 export function PresentationSlide({
-  section,
+  sections,
+  isCover,
   proposal,
-  index,
+  slideKey,
 }: {
-  section: ProposalSection;
+  /** The section(s) on this slide — a single cover, or a height-packed group of content blocks. */
+  sections: Array<{ section: ProposalSection; index: number }>;
+  isCover: boolean;
   proposal: ProposalDocument;
-  index: number;
+  /** Changes per slide so the fit effect re-measures the new group. */
+  slideKey: string | number;
 }) {
-  const padRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
-  // The cover renders its own full-bleed layout — every other section gets page margins.
-  const isCover = section.key === "cover";
-  // Carry the doc theme so slide content (tokens + Fraunces/Inter fonts) matches the document.
+  // Scale of the whole 16:9 card so it fits the stage; inner scale shrinks an over-tall group.
+  const [cardScale, setCardScale] = useState(1);
+  const [innerScale, setInnerScale] = useState(1);
   const docTheme = proposal.metadata.docTheme ?? "foundry";
 
+  // Fit the fixed master card to the stage (uniform scale, leaving a small margin).
   useEffect(() => {
-    const pad = padRef.current;
-    const content = contentRef.current;
-    if (!pad || !content) return;
-
+    const stage = stageRef.current;
+    if (!stage) return;
     let raf = 0;
     const recompute = () => {
-      const availH = pad.clientHeight;
-      const naturalH = content.offsetHeight || 1;
-      // Content already fills the width; only shrink (never enlarge) to fit the height.
-      const next = Math.min(1, availH / naturalH);
-      setScale(next > 0 && Number.isFinite(next) ? next : 1);
+      const w = stage.clientWidth;
+      const h = stage.clientHeight;
+      if (w <= 0 || h <= 0) return;
+      const next = Math.min((w * 0.94) / SLIDE_W, (h * 0.94) / SLIDE_H);
+      setCardScale(next > 0 && Number.isFinite(next) ? next : 1);
     };
     const schedule = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(recompute);
     };
-
     schedule();
     const ro = new ResizeObserver(schedule);
-    ro.observe(pad);
-    ro.observe(content);
-    // Re-measure once webfonts load (serif/mono metrics shift the natural height).
-    document.fonts?.ready.then(schedule).catch(() => {});
-
+    ro.observe(stage);
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
     };
-    // Re-run when the slide changes so the new section is measured fresh.
-  }, [index]);
+  }, []);
 
-  // The cover fills the whole slide edge-to-edge (full-bleed, no cream band, no scale) — the
-  // cover's own background fills. The `[&_.document-cover]` / `[&_.proposal-cover]` forces override
-  // the cover section's fixed 297mm min-height so it stretches to the slide instead.
-  if (isCover) {
-    return (
-      <div data-doc-theme={docTheme} className="proposal-document relative h-full w-full overflow-hidden rounded-[16px] shadow-[0_24px_64px_-12px_rgba(0,0,0,0.5)] [&_.document-cover]:!h-full [&_.document-cover]:!min-h-0 [&_.proposal-cover]:h-full">
-        <ProposalSectionPreview section={section} proposal={proposal} index={index} />
-      </div>
-    );
-  }
+  // Shrink the content group if its natural height still exceeds the content box (lone tall block).
+  useLayoutEffect(() => {
+    if (isCover) {
+      setInnerScale(1);
+      return;
+    }
+    const content = contentRef.current;
+    if (!content) return;
+    let raf = 0;
+    const recompute = () => {
+      const natural = content.offsetHeight || 1;
+      const next = Math.min(1, SLIDE_CONTENT_H / natural);
+      setInnerScale(next > 0 && Number.isFinite(next) ? next : 1);
+    };
+    const schedule = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(recompute);
+    };
+    schedule();
+    const ro = new ResizeObserver(schedule);
+    ro.observe(content);
+    document.fonts?.ready.then(schedule).catch(() => {});
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [isCover, slideKey]);
 
   return (
-    <div data-doc-theme={docTheme} className="proposal-document relative h-full w-full max-w-[1280px] overflow-hidden rounded-[16px] shadow-[0_24px_64px_-12px_rgba(0,0,0,0.5)]">
-      <div className="absolute inset-0" ref={padRef} style={{ padding: "56px 64px" }}>
-        <div style={{ transform: `scale(${scale})`, transformOrigin: "top left", width: "100%" }}>
-          <div ref={contentRef} style={{ width: "100%" }}>
-            <ProposalSectionPreview section={section} proposal={proposal} index={index} />
+    <div ref={stageRef} className="relative h-full w-full">
+      <div
+        data-doc-theme={docTheme}
+        className="proposal-document absolute left-1/2 top-1/2 overflow-hidden rounded-[18px] shadow-[0_28px_72px_-16px_rgba(0,0,0,0.55)]"
+        style={{
+          width: SLIDE_W,
+          height: SLIDE_H,
+          transform: `translate(-50%, -50%) scale(${cardScale})`,
+        }}
+      >
+        {isCover ? (
+          // Cover fills the card edge-to-edge — its own layout/background provides the design.
+          <div className="h-full w-full [&_.document-cover]:!h-full [&_.document-cover]:!min-h-0 [&_.proposal-cover]:h-full">
+            {sections.map(({ section, index }) => (
+              <ProposalSectionPreview key={section.id ?? section.key} section={section} proposal={proposal} index={index} />
+            ))}
           </div>
-        </div>
+        ) : (
+          <div
+            className="h-full w-full overflow-hidden"
+            style={{ padding: `${SLIDE_PAD_Y}px ${SLIDE_PAD_X}px` }}
+          >
+            <div style={{ transform: `scale(${innerScale})`, transformOrigin: "top left", width: "100%" }}>
+              <div ref={contentRef} className="space-y-7" style={{ width: "100%" }}>
+                {sections.map(({ section, index }) => (
+                  <ProposalSectionPreview key={section.id ?? section.key} section={section} proposal={proposal} index={index} />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
