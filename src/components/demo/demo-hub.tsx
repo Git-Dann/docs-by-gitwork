@@ -21,9 +21,19 @@ import {
   BRAND_KEY,
 } from "@/lib/demo/demo-config";
 
-/** Read the white-label client name synchronously (URL `?client=` persisted → localStorage). */
+/** Read the white-label client name synchronously. Precedence: the path segment (`/demo/SWG`) →
+ *  the `?client=` query (legacy links) → localStorage. Whichever wins is persisted so it survives
+ *  navigation into the module pages (whose nav links don't carry the name). */
 function readBrand(): string | null {
   if (typeof window === "undefined") return null;
+  const seg = window.location.pathname.match(/^\/demo\/([^/]+)\/?$/);
+  if (seg) {
+    const fromPath = decodeURIComponent(seg[1]).trim();
+    if (fromPath) {
+      window.localStorage.setItem(BRAND_KEY, fromPath);
+      return fromPath;
+    }
+  }
   const param = new URLSearchParams(window.location.search).get("client");
   if (param !== null) {
     const trimmed = param.trim();

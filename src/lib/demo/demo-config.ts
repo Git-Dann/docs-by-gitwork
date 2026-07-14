@@ -117,8 +117,14 @@ export function filterModules(enabled: string[] | null): DemoModule[] {
   return DEMO_MODULES.filter((m) => enabled.includes(m.id));
 }
 
-/** Build a shareable demo URL. Omits `modules` when every module is enabled, and `color` when
- *  it's the Foundry default / invalid. */
+/** `/demo/*` segments that are real routes — a client name matching one of these can't sit in the
+ *  path (it'd resolve to that page), so it falls back to the `?client=` query form. */
+const RESERVED_SEGMENTS = new Set<string>([...DEMO_MODULES.map((m) => m.id), "tasks", "vet"]);
+
+/** Build a shareable demo URL. The client name rides in the PATH (`/demo/SWG`) so the link reads
+ *  as the client's own — falling back to `?client=` only when the name collides with a route
+ *  segment. Omits `modules` when every module is enabled, and `color` when it's the Foundry
+ *  default / invalid. */
 export function buildDemoLink(
   origin: string,
   client: string,
@@ -127,7 +133,8 @@ export function buildDemoLink(
 ): string {
   const params = new URLSearchParams();
   const trimmed = client.trim();
-  if (trimmed) params.set("client", trimmed);
+  const inPath = trimmed && !RESERVED_SEGMENTS.has(trimmed.toLowerCase());
+  if (trimmed && !inPath) params.set("client", trimmed); // reserved-name → query fallback
   if (enabledIds.length && enabledIds.length < DEMO_MODULES.length) {
     // Preserve canonical order.
     const ordered = DEMO_MODULES.filter((m) => enabledIds.includes(m.id)).map((m) => m.id);
@@ -137,5 +144,6 @@ export function buildDemoLink(
     params.set("color", color);
   }
   const qs = params.toString();
-  return `${origin}/demo${qs ? `?${qs}` : ""}`;
+  const base = inPath ? `${origin}/demo/${encodeURIComponent(trimmed)}` : `${origin}/demo`;
+  return `${base}${qs ? `?${qs}` : ""}`;
 }
