@@ -136,6 +136,23 @@ function BriefHero({ brief }: { brief: Brief }) {
 
   return (
     <header className="relative pt-14 sm:pt-16">
+      {/* Masthead — one line in the gap just above the art card, aligned to its width. */}
+      <div className="mx-auto mb-3 flex w-full items-center justify-between gap-3 sm:w-[calc(100%-96px)]">
+        <span
+          className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[1.6px] text-[var(--text-3)]"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          <FoundryMark className="h-3.5 w-3.5" />
+          The Foundry Brief
+        </span>
+        <span
+          className="text-[10px] uppercase tracking-[1.6px] text-[var(--text-4)]"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          N° {String(dayOfYear(date)).padStart(3, "0")} · {brief.weekday.slice(0, 3)}
+        </span>
+      </div>
+
       {/* Painting + vertical rails, wrapped so both rails centre on the artwork
           (and share one vertical centre line — no double-translate). */}
       <div className="relative mx-auto w-full sm:w-[calc(100%-96px)]">
@@ -183,20 +200,6 @@ function BriefHero({ brief }: { brief: Brief }) {
               "linear-gradient(180deg, rgba(8,12,24,0.34) 0%, rgba(8,12,24,0.20) 38%, rgba(8,12,24,0.48) 100%), radial-gradient(120% 85% at 50% 46%, rgba(0,0,0,0.16) 0%, rgba(0,0,0,0.46) 100%)",
           }}
         />
-        {/* Corner metadata (oryzo-style) — issue tab + eyebrow on the artwork. */}
-        <span
-          className="absolute left-4 top-3.5 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[1.6px] text-white/75"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          <FoundryMark className="h-3.5 w-3.5" />
-          The Foundry Brief
-        </span>
-        <span
-          className="absolute right-4 top-3.5 inline-flex items-center rounded-[6px] border border-white/25 bg-black/10 px-2 py-1 text-[10px] uppercase tracking-[1.4px] text-white/80 backdrop-blur-[2px]"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          N° {String(dayOfYear(date)).padStart(3, "0")} · {brief.weekday.slice(0, 3)}
-        </span>
 
         <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
           {/* Brand accent bar — the pop of Gitwork Blue, kept off the type for contrast. */}
