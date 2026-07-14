@@ -24,7 +24,9 @@ const EVENT = "gitwork:theme-changed";
  * NOTE: `wiki` is deliberately NOT here — the client wiki supports light/dark via
  * its own ThemeToggle (internal takeover + public share header), matching Foundry.
  */
-const FORCE_LIGHT = /^\/(docs|report|sign|timeline|brand|onboarding|preview|embed|demo)\//;
+// Kept in sync with the inline anti-flash script in src/app/layout.tsx. The `(?:\/|$)`
+// tail matches both `/demo/…` module pages AND the bare `/demo` hub (no trailing slash).
+const FORCE_LIGHT = /^\/(docs|report|sign|timeline|brand|onboarding|preview|embed|demo|apply|vet)(?:\/|$)/;
 
 type ThemeContextValue = {
   /** The user's chosen mode. */

@@ -77,20 +77,20 @@ export function DemoShell({
   // White-label brand for a prospect demo: pass `?client=Acme Corp` once and it persists across
   // the whole demo (nav links don't carry the query), showing the client's name in the sidebar
   // with "powered by Foundry" beneath instead of the Foundry logo. Unset → the Foundry logo.
-  const [brand, setBrand] = useState<string | null>(null);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+  // Read synchronously in the initializer (not an effect) so the brand is present on the FIRST
+  // render — reading it in an effect flashed the Foundry logo → brand on every navigation.
+  const [brand] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
     const KEY = "gitwork.demo.brand";
     const param = new URLSearchParams(window.location.search).get("client");
     if (param !== null) {
       const trimmed = param.trim();
       if (trimmed) window.localStorage.setItem(KEY, trimmed);
       else window.localStorage.removeItem(KEY); // `?client=` clears it
-      setBrand(trimmed || null);
-    } else {
-      setBrand(window.localStorage.getItem(KEY));
+      return trimmed || null;
     }
-  }, []);
+    return window.localStorage.getItem(KEY);
+  });
 
   // Reroute the reused components' hardcoded /app/* links to their /demo equivalents.
   const handleDemoNav = useDemoLinkReroute();
@@ -106,7 +106,7 @@ export function DemoShell({
           <aside className="hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_38%)] lg:flex lg:min-h-0">
             <div className="flex h-full min-h-0 w-full flex-col">
               <div className="flex shrink-0 items-center justify-center border-b border-[var(--border-2)] px-6 pb-5 pt-7">
-                <Link href="/demo" aria-label="All demos" className="block text-center">
+                <Link href="/demo" aria-label="All demos" className="block text-center" suppressHydrationWarning>
                   {brand ? (
                     <span className="block">
                       <span className="block font-[family-name:var(--font-display)] text-[26px] leading-[1.1] tracking-[-0.5px] text-[var(--text-1)]">

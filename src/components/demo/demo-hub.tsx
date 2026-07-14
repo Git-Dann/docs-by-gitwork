@@ -7,6 +7,7 @@
  * module is "active" yet) — a standalone page in the same design language.
  */
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   HomeIcon,
@@ -61,7 +62,7 @@ export function DemoHub() {
   return (
     <div className="min-h-[100dvh] bg-[var(--surface-canvas)] text-[var(--text-1)]">
       <header className="border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_100%)] px-6 pb-10 pt-12 sm:px-8">
-        <div className="mx-auto max-w-5xl">
+        <div className="mx-auto max-w-5xl text-left">
           <div className="mb-6 flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/foundry-logo.svg" alt="Foundry" className="h-9 w-auto dark:brightness-0 dark:invert" />
@@ -79,6 +80,7 @@ export function DemoHub() {
             Every module below is the real product, seeded with sample data. No login, nothing you
             do here is saved. Pick a module to jump straight in.
           </p>
+          <WhiteLabelField />
         </div>
       </header>
 
@@ -102,6 +104,66 @@ export function DemoHub() {
           ))}
         </div>
       </main>
+    </div>
+  );
+}
+
+const BRAND_KEY = "gitwork.demo.brand";
+
+/** White-label control: type a client name and every demo module rebrands to it
+ *  (sidebar wordmark + Studio). Persists to localStorage; blank clears it. */
+function WhiteLabelField() {
+  const [client, setClient] = useState("");
+  useEffect(() => {
+    try {
+      setClient(window.localStorage.getItem(BRAND_KEY) ?? "");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  function save(value: string) {
+    setClient(value);
+    try {
+      const trimmed = value.trim();
+      if (trimmed) window.localStorage.setItem(BRAND_KEY, trimmed);
+      else window.localStorage.removeItem(BRAND_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return (
+    <div className="mt-7 max-w-md">
+      <label
+        htmlFor="demo-white-label"
+        className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]"
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
+        White-label this demo
+      </label>
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          id="demo-white-label"
+          value={client}
+          onChange={(e) => save(e.target.value)}
+          placeholder="Your client's name (e.g. Acme Studio)"
+          className="w-full rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3.5 py-2.5 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-400)] focus:ring-2 focus:ring-[var(--brand-100)]"
+        />
+        {client ? (
+          <button
+            type="button"
+            onClick={() => save("")}
+            className="shrink-0 rounded-[8px] border border-[var(--border-2)] px-3 py-2.5 text-sm font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)]"
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
+      <p className="mt-1.5 text-xs leading-5 text-[var(--text-4)]">
+        Rebrands every module below — the sidebar reads &ldquo;{client || "Foundry"}&rdquo;. Leave
+        blank to show Foundry.
+      </p>
     </div>
   );
 }
