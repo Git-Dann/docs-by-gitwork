@@ -10,11 +10,13 @@ export function ImagePicker({
   onChange,
   className,
   previewClassName,
+  imageClassName,
 }: {
   value: string;
   onChange: (value: string) => void;
   className?: string;
   previewClassName?: string;
+  imageClassName?: string;
 }) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -53,7 +55,11 @@ export function ImagePicker({
       >
         {value ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={value} alt="Selected asset" className="h-full w-full object-contain" />
+          <img
+            src={value}
+            alt="Selected asset"
+            className={cn("h-full w-full", imageClassName ?? "object-contain")}
+          />
         ) : (
           <div className="flex flex-col items-center gap-2 text-[var(--text-3)]">
             <PhotoIcon className="h-7 w-7" />
