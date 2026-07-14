@@ -337,18 +337,24 @@ async function postStandupToSlack(
 
     // Clean list card — no per-task Slack actions, so no SlackMessageRef rows
     // to pre-mint. The single "View board" button covers "open in Foundry".
-    const cardTasks: StandupTaskCardInput[] = mine.map((t) => ({
-      taskId: t.id,
-      title: t.parentId && parentTitleById.get(t.parentId)
-        ? `${parentTitleById.get(t.parentId)} → ${t.title}`
-        : t.title,
-      clientName: t.client.name,
-      clientSlug: t.client.slug,
-      blockName: t.featureBlock?.name ?? null,
-      dueDate: t.dueDate ? t.dueDate.slice(0, 10) : null,
-      status: t.status,
-      description: t.description,
-    }));
+    // Parents whose own subtasks are in this update — their subtasks render grouped
+    // under the parent heading, so we drop the standalone parent line to avoid dupes.
+    const parentIdsWithSubs = new Set(
+      mine.filter((t) => t.parentId).map((t) => t.parentId as string),
+    );
+    const cardTasks: StandupTaskCardInput[] = mine
+      .filter((t) => !(t.parentId === null && parentIdsWithSubs.has(t.id)))
+      .map((t) => ({
+        taskId: t.id,
+        title: t.title,
+        parentTitle: t.parentId ? parentTitleById.get(t.parentId) ?? "Task" : null,
+        clientName: t.client.name,
+        clientSlug: t.client.slug,
+        blockName: t.featureBlock?.name ?? null,
+        dueDate: t.dueDate ? t.dueDate.slice(0, 10) : null,
+        status: t.status,
+        description: t.description,
+      }));
 
     const card = buildStandupCard({
       phase: input.phase,

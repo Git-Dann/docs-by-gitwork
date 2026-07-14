@@ -22,6 +22,9 @@ export interface StandupTaskCardInput {
    *  (no per-task buttons), so callers may omit it. */
   messageRefId?: string;
   title: string;
+  /** When set, this task is a subtask — it renders as a bullet grouped under a bold
+   *  "parentTitle" heading, rather than as its own standalone line. */
+  parentTitle?: string | null;
   blockName?: string | null;
   /** YYYY-MM-DD; overdue formatting is computed against the workdayLabel. */
   dueDate?: string | null;
@@ -121,30 +124,72 @@ function stripToPlain(s: string): string {
  * description underneath. No per-task links or menus: the card carries a single
  * "View board" button instead. `+N more` folds into a trailing line when capped.
  */
+function renderTaskLine(
+  t: StandupTaskCardInput,
+  opts: { today: string | null; withMeta: boolean; withDescriptions?: boolean },
+): string {
+  const status = t.status ?? "DOING";
+  const parts: string[] = [];
+  if (opts.withMeta && t.blockName) parts.push(escapeMrkdwn(t.blockName));
+  if (opts.withMeta && t.dueDate) {
+    const isOverdue = Boolean(t.dueDate && opts.today && t.dueDate < opts.today && status !== "DONE");
+    const dueFriendly = formatFriendlyDue(t.dueDate, opts.today);
+    parts.push(isOverdue ? `due ${dueFriendly} (overdue)` : `due ${dueFriendly}`);
+  }
+  const meta = parts.length ? `  _· ${parts.join(" · ")}_` : "";
+  let line = `• ${escapeMrkdwn(t.title)}${meta}`;
+  if (opts.withDescriptions && t.description?.trim()) {
+    line += `\n   _${escapeMrkdwn(truncate(stripToPlain(t.description.trim()), 180))}_`;
+  }
+  return line;
+}
+
+/**
+ * Render tasks as clean mrkdwn. Standalone (top-level) tasks each get a `• Title`
+ * line; subtasks are grouped under a bold parent heading:
+ *
+ *   *Main Task Name*
+ *   • Sub Task 1
+ *   • Sub Task 2
+ */
 function taskListText(
   tasks: StandupTaskCardInput[],
   opts: { today: string | null; withMeta: boolean; withDescriptions?: boolean },
 ): string {
-  const visible = tasks.slice(0, MAX_TASKS_PER_CARD);
-  const overflow = Math.max(0, tasks.length - MAX_TASKS_PER_CARD);
-  const lines = visible.map((t) => {
-    const status = t.status ?? "DOING";
-    const parts: string[] = [];
-    if (opts.withMeta && t.blockName) parts.push(escapeMrkdwn(t.blockName));
-    if (opts.withMeta && t.dueDate) {
-      const isOverdue = Boolean(t.dueDate && opts.today && t.dueDate < opts.today && status !== "DONE");
-      const dueFriendly = formatFriendlyDue(t.dueDate, opts.today);
-      parts.push(isOverdue ? `due ${dueFriendly} (overdue)` : `due ${dueFriendly}`);
+  const standalone = tasks.filter((t) => !t.parentTitle);
+  const parentOrder: string[] = [];
+  const byParent = new Map<string, StandupTaskCardInput[]>();
+  for (const t of tasks) {
+    if (!t.parentTitle) continue;
+    if (!byParent.has(t.parentTitle)) {
+      byParent.set(t.parentTitle, []);
+      parentOrder.push(t.parentTitle);
     }
-    const meta = parts.length ? `  _· ${parts.join(" · ")}_` : "";
-    let line = `• ${escapeMrkdwn(t.title)}${meta}`;
-    if (opts.withDescriptions && t.description?.trim()) {
-      line += `\n   _${escapeMrkdwn(truncate(stripToPlain(t.description.trim()), 180))}_`;
-    }
-    return line;
-  });
-  if (overflow > 0) lines.push(`• _+${overflow} more_`);
-  return lines.join("\n");
+    byParent.get(t.parentTitle)!.push(t);
+  }
+
+  let remaining = MAX_TASKS_PER_CARD;
+  const sections: string[] = [];
+
+  const stdVisible = standalone.slice(0, remaining);
+  remaining -= stdVisible.length;
+  if (stdVisible.length > 0) {
+    sections.push(stdVisible.map((t) => renderTaskLine(t, opts)).join("\n"));
+  }
+
+  for (const parent of parentOrder) {
+    if (remaining <= 0) break;
+    const subs = byParent.get(parent)!.slice(0, remaining);
+    remaining -= subs.length;
+    const bullets = subs.map((t) => `• ${escapeMrkdwn(t.title)}`).join("\n");
+    sections.push(`*${escapeMrkdwn(parent)}*\n${bullets}`);
+  }
+
+  const total = standalone.length + [...byParent.values()].reduce((n, a) => n + a.length, 0);
+  const shown = MAX_TASKS_PER_CARD - remaining;
+  const overflow = Math.max(0, total - shown);
+  const body = sections.join("\n\n");
+  return overflow > 0 ? `${body}\n\n_+${overflow} more_` : body;
 }
 
 /**
