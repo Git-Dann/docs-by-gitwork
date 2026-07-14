@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import type {
   DevSignalAssessmentDTO,
+  DevSignalDataRequestStatus,
+  DevSignalDataRequestType,
   DevSignalStageResultDTO,
 } from "@/types/devsignal";
 import {
@@ -98,6 +100,7 @@ function serializeAssessment(
     includeToken?: boolean;
     stageResults?: DevSignalStageResultDTO[];
     outcomeLinks?: DevSignalAssessmentDTO["outcomeLinks"];
+    dataRequests?: DevSignalAssessmentDTO["dataRequests"];
   } = {},
 ): DevSignalAssessmentDTO {
   return {
@@ -127,6 +130,8 @@ function serializeAssessment(
     updatedAt: a.updatedAt.toISOString(),
     ...(opts.stageResults ? { stageResults: opts.stageResults } : {}),
     ...(opts.outcomeLinks ? { outcomeLinks: opts.outcomeLinks } : {}),
+    ...(opts.dataRequests ? { dataRequests: opts.dataRequests } : {}),
+    consent: (a.consent ?? null) as DevSignalAssessmentDTO["consent"],
   };
 }
 
@@ -254,9 +259,10 @@ export async function getAssessment(
     include: candidateSelect,
   });
   if (!assessment) return null;
-  const [stageRows, outcomeRows] = await Promise.all([
+  const [stageRows, outcomeRows, requestRows] = await Promise.all([
     prisma.devSignalStageResult.findMany({ where: { assessmentId: id } }),
     prisma.devSignalOutcomeLink.findMany({ where: { assessmentId: id }, orderBy: { createdAt: "desc" } }),
+    prisma.devSignalDataRequest.findMany({ where: { assessmentId: id }, orderBy: { createdAt: "desc" } }),
   ]);
   const snapshot = assessment.configSnapshot as unknown as DevSignalConfigSnapshot;
   const ordered = [...stageRows].sort(
@@ -272,7 +278,35 @@ export async function getAssessment(
       notes: o.notes,
       linkedAt: o.linkedAt?.toISOString() ?? null,
     })),
+    dataRequests: requestRows.map((r) => ({
+      id: r.id,
+      type: r.type as DevSignalDataRequestType,
+      status: r.status as DevSignalDataRequestStatus,
+      message: r.message,
+      createdAt: r.createdAt.toISOString(),
+      resolvedAt: r.resolvedAt?.toISOString() ?? null,
+    })),
   });
+}
+
+/** Admin: move a candidate data-rights request through its lifecycle. */
+export async function updateDataRequestStatus(
+  workspaceId: string,
+  id: string,
+  status: "OPEN" | "ACKNOWLEDGED" | "RESOLVED",
+  resolvedBy?: string | null,
+): Promise<{ ok: boolean }> {
+  const existing = await prisma.devSignalDataRequest.findFirst({ where: { id, workspaceId } });
+  if (!existing) return { ok: false };
+  await prisma.devSignalDataRequest.update({
+    where: { id },
+    data: {
+      status,
+      resolvedBy: status === "RESOLVED" ? resolvedBy ?? null : null,
+      resolvedAt: status === "RESOLVED" ? new Date() : null,
+    },
+  });
+  return { ok: true };
 }
 
 function stageOrder(snapshot: DevSignalConfigSnapshot, stageId: string): number {

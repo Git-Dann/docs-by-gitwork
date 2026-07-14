@@ -12,6 +12,13 @@ import { MockIdentityProvider } from "./providers/identity/mock";
 import { applyStageResult } from "./assessment";
 import { DEV_SIGNAL_STAGE_NAMES, type DevSignalStageId } from "./stages/types";
 import { safeGithubRequest } from "@/lib/github";
+import { isAtLeast } from "@/types/auth";
+import { sendWorkspaceEmail, escapeHtml } from "@/server/email";
+import {
+  PROCESSING_NOTICE_VERSION,
+  type DataRequestType,
+  DATA_REQUEST_LABELS,
+} from "@/lib/devsignal/processing-notice";
 
 /** Does this GitHub username resolve to a real public account? */
 export async function githubUserExists(handle: string): Promise<boolean> {
@@ -93,6 +100,27 @@ function isExpired(a: LoadedAssessment): boolean {
   return Boolean(a.tokenExpiresAt && a.tokenExpiresAt.getTime() < Date.now());
 }
 
+interface ConsentRecord {
+  noticeVersion: string;
+  processing: boolean;
+  humanReview: boolean;
+  transcriptRetention?: boolean;
+  agreedAt: string;
+}
+
+/** Has the candidate accepted the (required) processing consents? */
+function hasConsent(a: LoadedAssessment): boolean {
+  const c = a.consent as ConsentRecord | null;
+  return Boolean(c?.processing && c?.humanReview);
+}
+
+/** Guard every candidate-supplied write: no processing without recorded consent. */
+function assertConsent(a: LoadedAssessment): void {
+  if (!hasConsent(a)) {
+    throw new Error("Please accept the processing notice before continuing.");
+  }
+}
+
 async function buildSession(a: LoadedAssessment): Promise<PublicVetSession> {
   const stageRows = await prisma.devSignalStageResult.findMany({
     where: { assessmentId: a.id },
@@ -123,6 +151,7 @@ async function buildSession(a: LoadedAssessment): Promise<PublicVetSession> {
       portfolioUrl: c.portfolioUrl,
       availability: c.availability,
     },
+    consentGiven: hasConsent(a),
     githubConnected: Boolean(c.githubHandle && c.githubHandle.trim() && c.githubHandle !== "unknown"),
     challenge: toPublicChallenge(challenge),
     challengeSubmitted: doneStages.has("coding_challenge"),
@@ -145,6 +174,7 @@ export async function autosaveIntake(
 ): Promise<PublicVetSession | null> {
   const a = await loadByToken(token);
   if (!a || isExpired(a)) return null;
+  assertConsent(a);
 
   const data: Record<string, unknown> = {};
   for (const field of INTAKE_FIELDS) {
@@ -168,6 +198,7 @@ export async function autosaveIntake(
 export async function connectGithub(token: string, handle: string): Promise<PublicVetSession | null> {
   const a = await loadByToken(token);
   if (!a || isExpired(a)) return null;
+  assertConsent(a);
   const clean = handle.trim().replace(/^@+/, "");
   if (!clean) throw new Error("Enter your GitHub username.");
   // Validate the account actually exists before saving — real per-step validation.
@@ -194,6 +225,7 @@ export async function submitChallenge(
 ): Promise<{ ok: boolean }> {
   const a = await loadByToken(token);
   if (!a || isExpired(a)) return { ok: false };
+  assertConsent(a);
 
   const challenge = (await getChallengeBySlug(a.workspace.id, submission.challengeId)) ?? defaultChallenge();
   const telemetry = summarizeTelemetry(submission.telemetry ?? []);
@@ -235,6 +267,7 @@ export interface VideoSubmission {
 export async function submitVideo(token: string, submission: VideoSubmission): Promise<{ ok: boolean }> {
   const a = await loadByToken(token);
   if (!a || isExpired(a)) return { ok: false };
+  assertConsent(a);
 
   // 1) Obtain a transcript. Audio is transcribed then DISCARDED — never stored.
   let transcript = submission.transcript?.trim() ?? "";
@@ -306,6 +339,7 @@ export async function submitVideo(token: string, submission: VideoSubmission): P
 export async function submitIdentity(token: string): Promise<{ ok: boolean }> {
   const a = await loadByToken(token);
   if (!a || isExpired(a)) return { ok: false };
+  assertConsent(a);
 
   const provider = new MockIdentityProvider();
   const result = await provider.verify({ candidateId: a.candidateId, email: a.candidate.email });
@@ -327,4 +361,100 @@ export async function submitIdentity(token: string): Promise<{ ok: boolean }> {
     ],
   });
   return { ok: true };
+}
+
+// ─── consent + data-rights (GDPR) ─────────────────────────────────────────────
+
+export interface ConsentSubmission {
+  processing: boolean;
+  humanReview: boolean;
+}
+
+/**
+ * Record the candidate's consent to processing BEFORE any of their data is
+ * handled. Both consents are required; stamps the notice version so we know
+ * exactly what they agreed to.
+ */
+export async function recordConsent(
+  token: string,
+  submission: ConsentSubmission,
+): Promise<PublicVetSession | null> {
+  const a = await loadByToken(token);
+  if (!a || isExpired(a)) return null;
+  if (!submission.processing || !submission.humanReview) {
+    throw new Error("Both consents are required to continue.");
+  }
+  const record: ConsentRecord = {
+    noticeVersion: PROCESSING_NOTICE_VERSION,
+    processing: true,
+    humanReview: true,
+    agreedAt: new Date().toISOString(),
+  };
+  await prisma.devSignalAssessment.update({
+    where: { id: a.id },
+    data: { consent: record as unknown as Prisma.InputJsonValue },
+  });
+  const reloaded = await loadByToken(token);
+  return reloaded ? buildSession(reloaded) : null;
+}
+
+/**
+ * Candidate-initiated data-rights request (explanation / appeal / erasure). We
+ * LOG it and notify the workspace admins — we never auto-delete; erasure is a
+ * human-actioned workflow so nothing irreversible happens automatically.
+ */
+export async function createDataRequest(
+  token: string,
+  input: { type: DataRequestType; message?: string },
+): Promise<{ ok: boolean }> {
+  const a = await loadByToken(token);
+  if (!a || isExpired(a)) return { ok: false };
+
+  await prisma.devSignalDataRequest.create({
+    data: {
+      workspaceId: a.workspace.id,
+      assessmentId: a.id,
+      candidateId: a.candidateId,
+      type: input.type,
+      message: input.message?.slice(0, 4000) ?? null,
+      status: "OPEN",
+    },
+  });
+
+  void notifyAdminsOfDataRequest(a, input.type, input.message).catch(() => {});
+  return { ok: true };
+}
+
+async function notifyAdminsOfDataRequest(
+  a: LoadedAssessment,
+  type: DataRequestType,
+  message?: string,
+): Promise<void> {
+  const members = await prisma.workspaceMember.findMany({
+    where: { workspaceId: a.workspace.id },
+    include: { user: { select: { email: true } } },
+  });
+  const recipients = members
+    .filter((m) => isAtLeast(m.role, "ADMIN"))
+    .map((m) => m.user.email)
+    .filter(Boolean);
+  if (recipients.length === 0) return;
+
+  const label = DATA_REQUEST_LABELS[type];
+  await Promise.all(
+    recipients.map((to) =>
+      sendWorkspaceEmail({
+        workspaceId: a.workspace.id,
+        to,
+        subject: `DevSignal data request — ${label}`,
+        html: [
+          `<p>A candidate has submitted a data-rights request via DevSignal.</p>`,
+          `<p><strong>Candidate:</strong> ${escapeHtml(a.candidate.name)} (${escapeHtml(a.candidate.email ?? "no email")})</p>`,
+          `<p><strong>Request:</strong> ${escapeHtml(label)}</p>`,
+          message ? `<p><strong>Their note:</strong> ${escapeHtml(message)}</p>` : "",
+          `<p>Action it in DevSignal → the candidate's assessment.</p>`,
+        ].join(""),
+      }).catch(() => ({ ok: false }) as unknown),
+    ),
+  );
 }

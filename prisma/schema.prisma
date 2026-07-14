@@ -425,6 +425,7 @@ model Workspace {
   devSignalOutcomeLinks       DevSignalOutcomeLink[]
   devSignalAuditEvents        DevSignalAuditEvent[]
   devSignalChallenges         DevSignalChallenge[]
+  devSignalDataRequests       DevSignalDataRequest[]
   backgroundJobs              BackgroundJob[]
   coldArchives                ColdArchive[]
   handbookArticles            HandbookArticle[]
@@ -3727,6 +3728,10 @@ model DevSignalAssessment {
   /// stay interpretable after the live config's weights change.
   configSnapshot   Json
   status           DevSignalAssessmentStatus @default(DRAFT)
+  /// GDPR consent record captured before any candidate data is processed:
+  /// { noticeVersion, processing, humanReview, transcriptRetention?, agreedAt }.
+  /// Null until the candidate accepts the processing notice on /vet/[token].
+  consent          Json?
   /// Invite-only front door: admin mints a token, candidate uses /vet/[token].
   publicToken      String?                   @unique
   tokenExpiresAt   DateTime?
@@ -3751,11 +3756,37 @@ model DevSignalAssessment {
   stageResults DevSignalStageResult[]
   outcomeLinks DevSignalOutcomeLink[]
   auditEvents  DevSignalAuditEvent[]
+  dataRequests DevSignalDataRequest[]
 
   @@index([workspaceId, status])
   @@index([workspaceId, decision])
   @@index([candidateId, createdAt])
   @@index([clientId])
+}
+
+/// Candidate-initiated data-rights request (GDPR): an explanation of the
+/// assessment (Art. 22), an appeal for human re-review, or erasure of their
+/// data. Captured from /vet/[token]; admins action it in the review UI. We log
+/// the request — we do NOT auto-delete; erasure is a human-actioned workflow.
+model DevSignalDataRequest {
+  id           String              @id @default(cuid())
+  workspaceId  String
+  workspace    Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assessmentId String
+  assessment   DevSignalAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  candidateId  String
+  /// EXPLANATION | APPEAL | ERASURE
+  type         String
+  message      String?
+  /// OPEN | ACKNOWLEDGED | RESOLVED
+  status       String              @default("OPEN")
+  resolvedBy   String?
+  resolvedAt   DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([workspaceId, status])
+  @@index([assessmentId])
 }
 
 model DevSignalStageResult {

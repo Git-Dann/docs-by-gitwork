@@ -3931,3 +3931,14 @@ export async function updateDevSignalChallenge(
     body: JSON.stringify(input),
   });
 }
+
+export async function updateDevSignalDataRequest(
+  id: string,
+  status: "OPEN" | "ACKNOWLEDGED" | "RESOLVED",
+) {
+  return apiFetch<{ ok: boolean }>(`/api/devsignal/data-requests/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+}

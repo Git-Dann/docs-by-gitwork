@@ -1470,6 +1470,7 @@ const demoVetSession = {
     portfolioUrl: null,
     availability: "Full-time",
   },
+  consentGiven: true,
   githubConnected: true,
   challenge: {
     id: "js-normalise-invoices",
@@ -1615,9 +1616,11 @@ export function resolveDemoApi(pathname: string): unknown {
     return { candidate: demoDevSignalCandidate };
   }
 
-  // Public candidate /vet flow (the 8-step funnel). Challenge/video submits are
-  // benign successes; session GET + intake/connect return the mock session.
-  if (/^\/api\/vet\/[^/]+\/(challenge|video|identity)$/.test(pathname)) return { ok: true };
+  // Public candidate /vet flow (the 8-step funnel). Challenge/video/identity and
+  // data-rights requests are benign successes; consent + session GET + intake/
+  // connect return the mock session.
+  if (/^\/api\/vet\/[^/]+\/(challenge|video|identity|request)$/.test(pathname)) return { ok: true };
+  if (/^\/api\/vet\/[^/]+\/consent$/.test(pathname)) return { session: demoVetSession };
   if (/^\/api\/vet\/[^/]+(\/connect)?$/.test(pathname)) return { session: demoVetSession };
 
   return {};

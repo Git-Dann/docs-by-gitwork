@@ -85,6 +85,30 @@ export interface DevSignalAssessmentDTO {
   updatedAt: string;
   stageResults?: DevSignalStageResultDTO[];
   outcomeLinks?: DevSignalOutcomeLinkDTO[];
+  /** GDPR consent record (admin detail only). Null until the candidate accepts. */
+  consent?: DevSignalConsentDTO | null;
+  /** Candidate data-rights requests (admin detail only). */
+  dataRequests?: DevSignalDataRequestDTO[];
+}
+
+export interface DevSignalConsentDTO {
+  noticeVersion: string;
+  processing: boolean;
+  humanReview: boolean;
+  transcriptRetention?: boolean;
+  agreedAt: string;
+}
+
+export type DevSignalDataRequestType = "EXPLANATION" | "APPEAL" | "ERASURE";
+export type DevSignalDataRequestStatus = "OPEN" | "ACKNOWLEDGED" | "RESOLVED";
+
+export interface DevSignalDataRequestDTO {
+  id: string;
+  type: DevSignalDataRequestType;
+  status: DevSignalDataRequestStatus;
+  message: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
 }
 
 export interface DevSignalPipelineConfigDTO {
@@ -152,6 +176,8 @@ export interface PublicVetSession {
   /** True once the candidate has completed + submitted the flow. */
   submitted: boolean;
   candidate: PublicVetCandidate;
+  /** True once the candidate has accepted the processing notice (required first). */
+  consentGiven: boolean;
   githubConnected: boolean;
   challenge: PublicChallengeDTO | null;
   challengeSubmitted: boolean;
