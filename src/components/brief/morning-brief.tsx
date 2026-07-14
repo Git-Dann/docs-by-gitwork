@@ -22,6 +22,8 @@ import { useBrief } from "@/hooks/use-brief";
 import { EditorialRow, Stamp } from "@/components/desk/desk-shared";
 import { SourceIcon, sourceKindFromLabel } from "@/components/brief/source-icons";
 import { CornerTicks, FoundryMark, GitworkSeal } from "@/components/brief/brief-ornaments";
+import { WeatherScene, condition } from "@/components/brief/weather-scene";
+import { useWeather } from "@/hooks/use-weather";
 import type { Brief, BriefEvent, BriefTodo, BriefUpdate } from "@/types/brief";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
@@ -91,6 +93,7 @@ export function MorningBrief({ open, onClose }: { open: boolean; onClose: () => 
             pending={isPending}
             calendarConnected={calendarConnected}
           />
+          <WeatherRow />
         </div>
 
         <BriefFooter sources={brief.sources} />
@@ -614,6 +617,41 @@ function ScheduleRow({
 /** "10:00 AM" → "10:00a" to match the platform's compact time rails. */
 function fmtRail(time: string): string {
   return time.replace(/\s?AM/i, "a").replace(/\s?PM/i, "p");
+}
+
+// ── Weather (procedural SVG instrument) ──────────────────────────────────────
+
+function WeatherRow() {
+  const { data, isPending, isError } = useWeather(true);
+  if (isError) return null; // ambient only — a failed fetch just drops the row
+
+  const cond = data ? condition(data.code) : null;
+
+  return (
+    <EditorialRow index="Weather" title="Overhead" caption="Your sky, right now.">
+      {isPending || !data || !cond ? (
+        <div className="h-28 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+      ) : (
+        <div className="flex items-center gap-5 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-5">
+          <WeatherScene kind={cond.kind} isDay={data.isDay} className="h-24 w-24 shrink-0" />
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-2.5">
+              <span className="text-[40px] leading-none text-[var(--text-1)]" style={{ fontFamily: "var(--font-display)" }}>
+                {data.tempC}°
+              </span>
+              <span className="text-[15px] text-[var(--text-2)]">{cond.label}</span>
+            </div>
+            <p className="mt-1.5 text-[11px] uppercase tracking-[1.2px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+              {data.city}
+            </p>
+            <p className="mt-2 text-[12px] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+              H {data.highC}° · L {data.lowC}° · WIND {data.windMph}MPH · {data.humidity}% RH
+            </p>
+          </div>
+        </div>
+      )}
+    </EditorialRow>
+  );
 }
 
 // ── Shared bits ───────────────────────────────────────────────────────────────
