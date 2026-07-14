@@ -32,9 +32,8 @@ function isPageBreak(section: ProposalSection): boolean {
 
 /**
  * Group the ordered sections into slides: the cover (and any explicit page-break) stands alone,
- * and content blocks are greedily packed by measured height so each slide fills the 16:9 content
- * box rather than showing one sparse block per slide. Falls back to a single content group before
- * heights are measured.
+ * and content blocks are greedily packed by measured height so each slide fills the (tall) content
+ * box rather than showing one sparse block per slide.
  */
 function packSlides(ordered: SlideItem[], heights: Map<number, number>): SlideItem[][] {
   const groups: SlideItem[][] = [];
@@ -286,8 +285,8 @@ export function PresentationMode({
           </>
         ) : null}
 
-        {/* Hidden measurer — every content block rendered once at the slide content width so its
-            height can be read and blocks packed into full 16:9 slides (see packSlides). */}
+        {/* Hidden measurer — every content block rendered once at the live content-column width so
+            its height can be read and blocks packed into full (tall) slides (see packSlides). */}
         <div
           ref={measureRef}
           aria-hidden="true"
@@ -304,8 +303,8 @@ export function PresentationMode({
           </div>
         </div>
 
-        {/* The current slide — a fixed 16:9 card scaled to fit the stage (never scrolls). */}
-        <div className="absolute inset-0 flex items-center justify-center px-4 py-4 sm:px-10 sm:py-8">
+        {/* The current slide — a tall master card scaled to fit the stage (never scrolls). */}
+        <div className="absolute inset-0 flex items-center justify-center px-4 py-4 sm:px-8 sm:py-6">
           {currentGroup.length ? (
             <PresentationSlide
               sections={currentGroup}

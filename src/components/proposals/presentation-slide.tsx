@@ -5,23 +5,25 @@ import { ProposalSectionPreview } from "@/components/proposals/proposal-section-
 import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
 /**
- * Presentation slide — a fixed 16:9 "master" card (never portrait, never 1:1) that is uniformly
- * scaled to fit the stage. EVERY slide shares this frame, cover included, so the deck is
- * consistent (the old mix of a full-bleed 16:9 cover and a portrait content card is gone).
+ * Presentation slide — a fixed "master" card that is uniformly scaled to fit the stage. Every slide
+ * shares this frame, cover included, so the deck is consistent. The master is TALL (near-square,
+ * not 16:9) so a slide fills the vertical space like the old full-height cover rather than sitting
+ * in a short letterbox.
  *
  * A content slide carries a GROUP of sections (height-packed upstream in <PresentationMode> so a
  * slide is full, not one sparse block), rendered top-aligned inside the card's margin. If a group
- * is still taller than the content box (a single very long block), it scales down uniformly so it
- * always fits with no scroll. The cover fills the card edge-to-edge (its own background/artwork).
+ * is still taller than the content box (a lone long block), it scales down uniformly so it always
+ * fits with no scroll. The cover fills the card edge-to-edge (its own background/artwork).
  */
 
-// Fixed 16:9 master, in px. Content sections are measured + packed against SLIDE_CONTENT_* upstream.
+// Fixed master (px). Tall on purpose — scaled to fit, it fills a landscape stage's height. Content
+// sections are measured + packed against SLIDE_CONTENT_* upstream.
 export const SLIDE_W = 1280;
-export const SLIDE_H = 720;
-export const SLIDE_PAD_X = 84;
-export const SLIDE_PAD_Y = 72;
-export const SLIDE_CONTENT_W = SLIDE_W - SLIDE_PAD_X * 2; // 1112
-export const SLIDE_CONTENT_H = SLIDE_H - SLIDE_PAD_Y * 2; // 576
+export const SLIDE_H = 1120;
+export const SLIDE_PAD_X = 88;
+export const SLIDE_PAD_Y = 80;
+export const SLIDE_CONTENT_W = SLIDE_W - SLIDE_PAD_X * 2; // 1104
+export const SLIDE_CONTENT_H = SLIDE_H - SLIDE_PAD_Y * 2; // 960
 export const SLIDE_GAP = 28; // matches the content stack gap below (space-y-7)
 
 export function PresentationSlide({
@@ -39,7 +41,7 @@ export function PresentationSlide({
 }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  // Scale of the whole 16:9 card so it fits the stage; inner scale shrinks an over-tall group.
+  // Scale of the whole master card so it fits the stage; inner scale shrinks an over-tall group.
   const [cardScale, setCardScale] = useState(1);
   const [innerScale, setInnerScale] = useState(1);
   const docTheme = proposal.metadata.docTheme ?? "foundry";
@@ -48,25 +50,17 @@ export function PresentationSlide({
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
-    let raf = 0;
     const recompute = () => {
       const w = stage.clientWidth;
       const h = stage.clientHeight;
       if (w <= 0 || h <= 0) return;
-      const next = Math.min((w * 0.94) / SLIDE_W, (h * 0.94) / SLIDE_H);
+      const next = Math.min((w * 0.96) / SLIDE_W, (h * 0.96) / SLIDE_H);
       setCardScale(next > 0 && Number.isFinite(next) ? next : 1);
     };
-    const schedule = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(recompute);
-    };
-    schedule();
-    const ro = new ResizeObserver(schedule);
+    recompute();
+    const ro = new ResizeObserver(recompute);
     ro.observe(stage);
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-    };
+    return () => ro.disconnect();
   }, []);
 
   // Shrink the content group if its natural height still exceeds the content box (lone tall block).
@@ -77,24 +71,16 @@ export function PresentationSlide({
     }
     const content = contentRef.current;
     if (!content) return;
-    let raf = 0;
     const recompute = () => {
       const natural = content.offsetHeight || 1;
       const next = Math.min(1, SLIDE_CONTENT_H / natural);
       setInnerScale(next > 0 && Number.isFinite(next) ? next : 1);
     };
-    const schedule = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(recompute);
-    };
-    schedule();
-    const ro = new ResizeObserver(schedule);
+    recompute();
+    const ro = new ResizeObserver(recompute);
     ro.observe(content);
-    document.fonts?.ready.then(schedule).catch(() => {});
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-    };
+    document.fonts?.ready.then(recompute).catch(() => {});
+    return () => ro.disconnect();
   }, [isCover, slideKey]);
 
   return (
@@ -117,10 +103,10 @@ export function PresentationSlide({
           </div>
         ) : (
           <div
-            className="h-full w-full overflow-hidden"
+            className="flex h-full w-full justify-center overflow-hidden"
             style={{ padding: `${SLIDE_PAD_Y}px ${SLIDE_PAD_X}px` }}
           >
-            <div style={{ transform: `scale(${innerScale})`, transformOrigin: "top left", width: "100%" }}>
+            <div style={{ transform: `scale(${innerScale})`, transformOrigin: "top center", width: "100%" }}>
               <div ref={contentRef} className="space-y-7" style={{ width: "100%" }}>
                 {sections.map(({ section, index }) => (
                   <ProposalSectionPreview key={section.id ?? section.key} section={section} proposal={proposal} index={index} />
