@@ -103,8 +103,36 @@ type ToolCallResult = {
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
+// Avatars/logos are stored as base64 `data:` URL strings on some users, and a
+// task carries one per assignee + creator — so a single list_tasks response
+// ballooned to ~12.6M chars of embedded images. Claude has no use for image
+// data, so strip it from EVERY tool payload here rather than per-tool: drop
+// avatar/logo fields entirely and null out any stray `data:` URL string.
+const HEAVY_MEDIA_KEYS = new Set(["avatarUrl", "logoUri", "clientLogoUri"]);
+
+function stripHeavyMedia(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.startsWith("data:") ? null : value;
+  }
+  if (Array.isArray(value)) return value.map(stripHeavyMedia);
+  if (value && typeof value === "object") {
+    // Leave non-plain objects (Date, Buffer, class instances) untouched so
+    // JSON.stringify still serialises them correctly (e.g. Date → ISO string).
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) return value;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (HEAVY_MEDIA_KEYS.has(k)) continue; // drop avatar/logo fields entirely
+      out[k] = stripHeavyMedia(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 function textResult(payload: unknown, summary?: string): ToolCallResult {
-  const body = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+  const body =
+    typeof payload === "string" ? payload : JSON.stringify(stripHeavyMedia(payload), null, 2);
   const text = summary ? `${summary}\n\n${body}` : body;
   return { content: [{ type: "text", text }] };
 }
@@ -957,4 +985,4 @@ function rpcError(id: JsonRpcId, code: number, message: string): JsonRpcResponse
 }
 
 // Surfaced for the smoke test (and any future internal caller).
-export const _testing = { TOOLS };
+export const _testing = { TOOLS, stripHeavyMedia };
