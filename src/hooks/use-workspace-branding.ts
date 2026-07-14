@@ -18,6 +18,15 @@ export interface WorkspaceBranding {
   defaultConfidentialityInternal?: string;
   defaultConfidentialityExternal?: string;
   defaultBrandLockup?: "GITWORK" | "CLIENT_X_GITWORK";
+  /**
+   * Letterhead identity for the document render. Defaults to Gitwork (below) when unset, so the
+   * live product is unchanged; a white-label workspace (or the demo) can override it. `companyName`
+   * is the running-header agency label; `companyFooter` is the cover's bottom letterhead strip.
+   * An explicit empty string / empty arrays de-brand the render (header shows the client only,
+   * cover renders no footer strip).
+   */
+  companyName?: string;
+  companyFooter?: { left?: string[]; right?: string[] };
 }
 
 const BRANDING_KEY = ["workspace", "branding"] as const;

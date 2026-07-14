@@ -21,6 +21,7 @@ import { formatDate } from "@/lib/format";
 import { paginateSections } from "@/lib/proposal-pagination";
 import { ProposalSectionPreview } from "@/components/proposals/proposal-section-preview";
 import { GitworkMark } from "@/components/document-cover";
+import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
 const DOC_TYPE_LABEL: Record<string, string> = {
@@ -167,6 +168,11 @@ export function PagedDocument({
   const docTypeLabel = DOC_TYPE_LABEL[proposal.documentType] ?? "Document";
   const isGitwork = proposal.metadata.docTheme === "gitwork";
   const dateFmt = formatDate(proposal.updatedAt);
+  // Running-header agency label — from workspace branding, defaulting to Gitwork (live product
+  // unchanged). A white-label / demo workspace can blank it, so the header shows the client only.
+  const branding = useWorkspaceBranding().data;
+  const agencyLabel = branding?.companyName ?? "GITWORK";
+  const headerLabel = [agencyLabel, proposal.clientName].filter(Boolean).join(" · ");
   let contentPageNumber = 0;
 
   // Blocks that participate in measurement: everything except the cover and page-break markers.
@@ -252,7 +258,7 @@ export function PagedDocument({
               <header className="doc-a4-page__header">
                 <span className="flex items-center gap-2.5 truncate">
                   {isGitwork ? <GitworkMark size={20} /> : null}
-                  GITWORK{proposal.clientName ? ` · ${proposal.clientName}` : ""}
+                  {headerLabel || docTypeLabel}
                 </span>
                 <span className="shrink-0">{proposal.documentNumber ?? proposal.title}</span>
               </header>

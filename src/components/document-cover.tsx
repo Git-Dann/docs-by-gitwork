@@ -279,11 +279,13 @@ export function DocumentCover({
         >
           {isGitwork ? (
             <GitworkMark size={44} />
-          ) : (
+          ) : logoUrl ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logoUrl} alt="Gitwork" style={{ height: 26, objectFit: "contain", display: "block" }} />
+              <img src={logoUrl} alt="" style={{ height: 26, objectFit: "contain", display: "block" }} />
             </>
+          ) : (
+            <span aria-hidden />
           )}
           {classification && classification.length ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 3, textAlign: "right" }}>
@@ -504,7 +506,11 @@ export function DocumentCover({
           </div>
         ) : null}
 
-        {/* Footer — company strip (left) + dated/contact (right). */}
+        {/* Footer — company strip (left) + dated/contact (right). Suppressed entirely when there's
+            no letterhead (a de-branded / white-label cover), so no lonely hairline is left behind. */}
+        {(companyFooter?.left?.length ?? 0) > 0 ||
+        (companyFooter?.right?.length ?? 0) > 0 ||
+        (!companyFooter && dated) ? (
         <div style={{ marginTop: "auto", paddingTop: 28 }}>
           <div aria-hidden="true" style={{ height: 1, background: line, marginBottom: 14 }} />
           <div style={{ display: "flex", justifyContent: "space-between", gap: 24, flexWrap: "wrap" }}>
@@ -544,6 +550,7 @@ export function DocumentCover({
             </div>
           </div>
         </div>
+        ) : null}
       </section>
     );
   }

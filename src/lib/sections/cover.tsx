@@ -117,11 +117,14 @@ export const coverSection = defineSection<CoverSectionData>({
       | { statement?: string; summary?: string }
       | undefined;
 
+    // A white-label / demo workspace sets companyName to "" to de-brand the render (no default
+    // wordmark, no letterhead footer). The live product leaves branding unset → Gitwork defaults.
+    const deBranded = branding?.companyName === "";
     // Per-document override (cover builder) → workspace branding → bundled default.
     const brandLogoUrl =
       (data.brandLogoUrl ?? "").trim() ||
       (branding?.brandLogoUrl ?? "").trim() ||
-      "/foundry-logo.svg";
+      (deBranded ? "" : "/foundry-logo.svg");
     // Client lockup logo: per-document override → linked Portal client's logo → (none, show name).
     const resolvedClientLogo =
       (data.clientLogoUrl ?? "").trim() || (proposal.linkedClientLogoUrl ?? "").trim() || "";
@@ -180,8 +183,10 @@ export const coverSection = defineSection<CoverSectionData>({
       confidentialityText ? "CONFIDENTIAL" : null,
     ].filter(Boolean) as string[];
 
-    // Gitwork company footer (from the agency's letterhead — same on every doc).
-    const companyFooter = {
+    // Company footer (agency letterhead). From workspace branding when provided, else the Gitwork
+    // default — so the live product is unchanged and a white-label / demo workspace can override or
+    // blank it (empty arrays → the cover renders no footer strip).
+    const companyFooter = branding?.companyFooter ?? {
       left: [
         "GITWORK GROUP LTD  /  COMPANY NO. 15756347  /  VAT REG. 468314867",
         "3RD FLOOR, ANCHORAGE ONE, ANCHORAGE QUAY, SALFORD QUAYS, M50 3YJ",

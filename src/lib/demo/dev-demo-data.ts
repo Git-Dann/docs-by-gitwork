@@ -781,26 +781,142 @@ function demoCoverSection(item: (typeof demoProposals.proposals)[number]) {
       confidentiality: "Confidential. Prepared for the client named above.",
       confidentialityMode: "EXTERNAL",
       coverStyle: "light",
-      brandLockup: "CLIENT_X_GITWORK",
+      brandLockup: "GITWORK",
     },
   };
 }
 
+/** Realistic, type-aware section sets for the demo docs (report / brief / handover / notes). */
+function demoSectionsFor(item: (typeof demoProposals.proposals)[number]) {
+  const topic = item.title.replace(/^.*—\s*/, "").trim() || item.title;
+  const client = item.clientName;
+  const cover = demoCoverSection(item);
+
+  if (item.documentType === "REPORT") {
+    return [
+      cover,
+      { key: "introduction", title: "Overview", sortOrder: 0, isVisible: true, data: {
+        statement: `${topic} — what shipped, the numbers behind it, and what's next for ${client}.`,
+        summary: "Prepared for the weekly delivery review. Figures come straight from the board and product analytics for the reporting period.", graphic: "" } },
+      { key: "kpi_strip", title: "At a glance", sortOrder: 1, isVisible: true, data: { items: [
+        { value: "14", label: "Shipped", context: "merged this period" },
+        { value: "92%", label: "Sprint goal", context: "of planned scope" },
+        { value: "2.1d", label: "Cycle time", context: "down from 2.8d" },
+        { value: "0", label: "Regressions", context: "in production" } ] } },
+      { key: "heading", title: "What shipped", sortOrder: 2, isVisible: true, data: { eyebrow: "Delivery", text: "What shipped", level: 2 } },
+      { key: "prose", title: "Highlights", sortOrder: 3, isVisible: true, data: { content:
+        `The headline work this period:\n\n- **Core flow live** — ${topic} is in production behind a feature flag, rolled out to 20% of traffic.\n- **Performance** — trimmed the slowest endpoint from 940ms to 210ms p95 by adding the missing index and caching the hot read.\n- **Instrumentation** — every step now emits an event, so we can see drop-off in the funnel rather than guessing.\n\nNothing slipped that affected the client-facing date.` } },
+      { key: "data_table", title: "Metrics", sortOrder: 4, isVisible: true, data: {
+        columns: ["Metric", "This period", "Last period", "Δ"], rows: [
+          ["Velocity (pts)", "42", "38", "+4"],
+          ["Cycle time (days)", "2.1", "2.8", "−0.7"],
+          ["Review turnaround", "4h", "7h", "−3h"],
+          ["Escaped defects", "0", "2", "−2"] ] } },
+      { key: "callout", title: "Highlight", sortOrder: 5, isVisible: true, data: { tone: "info", headline: "Ahead on the launch metric",
+        body: `Early data on ${topic} is beating the target we set at kick-off — conversion on the new flow is up 11% against the old one. We'll hold the flag at 20% for another week before widening.` } },
+      { key: "heading", title: "Next", sortOrder: 6, isVisible: true, data: { eyebrow: "Looking ahead", text: "What's next", level: 2 } },
+      { key: "checklist", title: "Planned next", sortOrder: 7, isVisible: true, data: { polarity: "INCLUDE",
+        intro: "Top of the backlog for the next period:", items: [
+          "Widen the rollout to 100% once the week-long soak is clean",
+          "Add the two edge-case states surfaced in QA",
+          "Backfill the analytics dashboard so the client can self-serve these numbers" ] } },
+      { key: "cta_next_steps", title: "Questions", sortOrder: 8, isVisible: true, data: {
+        headline: "Questions on this report?", body: "Reply in the client channel or raise it at the next review — happy to dig into any number here." } },
+    ];
+  }
+
+  if (item.documentType === "BRIEF") {
+    return [
+      cover,
+      { key: "introduction", title: "Overview", sortOrder: 0, isVisible: true, data: {
+        statement: `A short brief scoping ${topic} for ${client} — the outcome we're after, how we'll approach it, and what's in and out of scope.`,
+        summary: "Written to get everyone aligned before we start, and to give the client a single page to sign off.", graphic: "" } },
+      { key: "objectives", title: "Goals", sortOrder: 1, isVisible: true, data: { items: [
+        { id: "g1", title: "One booking, no double-entry", description: "A booking made anywhere is reflected everywhere within seconds.", icon: "bolt" },
+        { id: "g2", title: "No overbooking", description: "Availability is authoritative — the integration can never sell the same slot twice.", icon: "shield" },
+        { id: "g3", title: "Operable by the client", description: "Failures are visible and recoverable without a call to us.", icon: "cog" } ] } },
+      { key: "heading", title: "Approach", sortOrder: 2, isVisible: true, data: { eyebrow: "How we'll work", text: "Approach", level: 2 } },
+      { key: "process_steps", title: "Plan", sortOrder: 3, isVisible: true, data: {
+        steps: [{ label: "Discovery" }, { label: "Contract & mapping" }, { label: "Build" }, { label: "Integration test" }, { label: "Launch" }],
+        highlightLast: true, arrows: true, layout: "row" } },
+      { key: "prose", title: "Scope & constraints", sortOrder: 4, isVisible: true, data: { content:
+        `We'll integrate against the existing provider API rather than build a booking engine from scratch — faster to ship and less to maintain.\n\n**Constraints**\n\n- The provider rate-limits to 600 req/min, so sync is event-driven, not polled.\n- Historical bookings before go-live are out of scope for the first release.\n- All times are stored in UTC and rendered in the venue's local zone.` } },
+      { key: "callout", title: "Dependency", sortOrder: 5, isVisible: true, data: { tone: "warning", headline: "One dependency to unblock",
+        body: "We need production API credentials and a webhook endpoint allow-listed by the provider before build starts. That's the critical-path item — everything else can proceed in parallel." } },
+      { key: "checklist", title: "In scope", sortOrder: 6, isVisible: true, data: { polarity: "INCLUDE",
+        intro: "This release covers:", items: [
+          "Two-way availability + booking sync",
+          "Webhook ingestion with signature verification",
+          "A reconciliation job that catches missed events",
+          "An admin view of sync health" ] } },
+      { key: "cta_next_steps", title: "Sign-off", sortOrder: 7, isVisible: true, data: {
+        headline: "Happy with this?", body: "Approve the brief in-page and we'll book discovery for early next week." } },
+    ];
+  }
+
+  if (item.documentType === "HANDOVER") {
+    return [
+      cover,
+      { key: "introduction", title: "Overview", sortOrder: 0, isVisible: true, data: {
+        statement: `This handover covers everything the ${client} team needs to own ${topic} without a call.`,
+        summary: "Structured so a new engineer can get productive on day one — how it's built, how to run it, and where the sharp edges are.", graphic: "" } },
+      { key: "heading", title: "What's included", sortOrder: 1, isVisible: true, data: { eyebrow: "Contents", text: "What's included", level: 2 } },
+      { key: "objectives", title: "Contents", sortOrder: 2, isVisible: true, data: { items: [
+        { id: "c1", title: "Architecture & setup", description: "How the pieces fit together and how to run it locally.", icon: "bolt" },
+        { id: "c2", title: "Usage & conventions", description: "How to consume it, and the patterns to follow.", icon: "shield" },
+        { id: "c3", title: "Operations", description: "Publishing, versioning, and what to do when something breaks.", icon: "cog" } ] } },
+      { key: "prose", title: "How it's structured", sortOrder: 3, isVisible: true, data: { content:
+        `Everything lives in one monorepo package, published to your private registry on every tagged release.\n\n- **Tokens** are the source of truth — colours, spacing and type scale are generated, never hand-edited.\n- **Components** are documented in Storybook; each has usage notes and do/don't examples.\n- **Versioning** is semver: a breaking prop change is a major bump, additive props are minor.` } },
+      { key: "data_table", title: "Component inventory", sortOrder: 4, isVisible: true, data: {
+        columns: ["Component", "Status", "Storybook", "Notes"], rows: [
+          ["Button", "Stable", "✓", "5 variants, icon slots"],
+          ["Input / Field", "Stable", "✓", "Includes validation states"],
+          ["Modal", "Stable", "✓", "Focus-trapped, ESC to close"],
+          ["DataTable", "Beta", "✓", "Sorting done, virtualisation pending"],
+          ["DatePicker", "Beta", "partial", "Range mode still in review"] ] } },
+      { key: "callout", title: "Note", sortOrder: 5, isVisible: true, data: { tone: "info", headline: "Two components are still Beta",
+        body: "DataTable and DatePicker are usable and in production, but their props may still change before 1.0 — pin the version if you depend on them." } },
+      { key: "checklist", title: "Handover checklist", sortOrder: 6, isVisible: true, data: { polarity: "INCLUDE",
+        intro: "Before we close this out:", items: [
+          "Registry access granted to your team",
+          "Storybook deployed and linked in the README",
+          "CI publishing pipeline handed over",
+          "Figma library shared with edit access" ] } },
+      { key: "faq", title: "FAQ", sortOrder: 7, isVisible: true, data: { intro: "The things people ask first.", items: [
+        { question: "How do I upgrade safely?", answer: "Read the CHANGELOG for the target version, bump, and run the visual-regression suite in Storybook before merging." },
+        { question: "Can I override a token?", answer: "At the theme level, yes. Per-component overrides are discouraged — raise it and we'll add a variant instead." } ] } },
+      { key: "cta_next_steps", title: "Questions", sortOrder: 8, isVisible: true, data: {
+        headline: "Questions after today?", body: "Post in the shared channel — this doc stays the source of truth and is kept up to date." } },
+    ];
+  }
+
+  // OTHER — lightweight working notes.
+  return [
+    cover,
+    { key: "introduction", title: "Overview", sortOrder: 0, isVisible: true, data: {
+      statement: `Working notes on ${topic} for ${client} — a reference, not a formal deliverable.`,
+      summary: "Captured so the next person doesn't have to rediscover any of this.", graphic: "" } },
+    { key: "prose", title: "Notes", sortOrder: 1, isVisible: true, data: { content:
+      `The export runs nightly at 02:00 UTC and drops a CSV per table into the client's SFTP.\n\n- Files are named \`{table}_{YYYYMMDD}.csv\` and gzipped.\n- A manifest file lists row counts so the client can verify a complete transfer.\n- Failed runs alert the on-call channel and retry once after 30 minutes.` } },
+    { key: "data_table", title: "Exported fields", sortOrder: 2, isVisible: true, data: {
+      columns: ["Field", "Type", "Notes"], rows: [
+        ["id", "uuid", "Stable primary key"],
+        ["created_at", "timestamp", "ISO-8601, UTC"],
+        ["status", "enum", "One of: active, paused, closed"],
+        ["amount_cents", "integer", "Minor units — divide by 100"] ] } },
+    { key: "callout", title: "Note", sortOrder: 3, isVisible: true, data: { tone: "info", headline: "PII is excluded by design",
+      body: "The export deliberately omits email and payment details. If the client needs those, it's a separate, access-reviewed feed — don't add columns here." } },
+    { key: "cta_next_steps", title: "Questions", sortOrder: 4, isVisible: true, data: {
+      headline: "Need a field added?", body: "Raise it in the channel — changes to the export schema go through a quick review first." } },
+  ];
+}
+
 function buildDemoDoc(item: (typeof demoProposals.proposals)[number]) {
-  const t = item.documentType;
-  const statement =
-    t === "HANDOVER"
-      ? `This handover covers everything the team needs to run and maintain ${item.title.replace(/^.*—\s*/, "")}.`
-      : t === "REPORT"
-        ? `This report summarises delivery progress and outcomes for ${item.clientName}.`
-        : t === "BRIEF"
-          ? "This brief scopes the upcoming work and the outcomes we're targeting."
-          : "Working notes and reference material for the team.";
   return {
     id: item.id,
     workspaceId: "demo-ws",
     ownerId: "demo-dev",
-    documentType: t,
+    documentType: item.documentType,
     status: item.status,
     title: item.title,
     clientName: item.clientName,
@@ -813,27 +929,7 @@ function buildDemoDoc(item: (typeof demoProposals.proposals)[number]) {
     exportSettings: {},
     updatedAt: item.updatedAt,
     createdAt: atDays(-30),
-    sections: [
-      demoCoverSection(item),
-      {
-        key: "introduction", title: "Overview", sortOrder: 0, isVisible: true,
-        data: { statement, summary: "Structured so anyone on the team can pick this up without a handover call.", graphic: "" },
-      },
-      {
-        key: "objectives", title: "What's covered", sortOrder: 1, isVisible: true,
-        data: {
-          items: [
-            { id: "o1", title: "Architecture & setup", description: "How the system fits together and how to run it locally.", icon: "bolt" },
-            { id: "o2", title: "Key workflows", description: "The main flows, where the code lives, and the gotchas.", icon: "shield" },
-            { id: "o3", title: "Operations", description: "Deploys, monitoring, and what to do when something breaks.", icon: "cog" },
-          ],
-        },
-      },
-      {
-        key: "cta_next_steps", title: "Next steps", sortOrder: 2, isVisible: true,
-        data: { headline: "Questions?", body: "Ping the team in Slack — everything here is a living document." },
-      },
-    ],
+    sections: demoSectionsFor(item),
     costLineItems: [],
     timelinePhases: [],
     assets: [],
@@ -1590,6 +1686,11 @@ export function resolveDemoApi(pathname: string): unknown {
   if (pathname === "/api/proposals") return demoProposals;
   if (pathname === "/api/templates") return { templates: [] };
   if (pathname === "/api/snippets") return { snippets: [] };
+  // De-brand the demo document render: blank the letterhead so covers/headers show the client, not
+  // the Gitwork/Foundry marks (companyName "" is the de-brand signal read by cover.tsx). The live
+  // product leaves branding unset and keeps the Gitwork defaults.
+  if (pathname === "/api/workspace/branding")
+    return { branding: { companyName: "", companyFooter: { left: [], right: [] } } };
   {
     const pm = pathname.match(/^\/api\/proposals\/([^/?#]+)$/);
     if (pm) return { proposal: getDemoDoc(pm[1]) };

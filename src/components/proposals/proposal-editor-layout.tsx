@@ -1180,7 +1180,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             <span className="px-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
               Theme
             </span>
-            {(["foundry", "gitwork"] as const).map((theme) => {
+            {([["foundry", "Light"], ["gitwork", "Dark"]] as const).map(([theme, label]) => {
               const themeActive = (draft.metadata.docTheme ?? "foundry") === theme;
               return (
                 <button
@@ -1191,13 +1191,13 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                   }
                   aria-pressed={themeActive}
                   className={cn(
-                    "rounded-[6px] px-2.5 py-1 text-xs font-medium capitalize transition",
+                    "rounded-[6px] px-2.5 py-1 text-xs font-medium transition",
                     themeActive
                       ? "bg-[var(--brand-200)] text-[var(--brand-700)]"
                       : "text-[var(--text-3)] hover:text-[var(--text-1)]",
                   )}
                 >
-                  {theme}
+                  {label}
                 </button>
               );
             })}
