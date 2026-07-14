@@ -21,6 +21,7 @@ import type {
   TaskAttentionDTO,
 } from "@/types/tasks";
 import type { GanttBlock, GanttMilestone } from "@/components/tasks/gantt-chart";
+import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
 
 // ─── Demo identity ────────────────────────────────────────────────────────────
 
@@ -1481,6 +1482,7 @@ const demoVetSession = {
     availability: "Full-time",
   },
   consentGiven: true,
+  notice: { version: "v1", ...DEFAULT_NOTICE_CONTENT },
   githubConnected: true,
   challenge: {
     id: "js-normalise-invoices",

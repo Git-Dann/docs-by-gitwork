@@ -426,6 +426,7 @@ model Workspace {
   devSignalAuditEvents        DevSignalAuditEvent[]
   devSignalChallenges         DevSignalChallenge[]
   devSignalDataRequests       DevSignalDataRequest[]
+  devSignalNotices            DevSignalNotice[]
   backgroundJobs              BackgroundJob[]
   coldArchives                ColdArchive[]
   handbookArticles            HandbookArticle[]
@@ -3936,5 +3937,27 @@ model DevSignalChallenge {
   updatedAt      DateTime  @updatedAt
 
   @@unique([workspaceId, slug])
+  @@index([workspaceId, isActive])
+}
+
+/// The editable candidate consent + right-to-explanation notice (GDPR). Content
+/// is versioned like the pipeline config: editing publishes a NEW active version
+/// and demotes the old, so a consent record's stamped noticeVersion always
+/// resolves to exactly what the candidate agreed to. Seeded from the in-code
+/// DEFAULT_NOTICE_CONTENT on boot (update:{} so edits survive re-boot).
+model DevSignalNotice {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  version     String
+  isActive    Boolean   @default(false)
+  /// { contactEmail, explanationStages[], dataHandlingPoints[], consentItems[] }
+  content     Json
+  createdBy   String?
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, version])
   @@index([workspaceId, isActive])
 }

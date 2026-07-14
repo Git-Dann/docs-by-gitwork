@@ -15,7 +15,11 @@ export function DevSignalSubNav() {
   const pathname = usePathname();
   const { canCalibrateDevSignal } = usePermissions();
   const items = canCalibrateDevSignal
-    ? [...baseItems, { href: "/app/codeclear/devsignal/model", label: "Model" }]
+    ? [
+        ...baseItems,
+        { href: "/app/codeclear/devsignal/model", label: "Model" },
+        { href: "/app/codeclear/devsignal/notice", label: "Notice" },
+      ]
     : [...baseItems];
   return (
     <div className="flex flex-wrap items-center gap-2">

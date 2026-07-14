@@ -49,6 +49,7 @@ import type {
   DevSignalPipelineConfigDTO,
 } from "@/types/devsignal";
 import type { CalibrationReport } from "@/lib/devsignal/calibration";
+import type { NoticeContent } from "@/lib/devsignal/processing-notice";
 import type { NotificationDTO } from "@/types/notifications";
 import type {
   DeskActionItemDTO,
@@ -3902,6 +3903,18 @@ export async function createDevSignalOutcomeLink(input: {
 
 export async function getDevSignalCalibration() {
   return apiFetch<{ report: CalibrationReport }>("/api/devsignal/calibration");
+}
+
+export async function getDevSignalNotice() {
+  return apiFetch<{ notice: { version: string; content: NoticeContent } }>("/api/devsignal/notice");
+}
+
+export async function updateDevSignalNotice(content: NoticeContent) {
+  return apiFetch<{ notice: { version: string; content: NoticeContent } }>("/api/devsignal/notice", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(content),
+  });
 }
 
 export async function createDevSignalPipelineConfig(input: {

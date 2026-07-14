@@ -8,6 +8,8 @@ import {
   createDevSignalPipelineConfig,
   getDevSignalAnalytics,
   getDevSignalCalibration,
+  getDevSignalNotice,
+  updateDevSignalNotice,
   getDevSignalAssessment,
   listDevSignalAssessments,
   listDevSignalChallenges,
@@ -53,6 +55,23 @@ export function useDevSignalCalibration(enabled = true) {
     queryFn: getDevSignalCalibration,
     enabled,
     staleTime: 1000 * 30,
+  });
+}
+
+export function useDevSignalNotice(enabled = true) {
+  return useQuery({
+    queryKey: [KEY, "notice"],
+    queryFn: getDevSignalNotice,
+    enabled,
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useUpdateDevSignalNotice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (content: Parameters<typeof updateDevSignalNotice>[0]) => updateDevSignalNotice(content),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY, "notice"] }),
   });
 }
 
