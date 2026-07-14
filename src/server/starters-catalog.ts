@@ -431,6 +431,266 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
       _buildRef: "database-sentinel + supabase-pentest-skills + supashield + vibe-security",
     },
   },
+  {
+    slug: "chat-digest",
+    name: "Chat Digest",
+    summary: "Turns a raw chat thread into a summary, decisions and action items.",
+    description:
+      "A **skill** that cuts through a long chat thread — Slack, WeChat, wherever — and hands back what actually matters: a short overview, the decisions that were made, and who owns what next. Useful for closing out a client thread or catching up on one you missed.",
+    type: "SKILL",
+    tags: ["chat", "summaries", "productivity"],
+    content: {
+      whatYouGet: [
+        "A short plain-English overview of the thread",
+        "The decisions that were actually made",
+        "Action items, with an owner where the thread names one",
+      ],
+      install: ["Paste in the chat export or thread", "Get back the summary, decisions and action items"],
+      promptText:
+        "Summarise the chat thread below into three sections: 1) OVERVIEW — 2-3 sentences on what the conversation was about, 2) DECISIONS — every decision actually made, one line each, 3) ACTION ITEMS — a list with an owner where the thread names one, else 'unassigned'. Skip small talk and anything that didn't lead anywhere.\n\nChat: <paste the conversation>",
+      _buildRef: "slashcmd:chat-organizer-x11ri (bystander563/chat-codex-skill)",
+    },
+  },
+  {
+    slug: "audit-pass",
+    name: "Audit Pass",
+    summary: "A fast, practical security sweep for real, exploitable issues — not theoretical ones.",
+    description:
+      "A **skill** for a quick, pragmatic security pass over a codebase, API or MVP — the kind of check that catches the obvious real risks (exposed secrets, missing auth, injection gaps) before a client ships, without pretending to be a full penetration test. Complements the deeper Security collection when a project needs that level of rigour.",
+    type: "SKILL",
+    tags: ["security", "audit", "codebase"],
+    content: {
+      whatYouGet: [
+        "A fast pass over a codebase/API/MVP for the common, real risks",
+        "Findings ranked by severity, with the concrete fix for each",
+        "No noise — skips anything that would need a full pen-test to confirm",
+      ],
+      install: ["Point it at the repo, API, or MVP", "Get a prioritised list of real, fixable issues"],
+      promptText:
+        "Run a practical security audit of this codebase/app. Focus on real, exploitable issues over theoretical ones: authentication gaps, injection risks, exposed secrets, missing input validation, insecure defaults. For each finding, give the severity, where it is, and the concrete fix. Skip anything that would need a full penetration test to actually confirm.\n\nTarget: <repo / API / description>",
+      _buildRef: "slashcmd:codex-security-audit-skill-knqmk (Kappaemme-git/codex-security-audit-skill)",
+    },
+  },
+  {
+    slug: "tidy",
+    name: "Tidy",
+    summary: "Safely inventories helper/background processes — nothing gets stopped without approval.",
+    description:
+      "A **kit** for cleaning up after AI-assisted dev sessions safely: it inventories whatever helper or background processes are running, flags what looks safe to stop, and never actually stops or removes anything without explicit sign-off first. Built for the moment a session ends and you want to know what's still running before you close the laptop.",
+    type: "KIT",
+    tags: ["cleanup", "processes", "safety"],
+    content: {
+      whatYouGet: [
+        "A clear inventory of currently running helper/background processes",
+        "A flagged 'safe to stop' shortlist, with reasoning per item",
+        "Nothing destructive happens without explicit approval first",
+      ],
+      install: ["Run it to inventory what's running", "Review the flagged list", "Approve before anything is stopped"],
+      promptText:
+        "Inventory the background/helper processes currently running for this project. For each one: what it is, whether it looks safe to stop, and why. Do not stop or remove anything yourself — just report, and wait for explicit approval before taking any destructive action.\n\nContext: <what's running / OS / project>",
+      _buildRef: "slashcmd:housemaid-90181 (jgarbarino3/housemaid)",
+    },
+  },
+  {
+    slug: "site-backend",
+    name: "Site Backend",
+    summary: "A lightweight, self-hosted visual site builder and CMS backend.",
+    description:
+      "A **kit** for standing up a content-driven site fast: a visual page builder wired to a simple, self-hosted CMS backend, so a client can manage their own content without touching code. A lighter-weight sibling to the Sites kit — same job, different foundation.",
+    type: "KIT",
+    tags: ["cms", "website", "backend"],
+    content: {
+      whatYouGet: [
+        "A visual page builder for non-technical content editing",
+        "A simple, self-hosted CMS backend to model content types",
+        "A fast path from empty repo to an editable, content-driven site",
+      ],
+      install: ["Deploy the backend", "Model the content types the site needs", "Build the pages visually"],
+      promptText:
+        "Stand up a lightweight visual CMS backend for this project. Model the content types it needs, wire a simple visual builder for the pages, and keep the output clean and framework-agnostic so it's easy to self-host.\n\nProject: <what the site needs to do>",
+      _buildRef: "slashcmd:backy-coadw (varshneydevansh/backy)",
+    },
+  },
+  {
+    slug: "bridge",
+    name: "Bridge",
+    summary: "Converts a Claude Skill into a Codex-compatible skill, so one definition works on both.",
+    description:
+      "A **plugin** that closes the interop gap between agent platforms: point it at a Claude Skill folder and it hands back a Codex-compatible version of the same skill, preserving the instructions and behaviour as closely as the target format allows. Useful once Foundry starters need to travel beyond Claude.",
+    type: "PLUGIN",
+    tags: ["interop", "codex", "claude", "skills"],
+    content: {
+      whatYouGet: [
+        "A Claude Skill folder converted into a Codex-compatible equivalent",
+        "Instructions and behaviour preserved as closely as the target format allows",
+        "Anything that can't convert cleanly is flagged, not silently dropped",
+      ],
+      install: ["Point it at a Claude Skill folder", "Get back a Codex-compatible version"],
+      promptText:
+        "Convert the Claude Skill below into a Codex-compatible skill format, preserving its instructions and behaviour as closely as the target format allows. Flag anything that doesn't have a clean equivalent rather than silently dropping it.\n\nSkill to convert: <paste or describe the Claude Skill>",
+      _buildRef: "slashcmd:skillbridge-v70vd (tot3lis/SkillBridge)",
+    },
+  },
+  {
+    slug: "session-notes",
+    name: "Session Notes",
+    summary: "Turns a finished AI session into a clean, curated Obsidian note.",
+    description:
+      "A **skill** for closing out a build session properly: it distills the conversation into a curated Markdown note — key decisions, what got built, what's next — stripped of sensitive information and the raw transcript, ready to drop straight into an Obsidian vault.",
+    type: "SKILL",
+    tags: ["obsidian", "notes", "memory"],
+    content: {
+      whatYouGet: [
+        "A curated Markdown note distilled from a finished session",
+        "Key decisions and what was built or learned, not the raw transcript",
+        "Sensitive information (credentials, personal data) stripped out automatically",
+      ],
+      install: ["Run it at the end of a session", "Drop the resulting note into an Obsidian vault"],
+      promptText:
+        "Turn this AI session into a curated Obsidian note. Capture the key decisions, what was built or learned, and any follow-ups — in clean Markdown. Strip out anything sensitive (credentials, personal data) and don't include the raw transcript, just the distilled takeaways.\n\nSession: <paste the session content or summary>",
+      _buildRef: "slashcmd:obsidian-memory-closeout-7maz4 (Nova1390/obsidian-memory-closeout)",
+    },
+  },
+  {
+    slug: "persona-test",
+    name: "Persona Test",
+    summary: "Runs five customer personas past a landing page to find where it actually loses them.",
+    description:
+      "A **skill** that stress-tests a landing page the way real visitors would: it runs five distinct customer personas past the page and reports where each one hesitates, bounces, or converts — surfacing friction a single reviewer would miss.",
+    type: "SKILL",
+    tags: ["landing-page", "personas", "conversion"],
+    content: {
+      whatYouGet: [
+        "Five persona-driven walkthroughs of the page, each with its own goals and objections",
+        "The specific point in the page where each persona would bounce or convert",
+        "A prioritised list of the friction worth fixing first",
+      ],
+      install: ["Point it at the landing page", "Get back each persona's reaction and where it breaks down"],
+      promptText:
+        "Evaluate this landing page as five distinct customer personas would (pick personas appropriate to the product — e.g. skeptical bargain-hunter, time-pressed exec, technical evaluator, price-sensitive student, brand-loyal returner). For each: what convinces them, where they'd hesitate or bounce, and whether they'd convert. Finish with a prioritised list of the friction points worth fixing first.\n\nLanding page: <URL or description>",
+      _buildRef: "slashcmd:codex-startup-user-simulator-skill (Kappaemme-git/codex-startup-user-simulator-skill)",
+    },
+  },
+  {
+    slug: "landing-polish",
+    name: "Landing Polish",
+    summary: "Audits a landing page for the tells that give away 'built by AI' and fixes them.",
+    description:
+      "A **skill** for the pass a landing page needs right before launch: it hunts down the common AI-generated design tells — generic stock-photo energy, cookie-cutter layout, filler copy — and hands back concrete fixes so the page reads like it was actually designed, not templated.",
+    type: "SKILL",
+    tags: ["landing-page", "design", "polish"],
+    content: {
+      whatYouGet: [
+        "A flagged list of the AI-generated tells on the page (layout, copy, imagery)",
+        "A concrete fix for each, not just 'this looks generic'",
+        "A final pass check once the fixes are applied",
+      ],
+      install: ["Point it at the landing page", "Apply the flagged fixes", "Re-run for a final pass"],
+      promptText:
+        "Audit this landing page for the tells that give away it was built by AI without a design pass — generic stock imagery, cookie-cutter section layout, filler/placeholder-sounding copy, inconsistent spacing or type. For each issue found, give the concrete fix, not just the observation.\n\nLanding page: <URL or description>",
+      _buildRef: "slashcmd:MengToFrontend (Kappaemme-git/MengToFrontend)",
+    },
+  },
+  {
+    slug: "deck-export",
+    name: "Deck Export",
+    summary: "Turns a landing page URL or HTML file into a concise slide deck.",
+    description:
+      "A **skill** for the moment a page needs to become a deck: point it at a landing page URL or HTML file and get back a concise slide deck (8 slides by default) that captures the same story — useful for a sales leave-behind or an internal pitch, without rebuilding the content by hand.",
+    type: "SKILL",
+    tags: ["presentations", "export", "sales"],
+    content: {
+      whatYouGet: [
+        "A concise slide deck built from the page's actual content and structure",
+        "A sensible default slide count, condensed rather than padded",
+        "A version ready to hand off as a sales leave-behind or internal pitch",
+      ],
+      install: ["Point it at a landing page URL or HTML file", "Get back a ready-to-present deck"],
+      promptText:
+        "Turn this landing page into a concise slide deck (aim for around 8 slides unless the content genuinely needs more). Keep the page's actual narrative and key points — condense, don't pad — so it reads well as a sales leave-behind or internal pitch.\n\nLanding page: <URL or HTML>",
+      _buildRef: "slashcmd:landing-to-powerpoint (Kappaemme-git/landing-to-powerpoint)",
+    },
+  },
+  {
+    slug: "saas-social",
+    name: "SaaS Social",
+    summary: "Turns a SaaS product URL into ready-to-post copy for X, LinkedIn and Reddit.",
+    description:
+      "A **skill** that turns a SaaS product's URL into platform-native launch/promo copy — matching the voice and format each platform actually rewards, so a founder isn't posting the same generic blurb everywhere.",
+    type: "SKILL",
+    tags: ["marketing", "social", "saas"],
+    content: {
+      whatYouGet: [
+        "Platform-native copy for X, LinkedIn and Reddit — not one blurb pasted three times",
+        "A hook suited to each platform's actual audience and format",
+        "Ready to post, with minor edits for tone if needed",
+      ],
+      install: ["Point it at the SaaS product URL", "Get back copy tailored to each platform"],
+      promptText:
+        "Write launch/promo copy for this SaaS product, tailored separately to X, LinkedIn and Reddit — match each platform's actual voice and format rather than reusing one blurb. Lead with a hook suited to that platform's audience.\n\nProduct: <URL or description>",
+      _buildRef: "slashcmd:codex-sell-my-saas-skill (Kappaemme-git/codex-sell-my-saas-skill)",
+    },
+  },
+  {
+    slug: "site-snapshots",
+    name: "Site Snapshots",
+    summary: "Generates polished desktop and mobile screenshots of a live site, ready for social or a deck.",
+    description:
+      "A **skill** for turning a live site into presentation-ready visuals: it captures polished desktop and mobile screenshots at sensible custom dimensions, so there's always a clean shot on hand for a deck, a social post, or a case study without a manual screenshot-and-crop session.",
+    type: "SKILL",
+    tags: ["screenshots", "marketing", "assets"],
+    content: {
+      whatYouGet: [
+        "Polished desktop and mobile screenshots of the live site",
+        "Custom, presentation-ready dimensions rather than a raw browser capture",
+        "Assets ready to drop into a deck, case study or social post",
+      ],
+      install: ["Point it at the live site URL", "Get back desktop + mobile screenshots"],
+      promptText:
+        "Capture polished, presentation-ready screenshots of this live site — both desktop and mobile views, at clean custom dimensions (not a raw unedited browser capture). These are for a deck / case study / social post, so frame accordingly.\n\nSite: <URL>",
+      _buildRef: "slashcmd:site-post-screenshots (Kappaemme-git/site-post-screenshots)",
+    },
+  },
+  {
+    slug: "complexity-pass",
+    name: "Complexity Pass",
+    summary: "Finds the algorithmic complexity and performance bottlenecks actually worth fixing.",
+    description:
+      "A **skill** for a codebase performance review: it examines the code for real algorithmic complexity issues and bottlenecks — not stylistic nitpicks — and hands back concrete optimisation recommendations ranked by actual impact.",
+    type: "SKILL",
+    tags: ["performance", "codebase", "optimization"],
+    content: {
+      whatYouGet: [
+        "The actual algorithmic complexity/performance issues in the codebase",
+        "Concrete optimisation recommendations, not stylistic nitpicks",
+        "Findings ranked by real-world impact",
+      ],
+      install: ["Point it at the codebase or a specific module", "Get back ranked optimisation recommendations"],
+      promptText:
+        "Examine this codebase for real algorithmic complexity issues and performance bottlenecks — not style nitpicks. For each finding: where it is, why it's a real problem (not theoretical), the concrete fix, and its actual impact. Rank by impact.\n\nCodebase / module: <repo or code>",
+      _buildRef: "slashcmd:codex-complexity-optimizer (Kappaemme-git/codex-complexity-optimizer)",
+    },
+  },
+  {
+    slug: "pressure-test",
+    name: "Pressure Test",
+    summary: "Stress-tests a startup concept's assumptions before a client bets a build on it.",
+    description:
+      "A **skill** for the conversation before the build starts: it interrogates a startup concept's core assumptions, surfaces the weaknesses a founder is too close to see, and gives founder-focused analysis — MVP scope, customer acquisition — so the build that follows is aimed at something real.",
+    type: "SKILL",
+    tags: ["strategy", "validation", "planning"],
+    content: {
+      whatYouGet: [
+        "The core assumptions the concept is actually resting on, made explicit",
+        "The critical weaknesses in those assumptions, argued honestly",
+        "Founder-focused next steps: MVP scope and a customer acquisition angle",
+      ],
+      install: ["Describe the startup concept", "Get back the assumptions, weaknesses and next steps"],
+      promptText:
+        "Pressure-test this startup concept. Identify the core assumptions it depends on, argue honestly against them (don't just cheerlead), and surface the critical weaknesses a founder too close to the idea might miss. Finish with founder-focused next steps: a lean MVP scope and a realistic customer acquisition angle.\n\nConcept: <description>",
+      _buildRef: "slashcmd:codex-startup-pressure-test-skill (Kappaemme-git/codex-startup-pressure-test-skill)",
+    },
+  },
 ];
 
 // The Prompts category — a large pack of PROMPT-type starters parsed from the prompt packs into
@@ -472,6 +732,19 @@ const SOURCE_URLS: Record<string, string> = {
   analytics: `${OWNED}/analytics`,
   mobile: `${OWNED}/mobile`,
   "ship-it": `${OWNED}/ship-it`,
+  "chat-digest": `${OWNED}/chat-digest`,
+  "audit-pass": `${OWNED}/audit-pass`,
+  tidy: `${OWNED}/tidy`,
+  "site-backend": `${OWNED}/site-backend`,
+  bridge: `${OWNED}/bridge`,
+  "session-notes": `${OWNED}/session-notes`,
+  "persona-test": `${OWNED}/persona-test`,
+  "landing-polish": `${OWNED}/landing-polish`,
+  "deck-export": `${OWNED}/deck-export`,
+  "saas-social": `${OWNED}/saas-social`,
+  "site-snapshots": `${OWNED}/site-snapshots`,
+  "complexity-pass": `${OWNED}/complexity-pass`,
+  "pressure-test": `${OWNED}/pressure-test`,
   // Skills Library, Projects Index, Web Starter and Product are now Gitwork-authored content
   // served in-app (no upstream, no external repo) — see their entries above. No source link.
 };

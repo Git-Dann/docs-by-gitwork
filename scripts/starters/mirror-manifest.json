@@ -18,14 +18,30 @@
     { "slug": "mobile", "repo": "Meet-Miyani/compose-skill", "licence": "MIT" },
     { "slug": "ship-it", "repo": "Farenhytee/database-sentinel", "licence": "MIT" },
     { "slug": "ship-it", "repo": "yoanbernabeu/supabase-pentest-skills", "licence": "MIT" },
-    { "slug": "ship-it", "repo": "Rodrigotari1/supashield", "licence": "MIT" }
+    { "slug": "ship-it", "repo": "Rodrigotari1/supashield", "licence": "MIT" },
+    { "slug": "chat-digest", "repo": "bystander563/chat-codex-skill", "licence": "MIT" },
+    { "slug": "audit-pass", "repo": "Kappaemme-git/codex-security-audit-skill", "licence": "MIT" },
+    { "slug": "tidy", "repo": "jgarbarino3/housemaid", "licence": "MIT" },
+    { "slug": "site-backend", "repo": "varshneydevansh/backy", "licence": "MIT" },
+    { "slug": "bridge", "repo": "tot3lis/SkillBridge", "licence": "MIT" },
+    { "slug": "session-notes", "repo": "Nova1390/obsidian-memory-closeout", "licence": "MIT" },
+    { "slug": "persona-test", "repo": "Kappaemme-git/codex-startup-user-simulator-skill", "licence": "MIT" },
+    { "slug": "deck-export", "repo": "Kappaemme-git/landing-to-powerpoint", "licence": "MIT" },
+    { "slug": "saas-social", "repo": "Kappaemme-git/codex-sell-my-saas-skill", "licence": "MIT" },
+    { "slug": "site-snapshots", "repo": "Kappaemme-git/site-post-screenshots", "licence": "MIT" },
+    { "slug": "complexity-pass", "repo": "Kappaemme-git/codex-complexity-optimizer", "licence": "MIT" },
+    { "slug": "pressure-test", "repo": "Kappaemme-git/codex-startup-pressure-test-skill", "licence": "MIT" },
+    { "slug": "landing-polish", "repo": "Kappaemme-git/MengToFrontend", "licence": "none (Dan-owned repo, explicitly authorized) — repo has no root LICENSE file today; add one (e.g. MIT) before running the mirror script, since hasLicense() will otherwise skip it" }
   ],
   "excluded": [
     { "slug": "skills-library", "repo": "ComposioHQ/awesome-claude-skills", "licence": "Apache-2.0 (no root LICENSE file)", "reason": "Curated index of external links, not code; GitHub detects Apache but there's no LICENSE file to vendor. Low mirror value — keep link-only / curate our own." },
     { "slug": "projects-index", "repo": "danielrosehill/Claude-Code-Projects-Index", "licence": "none", "reason": "No licence = all rights reserved; cannot redistribute. Rewrite Gitwork-native (it's just a curated index)." },
     { "slug": "web-starter", "repo": "jclewis33/clcreative-AI-first-website-starter", "licence": "none", "reason": "No licence = all rights reserved; cannot redistribute. Rewrite Gitwork-native." },
     { "slug": "product", "repo": "deanpeters/Product-Manager-Skills", "licence": "CC-BY-NC-SA-4.0", "reason": "Non-commercial licence; Foundry is commercial. Rewrite Gitwork-native." },
-    { "slug": "ship-it", "repo": "ironsightscyber/vibe-security", "licence": "GPL-3.0", "reason": "Copyleft; incompatible with proprietary use. Dropped — Ship It's other three sources are MIT." }
+    { "slug": "ship-it", "repo": "ironsightscyber/vibe-security", "licence": "GPL-3.0", "reason": "Copyleft; incompatible with proprietary use. Dropped — Ship It's other three sources are MIT." },
+    { "slug": "site-backend-canvax", "repo": "varshneydevansh/Canvax", "licence": "none", "reason": "No LICENSE file at repo root = all rights reserved; cannot redistribute. Not added to the catalog." },
+    { "slug": "n/a", "repo": "lassejlv/unkey-deploy-dockerfile", "licence": "unverifiable", "reason": "Repo returns 404 — listed on slashcmd.dev but not resolvable on GitHub as named. Not added; needs the source confirmed before it can be mirrored." },
+    { "slug": "n/a", "repo": "CratesSo/skills (plan-my-grill subfolder)", "licence": "MIT (repo-wide)", "reason": "The skill lives in a subfolder of a general multi-skill monorepo, not its own repo. mirror-starters.mjs only mirrors whole repos, and cloning all of CratesSo/skills would vendor other unrelated, unaudited skills alongside it. Needs a subpath-aware mirror step before this can be added safely." }
   ],
   "noSource": [
     { "slug": "devops", "reason": "Authored in-house by Gitwork — nothing to mirror." },
