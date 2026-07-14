@@ -80,7 +80,6 @@ export function MorningBrief({ open, onClose }: { open: boolean; onClose: () => 
         className="brief-fade mx-auto w-full max-w-[1040px] px-5 pb-24 sm:px-8"
         style={{ animation: "briefFade 0.5s cubic-bezier(0.22,1,0.36,1) both" }}
       >
-        <BriefMasthead brief={brief} />
         <BriefHero brief={brief} />
 
         <div className="mt-2">
@@ -100,30 +99,29 @@ export function MorningBrief({ open, onClose }: { open: boolean; onClose: () => 
   );
 }
 
-// ── Masthead ────────────────────────────────────────────────────────────────
+// ── Hero ──────────────────────────────────────────────────────────────────────
 
-function BriefMasthead({ brief }: { brief: Brief }) {
-  const date = new Date(brief.dateISO);
+/** A cutting-mat ruler strip (oryzo-style) — ticks with sparse 0–100 numbers. */
+function HeroRuler({ className }: { className?: string }) {
+  const marks = Array.from({ length: 41 });
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-[var(--border-2)] pb-3 pt-14 sm:pt-16">
-      <span
-        className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[1.6px] text-[var(--text-3)]"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
-        <FoundryMark className="h-3.5 w-3.5" />
-        The Foundry Brief
-      </span>
-      <span
-        className="text-[10px] uppercase tracking-[1.6px] text-[var(--text-4)]"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
-        N° {String(dayOfYear(date)).padStart(3, "0")} · {brief.weekday.slice(0, 3)}
-      </span>
+    <div className={cn("flex items-end justify-between", className)} aria-hidden>
+      {marks.map((_, i) => {
+        const major = i % 4 === 0;
+        return (
+          <div key={i} className="flex flex-col items-center gap-1">
+            {major ? (
+              <span className="text-[7px] leading-none text-white/45" style={{ fontFamily: "var(--font-mono)" }}>
+                {(i / 4) * 10}
+              </span>
+            ) : null}
+            <span className={cn("w-px bg-white/40", major ? "h-3" : "h-1.5")} />
+          </div>
+        );
+      })}
     </div>
   );
 }
-
-// ── Hero ──────────────────────────────────────────────────────────────────────
 
 function BriefHero({ brief }: { brief: Brief }) {
   const [imgOk, setImgOk] = useState(true);
@@ -134,7 +132,7 @@ function BriefHero({ brief }: { brief: Brief }) {
     .replace(/\s?([AP]M)/, " $1");
 
   return (
-    <header className="relative pt-8">
+    <header className="relative pt-14 sm:pt-16">
       {/* Vertical mono rails — date left, time right, hugging the painting. */}
       <span
         className="pointer-events-none absolute left-0 top-1/2 hidden -translate-y-1/2 text-[13px] tracking-[0.15em] text-[var(--text-3)] sm:block"
@@ -179,6 +177,21 @@ function BriefHero({ brief }: { brief: Brief }) {
               "linear-gradient(180deg, rgba(8,12,24,0.34) 0%, rgba(8,12,24,0.20) 38%, rgba(8,12,24,0.48) 100%), radial-gradient(120% 85% at 50% 46%, rgba(0,0,0,0.16) 0%, rgba(0,0,0,0.46) 100%)",
           }}
         />
+        {/* Corner metadata (oryzo-style) — issue tab + eyebrow on the artwork. */}
+        <span
+          className="absolute left-4 top-3.5 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[1.6px] text-white/75"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          <FoundryMark className="h-3.5 w-3.5" />
+          The Foundry Brief
+        </span>
+        <span
+          className="absolute right-4 top-3.5 inline-flex items-center rounded-[6px] border border-white/25 bg-black/10 px-2 py-1 text-[10px] uppercase tracking-[1.4px] text-white/80 backdrop-blur-[2px]"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          N° {String(dayOfYear(date)).padStart(3, "0")} · {brief.weekday.slice(0, 3)}
+        </span>
+
         <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
           {/* Brand accent bar — the pop of Gitwork Blue, kept off the type for contrast. */}
           <span aria-hidden className="mb-4 h-[3px] w-10 rounded-full bg-[var(--brand-500)] shadow-[0_1px_8px_rgba(0,0,0,0.4)]" />
@@ -195,16 +208,20 @@ function BriefHero({ brief }: { brief: Brief }) {
             {brief.weekday} Brief
           </h1>
         </div>
+
+        {/* Cutting-mat ruler along the bottom edge. */}
+        <HeroRuler className="absolute inset-x-5 bottom-2.5" />
       </div>
 
-      {/* Blurb + caption row (blurb left, caption right — Dia's arrangement). */}
-      <div className="mt-3 flex flex-col gap-1 px-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
+      {/* Blurb · dotted leader · caption (editorial byline row). */}
+      <div className="mt-4 flex flex-col gap-1.5 px-1 sm:flex-row sm:items-baseline sm:gap-4">
         <p
           className="max-w-2xl text-[15px] italic leading-relaxed text-[var(--text-3)]"
           style={{ fontFamily: "var(--font-display)" }}
         >
           {brief.greeting}
         </p>
+        <span aria-hidden className="hidden flex-1 translate-y-[-3px] border-b border-dotted border-[var(--border-2)] sm:block" />
         <p
           className="shrink-0 text-[11px] tracking-[0.02em] text-[var(--text-4)]"
           style={{ fontFamily: "var(--font-mono)" }}

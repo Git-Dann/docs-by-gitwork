@@ -1040,8 +1040,10 @@ Desk **TODAY** tab that opens a **full-page overlay**; dismissable from **both**
   Keeps the "your 9am is their 1pm" readout + overlap window. `TeamOverlap` stays exported in
   `desk-time.tsx` (now unused). All pure `Intl`/trig — no globe lib.
 - **Editorial craft pass (Jul 14).** Borrowed the blueprint/drafting language (oryzo.ai / Lusion) on
-  Foundry's terms via `src/components/brief/brief-ornaments.tsx`: a **magazine masthead**
-  (`The Foundry Brief` · `N° {day-of-year}`), **drafting corner-ticks** + a mono kicker + serif title
+  Foundry's terms via `src/components/brief/brief-ornaments.tsx`: an **oryzo-style hero** — corner
+  metadata tabs on the artwork (`The Foundry Brief` eyebrow + `N° {day-of-year} · {day}` tab) and a
+  **cutting-mat ruler** (0–100 ticks) along the bottom edge (the standalone masthead bar was folded
+  into these), **drafting corner-ticks** + a mono kicker + serif title
   on the "Push your work forward" card (a subtle brand→canvas gradient panel, **not** a flat colour
   block), **mono section index labels** (`Focus` / `To-do` / `Signals` / `Agenda` — via a new optional
   `index` prop on the shared `EditorialRow`), a **slow painting zoom** + overlay fade-in (reduced-motion
