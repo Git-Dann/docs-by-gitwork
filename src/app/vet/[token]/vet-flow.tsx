@@ -14,11 +14,20 @@ import {
   ProgressBar,
   brandInputClass,
 } from "@/components/onboarding/brand";
+import {
+  CONSENT_ITEMS,
+  DATA_HANDLING_POINTS,
+  DATA_REQUEST_LABELS,
+  DATA_CONTACT_EMAIL,
+  EXPLANATION_STAGES,
+  type DataRequestType,
+} from "@/lib/devsignal/processing-notice";
 
-type Step = "welcome" | "intake" | "connect" | "challenge" | "video" | "identity" | "done";
-const STEPS: Step[] = ["welcome", "intake", "connect", "challenge", "video", "identity", "done"];
+type Step = "welcome" | "consent" | "intake" | "connect" | "challenge" | "video" | "identity" | "done";
+const STEPS: Step[] = ["welcome", "consent", "intake", "connect", "challenge", "video", "identity", "done"];
 const STEP_LABEL: Record<Step, string> = {
   welcome: "Welcome",
+  consent: "Consent",
   intake: "About you",
   connect: "GitHub",
   challenge: "Challenge",
@@ -115,6 +124,7 @@ export function VetFlow({ token }: { token: string }) {
           </BrandCard>
         )}
 
+        {step === "consent" && <ConsentStep token={token} session={session} onSaved={advance} />}
         {step === "intake" && <IntakeStep token={token} session={session} onSaved={advance} />}
         {step === "connect" && <ConnectStep token={token} session={session} onSaved={advance} />}
 
@@ -138,9 +148,10 @@ export function VetFlow({ token }: { token: string }) {
           <BrandCard eyebrow="Submitted" title="All done — thank you.">
             <Lede>
               Thanks, {session.candidate.name}. Your assessment is complete and with the Gitwork team
-              for review. We&apos;ll be in touch about next steps — and we&apos;ve emailed you a copy of
-              your link.
+              for review. A person — not a machine — makes the final call. We&apos;ll be in touch about
+              next steps, and we&apos;ve emailed you a copy of your link.
             </Lede>
+            <DataRightsFooter token={token} />
           </BrandCard>
         )}
       </FadeIn>
@@ -399,6 +410,170 @@ function IdentityStep({ token, onDone, onSkip }: { token: string; onDone: () => 
         <BrandLinkButton onClick={onSkip}>Skip for now</BrandLinkButton>
       </div>
     </BrandCard>
+  );
+}
+
+// ─── consent (GDPR) ───────────────────────────────────────────────────────────
+
+function ConsentStep({ token, session, onSaved }: { token: string; session: PublicVetSession; onSaved: () => void }) {
+  const [checks, setChecks] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(CONSENT_ITEMS.map((c) => [c.key, session.consentGiven])),
+  );
+  const [showHow, setShowHow] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const allRequired = CONSENT_ITEMS.every((c) => !c.required || checks[c.key]);
+
+  const save = async () => {
+    if (!allRequired) {
+      setErr("Please tick both boxes to continue.");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      await sendJson(`/api/vet/${token}/consent`, "POST", { processing: true, humanReview: true });
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not save");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <BrandCard eyebrow="Before we begin · Your data" title="How this works, and your consent.">
+      <Lede>
+        We want to be straight with you about what happens with your information. Please read this and,
+        if you&apos;re happy, give your consent to continue.
+      </Lede>
+
+      <button
+        type="button"
+        onClick={() => setShowHow((s) => !s)}
+        className="mt-4 font-mono text-[11px] uppercase tracking-[0.14em] text-[#6B52FF] hover:underline"
+      >
+        {showHow ? "Hide" : "How you're assessed ↓"}
+      </button>
+      {showHow && (
+        <ol className="mt-3 space-y-2 border-l-2 border-[#6B52FF] pl-4">
+          {EXPLANATION_STAGES.map((s) => (
+            <li key={s.title}>
+              <p className="text-sm font-medium text-[#1A1A1E]">
+                {s.title}{" "}
+                <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[#9a978f]">
+                  {s.automated ? "automated" : "human"}
+                </span>
+              </p>
+              <p className="text-sm leading-relaxed text-[#46464C]">{s.measures}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      <ul className="mt-4 space-y-1.5">
+        {DATA_HANDLING_POINTS.map((p) => (
+          <li key={p} className="flex gap-2 text-sm leading-relaxed text-[#46464C]">
+            <span className="text-[#6B52FF]">•</span>
+            <span>{p}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-5 space-y-3">
+        {CONSENT_ITEMS.map((item) => (
+          <label key={item.key} className="flex items-start gap-2.5 text-sm leading-relaxed text-[#46464C]">
+            <input
+              type="checkbox"
+              checked={Boolean(checks[item.key])}
+              onChange={(e) => {
+                setChecks((p) => ({ ...p, [item.key]: e.target.checked }));
+                if (err) setErr(null);
+              }}
+              className="mt-0.5 accent-[#6B52FF]"
+            />
+            <span>{item.label}</span>
+          </label>
+        ))}
+      </div>
+
+      {err && <p className="mt-3 text-sm text-[#d14343]">{err}</p>}
+      <div className="mt-6">
+        <BrandButton onClick={save} disabled={saving || !allRequired}>
+          {saving ? "Saving…" : "I consent — continue →"}
+        </BrandButton>
+      </div>
+    </BrandCard>
+  );
+}
+
+// ─── data rights (explanation / appeal / erasure) ────────────────────────────
+
+function DataRightsFooter({ token }: { token: string }) {
+  const [open, setOpen] = useState<DataRequestType | null>(null);
+  const [message, setMessage] = useState("");
+  const [sent, setSent] = useState<DataRequestType | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!open) return;
+    setBusy(true);
+    try {
+      await sendJson(`/api/vet/${token}/request`, "POST", { type: open, message: message.trim() || undefined });
+      setSent(open);
+      setOpen(null);
+      setMessage("");
+    } catch {
+      // best-effort; keep the panel open on failure
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const types: DataRequestType[] = ["EXPLANATION", "APPEAL", "ERASURE"];
+
+  return (
+    <div className="mt-6 border-t border-[rgba(12,12,24,0.1)] pt-5">
+      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#6B6B6B]">Your rights</p>
+      <p className="mt-1.5 text-sm leading-relaxed text-[#46464C]">
+        You can ask us to explain your assessment, appeal for a person to re-review it, or delete your
+        data. We&apos;ll confirm by email ({DATA_CONTACT_EMAIL}).
+      </p>
+      {sent ? (
+        <p className="mt-3 text-sm text-[#3f8f5b]">
+          Request sent — “{DATA_REQUEST_LABELS[sent]}”. We&apos;ll be in touch.
+        </p>
+      ) : (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {types.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setOpen((o) => (o === t ? null : t))}
+              className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition ${
+                open === t
+                  ? "border-[#6B52FF] bg-[#6B52FF] text-white"
+                  : "border-[rgba(12,12,24,0.2)] bg-[#FFFFFF] text-[#1A1A1E] hover:bg-[rgba(12,12,24,0.04)]"
+              }`}
+            >
+              {DATA_REQUEST_LABELS[t]}
+            </button>
+          ))}
+        </div>
+      )}
+      {open && (
+        <div className="mt-3">
+          <BrandField label="Anything you'd like to add? (optional)">
+            <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} className={brandInputClass()} />
+          </BrandField>
+          <div className="mt-3">
+            <BrandButton onClick={submit} disabled={busy}>
+              {busy ? "Sending…" : "Send request"}
+            </BrandButton>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

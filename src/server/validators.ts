@@ -1576,3 +1576,19 @@ export const devSignalChallengeSchema = z.object({
 export const devSignalChallengeUpdateSchema = devSignalChallengeSchema
   .omit({ slug: true })
   .partial();
+
+// ─── DevSignal candidate consent + data-rights (GDPR) ────────────────────────
+
+export const vetConsentSchema = z.object({
+  processing: z.literal(true),
+  humanReview: z.literal(true),
+});
+
+export const vetDataRequestSchema = z.object({
+  type: z.enum(["EXPLANATION", "APPEAL", "ERASURE"]),
+  message: z.string().max(4000).optional(),
+});
+
+export const devSignalDataRequestUpdateSchema = z.object({
+  status: z.enum(["OPEN", "ACKNOWLEDGED", "RESOLVED"]),
+});

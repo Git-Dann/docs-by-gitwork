@@ -16,6 +16,7 @@ import {
 } from "@/hooks/use-devsignal";
 import type { DevSignalAssessmentDTO, DevSignalStageResultDTO } from "@/types/devsignal";
 import { OutcomeLinksPanel } from "./outcome-links-panel";
+import { CompliancePanel } from "./compliance-panel";
 
 // Status label tone. Uses the semantic palette (emerald/amber/rose/sky) that
 // globals.css remaps for dark mode; neutral states use tokens.
@@ -67,6 +68,7 @@ export function AssessmentDetail({ id }: { id: string }) {
         <div className="space-y-6">
           <BestMatchCard a={a} />
           <DecisionPanel id={id} a={a} />
+          <CompliancePanel id={id} a={a} />
           <OutcomeLinksPanel assessmentId={id} candidateId={a.candidateId} links={a.outcomeLinks ?? []} />
         </div>
       </div>

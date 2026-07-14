@@ -15,6 +15,7 @@ import {
   recordDevSignalInterview,
   runDevSignalAssessment,
   updateDevSignalChallenge,
+  updateDevSignalDataRequest,
   type DevSignalChallengeInput,
 } from "@/lib/api";
 
@@ -130,4 +131,12 @@ export function useUpdateDevSignalChallenge() {
       updateDevSignalChallenge(slug, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: [KEY, "challenges"] }),
   });
+}
+
+export function useUpdateDevSignalDataRequest(assessmentId: string | null) {
+  return useAssessmentMutation(
+    ({ id, status }: { id: string; status: "OPEN" | "ACKNOWLEDGED" | "RESOLVED" }) =>
+      updateDevSignalDataRequest(id, status),
+    assessmentId,
+  );
 }
