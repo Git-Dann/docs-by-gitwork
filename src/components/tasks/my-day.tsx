@@ -77,19 +77,26 @@ export function MyDay() {
       });
       setPushed(phase);
       const posted = res?.posted ?? 0;
+      const slackFailures = res?.slackFailures ?? [];
       // Honest feedback: the standup only posts to a client's channel when there's
       // something for that client (in-progress tasks for AM, done-today for PM).
-      // If nothing matched, say so rather than a misleading "Pushed to Slack".
+      // If nothing matched, say so rather than a misleading "Pushed to Slack". Surface
+      // any channel that rejected the post (e.g. the bot isn't in a Slack Connect channel).
       setPushMsg(
-        posted > 0
-          ? { text: `Pushed to ${posted} ${posted === 1 ? "channel" : "channels"}`, ok: true }
-          : {
-              text:
-                phase === "PM"
-                  ? "Saved — no tasks marked done today to post"
-                  : "Saved — nothing in progress to post",
+        slackFailures.length > 0
+          ? {
+              text: `Pushed to ${posted} · couldn't post to ${slackFailures.join("; ")} — check the bot is in that channel`,
               ok: false,
-            },
+            }
+          : posted > 0
+            ? { text: `Pushed to ${posted} ${posted === 1 ? "channel" : "channels"}`, ok: true }
+            : {
+                text:
+                  phase === "PM"
+                    ? "Saved — no tasks marked done today to post"
+                    : "Saved — nothing in progress to post",
+                ok: false,
+              },
       );
       setTimeout(() => {
         setPushed(null);

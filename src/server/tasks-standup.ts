@@ -200,10 +200,12 @@ export async function pushDailyUpdate(
   // report back how many channels actually received a post (honest UI feedback:
   // a push with nothing to say shouldn't claim "Pushed to Slack"). Best-effort —
   // a Slack failure never fails the request.
-  const posted = await postStandupToSlack(user, workDate, input).catch((err) => {
-    console.error("[tasks] standup Slack post failed", err);
-    return 0;
-  });
+  const { posted, failures: slackFailures } = await postStandupToSlack(user, workDate, input).catch(
+    (err) => {
+      console.error("[tasks] standup Slack post failed", err);
+      return { posted: 0, failures: [] as string[] };
+    },
+  );
 
   // If this PM push is the one that completes the whole dev roster, nudge the lead once.
   if (input.phase === "PM" && !prior?.pmPushedAt) {
@@ -212,7 +214,7 @@ export async function pushDailyUpdate(
     );
   }
 
-  return { ...updateToDTO(row, workDate), posted };
+  return { ...updateToDTO(row, workDate), posted, slackFailures };
 }
 
 /** Retract today's standup for a phase: delete the posted Slack messages
@@ -273,13 +275,13 @@ async function postStandupToSlack(
   user: EffectiveUser,
   workDate: Date,
   input: { phase: "AM" | "PM"; weekPlan?: string; note?: string },
-): Promise<number> {
+): Promise<{ posted: number; failures: string[] }> {
   const ws = await prisma.workspace.findUnique({
     where: { id: user.workspaceId },
     select: { slackBotToken: true, slackBotTokenEncrypted: true },
   });
   const botToken = getSlackBotToken(ws);
-  if (!botToken) return 0;
+  if (!botToken) return { posted: 0, failures: [] };
 
   const tasks = await listTasks(user, { assigneeId: "me", includeSubtasks: true });
   const { doing, done } = partition(tasks, workDate);
@@ -298,7 +300,7 @@ async function postStandupToSlack(
     : [];
   const parentTitleById = new Map(parentRows.map((p) => [p.id, p.title]));
   if (sectionTasks.length === 0 && !(input.phase === "AM" && isMonday(workDate) && input.weekPlan)) {
-    return 0; // nothing to say
+    return { posted: 0, failures: [] }; // nothing to say
   }
 
   // Resolve each involved client's channels — prefer the new dual-channel field
@@ -327,6 +329,7 @@ async function postStandupToSlack(
   const isMon = isMonday(workDate);
 
   let postedCount = 0;
+  const failures: string[] = [];
   for (const clientId of clientIds) {
     const channel = channelByClient.get(clientId);
     if (!channel) continue;
@@ -393,6 +396,13 @@ async function postStandupToSlack(
             },
           })
           .catch(() => undefined);
+      } else {
+        // Surface the failure instead of swallowing it — the usual culprit is the bot not
+        // being a member of a Slack Connect (external) channel ("not_in_channel").
+        const reason = result.ok ? "no message ts returned" : result.error || "unknown error";
+        const isExternal = target === externalChannel && target !== channel;
+        console.error("[standup] Slack post failed", { clientId, target, external: isExternal, reason });
+        failures.push(`${isExternal ? "external" : "internal"} channel: ${reason}`);
       }
     }
   }
@@ -406,7 +416,7 @@ async function postStandupToSlack(
     }).catch(() => undefined);
   }
 
-  return postedCount;
+  return { posted: postedCount, failures: Array.from(new Set(failures)) };
 }
 
 /** Short random id for the placeholder messageTs — collision-resistant within the

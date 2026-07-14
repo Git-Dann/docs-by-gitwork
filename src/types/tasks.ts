@@ -125,6 +125,9 @@ export type DailyUpdateDTO = {
    *  posted to. 0 means there was nothing to post (no matching tasks/channels),
    *  so the UI can say so honestly instead of a blanket "Pushed to Slack". */
   posted?: number;
+  /** Only set on a push response: per-channel post failures (e.g. "external channel:
+   *  not_in_channel"), so the UI can warn that a channel didn't receive the update. */
+  slackFailures?: string[];
 };
 
 /** The dev's "My Day" standup surface. */
