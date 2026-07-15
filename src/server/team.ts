@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { ForbiddenError } from "@/server/auth/effective-user";
 import { recomputeMember } from "@/server/permissions";
-import { seedAccountEmails } from "@/server/seed-accounts";
+import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
 import { canManageRole, normalizeOverrides, type PermissionOverrides, type RoleId } from "@/types/auth";
 
 export async function getWorkspace() {
@@ -15,7 +15,7 @@ export async function listMembers() {
   const rows = await prisma.workspaceMember.findMany({
     where: {
       workspaceId: workspace.id,
-      user: { email: { notIn: seedAccountEmails() } },
+      user: seedAccountUserWhere(),
     },
     // `googleOAuthEmail` is captured on a member's first successful Google sign-in (the auth
     // jwt callback writes it whenever Google returns a refresh token — which `prompt: "consent"`
@@ -26,7 +26,9 @@ export async function listMembers() {
   });
   // Normalise `permissions` (Json column) to a string array for the UI, and surface a derived
   // `hasSignedIn` flag — without exposing the raw OAuth email field beyond the member row.
-  return rows.map((row) => {
+  return rows
+    .filter((row) => !isSeedAccount({ email: row.user.email, name: row.user.name }))
+    .map((row) => {
     const { googleOAuthEmail, ...user } = row.user;
     return {
       ...row,
@@ -131,7 +133,7 @@ async function assertNotLastSuperAdmin(workspaceId: string, memberId: string) {
       workspaceId,
       role: "SUPER_ADMIN",
       id: { not: memberId },
-      user: { email: { notIn: seedAccountEmails() } },
+      user: seedAccountUserWhere(),
     },
   });
   if (others === 0) {

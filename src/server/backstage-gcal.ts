@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { googleClientForRefreshToken } from "@/server/google-auth";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import type { CalendarConnectionMember, TeamCalendarEvent } from "@/types/backstage";
-import { seedAccountEmails } from "@/server/seed-accounts";
+import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
 
 function displayName(u: { name: string | null; email: string }): string {
   return u.name?.trim() ? u.name : u.email;
@@ -30,7 +30,7 @@ export async function listCalendarConnections(
     where: {
       workspaceId: user.workspaceId,
       user: {
-        email: { notIn: seedAccountEmails() },
+        ...seedAccountUserWhere(),
         googleOAuthRefreshToken: { not: null },
       },
     },
@@ -40,11 +40,13 @@ export async function listCalendarConnections(
 
   return {
     selfConnected: members.some((m) => m.user.id === user.id),
-    members: members.map((m) => ({
-      id: m.user.id,
-      name: displayName(m.user),
-      isSelf: m.user.id === user.id,
-    })),
+    members: members
+      .filter((m) => !isSeedAccount({ email: m.user.email, name: m.user.name }))
+      .map((m) => ({
+        id: m.user.id,
+        name: displayName(m.user),
+        isSelf: m.user.id === user.id,
+      })),
   };
 }
 

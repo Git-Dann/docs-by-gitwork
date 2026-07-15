@@ -10,7 +10,7 @@ import {
 } from "@/server/auth/effective-user";
 import { isAtLeast, normalizeOverrides } from "@/types/auth";
 import { recomputeMember } from "@/server/permissions";
-import { seedAccountEmails } from "@/server/seed-accounts";
+import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
 import { isNonWorkingDay, getHolidaysForCountry } from "@/server/backstage-holidays";
 import {
   sendWorkspaceEmail,
@@ -904,7 +904,7 @@ export async function listWorkspaceMembers(user: EffectiveUser): Promise<Backsta
   const members = await prisma.workspaceMember.findMany({
     where: {
       workspaceId: user.workspaceId,
-      user: { email: { notIn: seedAccountEmails() } },
+      user: seedAccountUserWhere(),
     },
     include: {
       user: {
@@ -948,7 +948,9 @@ export async function listWorkspaceMembers(user: EffectiveUser): Promise<Backsta
     placementClientIdsByEmail.set(email, ids);
   }
 
-  return members.map((m) => ({
+  return members
+    .filter((m) => !isSeedAccount({ email: m.user.email, name: m.user.name }))
+    .map((m) => ({
     id: m.user.id,
     name: m.user.name ?? m.user.email,
     email: m.user.email,
@@ -983,7 +985,7 @@ export async function getStaffingAlerts(
     prisma.workspaceMember.findMany({
       where: {
         workspaceId: user.workspaceId,
-        user: { email: { notIn: seedAccountEmails() } },
+        user: seedAccountUserWhere(),
       },
       include: { user: { select: { id: true, name: true, email: true } } },
     }),
@@ -1028,7 +1030,7 @@ export async function getStaffingAlerts(
   }
   for (const h of holidayBuckets.values()) {
     const affected = members
-      .filter((m) => m.countryCode === h.country)
+      .filter((m) => m.countryCode === h.country && !isSeedAccount({ email: m.user.email, name: m.user.name }))
       .map((m) => ({ id: m.user.id, name: m.user.name ?? m.user.email }));
     alerts.push({
       kind: "holiday",
@@ -1160,7 +1162,7 @@ export async function getCalendarMonth(
     prisma.workspaceMember.findMany({
       where: {
         workspaceId: user.workspaceId,
-        user: { email: { notIn: seedAccountEmails() } },
+        user: seedAccountUserWhere(),
       },
       include: {
         user: { select: { id: true, name: true, email: true, avatarUrl: true } },
@@ -1264,7 +1266,9 @@ export async function getCalendarMonth(
     idsInMonth.size === 0
       ? members
       : members.filter((m) => idsInMonth.has(m.user.id));
-  const legendMembers: BackstageMember[] = legendSource.map((m) => ({
+  const legendMembers: BackstageMember[] = legendSource
+    .filter((m) => !isSeedAccount({ email: m.user.email, name: m.user.name }))
+    .map((m) => ({
     id: m.user.id,
     name: m.user.name?.trim() ? m.user.name : m.user.email,
     email: m.user.email,
