@@ -1066,10 +1066,12 @@ export function ClientDetail({ slug }: { slug: string }) {
 
       {!isLead && (
         <>
-      {/* ── ACTIVITY — 2-col rows on desktop, stacked on mobile ── */}
-      {/* Row 1: Notes + Documents side by side (Pulse follows when visible) so neither sits alone
-          with a large empty half — leads show notes in the 03/04 row above instead. */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      {/* ── ACTIVITY — one packed 2-col grid on desktop, stacked on mobile ── */}
+      {/* Notes · Documents · Pulse · Developers · Studies all flow through a SINGLE grid so cards
+          pair up row-major and rows stretch to equal height. A lone trailing card (odd count — e.g.
+          Pulse hidden, or no notes) spans BOTH columns, so there is NEVER a large empty half-row,
+          whatever combination of sections is present. Leads show notes in the 03/04 row above. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 [&>*:last-child:nth-child(odd)]:lg:col-span-2">
 
         {/* 13 // NOTES */}
         {client.notes ? (
@@ -1226,10 +1228,6 @@ export function ClientDetail({ slug }: { slug: string }) {
           </section>
         ) : null}
 
-      </div>
-
-      {/* Row 2: Developers + Studies */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* 16 // DEVELOPERS */}
         <section className="widget-card">
           <div className="widget-header">
