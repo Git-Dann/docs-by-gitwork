@@ -334,6 +334,7 @@ model Workspace {
   // ── Backstage (internal ops) ────────────────────────────────────────
   defaultAnnualLeaveDays      Int                        @default(25)
   expenseCategories           Json? // Optional override of the hardcoded category list
+  curatorConfig               Json? // Curator settings: { enabled, staleAfterDays, archiveAfterDays, consolidate, intervalDays }
   pulsePricingConfig          Json? // PulsePricingConfig — { fxFromUsd, dayRateOverrideGbp?, seniority? } for Pulse engagement pricing
   /// Master switch for the public Pulse embed (/embed/pulse + its API routes). Off = all
   /// public scan/unlock requests are rejected with a "temporarily unavailable" message.
@@ -438,6 +439,8 @@ model Workspace {
   coldArchives                ColdArchive[]
   handbookArticles            HandbookArticle[]
   golfClubs                   GolfClub[]
+  pulseCheckStats             PulseCheckStat[]
+  curatorRuns                 CuratorRun[]
 }
 
 /**
@@ -2847,24 +2850,37 @@ enum StarterStatus {
   ARCHIVED
 }
 
+// The Curator's lifecycle machine for a Starter (distinct from `status`/`isArchived`).
+// ACTIVE → STALE (unused ≥ staleAfterDays) → ARCHIVED (unused ≥ archiveAfterDays). Using a
+// starter (recordStarterUsage) revives STALE → ACTIVE. Archiving also flips isArchived=true.
+enum StarterCuratorState {
+  ACTIVE
+  STALE
+  ARCHIVED
+}
+
 model Starter {
-  id          String        @id @default(cuid())
-  workspaceId String? // nullable → global built-in vs workspace-authored
-  workspace   Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  name        String
-  slug        String        @unique
-  summary     String // one-line card subtitle
-  description String? // longer body (markdown)
-  type        StarterType   @default(KIT)
-  status      StarterStatus @default(PUBLISHED)
-  tags        String[]      @default([])
-  content     Json? // "what you get" bullets, install steps, prompt text, tech stack, + internal _buildRef
-  featured    Boolean       @default(false) // pinned to the top of the library with a star
-  isDefault   Boolean       @default(false) // shipped Gitwork built-in library entry
-  isArchived  Boolean       @default(false)
-  usageCount  Int           @default(0) // real "used it" events only — download, MCP prompts/get, scan adopt (not card/detail views)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id           String              @id @default(cuid())
+  workspaceId  String? // nullable → global built-in vs workspace-authored
+  workspace    Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  name         String
+  slug         String              @unique
+  summary      String // one-line card subtitle
+  description  String? // longer body (markdown)
+  type         StarterType         @default(KIT)
+  status       StarterStatus       @default(PUBLISHED)
+  tags         String[]            @default([])
+  content      Json? // "what you get" bullets, install steps, prompt text, tech stack, + internal _buildRef
+  featured     Boolean             @default(false) // pinned to the top of the library with a star
+  isDefault    Boolean             @default(false) // shipped Gitwork built-in library entry
+  isArchived   Boolean             @default(false)
+  usageCount   Int                 @default(0) // real "used it" events only — download, MCP prompts/get, scan adopt (not card/detail views)
+  // ── Curator lifecycle (additive) ──
+  lastUsedAt   DateTime? // last genuine "used it" event — the recency signal usageCount lacks
+  pinned       Boolean             @default(false) // exempt from all curator auto-transitions + archival
+  curatorState StarterCuratorState @default(ACTIVE)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
   @@index([workspaceId, createdAt])
 }
@@ -2942,6 +2958,53 @@ model PulseCheckConfig {
 
   @@unique([workspaceId, checkKey])
   @@index([workspaceId])
+}
+
+// ─── Curator (background maintenance agent) ─────────────────────────────────
+// A weekly background pass that keeps the Starters library and the Pulse-check catalogue
+// healthy. Deterministic transitions apply automatically (Starter lifecycle); LLM proposals
+// are written for a Super-Admin to approve. See src/server/curator/.
+
+// Materialised per-check usage aggregate (the analog of a telemetry sidecar). Refreshed by the
+// curator from persisted PulseScanCheck rows — NOT written on the scan hot path.
+model PulseCheckStat {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  checkKey      String
+  fireCount     Int       @default(0)
+  passCount     Int       @default(0)
+  warnCount     Int       @default(0)
+  failCount     Int       @default(0)
+  skipCount     Int       @default(0)
+  lastFiredAt   DateTime?
+  lastNonPassAt DateTime? // last time it was WARN or FAIL — "still catching things"
+  windowStart   DateTime // earliest scan createdAt covered by this aggregate
+  windowEnd     DateTime // latest scan createdAt covered by this aggregate
+  signal        String? // "dead" | "always_pass" | "noisy" | null — computed classification
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([workspaceId, checkKey])
+  @@index([workspaceId])
+}
+
+// One curator run — the in-app equivalent of Hermes' REPORT.md + run.json. Stores the run's
+// stats, the reversible transitions it applied, and the LLM proposals awaiting approval.
+model CuratorRun {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mode        String // "prune" | "consolidate" | "dry_run"
+  status      String    @default("running") // "running" | "succeeded" | "failed"
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  stats       Json? // { startersScanned, staled, archived, checksAggregated, deadChecks, ... }
+  transitions Json? // [{ kind, target, from, to }] — reversible record for restoreCuratorRun
+  proposals   Json? // [{ id, kind, target, rationale, payload, status }]
+  aiModel     String? // model used by the consolidation pass, or null when skipped
+  error       String?   @db.Text
+
+  @@index([workspaceId, startedAt])
 }
 
 // Per-user notification preferences. One row per user.

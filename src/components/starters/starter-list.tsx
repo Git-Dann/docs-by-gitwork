@@ -109,6 +109,14 @@ function StarterCard({
               {starter.featured ? <StarSolid className="h-4 w-4" /> : <StarOutline className="h-4 w-4" />}
             </button>
           )}
+          {starter.curatorState === "STALE" ? (
+            <span
+              className="rounded-[4px] border border-amber-300 bg-amber-50 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.08em] text-amber-700"
+              title="Unused for a while — the Curator flagged this stale"
+            >
+              Stale
+            </span>
+          ) : null}
           <TypeBadge type={starter.type} />
         </span>
       </div>

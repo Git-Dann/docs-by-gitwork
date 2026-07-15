@@ -301,6 +301,7 @@ export default async function PublicReportPage({
           callout={llm?.proposalHook ? { text: llm.proposalHook, tone: "blue" } : undefined}
           dated={scan.completedAt ? `Scanned ${formatDate(scan.completedAt)}` : "Recent"}
           variant="screen"
+          boldPalette="navy"
           {...(brandLogoUrl ? { logoUrl: brandLogoUrl } : {})}
         />
       </div>

@@ -36,6 +36,21 @@ export function useSaveCheck() {
   });
 }
 
+export interface CheckStat {
+  signal: string | null;
+  fireCount: number;
+  passRate: number;
+  lastFiredAt: string | null;
+}
+
+/** Per-check usage stats (from the Curator's aggregation) keyed by checkKey. */
+export function useCheckStats() {
+  return useQuery<Record<string, CheckStat>>({
+    queryKey: ["settings", "check-stats"],
+    queryFn: async () => (await apiFetch<{ stats: Record<string, CheckStat> }>("/api/curator/check-stats")).stats,
+  });
+}
+
 export function useResetCheck() {
   const qc = useQueryClient();
   return useMutation({

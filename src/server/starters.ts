@@ -10,6 +10,7 @@ import { ensureBaseRecords } from "@/server/bootstrap";
 
 export type StarterType = "PROMPT" | "SKILL" | "PLUGIN" | "KIT" | "COLLECTION";
 export type StarterStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
+export type StarterCuratorState = "ACTIVE" | "STALE" | "ARCHIVED";
 
 /**
  * Flexible per-starter payload. `_buildRef` is INTERNAL provenance (what we're building on top
@@ -46,6 +47,12 @@ export interface StarterListItem {
   isDefault: boolean;
   /** Real "used it" events only (download, MCP prompts/get, scan adopt) — not card/detail views. */
   usageCount: number;
+  /** Last genuine "used it" event — the recency signal the curator ages starters against. */
+  lastUsedAt: string | null;
+  /** Pinned starters are exempt from all curator auto-transitions + archival. */
+  pinned: boolean;
+  /** Curator lifecycle state — ACTIVE | STALE | ARCHIVED. */
+  curatorState: StarterCuratorState;
   createdAt: string;
   updatedAt: string;
   /** Lowercased blob of name + summary + description + tags + hidden keywords, for client-side
@@ -71,6 +78,9 @@ type StarterRow = {
   featured: boolean;
   isDefault: boolean;
   usageCount: number;
+  lastUsedAt: Date | null;
+  pinned: boolean;
+  curatorState: StarterCuratorState;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -92,6 +102,9 @@ function serializeListItem(s: StarterRow): StarterListItem {
     featured: s.featured,
     isDefault: s.isDefault,
     usageCount: s.usageCount,
+    lastUsedAt: s.lastUsedAt ? s.lastUsedAt.toISOString() : null,
+    pinned: s.pinned,
+    curatorState: s.curatorState,
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
     searchText,
@@ -220,6 +233,8 @@ export async function updateStarter(
     content?: StarterContent | null;
     featured?: boolean;
     isArchived?: boolean;
+    pinned?: boolean;
+    curatorState?: StarterCuratorState;
   },
 ): Promise<StarterRecord | null> {
   const workspace = await getWorkspace();
@@ -239,6 +254,8 @@ export async function updateStarter(
       }),
       ...(data.featured !== undefined && { featured: data.featured }),
       ...(data.isArchived !== undefined && { isArchived: data.isArchived }),
+      ...(data.pinned !== undefined && { pinned: data.pinned }),
+      ...(data.curatorState !== undefined && { curatorState: data.curatorState }),
     },
   });
   return serializeStarter(row);
@@ -309,9 +326,15 @@ export async function adoptStarterForScan(
 export async function recordStarterUsage(id: string): Promise<void> {
   const workspace = await getWorkspace();
   try {
+    // Bump the counter + stamp recency, and revive a STALE starter — using it resets the clock
+    // (the curator's single telemetry choke point; all three usage sites route through here).
     await prisma.starter.updateMany({
       where: { id, ...scopeWhere(workspace.id) },
-      data: { usageCount: { increment: 1 } },
+      data: { usageCount: { increment: 1 }, lastUsedAt: new Date() },
+    });
+    await prisma.starter.updateMany({
+      where: { id, ...scopeWhere(workspace.id), curatorState: "STALE" },
+      data: { curatorState: "ACTIVE" },
     });
   } catch {
     /* usage counting is non-critical */

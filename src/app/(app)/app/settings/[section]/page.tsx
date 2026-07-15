@@ -22,6 +22,7 @@ const RateCardTab = dynamic(() => import("@/components/settings-panel").then((m)
 const IntegrationsTab = dynamic(() => import("@/components/settings-panel").then((m) => ({ default: m.IntegrationsTab })));
 const AgentsPanel = dynamic(() => import("@/components/settings/agents-panel").then((m) => ({ default: m.AgentsPanel })));
 const ChecksPanel = dynamic(() => import("@/components/settings/checks-panel").then((m) => ({ default: m.ChecksPanel })));
+const CuratorPanel = dynamic(() => import("@/components/settings/curator/curator-panel").then((m) => ({ default: m.CuratorPanel })));
 const DeveloperTab = dynamic<{ apiKeyConfigured: boolean }>(() =>
   import("@/components/settings-panel").then((m) => ({ default: m.DeveloperTab })),
 );
@@ -51,6 +52,7 @@ const VALID_SECTIONS: SettingsSectionId[] = [
   "integrations",
   "agents",
   "checks",
+  "curator",
   "mcp",
   "agents-checks", // legacy — redirects to "agents"
   "audit",
@@ -63,7 +65,7 @@ const VALID_SECTIONS: SettingsSectionId[] = [
 // Sections only Super Admins may open (the role matrix editor). MCP is no longer
 // here — the page itself is permission-gated (mcp.connect) and self-gates its
 // workspace-toggle section to Super Admins internally.
-const SUPER_ADMIN_SECTIONS = new Set<SettingsSectionId>(["roles"]);
+const SUPER_ADMIN_SECTIONS = new Set<SettingsSectionId>(["roles", "curator"]);
 
 // Admin-or-above sections that are NOT per-role toggles (member management + legacy).
 // "people" (Members + the Roles tab) is admin-or-above; the Roles tab self-gates to Super Admin.
@@ -179,6 +181,10 @@ const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string 
   checks: {
     title: "Pulse checks",
     subtitle: "Enable, downgrade severity, label or add custom checks per workspace.",
+  },
+  curator: {
+    title: "Curator",
+    subtitle: "Weekly background maintenance for the Starters library and Pulse checks.",
   },
   // Legacy URL — present in the meta so the type stays exhaustive; the page-level
   // redirect (PEOPLE_REDIRECTS) catches this slug before this meta is ever read.
@@ -315,6 +321,7 @@ export default async function SettingsSectionPage({
         {sectionId === "integrations" ? <IntegrationsTab /> : null}
         {sectionId === "agents" ? <AgentsPanel /> : null}
         {sectionId === "checks" ? <ChecksPanel /> : null}
+        {sectionId === "curator" ? <CuratorPanel /> : null}
         {sectionId === "audit" ? <AuditLogSection /> : null}
         {sectionId === "developer" ? <DeveloperTab apiKeyConfigured={apiKeyConfigured} /> : null}
         {sectionId === "privacy" ? <PrivacySection /> : null}

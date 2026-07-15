@@ -1417,12 +1417,36 @@ export const starterUpdateSchema = z.object({
   content: starterContentSchema.nullish(),
   featured: z.boolean().optional(),
   isArchived: z.boolean().optional(),
+  pinned: z.boolean().optional(),
+  curatorState: z.enum(["ACTIVE", "STALE", "ARCHIVED"]).optional(),
 });
 
 export const starterAdoptSchema = z.object({
   scanId: z.string().min(1),
   starterId: z.string().min(1),
 });
+
+// ── Curator (background maintenance agent) ───────────────────────────────────
+export const curatorRunSchema = z.object({
+  mode: z.enum(["prune", "consolidate"]).optional(),
+  dryRun: z.boolean().optional(),
+});
+
+export const curatorConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  staleAfterDays: z.number().int().min(1).max(365).optional(),
+  archiveAfterDays: z.number().int().min(1).max(730).optional(),
+  consolidate: z.boolean().optional(),
+  intervalDays: z.number().int().min(1).max(90).optional(),
+});
+
+export const curatorProposalActionSchema = z.object({
+  runId: z.string().min(1),
+  proposalId: z.string().min(1),
+  action: z.enum(["apply", "dismiss"]),
+});
+
+export const curatorRestoreSchema = z.object({ runId: z.string().min(1) });
 
 // ── Handbook (internal developer knowledgebase) ──────────────────────────────
 export const handbookStatusSchema = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);

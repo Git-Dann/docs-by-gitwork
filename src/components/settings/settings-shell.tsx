@@ -15,6 +15,7 @@ import {
   CpuChipIcon,
   DocumentDuplicateIcon,
   ShieldCheckIcon,
+  SparklesIcon,
   Squares2X2Icon,
   UserCircleIcon,
   UserGroupIcon,
@@ -41,6 +42,7 @@ export type SettingsSectionId =
   | "integrations"
   | "agents"
   | "checks"
+  | "curator"
   | "mcp"
   | "agents-checks" // legacy — redirects to "agents"
   // System
@@ -147,6 +149,13 @@ const GROUPS: SectionGroup[] = [
         description: "Enable, downgrade, or add custom checks.",
         icon: CpuChipIcon,
         permission: "settings.agents",
+      },
+      {
+        id: "curator",
+        label: "Curator",
+        description: "Weekly upkeep of Starters + Pulse checks.",
+        icon: SparklesIcon,
+        superAdminOnly: true,
       },
       {
         id: "mcp",

@@ -51,7 +51,12 @@ export type AuditAction =
   | "client.meeting.ingested"
   // Privacy
   | "workspace.data_exported"
-  | "workspace.deleted";
+  | "workspace.deleted"
+  // Curator (background maintenance agent)
+  | "curator.run.completed"
+  | "curator.proposal.applied"
+  | "curator.proposal.dismissed"
+  | "curator.run.restored";
 
 export interface RecordAuditEntryInput {
   workspaceId: string;

@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { usePulseEmbedConfig, useSetPulseEmbedConfig } from "@/hooks/use-pulse";
 import { DEFAULT_EMBED_CHECK_KEYS } from "@/server/pulse-embed-config";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import { CardHeader } from "@/components/pulse/pulse-overview";
+
+const EMBED_SNIPPET = '<script async src="https://foundry.gitwork.co.uk/embed/pulse/embed.js"></script>';
 
 /** Toggle switch — mirrors the pattern used elsewhere (e.g. settings-panel.tsx's dev-rates toggle). */
 export function ToggleSwitch({ checked, disabled, onChange }: { checked: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
@@ -47,8 +49,16 @@ export function PulseEmbedTopCard({
 }) {
   const { data, isLoading } = usePulseEmbedConfig();
   const { mutate: save, isPending } = useSetPulseEmbedConfig();
+  const [copied, setCopied] = useState(false);
 
   const checkCount = useMemo(() => (data?.checkKeys ?? DEFAULT_EMBED_CHECK_KEYS).length, [data?.checkKeys]);
+
+  function copySnippet() {
+    navigator.clipboard.writeText(EMBED_SNIPPET).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
 
   return (
     <article className="widget-card h-full">
@@ -84,7 +94,21 @@ export function PulseEmbedTopCard({
             <ToggleSwitch checked={data.enabled} disabled={isPending} onChange={(v) => save({ enabled: v })} />
           </div>
 
-          <Link href="/app/pulse/embed" className="mt-3 block">
+          <div className="mt-3">
+            <p className="text-xs text-[var(--text-3)]">Embed snippet</p>
+            <div className="mt-1 flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-2">
+              <code className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-3)]">{EMBED_SNIPPET}</code>
+              <button
+                type="button"
+                onClick={copySnippet}
+                className="shrink-0 text-[11px] font-medium text-[var(--brand-700)] hover:underline"
+              >
+                {copied ? "Copied!" : "Copy"}
+              </button>
+            </div>
+          </div>
+
+          <Link href="/app/pulse/embed" className="mt-auto block pt-3">
             <Button variant="secondary" size="sm" className="w-full">Manage settings →</Button>
           </Link>
         </div>

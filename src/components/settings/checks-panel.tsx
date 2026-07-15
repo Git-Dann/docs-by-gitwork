@@ -10,7 +10,7 @@ import {
   CheckIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { useChecks, useSaveCheck, useResetCheck, type CheckConfigRecord } from "@/hooks/use-checks";
+import { useChecks, useSaveCheck, useResetCheck, useCheckStats, type CheckConfigRecord, type CheckStat } from "@/hooks/use-checks";
 import { CHECK_CATEGORIES } from "@/server/checks-registry";
 import { SettingsCard } from "@/components/settings/settings-card";
 import { cn } from "@/lib/format";
@@ -22,6 +22,7 @@ const SEVERITY_LABELS: Record<string, string> = {
 
 export function ChecksPanel() {
   const { data: checks = [], isLoading } = useChecks();
+  const { data: stats = {} } = useCheckStats();
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState("all");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -172,6 +173,7 @@ export function ChecksPanel() {
                     <CheckRow
                       key={check.checkKey}
                       check={check}
+                      stat={stats[check.checkKey]}
                       onEdit={() => setEditing(check)}
                     />
                   ))}
@@ -199,11 +201,19 @@ export function ChecksPanel() {
   );
 }
 
+const SIGNAL_CHIP: Record<string, { label: string; cls: string; title: string }> = {
+  dead: { label: "never fires", cls: "bg-[var(--surface-2)] text-[var(--text-3)]", title: "Registered but never emitted in the last 180 days" },
+  always_pass: { label: "always passes", cls: "bg-emerald-50 text-emerald-700", title: "Fires often and always passes — low signal" },
+  noisy: { label: "always fails", cls: "bg-red-50 text-red-600", title: "Fires often and always fails — likely mis-calibrated" },
+};
+
 function CheckRow({
   check,
+  stat,
   onEdit,
 }: {
   check: CheckConfigRecord;
+  stat?: CheckStat;
   onEdit: () => void;
 }) {
   const saveCheck = useSaveCheck();
@@ -254,6 +264,20 @@ function CheckRow({
           </span>
         )}
       </div>
+
+      {/* Curator signal */}
+      {stat?.signal && SIGNAL_CHIP[stat.signal] ? (
+        <span
+          className={cn("hidden shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider sm:inline-block", SIGNAL_CHIP[stat.signal].cls)}
+          title={SIGNAL_CHIP[stat.signal].title}
+        >
+          {SIGNAL_CHIP[stat.signal].label}
+        </span>
+      ) : stat && stat.fireCount > 0 ? (
+        <span className="hidden shrink-0 font-mono text-[10px] text-[var(--text-3)] sm:inline-block" title="Times evaluated in the last 180 days">
+          {stat.fireCount}×
+        </span>
+      ) : null}
 
       {/* Check key */}
       <span className="hidden font-mono text-[10px] text-[var(--text-3)] lg:block">{check.checkKey}</span>

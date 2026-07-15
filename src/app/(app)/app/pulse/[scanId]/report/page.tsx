@@ -218,6 +218,7 @@ export default async function PulseReportPage({
           callout={analysis?.proposalHook ? { text: analysis.proposalHook, tone: "blue" } : undefined}
           dated={`Generated ${generatedAt}`}
           variant="print"
+          boldPalette="navy"
         />
 
         {/* ═══════════════════════ CONTENT PAGES ═══════════════════════ */}
