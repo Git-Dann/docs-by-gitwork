@@ -583,7 +583,10 @@ export function GanttChart({
                 const c = markColor(m.color);
                 const dateFmt = fmtShort(m.date);
                 return (
-                  <div key={m.id} className="absolute top-0 bottom-0 z-20" style={{ left: RAIL_W + mx }}>
+                  // z-[45]: above the sticky header (z-40) so the hover tooltip is never
+                  // clipped behind it, but below the sticky left rail (z-50) so a milestone
+                  // scrolled under the Categories column stays hidden by the rail.
+                  <div key={m.id} className="absolute top-0 bottom-0 z-[45]" style={{ left: RAIL_W + mx }}>
                     {/* Faint vertical guide down the timeline */}
                     <div
                       className="pointer-events-none absolute top-0 bottom-0 -translate-x-1/2 border-l border-dashed"
