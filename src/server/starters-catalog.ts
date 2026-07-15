@@ -30,7 +30,7 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
     name: "Humanizer",
     summary: "Strips AI-writing tells from generated copy so it reads human.",
     description:
-      "A writing **skill** that rewrites AI-generated text to remove the tells — significance inflation, em-dash overuse, hedging, filler and chatbot artifacts — across content, language, style and communication patterns. Reach for it whenever a project's marketing copy, docs or emails need to sound like a person wrote them.",
+      "A writing **skill** that rewrites AI-generated text to remove the tells — significance inflation, em-dash overuse, hedging, filler and chatbot artifacts — across content, language, style and communication patterns. Reach for it whenever a project's marketing copy, docs or emails need to sound like a person wrote them. Best practice: run it as a final pass after the content is substantively right, not as a substitute for editing — it removes tells, it doesn't fix weak arguments or wrong claims.",
     type: "SKILL",
     tags: ["content", "writing", "marketing-copy"],
     content: {
@@ -123,6 +123,7 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "A framework handoff for exporting to code",
       ],
       install: ["Define the design tokens + voice", "Run the audit lanes on each screen", "Hand off to the target framework"],
+      techStack: ["CSS custom properties", "Tailwind", "Storybook", "Figma tokens"],
       promptText:
         "Set up a Gitwork Design System harness for this project.\n\n1. Define the design tokens (colour, type, spacing, radius) and the brand voice, and bind them so every component reads from one source.\n2. Wire the audit skills — accessibility, mobile, copy, styling, visual, layout — to run against each screen.\n3. Add a framework handoff so the tokens/components export cleanly to the target framework's code.\n\nRun the audit lanes on every new screen before calling it done.",
       _buildRef: "claude-design-premium",
@@ -181,7 +182,7 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
     name: "Taste",
     summary: "Gives generated frontends real taste — stops the boring, generic slop.",
     description:
-      "A **skill** that raises the quality bar on generated UI: it steers layout, type, spacing and colour away from the flat, generic defaults an agent reaches for, toward something that looks considered. Pairs with Design System (structure) and Humanizer (copy) so a project's whole surface reads intentional.",
+      "A **skill** that raises the quality bar on generated UI: it steers layout, type, spacing and colour away from the flat, generic defaults an agent reaches for — centered hero + three even feature cards + a generic blue gradient — toward something that looks considered: asymmetric grids, a restrained type scale, and colour used with intent rather than as decoration. Pairs with Design System (structure) and Humanizer (copy) so a project's whole surface reads intentional.",
     type: "SKILL",
     tags: ["design", "frontend", "ui", "taste"],
     content: {
@@ -344,6 +345,7 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "Catches regressions before a deploy goes out",
       ],
       install: ["Add the skill", "Point it at the app and let it exercise the critical flows"],
+      techStack: ["Playwright"],
       _buildRef: "playwright-skill",
     },
   },
@@ -361,6 +363,7 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "Accurate natural-language querying with full company context",
         "Data-engineering and BI groundwork",
       ],
+      techStack: ["SQL", "dbt", "BigQuery/Snowflake/Postgres"],
       promptText:
         "Answer this data question accurately using the Gitwork Analytics context layer.\n\nBuild (or use) the semantic layer over the client's analytical database plus their company context, then answer the question below with the exact query/logic used — never guess or hallucinate a number.\n\nQuestion: <the data question>",
       _buildRef: "ktx",
@@ -381,6 +384,7 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "Deploy and rollback playbooks",
         "Monitoring and alerting setup",
       ],
+      techStack: ["Docker", "GitHub Actions", "Kubernetes/Fly/Render"],
       promptText:
         "Set up the production side of this project using the Gitwork DevOps collection.\n\n1. Stand up CI/CD (build, test, deploy) for the stack below.\n2. Containerise the app if it isn't already.\n3. Add a deploy + rollback playbook.\n4. Wire monitoring and alerting so failures are caught, not discovered by users.\n\nStack / hosting target: <describe it>",
       _buildRef: "gitwork-authored",
@@ -400,6 +404,7 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "Jetpack Compose / Kotlin Multiplatform patterns",
         "Mobile testing, accessibility and performance",
       ],
+      techStack: ["Swift", "SwiftUI", "Kotlin", "Jetpack Compose"],
       promptText:
         "Build this mobile feature using the Gitwork Mobile skill set.\n\nFor iOS: apply SwiftUI + iOS architecture, networking and concurrency patterns. For Android: apply Jetpack Compose / Kotlin Multiplatform patterns. Either way, cover testing, accessibility and performance before calling it done.\n\nPlatform + feature: <e.g. iOS — offline-first sync for X>",
       _buildRef: "ios-agent-skills + compose-skill",
@@ -426,6 +431,7 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "Run the hardening audit (RLS, secrets, auth)",
         "Apply the fixes and eject to a production repo",
       ],
+      techStack: ["Supabase", "Lovable", "Bolt", "Replit"],
       promptText:
         "Harden this vibe-coded app (Lovable / Bolt / Replit) for production using the Gitwork Ship It kit.\n\n1. Run the hardening audit: enable Row-Level Security with owner-scoped policies on every Supabase table, and sweep the bundle for exposed anon/API keys.\n2. Move any client-only authorisation checks server-side.\n3. Eject the code into a real repo with CI/CD and a baseline test suite.\n4. Wire a custom domain, SEO, analytics and error monitoring.\n\nProject to harden: <link to the exported Lovable/Bolt/Replit project>.",
       _buildRef: "database-sentinel + supabase-pentest-skills + supashield + vibe-security",
@@ -436,7 +442,7 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
     name: "Chat Digest",
     summary: "Turns a raw chat thread into a summary, decisions and action items.",
     description:
-      "A **skill** that cuts through a long chat thread — Slack, WeChat, wherever — and hands back what actually matters: a short overview, the decisions that were made, and who owns what next. Useful for closing out a client thread or catching up on one you missed.",
+      "A **skill** that cuts through a long chat thread — Slack, WeChat, wherever — and hands back what actually matters: a short overview, the decisions that were made, and who owns what next. Useful for closing out a client thread or catching up on one you missed. Best practice: post the digest back into the thread (not just keep it privately) so the whole team is working from the same record of what was decided.",
     type: "SKILL",
     tags: ["chat", "summaries", "productivity"],
     content: {
@@ -456,7 +462,7 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
     name: "Audit Pass",
     summary: "A fast, practical security sweep for real, exploitable issues — not theoretical ones.",
     description:
-      "A **skill** for a quick, pragmatic security pass over a codebase, API or MVP — the kind of check that catches the obvious real risks (exposed secrets, missing auth, injection gaps) before a client ships, without pretending to be a full penetration test. Complements the deeper Security collection when a project needs that level of rigour.",
+      "A **skill** for a quick, pragmatic security pass over a codebase, API or MVP — the kind of check that catches the obvious real risks (exposed secrets, missing auth, injection gaps) before a client ships, without pretending to be a full penetration test. Scoped to the practical slice of the OWASP Top 10 that actually shows up in early-stage builds: broken access control, injection, and misconfigured secrets/auth. Complements the deeper Security collection when a project needs that level of rigour.",
     type: "SKILL",
     tags: ["security", "audit", "codebase"],
     content: {
@@ -476,7 +482,7 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
     name: "Tidy",
     summary: "Safely inventories helper/background processes — nothing gets stopped without approval.",
     description:
-      "A **kit** for cleaning up after AI-assisted dev sessions safely: it inventories whatever helper or background processes are running, flags what looks safe to stop, and never actually stops or removes anything without explicit sign-off first. Built for the moment a session ends and you want to know what's still running before you close the laptop.",
+      "A **kit** for cleaning up after AI-assisted dev sessions safely: it inventories whatever helper or background processes are running, flags what looks safe to stop, and never actually stops or removes anything without explicit sign-off first. Built for the moment a session ends and you want to know what's still running before you close the laptop. Best practice: keep an explicit allowlist of processes that must never be touched (databases, tunnels a teammate depends on) so the flagging step can never accidentally recommend one.",
     type: "KIT",
     tags: ["cleanup", "processes", "safety"],
     content: {
@@ -506,6 +512,7 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "A fast path from empty repo to an editable, content-driven site",
       ],
       install: ["Deploy the backend", "Model the content types the site needs", "Build the pages visually"],
+      techStack: ["Node.js", "SQLite/PostgreSQL", "REST API"],
       promptText:
         "Stand up a lightweight visual CMS backend for this project. Model the content types it needs, wire a simple visual builder for the pages, and keep the output clean and framework-agnostic so it's easy to self-host.\n\nProject: <what the site needs to do>",
       _buildRef: "slashcmd:backy-coadw (varshneydevansh/backy)",
@@ -526,6 +533,7 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
         "Anything that can't convert cleanly is flagged, not silently dropped",
       ],
       install: ["Point it at a Claude Skill folder", "Get back a Codex-compatible version"],
+      techStack: ["Claude Skills", "OpenAI Codex"],
       promptText:
         "Convert the Claude Skill below into a Codex-compatible skill format, preserving its instructions and behaviour as closely as the target format allows. Flag anything that doesn't have a clean equivalent rather than silently dropping it.\n\nSkill to convert: <paste or describe the Claude Skill>",
       _buildRef: "slashcmd:skillbridge-v70vd (tot3lis/SkillBridge)",
@@ -536,7 +544,7 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
     name: "Session Notes",
     summary: "Turns a finished AI session into a clean, curated Obsidian note.",
     description:
-      "A **skill** for closing out a build session properly: it distills the conversation into a curated Markdown note — key decisions, what got built, what's next — stripped of sensitive information and the raw transcript, ready to drop straight into an Obsidian vault.",
+      "A **skill** for closing out a build session properly: it distills the conversation into a curated Markdown note — key decisions, what got built, what's next — stripped of sensitive information and the raw transcript, ready to drop straight into an Obsidian vault. Best practice: treat the redaction pass as a hard gate, not a best-effort scan — explicitly name what to scrub (API keys, tokens, customer PII, internal URLs) rather than trusting a generic pass to catch everything.",
     type: "SKILL",
     tags: ["obsidian", "notes", "memory"],
     content: {

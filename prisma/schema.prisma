@@ -2843,6 +2843,7 @@ model Starter {
   featured    Boolean       @default(false) // pinned to the top of the library with a star
   isDefault   Boolean       @default(false) // shipped Gitwork built-in library entry
   isArchived  Boolean       @default(false)
+  usageCount  Int           @default(0) // real "used it" events only — download, MCP prompts/get, scan adopt (not card/detail views)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 

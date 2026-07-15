@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { strToU8, zipSync } from "fflate";
 import { apiError, fromError } from "@/lib/api-response";
-import { getStarter } from "@/server/starters";
+import { getStarter, recordStarterUsage } from "@/server/starters";
 import { assembleStarterFiles } from "@/server/starters-package";
 import { assertCan, canManageStarters, canViewCosts, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { getDerivedClientDetail } from "@/server/clients";
@@ -59,6 +59,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         files[skillPath] = strToU8(applyMergeVariables(raw, vars));
       }
     }
+
+    await recordStarterUsage(starter.id);
 
     const zip = zipSync(files);
     const filename = `${starter.slug}.zip`.replace(/[^\w.\-]+/g, "-");

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   PlusIcon,
@@ -24,6 +24,15 @@ import { recommendStartersForScan } from "@/lib/starters-recommend";
 import type { StarterListItem, StarterType } from "@/server/starters";
 
 type Filter = "all" | StarterType;
+type SortOption = "featured" | "az" | "za" | "recent" | "used";
+
+const SORT_LABEL: Record<SortOption, string> = {
+  featured: "Featured",
+  az: "Name A–Z",
+  za: "Name Z–A",
+  recent: "Recently added",
+  used: "Most used",
+};
 
 const TYPE_LABEL: Record<StarterType, string> = {
   PROMPT: "Prompt",
@@ -184,6 +193,7 @@ export function StarterList() {
   const { mutateAsync: adopt, isPending: adopting } = useAdoptStarter();
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortOption>("featured");
 
   async function handleAdopt(starterId: string) {
     if (!scanId) return;
@@ -205,6 +215,24 @@ export function StarterList() {
       (filter === "all" ? true : s.type === filter) &&
       (terms.length === 0 || terms.every((t) => s.searchText.includes(t))),
   );
+
+  // "featured" = leave the server's default order untouched (featured desc, isDefault desc,
+  // createdAt desc); the other options are a plain client-side re-sort — 188 entries is small
+  // enough that this needs no server round-trip.
+  const sorted = useMemo(() => {
+    if (sort === "featured") return filtered;
+    const copy = [...filtered];
+    switch (sort) {
+      case "az":
+        return copy.sort((a, b) => a.name.localeCompare(b.name));
+      case "za":
+        return copy.sort((a, b) => b.name.localeCompare(a.name));
+      case "recent":
+        return copy.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      case "used":
+        return copy.sort((a, b) => b.usageCount - a.usageCount);
+    }
+  }, [filtered, sort]);
 
   const tabs: { id: Filter; label: string; count: number }[] = [
     { id: "all", label: "All", count: all.length },
@@ -280,15 +308,29 @@ export function StarterList() {
           <span className="widget-header__status">{all.length} TOTAL</span>
         </div>
         <div className="space-y-3 px-5 py-4">
-          <div className="relative">
-            <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search starters — try “sales email”, “logo”, “debug”…"
-              className="w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] py-2 pl-9 pr-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-400)]"
-            />
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search starters — try “sales email”, “logo”, “debug”…"
+                className="w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] py-2 pl-9 pr-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-400)]"
+              />
+            </div>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortOption)}
+              aria-label="Sort starters"
+              className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] py-2 pl-3 pr-8 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-400)]"
+            >
+              {(Object.keys(SORT_LABEL) as SortOption[]).map((opt) => (
+                <option key={opt} value={opt}>
+                  {SORT_LABEL[opt]}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-1 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-1">
@@ -339,7 +381,7 @@ export function StarterList() {
             />
           ))}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : sorted.length === 0 ? (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
@@ -376,7 +418,7 @@ export function StarterList() {
         </section>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
-          {filtered.map((s, i) => (
+          {sorted.map((s, i) => (
             <StarterCard
               key={s.id}
               starter={s}

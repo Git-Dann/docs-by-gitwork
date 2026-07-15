@@ -44,6 +44,8 @@ export interface StarterListItem {
   tags: string[];
   featured: boolean;
   isDefault: boolean;
+  /** Real "used it" events only (download, MCP prompts/get, scan adopt) — not card/detail views. */
+  usageCount: number;
   createdAt: string;
   updatedAt: string;
   /** Lowercased blob of name + summary + description + tags + hidden keywords, for client-side
@@ -68,6 +70,7 @@ type StarterRow = {
   content: unknown;
   featured: boolean;
   isDefault: boolean;
+  usageCount: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -88,6 +91,7 @@ function serializeListItem(s: StarterRow): StarterListItem {
     tags: s.tags,
     featured: s.featured,
     isDefault: s.isDefault,
+    usageCount: s.usageCount,
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
     searchText,
@@ -292,5 +296,24 @@ export async function adoptStarterForScan(
   ]);
   if (!scan || !starter) return null;
   await prisma.pulseScan.update({ where: { id: scanId }, data: { linkedStarterId: starterId } });
+  await recordStarterUsage(starterId);
   return { scanId, starterId };
+}
+
+/**
+ * Record a genuine "used it" event — a starter actually pulled into a chat/build, not just
+ * viewed on a card or detail page. Called from the download route, MCP `prompts/get`, and
+ * scan adoption. Non-critical: never throws, so a usage-tracking hiccup can't break the action
+ * it's attached to.
+ */
+export async function recordStarterUsage(id: string): Promise<void> {
+  const workspace = await getWorkspace();
+  try {
+    await prisma.starter.updateMany({
+      where: { id, ...scopeWhere(workspace.id) },
+      data: { usageCount: { increment: 1 } },
+    });
+  } catch {
+    /* usage counting is non-critical */
+  }
 }
