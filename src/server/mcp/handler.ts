@@ -14,7 +14,12 @@
 // Claude reads natively.
 
 import { z, ZodError } from "zod";
-import { DocumentType, DocumentStatus, type Prisma as PrismaTypes } from "@prisma/client";
+import {
+  DocumentType,
+  DocumentStatus,
+  type WorkspaceClientStatus,
+  type Prisma as PrismaTypes,
+} from "@prisma/client";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import {
   assertCan,
@@ -38,7 +43,9 @@ import {
   listDerivedClients,
   createClientRecord,
   updateClientRecord,
+  setClientStatus,
   createClientPlatform,
+  createClientDesign,
   getDerivedClientDetail,
 } from "@/server/clients";
 import { listConversations, listSupportClients } from "@/server/support";
@@ -247,28 +254,71 @@ const TASK_PRIORITY = z.enum(["LOW", "MEDIUM", "HIGH"]);
 
 const listClientsSchema = z.object({ search: z.string().optional() });
 
-const createClientSchema = z.object({
-  name: z.string().min(1),
+const WORKSPACE_CLIENT_STATUS_VALUES = [
+  "ACTIVE",
+  "LEAD",
+  "PENDING_REVIEW",
+  "INACTIVE",
+  "ARCHIVED",
+] as const;
+const LEAD_STAGE_VALUES = ["NEW", "CONTACTED", "QUALIFIED", "PROPOSAL_SENT", "WON", "LOST"] as const;
+
+// Full editable client field set — mirrors buildContactData in src/server/clients.ts so anything
+// the Portal Edit-client modal can set is settable via MCP. Shared by create + update.
+const clientContactShape = {
   website: z.string().optional(),
+  addressLine1: z.string().optional(),
+  addressLine2: z.string().optional(),
+  city: z.string().optional(),
+  county: z.string().optional(),
+  postcode: z.string().optional(),
+  country: z.string().optional(),
+  notes: z.string().optional(),
   primaryContactName: z.string().optional(),
   primaryContactEmail: z.string().optional(),
   primaryContactPhone: z.string().optional(),
-  notes: z.string().optional(),
+  invoiceEmail: z.string().optional(),
+  legalCompanyName: z.string().optional(),
+  companyNumber: z.string().optional(),
+  vatNumber: z.string().optional(),
+  googleDriveFolderUrl: z.string().optional(),
+  clickupUrl: z.string().optional(),
   retainerDays: z.coerce.number().int().min(0).max(31).nullable().optional(),
   retainerDaysUsed: z.coerce.number().int().min(0).max(31).nullable().optional(),
+  // Lead fields (client is a LEAD) + paused-client fields (INACTIVE).
+  leadSource: z.string().nullable().optional(),
+  leadStage: z.enum(LEAD_STAGE_VALUES).nullable().optional(),
+  leadValue: z.coerce.number().int().min(0).max(100_000_000).nullable().optional(),
+  leadValueCurrency: z.string().max(3).nullable().optional(),
+  leadFollowUpAt: z.string().nullable().optional(),
+  resumeAt: z.string().nullable().optional(),
+  pauseNote: z.string().nullable().optional(),
+} as const;
+
+const createClientSchema = z.object({
+  name: z.string().min(1),
+  status: z.enum(WORKSPACE_CLIENT_STATUS_VALUES).optional(),
+  ...clientContactShape,
 });
 
 const updateClientSchema = z.object({
   client: z.string().min(1),
   name: z.string().min(1).optional(),
-  website: z.string().optional(),
-  primaryContactName: z.string().optional(),
-  primaryContactEmail: z.string().optional(),
-  primaryContactPhone: z.string().optional(),
+  ...clientContactShape,
+});
+
+const setClientStatusSchema = z.object({
+  client: z.string().min(1),
+  status: z.enum(WORKSPACE_CLIENT_STATUS_VALUES),
+  resumeAt: z.string().optional(),
+  pauseNote: z.string().optional(),
+});
+
+const addDesignSchema = z.object({
+  client: z.string().min(1),
+  name: z.string().min(1),
+  url: z.string().optional(),
   notes: z.string().optional(),
-  googleDriveFolderUrl: z.string().optional(),
-  retainerDays: z.coerce.number().int().min(0).max(31).nullable().optional(),
-  retainerDaysUsed: z.coerce.number().int().min(0).max(31).nullable().optional(),
 });
 
 const addPlatformSchema = z.object({
@@ -416,6 +466,37 @@ const listPulseScansSchema = z.object({
 const TASK_STATUS_VALUES = ["BACKLOG", "TODO", "DOING", "IN_REVIEW", "DONE"];
 const TASK_PRIORITY_VALUES = ["LOW", "MEDIUM", "HIGH"];
 
+// JSON-schema properties for the full editable client field set — shared by the create_client and
+// update_client inputSchemas so both advertise every field (kept in step with clientContactShape).
+const CLIENT_FIELD_PROPERTIES: Record<string, Record<string, unknown>> = {
+  website: { type: "string", description: "Public website URL." },
+  addressLine1: { type: "string", description: "Address line 1." },
+  addressLine2: { type: "string", description: "Address line 2." },
+  city: { type: "string" },
+  county: { type: "string" },
+  postcode: { type: "string" },
+  country: { type: "string" },
+  notes: { type: "string", description: "Free-text notes about the client." },
+  primaryContactName: { type: "string" },
+  primaryContactEmail: { type: "string" },
+  primaryContactPhone: { type: "string" },
+  invoiceEmail: { type: "string", description: "Where invoices are sent (if different)." },
+  legalCompanyName: { type: "string" },
+  companyNumber: { type: "string", description: "Companies House number." },
+  vatNumber: { type: "string" },
+  googleDriveFolderUrl: { type: "string", description: "Google Drive folder URL." },
+  clickupUrl: { type: "string", description: "ClickUp space/list URL." },
+  retainerDays: { type: "number", description: "Monthly retainer-day allowance (0–31)." },
+  retainerDaysUsed: { type: "number", description: "Retainer days used this month (0–31)." },
+  leadSource: { type: "string", description: "Where the lead came from (LEAD clients)." },
+  leadStage: { type: "string", enum: ["NEW", "CONTACTED", "QUALIFIED", "PROPOSAL_SENT", "WON", "LOST"] },
+  leadValue: { type: "number", description: "Estimated deal value (LEAD clients)." },
+  leadValueCurrency: { type: "string", description: "3-letter currency code, e.g. GBP." },
+  leadFollowUpAt: { type: "string", description: "ISO date to follow up (LEAD clients)." },
+  resumeAt: { type: "string", description: "ISO date to pick back up (INACTIVE clients)." },
+  pauseNote: { type: "string", description: "Why the client is paused (INACTIVE)." },
+};
+
 const TOOLS: ToolDef[] = [
   {
     name: "list_clients",
@@ -453,23 +534,21 @@ const TOOLS: ToolDef[] = [
   {
     name: "create_client",
     description:
-      "Create a new client. Requires the 'Manage clients' permission. Only name is required. " +
-      "Retainer is a structured field — pass retainerDays (monthly allowance) rather than noting " +
-      "it in free text. Add platforms afterwards with add_platform; edit later with update_client.",
+      "Create a new client with any of its fields — contact, full address, legal/company, links, " +
+      "retainer, and (for prospects) lead fields. Requires the 'Manage clients' permission. Only " +
+      "name is required. Pass status ('LEAD' for a prospect, 'PENDING_REVIEW', etc.; default ACTIVE). " +
+      "Retainer is structured — use retainerDays, don't note it in text. Add platforms with " +
+      "add_platform, design links with add_design; edit anything later with update_client.",
     inputSchema: {
       type: "object",
       properties: {
         name: { type: "string", description: "Client display name (e.g. 'Speakify')." },
-        website: { type: "string", description: "Public website URL." },
-        primaryContactName: { type: "string" },
-        primaryContactEmail: { type: "string" },
-        primaryContactPhone: { type: "string" },
-        notes: { type: "string", description: "Free-text notes about the client." },
-        retainerDays: {
-          type: "number",
-          description: "Monthly retainer-day allowance (0–31). Use this instead of noting it in text.",
+        status: {
+          type: "string",
+          enum: [...WORKSPACE_CLIENT_STATUS_VALUES],
+          description: "Lifecycle status. Default ACTIVE (current client); LEAD for a prospect.",
         },
-        retainerDaysUsed: { type: "number", description: "Retainer days already used this month (0–31)." },
+        ...CLIENT_FIELD_PROPERTIES,
       },
       required: ["name"],
       additionalProperties: false,
@@ -479,51 +558,34 @@ const TOOLS: ToolDef[] = [
       const input = createClientSchema.parse(args);
       const client = await createClientRecord(input);
       return textResult(
-        { id: client.id, slug: client.slug, name: client.name },
-        `Created client "${client.name}" (slug: ${client.slug}).`,
+        { id: client.id, slug: client.slug, name: client.name, status: client.status },
+        `Created client "${client.name}" (slug: ${client.slug}, ${client.status}).`,
       );
     },
   },
   {
     name: "update_client",
     description:
-      "Update an existing client's core fields — name, website, contact details, notes, Google " +
-      "Drive link, and retainer days. Requires the 'Manage clients' permission. Resolve the client " +
-      "by slug, name, or cuid (see list_clients). Only the fields you pass are changed. Bank details, " +
-      "platform credentials, and lifecycle status are NOT edited here (platforms have their own tools; " +
-      "secrets stay UI-only).",
+      "Update any of an existing client's fields — name, contact, full address, legal/company, " +
+      "links, retainer, and lead fields. Requires the 'Manage clients' permission. Resolve the " +
+      "client by slug, name, or cuid (see list_clients). Only the fields you pass are changed. " +
+      "Bank details and platform credentials are NOT editable here (secrets stay UI-only); to move " +
+      "a client between current/lead/pending/inactive use set_client_status; add design links with add_design.",
     inputSchema: {
       type: "object",
       properties: {
         client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
         name: { type: "string", description: "New display name." },
-        website: { type: "string", description: "Public website URL." },
-        primaryContactName: { type: "string" },
-        primaryContactEmail: { type: "string" },
-        primaryContactPhone: { type: "string" },
-        notes: { type: "string", description: "Free-text notes about the client." },
-        googleDriveFolderUrl: { type: "string", description: "Google Drive folder URL." },
-        retainerDays: { type: "number", description: "Monthly retainer-day allowance (0–31)." },
-        retainerDaysUsed: { type: "number", description: "Retainer days used this month (0–31)." },
+        ...CLIENT_FIELD_PROPERTIES,
       },
       required: ["client"],
       additionalProperties: false,
     },
     handler: async (user, args) => {
       assertCan(user, canManageClients, "update clients");
-      const parsed = updateClientSchema.parse(args);
-      const resolved = await resolveClient(user, parsed.client);
-      const updated = await updateClientRecord(resolved.slug, {
-        name: parsed.name,
-        website: parsed.website,
-        primaryContactName: parsed.primaryContactName,
-        primaryContactEmail: parsed.primaryContactEmail,
-        primaryContactPhone: parsed.primaryContactPhone,
-        notes: parsed.notes,
-        googleDriveFolderUrl: parsed.googleDriveFolderUrl,
-        retainerDays: parsed.retainerDays,
-        retainerDaysUsed: parsed.retainerDaysUsed,
-      });
+      const { client, ...fields } = updateClientSchema.parse(args);
+      const resolved = await resolveClient(user, client);
+      const updated = await updateClientRecord(resolved.slug, fields);
       if (!updated) return textResult({ error: "Client not found." }, "Client not found.");
       return textResult(
         { id: updated.id, slug: updated.slug, name: updated.name },
@@ -606,6 +668,79 @@ const TOOLS: ToolDef[] = [
       return textResult(
         { platforms },
         `${resolved.name} — ${platforms.length} platform${platforms.length === 1 ? "" : "s"}.`,
+      );
+    },
+  },
+  {
+    name: "set_client_status",
+    description:
+      "Move a client through its lifecycle — ACTIVE (current), LEAD (prospect), PENDING_REVIEW, " +
+      "INACTIVE (paused), or ARCHIVED. This is how you convert a lead to a current client, park one, " +
+      "or bring it back. Requires the 'Manage clients' permission. For INACTIVE you can pass resumeAt " +
+      "(ISO date to pick back up) + pauseNote; those clear on any other transition. Set lead detail " +
+      "(source/stage/value) with update_client.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        status: {
+          type: "string",
+          enum: [...WORKSPACE_CLIENT_STATUS_VALUES],
+          description: "ACTIVE · LEAD · PENDING_REVIEW · INACTIVE · ARCHIVED.",
+        },
+        resumeAt: { type: "string", description: "INACTIVE only — ISO date to pick back up." },
+        pauseNote: { type: "string", description: "INACTIVE only — why it's paused." },
+      },
+      required: ["client", "status"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "change client status");
+      const parsed = setClientStatusSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const updated = await setClientStatus(
+        resolved.slug,
+        parsed.status as WorkspaceClientStatus,
+        user,
+        { resumeAt: parsed.resumeAt ?? null, pauseNote: parsed.pauseNote ?? null },
+      );
+      if (!updated) return textResult({ error: "Client not found." }, "Client not found.");
+      return textResult(
+        { id: updated.id, slug: updated.slug, name: updated.name, status: updated.status },
+        `${updated.name} is now ${updated.status}.`,
+      );
+    },
+  },
+  {
+    name: "add_design",
+    description:
+      "Add a design link to a client's Designs block (e.g. a Figma file, mockup, or moodboard). " +
+      "Requires the 'Manage clients' permission. Resolve the client by slug, name, or cuid. Only " +
+      "'name' is required; pass the Figma/design URL as `url`. This is the Designs card — distinct " +
+      "from add_platform (hosting/repos/tools).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        name: { type: "string", description: "Design name (e.g. 'Homepage v2', 'Brand kit')." },
+        url: { type: "string", description: "Design URL (Figma, etc.)." },
+        notes: { type: "string", description: "Optional notes." },
+      },
+      required: ["client", "name"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "add client designs");
+      const parsed = addDesignSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const design = await createClientDesign(resolved.id, {
+        name: parsed.name,
+        url: parsed.url,
+        notes: parsed.notes,
+      });
+      return textResult(
+        { id: design.id, name: design.name, url: design.url },
+        `Added design "${design.name}" to ${resolved.name}.`,
       );
     },
   },
