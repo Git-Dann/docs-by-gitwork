@@ -616,30 +616,34 @@ const _cachedLoadCollections = unstable_cache(
   { revalidate: 60, tags: ["client-collections"] },
 );
 
+// Strict ISO-8601 datetime — exactly what JSON.stringify(new Date()) emits. Used
+// to revive cached dates without touching ordinary string fields (names, slugs,
+// notes never look like this).
+const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/** unstable_cache JSON-serialises Dates to ISO strings; turn any such top-level
+ *  string back into a Date so callers get the Date instances they expect. Generic
+ *  by design — a newly-added DateTime field revives automatically, so it can never
+ *  silently break again (leadFollowUpAt/resumeAt slipped through the old hand-list). */
+function reviveDates<T>(obj: T): T {
+  if (!obj || typeof obj !== "object") return obj;
+  const rec = obj as Record<string, unknown>;
+  for (const key of Object.keys(rec)) {
+    const value = rec[key];
+    if (typeof value === "string" && ISO_DATETIME_RE.test(value)) rec[key] = new Date(value);
+  }
+  return obj;
+}
+
 async function loadClientCollections() {
   const { workspace } = await ensureBaseRecords();
   const raw = await _cachedLoadCollections(workspace.id);
-  // unstable_cache JSON-serialises the return value, turning Date objects into
-  // ISO strings. Re-hydrate them so callers (mergeClients, toClientListItem)
-  // get the Date instances they expect.
+  // Spread first (never mutate the shared cached object), then revive dates.
   return {
     workspace,
-    manualClients: raw.manualClients.map((c) => ({
-      ...c,
-      createdAt: new Date(c.createdAt as unknown as string),
-      updatedAt: new Date(c.updatedAt as unknown as string),
-      // Nullable DateTime fields must be re-hydrated too, else after a cache hit
-      // they're ISO strings and callers that do `.toISOString()` crash
-      // ("leadFollowUpAt.toISOString is not a function").
-      leadFollowUpAt: c.leadFollowUpAt ? new Date(c.leadFollowUpAt as unknown as string) : null,
-      resumeAt: c.resumeAt ? new Date(c.resumeAt as unknown as string) : null,
-    })) as ManualClientRecord[],
+    manualClients: raw.manualClients.map((c) => reviveDates({ ...c })) as ManualClientRecord[],
     hiddenSlugs: new Set(raw.hiddenSlugs),
-    proposals: raw.proposals.map((p) => ({
-      ...p,
-      createdAt: new Date(p.createdAt as unknown as string),
-      updatedAt: new Date(p.updatedAt as unknown as string),
-    })),
+    proposals: raw.proposals.map((p) => reviveDates({ ...p })),
   };
 }
 
