@@ -9,6 +9,7 @@ import {
   MoonIcon,
   ChevronUpIcon,
   ChevronDownIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -42,7 +43,7 @@ export function DailyRollup({
   /** Extra classes on the card root (e.g. h-full to match a sibling's height). */
   className?: string;
 }) {
-  const { data, isPending } = useRollupRoster(enabled);
+  const { data, isPending, isFetching, refetch } = useRollupRoster(enabled);
   const publish = usePublishRollup();
   const pushPm = usePushPmUpdates();
   const [result, setResult] = useState<string | null>(null);
@@ -111,11 +112,23 @@ export function DailyRollup({
           <span className="widget-header__label--number">{String(index).padStart(2, "0")}</span>
           {" // DAILY ROLL-UP"}
         </span>
-        {total > 0 ? (
-          <span className="widget-header__status" style={{ fontFamily: "var(--font-mono)" }}>
-            AM {amCount}/{total} · PM {pmCount}/{total}
-          </span>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {total > 0 ? (
+            <span className="widget-header__status" style={{ fontFamily: "var(--font-mono)" }}>
+              AM {amCount}/{total} · PM {pmCount}/{total}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            title="Refresh roll-up"
+            aria-label="Refresh roll-up"
+            className="rounded-[4px] p-1 text-[var(--text-3)] transition-colors hover:bg-[var(--surface-1)] hover:text-[var(--text-1)] disabled:opacity-40"
+          >
+            <ArrowPathIcon className={cn("h-4 w-4", isFetching && "animate-spin")} />
+          </button>
+        </div>
       </div>
 
       <div className="widget-body space-y-3">
