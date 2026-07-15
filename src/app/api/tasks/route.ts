@@ -16,6 +16,7 @@ export async function GET(req: Request) {
       assigneeId: url.searchParams.get("assigneeId") ?? undefined,
       sourceMeetingId: url.searchParams.get("sourceMeetingId") ?? undefined,
       archived: url.searchParams.get("archived") ?? undefined,
+      limit: url.searchParams.get("limit") ?? undefined,
     });
     const tasks = await listTasks(user, {
       clientId: q.clientId,
@@ -23,6 +24,7 @@ export async function GET(req: Request) {
       assigneeId: q.assigneeId,
       sourceMeetingId: q.sourceMeetingId,
       archived: q.archived === "true",
+      limit: q.limit,
     });
     return apiOk(tasks);
   } catch (e) {

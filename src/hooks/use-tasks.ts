@@ -53,11 +53,11 @@ import {
 import type { TaskStatus, TaskDTO } from "@/types/tasks";
 import { useToast } from "@/components/ui/toast";
 
-type TaskFilter = { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string; archived?: boolean };
+type TaskFilter = { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string; archived?: boolean; limit?: number };
 
 const QK = {
   tasks: (f: TaskFilter) =>
-    ["tasks", "list", f.clientId ?? null, f.status ?? null, f.assigneeId ?? null, f.sourceMeetingId ?? null, f.archived ?? false] as const,
+    ["tasks", "list", f.clientId ?? null, f.status ?? null, f.assigneeId ?? null, f.sourceMeetingId ?? null, f.archived ?? false, f.limit ?? null] as const,
   task: (id: string) => ["tasks", "detail", id] as const,
   summary: (clientId: string) => ["tasks", "summary", clientId] as const,
   counts: () => ["tasks", "counts"] as const,
@@ -97,16 +97,20 @@ function restoreTaskLists(qc: QueryClient, snapshot: TaskListSnapshot) {
 
 // ─── Board / list ────────────────────────────────────────────────────────────
 
-export function useTasks(filter: TaskFilter = {}, opts: { enabled?: boolean } = {}) {
+export function useTasks(
+  filter: TaskFilter = {},
+  opts: { enabled?: boolean; refetchOnFocus?: boolean } = {},
+) {
   return useQuery({
     queryKey: QK.tasks(filter),
     queryFn: () => listTasks(filter),
     enabled: opts.enabled ?? true,
     staleTime: 15_000,
-    // Board/HQ status can change elsewhere (another tab, the drag board, Slack
-    // actions). The global default disables focus refetch; opt this back in so a
-    // stale status (e.g. a DOING task still showing as done) self-corrects on return.
-    refetchOnWindowFocus: true,
+    // The interactive board opts INTO focus-refetch so a stale status (e.g. a
+    // DOING task still showing as done after a change elsewhere) self-corrects on
+    // return. Passive summaries (the dev dashboard's My Tasks) pass
+    // refetchOnFocus:false so they don't re-pull on every alt-tab.
+    refetchOnWindowFocus: opts.refetchOnFocus ?? true,
   });
 }
 
@@ -146,7 +150,10 @@ export function useTaskAttention(opts: { mine?: boolean; enabled?: boolean } = {
     queryFn: () => getTaskAttention({ mine }),
     enabled,
     staleTime: 30_000,
-    refetchOnWindowFocus: true,
+    // Passive summary (HQ attention cards + the app-wide Desk). Don't refetch on
+    // every window focus — the Desk is mounted everywhere, so that was re-pulling
+    // on each alt-tab. staleTime keeps it fresh enough; mount/invalidation refresh it.
+    refetchOnWindowFocus: false,
   });
 }
 

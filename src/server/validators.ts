@@ -1023,6 +1023,9 @@ export const taskListQuerySchema = z.object({
   sourceMeetingId: z.string().cuid().optional(),
   // "true" → only archived tasks (the Archived tab); default/absent → active only.
   archived: z.enum(["true", "false"]).optional(),
+  // Optional safety ceiling on rows returned (dashboard summaries pass this so a
+  // user with a huge task list can't pull an unbounded payload). Absent = no cap.
+  limit: z.coerce.number().int().positive().max(500).optional(),
 });
 
 /** Bulk edit — apply one patch (any subset of fields) to many tasks at once. */

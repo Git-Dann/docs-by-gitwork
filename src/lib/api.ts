@@ -2810,6 +2810,7 @@ export function listTasks(opts: {
   assigneeId?: string;
   sourceMeetingId?: string;
   archived?: boolean;
+  limit?: number;
 } = {}): Promise<TaskDTO[]> {
   const q = new URLSearchParams();
   if (opts.clientId) q.set("clientId", opts.clientId);
@@ -2817,6 +2818,7 @@ export function listTasks(opts: {
   if (opts.assigneeId) q.set("assigneeId", opts.assigneeId);
   if (opts.sourceMeetingId) q.set("sourceMeetingId", opts.sourceMeetingId);
   if (opts.archived) q.set("archived", "true");
+  if (opts.limit) q.set("limit", String(opts.limit));
   const qs = q.toString();
   return apiFetch(`/api/tasks${qs ? `?${qs}` : ""}`);
 }
