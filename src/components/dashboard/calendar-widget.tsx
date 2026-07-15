@@ -186,10 +186,11 @@ export default function CalendarWidget({ size, index }: { size: WidgetSize; inde
                       </span>
                       {/* Node dot */}
                       <span className="absolute -left-[5px] top-3.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--surface-0)] bg-[var(--accent)]" />
-                      {/* Content */}
-                      <div className="pl-4">
-                        <p className="text-sm font-medium leading-snug text-[var(--text-1)]">{ev.summary}</p>
-                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                      {/* Content — title left, Join pushed to the far right and
+                          aligned with the title's first line */}
+                      <div className="flex items-start justify-between gap-3 pl-4">
+                        <p className="min-w-0 flex-1 text-sm font-medium leading-snug text-[var(--text-1)]">{ev.summary}</p>
+                        <div className="shrink-0">
                           <MeetingJoinLink href={ev.meetLink} compact />
                         </div>
                       </div>
