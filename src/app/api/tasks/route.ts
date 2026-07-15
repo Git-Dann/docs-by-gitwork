@@ -26,7 +26,14 @@ export async function GET(req: Request) {
       archived: q.archived === "true",
       limit: q.limit,
     });
-    return apiOk(tasks);
+    // The board / list / Gantt never render description or acceptance criteria —
+    // the detail drawer fetches the full task (GET /api/tasks/[id]) on open. Drop
+    // these @db.Text fields from the LIST response: ClickUp-imported tasks can
+    // carry very large descriptions (sometimes with embedded/base64 images), which
+    // — even after the metadata strip — bloated this endpoint to 150MB+. listTasks
+    // itself is unchanged, so the Slack "titles + descriptions" push still has them.
+    const lite = tasks.map((t) => ({ ...t, description: null, acceptanceCriteria: null }));
+    return apiOk(lite);
   } catch (e) {
     return fromError(e);
   }
