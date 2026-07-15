@@ -116,6 +116,8 @@ export function DemoShell({
                     <img
                       src="/foundry-logo.svg"
                       alt="Foundry"
+                      width={245}
+                      height={64}
                       className="h-12 w-auto dark:brightness-0 dark:invert"
                     />
                   )}

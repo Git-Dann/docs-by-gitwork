@@ -82,7 +82,7 @@ export function DemoHub() {
               </span>
             ) : (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img src="/foundry-logo.svg" alt="Foundry" className="h-9 w-auto dark:brightness-0 dark:invert" />
+              <img src="/foundry-logo.svg" alt="Foundry" width={245} height={64} className="h-9 w-auto dark:brightness-0 dark:invert" />
             )}
             <span
               className="rounded-[4px] bg-[var(--brand-600)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.6px] text-white"
