@@ -22,7 +22,7 @@ import type {
 import { prisma } from "@/lib/prisma";
 import { dispatchNotification } from "@/server/notifications";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { seedAccountEmails } from "@/server/seed-accounts";
+import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { canSeeAllClients, ForbiddenError } from "@/server/auth/effective-user";
 import { assignedClientIds } from "@/server/tasks";
@@ -1731,15 +1731,17 @@ export async function listWorkspaceMembers(
 ): Promise<{ id: string; name: string; email: string; role: string }[]> {
   const workspaceId = await getWorkspaceId();
   const rows = await prisma.workspaceMember.findMany({
-    where: { workspaceId, user: { email: { notIn: seedAccountEmails() } } },
+    where: { workspaceId, user: seedAccountUserWhere() },
     include: { user: true },
   });
-  const all = rows.map((m) => ({
-    id: m.user.id,
-    name: m.user.name ?? m.user.email,
-    email: m.user.email,
-    role: m.role,
-  }));
+  const all = rows
+    .filter((m) => !isSeedAccount({ email: m.user.email, name: m.user.name }))
+    .map((m) => ({
+      id: m.user.id,
+      name: m.user.name ?? m.user.email,
+      email: m.user.email,
+      role: m.role,
+    }));
 
   // When a Care client is given, scope to the devs assigned to that client — via Care
   // membership (SupportClientMembership) and/or the general dev↔client link (ClientAssignment
