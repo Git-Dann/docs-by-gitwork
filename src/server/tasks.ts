@@ -202,7 +202,16 @@ async function attachScribeSources<T extends TaskDTO>(
       actionText: meta.actionText,
     });
   }
-  return tasks.map((task) => ({ ...task, scribeSource: byTaskId.get(task.id) ?? task.scribeSource }));
+  // Strip the raw `metadata` blob from the wire. It's only ever read server-side
+  // (to derive scribeSource, just above); the client never touches it. ClickUp-
+  // imported tasks carry large metadata payloads, which bloated /api/tasks to
+  // tens of MB and made the tasks screen crawl. scribeSource is already resolved
+  // by this point, so nulling metadata here is lossless for the client.
+  return tasks.map((task) => ({
+    ...task,
+    metadata: null,
+    scribeSource: byTaskId.get(task.id) ?? task.scribeSource,
+  }));
 }
 
 function commentRowToDTO(row: CommentRow): TaskCommentDTO {
