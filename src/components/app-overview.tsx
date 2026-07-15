@@ -130,16 +130,21 @@ export function AppOverview() {
   const canSeeTasks = showAll || can(acct, "clients");
   const canSeeSignoff = showAll || can(acct, "proposals");
   const canManageClientRecords = showAll || can(acct, "clients.manage");
-  // Visibility of the roll-up CARD (admins/super admins can monitor).
-  const canPublishRollup = showAll || can(acct, "tasks.publish");
-  // Visibility of the Publish / Publish-anyway BUTTONS — admins/super admins
-  // are explicitly EXCLUDED here even though `tasks.publish` shows up in their
-  // resolved permissions (admins inherit the full set). Publishing the roll-up
+  // Visibility of the roll-up CARD + broadcast composer. Mirror the server's
+  // canPublishTaskRollup = admin+ OR `tasks.publish` (see effective-user.ts) so
+  // the card only renders when the roster fetch will actually succeed — a viewer
+  // who can't read it must not see it 403 into an empty box. "Effective admin" is
+  // "real role ADMIN+, not previewing down", so a preview reflects the previewed
+  // person's access.
+  const isEffectiveAdmin = previewPerms === null && isAtLeast(role, "ADMIN");
+  const hasTaskPublish = resolvedPermissions.includes("tasks.publish");
+  const canPublishRollup = isEffectiveAdmin || hasTaskPublish;
+  // Visibility of the Publish / Publish-anyway BUTTONS — admins/super admins are
+  // explicitly EXCLUDED (they monitor only). Publishing the client-grouped roll-up
   // is the DevOps lead's job (Shahab — explicit `tasks.publish`, non-admin).
-  const canActuallyPublish = !isAdmin && resolvedPermissions.includes("tasks.publish");
-  // The DevOps broadcast composer — the lead's cross-client posting tool. Shown to
-  // the lead (explicit tasks.publish, non-admin) and the unrestricted owner.
-  const canBroadcast = showAll || canActuallyPublish;
+  const canActuallyPublish = !isAdmin && hasTaskPublish;
+  // The DevOps broadcast composer shares the roll-up's gate.
+  const canBroadcast = canPublishRollup;
   const widgets = GRID.filter((g) => showAll || !g.module || resolvedPermissions.includes(g.module));
   const hasBackstage = showAll || resolvedPermissions.includes("backstage");
 

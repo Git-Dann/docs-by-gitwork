@@ -251,9 +251,14 @@ export function canManageExpenses(user: EffectiveUser): boolean {
   return isSuperAdmin(user.role);
 }
 
-/** DevOps lead: may publish the consolidated end-of-day task roll-up. */
+/**
+ * May view + operate the daily roll-up (roster, daily-updates push, broadcast).
+ * Admins monitor it; the DevOps lead (explicit `tasks.publish`) drives it. The
+ * lead-only "Publish roll-up" button is additionally gated client-side to
+ * non-admins, so admins get a monitor-first view without that CTA.
+ */
 export function canPublishTaskRollup(user: EffectiveUser): boolean {
-  return isSuperAdmin(user.role) || user.permissions.includes("tasks.publish");
+  return isAtLeast(user.role, "ADMIN") || user.permissions.includes("tasks.publish");
 }
 
 export function assertCanPublishTaskRollup(user: EffectiveUser): void {
