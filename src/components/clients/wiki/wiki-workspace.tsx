@@ -879,8 +879,14 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
   // If the restored section isn't available for this client (e.g. a deleted page or
   // a Wedge-only section on another client), fall back to the dashboard once loaded.
+  // Design System + Changelog are exempt: they have no enable flag and are
+  // deliberately navigable before they have any content — that's how content
+  // gets added (see handleAddSection) — so they never count as "unavailable"
+  // here. Without this exemption, clicking either from "+ Add New" bounced
+  // straight back to the dashboard before the operator could add anything.
   useEffect(() => {
     if (activeSection === "dashboard") return;
+    if (activeSection === "design-system" || activeSection === "changelog") return;
     const avail = availableSectionsRef.current;
     if (avail.length && !avail.includes(activeSection)) setActiveSection("dashboard");
   }, [activeSection, wiki]);
