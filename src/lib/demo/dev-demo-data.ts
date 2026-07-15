@@ -1727,6 +1727,7 @@ export function resolveDemoApi(pathname: string): unknown {
   if (pathname === "/api/backstage/calendar/connections") return { selfConnected: false, members: [] };
   if (pathname === "/api/backstage/calendar/team-events") return { events: [] };
   if (pathname === "/api/backstage/calendar/timeline") return { blocks: [], milestones: [] };
+  if (pathname === "/api/backstage/absences") return []; // AbsenceDTO[] — iterated in CalendarTab
   if (pathname === "/api/backstage/leave") return [];
   if (pathname === "/api/backstage/alerts") return demoStaffingAlerts;
 
