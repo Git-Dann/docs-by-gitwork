@@ -7,10 +7,14 @@ import Link from "next/link";
 import {
   TASK_STATUS_LABELS,
   TASK_PRIORITY_LABELS,
-  TASK_LABEL_LABELS,
-  type TaskLabel,
 } from "@/types/tasks";
-import { usePortalAnalytics, formatLeadTimeDays, formatBucketLabel, formatPct } from "@/hooks/use-analytics";
+import {
+  usePortalAnalytics,
+  formatLeadTimeDays,
+  formatBucketLabel,
+  formatPct,
+  formatMoney,
+} from "@/hooks/use-analytics";
 import {
   WidgetCard,
   StatTile,
@@ -23,10 +27,6 @@ import {
   analyticsTh,
   analyticsThStyle,
 } from "@/components/analytics/analytics-widgets";
-
-function labelFor(label: TaskLabel | "UNLABELED"): string {
-  return label === "UNLABELED" ? "Unlabelled" : TASK_LABEL_LABELS[label];
-}
 
 function DevAvatar({ name, avatarUrl }: { name: string; avatarUrl: string | null }) {
   if (avatarUrl) {
@@ -64,14 +64,13 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
   const bucket = data.range.bucket;
   const statusTotal = data.byStatus.reduce((a, s) => a + s.count, 0);
   const priorityTotal = data.byPriority.reduce((a, s) => a + s.count, 0);
-  const labelTotal = data.byLabel.reduce((a, s) => a + s.count, 0);
 
   const hasThroughput = data.throughput.some((t) => t.created > 0 || t.completed > 0);
   // Thin axis labels to at most ~6 ticks so they don't collide.
   const tickEvery = Math.max(1, Math.ceil(data.throughput.length / 6));
 
   return (
-    <div className="grid grid-cols-12 gap-4">
+    <div className="grid grid-cols-12 items-start gap-4">
       {/* 01 // THROUGHPUT */}
       <WidgetCard
         number="01"
@@ -163,21 +162,22 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         </div>
       </WidgetCard>
 
-      {/* 05 // LABEL MIX */}
-      <WidgetCard number="05" label="Work type" className="col-span-12 sm:col-span-6 lg:col-span-4">
-        <div className="space-y-3">
-          {data.byLabel.length ? (
-            data.byLabel.map((l) => (
-              <BarMeter key={l.label} label={labelFor(l.label)} value={l.count} total={labelTotal} />
-            ))
-          ) : (
-            <p className="text-sm text-[var(--text-4)]">No open tasks.</p>
-          )}
+      {/* 05 // CAPACITY & COST */}
+      <WidgetCard number="05" label="Capacity & cost" className="col-span-12 sm:col-span-6 lg:col-span-4">
+        <div className="grid grid-cols-2 gap-2.5">
+          <StatTile figure={data.totals.activeDevs} label="Devs on projects" />
+          <StatTile
+            figure={data.totals.monthlyCost ? formatMoney(data.totals.monthlyCost.amount, data.totals.monthlyCost.currency) : "—"}
+            label="Monthly burn"
+            sub={data.totals.monthlyCost ? "active dev cost" : "no priced devs"}
+          />
+          <StatTile figure={data.totals.avgWorkingDays ?? "—"} label="Avg days / project" />
+          <StatTile figure={formatPct(data.totals.completionRate)} label="Completion rate" />
         </div>
       </WidgetCard>
 
       {/* 06 // DEV OUTPUT */}
-      <WidgetCard number="06" label="Dev output" className="col-span-12 lg:col-span-7" bodyClassName="p-0">
+      <WidgetCard number="06" label="Dev output" className="col-span-12 lg:col-span-5" bodyClassName="p-0">
         {data.leaderboard.length ? (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">
@@ -216,13 +216,16 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
       </WidgetCard>
 
       {/* 07 // CLIENT ACTIVITY */}
-      <WidgetCard number="07" label="Client activity" className="col-span-12 lg:col-span-5" bodyClassName="p-0">
+      <WidgetCard number="07" label="Client activity" className="col-span-12 lg:col-span-7" bodyClassName="p-0">
         {data.clients.length ? (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr>
                   <th className={analyticsTh} style={analyticsThStyle}>Client</th>
+                  <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Devs</th>
+                  <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Cost/mo</th>
+                  <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Days</th>
                   <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Open</th>
                   <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Overdue</th>
                   <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Done</th>
@@ -237,6 +240,11 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
                         {c.name}
                       </Link>
                     </td>
+                    <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-3)" }}>{c.devs || "—"}</td>
+                    <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-2)" }} title={c.monthlyCost?.unpricedDevs ? `${c.monthlyCost.unpricedDevs} unpriced` : undefined}>
+                      {c.monthlyCost ? formatMoney(c.monthlyCost.amount, c.monthlyCost.currency) : "—"}
+                    </td>
+                    <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-3)" }}>{c.workingDays ?? "—"}</td>
                     <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-3)" }}>{c.open}</td>
                     <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 12, color: c.overdue > 0 ? "var(--danger-500)" : "var(--text-3)" }}>{c.overdue}</td>
                     <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-3)" }}>{c.completedInRange}</td>

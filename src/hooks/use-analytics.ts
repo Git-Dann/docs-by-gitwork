@@ -66,6 +66,14 @@ export function formatTokens(n: number | null | undefined): string {
   return String(n);
 }
 
+/** Compact money in a given currency: £4.2k, $12.3k, £850. */
+export function formatMoney(amount: number | null | undefined, currency = "USD"): string {
+  if (amount == null) return "—";
+  const symbol = currency === "GBP" ? "£" : currency === "EUR" ? "€" : currency === "USD" ? "$" : `${currency} `;
+  if (amount >= 1000) return `${symbol}${(amount / 1000).toFixed(1)}k`;
+  return `${symbol}${Math.round(amount)}`;
+}
+
 // ── Display helpers ──────────────────────────────────────────────────────────
 
 /** Humanise a lead-time duration in days: "—", "4h", "2.3d". */

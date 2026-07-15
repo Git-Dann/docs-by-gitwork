@@ -30,7 +30,7 @@ export function AiUsageSection({ days }: { days?: number }) {
 
   if (isPending && !data) {
     return (
-      <div className="grid grid-cols-12 gap-4">
+      <div className="grid grid-cols-12 items-start gap-4">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="col-span-12 h-40 animate-pulse rounded-[10px] bg-[var(--surface-1)] sm:col-span-6 lg:col-span-4" />
         ))}
@@ -47,7 +47,7 @@ export function AiUsageSection({ days }: { days?: number }) {
   const modelTotalCost = data.byModel.reduce((a, m) => a + m.costUsd, 0);
 
   return (
-    <div className="grid grid-cols-12 gap-4">
+    <div className="grid grid-cols-12 items-start gap-4">
       {/* 01 // AI SPEND */}
       <WidgetCard number="01" label="AI spend" className="col-span-12 lg:col-span-4">
         <div className="grid grid-cols-2 gap-2.5">
