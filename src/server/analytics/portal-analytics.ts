@@ -22,10 +22,13 @@ import type { TaskStatus, TaskPriority, TaskLabel } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   businessDaysBetween,
+  computeClientDevCounts,
+  computeClientFinancials,
   computeClientOverdueTaskCounts,
   computeClientPulseHealth,
   deriveClientHealth,
 } from "@/server/client-metrics";
+import { normalizeToMonthly } from "@/server/rate-card";
 import { getDeveloperUserIds } from "@/server/tasks-standup";
 import {
   buildThroughput,
@@ -56,6 +59,12 @@ export interface PortalAnalytics {
     /** Mean DOING→DONE time over tasks completed in range that carry a startedAt. */
     avgLeadTimeMs: number | null;
     leadTimeSamples: number;
+    /** Distinct billable devs on an active placement right now (excludes off-bench / pro-bono). */
+    activeDevs: number;
+    /** Workspace-wide monthly dev burn (dominant currency), or null when no priced devs. */
+    monthlyCost: { amount: number; currency: string } | null;
+    /** Mean business-days-elapsed across clients that have a dated Gantt start. */
+    avgWorkingDays: number | null;
   };
   throughput: Array<{ bucket: string; created: number; completed: number }>;
   byStatus: Array<{ status: TaskStatus; count: number }>;
@@ -78,6 +87,12 @@ export interface PortalAnalytics {
     open: number;
     overdue: number;
     completedInRange: number;
+    /** Active devs on this client (distinct candidates with an open placement). */
+    devs: number;
+    /** Monthly dev cost for this client, or null when no priced billable dev. */
+    monthlyCost: { amount: number; currency: string; unpricedDevs: number } | null;
+    /** Business days since the earliest dated feature block, or null when no Gantt timeline. */
+    workingDays: number | null;
     health: ClientHealth | null;
   }>;
 }
@@ -127,6 +142,10 @@ export async function getPortalAnalytics(
     clientOpenGroups,
     overdueByClient,
     pulseHealthByClient,
+    devCountByClient,
+    financialsByClient,
+    offBenchCandidates,
+    activePlacements,
   ] = await Promise.all([
     devIds.length
       ? prisma.user.findMany({
@@ -204,6 +223,28 @@ export async function getPortalAnalytics(
       : Promise.resolve([] as Array<{ clientId: string; _count: { _all: number } }>),
     computeClientOverdueTaskCounts(workspaceId, clientIds),
     computeClientPulseHealth(workspaceId, clientIds),
+    computeClientDevCounts(workspaceId, clientIds),
+    computeClientFinancials(workspaceId, clientRows.map((c) => ({ id: c.id }))),
+    // Off-bench (pro-bono) devs — excluded from the output leaderboard. Matched to roster users
+    // by email (the User↔Candidate split has no FK; the team roster reconciles by email).
+    prisma.candidate.findMany({
+      where: { workspaceId, devGroup: "PRO_BONO" },
+      select: { email: true },
+    }),
+    // Workspace capacity/burn — distinct billable devs on an active placement + their rates.
+    prisma.placement.findMany({
+      where: { endDate: null, candidate: { workspaceId, devGroup: { not: "PRO_BONO" } } },
+      select: {
+        candidateId: true,
+        candidate: {
+          select: {
+            rateCardPerson: {
+              select: { sourceRate: true, billingPeriod: true, sourceCurrencyCode: true, archivedAt: true },
+            },
+          },
+        },
+      },
+    }),
   ]);
 
   // Throughput time-series (pure, gapless).
@@ -249,7 +290,14 @@ export async function getPortalAnalytics(
   }
   const businessDays = businessDaysBetween(from, to);
 
+  // Only surface devs who are actually on project work: exclude off-bench (pro-bono) devs, and
+  // drop anyone with no output AND no open assignments in range (unassigned / idle roster noise).
+  const offBenchEmails = new Set(
+    offBenchCandidates.map((c) => c.email?.toLowerCase()).filter((e): e is string => !!e),
+  );
+
   const leaderboard = devUsers
+    .filter((u) => !offBenchEmails.has(u.email.toLowerCase()))
     .map((u) => {
       const out = devOutput.get(u.id);
       const pmDays = pmDaysByDev.get(u.id)?.size ?? 0;
@@ -263,7 +311,27 @@ export async function getPortalAnalytics(
         standupCompliancePct: businessDays ? Math.min(100, Math.round((pmDays / businessDays) * 100)) : null,
       };
     })
+    .filter((d) => d.completed > 0 || d.openAssigned > 0)
     .sort((a, b) => b.completed - a.completed || b.openAssigned - a.openAssigned);
+
+  // Workspace capacity + burn: distinct billable active devs and their combined monthly rate,
+  // taking the dominant currency (summing across currencies would be meaningless).
+  const seenCandidate = new Set<string>();
+  const burnByCurrency = new Map<string, number>();
+  for (const p of activePlacements) {
+    if (seenCandidate.has(p.candidateId)) continue;
+    seenCandidate.add(p.candidateId);
+    const rc = p.candidate.rateCardPerson;
+    if (rc && !rc.archivedAt) {
+      const monthly = normalizeToMonthly(rc.sourceRate, rc.billingPeriod);
+      burnByCurrency.set(rc.sourceCurrencyCode, (burnByCurrency.get(rc.sourceCurrencyCode) ?? 0) + monthly);
+    }
+  }
+  const activeDevs = seenCandidate.size;
+  const dominantBurn = [...burnByCurrency.entries()].sort((a, b) => b[1] - a[1])[0];
+  const workspaceMonthlyCost = dominantBurn
+    ? { amount: Math.round(dominantBurn[1]), currency: dominantBurn[0] }
+    : null;
 
   // Per-client activity.
   const openByClient = new Map<string, number>();
@@ -274,6 +342,8 @@ export async function getPortalAnalytics(
       const open = openByClient.get(c.id) ?? 0;
       const overdue = overdueByClient.get(c.id) ?? 0;
       const pulse = pulseHealthByClient.get(c.id);
+      const fin = financialsByClient.get(c.id);
+      const cost = fin?.monthlyCost ?? null;
       return {
         clientId: c.id,
         name: c.name,
@@ -281,11 +351,19 @@ export async function getPortalAnalytics(
         open,
         overdue,
         completedInRange: completedByClient.get(c.id) ?? 0,
+        devs: devCountByClient.get(c.id) ?? 0,
+        monthlyCost: cost ? { amount: cost.amount, currency: cost.currency, unpricedDevs: cost.unpricedDevs } : null,
+        workingDays: fin?.workingDays ?? null,
         health: deriveClientHealth({ pulseHealthScore: pulse?.healthScore ?? null, overdueTasks: overdue }),
       };
     })
-    .filter((c) => c.open > 0 || c.overdue > 0 || c.completedInRange > 0)
+    .filter((c) => c.open > 0 || c.overdue > 0 || c.completedInRange > 0 || c.devs > 0)
     .sort((a, b) => b.open + b.overdue - (a.open + a.overdue) || b.completedInRange - a.completedInRange);
+
+  const workingDayVals = clients.map((c) => c.workingDays).filter((d): d is number => d != null);
+  const avgWorkingDays = workingDayVals.length
+    ? Math.round(workingDayVals.reduce((a, b) => a + b, 0) / workingDayVals.length)
+    : null;
 
   const createdInRange = createdRows.length;
   const completedInRange = completedRows.length;
@@ -301,6 +379,9 @@ export async function getPortalAnalytics(
       completionRate: createdInRange ? round2(completedInRange / createdInRange) : null,
       avgLeadTimeMs: leadN ? Math.round(leadSum / leadN) : null,
       leadTimeSamples: leadN,
+      activeDevs,
+      monthlyCost: workspaceMonthlyCost,
+      avgWorkingDays,
     },
     throughput,
     byStatus: statusGroups
