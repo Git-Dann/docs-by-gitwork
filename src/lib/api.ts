@@ -13,6 +13,7 @@ import type {
 import type {
   ClientBankReveal,
   ClientDesignRecord,
+  ClientDocumentLinkRecord,
   ClientDetailRecord,
   ClientListItem,
   ClientPlatformRecord,
@@ -839,6 +840,41 @@ export async function deleteClientDesign(
   designId: string,
 ): Promise<{ deleted: boolean }> {
   return apiFetch<{ deleted: boolean }>(`/api/clients/${slug}/designs/${designId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function createClientDocumentLink(
+  slug: string,
+  input: { name: string; url: string; notes?: string },
+): Promise<{ link: ClientDocumentLinkRecord }> {
+  return apiFetch<{ link: ClientDocumentLinkRecord }>(`/api/clients/${slug}/document-links`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateClientDocumentLink(
+  slug: string,
+  linkId: string,
+  input: { name?: string; url?: string; notes?: string },
+): Promise<{ link: ClientDocumentLinkRecord }> {
+  return apiFetch<{ link: ClientDocumentLinkRecord }>(
+    `/api/clients/${slug}/document-links/${linkId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function deleteClientDocumentLink(
+  slug: string,
+  linkId: string,
+): Promise<{ deleted: boolean }> {
+  return apiFetch<{ deleted: boolean }>(`/api/clients/${slug}/document-links/${linkId}`, {
     method: "DELETE",
   });
 }

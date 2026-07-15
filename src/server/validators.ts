@@ -306,6 +306,18 @@ export const clientDesignUpdateSchema = clientDesignCreateSchema
     message: "At least one design field is required.",
   });
 
+export const clientDocumentLinkCreateSchema = z.object({
+  name: requiredTrimmedString,
+  url: z.string().trim().url("Enter a valid document URL (including https://)."),
+  notes: z.string().trim().optional(),
+});
+
+export const clientDocumentLinkUpdateSchema = clientDocumentLinkCreateSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field is required.",
+  });
+
 export const proofCreateSchema = z.object({
   title: z.string().trim().min(1),
   markdown: z.string().optional(),

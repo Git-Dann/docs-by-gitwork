@@ -38,6 +38,7 @@ import { buttonStyles } from "@/components/ui/button-styles";
 import { LogoImagePicker } from "@/components/ui/logo-image-picker";
 import { CountrySelect, PhoneInput, WebsiteInput } from "@/components/ui/contact-fields";
 import { ClientDesignFormModal } from "@/components/clients/client-design-form";
+import { ClientDocumentLinks } from "@/components/clients/client-document-links";
 import { ClientDriveArchiveButton } from "@/components/clients/client-drive-archive-button";
 import { ClientPlatformFormModal } from "@/components/clients/client-platform-form";
 import { StatusBadge } from "@/components/status-badge";
@@ -342,7 +343,7 @@ export function ClientDetail({ slug }: { slug: string }) {
     );
   }
 
-  const { client, lifecycle, proposals, proofDocuments, platforms, designs, pulseScans, supportClient, placements, studies, touchpoints } = data;
+  const { client, lifecycle, proposals, proofDocuments, platforms, designs, documentLinks, pulseScans, supportClient, placements, studies, touchpoints } = data;
   const isSuggested = client.source === "SUGGESTED";
   // Leads show only the lead workspace + contact/notes — project/delivery info is hidden
   // until they become a client (status flips to ACTIVE via "Convert to client").
@@ -1098,7 +1099,7 @@ export function ClientDetail({ slug }: { slug: string }) {
               {" // DOCUMENTS"}
             </span>
             <span className="widget-header__status">
-              {proposals.length} linked
+              {proposals.length + documentLinks.length} linked
             </span>
           </div>
           <div className="overflow-x-auto">
@@ -1137,13 +1138,15 @@ export function ClientDetail({ slug }: { slug: string }) {
                 ) : (
                   <tr>
                     <td className="text-sm text-[var(--text-4)]" colSpan={4}>
-                      No documents linked yet. Add this client&rsquo;s name to any document draft to link it here.
+                      No Foundry documents linked yet. Add this client&rsquo;s name to any document draft
+                      to link it here, or add your own links below.
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
+          <ClientDocumentLinks slug={slug} links={documentLinks} canManage={canManageClients} />
         </section>
 
 

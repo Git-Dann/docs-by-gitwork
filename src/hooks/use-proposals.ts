@@ -6,6 +6,7 @@ import {
   archiveProposal,
   createClient,
   createClientDesign,
+  createClientDocumentLink,
   createClientPlatform,
   updateClientProductTeam,
   listTeamMembers,
@@ -14,6 +15,7 @@ import {
   addMeetingDecisionApi,
   deleteClient,
   deleteClientDesign,
+  deleteClientDocumentLink,
   deleteClientPlatform,
   deleteOnboardingLink,
   deleteProposal,
@@ -41,6 +43,7 @@ import {
   type LeadInput,
   updateClient,
   updateClientDesign,
+  updateClientDocumentLink,
   updateClientPlatform,
   revealClientPlatformApi,
   createPlatformLogin,
@@ -451,6 +454,46 @@ export function useDeleteClientDesign(slug: string) {
 
   return useMutation({
     mutationFn: (designId: string) => deleteClientDesign(slug, designId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client", slug] });
+    },
+  });
+}
+
+type DocumentLinkInput = {
+  name: string;
+  url: string;
+  notes?: string;
+};
+
+export function useCreateClientDocumentLink(slug: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: DocumentLinkInput) => createClientDocumentLink(slug, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client", slug] });
+    },
+  });
+}
+
+export function useUpdateClientDocumentLink(slug: string, linkId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: Partial<DocumentLinkInput>) =>
+      updateClientDocumentLink(slug, linkId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client", slug] });
+    },
+  });
+}
+
+export function useDeleteClientDocumentLink(slug: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (linkId: string) => deleteClientDocumentLink(slug, linkId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client", slug] });
     },

@@ -231,6 +231,17 @@ export interface ClientDesignRecord {
   updatedAt: string;
 }
 
+/** A team-added external document link on the client's DOCUMENTS card. */
+export interface ClientDocumentLinkRecord {
+  id: string;
+  clientId: string;
+  name: string;
+  url: string;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ClientPulseScanSummary {
   id: string;
   projectName: string;
@@ -283,6 +294,7 @@ export interface ClientDetailRecord {
   lifecycle: ClientLifecycleEvent[];
   platforms: ClientPlatformRecord[];
   designs: ClientDesignRecord[];
+  documentLinks: ClientDocumentLinkRecord[];
   proposals: ProposalListItem[];
   proofDocuments: ProofDocumentRecord[];
   pulseScans: ClientPulseScanSummary[];

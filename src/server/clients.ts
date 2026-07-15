@@ -7,6 +7,7 @@ import type {
   ClientBankReveal,
   ClientBankSummary,
   ClientDesignRecord,
+  ClientDocumentLinkRecord,
   ClientDetailFields,
   ClientDetailRecord,
   ClientListItem,
@@ -76,6 +77,10 @@ const clientPlatformLogins = (prisma as unknown as {
 const clientDesigns = (prisma as unknown as {
   clientDesign: Prisma.ClientDesignDelegate;
 }).clientDesign;
+
+const clientDocumentLinks = (prisma as unknown as {
+  clientDocumentLink: Prisma.ClientDocumentLinkDelegate;
+}).clientDocumentLink;
 
 /** Current retainer period as YYYY-MM (UTC) — the month `retainerDaysUsed` is counted against. */
 export function currentRetainerMonth(): string {
@@ -503,6 +508,26 @@ function serializeClientDesign(design: {
     previewImageUrl: design.previewImageUrl ?? null,
     createdAt: design.createdAt.toISOString(),
     updatedAt: design.updatedAt.toISOString(),
+  };
+}
+
+function serializeClientDocumentLink(link: {
+  id: string;
+  clientId: string;
+  name: string;
+  url: string;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): ClientDocumentLinkRecord {
+  return {
+    id: link.id,
+    clientId: link.clientId,
+    name: link.name,
+    url: link.url,
+    notes: link.notes,
+    createdAt: link.createdAt.toISOString(),
+    updatedAt: link.updatedAt.toISOString(),
   };
 }
 
@@ -1149,7 +1174,7 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
       getClientLookupKey(proposal.clientName) === clientKey,
   );
 
-  const [proofDocuments, platforms, designs, pulseScans, supportClient, placements, studies, bank, onboardingRow, auditRows] = await Promise.all([
+  const [proofDocuments, platforms, designs, pulseScans, supportClient, placements, studies, bank, onboardingRow, auditRows, documentLinks] = await Promise.all([
     matchingProposals.length > 0
       ? prisma.proofDocument.findMany({
           where: {
@@ -1241,6 +1266,12 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
           take: 20,
         })
       : Promise.resolve([]),
+    manualRecord
+      ? clientDocumentLinks.findMany({
+          where: { clientId: manualRecord.id },
+          orderBy: { createdAt: "asc" },
+        })
+      : Promise.resolve([]),
   ]);
 
   const bankSummary: ClientBankSummary | null = bank
@@ -1318,6 +1349,9 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
     }),
     platforms: (platforms as Parameters<typeof serializeClientPlatform>[0][]).map(serializeClientPlatform),
     designs: (designs as Parameters<typeof serializeClientDesign>[0][]).map(serializeClientDesign),
+    documentLinks: (documentLinks as Parameters<typeof serializeClientDocumentLink>[0][]).map(
+      serializeClientDocumentLink,
+    ),
     proposals: matchingProposals.map((proposal) => serializeProposalListItem(proposal)),
     proofDocuments: proofDocuments.map((document) => serializeProofDocument(document)),
     pulseScans: pulseScans.map((scan) => ({
@@ -1693,6 +1727,40 @@ export async function updateClientDesign(
 
 export async function deleteClientDesign(designId: string): Promise<void> {
   await clientDesigns.delete({ where: { id: designId } });
+}
+
+export async function createClientDocumentLink(
+  clientId: string,
+  input: { name: string; url: string; notes?: string },
+): Promise<ClientDocumentLinkRecord> {
+  const link = await clientDocumentLinks.create({
+    data: {
+      clientId,
+      name: input.name.trim(),
+      url: input.url.trim(),
+      notes: input.notes?.trim() || null,
+    },
+  });
+  return serializeClientDocumentLink(link as Parameters<typeof serializeClientDocumentLink>[0]);
+}
+
+export async function updateClientDocumentLink(
+  linkId: string,
+  input: { name?: string; url?: string; notes?: string },
+): Promise<ClientDocumentLinkRecord | null> {
+  const link = await clientDocumentLinks.update({
+    where: { id: linkId },
+    data: {
+      ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+      ...(input.url !== undefined ? { url: input.url.trim() } : {}),
+      ...(input.notes !== undefined ? { notes: input.notes.trim() || null } : {}),
+    },
+  });
+  return serializeClientDocumentLink(link as Parameters<typeof serializeClientDocumentLink>[0]);
+}
+
+export async function deleteClientDocumentLink(linkId: string): Promise<void> {
+  await clientDocumentLinks.delete({ where: { id: linkId } });
 }
 
 export async function getClientIdBySlug(

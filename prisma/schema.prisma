@@ -1061,6 +1061,7 @@ model WorkspaceClient {
   pulseScans               PulseScan[]
   platforms                ClientPlatform[]
   designs                  ClientDesign[]
+  documentLinks            ClientDocumentLink[]
   documents                Document[]
   supportClients           SupportClient[]
   placements               Placement[]
@@ -1185,6 +1186,24 @@ model ClientDesign {
 
   @@index([clientId])
   @@map("ClientDesign")
+}
+
+/// A team-added document on the Portal client-detail "14 // DOCUMENTS" card — an
+/// external link (Google Drive/Docs, or any URL). Distinct from `Document`
+/// (Foundry-authored proposals/SOWs auto-linked by client name) which stays
+/// read-only there. Additive; mirrors ClientDesign (name + url + notes).
+model ClientDocumentLink {
+  id        String          @id @default(cuid())
+  clientId  String
+  client    WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name      String
+  url       String          @db.Text
+  notes     String?         @db.Text
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@index([clientId])
+  @@map("ClientDocumentLink")
 }
 
 enum DesignSystemStatus {
