@@ -64,11 +64,16 @@ console.log("tools/list");
   });
   if (res && "result" in res) {
     const tools = (res.result as { tools: Array<{ name: string; inputSchema: object }> }).tools;
-    check("returns 18 tools", tools.length === 18, `got ${tools.length}`);
+    check("returns 23 tools", tools.length === 23, `got ${tools.length}`);
     const expected = [
       "list_clients",
       "create_client",
+      "update_client",
+      "set_client_status",
       "get_client",
+      "add_platform",
+      "list_platforms",
+      "add_design",
       "list_conversations",
       "list_tasks",
       "get_task",

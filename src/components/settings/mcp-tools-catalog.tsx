@@ -22,8 +22,47 @@ const TOOLS: Tool[] = [
   },
   {
     name: "create_client",
-    blurb: "Add a new client. Requires the 'Manage clients' permission.",
-    examples: ["Add a new client called 'Speakify', website speakify.com."],
+    blurb:
+      "Add a new client with any of its fields — contact, full address, legal/company, links, retainer, and lead fields. Set status to LEAD for a prospect. Requires 'Manage clients'.",
+    examples: [
+      "Add a new client 'Speakify', website speakify.com, based in Rochdale.",
+      "Create a lead 'Acme Co', source LinkedIn, est. value £20k.",
+    ],
+  },
+  {
+    name: "update_client",
+    blurb:
+      "Edit any of a client's fields — name, contact, address, legal/company, links, retainer, lead detail. Only what you pass changes. Requires 'Manage clients'.",
+    examples: [
+      "Set Speakify's address to 818 Manchester Road, Rochdale, OL11 3AW.",
+      "Update Big Wedge's primary contact email and retainer to 5 days.",
+    ],
+  },
+  {
+    name: "set_client_status",
+    blurb:
+      "Move a client through its lifecycle — current (ACTIVE), lead, pending, paused (INACTIVE), or archived. Converts leads, parks clients, brings them back. Requires 'Manage clients'.",
+    examples: [
+      "Convert the Acme lead to an active client.",
+      "Pause Speakify until September with a note.",
+    ],
+  },
+  {
+    name: "add_platform",
+    blurb:
+      "Add a platform to a client's Platforms block (hosting, CMS, repo, tools). Credentials stay UI-only. Requires 'Manage clients'.",
+    examples: ["Add a WordPress platform for Big Wedge at bigwedge.golf."],
+  },
+  {
+    name: "list_platforms",
+    blurb: "List a client's platforms (name, type, URLs, whether creds are on file — never the secrets).",
+    examples: ["What platforms does Speakify have?"],
+  },
+  {
+    name: "add_design",
+    blurb:
+      "Add a design link to a client's Designs card (Figma file, mockup, moodboard) — distinct from Platforms. Requires 'Manage clients'.",
+    examples: ["Add the Figma link to Speakify's designs.", "Save the Big Wedge brand kit to Designs."],
   },
   {
     name: "get_client",
