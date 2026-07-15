@@ -34,7 +34,13 @@ import { buildSkillMarkdown } from "@/server/starters-package";
 import { runAgentScan, buildAgentVerdict } from "@/server/pulse-agent";
 import { getPulseScan, listPulseScans } from "@/server/pulse";
 import type { CheckCategory } from "@/server/pulse-checks/categories";
-import { listDerivedClients, createClientRecord, getDerivedClientDetail } from "@/server/clients";
+import {
+  listDerivedClients,
+  createClientRecord,
+  updateClientRecord,
+  createClientPlatform,
+  getDerivedClientDetail,
+} from "@/server/clients";
 import { listConversations, listSupportClients } from "@/server/support";
 import {
   assignedClientIds,
@@ -248,7 +254,35 @@ const createClientSchema = z.object({
   primaryContactEmail: z.string().optional(),
   primaryContactPhone: z.string().optional(),
   notes: z.string().optional(),
+  retainerDays: z.coerce.number().int().min(0).max(31).nullable().optional(),
+  retainerDaysUsed: z.coerce.number().int().min(0).max(31).nullable().optional(),
 });
+
+const updateClientSchema = z.object({
+  client: z.string().min(1),
+  name: z.string().min(1).optional(),
+  website: z.string().optional(),
+  primaryContactName: z.string().optional(),
+  primaryContactEmail: z.string().optional(),
+  primaryContactPhone: z.string().optional(),
+  notes: z.string().optional(),
+  googleDriveFolderUrl: z.string().optional(),
+  retainerDays: z.coerce.number().int().min(0).max(31).nullable().optional(),
+  retainerDaysUsed: z.coerce.number().int().min(0).max(31).nullable().optional(),
+});
+
+const addPlatformSchema = z.object({
+  client: z.string().min(1),
+  name: z.string().min(1),
+  platformType: z.string().optional(),
+  url: z.string().optional(),
+  stagingUrl: z.string().optional(),
+  repoUrl: z.string().optional(),
+  notes: z.string().optional(),
+  featuredInWiki: z.boolean().optional(),
+});
+
+const listPlatformsSchema = z.object({ client: z.string().min(1) });
 
 const listTasksSchema = z.object({
   client: z.string().optional(),
@@ -419,7 +453,9 @@ const TOOLS: ToolDef[] = [
   {
     name: "create_client",
     description:
-      "Create a new client. Requires the 'Manage clients' permission. Only name is required.",
+      "Create a new client. Requires the 'Manage clients' permission. Only name is required. " +
+      "Retainer is a structured field — pass retainerDays (monthly allowance) rather than noting " +
+      "it in free text. Add platforms afterwards with add_platform; edit later with update_client.",
     inputSchema: {
       type: "object",
       properties: {
@@ -429,6 +465,11 @@ const TOOLS: ToolDef[] = [
         primaryContactEmail: { type: "string" },
         primaryContactPhone: { type: "string" },
         notes: { type: "string", description: "Free-text notes about the client." },
+        retainerDays: {
+          type: "number",
+          description: "Monthly retainer-day allowance (0–31). Use this instead of noting it in text.",
+        },
+        retainerDaysUsed: { type: "number", description: "Retainer days already used this month (0–31)." },
       },
       required: ["name"],
       additionalProperties: false,
@@ -440,6 +481,131 @@ const TOOLS: ToolDef[] = [
       return textResult(
         { id: client.id, slug: client.slug, name: client.name },
         `Created client "${client.name}" (slug: ${client.slug}).`,
+      );
+    },
+  },
+  {
+    name: "update_client",
+    description:
+      "Update an existing client's core fields — name, website, contact details, notes, Google " +
+      "Drive link, and retainer days. Requires the 'Manage clients' permission. Resolve the client " +
+      "by slug, name, or cuid (see list_clients). Only the fields you pass are changed. Bank details, " +
+      "platform credentials, and lifecycle status are NOT edited here (platforms have their own tools; " +
+      "secrets stay UI-only).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        name: { type: "string", description: "New display name." },
+        website: { type: "string", description: "Public website URL." },
+        primaryContactName: { type: "string" },
+        primaryContactEmail: { type: "string" },
+        primaryContactPhone: { type: "string" },
+        notes: { type: "string", description: "Free-text notes about the client." },
+        googleDriveFolderUrl: { type: "string", description: "Google Drive folder URL." },
+        retainerDays: { type: "number", description: "Monthly retainer-day allowance (0–31)." },
+        retainerDaysUsed: { type: "number", description: "Retainer days used this month (0–31)." },
+      },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "update clients");
+      const parsed = updateClientSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const updated = await updateClientRecord(resolved.slug, {
+        name: parsed.name,
+        website: parsed.website,
+        primaryContactName: parsed.primaryContactName,
+        primaryContactEmail: parsed.primaryContactEmail,
+        primaryContactPhone: parsed.primaryContactPhone,
+        notes: parsed.notes,
+        googleDriveFolderUrl: parsed.googleDriveFolderUrl,
+        retainerDays: parsed.retainerDays,
+        retainerDaysUsed: parsed.retainerDaysUsed,
+      });
+      if (!updated) return textResult({ error: "Client not found." }, "Client not found.");
+      return textResult(
+        { id: updated.id, slug: updated.slug, name: updated.name },
+        `Updated ${updated.name}.`,
+      );
+    },
+  },
+  {
+    name: "add_platform",
+    description:
+      "Add a platform entry to a client's Platforms block (e.g. WordPress, hosting provider, repo). " +
+      "Requires the 'Manage clients' permission. Resolve the client by slug, name, or cuid. Only 'name' " +
+      "is required. Credentials (username/password) are intentionally NOT accepted here — add those in " +
+      "the Foundry UI where they're encrypted and permission-gated. Use list_platforms to see existing entries.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        name: { type: "string", description: "Platform name (e.g. 'WordPress', 'Fasthosts')." },
+        platformType: { type: "string", description: "Category, e.g. 'CMS', 'Hosting', 'Repo', 'Analytics'." },
+        url: { type: "string", description: "Production URL." },
+        stagingUrl: { type: "string", description: "Staging/preview URL." },
+        repoUrl: { type: "string", description: "Source repository URL." },
+        notes: { type: "string", description: "Access notes (no secrets — those go in the UI)." },
+        featuredInWiki: {
+          type: "boolean",
+          description: "Surface this platform's prod + staging URLs as buttons in the client wiki header.",
+        },
+      },
+      required: ["client", "name"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "add platforms");
+      const parsed = addPlatformSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const platform = await createClientPlatform(resolved.id, {
+        name: parsed.name,
+        platformType: parsed.platformType,
+        url: parsed.url,
+        stagingUrl: parsed.stagingUrl,
+        repoUrl: parsed.repoUrl,
+        notes: parsed.notes,
+        featuredInWiki: parsed.featuredInWiki,
+      });
+      return textResult(
+        { id: platform.id, name: platform.name, platformType: platform.platformType, url: platform.url },
+        `Added platform "${platform.name}" to ${resolved.name}.`,
+      );
+    },
+  },
+  {
+    name: "list_platforms",
+    description:
+      "List a client's platform entries (name, type, URLs, and whether credentials are on file — " +
+      "never the secrets themselves). Resolve the client by slug, name, or cuid.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+      },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = listPlatformsSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const detail = await getDerivedClientDetail(resolved.slug);
+      if (!detail) return textResult({ error: "Client not found." }, "Client not found.");
+      const platforms = detail.platforms.map((p) => ({
+        id: p.id,
+        name: p.name,
+        platformType: p.platformType,
+        url: p.url,
+        stagingUrl: p.stagingUrl,
+        repoUrl: p.repoUrl,
+        featuredInWiki: p.featuredInWiki,
+        hasCredentials: p.hasUsername || p.hasPassword || p.logins.length > 0,
+      }));
+      return textResult(
+        { platforms },
+        `${resolved.name} — ${platforms.length} platform${platforms.length === 1 ? "" : "s"}.`,
       );
     },
   },
@@ -1119,7 +1285,6 @@ const TOOLS: ToolDef[] = [
         activeDevs,
         links: {
           googleDrive: c.googleDriveFolderUrl,
-          clickup: c.clickupUrl,
           repos: c.repoUrls,
         },
         counts: { proposals: detail.proposals.length, pulseScans: detail.pulseScans.length },
