@@ -264,6 +264,23 @@ const BoardColumn = memo(function BoardColumn({
   activeId: string | null;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
+
+  // Cap how many cards a column renders at once. A long-lived board's DONE column
+  // grows without bound (hundreds of cards), and every rendered card mounts two
+  // dnd-kit hooks + its own DOM subtree — enough to jank the whole page. Render a
+  // window and let the user reveal more on demand. DONE shows the most recently
+  // completed first (the useful end); active columns keep their orderKey order.
+  const PAGE = 40;
+  const [visible, setVisible] = useState(PAGE);
+
+  const ordered = useMemo(() => {
+    if (status !== "DONE") return tasks;
+    return [...tasks].sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""));
+  }, [tasks, status]);
+
+  const shown = visible >= ordered.length ? ordered : ordered.slice(0, visible);
+  const hidden = ordered.length - shown.length;
+
   return (
     <section
       ref={setNodeRef}
@@ -284,7 +301,7 @@ const BoardColumn = memo(function BoardColumn({
         </span>
       </div>
       <div className="flex min-h-[120px] min-w-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden p-2">
-        {tasks.map((task) => (
+        {shown.map((task) => (
           <BoardCard
             key={task.id}
             task={task}
@@ -294,6 +311,15 @@ const BoardColumn = memo(function BoardColumn({
             showIndicator={overId === task.id && activeId != null && activeId !== task.id}
           />
         ))}
+        {hidden > 0 ? (
+          <button
+            type="button"
+            onClick={() => setVisible((v) => v + PAGE)}
+            className="mt-1 rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] px-2 py-2 text-center text-[11px] font-medium text-[var(--text-3)] transition-colors hover:border-[var(--brand-400)] hover:text-[var(--brand-700)]"
+          >
+            Show {Math.min(PAGE, hidden)} more · {hidden} hidden
+          </button>
+        ) : null}
         {/* Drop line when hovering the column's empty space → card appends to the end. */}
         {activeId != null && overId === status ? (
           <div className="h-0.5 rounded-full bg-[var(--brand-700)]" />
