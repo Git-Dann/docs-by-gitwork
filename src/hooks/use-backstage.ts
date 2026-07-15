@@ -10,6 +10,11 @@ import {
   listBackstageCalendarConnections,
   getBackstageTeamCalendarEvents,
   getBackstageCalendarTimeline,
+  listTodayAbsences,
+  listMonthAbsences,
+  markAbsence,
+  deleteAbsence,
+  listSlackChannels,
   getBackstageAlerts,
   getBackstageAllowance,
   getBackstageCalendar,
@@ -233,5 +238,53 @@ export function useBackstageCalendarTimeline(year: number, month: number, enable
     queryFn: () => getBackstageCalendarTimeline(year, month),
     enabled,
     staleTime: 60_000,
+  });
+}
+
+// ─── Absences (same-day "out today") ───────────────────────────────────────
+
+export function useTodayAbsences() {
+  return useQuery({
+    queryKey: ["backstage", "absences", "today"] as const,
+    queryFn: () => listTodayAbsences(),
+    staleTime: 30_000,
+  });
+}
+
+export function useMonthAbsences(year: number, month: number) {
+  return useQuery({
+    queryKey: ["backstage", "absences", "month", year, month] as const,
+    queryFn: () => listMonthAbsences(year, month),
+    staleTime: 30_000,
+  });
+}
+
+export function useMarkAbsence() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof markAbsence>[0]) => markAbsence(input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["backstage", "absences"] });
+    },
+  });
+}
+
+export function useDeleteAbsence() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteAbsence(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["backstage", "absences"] });
+    },
+  });
+}
+
+// Slack channel picker options (reuses the shared integrations endpoint).
+export function useSlackChannels(enabled: boolean) {
+  return useQuery({
+    queryKey: ["backstage", "slackChannels"] as const,
+    queryFn: () => listSlackChannels(),
+    enabled,
+    staleTime: 5 * 60_000,
   });
 }

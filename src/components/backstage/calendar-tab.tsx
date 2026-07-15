@@ -14,11 +14,14 @@ import {
   useBackstageCalendarTimeline,
   useCalendarConnections,
   useTeamCalendarEvents,
+  useMonthAbsences,
 } from "@/hooks/use-backstage";
 import { usePermissions } from "@/hooks/use-permissions";
 import { BackstagePanel } from "@/components/backstage/panel";
 import { cn } from "@/lib/format";
 import type {
+  AbsenceDTO,
+  AbsenceKind,
   CalendarDay,
   CalendarLeaveBar,
   CalendarTimelineBlock,
@@ -151,6 +154,14 @@ const BLOCK_TONES: Record<string, { dot: string; pill: string }> = {
 function blockTone(color?: string | null) {
   return BLOCK_TONES[color ?? "blue"] ?? BLOCK_TONES.blue;
 }
+
+// Same-day absence styling per kind.
+const ABSENCE_META: Record<AbsenceKind, { label: string; emoji: string; pill: string; dot: string }> = {
+  AWAY: { label: "Away", emoji: "🌴", pill: "border-teal-200 bg-teal-50 text-teal-800", dot: "bg-teal-500" },
+  ILL: { label: "Ill", emoji: "🤒", pill: "border-rose-200 bg-rose-50 text-rose-800", dot: "bg-rose-500" },
+  WFH: { label: "WFH", emoji: "🏠", pill: "border-sky-200 bg-sky-50 text-sky-800", dot: "bg-sky-500" },
+  APPOINTMENT: { label: "Appt", emoji: "📅", pill: "border-amber-200 bg-amber-50 text-amber-800", dot: "bg-amber-500" },
+};
 
 // The grid-day ISO keys an event covers. Google all-day `end` is exclusive.
 function eventDayKeys(ev: TeamCalendarEvent): string[] {
@@ -346,6 +357,16 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
       list.push(ev);
       eventsByDay.set(key, list);
     }
+  }
+
+  // ── Absences overlay (team-wide, always on) ──
+  const absences = useMonthAbsences(year, month);
+  const absencesByDay = new Map<string, AbsenceDTO[]>();
+  for (const a of absences.data ?? []) {
+    const key = a.date.slice(0, 10);
+    const list = absencesByDay.get(key) ?? [];
+    list.push(a);
+    absencesByDay.set(key, list);
   }
 
   // ── Portal Gantt overlay → per-day markers ──
@@ -621,6 +642,10 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
             <GlobeAltIcon className="h-3 w-3 text-sky-500" />
             Public/religious holiday
           </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="text-[12px] leading-none">🌴</span>
+            Out today
+          </span>
           {timelineOn ? (
             <span className="inline-flex items-center gap-1.5">
               <FlagIcon className="h-3 w-3 text-[var(--brand-500)]" />
@@ -664,6 +689,7 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
                   events={eventsByDay.get(day.date) ?? []}
                   markers={markersByDay.get(day.date) ?? []}
                   milestones={milestonesByDay.get(day.date) ?? []}
+                  absences={absencesByDay.get(day.date) ?? []}
                   isSelected={day.date === selectedDay?.date}
                   onSelect={() => setSelectedDate(day.date)}
                 />
@@ -679,6 +705,7 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
           events={selectedDay ? eventsByDay.get(selectedDay.date) ?? [] : []}
           markers={selectedDay ? markersByDay.get(selectedDay.date) ?? [] : []}
           milestones={selectedDay ? milestonesByDay.get(selectedDay.date) ?? [] : []}
+          absences={selectedDay ? absencesByDay.get(selectedDay.date) ?? [] : []}
           timelineOn={timelineOn}
         />
       </div>
@@ -704,6 +731,7 @@ function DayCell({
   events,
   markers,
   milestones,
+  absences,
   isSelected,
   onSelect,
 }: {
@@ -712,6 +740,7 @@ function DayCell({
   events: TeamCalendarEvent[];
   markers: CalendarTimelineBlock[];
   milestones: CalendarTimelineMilestone[];
+  absences: AbsenceDTO[];
   isSelected: boolean;
   onSelect: () => void;
 }) {
@@ -730,13 +759,13 @@ function DayCell({
       type="button"
       onClick={onSelect}
       className={cn(
-        "min-h-[100px] cursor-pointer bg-white p-1.5 text-left transition hover:bg-[var(--surface-1)]",
+        "flex min-h-[100px] w-full cursor-pointer flex-col items-start bg-white p-1.5 text-left align-top transition hover:bg-[var(--surface-1)]",
         !day.isCurrentMonth && "bg-[var(--surface-1)]",
         day.isWeekend && day.isCurrentMonth && "bg-[#FAFAF9]",
         isSelected && "ring-2 ring-inset ring-[var(--brand-500)]",
       )}
     >
-      <div className="flex items-center justify-between">
+      <div className="flex w-full items-center justify-between">
         <span
           className={cn(
             "inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium",
@@ -814,6 +843,31 @@ function DayCell({
         </div>
       ) : null}
 
+      {/* Absences (out today) */}
+      {absences.length > 0 ? (
+        <div className="mt-1 space-y-0.5">
+          {absences.slice(0, 3).map((a) => {
+            const meta = ABSENCE_META[a.kind];
+            return (
+              <div
+                key={a.id}
+                className={cn(
+                  "flex items-center gap-1 truncate rounded-[4px] border px-1 py-0.5 text-[10px] font-medium",
+                  meta.pill,
+                )}
+                title={`${a.userName} · ${meta.label}${a.note ? ` · ${a.note}` : ""}`}
+              >
+                <span className="shrink-0 text-[10px] leading-none">{meta.emoji}</span>
+                <span className="truncate">{a.userName.split(" ")[0]}</span>
+              </div>
+            );
+          })}
+          {absences.length > 3 ? (
+            <p className="px-1 text-[10px] text-[var(--text-4)]">+{absences.length - 3} more</p>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* Leave pills */}
       <div className="mt-1 space-y-0.5">
         {day.leave.slice(0, MAX_PILLS).map((bar) => (
@@ -876,6 +930,7 @@ function DayDetail({
   events,
   markers,
   milestones,
+  absences,
   timelineOn,
 }: {
   day: CalendarDay | null;
@@ -883,6 +938,7 @@ function DayDetail({
   events: TeamCalendarEvent[];
   markers: CalendarTimelineBlock[];
   milestones: CalendarTimelineMilestone[];
+  absences: AbsenceDTO[];
   timelineOn: boolean;
 }) {
   if (!day) {
@@ -899,6 +955,7 @@ function DayDetail({
     holidays.length === 0 &&
     day.leave.length === 0 &&
     events.length === 0 &&
+    absences.length === 0 &&
     (!timelineOn || (markers.length === 0 && milestones.length === 0));
 
   return (
@@ -914,6 +971,26 @@ function DayDetail({
 
       {isEmpty ? (
         <p className="text-sm text-[var(--text-3)]">Nothing scheduled.</p>
+      ) : null}
+
+      {/* Out today (absences) */}
+      {absences.length > 0 ? (
+        <div className="space-y-1.5">
+          <p className="widget-data-label">Out today</p>
+          {absences.map((a) => {
+            const meta = ABSENCE_META[a.kind];
+            return (
+              <div key={a.id} className="flex items-center gap-1.5 text-xs text-[var(--text-1)]">
+                <span className="shrink-0 text-sm leading-none">{meta.emoji}</span>
+                <span className="truncate font-medium">{a.userName}</span>
+                <span className="ml-auto truncate text-[10px] text-[var(--text-3)]">
+                  {meta.label}
+                  {a.note ? ` · ${a.note}` : ""}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       ) : null}
 
       {/* Deliverables (timeline blocks active this week) */}

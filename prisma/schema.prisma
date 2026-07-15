@@ -196,6 +196,8 @@ model User {
   meetingsOwned             Meeting[]               @relation("MeetingOwner")
   leaveRequests             LeaveRequest[]          @relation("LeaveRequester")
   leaveRequestsApproved     LeaveRequest[]          @relation("LeaveApprover")
+  absences                  Absence[]               @relation("AbsenceUser")
+  absencesCreated           Absence[]               @relation("AbsenceCreator")
   expensesSubmitted         Expense[]               @relation("ExpenseClaimant")
   expensesReviewed          Expense[]               @relation("ExpenseReviewer")
   clientAssignments         ClientAssignment[]
@@ -407,6 +409,7 @@ model Workspace {
   meetings                    Meeting[]
   aiResponseCache             AiResponseCache[]
   leaveRequests               LeaveRequest[]
+  absences                    Absence[]
   expenses                    Expense[]
   clientAssignments           ClientAssignment[]
   tasks                       Task[]
@@ -3124,6 +3127,33 @@ model LeaveRequest {
   @@index([workspaceId, userId])
   @@index([workspaceId, status])
   @@index([startDate, endDate])
+}
+
+// Same-day team status ("out today") — distinct from planned LeaveRequest: does
+// NOT touch leave allowance and needs no approval. Marked from Backstage and
+// posted to a chosen Slack channel. Rendered as an overlay on the team calendar.
+model Absence {
+  id               String   @id @default(cuid())
+  workspaceId      String
+  userId           String // who is absent
+  date             DateTime // day-precision, UTC midnight (usually today)
+  kind             String // AWAY | ILL | WFH | APPOINTMENT
+  note             String?
+  createdById      String? // who marked it
+  slackChannelId   String?
+  slackChannelName String?
+  slackPosted      Boolean  @default(false)
+  slackMessageTs   String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation("AbsenceUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation("AbsenceCreator", fields: [createdById], references: [id])
+
+  // One absence per person per day — re-marking updates in place.
+  @@unique([workspaceId, userId, date])
+  @@index([workspaceId, date])
 }
 
 model Expense {

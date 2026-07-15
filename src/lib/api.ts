@@ -2519,11 +2519,14 @@ export async function linkMeetingActionItemTask(
 // ─── Backstage (internal ops) ──────────────────────────────────────────────
 
 import type {
+  AbsenceDTO,
+  AbsenceKind,
   BackstageMember,
   CalendarConnectionMember,
   CalendarMonth,
   CalendarTimeline,
   ExpenseDTO,
+  SlackChannelOption,
   LeaveAllowanceDTO,
   LeaveRequestDTO,
   StaffingAlertsResponse,
@@ -2713,6 +2716,38 @@ export function getBackstageCalendarTimeline(
   month: number,
 ): Promise<CalendarTimeline> {
   return apiFetch(`/api/backstage/calendar/timeline?year=${year}&month=${month}`);
+}
+
+// ─── Absences ──────────────────────────────────────────────────────────────
+
+export function listTodayAbsences(): Promise<AbsenceDTO[]> {
+  return apiFetch("/api/backstage/absences");
+}
+
+export function listMonthAbsences(year: number, month: number): Promise<AbsenceDTO[]> {
+  return apiFetch(`/api/backstage/absences?year=${year}&month=${month}`);
+}
+
+export function markAbsence(input: {
+  userId: string;
+  kind: AbsenceKind;
+  note?: string;
+  date?: string;
+  channelId?: string;
+  channelName?: string;
+}): Promise<AbsenceDTO> {
+  return apiFetch("/api/backstage/absences", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteAbsence(id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/backstage/absences/${id}`, { method: "DELETE" });
+}
+
+export function listSlackChannels(): Promise<{ channels: SlackChannelOption[] }> {
+  return apiFetch("/api/integrations/slack/channels");
 }
 
 // ─── Tasks (Portal task tracker + standups) ────────────────────────────────

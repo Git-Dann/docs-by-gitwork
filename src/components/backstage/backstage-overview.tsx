@@ -1,24 +1,19 @@
 "use client";
 
 import type { ReactNode } from "react";
-import {
-  ArrowRightIcon,
-  BanknotesIcon,
-  CheckCircleIcon,
-  ClockIcon,
-} from "@heroicons/react/24/outline";
+import { ArrowRightIcon, BanknotesIcon, ClockIcon } from "@heroicons/react/24/outline";
 import { useExpenses, useLeaveAllowance } from "@/hooks/use-backstage";
-import { useTasks } from "@/hooks/use-tasks";
 import { CalendarTab } from "@/components/backstage/calendar-tab";
+import { AbsencesCard } from "@/components/backstage/absences-card";
 import { useBackstageAccess } from "@/components/backstage/access";
 
-export type BackstageArea = "leave" | "expenses" | "review";
+export type BackstageArea = "leave" | "expenses";
 
 // Backstage landing — a bento grid of navigational cards (HQ dashboard pattern,
 // see app-overview.tsx + DESIGN.md) over the full team calendar. Cards show a
 // headline figure and open their area on click; the calendar stays visible. No tabs.
 export function BackstageOverview({ onOpen }: { onOpen: (area: BackstageArea) => void }) {
-  const { canApprove, canManageExpenses } = useBackstageAccess();
+  const { canManageExpenses } = useBackstageAccess();
 
   let n = 0;
   const num = () => String(++n).padStart(2, "0");
@@ -27,8 +22,8 @@ export function BackstageOverview({ onOpen }: { onOpen: (area: BackstageArea) =>
     <div className="space-y-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <LeaveCard number={num()} onOpen={onOpen} />
+        <AbsencesCard number={num()} />
         {canManageExpenses ? <ExpensesCard number={num()} onOpen={onOpen} /> : null}
-        {canApprove ? <ReviewCard number={num()} onOpen={onOpen} /> : null}
       </div>
       <CalendarTab number={num()} />
     </div>
@@ -109,16 +104,3 @@ function ExpensesCard({ number, onOpen }: { number: string; onOpen: (a: Backstag
   );
 }
 
-function ReviewCard({ number, onOpen }: { number: string; onOpen: (a: BackstageArea) => void }) {
-  const inReview = useTasks({ status: "IN_REVIEW" });
-  const total = inReview.data?.length ?? 0;
-  return (
-    <Card number={number} title="IN REVIEW" area="review" onOpen={onOpen}>
-      <Figure value={total} unit="to review" />
-      <p className="flex items-center gap-1 text-xs text-[var(--text-3)]">
-        <CheckCircleIcon className="h-3.5 w-3.5" />
-        {total > 0 ? "Tasks awaiting review" : "All clear"}
-      </p>
-    </Card>
-  );
-}

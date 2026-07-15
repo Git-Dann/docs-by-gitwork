@@ -222,3 +222,32 @@ export type CalendarTimeline = {
   blocks: CalendarTimelineBlock[];
   milestones: CalendarTimelineMilestone[];
 };
+
+// ─── Absences (same-day "out today" status) ───────────────────────────────
+
+export type AbsenceKind = "AWAY" | "ILL" | "WFH" | "APPOINTMENT";
+
+export type AbsenceDTO = {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatarUrl: string | null;
+  /** ISO date (day-precision). */
+  date: string;
+  kind: AbsenceKind;
+  note: string | null;
+  createdById: string | null;
+  createdByName: string | null;
+  slackChannelName: string | null;
+  slackPosted: boolean;
+  createdAt: string;
+};
+
+/** A Slack channel option for the announce-channel picker. */
+export type SlackChannelOption = {
+  id: string;
+  name: string;
+  isPrivate: boolean;
+  isMember: boolean;
+  memberCount: number;
+};

@@ -864,6 +864,19 @@ export const leaveRequestInputSchema = z
     path: ["endDate"],
   });
 
+export const absenceKindSchema = z.enum(["AWAY", "ILL", "WFH", "APPOINTMENT"]);
+
+export const absenceInputSchema = z.object({
+  userId: z.string().cuid(),
+  kind: absenceKindSchema,
+  note: z.string().max(500).optional(),
+  // ISO day; defaults to today (UTC) server-side when omitted.
+  date: isoDateString.optional(),
+  // Slack channel to announce in (optional — absence is still recorded without it).
+  channelId: z.string().min(1).max(64).optional(),
+  channelName: z.string().max(200).optional(),
+});
+
 export const leaveRequestUpdateSchema = z.object({
   startDate: isoDateString.optional(),
   endDate: isoDateString.optional(),
