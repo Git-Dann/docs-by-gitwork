@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { PulseAnalysisOutput, PulseScanCheckInput, PulseScanInputType, DiscoveryKit } from "@/types/pulse";
 import { resolveAgentPrompt } from "@/server/agent-config";
+import { dedupeGapsAgainstBlockers } from "@/server/pulse-checks/dedupe-findings";
 
 export type AiConfig = { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null };
 export type AiTask = "synthesis" | "discovery" | "competitor" | "fix-agent";
@@ -749,6 +750,8 @@ For competitorSuggestions: based on the project classification and detected stac
 
 For engagementEstimate: size the Gitwork engagement to take THIS product from its CURRENT state (as evidenced by the production blockers, critical gaps, and missing infrastructure above) to production-ready. Base it on the real work implied by the findings — more blockers/gaps = more weeks. Break it into 2–4 sequential phases with concrete outcomes. weeks are elapsed calendar weeks for a small senior team. priceLow/priceHigh are INDICATIVE GBP ranges for a UK digital agency (Gitwork) — a typical "vibe-coded prototype → production" engagement lands roughly £8k–£60k depending on scope; a near-complete product needing only hardening is at the low end, a prototype needing auth/billing/infra/security from scratch is at the high end. Set confidence to LOW when the scan can't see the codebase (URL-only) or the product is login-gated. Keep it realistic and defensible — this seeds a proposal a human will refine, not a binding quote.
 
+criticalGaps and productionBlockers are two DIFFERENT, NON-OVERLAPPING tiers of the same underlying findings — never state the same issue in both lists, even reworded. productionBlockers is the narrow "must fix before launch" subset (see below); criticalGaps is the broader set of other real issues that matter but aren't launch-blocking on their own (urgency HIGH/MEDIUM) or that are launch-blocking but didn't make the shorter productionBlockers cut. Before finalizing, check each criticalGaps entry against your productionBlockers list — if it's the same underlying issue, drop it from criticalGaps rather than duplicate it.
+
 For productionBlockers: list 3–8 items that are genuine launch blockers for THIS platform type. Be ruthlessly specific — name the exact consequence of going live without each item. Always include a recommendedService from the Gitwork vendor list where one applies. Do NOT list nice-to-haves here — only things where launching without them will cause a broken user experience, legal liability, or security incident. Skip categories that are irrelevant to the declared platform.
 
 Populate productionReadinessChecklist with 12–20 items relevant to the declared platform. Base status on the scan results — DONE if check passed, MISSING if failed, PARTIAL if warn. For web/SaaS cover: Legal (Privacy Policy, Terms, Cookie consent, Refund policy), Auth (Login/signup, Password reset, Email verification, OAuth), Payments (Pricing page, Payment processing, Billing portal), Onboarding (Welcome flow, empty states), Support (Help page, FAQ), Trust (About, Testimonials, Changelog), Observability (Error monitoring, Analytics, Uptime). For mobile apps focus on: App Store compliance, crash reporting, push notifications, in-app payments, deep linking, auth flows. For APIs focus on: rate limiting, auth, versioning, documentation, monitoring.
@@ -825,7 +828,11 @@ For targetArchitecture: recommend the ideal 2026 stack for THIS product type, on
       throw new Error(`AI detail response did not match expected schema${path}: ${issue?.message}`);
     }
 
-    return { ...summaryResult.data, ...detailResult.data };
+    return {
+      ...summaryResult.data,
+      ...detailResult.data,
+      criticalGaps: dedupeGapsAgainstBlockers(detailResult.data.criticalGaps, detailResult.data.productionBlockers),
+    };
   }
 
   // OpenAI SDK handles OpenAI, Gemini (via compatible endpoint), and local/Ollama
@@ -889,7 +896,11 @@ For targetArchitecture: recommend the ideal 2026 stack for THIS product type, on
     throw new Error(`AI detail response did not match expected schema${path}: ${issue?.message}`);
   }
 
-  return { ...summaryResult.data, ...detailResult.data };
+  return {
+    ...summaryResult.data,
+    ...detailResult.data,
+    criticalGaps: dedupeGapsAgainstBlockers(detailResult.data.criticalGaps, detailResult.data.productionBlockers),
+  };
 }
 
 // ── Discovery Kit generation ───────────────────────────────────────────────────

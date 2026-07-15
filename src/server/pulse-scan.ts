@@ -156,8 +156,19 @@ async function fileServed(
   return looksRight ? looksRight(r.body, r.contentType) : true;
 }
 
-function detectTechStack(headers: Record<string, string>, html: string): string[] {
+function detectTechStack(headers: Record<string, string>, html: string, hostname?: string): string[] {
   const stack: string[] = [];
+
+  // AI/no-code builder origin (Lovable, Bolt, v0, Replit, ...) — hostname-suffix + HTML watermark
+  // detection already exists in vibe-code-hygiene.ts; merge it in here so it's part of the
+  // persisted techStack, not just a separate check row (see effectiveTechStack() in
+  // pulse-scan-results.tsx, which used to be the only place this got surfaced — and only when
+  // techStack was otherwise empty, so it silently dropped out whenever anything else was
+  // detected, e.g. Cloudflare).
+  if (hostname) {
+    const builder = detectAiBuilder(hostname, html.toLowerCase());
+    if (builder) stack.push(builder);
+  }
 
   if (headers["x-vercel-id"]) stack.push("Vercel");
   if (headers["x-powered-by"]?.toLowerCase().includes("next")) stack.push("Next.js");
@@ -3375,10 +3386,6 @@ export async function runUrlChecks(
     }
   }
 
-  const techStack = pageResult ? detectTechStack(pageResult.headers, pageResult.html) : [];
-  const rawChecks = checks.map((check, i) => ({ ...check, sortOrder: i }));
-  const platformFiltered = platform ? applyPlatformFilter(rawChecks, platform) : rawChecks;
-  const filteredChecks = applyJurisdictionFilter(platformFiltered, effectiveMarkets);
   // Client-rendered SPA / vibe-code preview (Lovable/Bolt/Replit): the static HTML is an empty
   // shell, so HTML-parse SEO/content checks fail falsely. Reclassify those to SKIPPED (excluded
   // from the score) rather than letting them tank an otherwise-fine prototype. See spa-detect.ts.
@@ -3389,6 +3396,10 @@ export async function runUrlChecks(
       return "";
     }
   })();
+  const techStack = pageResult ? detectTechStack(pageResult.headers, pageResult.html, spaHostname) : [];
+  const rawChecks = checks.map((check, i) => ({ ...check, sortOrder: i }));
+  const platformFiltered = platform ? applyPlatformFilter(rawChecks, platform) : rawChecks;
+  const filteredChecks = applyJurisdictionFilter(platformFiltered, effectiveMarkets);
   const spaAdjusted =
     pageResult &&
     detectSpaContext({
@@ -3782,6 +3793,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
         if (deps["@anthropic-ai/sdk"]) techStack.push("Anthropic Claude");
         if (deps["openai"]) techStack.push("OpenAI");
         if (deps["tailwindcss"]) techStack.push("Tailwind CSS");
+        if (deps["lovable-tagger"]) techStack.push("Lovable");
 
         // AI Readiness checks (GitHub / package.json source)
         const isAiProject = !!(
