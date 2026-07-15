@@ -494,9 +494,9 @@ function SectionHeader({
 }) {
   return (
     <div className="flex items-baseline justify-between border-b border-[var(--border-3)] pb-1.5">
-      <h4 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-2)]">
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-2)]">
         {title}
-      </h4>
+      </h2>
       <Link
         href={href}
         className="inline-flex items-center gap-1 text-[10px] font-medium text-[var(--text-4)] transition-colors hover:text-[var(--brand-700)]"

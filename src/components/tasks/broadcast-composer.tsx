@@ -109,9 +109,9 @@ function BroadcastModal({ onClose }: { onClose: () => void }) {
       <div className="flex items-start justify-between gap-3 border-b border-[var(--border-2)] px-6 py-4">
         <div>
           <p className="widget-data-label">DEVOPS BROADCAST</p>
-          <h3 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+          <h2 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
             Post an update
-          </h3>
+          </h2>
           <p className="mt-0.5 text-xs text-[var(--text-4)]">
             Sends to each selected client&apos;s internal Slack channel.
           </p>
