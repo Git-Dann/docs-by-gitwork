@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   PlusIcon,
@@ -199,9 +199,34 @@ export function StarterList() {
   const { mutate: deleteStarter } = useDeleteStarter();
   const { mutate: toggleFeatured } = useToggleStarterFeatured();
   const { mutateAsync: adopt, isPending: adopting } = useAdoptStarter();
-  const [filter, setFilter] = useState<Filter>("all");
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<SortOption>("featured");
+
+  // Filter/search/sort are round-tripped through the URL (not just component state) so navigating
+  // to a starter's detail page and back — or bookmarking/sharing a filtered view — restores the
+  // exact same selection instead of resetting to "all".
+  const typeParam = searchParams.get("type");
+  const [filter, setFilter] = useState<Filter>(() =>
+    typeParam && typeParam in TYPE_LABEL ? (typeParam as Filter) : "all",
+  );
+  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
+  const sortParam = searchParams.get("sort");
+  const [sort, setSort] = useState<SortOption>(() =>
+    sortParam && sortParam in SORT_LABEL ? (sortParam as SortOption) : "featured",
+  );
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (filter === "all") params.delete("type");
+    else params.set("type", filter);
+    if (query) params.set("q", query);
+    else params.delete("q");
+    if (sort === "featured") params.delete("sort");
+    else params.set("sort", sort);
+    const qs = params.toString();
+    router.replace(qs ? `/app/starters?${qs}` : "/app/starters", { scroll: false });
+    // Only re-sync when the filter/query/sort themselves change — not on every searchParams
+    // identity change, which would include our own replace() and loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, query, sort]);
 
   async function handleAdopt(starterId: string) {
     if (!scanId) return;
@@ -331,7 +356,7 @@ export function StarterList() {
               value={sort}
               onChange={(e) => setSort(e.target.value as SortOption)}
               aria-label="Sort starters"
-              className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] py-2 pl-3 pr-8 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-400)]"
+              className="app-select-compact w-44 shrink-0"
             >
               {(Object.keys(SORT_LABEL) as SortOption[]).map((opt) => (
                 <option key={opt} value={opt}>
