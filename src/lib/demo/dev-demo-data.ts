@@ -651,6 +651,10 @@ const demoClientDetail = {
     { id: "pr2", title: "Analytics dashboard proposal", clientName: WIKI_CLIENT.name, status: "SENT", updatedAt: atDays(-6), documentType: "PROPOSAL", documentNumber: "PRO-041", sectionCount: 6 },
   ],
   proofDocuments: [],
+  documentLinks: [
+    { id: "dl1", clientId: WIKI_CLIENT.id, name: "Brand guidelines (Google Doc)", url: "https://docs.google.com/document/d/demo-northwind-brand", notes: "Logo, colour, tone", createdAt: atDays(-88), updatedAt: atDays(-20) },
+    { id: "dl2", clientId: WIKI_CLIENT.id, name: "Phase 2 spec (Notion)", url: "https://www.notion.so/demo-northwind-phase-2", notes: null, createdAt: atDays(-40), updatedAt: atDays(-8) },
+  ],
   pulseScans: [
     { id: "scan-northwind", projectName: "northwind.co", healthScore: 86, status: "COMPLETED", createdAt: atDays(-5) },
   ],
