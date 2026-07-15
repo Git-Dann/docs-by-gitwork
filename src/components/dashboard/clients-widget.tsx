@@ -93,6 +93,10 @@ function ClientRow({ client }: { client: ClientListItem }) {
           <img
             src={client.logoUrl}
             alt=""
+            width={28}
+            height={28}
+            loading="lazy"
+            decoding="async"
             className="h-7 w-7 shrink-0 rounded-[6px] object-cover"
           />
         ) : (

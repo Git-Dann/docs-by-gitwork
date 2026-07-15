@@ -187,6 +187,7 @@ function BriefHero({ brief }: { brief: Brief }) {
           <img
             src={brief.painting.src}
             alt=""
+            decoding="async"
             className="brief-zoom absolute inset-0 h-full w-full object-cover"
             style={{ animation: "briefZoom 16s ease-out both" }}
             onError={() => setImgOk(false)}

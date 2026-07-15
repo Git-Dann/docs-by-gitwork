@@ -27,27 +27,31 @@ const jetbrainsMono = JetBrains_Mono({
 // Script fonts for the TYPED e-signature flow (/sign/[token]). Only the signing page references
 // these via CSS family names, so the bundle weight is mostly opportunistic — browsers won't
 // download them until a `font-family: Caveat` rule actually matches an element.
-const caveat = Caveat({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-caveat", display: "swap" });
-const dancingScript = Dancing_Script({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-dancing-script", display: "swap" });
-const greatVibes = Great_Vibes({ subsets: ["latin"], weight: ["400"], variable: "--font-great-vibes", display: "swap" });
+// preload:false — these are route-specific (signing page only). Without it next/font
+// injects a <link rel="preload"> for every family on EVERY route, eagerly fetching
+// ~11 unused woff2 files (render-blocking weight). With it, the @font-face still ships
+// so the browser fetches the file lazily the moment a `font-family` rule matches.
+const caveat = Caveat({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-caveat", display: "swap", preload: false });
+const dancingScript = Dancing_Script({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-dancing-script", display: "swap", preload: false });
+const greatVibes = Great_Vibes({ subsets: ["latin"], weight: ["400"], variable: "--font-great-vibes", display: "swap", preload: false });
 
 // Studio marketing-brand fonts — used only by the /app/studio social-asset templates
 // (Cream/Purple style preset). Bound to CSS vars; browsers only fetch them once a
 // `font-family: var(--font-fraunces|--font-playfair)` rule actually matches, so they
 // add no weight to the rest of the app.
-const fraunces = Fraunces({ subsets: ["latin"], weight: ["400", "600", "700"], style: ["normal", "italic"], variable: "--font-fraunces", display: "swap" });
-const playfairDisplay = Playfair_Display({ subsets: ["latin"], weight: ["400", "700"], style: ["normal", "italic"], variable: "--font-playfair", display: "swap" });
+const fraunces = Fraunces({ subsets: ["latin"], weight: ["400", "600", "700"], style: ["normal", "italic"], variable: "--font-fraunces", display: "swap", preload: false });
+const playfairDisplay = Playfair_Display({ subsets: ["latin"], weight: ["400", "700"], style: ["normal", "italic"], variable: "--font-playfair", display: "swap", preload: false });
 
 // Extra display/sans families offered as text-layer fonts in Studio's App Screenshots mode.
 // Bound to CSS vars (next/font self-hosts them, so no runtime request to Google — keeps the CSP
 // intact and lets html-to-image rasterize them cleanly). Only fetched once a matching
 // `font-family: var(--font-…)` rule is actually used.
-const poppins = Poppins({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-poppins", display: "swap" });
-const montserrat = Montserrat({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-montserrat", display: "swap" });
-const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-space-grotesk", display: "swap" });
-const manrope = Manrope({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-manrope", display: "swap" });
-const archivo = Archivo({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-archivo", display: "swap" });
-const sora = Sora({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-sora", display: "swap" });
+const poppins = Poppins({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-poppins", display: "swap", preload: false });
+const montserrat = Montserrat({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-montserrat", display: "swap", preload: false });
+const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-space-grotesk", display: "swap", preload: false });
+const manrope = Manrope({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-manrope", display: "swap", preload: false });
+const archivo = Archivo({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-archivo", display: "swap", preload: false });
+const sora = Sora({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-sora", display: "swap", preload: false });
 
 export const metadata: Metadata = {
   // Resolves relative OpenGraph/Twitter image URLs (incl. generated og-images)

@@ -82,6 +82,8 @@ export function BriefPeek() {
                 <img
                   src={brief.painting.src}
                   alt=""
+                  loading="lazy"
+                  decoding="async"
                   className="absolute inset-0 h-full w-full object-cover"
                   onError={() => setImgOk(false)}
                 />

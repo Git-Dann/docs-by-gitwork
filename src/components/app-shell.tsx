@@ -19,6 +19,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -30,8 +31,16 @@ import { listSupportClients, listTeamMembers } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { AiSpendCard } from "@/components/ai-spend-card";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { DeskDrawer } from "@/components/desk/desk-drawer";
 import { NotificationBell } from "@/components/notifications/notification-bell";
+
+// The Desk is a client-only interactive drawer that pulls in a heavy subtree
+// (globe world-land data ~28KB, the Brief + morning-brief ~29KB). It renders its
+// collapsed dock on every /app page but nothing above the fold depends on it, so
+// load it lazily (ssr:false) to keep it out of the initial route bundle.
+const DeskDrawer = dynamic(
+  () => import("@/components/desk/desk-drawer").then((m) => m.DeskDrawer),
+  { ssr: false },
+);
 
 type NavItem = {
   href?: string;
@@ -249,7 +258,7 @@ export function AppShell({
       {/* ── Mobile top bar (hidden on lg+) ── */}
       <div className="flex shrink-0 items-center justify-between border-b border-[var(--border-2)] bg-[var(--surface-0)] px-4 py-3 lg:hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/foundry-logo.svg" alt="Foundry" className="h-8 w-auto dark:brightness-0 dark:invert" />
+        <img src="/foundry-logo.svg" alt="Foundry" width={245} height={64} className="h-8 w-auto dark:brightness-0 dark:invert" />
         <div className="flex items-center gap-1">
           <NotificationBell />
           <button
@@ -418,7 +427,7 @@ function ExpandedRail({
       >
         {!collapsed ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src="/foundry-logo.svg" alt="Foundry" className="h-12 w-auto dark:brightness-0 dark:invert" />
+          <img src="/foundry-logo.svg" alt="Foundry" width={245} height={64} className="h-12 w-auto dark:brightness-0 dark:invert" />
         ) : null}
         <button
           type="button"
@@ -566,6 +575,10 @@ function Avatar({ name, url }: { name: string; url: string }) {
       <img
         src={url}
         alt={name}
+        width={36}
+        height={36}
+        loading="lazy"
+        decoding="async"
         className="h-9 w-9 rounded-full object-cover"
         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; (e.currentTarget.nextSibling as HTMLElement | null)?.style.setProperty("display", "flex"); }}
       />

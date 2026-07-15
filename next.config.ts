@@ -27,6 +27,9 @@ const nextConfig: NextConfig = {
     "/api/pulse/scans/*/pdf": ["./node_modules/@sparticuz/chromium/**/*"],
   },
   images: {
+    // Serve next/image output as AVIF/WebP where the browser supports it — far
+    // smaller than the source JPEG/PNG for the same visual quality.
+    formats: ["image/avif", "image/webp"],
     remotePatterns: [
       {
         protocol: "https",

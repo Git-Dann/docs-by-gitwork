@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import PulseWidget from "@/components/dashboard/pulse-widget";
 import CareWidget from "@/components/dashboard/care-widget";
 import ProposalsWidget from "@/components/dashboard/proposals-widget";
@@ -9,7 +10,12 @@ import GmailWidget from "@/components/dashboard/gmail-widget";
 import CalendarWidget from "@/components/dashboard/calendar-widget";
 import { DevOverview } from "@/components/dashboard/dev-overview";
 import { OnYourDeskCard } from "@/components/dashboard/on-your-desk-card";
-import { AgenticWorkflowCard } from "@/components/dashboard/agentic-workflow-card";
+// Below-the-fold, admin-only, and the single heaviest dashboard card (~41KB).
+// Lazy-load it so it never sits in the initial route bundle.
+const AgenticWorkflowCard = dynamic(
+  () => import("@/components/dashboard/agentic-workflow-card").then((m) => m.AgenticWorkflowCard),
+  { ssr: false },
+);
 import { DailyRollup } from "@/components/tasks/daily-rollup";
 import { BroadcastComposer } from "@/components/tasks/broadcast-composer";
 import { can } from "@/components/dashboard/dashboard-config";

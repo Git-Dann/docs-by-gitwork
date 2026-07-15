@@ -18,45 +18,49 @@ export interface Painting {
 }
 
 /** Curated landscapes/seascapes — calm, wide, brief-appropriate. Edit freely. */
+// All served as 1280px-wide thumbnails — plenty for a hero on any screen and a
+// fraction of the weight of the 1920px (or, worse, the uncapped full-size original)
+// JPEGs used before. Wikimedia generates any thumb width on demand, so the two that
+// previously hotlinked the full-resolution original now go through /thumb/…/1280px-.
 const PAINTINGS: Painting[] = [
   {
-    src: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Albert_Bierstadt_-_Among_the_Sierra_Nevada%2C_California_-_Google_Art_Project.jpg/1920px-Albert_Bierstadt_-_Among_the_Sierra_Nevada%2C_California_-_Google_Art_Project.jpg",
+    src: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Albert_Bierstadt_-_Among_the_Sierra_Nevada%2C_California_-_Google_Art_Project.jpg/1280px-Albert_Bierstadt_-_Among_the_Sierra_Nevada%2C_California_-_Google_Art_Project.jpg",
     title: "Among the Sierra Nevada, California",
     artist: "Albert Bierstadt",
     year: "1868",
   },
   {
-    src: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b9/Caspar_David_Friedrich_-_Wanderer_above_the_sea_of_fog.jpg/1920px-Caspar_David_Friedrich_-_Wanderer_above_the_sea_of_fog.jpg",
+    src: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b9/Caspar_David_Friedrich_-_Wanderer_above_the_sea_of_fog.jpg/1280px-Caspar_David_Friedrich_-_Wanderer_above_the_sea_of_fog.jpg",
     title: "Wanderer above the Sea of Fog",
     artist: "Caspar David Friedrich",
     year: "1818",
   },
   {
-    src: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/ba/Vincent_van_Gogh_-_Wheatfield_with_crows_-_Google_Art_Project.jpg/1920px-Vincent_van_Gogh_-_Wheatfield_with_crows_-_Google_Art_Project.jpg",
+    src: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/ba/Vincent_van_Gogh_-_Wheatfield_with_crows_-_Google_Art_Project.jpg/1280px-Vincent_van_Gogh_-_Wheatfield_with_crows_-_Google_Art_Project.jpg",
     title: "Wheatfield with Crows",
     artist: "Vincent van Gogh",
     year: "1890",
   },
   {
-    src: "https://upload.wikimedia.org/wikipedia/commons/5/54/Claude_Monet%2C_Impression%2C_soleil_levant.jpg",
+    src: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/54/Claude_Monet%2C_Impression%2C_soleil_levant.jpg/1280px-Claude_Monet%2C_Impression%2C_soleil_levant.jpg",
     title: "Impression, Sunrise",
     artist: "Claude Monet",
     year: "1872",
   },
   {
-    src: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0a/The_Great_Wave_off_Kanagawa.jpg/1920px-The_Great_Wave_off_Kanagawa.jpg",
+    src: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0a/The_Great_Wave_off_Kanagawa.jpg/1280px-The_Great_Wave_off_Kanagawa.jpg",
     title: "The Great Wave off Kanagawa",
     artist: "Katsushika Hokusai",
     year: "1831",
   },
   {
-    src: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/The_Fighting_Temeraire%2C_JMW_Turner%2C_National_Gallery.jpg/1920px-The_Fighting_Temeraire%2C_JMW_Turner%2C_National_Gallery.jpg",
+    src: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/The_Fighting_Temeraire%2C_JMW_Turner%2C_National_Gallery.jpg/1280px-The_Fighting_Temeraire%2C_JMW_Turner%2C_National_Gallery.jpg",
     title: "The Fighting Temeraire",
     artist: "J. M. W. Turner",
     year: "1839",
   },
   {
-    src: "https://upload.wikimedia.org/wikipedia/commons/9/9f/Grand_Canyon_of_the_Yellowstone.jpg",
+    src: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9f/Grand_Canyon_of_the_Yellowstone.jpg/1280px-Grand_Canyon_of_the_Yellowstone.jpg",
     title: "Grand Canyon of the Yellowstone",
     artist: "Thomas Moran",
     year: "1872",
