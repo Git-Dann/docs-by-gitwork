@@ -628,6 +628,11 @@ async function loadClientCollections() {
       ...c,
       createdAt: new Date(c.createdAt as unknown as string),
       updatedAt: new Date(c.updatedAt as unknown as string),
+      // Nullable DateTime fields must be re-hydrated too, else after a cache hit
+      // they're ISO strings and callers that do `.toISOString()` crash
+      // ("leadFollowUpAt.toISOString is not a function").
+      leadFollowUpAt: c.leadFollowUpAt ? new Date(c.leadFollowUpAt as unknown as string) : null,
+      resumeAt: c.resumeAt ? new Date(c.resumeAt as unknown as string) : null,
     })) as ManualClientRecord[],
     hiddenSlugs: new Set(raw.hiddenSlugs),
     proposals: raw.proposals.map((p) => ({
