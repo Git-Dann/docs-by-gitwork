@@ -7,6 +7,7 @@ import {
   AdjustmentsHorizontalIcon,
   BellAlertIcon,
   BuildingOffice2Icon,
+  ChartBarIcon,
   ChevronDownIcon,
   ClipboardDocumentCheckIcon,
   ClipboardDocumentListIcon,
@@ -46,6 +47,7 @@ export type SettingsSectionId =
   | "mcp"
   | "agents-checks" // legacy — redirects to "agents"
   // System
+  | "analytics"
   | "audit"
   | "developer"
   | "privacy"
@@ -63,6 +65,9 @@ interface SectionDef {
   superAdminOnly?: boolean;
   /** Matrix permission id that gates this section (per-role). Super Admins bypass. */
   permission?: string;
+  /** Optional external href — for rail entries that link out to a full-page surface
+   *  (e.g. Analytics → /app/analytics) rather than rendering inside the settings column. */
+  href?: string;
 }
 
 interface SectionGroup {
@@ -171,6 +176,14 @@ const GROUPS: SectionGroup[] = [
     label: "System",
     sections: [
       {
+        id: "analytics",
+        label: "Analytics",
+        description: "Delivery, output & AI usage across the workspace.",
+        icon: ChartBarIcon,
+        superAdminOnly: true,
+        href: "/app/analytics",
+      },
+      {
         id: "audit",
         label: "Audit log",
         description: "Workspace activity history.",
@@ -263,7 +276,7 @@ export function SettingsShell({
                 </p>
                 <nav className="space-y-0.5">
                   {group.visible.map((section) => {
-                    const href = `/app/settings/${section.id}`;
+                    const href = section.href ?? `/app/settings/${section.id}`;
                     const active = activeSection === section.id || pathname === href;
                     const Icon = section.icon;
                     return (
@@ -311,7 +324,7 @@ export function SettingsShell({
               </p>
               <nav className="app-card overflow-hidden p-1.5">
                 {visible.map((section) => {
-                  const href = `/app/settings/${section.id}`;
+                  const href = section.href ?? `/app/settings/${section.id}`;
                   const active = activeSection === section.id || pathname === href;
                   const Icon = section.icon;
                   return (

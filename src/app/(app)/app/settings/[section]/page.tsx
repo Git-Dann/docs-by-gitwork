@@ -55,6 +55,7 @@ const VALID_SECTIONS: SettingsSectionId[] = [
   "curator",
   "mcp",
   "agents-checks", // legacy — redirects to "agents"
+  "analytics", // link-out rail entry — redirects to the full-page /app/analytics
   "audit",
   "developer",
   "privacy",
@@ -94,6 +95,9 @@ const PEOPLE_REDIRECTS: Partial<Record<SettingsSectionId, string>> = {
   // Connected apps folded into MCP — one page for self-connect + (for Super Admins)
   // the workspace toggle. Same content, one URL.
   "connected-apps": "/app/settings/mcp",
+  // Analytics is a full-page surface, not a settings panel — the rail links straight to it,
+  // and any direct hit on the settings URL redirects out.
+  analytics: "/app/analytics",
 };
 
 // Settings sub-sections gated by an individual matrix permission. A Super Admin can
@@ -191,6 +195,12 @@ const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string 
   "agents-checks": {
     title: "Agents & checks",
     subtitle: "Split into AI agents and Pulse checks in the left rail.",
+  },
+  // Present so the exhaustive Record compiles; the page-level redirect (PEOPLE_REDIRECTS)
+  // sends this slug to the full-page /app/analytics before this meta is ever read.
+  analytics: {
+    title: "Analytics",
+    subtitle: "Delivery, output and AI usage across the workspace.",
   },
   audit: {
     title: "Audit log",

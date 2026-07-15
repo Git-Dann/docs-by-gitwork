@@ -4,6 +4,7 @@ import {
   ArrowRightOnRectangleIcon,
   Bars3Icon,
   BookOpenIcon,
+  ChartBarIcon,
   ChevronDoubleLeftIcon,
   ChevronDoubleRightIcon,
   CodeBracketIcon,
@@ -25,7 +26,7 @@ import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
 import { useAccount } from "@/hooks/use-account";
-import { isAtLeast } from "@/types/auth";
+import { isAtLeast, isSuperAdmin } from "@/types/auth";
 import { useViewAs, type ViewAsRole, type ViewAsUser } from "@/lib/view-as";
 import { listSupportClients, listTeamMembers } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
@@ -107,6 +108,7 @@ export function AppShell({
   }
   const account = useAccount();
   const isAdmin = isAtLeast(account.data?.role ?? "", "ADMIN");
+  const isSuper = isSuperAdmin(account.data?.role ?? "");
   const { viewAs, viewAsUser, setViewAs, setViewAsUser, effectivePermissions, previewLabel } = useViewAs(isAdmin);
   const realPermissions = useMemo(() => account.data?.permissions ?? [], [account.data?.permissions]);
   const isFullAccessAdmin = isAdmin && realPermissions.length === 0;
@@ -243,14 +245,18 @@ export function AppShell({
   }, [isAdmin, effectivePermissions, account.isPending, realPermissions, hideCareForScopedUser, cachedModules]);
 
   const secondaryNav = useMemo<NavItem[]>(
-    () => [
-      // {
-      //   href: "/app/templates",
-      //   label: "Library",
-      //   icon: StarIcon,
-      // },
-    ],
-    [],
+    () =>
+      isSuper
+        ? [
+            {
+              href: "/app/analytics",
+              label: "Analytics",
+              description: "Delivery, output & AI usage",
+              icon: ChartBarIcon,
+            },
+          ]
+        : [],
+    [isSuper],
   );
 
   return (
@@ -288,6 +294,17 @@ export function AppShell({
           </div>
           <div className="mt-auto space-y-1 border-t border-[var(--border-2)] px-3 py-3">
             <AiSpendCard />
+            {isSuper ? (
+              <SidebarNavItem
+                item={{
+                  href: "/app/analytics",
+                  label: "Analytics",
+                  description: "Delivery, output & AI usage",
+                  icon: ChartBarIcon,
+                }}
+                active={Boolean(isActivePath(pathname, "/app/analytics"))}
+              />
+            ) : null}
             <SidebarNavItem
               item={{
                 href: "/app/handbook",

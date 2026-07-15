@@ -481,8 +481,9 @@ export async function maybePingAllIn(workspaceId: string, workDate: Date): Promi
 
 // ─── DevOps roll-up ─────────────────────────────────────────────────────────
 
-/** Roll-up denominator: workspace members on the dev roster (assignment-independent). */
-async function getDeveloperUserIds(workspaceId: string): Promise<string[]> {
+/** Roll-up denominator: workspace members on the dev roster (assignment-independent).
+ *  Exported so the analytics aggregator can reuse the exact same roster definition. */
+export async function getDeveloperUserIds(workspaceId: string): Promise<string[]> {
   const members = await prisma.workspaceMember.findMany({
     where: { workspaceId },
     select: { userId: true, user: { select: { email: true } } },

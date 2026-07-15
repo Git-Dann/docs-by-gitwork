@@ -53,6 +53,9 @@ export function usePermissions() {
     // Starters is Super-Admin-ONLY (Foundry-internal tools; the GitHub repo just stores the
     // sources). Role-gated, not a grantable feature perm — so Admins don't get it either.
     canManageStarters: isSuperAdmin(role),
+    // Analytics ("GA4 for Foundry") is Super-Admin-ONLY — cross-workspace delivery, output and
+    // AI-usage insight. Role-gated, not a grantable feature perm (like Curator / Starters).
+    canViewAnalytics: isSuperAdmin(role),
     // Handbook (internal developer knowledgebase): everyone reads it, but only Admin + Super Admin
     // create/edit/delete. Developers and staff NEVER write to it (role-gated, not grantable).
     canManageHandbook: isAtLeast(role, "ADMIN"),
