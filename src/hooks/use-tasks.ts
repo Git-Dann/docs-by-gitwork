@@ -53,7 +53,7 @@ import {
 import type { TaskStatus, TaskDTO } from "@/types/tasks";
 import { useToast } from "@/components/ui/toast";
 
-type TaskFilter = { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string; archived?: boolean; limit?: number };
+type TaskFilter = { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string; archived?: boolean; limit?: number; doneWithinDays?: number | "all" };
 
 const QK = {
   tasks: (f: TaskFilter) =>

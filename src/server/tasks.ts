@@ -308,7 +308,7 @@ function statusTimestamps(
 
 export async function listTasks(
   user: EffectiveUser,
-  opts: { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string; archived?: boolean; includeSubtasks?: boolean; limit?: number } = {},
+  opts: { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string; archived?: boolean; includeSubtasks?: boolean; limit?: number; doneWithinDays?: number } = {},
 ): Promise<TaskDTO[]> {
   await ensureBaseRecords();
   const where = await clientScopeWhere(user);
@@ -324,6 +324,20 @@ export async function listTasks(
   // Board / list show top-level tasks only; subtasks live in the detail drawer. The standup
   // opts into subtasks so a parent's updated subtasks each appear in the Slack update.
   if (!opts.includeSubtasks) where.parentId = null;
+  // Cap DONE to those completed within the window — a long-lived board accretes
+  // hundreds of done tasks, and shipping them all is a big payload to parse/render.
+  // Non-DONE is never capped; DONE rows with no completedAt (legacy) are kept.
+  if (opts.doneWithinDays && opts.doneWithinDays > 0) {
+    const cutoff = new Date(Date.now() - opts.doneWithinDays * 86_400_000);
+    const doneWindow: Prisma.TaskWhereInput = {
+      OR: [
+        { status: { not: "DONE" } },
+        { AND: [{ status: "DONE" }, { OR: [{ completedAt: { gte: cutoff } }, { completedAt: null }] }] },
+      ],
+    };
+    const existingAnd = Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : [];
+    where.AND = [...existingAnd, doneWindow];
+  }
   if (opts.assigneeId) {
     const id = opts.assigneeId === "me" ? user.id : opts.assigneeId;
     where.OR = [{ assignees: { some: { id } } }, { assigneeId: id }];

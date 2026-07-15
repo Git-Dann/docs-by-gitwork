@@ -17,7 +17,17 @@ export async function GET(req: Request) {
       sourceMeetingId: url.searchParams.get("sourceMeetingId") ?? undefined,
       archived: url.searchParams.get("archived") ?? undefined,
       limit: url.searchParams.get("limit") ?? undefined,
+      doneWithinDays: url.searchParams.get("doneWithinDays") ?? undefined,
     });
+    // Default the active board/list to the last 90 days of DONE (older ones load
+    // on demand via doneWithinDays=all). The Archived tab and status-filtered /
+    // meeting-sourced fetches are never capped — they're already bounded.
+    const doneWithinDays =
+      q.archived === "true" || q.status || q.sourceMeetingId
+        ? undefined
+        : q.doneWithinDays === "all"
+          ? undefined
+          : (q.doneWithinDays ?? 90);
     const tasks = await listTasks(user, {
       clientId: q.clientId,
       status: q.status as TaskStatus | undefined,
@@ -25,6 +35,7 @@ export async function GET(req: Request) {
       sourceMeetingId: q.sourceMeetingId,
       archived: q.archived === "true",
       limit: q.limit,
+      doneWithinDays,
     });
     // The board / list / Gantt never render description or acceptance criteria —
     // the detail drawer fetches the full task (GET /api/tasks/[id]) on open. Drop

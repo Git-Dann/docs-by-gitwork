@@ -1039,6 +1039,10 @@ export const taskListQuerySchema = z.object({
   // Optional safety ceiling on rows returned (dashboard summaries pass this so a
   // user with a huge task list can't pull an unbounded payload). Absent = no cap.
   limit: z.coerce.number().int().positive().max(500).optional(),
+  // Cap DONE tasks to those completed within N days (payload trim on long-lived
+  // boards). "all" disables the cap so older done tasks load on demand. The route
+  // applies a sensible default when absent.
+  doneWithinDays: z.union([z.coerce.number().int().min(0).max(3650), z.literal("all")]).optional(),
 });
 
 /** Bulk edit — apply one patch (any subset of fields) to many tasks at once. */

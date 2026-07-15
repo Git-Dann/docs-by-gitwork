@@ -2847,6 +2847,7 @@ export function listTasks(opts: {
   sourceMeetingId?: string;
   archived?: boolean;
   limit?: number;
+  doneWithinDays?: number | "all";
 } = {}): Promise<TaskDTO[]> {
   const q = new URLSearchParams();
   if (opts.clientId) q.set("clientId", opts.clientId);
@@ -2855,6 +2856,7 @@ export function listTasks(opts: {
   if (opts.sourceMeetingId) q.set("sourceMeetingId", opts.sourceMeetingId);
   if (opts.archived) q.set("archived", "true");
   if (opts.limit) q.set("limit", String(opts.limit));
+  if (opts.doneWithinDays !== undefined) q.set("doneWithinDays", String(opts.doneWithinDays));
   const qs = q.toString();
   return apiFetch(`/api/tasks${qs ? `?${qs}` : ""}`);
 }

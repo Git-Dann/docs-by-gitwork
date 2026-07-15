@@ -120,7 +120,13 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
     milestone: null,
   });
 
-  const { data: tasks = [], isPending: tasksLoading } = useTasks({ clientId: clientId ?? undefined });
+  // Done tasks are capped to the last 90 days by default (payload trim); flip to
+  // load the full history on demand. Only meaningful on the board/list views.
+  const [allDone, setAllDone] = useState(false);
+  const { data: tasks = [], isPending: tasksLoading } = useTasks({
+    clientId: clientId ?? undefined,
+    doneWithinDays: allDone ? "all" : undefined,
+  });
   const updateTask = useUpdateTask();
   const { data: blocks = [] } = useFeatureBlocks(clientId);
   const { data: milestones = [] } = useMilestones(clientId);
@@ -176,6 +182,10 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
             {} as Record<TaskStatus, number>,
           );
           for (const t of blockTasks) statusCounts[t.status] += 1;
+          // DONE is capped in the fetch (last 90 days by default), so trust the
+          // block's authoritative all-time doneCount for the Gantt's Done segment
+          // rather than the windowed live count. Non-DONE is never capped.
+          statusCounts.DONE = b.doneCount;
           return {
             id: b.id,
             name: b.name,
@@ -367,6 +377,23 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           emptyHint="No timeline yet — add a milestone or give a feature block start/end dates."
         />
       )}
+
+      {/* Done is capped to the last 90 days by default (lean payload) — load the
+          full history on demand. Board/list only; Gantt uses authoritative counts. */}
+      {(view === "board" || view === "list") ? (
+        <div className="mt-2 flex justify-center">
+          <button
+            type="button"
+            onClick={() => setAllDone((v) => !v)}
+            disabled={tasksLoading}
+            className="text-[11px] text-[var(--text-4)] transition-colors hover:text-[var(--brand-700)] disabled:opacity-50"
+          >
+            {allDone
+              ? "Showing all Done tasks · show last 90 days only"
+              : "Done shows the last 90 days · load all"}
+          </button>
+        </div>
+      ) : null}
 
       {/* Floating batch bar — fixed overlay, never shifts the list */}
       {(view === "list" || view === "archived") && selected.size > 0 ? (
