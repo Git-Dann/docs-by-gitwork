@@ -29,7 +29,7 @@ import {
   ForbiddenError,
   UnauthorizedError,
 } from "@/server/auth/effective-user";
-import { listStarters, getStarterBySlug } from "@/server/starters";
+import { listStarters, getStarterBySlug, recordStarterUsage } from "@/server/starters";
 import { buildSkillMarkdown } from "@/server/starters-package";
 import { runAgentScan, buildAgentVerdict } from "@/server/pulse-agent";
 import { getPulseScan, listPulseScans } from "@/server/pulse";
@@ -1326,6 +1326,7 @@ async function handlePromptGet(
   if (!starter) {
     return rpcError(id, ERR_METHOD_NOT_FOUND, `Unknown prompt: ${name}`);
   }
+  await recordStarterUsage(starter.id);
   return rpcResult(id, {
     description: starter.summary,
     messages: [
