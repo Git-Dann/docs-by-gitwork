@@ -10,7 +10,7 @@
 import type { Prisma, BackgroundJob } from "@prisma/client";
 
 /** Registered job types. Add a member here + a handler in `handlers.ts` to introduce a new job. */
-export type JobType = "CLIENT_ARCHIVE" | "RETENTION_SWEEP";
+export type JobType = "CLIENT_ARCHIVE" | "RETENTION_SWEEP" | "CURATOR_RUN";
 
 /** Payload shape per job type. Keep these small + serialisable (they live in a JSON column). */
 export interface JobPayloads {
@@ -22,6 +22,14 @@ export interface JobPayloads {
   RETENTION_SWEEP: {
     /** Optional single-policy run; omitted = all registered policies. */
     policyKey?: string;
+  };
+  CURATOR_RUN: {
+    /** Target workspace; omitted = the default base workspace. */
+    workspaceId?: string;
+    /** "prune" = deterministic only; "consolidate" = force LLM pass. Omitted = follow config. */
+    mode?: "prune" | "consolidate";
+    /** Compute everything but mutate nothing. */
+    dryRun?: boolean;
   };
 }
 

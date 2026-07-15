@@ -1062,3 +1062,51 @@ Desk **TODAY** tab that opens a **full-page overlay**; dismissable from **both**
   via `tsc` + `eslint` (app is auth-gated with no local DB — no browser verification). **Deferred:**
   no re-open entry point once dismissed (returns next day); wiring to a server-composed brief; an
   optional dedicated route.
+
+## 28. Recent Changes (July 2026) — The Curator (weekly library-maintenance agent)
+
+A native background maintenance agent (inspired by Hermes' Curator) that keeps two libraries
+healthy: the **Starters** library and the **Pulse-check** catalogue. Runs **weekly** on the VPS
+job/cron spine. **Autonomy = deterministic-auto + LLM-proposes:** safe reversible transitions apply
+automatically; everything the LLM suggests is a proposal a Super-Admin approves. **Never deletes.**
+
+- **Engine** — `src/server/curator/`: `starters-pass.ts` (deterministic Starter lifecycle
+  `ACTIVE→STALE→ARCHIVED` by inactivity — pure `decideStarterTransition` + DB apply; built-ins/pinned
+  exempt, never fights `seedBuiltInStarters`), `checks-pass.ts` (aggregates `PulseScanCheck` rows over
+  a 180-day window into `PulseCheckStat`; pure `classifyCheck` tags `dead`/`always_pass`/`noisy` — a
+  SKIP-only check is legitimately filtered, not dead), `consolidate.ts` (**opt-in** LLM pass), `run.ts`
+  (orchestrator), `apply.ts` (approve/dismiss proposals via existing `updateStarter`/`saveCheckConfig`),
+  `restore.ts` (reverse a run's transitions — DB-native rollback), `queries.ts` (status/runs/config +
+  `getCheckStatMap`), `config.ts`/`types.ts`.
+- **AI cost discipline** — deterministic passes are free and always run; the LLM is only the
+  consolidation pass, which **defaults OFF**, is **skipped when there's nothing to review** (£0 on a
+  quiet library), and when it runs is **one batched `tier:"light"` (Haiku) call** with the stable
+  framing in the cached system prompt + the whole call wrapped in `AiResponseCache`
+  (`getCachedAiResponse`) keyed on the candidate-set hash — an unchanged library re-uses cached
+  proposals for free. Output is validated against the real candidate set (hallucinated targets dropped).
+- **Telemetry hook** — `recordStarterUsage()` (the single choke point, called from download / MCP
+  `prompts/get` / scan-adopt) now also stamps `Starter.lastUsedAt` and revives `STALE→ACTIVE`.
+- **Schema (additive → applies via the guarded `prisma db push`):** `Starter.lastUsedAt/pinned/
+  curatorState` (+ enum `StarterCuratorState`), new `PulseCheckStat` (per-check rolling aggregate,
+  refreshed by the curator — NOT on the scan hot path) + `CuratorRun` (run report: stats/transitions/
+  proposals JSON), `Workspace.curatorConfig` (`{enabled, staleAfterDays 30, archiveAfterDays 90,
+  consolidate false, intervalDays 7}`). `curatorState=ARCHIVED` also flips the pre-existing `isArchived`
+  so the existing library-list filter keeps working unchanged.
+- **Job + cron** — `JobType "CURATOR_RUN"` (`src/server/jobs/types.ts`+`handlers.ts`); new weekly
+  `GET /api/cron/curator` (`0 1 * * 1`; enqueues a deduped `CURATOR_RUN` per due+enabled workspace, the
+  `jobs` worker drains it — both wired in `docs/vps-crons.md`). Manual "Run now"/"Dry run" execute
+  **inline** via `POST /api/curator/runs` (no serverless cap on the VPS).
+- **API** (`src/app/api/curator/*`, all `canManageStarters` = Super-Admin, except `check-stats` which
+  is admin-or-above to feed the Checks panel): `status`, `runs` (GET list + POST run), `config` (PATCH),
+  `proposals` (POST apply/dismiss), `restore` (POST), `check-stats` (GET).
+- **UI** — Super-Admin **Settings → Curator** tab (`src/components/settings/curator/curator-panel.tsx`,
+  hook `src/hooks/use-curator.ts`): status + Run-now/Dry-run/Consolidate, proposals with Apply/Dismiss,
+  LRU starters, config knobs, run history with Restore. Plus telemetry surfaced where each subject
+  lives — a `STALE` badge in `StarterList` and a dead/always-pass/noisy **signal chip** in the Settings
+  → Checks panel (`useCheckStats`).
+- **Verified:** `tsc` + `eslint` clean; `npm test` (104 tests, incl. the checks-registry reconcile
+  guard + 18 new curator unit tests for the pure lifecycle/classifier/config fns). App is auth-gated
+  with no local DB → **post-deploy**: Settings → Curator → Dry run (nothing mutated), Run now, apply a
+  proposal, Restore; hit `GET /api/cron/curator` with `CRON_SECRET`. **Deferred:** idle-gate (interval
+  only), one-click starter *consolidation* (advisory — merge manually), auto-tar backups (transitions
+  are reversible via Restore).

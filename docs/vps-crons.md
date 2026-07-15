@@ -33,9 +33,21 @@ to `/tmp/foundry-cron.log`. This is what's actually installed on the box:
 0 9 * * *  /opt/apps/foundry/run-cron.sh meet-transcripts     >> /tmp/foundry-cron.log 2>&1
 0 10 * * * /opt/apps/foundry/run-cron.sh care-digest          >> /tmp/foundry-cron.log 2>&1
 
+# Curator — weekly library maintenance (Monday 01:00). Enqueues a CURATOR_RUN job per due
+# workspace; the `jobs` worker below actually runs it, so both must be installed.
+0 1 * * 1  /opt/apps/foundry/run-cron.sh curator              >> /tmp/foundry-cron.log 2>&1
+
+# Background-job worker — drains the BackgroundJob queue (curator runs, client archives, retention).
+# Idempotent + deduped, safe every minute.
+* * * * *  /opt/apps/foundry/run-cron.sh jobs                 >> /tmp/foundry-cron.log 2>&1
+
 # Weekly DB backup (Sunday 01:30) — separate script, its own log
 30 1 * * 0 /opt/apps/foundry/deploy/db-backup.sh >> /opt/apps/foundry/backups/backup.log 2>&1
 ```
+
+> **Note** — the `curator` cron only *enqueues*; the durable `jobs` worker is what executes the
+> run. If `jobs` isn't installed the CURATOR_RUN sits PENDING forever. (`jobs` also drains client
+> archives + retention sweeps, so it's worth having regardless.)
 
 ### Optional: twice-daily Care sync (per PR #351)
 
