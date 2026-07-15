@@ -423,7 +423,9 @@ export async function approveLeaveRequest(
     where: { id, workspaceId: user.workspaceId },
   });
   if (!existing) throw new ForbiddenError("Leave request not found");
-  if (existing.userId === user.id) {
+  // Admins / super-admins may approve their own leave (there's often no one above
+  // the founder to sign it off). Non-admin approvers still can't self-approve.
+  if (existing.userId === user.id && !isAtLeast(user.role, "ADMIN")) {
     throw new ForbiddenError("Cannot approve your own leave");
   }
   if (existing.status !== "PENDING") {

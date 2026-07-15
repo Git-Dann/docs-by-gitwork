@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { CalendarDaysIcon, PlusIcon } from "@heroicons/react/24/outline";
 import {
+  useApproveLeaveRequest,
   useCancelLeaveRequest,
   useLeaveAllowance,
   useLeaveRequests,
+  useRejectLeaveRequest,
 } from "@/hooks/use-backstage";
 import { LeaveRequestForm } from "@/components/backstage/leave-request-form";
 import { StatusPill } from "@/components/backstage/status-pill";
@@ -25,6 +27,8 @@ export function LeaveTab() {
   const requests = useLeaveRequests(canApprove ? scope : "me");
   const allowance = useLeaveAllowance();
   const cancelMut = useCancelLeaveRequest();
+  const approveMut = useApproveLeaveRequest();
+  const rejectMut = useRejectLeaveRequest();
 
   function closeForm() {
     setShowForm(false);
@@ -104,6 +108,26 @@ export function LeaveTab() {
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusPill status={r.status} />
+                  {canApprove && r.status === "PENDING" ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => approveMut.mutate({ id: r.id })}
+                        disabled={approveMut.isPending || rejectMut.isPending}
+                        className="rounded-[6px] border border-[var(--brand-300)] bg-[var(--brand-50)] px-2.5 py-1 text-xs font-medium text-[var(--brand-700)] transition hover:bg-[var(--brand-100)] disabled:opacity-60"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => rejectMut.mutate({ id: r.id })}
+                        disabled={approveMut.isPending || rejectMut.isPending}
+                        className="rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-60"
+                      >
+                        Reject
+                      </button>
+                    </>
+                  ) : null}
                   {canApprove || r.status === "PENDING" ? (
                     <button
                       type="button"
