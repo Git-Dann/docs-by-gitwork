@@ -67,6 +67,8 @@ export interface PortalAnalytics {
     avgWorkingDays: number | null;
   };
   throughput: Array<{ bucket: string; created: number; completed: number }>;
+  /** Histogram of DOING→DONE lead time over tasks completed in range (that carry a startedAt). */
+  leadTimeBuckets: Array<{ label: string; count: number }>;
   byStatus: Array<{ status: TaskStatus; count: number }>;
   byPriority: Array<{ priority: TaskPriority; count: number }>;
   byLabel: Array<{ label: TaskLabel | "UNLABELED"; count: number }>;
@@ -259,17 +261,30 @@ export async function getPortalAnalytics(
   // Per-dev completion + lead tallies from the single completed fetch (pure).
   const devOutput = tallyDevOutput(completedRows, devIds);
 
-  // Overall lead time + per-client completion counts.
+  // Overall lead time + per-client completion counts + lead-time histogram.
   const completedByClient = new Map<string, number>();
+  const LT_BUCKETS = [
+    { label: "<1d", max: 1 },
+    { label: "1–3d", max: 3 },
+    { label: "3–7d", max: 7 },
+    { label: "1–2w", max: 14 },
+    { label: ">2w", max: Infinity },
+  ];
+  const ltCounts = new Array(LT_BUCKETS.length).fill(0);
   let leadSum = 0;
   let leadN = 0;
   for (const t of completedRows) {
     if (t.startedAt && t.completedAt) {
-      leadSum += Math.max(0, t.completedAt.getTime() - t.startedAt.getTime());
+      const ms = Math.max(0, t.completedAt.getTime() - t.startedAt.getTime());
+      leadSum += ms;
       leadN += 1;
+      const days = ms / MS_PER_DAY;
+      const idx = LT_BUCKETS.findIndex((b) => days < b.max);
+      ltCounts[idx === -1 ? LT_BUCKETS.length - 1 : idx] += 1;
     }
     if (t.clientId) completedByClient.set(t.clientId, (completedByClient.get(t.clientId) ?? 0) + 1);
   }
+  const leadTimeBuckets = LT_BUCKETS.map((b, i) => ({ label: b.label, count: ltCounts[i] }));
 
   // Per-dev open assigned.
   const devSet = new Set(devIds);
@@ -384,6 +399,7 @@ export async function getPortalAnalytics(
       avgWorkingDays,
     },
     throughput,
+    leadTimeBuckets,
     byStatus: statusGroups
       .map((g) => ({ status: g.status, count: g._count._all }))
       .sort((a, b) => b.count - a.count),

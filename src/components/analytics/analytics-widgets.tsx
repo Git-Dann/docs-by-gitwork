@@ -141,6 +141,141 @@ export function DualSparkline({
   );
 }
 
+/** Single-series area/line chart (SVG) with a soft gradient fill — for cumulative/trend views. */
+export function AreaSparkline({
+  points,
+  color = "var(--brand-500)",
+  height = 56,
+}: {
+  points: number[];
+  color?: string;
+  height?: number;
+}) {
+  const w = 320;
+  const h = height;
+  const pad = 4;
+  const max = Math.max(1, ...points);
+  const step = points.length > 1 ? (w - pad * 2) / (points.length - 1) : 0;
+  const coords = points.map((p, i) => [pad + i * step, pad + (1 - p / max) * (h - pad * 2)] as const);
+  const line = coords.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const area = coords.length
+    ? `${line} L${coords[coords.length - 1][0].toFixed(1)},${h - pad} L${coords[0][0].toFixed(1)},${h - pad} Z`
+    : "";
+  const gid = `area-${color.replace(/[^a-z0-9]/gi, "")}`;
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="h-full w-full" role="img" aria-label="Trend">
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity={0.28} />
+          <stop offset="100%" stopColor={color} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      {area ? <path d={area} fill={`url(#${gid})`} stroke="none" /> : null}
+      <path d={line} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Vertical column chart (SVG). Supports negative values with a centred baseline (diverging). */
+export function MiniColumns({
+  values,
+  positiveColor = "var(--brand-500)",
+  negativeColor = "var(--danger-500)",
+  height = 90,
+}: {
+  values: number[];
+  positiveColor?: string;
+  negativeColor?: string;
+  height?: number;
+}) {
+  const w = 320;
+  const h = height;
+  const n = Math.max(1, values.length);
+  const gap = n > 60 ? 0.5 : 2;
+  const bw = (w - gap * (n - 1)) / n;
+  const maxAbs = Math.max(1, ...values.map((v) => Math.abs(v)));
+  const hasNeg = values.some((v) => v < 0);
+  const baseline = hasNeg ? h / 2 : h - 2;
+  const scale = (hasNeg ? h / 2 - 2 : h - 4) / maxAbs;
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="h-full w-full" role="img" aria-label="Columns">
+      {hasNeg ? <line x1={0} y1={baseline} x2={w} y2={baseline} stroke="var(--border-2)" strokeWidth={1} /> : null}
+      {values.map((v, i) => {
+        const barH = Math.abs(v) * scale;
+        const x = i * (bw + gap);
+        const y = v >= 0 ? baseline - barH : baseline;
+        return <rect key={i} x={x} y={y} width={Math.max(0.5, bw)} height={Math.max(0, barH)} rx={bw > 3 ? 1 : 0} fill={v >= 0 ? positiveColor : negativeColor} opacity={0.9} />;
+      })}
+    </svg>
+  );
+}
+
+/** Donut chart (SVG) with a centred total and a compact legend. */
+export function Donut({
+  segments,
+  total,
+  centerLabel,
+  size = 132,
+}: {
+  segments: Array<{ label: string; value: number; color: string }>;
+  total?: number;
+  centerLabel?: string;
+  size?: number;
+}) {
+  const sum = segments.reduce((a, s) => a + s.value, 0);
+  const r = size / 2;
+  const stroke = size * 0.18;
+  const radius = r - stroke / 2;
+  const circ = 2 * Math.PI * radius;
+  let offset = 0;
+  const centre = total ?? sum;
+  return (
+    <div className="flex items-center gap-4">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0" role="img" aria-label="Distribution">
+        <circle cx={r} cy={r} r={radius} fill="none" stroke="var(--border-2)" strokeWidth={stroke} opacity={0.4} />
+        {sum > 0
+          ? segments.map((s, i) => {
+              const frac = s.value / sum;
+              const dash = frac * circ;
+              const el = (
+                <circle
+                  key={i}
+                  cx={r}
+                  cy={r}
+                  r={radius}
+                  fill="none"
+                  stroke={s.color}
+                  strokeWidth={stroke}
+                  strokeDasharray={`${dash} ${circ - dash}`}
+                  strokeDashoffset={-offset}
+                  transform={`rotate(-90 ${r} ${r})`}
+                  strokeLinecap="butt"
+                />
+              );
+              offset += dash;
+              return el;
+            })
+          : null}
+        <text x={r} y={r - 2} textAnchor="middle" style={{ fontFamily: SERIF, fontSize: size * 0.24, fill: "var(--text-1)" }}>{centre}</text>
+        {centerLabel ? (
+          <text x={r} y={r + size * 0.16} textAnchor="middle" style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", fill: "var(--text-4)" }}>{centerLabel.toUpperCase()}</text>
+        ) : null}
+      </svg>
+      <div className="min-w-0 flex-1 space-y-1.5">
+        {segments.map((s) => (
+          <div key={s.label} className="flex items-center justify-between gap-2 text-xs">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="inline-block h-2 w-2 shrink-0 rounded-[2px]" style={{ background: s.color }} />
+              <span className="truncate text-[var(--text-2)]">{s.label}</span>
+            </span>
+            <span className="tabular-nums text-[var(--text-3)]" style={{ fontFamily: MONO, fontSize: 11 }}>{s.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Small inline progress cell for tables (value% + bar). */
 export function ProgressCell({ value, color = "var(--brand-600)" }: { value: number | null; color?: string }) {
   if (value == null) return <span className="text-[var(--text-4)]">—</span>;
