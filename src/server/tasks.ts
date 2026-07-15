@@ -991,7 +991,18 @@ export async function batchDeleteTasks(user: EffectiveUser, ids: string[]): Prom
 export async function autoArchiveDoneTasks(olderThanDays = 30): Promise<{ archived: number }> {
   const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
   const res = await prisma.task.updateMany({
-    where: { status: "DONE", archivedAt: null, completedAt: { not: null, lt: cutoff } },
+    where: {
+      status: "DONE",
+      archivedAt: null,
+      // Completed >N days ago — OR, for imported/legacy done tasks that never got
+      // a completedAt (bulk-imported as DONE), untouched for >N days. Without the
+      // second clause those dateless done tasks never archive and pile up on the
+      // board forever (exactly what happened after the ClickUp import).
+      OR: [
+        { completedAt: { not: null, lt: cutoff } },
+        { completedAt: null, updatedAt: { lt: cutoff } },
+      ],
+    },
     data: { archivedAt: new Date() },
   });
   return { archived: res.count };
