@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
-import { GANTT_SCALE_LABELS, type GanttScale } from "@/types/tasks";
+import { GANTT_SCALE_LABELS, TASK_STATUS_LABELS, type GanttScale, type TaskStatus } from "@/types/tasks";
 
 export type GanttBlock = {
   id: string;
@@ -12,6 +12,10 @@ export type GanttBlock = {
   color?: string | null;
   progress: number;
   tasks: { title: string; done: boolean }[];
+  /** Per-status task counts for this block. When present, the bar fill is coloured
+   *  by status composition (Done → UI Done → In Review → Doing) instead of a single
+   *  progress fill. Omitted on the public client timeline (progress fill only). */
+  statusCounts?: Record<TaskStatus, number>;
 };
 
 export type GanttMilestone = {
@@ -55,6 +59,52 @@ const BAR_TONE: Record<string, { bar: string; fill: string; text: string }> = {
 };
 function tone(color?: string | null) {
   return BAR_TONE[color ?? "blue"] ?? BAR_TONE.blue;
+}
+
+// Status-composition fill: when a block carries per-status counts, the bar is a
+// stack of these segments (left = most complete) instead of one progress fill.
+// BACKLOG/TODO are the "not started" remainder — left as the light track, not a
+// segment. Matches the task board's status colours (UI Done = teal).
+const STATUS_FILL: Record<TaskStatus, string> = {
+  BACKLOG: "bg-transparent",
+  TODO: "bg-transparent",
+  DOING: "bg-amber-500",
+  IN_REVIEW: "bg-blue-500",
+  UI_DONE: "bg-teal-500",
+  DONE: "bg-emerald-500",
+};
+// Left → right within the filled portion (most complete first).
+const STATUS_FILL_ORDER: TaskStatus[] = ["DONE", "UI_DONE", "IN_REVIEW", "DOING"];
+// Legend order (full flow) + dot colours for the legend chips.
+const STATUS_LEGEND: { status: TaskStatus; dot: string }[] = [
+  { status: "DOING", dot: "bg-amber-500" },
+  { status: "IN_REVIEW", dot: "bg-blue-500" },
+  { status: "UI_DONE", dot: "bg-teal-500" },
+  { status: "DONE", dot: "bg-emerald-500" },
+];
+
+/** Stacked status segments filling the bar (left = most complete). */
+function StatusFill({ counts }: { counts: Record<TaskStatus, number> }) {
+  const total = (Object.values(counts) as number[]).reduce((a, b) => a + b, 0);
+  if (total === 0) return null;
+  return (
+    <div className="flex h-full w-full">
+      {STATUS_FILL_ORDER.map((s) => {
+        const n = counts[s] ?? 0;
+        if (n <= 0) return null;
+        return <div key={s} className={STATUS_FILL[s]} style={{ width: `${(n / total) * 100}%` }} />;
+      })}
+    </div>
+  );
+}
+
+/** "12 done · 3 UI done · 2 in review …" — omits zero-count statuses. */
+function statusBreakdown(counts: Record<TaskStatus, number>): string {
+  const order: TaskStatus[] = ["DONE", "UI_DONE", "IN_REVIEW", "DOING", "TODO", "BACKLOG"];
+  return order
+    .filter((s) => (counts[s] ?? 0) > 0)
+    .map((s) => `${counts[s]} ${TASK_STATUS_LABELS[s].toLowerCase()}`)
+    .join(" · ");
 }
 
 // Solid hex per palette key for milestone markers.
@@ -307,6 +357,25 @@ export function GanttChart({
         </div>
       </div>
 
+      {/* Status legend — only when bars are coloured by status composition (internal view). */}
+      {blocks.some((b) => b.statusCounts) ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 pb-2 text-[11px] text-[var(--text-4)]">
+          <span className="uppercase tracking-[1px]" style={{ fontFamily: "var(--font-mono)" }}>
+            Status
+          </span>
+          {STATUS_LEGEND.map(({ status, dot }) => (
+            <span key={status} className="inline-flex items-center gap-1.5">
+              <span className={cn("h-2 w-2 rounded-[2px]", dot)} />
+              {TASK_STATUS_LABELS[status]}
+            </span>
+          ))}
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-[2px] border border-[var(--border-2)] bg-[var(--surface-1)]" />
+            To do / Backlog
+          </span>
+        </div>
+      ) : null}
+
       {blocks.length === 0 && milestones.length === 0 ? (
         <p className="px-4 py-12 text-center text-sm text-[var(--text-4)]">{emptyHint}</p>
       ) : (
@@ -553,7 +622,11 @@ export function GanttChart({
                       ) : null}
                       <div className="group absolute top-2 h-7" style={{ left, width }}>
                         <div className={cn("h-full w-full overflow-hidden rounded-[6px]", t.bar)}>
-                          <div className={cn("h-full", t.fill)} style={{ width: `${b.progress}%` }} />
+                          {b.statusCounts ? (
+                            <StatusFill counts={b.statusCounts} />
+                          ) : (
+                            <div className={cn("h-full", t.fill)} style={{ width: `${b.progress}%` }} />
+                          )}
                           <span
                             className={cn(
                               "pointer-events-none absolute inset-0 flex items-center truncate px-2 text-[11px] font-medium",
@@ -563,12 +636,17 @@ export function GanttChart({
                             {width > 60 ? b.name : ""}
                           </span>
                         </div>
-                        {/* Instant styled tooltip (date range) */}
+                        {/* Instant styled tooltip (date range + status breakdown) */}
                         <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--text-1)] px-2.5 py-1.5 text-left text-[11px] text-[var(--surface-0)] shadow-lg group-hover:block">
                           <span className="font-medium">{b.name}</span>
                           <span className="mt-0.5 block text-[var(--surface-0)]/75" style={{ fontFamily: "var(--font-mono)" }}>
                             {fmtShort(b.startDate)} – {fmtShort(b.endDate)} · {b.progress}%
                           </span>
+                          {b.statusCounts && statusBreakdown(b.statusCounts) ? (
+                            <span className="mt-0.5 block text-[var(--surface-0)]/75" style={{ fontFamily: "var(--font-mono)" }}>
+                              {statusBreakdown(b.statusCounts)}
+                            </span>
+                          ) : null}
                         </div>
                       </div>
                     </div>

@@ -8,6 +8,7 @@ const STATUS_TONE: Record<TaskStatus, { wrapper: string; dot: string }> = {
   TODO: { wrapper: "border-sky-200 bg-white text-sky-700", dot: "bg-sky-500" },
   DOING: { wrapper: "border-amber-200 bg-white text-amber-800", dot: "bg-amber-500" },
   IN_REVIEW: { wrapper: "border-blue-200 bg-white text-blue-700", dot: "bg-blue-500" },
+  UI_DONE: { wrapper: "border-teal-200 bg-white text-teal-700", dot: "bg-teal-500" },
   DONE: { wrapper: "border-emerald-200 bg-white text-emerald-800", dot: "bg-emerald-500" },
 };
 

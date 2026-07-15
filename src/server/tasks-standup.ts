@@ -90,7 +90,9 @@ function isDoneOn(task: TaskDTO, workDate: Date): boolean {
 }
 
 function partition(tasks: TaskDTO[], workDate: Date) {
-  const doing = tasks.filter((t) => t.status === "DOING" || t.status === "IN_REVIEW");
+  const doing = tasks.filter(
+    (t) => t.status === "DOING" || t.status === "IN_REVIEW" || t.status === "UI_DONE",
+  );
   const done = tasks.filter((t) => isDoneOn(t, workDate));
   const upcoming = tasks.filter((t) => t.status === "TODO" || t.status === "BACKLOG");
   return { doing, done, upcoming };
@@ -527,7 +529,7 @@ export async function getRollupRoster(user: EffectiveUser): Promise<RollupRoster
       select: { userId: true, amPushedAt: true, pmPushedAt: true },
     }),
     prisma.task.findMany({
-      where: { workspaceId: user.workspaceId, status: { in: ["DOING", "IN_REVIEW"] }, OR: assigneeFilter },
+      where: { workspaceId: user.workspaceId, status: { in: ["DOING", "IN_REVIEW", "UI_DONE"] }, OR: assigneeFilter },
       select: { assigneeId: true, assignees: { select: { id: true } } },
     }),
     prisma.task.findMany({
@@ -716,7 +718,7 @@ async function compileDailyUpdates(
   const taskWhere: Prisma.TaskWhereInput =
     phase === "PM"
       ? { status: "DONE", completedAt: { gte: workDate, lt: nextUtcDay(workDate) } }
-      : { status: { in: ["DOING", "IN_REVIEW"] } };
+      : { status: { in: ["DOING", "IN_REVIEW", "UI_DONE"] } };
 
   const [users, updates, tasks] = await Promise.all([
     prisma.user.findMany({

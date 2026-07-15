@@ -3,7 +3,7 @@
 // These shapes are the contract for the web app (and future iOS). All dates are
 // ISO-8601 strings in UTC; clients localise for display.
 
-export type TaskStatus = "BACKLOG" | "TODO" | "DOING" | "IN_REVIEW" | "DONE";
+export type TaskStatus = "BACKLOG" | "TODO" | "DOING" | "IN_REVIEW" | "UI_DONE" | "DONE";
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
 export type TaskLabel = "BACKEND" | "FRONTEND" | "UI_UX" | "RESEARCH" | "DESIGN";
 
@@ -13,6 +13,7 @@ export const TASK_STATUSES: TaskStatus[] = [
   "TODO",
   "DOING",
   "IN_REVIEW",
+  "UI_DONE",
   "DONE",
 ];
 
@@ -21,6 +22,7 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   TODO: "To Do",
   DOING: "Doing",
   IN_REVIEW: "In Review",
+  UI_DONE: "UI Done",
   DONE: "Done",
 };
 

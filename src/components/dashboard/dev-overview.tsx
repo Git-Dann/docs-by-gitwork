@@ -18,6 +18,7 @@ const STATUS_STYLES: Record<TaskStatus, string> = {
   TODO:      "bg-[var(--surface-2)] text-[var(--text-3)]",
   DOING:     "bg-blue-50 text-blue-700",
   IN_REVIEW: "bg-amber-50 text-amber-700",
+  UI_DONE:   "bg-teal-50 text-teal-700",
   DONE:      "bg-emerald-50 text-emerald-700",
 };
 
@@ -26,6 +27,7 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   TODO:      "To do",
   DOING:     "Doing",
   IN_REVIEW: "In review",
+  UI_DONE:   "UI done",
   DONE:      "Done",
 };
 

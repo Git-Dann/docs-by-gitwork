@@ -54,6 +54,7 @@ const STATUS_DOT: Record<TaskStatus, string> = {
   TODO: "bg-sky-500",
   DOING: "bg-amber-500",
   IN_REVIEW: "bg-blue-500",
+  UI_DONE: "bg-teal-500",
   DONE: "bg-emerald-500",
 };
 
@@ -63,6 +64,7 @@ const STATUS_ACTIVE: Record<TaskStatus, string> = {
   TODO: "border-sky-300 bg-sky-50 text-sky-700",
   DOING: "border-amber-300 bg-amber-50 text-amber-700",
   IN_REVIEW: "border-blue-300 bg-blue-50 text-blue-700",
+  UI_DONE: "border-teal-300 bg-teal-50 text-teal-700",
   DONE: "border-emerald-300 bg-emerald-50 text-emerald-700",
 };
 

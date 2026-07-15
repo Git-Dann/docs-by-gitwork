@@ -246,7 +246,7 @@ async function resolveSupportClient(
 
 // ── tool definitions ───────────────────────────────────────────────────────
 
-const TASK_STATUS = z.enum(["BACKLOG", "TODO", "DOING", "IN_REVIEW", "DONE"]);
+const TASK_STATUS = z.enum(["BACKLOG", "TODO", "DOING", "IN_REVIEW", "UI_DONE", "DONE"]);
 const TASK_PRIORITY = z.enum(["LOW", "MEDIUM", "HIGH"]);
 
 // Zod schemas — runtime validation only. JSON Schema for tools/list is
@@ -463,7 +463,7 @@ const listPulseScansSchema = z.object({
   limit: z.number().int().min(1).max(100).optional(),
 });
 
-const TASK_STATUS_VALUES = ["BACKLOG", "TODO", "DOING", "IN_REVIEW", "DONE"];
+const TASK_STATUS_VALUES = ["BACKLOG", "TODO", "DOING", "IN_REVIEW", "UI_DONE", "DONE"];
 const TASK_PRIORITY_VALUES = ["LOW", "MEDIUM", "HIGH"];
 
 // JSON-schema properties for the full editable client field set — shared by the create_client and

@@ -291,7 +291,7 @@ function statusTimestamps(
   row: { startedAt: Date | null },
 ): { startedAt?: Date | null; completedAt?: Date | null } {
   const out: { startedAt?: Date | null; completedAt?: Date | null } = {};
-  const startedStates: TaskStatus[] = ["DOING", "IN_REVIEW", "DONE"];
+  const startedStates: TaskStatus[] = ["DOING", "IN_REVIEW", "UI_DONE", "DONE"];
   if (startedStates.includes(nextStatus) && !row.startedAt) {
     out.startedAt = new Date();
   }
@@ -469,7 +469,7 @@ export async function getTaskAttention(
     ...scope,
     parentId: null,
     archivedAt: null,
-    status: { in: ["DOING", "IN_REVIEW"] },
+    status: { in: ["DOING", "IN_REVIEW", "UI_DONE"] },
     ...(mineFilter ?? {}),
   };
   const [overdueRows, overdueCount, dueSoonCount, doingRows, doingCount] = await Promise.all([

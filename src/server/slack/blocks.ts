@@ -32,7 +32,7 @@ export interface StandupTaskCardInput {
   /** Surfaced explicitly in the card subtitle (was previously implicit in the link). */
   clientName?: string | null;
   /** Drives the leading status emoji. Defaults to DOING when omitted. */
-  status?: "BACKLOG" | "TODO" | "DOING" | "IN_REVIEW" | "DONE";
+  status?: "BACKLOG" | "TODO" | "DOING" | "IN_REVIEW" | "UI_DONE" | "DONE";
   /** Task description (markdown). Rendered as a one-line preview under the
    *  title, truncated to keep the card scannable; full text lives in the
    *  "Show details" modal. */

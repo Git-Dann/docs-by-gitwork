@@ -976,6 +976,7 @@ export const taskStatusSchema = z.enum([
   "TODO",
   "DOING",
   "IN_REVIEW",
+  "UI_DONE",
   "DONE",
 ]);
 

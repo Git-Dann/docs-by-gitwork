@@ -25,6 +25,7 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   TODO: "To Do",
   DOING: "Doing",
   IN_REVIEW: "In Review",
+  UI_DONE: "UI Done",
   DONE: "Done",
 };
 const PRIORITIES: TaskPriority[] = ["HIGH", "MEDIUM", "LOW"];

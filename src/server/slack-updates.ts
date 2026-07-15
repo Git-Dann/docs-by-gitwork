@@ -104,7 +104,7 @@ function categoryKey(t: TaskDTO): string {
 const STATUS_GROUP_ORDER: ProjectUpdateStatusGroup[] = ["DOING", "DONE", "UPCOMING"];
 
 function inStatusGroup(t: TaskDTO, group: ProjectUpdateStatusGroup): boolean {
-  if (group === "DOING") return t.status === "DOING" || t.status === "IN_REVIEW";
+  if (group === "DOING") return t.status === "DOING" || t.status === "IN_REVIEW" || t.status === "UI_DONE";
   if (group === "DONE") return isTaskDoneToday(t); // only today's completions, not all-time
   return t.status === "TODO" || t.status === "BACKLOG";
 }

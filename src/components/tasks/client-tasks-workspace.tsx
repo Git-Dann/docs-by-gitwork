@@ -37,7 +37,8 @@ import {
   useTimelineShare,
   useSetTimelineShare,
 } from "@/hooks/use-tasks";
-import type { FeatureBlockDTO, MilestoneDTO, TaskDTO } from "@/types/tasks";
+import { TASK_STATUSES } from "@/types/tasks";
+import type { FeatureBlockDTO, MilestoneDTO, TaskDTO, TaskStatus } from "@/types/tasks";
 import { getClientMeeting, type ScribeMeeting } from "@/lib/api";
 import { TaskBoard } from "@/components/tasks/task-board";
 import { TaskList } from "@/components/tasks/task-list";
@@ -170,6 +171,11 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           const startDate = b.startDate ?? (dues.length ? dues[0] : null);
           const endDate = b.endDate ?? (dues.length ? dues[dues.length - 1] : null);
           if (!startDate || !endDate) return null;
+          const statusCounts = TASK_STATUSES.reduce(
+            (acc, s) => ({ ...acc, [s]: 0 }),
+            {} as Record<TaskStatus, number>,
+          );
+          for (const t of blockTasks) statusCounts[t.status] += 1;
           return {
             id: b.id,
             name: b.name,
@@ -178,6 +184,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
             color: b.color,
             progress: b.progress,
             tasks: blockTasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
+            statusCounts,
           };
         })
         .filter((b): b is GanttBlock => b !== null),

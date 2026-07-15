@@ -330,7 +330,7 @@ function TaskQuickViewModal({
             <Button type="button" variant="tertiary" onClick={onClose}>
               Close
             </Button>
-            {task.status === "DOING" || task.status === "IN_REVIEW" ? (
+            {task.status === "DOING" || task.status === "IN_REVIEW" || task.status === "UI_DONE" ? (
               <Button
                 type="button"
                 variant="primary"
