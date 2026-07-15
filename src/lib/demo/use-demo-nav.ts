@@ -21,8 +21,11 @@ export function useDemoLinkReroute() {
     e.preventDefault();
     const docMatch = href.match(/^\/app\/docs\/([^/?#]+)/);
     const devSignalMatch = href.match(/^\/app\/codeclear\/devsignal\/([^/?#]+)$/);
+    const pulseScanMatch = href.match(/^\/app\/pulse\/([^/?#]+)/);
     if (devSignalMatch) router.push(`/demo/devsignal/${devSignalMatch[1]}`);
     else if (/^\/app\/codeclear\/devsignal$/.test(href)) router.push("/demo/devsignal");
+    else if (/^\/app\/pulse\/new/.test(href) || /^\/app\/pulse$/.test(href)) router.push("/demo/pulse");
+    else if (pulseScanMatch) router.push(`/demo/pulse/${pulseScanMatch[1]}`);
     else if (/^\/app\/portal\/[^/]+\/wiki/.test(href)) router.push("/demo/wiki");
     else if (/^\/app\/portal\/[^/]+\/tasks/.test(href)) router.push("/demo/tasks");
     else if (/^\/app\/portal\/[^/]+$/.test(href)) router.push("/demo/portal");

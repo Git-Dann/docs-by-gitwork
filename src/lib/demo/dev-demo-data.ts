@@ -1638,6 +1638,345 @@ const demoVetSession = {
   expired: false,
 };
 
+// ─── Pulse (AI project validation) — 3 seeded reports ──────────────────────────
+type DemoPulseCheckRow = {
+  category: string;
+  checkKey: string;
+  label: string;
+  status: "PASS" | "WARN" | "FAIL";
+  detail: string;
+};
+
+function demoPulseChecks(scanId: string, rows: DemoPulseCheckRow[]) {
+  return rows.map((r, i) => ({
+    id: `${scanId}-chk-${i}`,
+    scanId,
+    category: r.category,
+    checkKey: r.checkKey,
+    label: r.label,
+    status: r.status,
+    detail: r.detail,
+    evidence: null,
+    sortOrder: i,
+    createdAt: atDays(-3),
+    confidence: "HIGH" as const,
+    confidenceReason: null,
+    trustBucket: "CONFIRMED" as const,
+  }));
+}
+
+function makeDemoScan(o: {
+  id: string;
+  projectName: string;
+  clientId?: string | null;
+  clientName?: string | null;
+  inputType: "URL" | "GITHUB_REPO";
+  inputUrl?: string | null;
+  inputGithubRepo?: string | null;
+  platform?: string | null;
+  healthScore: number;
+  previousHealthScore?: number | null;
+  techStack: string[];
+  at: string;
+  checks: ReturnType<typeof demoPulseChecks>;
+  llmAnalysis: unknown;
+}) {
+  return {
+    id: o.id,
+    workspaceId: "demo-ws",
+    clientId: o.clientId ?? null,
+    clientName: o.clientName ?? null,
+    projectName: o.projectName,
+    inputType: o.inputType,
+    inputUrl: o.inputUrl ?? null,
+    inputGithubRepo: o.inputGithubRepo ?? null,
+    inputDescription: null,
+    platform: o.platform ?? null,
+    status: "COMPLETED",
+    scanVersion: "2.0",
+    startedAt: o.at,
+    completedAt: o.at,
+    checksCompletedAt: o.at,
+    healthScore: o.healthScore,
+    previousHealthScore: o.previousHealthScore ?? null,
+    techStack: o.techStack,
+    llmAnalysis: o.llmAnalysis,
+    discoveryKit: null,
+    codeInsights: null,
+    deployInsights: null,
+    browserInsights: null,
+    visualInsights: null,
+    aiError: null,
+    competitorUrls: null,
+    competitorData: null,
+    targetMarkets: ["GB"],
+    detectedMarkets: ["GB"],
+    complianceScorecard: null,
+    scoreBreakdown: null,
+    pricingBands: null,
+    shareToken: null,
+    isShared: false,
+    errorCode: null,
+    errorMessage: null,
+    generatedProposalId: null,
+    linkedStudyId: null,
+    linkedStarterId: null,
+    checks: o.checks,
+    createdAt: o.at,
+    updatedAt: o.at,
+  };
+}
+
+// Report 1 — Northwind Studio: healthy SaaS (green, 86, improving).
+const demoScanNorthwind = makeDemoScan({
+  id: "scan-northwind",
+  projectName: "northwind.co",
+  clientId: WIKI_CLIENT.id,
+  clientName: "Northwind Studio",
+  inputType: "URL",
+  inputUrl: "https://app.northwind.co",
+  platform: "Vercel",
+  healthScore: 86,
+  previousHealthScore: 79,
+  techStack: ["Next.js", "React", "TypeScript", "PostgreSQL", "Tailwind CSS", "Vercel"],
+  at: atDays(-5),
+  checks: demoPulseChecks("scan-northwind", [
+    { category: "Security", checkKey: "https_enforced", label: "HTTPS enforced", status: "PASS", detail: "Valid TLS with HSTS and a clean certificate chain." },
+    { category: "Security", checkKey: "security_headers", label: "Security headers", status: "PASS", detail: "CSP, X-Frame-Options and Referrer-Policy all set." },
+    { category: "Authentication", checkKey: "auth_present", label: "Authentication", status: "PASS", detail: "Session auth with secure, http-only cookies." },
+    { category: "Performance", checkKey: "lcp", label: "Largest Contentful Paint", status: "PASS", detail: "LCP 1.9s on a throttled 4G profile." },
+    { category: "Performance", checkKey: "image_opt", label: "Image optimisation", status: "WARN", detail: "A few hero images are served without explicit dimensions." },
+    { category: "SEO", checkKey: "meta_tags", label: "Meta tags & Open Graph", status: "PASS", detail: "Titles, descriptions and OG images present site-wide." },
+    { category: "SEO", checkKey: "sitemap", label: "Sitemap & robots", status: "PASS", detail: "sitemap.xml discoverable and referenced in robots.txt." },
+    { category: "Accessibility", checkKey: "contrast", label: "Colour contrast", status: "WARN", detail: "Two link hover states fall just under AA contrast." },
+    { category: "Observability", checkKey: "error_monitoring", label: "Error monitoring", status: "PASS", detail: "Sentry wired across web and API with source maps." },
+    { category: "Infrastructure", checkKey: "cdn", label: "CDN & caching", status: "PASS", detail: "Static assets on a CDN with long-lived immutable caching." },
+    { category: "Legal & Compliance", checkKey: "privacy_policy", label: "Privacy & cookie policy", status: "PASS", detail: "Both linked in the footer and the consent banner." },
+    { category: "Code Quality", checkKey: "ci_pipeline", label: "CI pipeline", status: "PASS", detail: "Typecheck, lint and tests run on every pull request." },
+    { category: "Code Quality", checkKey: "test_coverage", label: "Automated tests", status: "WARN", detail: "Coverage ~52% — core flows covered, edges thin." },
+  ]),
+  llmAnalysis: {
+    projectClassification: { type: "SaaS", subtype: "B2B streaming analytics", confidence: "HIGH", signals: ["Authenticated app shell", "Usage-based dashboards", "Multi-tenant routing"], verticalInsights: ["Publish an uptime/status page to build enterprise trust", "Add SSO (SAML/OIDC) to unlock larger accounts", "Expose an audit log for security-conscious buyers"] },
+    executiveSummary: "Northwind is a well-built, production-grade SaaS. Security, infrastructure and SEO are strong; the main opportunities are deepening test coverage and a handful of polish items before the next enterprise push.",
+    healthNarrative: "An 86 puts Northwind in the healthy tier and up 7 points since the last scan — driven by the new security headers and error monitoring. Nothing here is blocking; the remaining items are quality and scale-readiness.",
+    strengths: [
+      { title: "Solid security posture", detail: "HTTPS, HSTS and a full set of security headers, with authenticated sessions on secure cookies." },
+      { title: "Fast and observable", detail: "Sub-2s LCP on 4G and Sentry monitoring across the stack means regressions get caught early." },
+      { title: "Discoverable", detail: "Complete metadata, Open Graph and a valid sitemap — good marketing-site hygiene." },
+    ],
+    criticalGaps: [
+      { category: "Code Quality", gap: "Test coverage sits around 52%", impact: "Refactors and new features risk silent regressions in untested edges.", urgency: "MEDIUM" },
+      { category: "Accessibility", gap: "A couple of low-contrast interactive states", impact: "Minor WCAG AA misses that enterprise procurement checklists often flag.", urgency: "MEDIUM" },
+    ],
+    buildOpportunities: [
+      { title: "Single sign-on (SSO)", description: "Add SAML/OIDC to open up larger, security-conscious accounts.", estimatedEffort: "M", businessValue: "HIGH", category: "Authentication" },
+      { title: "Public status page", description: "An automated uptime/status page to reinforce reliability during sales.", estimatedEffort: "S", businessValue: "MEDIUM", category: "Trust & Brand" },
+    ],
+    scalingRoadmap: [
+      { phase: 1, title: "Harden & polish", duration: "2–3 weeks", goals: ["Lift core-flow test coverage past 70%", "Fix the AA contrast misses", "Add explicit image dimensions"] },
+      { phase: 2, title: "Enterprise-ready", duration: "4–6 weeks", goals: ["Ship SSO", "Add an audit log", "Publish a status page"] },
+    ],
+    techDebt: [
+      { area: "Testing", description: "Thin coverage on secondary flows and error paths.", severity: "MEDIUM" },
+    ],
+    proposalHook: "Northwind is already healthy — a short hardening sprint plus SSO would make it genuinely enterprise-ready.",
+    productionBlockers: [],
+    productionReadinessChecklist: [
+      { category: "Security", item: "HTTPS & security headers", status: "DONE", notes: "Full set in place." },
+      { category: "Observability", item: "Error monitoring", status: "DONE", notes: "Sentry across web + API." },
+      { category: "Code Quality", item: "Automated test coverage", status: "PARTIAL", notes: "~52%; core flows only." },
+      { category: "Accessibility", item: "WCAG AA contrast", status: "PARTIAL", notes: "Two states just under AA." },
+    ],
+    techStackAnalysis: {
+      assessment: "A modern, well-chosen Next.js + PostgreSQL stack on Vercel — appropriate for the scale and easy to hire for.",
+      detectedStack: null,
+      recommendations: [
+        { area: "Auth", current: "Session cookies", recommended: "Add OIDC/SAML SSO", reason: "Unlocks enterprise procurement.", priority: "HIGH" },
+        { area: "Testing", current: "Unit + a few E2E", recommended: "Playwright on core journeys", reason: "Protects refactors as the team grows.", priority: "MEDIUM" },
+      ],
+      missingForProduction: [],
+    },
+    aiMaturityScore: 3,
+  },
+});
+
+// Report 2 — Cadenza: promising SaaS with gaps (amber, 63, improving).
+const demoScanCadenza = makeDemoScan({
+  id: "scan-cadenza",
+  projectName: "cadenza (github)",
+  clientId: null,
+  clientName: "Cadenza",
+  inputType: "GITHUB_REPO",
+  inputGithubRepo: "cadenza-app/cadenza",
+  platform: "Render",
+  healthScore: 63,
+  previousHealthScore: 58,
+  techStack: ["React", "Vite", "Node.js", "Express", "PostgreSQL", "Render"],
+  at: atDays(-2),
+  checks: demoPulseChecks("scan-cadenza", [
+    { category: "Security", checkKey: "https_enforced", label: "HTTPS enforced", status: "PASS", detail: "TLS valid; HSTS not yet set." },
+    { category: "Security", checkKey: "security_headers", label: "Security headers", status: "WARN", detail: "Missing CSP and X-Frame-Options." },
+    { category: "Secrets & Keys", checkKey: "exposed_secrets", label: "Exposed secrets", status: "PASS", detail: "No API keys or tokens found in the client bundle." },
+    { category: "Authentication", checkKey: "auth_present", label: "Authentication", status: "PASS", detail: "JWT auth with refresh tokens." },
+    { category: "Performance", checkKey: "bundle_size", label: "JS bundle size", status: "WARN", detail: "Main bundle ~480KB gzipped — code-splitting would help." },
+    { category: "Observability", checkKey: "error_monitoring", label: "Error monitoring", status: "FAIL", detail: "No error tracking wired — failures are invisible in production." },
+    { category: "SEO", checkKey: "meta_tags", label: "Meta tags & Open Graph", status: "WARN", detail: "Home page only; app routes lack metadata." },
+    { category: "Infrastructure", checkKey: "backups", label: "Database backups", status: "WARN", detail: "No automated backup schedule detected." },
+    { category: "Legal & Compliance", checkKey: "privacy_policy", label: "Privacy policy", status: "FAIL", detail: "No privacy policy or cookie notice found." },
+    { category: "Code Quality", checkKey: "ci_pipeline", label: "CI pipeline", status: "PASS", detail: "GitHub Actions runs lint and tests on PRs." },
+    { category: "Code Quality", checkKey: "typescript", label: "Type safety", status: "WARN", detail: "Mixed JS/TS; several files still untyped." },
+  ]),
+  llmAnalysis: {
+    projectClassification: { type: "SaaS", subtype: "Music collaboration tool", confidence: "HIGH", signals: ["Real-time editing", "Project/workspace model", "Account-based access"], verticalInsights: ["Add presence indicators for collaborators", "Version history is a strong retention feature", "Offline-friendly sync would differentiate"] },
+    executiveSummary: "Cadenza is a promising product with a clean core, but it isn't production-hardened: no error monitoring, missing security headers, and no privacy policy. These are quick wins that would move the score sharply.",
+    healthNarrative: "At 63 Cadenza sits in the moderate tier, up 5 since last scan. The fundamentals are sound; the gaps are operational readiness rather than architecture.",
+    strengths: [
+      { title: "Clean authentication", detail: "JWT with refresh tokens, and no secrets leaked into the client bundle." },
+      { title: "CI in place", detail: "Lint and tests already run on every pull request." },
+    ],
+    criticalGaps: [
+      { category: "Observability", gap: "No error monitoring in production", impact: "Production failures go unnoticed until a user reports them.", urgency: "CRITICAL" },
+      { category: "Legal & Compliance", gap: "No privacy policy or cookie notice", impact: "Non-compliant with UK/EU requirements for a live product handling accounts.", urgency: "HIGH" },
+      { category: "Security", gap: "Missing security headers (CSP, X-Frame-Options)", impact: "Leaves the app open to clickjacking and injection classes.", urgency: "HIGH" },
+    ],
+    buildOpportunities: [
+      { title: "Wire error monitoring", description: "Add Sentry across client and server for real-time failure visibility.", estimatedEffort: "S", businessValue: "HIGH", category: "Observability" },
+      { title: "Code-split the bundle", description: "Route-based splitting to cut first-load JS and speed up the editor.", estimatedEffort: "M", businessValue: "MEDIUM", category: "Performance" },
+    ],
+    scalingRoadmap: [
+      { phase: 1, title: "Production hardening", duration: "1–2 weeks", goals: ["Add error monitoring", "Ship security headers", "Publish privacy & cookie policy", "Enable automated DB backups"] },
+      { phase: 2, title: "Performance & polish", duration: "2–4 weeks", goals: ["Code-split the editor", "Finish the TS migration", "Add metadata to app routes"] },
+    ],
+    techDebt: [
+      { area: "Type safety", description: "Mixed JS/TS codebase — untyped files invite runtime bugs.", severity: "MEDIUM" },
+      { area: "Resilience", description: "No database backup schedule.", severity: "HIGH" },
+    ],
+    proposalHook: "Cadenza is one short hardening sprint away from being production-ready — the gaps are well understood and quick to close.",
+    productionBlockers: [
+      { category: "Observability", blocker: "No error monitoring", why: "You can't see or triage production failures.", recommendedService: "Sentry", urgency: "CRITICAL" },
+      { category: "Legal & Compliance", blocker: "No privacy policy", why: "Required before handling user accounts in the UK/EU.", urgency: "HIGH" },
+    ],
+    productionReadinessChecklist: [
+      { category: "Observability", item: "Error monitoring", status: "MISSING", notes: "Nothing wired." },
+      { category: "Security", item: "Security headers", status: "MISSING", notes: "No CSP / X-Frame-Options." },
+      { category: "Legal & Compliance", item: "Privacy policy", status: "MISSING", notes: "Not present." },
+      { category: "Infrastructure", item: "Database backups", status: "MISSING", notes: "No schedule detected." },
+      { category: "Authentication", item: "Auth & sessions", status: "DONE", notes: "JWT + refresh tokens." },
+    ],
+    techStackAnalysis: {
+      assessment: "A capable React/Node stack; the choices are fine, but the operational layer (monitoring, backups, headers) hasn't been built out yet.",
+      detectedStack: null,
+      recommendations: [
+        { area: "Monitoring", current: "None", recommended: "Sentry", reason: "Production visibility is the single biggest win here.", priority: "HIGH" },
+        { area: "Language", current: "Mixed JS/TS", recommended: "Finish the TypeScript migration", reason: "Removes a whole class of runtime bugs.", priority: "MEDIUM" },
+      ],
+      missingForProduction: ["Error monitoring", "Security headers", "Automated backups", "Privacy policy"],
+    },
+    aiMaturityScore: 2,
+  },
+});
+
+// Report 3 — Fairway Nine: at-risk (red, 48, regressed).
+const demoScanFairway = makeDemoScan({
+  id: "scan-fairway",
+  projectName: "fairwaynine.co.uk",
+  clientId: null,
+  clientName: "Fairway Nine",
+  inputType: "URL",
+  inputUrl: "https://fairwaynine.co.uk",
+  platform: "Shared hosting",
+  healthScore: 48,
+  previousHealthScore: 52,
+  techStack: ["WordPress", "PHP", "jQuery", "MySQL"],
+  at: atDays(-1),
+  checks: demoPulseChecks("scan-fairway", [
+    { category: "Security", checkKey: "https_enforced", label: "HTTPS enforced", status: "WARN", detail: "TLS present but HTTP is not redirected to HTTPS." },
+    { category: "Security", checkKey: "security_headers", label: "Security headers", status: "FAIL", detail: "No security headers set at all." },
+    { category: "Security", checkKey: "software_updates", label: "Platform up to date", status: "FAIL", detail: "CMS and two plugins are several versions behind." },
+    { category: "Performance", checkKey: "lcp", label: "Largest Contentful Paint", status: "FAIL", detail: "LCP 5.8s on 4G — heavy unoptimised images." },
+    { category: "Performance", checkKey: "render_blocking", label: "Render-blocking assets", status: "WARN", detail: "Multiple blocking scripts in the head." },
+    { category: "Accessibility", checkKey: "alt_text", label: "Image alt text", status: "FAIL", detail: "Most gallery and course images have no alt text." },
+    { category: "SEO", checkKey: "meta_tags", label: "Meta tags", status: "WARN", detail: "Duplicate titles across several pages." },
+    { category: "Observability", checkKey: "error_monitoring", label: "Error monitoring", status: "FAIL", detail: "No monitoring; outages are only noticed by customers." },
+    { category: "Mobile & Accessibility", checkKey: "mobile_friendly", label: "Mobile friendly", status: "WARN", detail: "Booking form overflows on small screens." },
+    { category: "Legal & Compliance", checkKey: "privacy_policy", label: "Privacy policy", status: "PASS", detail: "Privacy and cookie policy present." },
+  ]),
+  llmAnalysis: {
+    projectClassification: { type: "Service Business", subtype: "Golf tee-time booking", confidence: "HIGH", signals: ["Course info pages", "Tee-time booking form", "Local business schema"], verticalInsights: ["A faster mobile booking flow directly lifts conversions", "Structured data for courses improves local search", "Image-heavy site — optimisation is the fastest win"] },
+    executiveSummary: "Fairway Nine is at risk: an ageing WordPress stack with no security headers, out-of-date software, very slow pages and broken accessibility. It works, but it's fragile and under-performing — and it's slipped since the last scan.",
+    healthNarrative: "At 48 the site is in the at-risk tier and down 4 points, mostly from newly out-of-date plugins and slower pages. The good news: the biggest wins (images, updates, headers) are fast and high-impact.",
+    strengths: [
+      { title: "Compliant on privacy", detail: "Privacy and cookie policies are present and linked." },
+    ],
+    criticalGaps: [
+      { category: "Security", gap: "Out-of-date CMS and plugins", impact: "Known vulnerabilities in unpatched software are the top cause of small-site breaches.", urgency: "CRITICAL" },
+      { category: "Performance", gap: "5.8s LCP from unoptimised images", impact: "Slow load directly costs booking conversions, especially on mobile.", urgency: "HIGH" },
+      { category: "Accessibility", gap: "Missing image alt text throughout", impact: "Fails basic WCAG and hurts SEO on an image-heavy site.", urgency: "HIGH" },
+    ],
+    buildOpportunities: [
+      { title: "Image optimisation pass", description: "Compress, resize and lazy-load imagery to cut LCP dramatically.", estimatedEffort: "S", businessValue: "HIGH", category: "Performance" },
+      { title: "Rebuild the booking flow", description: "A fast, mobile-first tee-time booking flow to lift conversions.", estimatedEffort: "L", businessValue: "HIGH", category: "Mobile & Accessibility" },
+    ],
+    scalingRoadmap: [
+      { phase: 1, title: "Stabilise & secure", duration: "1 week", goals: ["Update CMS and plugins", "Force HTTPS", "Add security headers", "Optimise the heaviest images"] },
+      { phase: 2, title: "Convert better", duration: "3–5 weeks", goals: ["Rebuild the mobile booking flow", "Fix alt text and titles", "Add error monitoring"] },
+    ],
+    techDebt: [
+      { area: "Platform", description: "Ageing WordPress + jQuery stack on shared hosting; hard to scale.", severity: "HIGH" },
+      { area: "Assets", description: "Large unoptimised images across the site.", severity: "HIGH" },
+    ],
+    proposalHook: "Fairway Nine has fast, high-impact wins available today — a one-week stabilise sprint would move it out of the red immediately.",
+    productionBlockers: [
+      { category: "Security", blocker: "Out-of-date software", why: "Unpatched CMS/plugins are actively exploited.", urgency: "CRITICAL" },
+    ],
+    productionReadinessChecklist: [
+      { category: "Security", item: "Software up to date", status: "MISSING", notes: "CMS + 2 plugins behind." },
+      { category: "Security", item: "Force HTTPS", status: "PARTIAL", notes: "TLS present, no redirect." },
+      { category: "Performance", item: "Optimised images", status: "MISSING", notes: "Heavy, unoptimised." },
+      { category: "Accessibility", item: "Image alt text", status: "MISSING", notes: "Largely absent." },
+      { category: "Legal & Compliance", item: "Privacy policy", status: "DONE", notes: "Present and linked." },
+    ],
+    techStackAnalysis: {
+      assessment: "A dated WordPress/jQuery stack on shared hosting. Fine for a brochure site, but it's the root cause of the performance and maintenance issues; a modern rebuild would pay off if bookings matter.",
+      detectedStack: null,
+      recommendations: [
+        { area: "Platform", current: "WordPress + shared hosting", recommended: "Managed hosting + a caching/CDN layer", reason: "Immediate stability and speed gains.", priority: "HIGH" },
+        { area: "Booking", current: "Plugin form", recommended: "Purpose-built mobile booking flow", reason: "Directly drives revenue for a booking business.", priority: "MEDIUM" },
+      ],
+      missingForProduction: ["Up-to-date software", "Security headers", "Image optimisation", "Error monitoring"],
+    },
+    aiMaturityScore: 1,
+  },
+});
+
+const demoPulseScansById: Record<string, unknown> = {
+  "scan-northwind": demoScanNorthwind,
+  "scan-cadenza": demoScanCadenza,
+  "scan-fairway": demoScanFairway,
+};
+
+const demoPulseScanList = [
+  { id: "scan-fairway", workspaceId: "demo-ws", clientId: null, clientName: "Fairway Nine", projectName: "fairwaynine.co.uk", inputType: "URL", inputUrl: "https://fairwaynine.co.uk", inputGithubRepo: null, status: "COMPLETED", healthScore: 48, generatedProposalId: null, createdAt: atDays(-1), updatedAt: atDays(-1) },
+  { id: "scan-cadenza", workspaceId: "demo-ws", clientId: null, clientName: "Cadenza", projectName: "cadenza (github)", inputType: "GITHUB_REPO", inputUrl: null, inputGithubRepo: "cadenza-app/cadenza", status: "COMPLETED", healthScore: 63, generatedProposalId: null, createdAt: atDays(-2), updatedAt: atDays(-2) },
+  { id: "scan-northwind", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co", inputGithubRepo: null, status: "COMPLETED", healthScore: 86, generatedProposalId: null, createdAt: atDays(-5), updatedAt: atDays(-5) },
+];
+
+const demoPulseStats = {
+  totalScans: 3,
+  completedScans: 3,
+  avgHealthScore: 66,
+  awaitingFollowUp: 2,
+  totalCriticalGaps: 6,
+  healthTiers: { green: 1, amber: 1, red: 1 },
+  recentScans: demoPulseScanList,
+};
+
+const demoPulsePortfolio = [
+  { key: "client:northwind", clientId: WIKI_CLIENT.id, label: "Northwind Studio", scanCount: 3, latestScanId: "scan-northwind", latestScore: 86, latestStatus: "COMPLETED", lastScannedAt: atDays(-5), delta: 7, sparkline: [71, 74, 79, 86], worstScore: 86, monitor: { active: true, alerting: false }, running: false },
+  { key: "client:cadenza", clientId: null, label: "Cadenza", scanCount: 2, latestScanId: "scan-cadenza", latestScore: 63, latestStatus: "COMPLETED", lastScannedAt: atDays(-2), delta: 5, sparkline: [58, 63], worstScore: 63, monitor: null, running: false },
+  { key: "client:fairway", clientId: null, label: "Fairway Nine", scanCount: 2, latestScanId: "scan-fairway", latestScore: 48, latestStatus: "COMPLETED", lastScannedAt: atDays(-1), delta: -4, sparkline: [52, 48], worstScore: 48, monitor: { active: true, alerting: true }, running: false },
+];
+
 // ─── Resolver used by the fetch interceptor ─────────────────────────────────────
 
 /**
@@ -1730,6 +2069,20 @@ export function resolveDemoApi(pathname: string): unknown {
   if (pathname === "/api/backstage/absences") return []; // AbsenceDTO[] — iterated in CalendarTab
   if (pathname === "/api/backstage/leave") return [];
   if (pathname === "/api/backstage/alerts") return demoStaffingAlerts;
+
+  // Pulse (AI project validation) — 3 seeded reports.
+  if (pathname === "/api/pulse/scans") return { scans: demoPulseScanList };
+  if (pathname === "/api/pulse/stats") return demoPulseStats;
+  if (pathname === "/api/pulse/portfolio") return { portfolio: demoPulsePortfolio };
+  if (pathname === "/api/pulse/leads") return { leads: [] };
+  if (pathname === "/api/pulse/monitors") return { monitors: [] };
+  if (/^\/api\/pulse\/scans\/[^/]+\/history$/.test(pathname)) return { history: [] };
+  if (/^\/api\/pulse\/scans\/[^/]+\/diff$/.test(pathname)) return { diff: null };
+  if (/^\/api\/pulse\/scans\/[^/]+\/benchmarks$/.test(pathname)) return { benchmarks: null };
+  {
+    const ps = pathname.match(/^\/api\/pulse\/scans\/([^/]+)$/);
+    if (ps) return { scan: demoPulseScansById[ps[1]] ?? demoScanNorthwind };
+  }
 
   // `/api/tasks` (list) — after the more specific /api/tasks/* cases above.
   if (pathname === "/api/tasks" || pathname.startsWith("/api/tasks?")) {

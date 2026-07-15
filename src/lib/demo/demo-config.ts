@@ -21,6 +21,7 @@ import {
   SwatchIcon,
   BuildingOffice2Icon,
   BookOpenIcon,
+  ChartBarIcon,
 } from "@heroicons/react/24/outline";
 import type { ComponentType, SVGProps } from "react";
 
@@ -35,6 +36,7 @@ export type DemoModule = {
 export const DEMO_MODULES: DemoModule[] = [
   { id: "dev", label: "Foundry HQ", href: "/demo/dev", icon: HomeIcon, description: "A developer's day — standup, tasks due, meetings, and the client roster." },
   { id: "devsignal", label: "Code", href: "/demo/devsignal", icon: CodeBracketIcon, description: "Vet a candidate with automated GitHub signal, a timed challenge, and a video screen." },
+  { id: "pulse", label: "Pulse", href: "/demo/pulse", icon: ChartBarIcon, description: "AI project validation — automated checks, a health score, critical gaps and a fix roadmap." },
   { id: "docs", label: "Docs", href: "/demo/docs", icon: DocumentTextIcon, description: "Handovers, reports and briefs — the documents a developer works with day to day." },
   { id: "portal", label: "Portal", href: "/demo/portal", icon: UsersIcon, description: "A client's page — tasks, wiki, and the shared timeline they see." },
   { id: "wiki", label: "Wiki", href: "/demo/wiki", icon: BookOpenIcon, description: "The client's knowledge base — architecture, brand & design system, changelog and monitors." },
