@@ -83,7 +83,9 @@ export function DevOverview() {
   const clientsQuery = useClientList();
   const clients = clientsQuery.data?.clients ?? [];
 
-  const tasksQuery = useTasks({ assigneeId: userId ?? "" });
+  // Passive dashboard summary: cap the fetch (safety ceiling) and don't refetch
+  // on every window focus — this widget doesn't need the board's live self-correct.
+  const tasksQuery = useTasks({ assigneeId: userId ?? "", limit: 100 }, { refetchOnFocus: false });
   const allTasks = (tasksQuery.data ?? []).filter((t) => t.status !== "DONE");
 
   const [tasksPage, setTasksPage] = useState(0);

@@ -308,7 +308,7 @@ function statusTimestamps(
 
 export async function listTasks(
   user: EffectiveUser,
-  opts: { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string; archived?: boolean; includeSubtasks?: boolean } = {},
+  opts: { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string; archived?: boolean; includeSubtasks?: boolean; limit?: number } = {},
 ): Promise<TaskDTO[]> {
   await ensureBaseRecords();
   const where = await clientScopeWhere(user);
@@ -352,6 +352,7 @@ export async function listTasks(
     where,
     orderBy: [{ orderKey: "asc" }, { createdAt: "asc" }],
     include: taskInclude,
+    ...(opts.limit ? { take: opts.limit } : {}),
   });
   return attachScribeSources(user.workspaceId, rows.map(taskRowToDTO));
 }
