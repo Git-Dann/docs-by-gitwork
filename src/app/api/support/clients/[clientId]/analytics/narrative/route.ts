@@ -56,11 +56,12 @@ export async function POST(
     const config = resolveAiConfig(workspace);
     const userPrompt = `Client: ${client?.name ?? "the client"}${body.periodLabel ? ` · Period: ${body.periodLabel}` : ""}\n\nMetrics:\n${lines.join("\n")}`;
     const inputsHash = hashInputs({ metrics, periodLabel: body.periodLabel ?? null });
+    const effectiveUser = await getEffectiveUserOrNull(request);
     const cacheResult = await cachedOrCompute<{ narrative: string }>({
       workspaceId: workspace.id,
       cacheKey: `care-analytics-narrative:${clientId}`,
       inputsHash,
-      canCompute: canComputeAiFor(await getEffectiveUserOrNull(request)),
+      canCompute: canComputeAiFor(effectiveUser),
       compute: async () => {
         const narrative = await completeText({
           config,
@@ -71,6 +72,7 @@ export async function POST(
           user: userPrompt,
           maxTokens: 400,
           tier: "light",
+          usageContext: { module: "SUPPORT", workspaceId: workspace.id, userId: effectiveUser?.id, operation: "analyticsNarrative" },
         });
         return { response: { narrative: narrative.trim() }, modelUsed: workspace.aiProvider };
       },

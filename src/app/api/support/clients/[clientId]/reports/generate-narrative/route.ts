@@ -140,11 +140,12 @@ export async function POST(
 
     const config = resolveAiConfig(workspace);
     const inputsHash = hashInputs(lines);
+    const effectiveUser = await getEffectiveUserOrNull(request);
     const cacheResult = await cachedOrCompute<GeneratedNarrative>({
       workspaceId: workspace.id,
       cacheKey: `care-report-narrative:${clientId}`,
       inputsHash,
-      canCompute: canComputeAiFor(await getEffectiveUserOrNull(request)),
+      canCompute: canComputeAiFor(effectiveUser),
       compute: async () => {
         const raw = await completeText({
           config,
@@ -158,6 +159,7 @@ Return ONLY a JSON object in this exact format — no preamble, no markdown fenc
           user: lines.join("\n"),
           maxTokens: 800,
           tier: "light",
+          usageContext: { module: "SUPPORT", workspaceId: workspace.id, userId: effectiveUser?.id, operation: "reportNarrative" },
         });
         let result: GeneratedNarrative = { overviewText: "", performanceText: "", summaryText: "" };
         try {

@@ -5,6 +5,7 @@ import { ensureBaseRecords } from "@/server/bootstrap";
 import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
 import { getEffectiveUserOrNull, canComputeAiFor } from "@/server/auth/effective-user";
+import { recordAiUsage, usageFromAnthropic } from "@/server/ai-usage";
 
 export const dynamic = "force-dynamic";
 
@@ -97,11 +98,21 @@ export async function POST(request: Request) {
       canCompute: canComputeAiFor(await getEffectiveUserOrNull(request)),
       compute: async () => {
         const client = new Anthropic({ apiKey });
+        const t0 = Date.now();
         const message = await client.messages.create({
           model: MODEL,
           max_tokens: 2048,
           system: SYSTEM_PROMPT,
           messages: [{ role: "user", content: brief }],
+        });
+        recordAiUsage({
+          module: "PROOF",
+          workspaceId: workspace.id,
+          operation: "analyse",
+          provider: "ANTHROPIC",
+          model: MODEL,
+          usage: usageFromAnthropic(message.usage),
+          latencyMs: Date.now() - t0,
         });
         if (message.stop_reason === "refusal") {
           throw new Error("AI declined to analyse this brief (safety refusal).");

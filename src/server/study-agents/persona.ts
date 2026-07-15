@@ -2,10 +2,12 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { PersonaInterviewResponse } from "./types";
 import type { StudyPersonaDef } from "@/config/study-personas";
 import type { AiConfig } from "@/server/pulse-ai";
+import { recordAiUsage, usageFromAnthropic, usageFromOpenAI } from "@/server/ai-usage";
 
-async function callAI(config: AiConfig, system: string, user: string): Promise<string> {
+async function callAI(config: AiConfig, system: string, user: string, workspaceId?: string, operation?: string): Promise<string> {
   if (config.provider === "ANTHROPIC") {
     const client = new Anthropic({ apiKey: config.apiKey ?? undefined });
+    const t0 = Date.now();
     const msg = await client.messages.create({
       model: config.model,
       max_tokens: 1024,
@@ -14,6 +16,7 @@ async function callAI(config: AiConfig, system: string, user: string): Promise<s
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: user }],
     });
+    if (workspaceId) recordAiUsage({ module: "STUDY", workspaceId, operation, provider: "ANTHROPIC", model: config.model, usage: usageFromAnthropic(msg.usage), latencyMs: Date.now() - t0 });
     if (msg.stop_reason === "refusal") throw new Error("AI request declined (stop_reason: refusal).");
     const block = msg.content.find((b) => b.type === "text");
     if (!block || block.type !== "text") throw new Error("No text in Anthropic response");
@@ -25,6 +28,7 @@ async function callAI(config: AiConfig, system: string, user: string): Promise<s
     apiKey: config.apiKey ?? "local",
     ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
   });
+  const t0 = Date.now();
   const completion = await client.chat.completions.create({
     model: config.model,
     max_tokens: 1024,
@@ -33,6 +37,7 @@ async function callAI(config: AiConfig, system: string, user: string): Promise<s
       { role: "user", content: user },
     ],
   });
+  if (workspaceId) recordAiUsage({ module: "STUDY", workspaceId, operation, provider: "OPENAI", model: config.model, usage: usageFromOpenAI(completion.usage), latencyMs: Date.now() - t0 });
   return completion.choices[0]?.message?.content?.trim() ?? "";
 }
 
@@ -48,6 +53,7 @@ export async function conductInterview(
   question: string,
   sessionHistory: Array<{ question: string; answer: string }>,
   config: AiConfig,
+  workspaceId?: string,
 ): Promise<PersonaInterviewResponse> {
   const system = `You are ${persona.name}. ${persona.description}
 
@@ -89,7 +95,7 @@ Output JSON only:
   const user = `${historyContext}Now answer this question as ${persona.name}:
 ${question}`;
 
-  const raw = await callAI(config, system, user);
+  const raw = await callAI(config, system, user, workspaceId, "persona:interview");
   try {
     return parseJson<PersonaInterviewResponse>(raw);
   } catch {

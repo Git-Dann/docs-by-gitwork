@@ -217,6 +217,7 @@ model User {
   deskReminders             DeskReminder[]
   broadcastsCreated         Broadcast[]             @relation("BroadcastCreator")
   handbookArticles          HandbookArticle[]       @relation("HandbookAuthor")
+  aiUsageLogs               AiUsageLog[]            @relation("AiUsageUser")
   // Per-user Google OAuth refresh token. Captured on sign-in. Drives the personal dashboard
   // widgets (Calendar, Gmail, Meeting summary) so each member sees only their own data.
   // Workspace-level `Workspace.googleOAuthRefreshToken` is separate and intended only for
@@ -441,6 +442,10 @@ model Workspace {
   golfClubs                   GolfClub[]
   pulseCheckStats             PulseCheckStat[]
   curatorRuns                 CuratorRun[]
+  aiUsageLogs                 AiUsageLog[]
+  /// Master switch for per-call AI usage logging (feeds the Super-Admin Analytics → AI usage
+  /// scope). Default ON; a Super Admin can disable per-workspace. Never blocks the AI call.
+  aiUsageLoggingEnabled       Boolean                    @default(true)
 }
 
 /**
@@ -3097,6 +3102,62 @@ model AiResponseCache {
 
   @@unique([workspaceId, cacheKey])
   @@index([workspaceId, updatedAt])
+}
+
+/// Which Foundry module triggered an AI call — the attribution dimension for AI-usage analytics.
+enum AiModule {
+  PULSE
+  STUDY
+  SCRIBE
+  CARE
+  CURATOR
+  DEVSIGNAL
+  DOCS
+  PROOF
+  ONBOARDING
+  SLACK
+  SUPPORT
+  MEETING
+  WIKI
+  EMBEDDING
+  OTHER
+}
+
+/// Per-call AI usage log — one row per LLM/embedding completion, written fire-and-forget by
+/// `recordAiUsage` (never blocks or fails the AI call). Feeds the Super-Admin Analytics → AI
+/// usage scope: tokens, estimated cost, latency, and success by module / model / user / time.
+/// No prompt or response text is ever stored. Append-only; a retention/rollup job can prune it.
+model AiUsageLog {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?     @relation("AiUsageUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  module   AiModule
+  provider String // "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"
+  model    String // the model actually billed (post light-tier swap)
+
+  inputTokens       Int @default(0)
+  outputTokens      Int @default(0)
+  cachedInputTokens Int @default(0) // Anthropic cache_read_input_tokens / OpenAI cached_tokens
+  cacheWriteTokens  Int @default(0) // Anthropic cache_creation_input_tokens (0 for OpenAI)
+  totalTokens       Int @default(0)
+
+  costUsd   Float   @default(0) // estimated from list pricing at write time (see ai-pricing.ts)
+  latencyMs Int?
+  success   Boolean @default(true)
+  errorKind String? // short classifier: "no_key" | "refusal" | "timeout" | "http_4xx" | "http_5xx" | "parse" | "unknown"
+
+  operation String? // free-form sub-op, e.g. "pulse:summary", "persona:interview", "draftDocument"
+  cached    Boolean @default(false) // true when served from AiResponseCache (0 tokens, 0 cost)
+
+  createdAt DateTime @default(now())
+
+  @@index([workspaceId, createdAt]) // time-series scans
+  @@index([workspaceId, module, createdAt]) // group-by-module over time
+  @@index([workspaceId, model, createdAt]) // group-by-model over time
+  @@index([workspaceId, userId, createdAt]) // per-user attribution
 }
 
 // Workspace-shared cache for AI-generated meeting summaries.

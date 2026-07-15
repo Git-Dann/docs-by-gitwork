@@ -209,6 +209,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
           messages,
           channelName ?? client?.name ?? "this project",
           ws,
+          { module: "SLACK", workspaceId: workspace.id, userId: user?.id, operation: "slackActivitySummary" },
         );
         return { response: { summary }, modelUsed: ws.aiProvider };
       },
@@ -269,6 +270,12 @@ async function summarise(
   messages: SlackMessage[],
   channelLabel: string,
   ws: WorkspaceAiFields,
+  usageContext?: {
+    module: "SLACK";
+    workspaceId: string;
+    userId?: string | null;
+    operation?: string | null;
+  },
 ): Promise<string | null> {
   const config = resolveAiConfig(ws);
   if (!config.apiKey) return null;
@@ -289,6 +296,7 @@ Format as 2–5 short bullet points starting with "•". Lead with progress/ship
       user: `Channel: ${channelLabel}\nRecent messages (oldest first):\n${transcript}`,
       maxTokens: 400,
       tier: "light",
+      usageContext,
     });
   } catch {
     return null;

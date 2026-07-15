@@ -59,6 +59,7 @@ export async function POST(
         checks: scan.checks as PulseScanCheckInput[],
       },
       aiConfig,
+      workspace.id,
     );
 
     if (!kit) return apiError("Discovery kit generation failed — check your AI provider settings.", 500);

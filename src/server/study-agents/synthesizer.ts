@@ -2,10 +2,12 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { TurnSynthesis, SessionSynthesis, StudyReportPayload, StudyTurn } from "./types";
 import type { StudyPersonaDef } from "@/config/study-personas";
 import type { AiConfig } from "@/server/pulse-ai";
+import { recordAiUsage, usageFromAnthropic, usageFromOpenAI } from "@/server/ai-usage";
 
-async function callAI(config: AiConfig, system: string, user: string, maxTokens = 2048): Promise<string> {
+async function callAI(config: AiConfig, system: string, user: string, maxTokens = 2048, workspaceId?: string, operation?: string): Promise<string> {
   if (config.provider === "ANTHROPIC") {
     const client = new Anthropic({ apiKey: config.apiKey ?? undefined });
+    const t0 = Date.now();
     const msg = await client.messages.create({
       model: config.model,
       max_tokens: maxTokens,
@@ -13,6 +15,7 @@ async function callAI(config: AiConfig, system: string, user: string, maxTokens 
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: user }],
     });
+    if (workspaceId) recordAiUsage({ module: "STUDY", workspaceId, operation, provider: "ANTHROPIC", model: config.model, usage: usageFromAnthropic(msg.usage), latencyMs: Date.now() - t0 });
     if (msg.stop_reason === "refusal") throw new Error("AI request declined (stop_reason: refusal).");
     const block = msg.content.find((b) => b.type === "text");
     if (!block || block.type !== "text") throw new Error("No text in Anthropic response");
@@ -24,6 +27,7 @@ async function callAI(config: AiConfig, system: string, user: string, maxTokens 
     apiKey: config.apiKey ?? "local",
     ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
   });
+  const t0 = Date.now();
   const completion = await client.chat.completions.create({
     model: config.model,
     max_tokens: maxTokens,
@@ -32,6 +36,7 @@ async function callAI(config: AiConfig, system: string, user: string, maxTokens 
       { role: "user", content: user },
     ],
   });
+  if (workspaceId) recordAiUsage({ module: "STUDY", workspaceId, operation, provider: "OPENAI", model: config.model, usage: usageFromOpenAI(completion.usage), latencyMs: Date.now() - t0 });
   return completion.choices[0]?.message?.content?.trim() ?? "";
 }
 
@@ -45,6 +50,7 @@ export async function synthesizeTurn(
   questionText: string,
   responses: Array<{ personaId: string; personaName: string; spoken: string; sentiment: string; painPoints: string[]; delights: string[]; confusionPoints: string[] }>,
   config: AiConfig,
+  workspaceId?: string,
 ): Promise<TurnSynthesis> {
   const system = `You are a user-research synthesiser writing a tight summary of a single interview question.
 Produce structured JSON only:
@@ -62,7 +68,7 @@ Produce structured JSON only:
 
   const user = `Question: ${questionText}\n\nResponses:\n${responsesBlock}`;
 
-  const raw = await callAI(config, system, user);
+  const raw = await callAI(config, system, user, 2048, workspaceId, "synthesizer:turn");
   try {
     return parseJson<TurnSynthesis>(raw);
   } catch {
@@ -74,6 +80,7 @@ export async function synthesizeSession(
   persona: StudyPersonaDef,
   turns: StudyTurn[],
   config: AiConfig,
+  workspaceId?: string,
 ): Promise<SessionSynthesis> {
   const system = `You are a user-research synthesiser writing a session summary for one participant.
 Output JSON only:
@@ -97,7 +104,7 @@ Output JSON only:
 
   const user = `Participant: ${persona.name} — ${persona.description}\n\nSession transcript:\n${turnsBlock}`;
 
-  const raw = await callAI(config, system, user);
+  const raw = await callAI(config, system, user, 2048, workspaceId, "synthesizer:session");
   try {
     return parseJson<SessionSynthesis>(raw);
   } catch {
@@ -109,6 +116,7 @@ export async function generateReport(
   study: { title: string; problemStatement: string; researchGoals: string[] },
   sessionSummaries: SessionSynthesis[],
   config: AiConfig,
+  workspaceId?: string,
 ): Promise<StudyReportPayload> {
   const system = `You are a senior user researcher writing the final research report.
 Output JSON only with this exact shape:
@@ -136,7 +144,7 @@ Session summaries:\n${summariesBlock}
 
 Generate the final report.`;
 
-  const raw = await callAI(config, system, user, 4096);
+  const raw = await callAI(config, system, user, 4096, workspaceId, "synthesizer:report");
   try {
     return parseJson<StudyReportPayload>(raw);
   } catch {

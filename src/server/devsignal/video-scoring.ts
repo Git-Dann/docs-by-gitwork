@@ -56,6 +56,7 @@ export async function scoreVideoTranscript(args: {
   transcript: string;
   question: string;
   workspace: WorkspaceAiFields;
+  workspaceId?: string;
 }): Promise<VideoScoreResult> {
   const transcript = args.transcript.trim();
   if (!transcript) {
@@ -85,6 +86,9 @@ export async function scoreVideoTranscript(args: {
       user: `QUESTION:\n${args.question}\n\nTRANSCRIPT:\n${transcript}`,
       maxTokens: 400,
       tier: "standard",
+      usageContext: args.workspaceId
+        ? { module: "DEVSIGNAL", workspaceId: args.workspaceId, operation: "videoScoring" }
+        : undefined,
     });
     const parsed = parseJsonObject<Record<string, unknown>>(raw);
     if (!parsed) throw new Error("Unparseable AI response");

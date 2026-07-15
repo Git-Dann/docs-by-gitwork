@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { githubRequest, githubHeaders, parseGithubRepo } from "@/lib/github";
 import type { AiConfig } from "@/server/pulse-ai";
 import { getModelForTask } from "@/server/pulse-ai";
+import { recordAiUsage, usageFromAnthropic, usageFromOpenAI } from "@/server/ai-usage";
 
 export interface ProposedFix {
   checkKey: string;
@@ -169,6 +170,7 @@ async function runAnthropicLoop(
   owner: string,
   repo: string,
   proposedFixes: ProposedFix[],
+  workspaceId?: string,
 ): Promise<void> {
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: userMessage }];
 
@@ -176,6 +178,7 @@ async function runAnthropicLoop(
     { type: "text", text: FIX_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
   ];
 
+  let t0 = Date.now();
   let response = await client.messages.create({
     model,
     max_tokens: 4096,
@@ -183,6 +186,7 @@ async function runAnthropicLoop(
     system: cachedSystem,
     messages: withPrefixCache(messages),
   });
+  if (workspaceId) recordAiUsage({ module: "PULSE", workspaceId, operation: "fixAgent", provider: "ANTHROPIC", model, usage: usageFromAnthropic(response.usage), latencyMs: Date.now() - t0 });
 
   let iterations = 0;
   while (response.stop_reason === "tool_use" && iterations < 20) {
@@ -208,6 +212,7 @@ async function runAnthropicLoop(
 
     messages.push({ role: "user", content: toolResults });
 
+    t0 = Date.now();
     response = await client.messages.create({
       model,
       max_tokens: 4096,
@@ -215,6 +220,7 @@ async function runAnthropicLoop(
       system: cachedSystem,
       messages: withPrefixCache(messages),
     });
+    if (workspaceId) recordAiUsage({ module: "PULSE", workspaceId, operation: "fixAgent", provider: "ANTHROPIC", model, usage: usageFromAnthropic(response.usage), latencyMs: Date.now() - t0 });
   }
 }
 
@@ -226,6 +232,7 @@ async function runOpenAILoop(
   owner: string,
   repo: string,
   proposedFixes: ProposedFix[],
+  workspaceId?: string,
 ): Promise<void> {
   const { default: OpenAIClient } = await import("openai");
   const client = new OpenAIClient({
@@ -248,6 +255,7 @@ async function runOpenAILoop(
     { role: "user", content: userMessage },
   ];
 
+  let t0 = Date.now();
   let response = await client.chat.completions.create({
     model: aiConfig.model,
     max_tokens: 4096,
@@ -255,6 +263,7 @@ async function runOpenAILoop(
     tool_choice: "auto",
     messages,
   });
+  if (workspaceId) recordAiUsage({ module: "PULSE", workspaceId, operation: "fixAgent", provider: "OPENAI", model: aiConfig.model, usage: usageFromOpenAI(response.usage), latencyMs: Date.now() - t0 });
 
   let iterations = 0;
   while (response.choices[0]?.finish_reason === "tool_calls" && iterations < 20) {
@@ -287,6 +296,7 @@ async function runOpenAILoop(
 
     messages.push(...toolResults);
 
+    t0 = Date.now();
     response = await client.chat.completions.create({
       model: aiConfig.model,
       max_tokens: 4096,
@@ -294,6 +304,7 @@ async function runOpenAILoop(
       tool_choice: "auto",
       messages,
     });
+    if (workspaceId) recordAiUsage({ module: "PULSE", workspaceId, operation: "fixAgent", provider: "OPENAI", model: aiConfig.model, usage: usageFromOpenAI(response.usage), latencyMs: Date.now() - t0 });
   }
 }
 
@@ -446,9 +457,10 @@ Start by listing the root directory, then dive into relevant files.`;
       owner,
       repo,
       proposedFixes,
+      scan.workspaceId,
     );
   } else {
-    await runOpenAILoop(aiConfig, userMessage, owner, repo, proposedFixes);
+    await runOpenAILoop(aiConfig, userMessage, owner, repo, proposedFixes, scan.workspaceId);
   }
 
   if (proposedFixes.length === 0) {

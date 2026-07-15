@@ -313,6 +313,7 @@ export async function triggerPlanGeneration(studyId: string): Promise<void> {
       { title: study.title, problemStatement: study.problemStatement, researchGoals: study.researchGoals },
       personas,
       aiConfig,
+      workspace.id,
     );
 
     // Delete existing questions and replace
@@ -450,7 +451,7 @@ export async function runStudy(studyId: string): Promise<void> {
 
       for (const persona of personasToInterview) {
         try {
-          const response = await conductInterview(persona, study, question.text, sessionHistory, aiConfig);
+          const response = await conductInterview(persona, study, question.text, sessionHistory, aiConfig, workspace.id);
           exchanges.push({ question: question.text, response, isFollowUp: false, depth: 0 });
           allResponses.push({ personaId: persona.id, personaName: persona.name, ...response });
           sessionHistory.push({ question: question.text, answer: response.spoken });
@@ -466,11 +467,12 @@ export async function runStudy(studyId: string): Promise<void> {
               depth,
               alreadyAsked,
               aiConfig,
+              workspace.id,
             );
             if (fu.followUps.length === 0) break;
             const followUp = fu.followUps[0];
             alreadyAsked.push(followUp.question);
-            const fuResponse = await conductInterview(persona, study, followUp.question, sessionHistory, aiConfig);
+            const fuResponse = await conductInterview(persona, study, followUp.question, sessionHistory, aiConfig, workspace.id);
             exchanges.push({ question: followUp.question, response: fuResponse, isFollowUp: true, depth });
             sessionHistory.push({ question: followUp.question, answer: fuResponse.spoken });
           }
@@ -481,7 +483,7 @@ export async function runStudy(studyId: string): Promise<void> {
 
       let synthesis;
       try {
-        synthesis = await synthesizeTurn(question.text, allResponses, aiConfig);
+        synthesis = await synthesizeTurn(question.text, allResponses, aiConfig, workspace.id);
       } catch {
         // Non-fatal
       }
@@ -506,7 +508,7 @@ export async function runStudy(studyId: string): Promise<void> {
     let sessionSynthesis: SessionSynthesis | undefined;
     const primaryPersona = personaDef ?? BUILT_IN_PERSONAS[0];
     try {
-      sessionSynthesis = await synthesizeSession(primaryPersona, studyTurns, aiConfig);
+      sessionSynthesis = await synthesizeSession(primaryPersona, studyTurns, aiConfig, workspace.id);
       allSessionSyntheses.push(sessionSynthesis);
     } catch {
       // Non-fatal
@@ -529,7 +531,7 @@ export async function runStudy(studyId: string): Promise<void> {
 
   // Generate final report
   try {
-    const reportPayload = await generateReport(study, allSessionSyntheses, aiConfig);
+    const reportPayload = await generateReport(study, allSessionSyntheses, aiConfig, workspace.id);
     await prisma.studyReport.upsert({
       where: { studyId },
       create: { studyId, payload: reportPayload as object },

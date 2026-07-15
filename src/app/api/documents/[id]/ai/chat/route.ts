@@ -37,6 +37,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { AiNotConfiguredError } from "@/server/document-ai";
 import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { recordAiUsage, usageFromAnthropic } from "@/server/ai-usage";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -88,7 +89,8 @@ function mergeShape(original: unknown, candidate: unknown): unknown | null {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
-    assertCan(await getEffectiveUserOrNull(request), canGenerateAi, "use AI document authoring");
+    const effectiveUser = await getEffectiveUserOrNull(request);
+    assertCan(effectiveUser, canGenerateAi, "use AI document authoring");
     const { id } = await context.params;
     const body = chatSchema.parse(await request.json());
 
@@ -176,8 +178,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       content: m.content,
     }));
 
+    const chatModel = ws.anthropicModel || DEFAULT_MODEL;
+    const t0 = Date.now();
     const response = await client.messages.create({
-      model: ws.anthropicModel || DEFAULT_MODEL,
+      model: chatModel,
       max_tokens: 4096,
       system: [
         {
@@ -235,6 +239,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
         },
       ],
       messages: anthropicMessages,
+    });
+    recordAiUsage({
+      module: "DOCS",
+      workspaceId: workspace.id,
+      userId: effectiveUser?.id ?? null,
+      operation: "chat",
+      provider: "ANTHROPIC",
+      model: chatModel,
+      usage: usageFromAnthropic(response.usage),
+      latencyMs: Date.now() - t0,
     });
 
     // Extract text blocks (the reply) + tool_use blocks (the proposals)

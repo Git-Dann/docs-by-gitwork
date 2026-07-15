@@ -13,8 +13,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import type { PortalAnalytics } from "@/server/analytics/portal-analytics";
+import type { AiUsageAnalytics } from "@/server/ai-usage";
 
 export type { PortalAnalytics } from "@/server/analytics/portal-analytics";
+export type { AiUsageAnalytics } from "@/server/ai-usage";
 
 export function usePortalAnalytics(params: { days?: number; bucket?: "day" | "week" } = {}) {
   const qs = new URLSearchParams();
@@ -29,6 +31,39 @@ export function usePortalAnalytics(params: { days?: number; bucket?: "day" | "we
       ).then((r) => r.analytics),
     staleTime: 30_000,
   });
+}
+
+export function useAiUsageAnalytics(params: { days?: number; module?: string } = {}) {
+  const qs = new URLSearchParams();
+  if (params.days) qs.set("days", String(params.days));
+  if (params.module) qs.set("module", params.module);
+  const query = qs.toString();
+  return useQuery({
+    queryKey: ["ai-usage-analytics", query],
+    queryFn: () =>
+      apiFetch<{ analytics: AiUsageAnalytics }>(
+        `/api/admin/ai-usage${query ? `?${query}` : ""}`,
+      ).then((r) => r.analytics),
+    staleTime: 30_000,
+  });
+}
+
+/** Compact USD formatter for cost readouts: $0.0042, $3.20, $1.2k. */
+export function formatUsd(n: number | null | undefined): string {
+  if (n == null) return "—";
+  if (n === 0) return "$0";
+  if (n >= 1000) return `$${(n / 1000).toFixed(1)}k`;
+  if (n >= 1) return `$${n.toFixed(2)}`;
+  if (n >= 0.01) return `$${n.toFixed(3)}`;
+  return `$${n.toFixed(4)}`;
+}
+
+/** Compact token count: 940, 12.3k, 4.1M. */
+export function formatTokens(n: number | null | undefined): string {
+  if (n == null) return "—";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
 }
 
 // ── Display helpers ──────────────────────────────────────────────────────────

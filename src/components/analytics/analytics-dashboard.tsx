@@ -8,12 +8,13 @@
 
 import { useState } from "react";
 import { PortalAnalyticsSection } from "@/components/analytics/portal-analytics-section";
+import { AiUsageSection } from "@/components/analytics/ai-usage-section";
 
 type ScopeId = "portal" | "ai-usage" | "devsignal" | "pulse";
 
 const SCOPES: Array<{ id: ScopeId; label: string; ready: boolean }> = [
   { id: "portal", label: "Portal", ready: true },
-  { id: "ai-usage", label: "AI usage", ready: false },
+  { id: "ai-usage", label: "AI usage", ready: true },
   { id: "devsignal", label: "DevSignal", ready: false },
   { id: "pulse", label: "Pulse", ready: false },
 ];
@@ -79,6 +80,7 @@ export function AnalyticsDashboard() {
       </div>
 
       {scope === "portal" ? <PortalAnalyticsSection days={days} /> : null}
+      {scope === "ai-usage" ? <AiUsageSection days={days} /> : null}
     </div>
   );
 }

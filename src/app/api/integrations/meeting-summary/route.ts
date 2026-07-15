@@ -12,6 +12,7 @@ import { getUserGoogleAuth } from "@/server/google-auth";
 import { getSlackBotToken } from "@/server/slack/client";
 import { getEffectiveUserOrNull, canComputeAiFor } from "@/server/auth/effective-user";
 import { lightModelFor } from "@/server/ai-provider";
+import { recordAiUsage, usageFromAnthropic, usageFromOpenAI } from "@/server/ai-usage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -275,16 +276,27 @@ Be concise. British English. No filler.`;
 
     if (provider === "ANTHROPIC") {
       const client = new Anthropic({ apiKey });
+      const t0 = Date.now();
       const response = await client.messages.create({
         model,
         max_tokens: 1024,
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
       });
+      recordAiUsage({
+        module: "MEETING",
+        workspaceId: workspace.id,
+        operation: "meetingSummary",
+        provider: "ANTHROPIC",
+        model,
+        usage: usageFromAnthropic(response.usage),
+        latencyMs: Date.now() - t0,
+      });
       const block = response.content[0];
       summary = block.type === "text" ? block.text : "";
     } else {
       const openai = new OpenAI({ apiKey, ...(baseUrl ? { baseURL: baseUrl } : {}) });
+      const t0 = Date.now();
       const response = await openai.chat.completions.create({
         model,
         max_tokens: 1024,
@@ -292,6 +304,15 @@ Be concise. British English. No filler.`;
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
+      });
+      recordAiUsage({
+        module: "MEETING",
+        workspaceId: workspace.id,
+        operation: "meetingSummary",
+        provider,
+        model,
+        usage: usageFromOpenAI(response.usage),
+        latencyMs: Date.now() - t0,
       });
       summary = response.choices[0]?.message?.content ?? "";
     }
