@@ -4,7 +4,7 @@ import { FlagIcon, CalendarDaysIcon } from "@heroicons/react/16/solid";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import type { TaskDTO } from "@/types/tasks";
 import { AssigneeStack } from "@/components/tasks/task-avatar";
-import { TaskPriorityDot, TaskStatusBadge, TaskLabelBadge } from "@/components/tasks/task-badges";
+import { TaskPriorityDot, TaskStatusBadge, TaskLabelBadge, TaskBlockedBadge } from "@/components/tasks/task-badges";
 
 /** Is the due date in the past and the task still open? */
 function isOverdue(task: TaskDTO): boolean {
@@ -53,6 +53,8 @@ export const TaskCard = memo(function TaskCard({
         "group rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white p-3 text-left transition",
         onClick && "cursor-pointer hover:border-[var(--brand-300)] hover:shadow-[0_1px_3px_rgba(0,0,0,0.04)]",
         dragging && "rotate-1 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)]",
+        // Blocked tasks get a red left accent so they jump out even before you read the badge.
+        task.blockedReason && "border-l-2 border-l-red-400",
         className,
       )}
     >
@@ -97,6 +99,7 @@ export const TaskCard = memo(function TaskCard({
       {/* Footer meta row */}
       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
         {showStatus ? <TaskStatusBadge status={task.status} /> : null}
+        {task.blockedReason ? <TaskBlockedBadge clientReplied={Boolean(task.blockedResponseAt)} /> : null}
         {task.label ? <TaskLabelBadge label={task.label} /> : null}
 
         <span className="text-[10px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>

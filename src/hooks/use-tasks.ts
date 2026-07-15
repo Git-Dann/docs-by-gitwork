@@ -188,10 +188,15 @@ export function useUpdateTask() {
       // Only the fields that map 1:1 onto TaskDTO patch optimistically (covers the
       // list's instant "toggle done" + priority/title edits). Everything else
       // (assignees, block, dates…) reconciles on settle via invalidateAll.
-      const patch: Partial<Pick<TaskDTO, "status" | "priority" | "title">> = {};
+      const patch: Partial<Pick<TaskDTO, "status" | "priority" | "title" | "blockedReason" | "blockedAt">> = {};
       if (input.status) patch.status = input.status;
       if (input.priority) patch.priority = input.priority;
       if (typeof input.title === "string") patch.title = input.title;
+      if (input.blockedReason !== undefined) {
+        const reason = input.blockedReason?.trim() || null;
+        patch.blockedReason = reason;
+        patch.blockedAt = reason ? new Date().toISOString() : null;
+      }
       if (Object.keys(patch).length === 0) return { prev: [] as TaskListSnapshot };
       await qc.cancelQueries(TASK_LIST_FILTER);
       const prev = patchTaskLists(qc, (tasks) => tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)));

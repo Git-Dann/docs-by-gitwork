@@ -9,6 +9,7 @@ import { ApiDocsReference, normalizeApiDocsContent } from "./api-docs-page-edito
 import { ChangelogSection } from "./changelog-section";
 import { CourseRequestsSection } from "./course-requests-section";
 import { WikiIntakeSection } from "./wiki-intake-section";
+import { WikiBlockersSection } from "./wiki-blockers-section";
 import { WikiCodeSection } from "./wiki-code-section";
 import { WikiTimelineSection } from "./wiki-timeline-section";
 import { WikiDashboard } from "./wiki-dashboard";
@@ -104,7 +105,8 @@ export function WikiPublicView({
     ...(wiki.documents.enabled && wiki.documents.documents.length > 0
       ? (["documents"] as const)
       : []),
-    ...(wiki.intakeEnabled ? (["intake"] as const) : []),
+    // Requests shows when intake is on OR there are dev-raised blockers to action.
+    ...(wiki.intakeEnabled || wiki.blockers.length > 0 ? (["intake"] as const) : []),
     ...(wiki.codeHandover.enabled && wiki.codeHandover.modules.length > 0
       ? (["code-handover"] as const)
       : []),
@@ -187,7 +189,14 @@ export function WikiPublicView({
     }
 
     if (activeSection === "intake") {
-      return <WikiIntakeSection slug={wiki.clientSlug} token={token} items={wiki.intakeItems} mode="public" />;
+      return (
+        <>
+          <WikiBlockersSection blockers={wiki.blockers} mode="public" token={token} />
+          {wiki.intakeEnabled ? (
+            <WikiIntakeSection slug={wiki.clientSlug} token={token} items={wiki.intakeItems} mode="public" />
+          ) : null}
+        </>
+      );
     }
 
     if (activeSection === "code-handover") {

@@ -98,6 +98,10 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
     startedAt: row.startedAt ? row.startedAt.toISOString() : null,
     completedAt: row.completedAt ? row.completedAt.toISOString() : null,
     archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
+    blockedReason: row.blockedReason,
+    blockedAt: row.blockedAt ? row.blockedAt.toISOString() : null,
+    blockedResponse: row.blockedResponse,
+    blockedResponseAt: row.blockedResponseAt ? row.blockedResponseAt.toISOString() : null,
     commentCount: row._count.comments,
     subtaskCount: row._count.subtasks,
     subtaskDoneCount: 0,
@@ -308,12 +312,14 @@ function statusTimestamps(
 
 export async function listTasks(
   user: EffectiveUser,
-  opts: { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string; archived?: boolean; includeSubtasks?: boolean; limit?: number; doneWithinDays?: number } = {},
+  opts: { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string; archived?: boolean; includeSubtasks?: boolean; limit?: number; doneWithinDays?: number; blocked?: boolean } = {},
 ): Promise<TaskDTO[]> {
   await ensureBaseRecords();
   const where = await clientScopeWhere(user);
   // Active views exclude archived; the Archived tab passes archived:true for only-archived.
   where.archivedAt = opts.archived ? { not: null } : null;
+  // Blocked-only (the wiki "Action needed" surface): tasks flagged blocked, any status.
+  if (opts.blocked) where.blockedReason = { not: null };
   if (opts.clientId) {
     // Intersect the requested client with the scope — a restricted user asking
     // for a client they aren't assigned to gets nothing.
@@ -733,6 +739,8 @@ export async function updateTask(
     dueDate?: string | null;
     metadata?: Record<string, unknown> | null;
     archived?: boolean;
+    /** Set/clear the blocked flag. Empty/null clears the block (and its client response). */
+    blockedReason?: string | null;
   },
 ): Promise<TaskDTO> {
   const existing = await prisma.task.findFirst({
@@ -773,6 +781,19 @@ export async function updateTask(
   }
   if (input.dueDate !== undefined) data.dueDate = input.dueDate ? new Date(input.dueDate) : null;
   if (input.archived !== undefined) data.archivedAt = input.archived ? new Date() : null;
+  if (input.blockedReason !== undefined) {
+    const reason = input.blockedReason?.trim() || null;
+    data.blockedReason = reason;
+    // Stamp blockedAt when newly blocking; clearing the block wipes the timestamp AND the
+    // client's response (fresh slate — no stale reply lingering on an unblocked task).
+    if (reason) {
+      data.blockedAt = new Date();
+    } else {
+      data.blockedAt = null;
+      data.blockedResponse = null;
+      data.blockedResponseAt = null;
+    }
+  }
   if (input.status !== undefined && input.status !== existing.status) {
     data.status = input.status;
     Object.assign(data, statusTimestamps(existing.status as TaskStatus, input.status, existing));
@@ -1006,6 +1027,51 @@ export async function autoArchiveDoneTasks(olderThanDays = 30): Promise<{ archiv
     data: { archivedAt: new Date() },
   });
   return { archived: res.count };
+}
+
+/**
+ * Client responds to a blocker from the public wiki. Records the reply on the task and pings
+ * the assignees (in-app). No-op if the task isn't (or is no longer) blocked. Caller (the public
+ * wiki route) has already verified the task belongs to the token's wiki + the access cookie.
+ */
+export async function respondToWikiBlocker(taskId: string, response: string | null): Promise<void> {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: {
+      id: true,
+      title: true,
+      workspaceId: true,
+      clientId: true,
+      blockedReason: true,
+      assigneeId: true,
+      assignees: { select: { id: true } },
+      client: { select: { slug: true } },
+    },
+  });
+  if (!task || !task.blockedReason) return; // unblocked or gone — nothing to record
+  await prisma.task.update({
+    where: { id: taskId },
+    data: { blockedResponse: response?.trim() || null, blockedResponseAt: new Date() },
+  });
+  const assigneeIds =
+    task.assignees.length > 0
+      ? task.assignees.map((a) => a.id)
+      : task.assigneeId
+        ? [task.assigneeId]
+        : [];
+  if (assigneeIds.length > 0) {
+    dispatchNotification({
+      event: "tasks.blocker_response",
+      workspaceId: task.workspaceId,
+      target: { kind: "users", userIds: assigneeIds },
+      clientId: task.clientId,
+      title: "Client responded to a blocker",
+      body: task.title,
+      actionUrl: clientTasksUrl(task.client.slug),
+      groupKey: "tasks.blocker_response",
+      metadata: { taskIds: [task.id] },
+    });
+  }
 }
 
 /**

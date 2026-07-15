@@ -2904,6 +2904,7 @@ export function updateTask(
     dueDate?: string | null;
     metadata?: Record<string, unknown> | null;
     archived?: boolean;
+    blockedReason?: string | null;
   },
 ): Promise<TaskDTO> {
   return apiFetch(`/api/tasks/${id}`, {
@@ -3352,8 +3353,8 @@ export async function setClientDesignSystemGuidelinesEnabled(
 
 // ─── Client Wiki ──────────────────────────────────────────────────────────────
 
-import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiUserSummary } from "@/server/wiki";
-export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiUserSummary };
+import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiBlockerRecord, WikiUserSummary } from "@/server/wiki";
+export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiBlockerRecord, WikiUserSummary };
 import type {
   WikiCodeHandoverSection,
   WikiCodeModuleRecord,
@@ -3456,6 +3457,19 @@ export async function createPublicWikiIntakeItem(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
+  });
+}
+
+/** Public: client replies to a blocked-task "Action needed" item from their wiki. */
+export async function respondToWikiBlocker(
+  token: string,
+  taskId: string,
+  response: string | null,
+): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/api/wiki/${token}/blockers/${taskId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ response }),
   });
 }
 

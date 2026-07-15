@@ -89,6 +89,97 @@ function scribeSourceFileUrl(meeting: Pick<ScribeMeeting, "conferenceRecordName"
   return `https://docs.google.com/document/d/${encodeURIComponent(id)}/edit`;
 }
 
+// Blocked flag — dev sets the "what we need from you" ask (surfaced in the client wiki's
+// Requests page). When the client replies from there, the response shows here for the dev
+// to read before clearing the block. Any task can be blocked in any status.
+function BlockedSection({ task }: { task: TaskDetailDTO }) {
+  const update = useUpdateTask();
+  const isBlocked = Boolean(task.blockedReason);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(task.blockedReason ?? "");
+
+  async function save() {
+    const reason = draft.trim();
+    if (!reason) return;
+    await update.mutateAsync({ id: task.id, input: { blockedReason: reason } });
+    setEditing(false);
+  }
+  async function clearBlock() {
+    await update.mutateAsync({ id: task.id, input: { blockedReason: null } });
+    setDraft("");
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="rounded-[10px] border border-red-200 bg-red-50/60 p-3">
+        <p className="app-eyebrow mb-2 text-red-700">What do we need from the client?</p>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={3}
+          className="app-input w-full resize-y text-sm"
+          placeholder="e.g. Need final logo assets + sign-off on the checkout copy before we can integrate."
+          autoFocus
+        />
+        <p className="mt-1.5 text-[11px] text-[var(--text-4)]">
+          This shows in the client&rsquo;s wiki under Requests → Action needed.
+        </p>
+        <div className="mt-2 flex items-center gap-2">
+          <Button type="button" variant="primary" size="sm" onClick={() => void save()} loading={update.isPending} disabled={!draft.trim()}>
+            {isBlocked ? "Update block" : "Mark blocked"}
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => { setDraft(task.blockedReason ?? ""); setEditing(false); }}>
+            Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isBlocked) {
+    return (
+      <button
+        type="button"
+        onClick={() => { setDraft(""); setEditing(true); }}
+        className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-3)] transition hover:border-red-300 hover:text-red-700"
+      >
+        Mark blocked (needs client)
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-[10px] border border-red-200 bg-red-50/60 p-3">
+      <div className="flex items-center justify-between">
+        <p className="app-eyebrow text-red-700">Blocked — needs client</p>
+        {task.blockedResponseAt ? (
+          <span className="rounded-[4px] border border-teal-300 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700">
+            CLIENT REPLIED
+          </span>
+        ) : (
+          <span className="text-[10px] text-red-700/70">Awaiting client</span>
+        )}
+      </div>
+      <p className="mt-1.5 whitespace-pre-wrap text-sm text-[var(--text-2)]">{task.blockedReason}</p>
+      {task.blockedResponse ? (
+        <div className="mt-2 rounded-[8px] border border-teal-200 bg-white p-2.5">
+          <p className="app-eyebrow mb-1 text-teal-700">Client responded{task.blockedResponseAt ? ` · ${formatDate(task.blockedResponseAt)}` : ""}</p>
+          <p className="whitespace-pre-wrap text-sm text-[var(--text-2)]">{task.blockedResponse}</p>
+        </div>
+      ) : null}
+      <div className="mt-2 flex items-center gap-2">
+        <Button type="button" variant="primary" size="sm" onClick={() => void clearBlock()} loading={update.isPending}>
+          Clear block
+        </Button>
+        <Button type="button" variant="secondary" size="sm" onClick={() => { setDraft(task.blockedReason ?? ""); setEditing(true); }}>
+          Edit ask
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ScribeSourcePanel({ task }: { task: TaskDetailDTO }) {
   const source = task.scribeSource;
   const [open, setOpen] = useState(false);
@@ -375,6 +466,8 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
                   <span style={MONO}>{formatDate(task.updatedAt)}</span>
                 </MetaRow>
               </div>
+
+              <BlockedSection task={task} />
 
               {task.scribeSource ? <ScribeSourcePanel task={task} /> : null}
 

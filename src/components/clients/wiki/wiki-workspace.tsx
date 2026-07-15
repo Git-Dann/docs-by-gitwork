@@ -33,6 +33,7 @@ import { ChangelogEntryForm } from "./changelog-entry-form";
 import { CourseRequestsSection } from "./course-requests-section";
 import { GolfDataConsoleView } from "./golf-data-console";
 import { WikiIntakeSection } from "./wiki-intake-section";
+import { WikiBlockersSection } from "./wiki-blockers-section";
 import { WikiCodeSection } from "./wiki-code-section";
 import { CourseRequestForm, type CourseRequestPayload } from "./course-request-form";
 import { CourseFeedbackImportModal } from "./course-feedback-import-modal";
@@ -933,7 +934,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   );
   const monitorsOn = wiki.monitors.enabled;
   const documentsOn = wiki.documents.enabled;
-  const intakeOn = wiki.intakeEnabled;
+  // Requests section shows when intake is enabled OR there are dev-raised blockers to surface.
+  const intakeOn = wiki.intakeEnabled || wiki.blockers.length > 0;
   const codeOn = wiki.codeHandover.enabled;
   // A fresh wiki shows only Dashboard + Timeline (both permanent, non-deletable).
   // Every other section appears once it has real content OR is explicitly enabled,
@@ -1263,7 +1265,12 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       return <WikiCodeSection slug={slug} section={wiki!.codeHandover} mode="internal" />;
     }
     if (activeSection === "intake") {
-      return <WikiIntakeSection slug={slug} items={wiki!.intakeItems} mode="internal" />;
+      return (
+        <>
+          <WikiBlockersSection blockers={wiki!.blockers} mode="internal" />
+          {wiki!.intakeEnabled ? <WikiIntakeSection slug={slug} items={wiki!.intakeItems} mode="internal" /> : null}
+        </>
+      );
     }
 
     // ── Design System — embedded inline (has its own action bar)

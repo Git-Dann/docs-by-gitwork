@@ -3366,6 +3366,15 @@ model Task {
   /// standup "Done today" section — a task counts as done-today when
   /// completedAt falls on the dev's workDate.
   completedAt        DateTime?
+  /// Blocked flag (orthogonal to status): set = the task is blocked waiting on the client;
+  /// the text is the "what we need from you" ask surfaced in the client wiki's Requests page.
+  /// Null = not blocked. A task can be blocked in any status (e.g. DOING + blocked).
+  blockedReason      String?      @db.Text
+  blockedAt          DateTime?
+  /// The client's reply from the public wiki (null until they respond). blockedResponseAt
+  /// drives the dev-side "client replied" indicator + the response notification.
+  blockedResponse    String?      @db.Text
+  blockedResponseAt  DateTime?
   /// Imported ClickUp custom fields (Dept, Build Number, QA, Category…). Display-only.
   metadata           Json?
   /// Source ClickUp task id (one-time migration). Indexed, NOT unique.

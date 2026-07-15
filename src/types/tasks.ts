@@ -80,6 +80,13 @@ export type TaskDTO = {
   completedAt: string | null;
   /** Set when soft-archived (hidden from active views). Null = active. */
   archivedAt: string | null;
+  /** Blocked flag — set = blocked waiting on the client; the text is the ask shown in the
+   *  wiki Requests page. Null = not blocked. Orthogonal to `status`. */
+  blockedReason: string | null;
+  blockedAt: string | null;
+  /** The client's reply from the public wiki (null until they respond). */
+  blockedResponse: string | null;
+  blockedResponseAt: string | null;
   commentCount: number;
   subtaskCount: number;
   subtaskDoneCount: number;

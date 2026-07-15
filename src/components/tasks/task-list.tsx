@@ -199,6 +199,19 @@ export function TaskList({
                         >
                           {task.title}
                         </span>
+                        {task.blockedReason ? (
+                          <span
+                            className={cn(
+                              "shrink-0 rounded-[4px] border px-1.5 py-0.5 text-[10px] font-semibold",
+                              task.blockedResponseAt
+                                ? "border-teal-300 bg-teal-50 text-teal-700"
+                                : "border-red-300 bg-red-50 text-red-700",
+                            )}
+                            title={task.blockedReason}
+                          >
+                            {task.blockedResponseAt ? "CLIENT REPLIED" : "BLOCKED"}
+                          </span>
+                        ) : null}
                         {showClient ? (
                           <span className="shrink-0 truncate text-[11px] text-[var(--text-4)]">· {task.client.name}</span>
                         ) : null}

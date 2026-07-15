@@ -83,3 +83,27 @@ export function TaskLabelBadge({ label, className }: { label: TaskLabel; classNa
     </span>
   );
 }
+
+// Blocked flag — a loud red chip so a blocked task stands out on the board/list at a glance.
+// `awaitingReply` dims it slightly once the client has responded (dev's turn to act).
+export function TaskBlockedBadge({
+  clientReplied = false,
+  className,
+}: {
+  clientReplied?: boolean;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 truncate rounded-[4px] border px-1.5 py-0.5 text-[10px] font-semibold",
+        clientReplied
+          ? "border-teal-300 bg-teal-50 text-teal-700"
+          : "border-red-300 bg-red-50 text-red-700",
+        className,
+      )}
+    >
+      {clientReplied ? "CLIENT REPLIED" : "BLOCKED"}
+    </span>
+  );
+}

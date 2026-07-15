@@ -1012,6 +1012,8 @@ export const taskUpdateSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
   // Soft-archive toggle: true archives (stamps archivedAt), false unarchives (clears it).
   archived: z.boolean().optional(),
+  // Blocked flag: a non-empty string blocks (the client-facing ask); "" or null clears it.
+  blockedReason: z.string().max(2000).nullable().optional(),
 });
 
 /**

@@ -61,6 +61,21 @@ export interface CourseRequestRecord {
   updatedAt: string;
 }
 
+/** A blocked task surfaced to the client in the Requests section. Client-safe: the ask,
+ *  the block age, and the client's own reply — never assignees or internal task fields. */
+export interface WikiBlockerRecord {
+  taskId: string;
+  title: string;
+  /** The dev's "what we need from you" ask. */
+  blockedReason: string;
+  blockedAt: string | null;
+  /** Optional feature-block/category name for context. */
+  category: string | null;
+  /** The client's reply + when (null until they respond). */
+  blockedResponse: string | null;
+  blockedResponseAt: string | null;
+}
+
 export interface WikiIntakeItemRecord {
   id: string;
   type: WikiIntakeItemType;
@@ -149,6 +164,9 @@ export interface WikiDTO {
   intakeItems: WikiIntakeItemRecord[];
   /** Whether the Requests (client intake) section is enabled for this wiki. */
   intakeEnabled: boolean;
+  /** Tasks the devs flagged blocked-on-client — surfaced in the Requests section as an
+   *  "Action needed" list. Client-safe subset (no assignees/internal notes). */
+  blockers: WikiBlockerRecord[];
   /** Project delivery timeline (feature blocks + milestones) — same source as /timeline/[token]. */
   timeline: WikiTimeline;
   /** The client's design system tokens, when one exists (null otherwise). */
@@ -361,6 +379,31 @@ async function loadWikiHeaderLinks(clientId: string): Promise<WikiHeaderLinks | 
   return { platformName: platform.name, productionUrl: platform.url, stagingUrl: platform.stagingUrl };
 }
 
+async function loadWikiBlockers(clientId: string): Promise<WikiBlockerRecord[]> {
+  const rows = await prisma.task.findMany({
+    where: { clientId, blockedReason: { not: null }, archivedAt: null },
+    orderBy: { blockedAt: "asc" },
+    select: {
+      id: true,
+      title: true,
+      blockedReason: true,
+      blockedAt: true,
+      blockedResponse: true,
+      blockedResponseAt: true,
+      featureBlock: { select: { name: true } },
+    },
+  });
+  return rows.map((r) => ({
+    taskId: r.id,
+    title: r.title,
+    blockedReason: r.blockedReason ?? "",
+    blockedAt: r.blockedAt ? r.blockedAt.toISOString() : null,
+    category: r.featureBlock?.name ?? null,
+    blockedResponse: r.blockedResponse,
+    blockedResponseAt: r.blockedResponseAt ? r.blockedResponseAt.toISOString() : null,
+  }));
+}
+
 async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
   const blocks = await prisma.featureBlock.findMany({
     where: { clientId },
@@ -542,6 +585,7 @@ async function buildDTO(
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .map(serializeWikiIntakeItem),
     intakeEnabled: wiki.intakeEnabled ?? true,
+    blockers: await loadWikiBlockers(wiki.clientId),
     timeline: await loadWikiTimeline(wiki.clientId),
     designSystem: await loadWikiDesignSystem(wiki.clientId),
     monitors: await loadWikiMonitors(wiki.clientId),
