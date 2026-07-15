@@ -26,6 +26,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { recordAiUsage, usageFromAnthropic } from "@/server/ai-usage";
 import { SECTION_REGISTRY } from "@/lib/sections/registry";
 import type { ProposalDocument, ProposalSection, SectionKey } from "@/types/proposal";
 
@@ -257,6 +258,7 @@ export async function draftDocument(input: DraftDocumentInput): Promise<DraftDoc
   ].join("\n");
 
   // ── Anthropic call with tool_use for structured output ──────────────────────────────
+  const t0 = Date.now();
   const response = await client.messages.create({
     model,
     max_tokens: 8192,
@@ -293,6 +295,15 @@ export async function draftDocument(input: DraftDocumentInput): Promise<DraftDoc
     ],
     tool_choice: { type: "tool", name: "submit_document_draft" },
     messages: [{ role: "user", content: userMessage }],
+  });
+  recordAiUsage({
+    module: "DOCS",
+    workspaceId: input.workspaceId,
+    operation: "draftDocument",
+    provider: "ANTHROPIC",
+    model,
+    usage: usageFromAnthropic(response.usage),
+    latencyMs: Date.now() - t0,
   });
 
   if (response.stop_reason === "refusal") {
@@ -406,6 +417,7 @@ export async function expandSection(input: ExpandSectionInput): Promise<ExpandSe
     "```",
   ].join("\n");
 
+  const t0 = Date.now();
   const response = await client.messages.create({
     model,
     max_tokens: 4096,
@@ -430,6 +442,15 @@ export async function expandSection(input: ExpandSectionInput): Promise<ExpandSe
     ],
     tool_choice: { type: "tool", name: "submit_section" },
     messages: [{ role: "user", content: userMessage }],
+  });
+  recordAiUsage({
+    module: "DOCS",
+    workspaceId: input.workspaceId,
+    operation: "expandSection",
+    provider: "ANTHROPIC",
+    model,
+    usage: usageFromAnthropic(response.usage),
+    latencyMs: Date.now() - t0,
   });
 
   if (response.stop_reason === "refusal") {

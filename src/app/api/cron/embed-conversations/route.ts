@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
     const workspace = await prisma.workspace.findFirst({
       where: { slug: DEFAULT_WORKSPACE_SLUG },
       select: {
+        id: true,
         aiProvider: true,
         anthropicApiKey: true, anthropicModel: true,
         openaiApiKey: true, openaiModel: true,
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
 
     for (const { id } of rows) {
       try {
-        await embedConversation(id, workspace);
+        await embedConversation(id, workspace, workspace.id);
         embedded++;
       } catch (err) {
         errors.push(`${id}: ${err instanceof Error ? err.message : String(err)}`);

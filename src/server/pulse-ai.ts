@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { PulseAnalysisOutput, PulseScanCheckInput, PulseScanInputType, DiscoveryKit } from "@/types/pulse";
 import { resolveAgentPrompt } from "@/server/agent-config";
 import { dedupeGapsAgainstBlockers } from "@/server/pulse-checks/dedupe-findings";
+import { recordAiUsage, usageFromAnthropic, usageFromOpenAI } from "@/server/ai-usage";
 
 export type AiConfig = { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null };
 export type AiTask = "synthesis" | "discovery" | "competitor" | "fix-agent";
@@ -539,6 +540,7 @@ export async function analyseWithClaude(
     authContent?: string | null;
   },
   aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null },
+  workspaceId?: string,
 ): Promise<PulseAnalysisOutput> {
   if (!aiConfig.apiKey) {
     throw Object.assign(
@@ -770,6 +772,7 @@ For targetArchitecture: recommend the ideal 2026 stack for THIS product type, on
     // Both calls run in parallel via Promise.all — total time is max(A, B) instead of A+B.
     const client = new Anthropic({ apiKey: aiConfig.apiKey, timeout: 180_000, maxRetries: 0 });
 
+    const t0 = Date.now();
     const [summaryMessage, detailMessage] = await Promise.all([
       withRetry(() =>
         client.messages.create({
@@ -797,6 +800,13 @@ For targetArchitecture: recommend the ideal 2026 stack for THIS product type, on
         })
       ),
     ]);
+
+    if (workspaceId) {
+      const latencyMs = Date.now() - t0;
+      const model = getModelForTask(aiConfig);
+      recordAiUsage({ module: "PULSE", workspaceId, operation: "analyse", provider: "ANTHROPIC", model, usage: usageFromAnthropic(summaryMessage.usage), latencyMs });
+      recordAiUsage({ module: "PULSE", workspaceId, operation: "analyse", provider: "ANTHROPIC", model, usage: usageFromAnthropic(detailMessage.usage), latencyMs });
+    }
 
     const summaryToolBlock = summaryMessage.content.find((b) => b.type === "tool_use");
     if (!summaryToolBlock || summaryToolBlock.type !== "tool_use") {
@@ -843,6 +853,7 @@ For targetArchitecture: recommend the ideal 2026 stack for THIS product type, on
     ...(aiConfig.baseUrl ? { baseURL: aiConfig.baseUrl } : {}),
   });
 
+  const t0 = Date.now();
   const [summaryCompletion, detailCompletion] = await Promise.all([
     withRetry(() =>
       openaiClient.chat.completions.create({
@@ -865,6 +876,12 @@ For targetArchitecture: recommend the ideal 2026 stack for THIS product type, on
       })
     ),
   ]);
+
+  if (workspaceId) {
+    const latencyMs = Date.now() - t0;
+    recordAiUsage({ module: "PULSE", workspaceId, operation: "analyse", provider: "OPENAI", model: aiConfig.model, usage: usageFromOpenAI(summaryCompletion.usage), latencyMs });
+    recordAiUsage({ module: "PULSE", workspaceId, operation: "analyse", provider: "OPENAI", model: aiConfig.model, usage: usageFromOpenAI(detailCompletion.usage), latencyMs });
+  }
 
   const rawSummary = summaryCompletion.choices[0]?.message?.content?.trim() ?? "";
   const rawDetail = detailCompletion.choices[0]?.message?.content?.trim() ?? "";
@@ -940,6 +957,7 @@ export async function generateDiscoveryKit(
     checks: PulseScanCheckInput[];
   },
   aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null },
+  workspaceId?: string,
 ): Promise<DiscoveryKit | null> {
   if (!aiConfig.apiKey) return null;
 
@@ -1006,12 +1024,14 @@ Generate a discovery call briefing. Return JSON with this shape:
 
     if (aiConfig.provider === "ANTHROPIC") {
       const client = new Anthropic({ apiKey: aiConfig.apiKey, timeout: 45_000, maxRetries: 0 });
+      const t0 = Date.now();
       const message = await client.messages.stream({
         model: getModelForTask(aiConfig),
         max_tokens: 2048,
         system: [{ type: "text", text: DISCOVERY_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: userMessage }],
       }).finalMessage();
+      if (workspaceId) recordAiUsage({ module: "PULSE", workspaceId, operation: "discoveryKit", provider: "ANTHROPIC", model: getModelForTask(aiConfig), usage: usageFromAnthropic(message.usage), latencyMs: Date.now() - t0 });
       const dBlock = message.content[0];
       if (!dBlock || dBlock.type !== "text") throw new Error("Unexpected response format from AI.");
       rawContent = dBlock.text ?? "";
@@ -1021,6 +1041,7 @@ Generate a discovery call briefing. Return JSON with this shape:
         apiKey: aiConfig.apiKey,
         baseURL: aiConfig.baseUrl ?? undefined,
       });
+      const t0 = Date.now();
       const completion = await client.chat.completions.create({
         model: aiConfig.model,
         max_tokens: 2048,
@@ -1029,6 +1050,7 @@ Generate a discovery call briefing. Return JSON with this shape:
           { role: "user", content: userMessage },
         ],
       });
+      if (workspaceId) recordAiUsage({ module: "PULSE", workspaceId, operation: "discoveryKit", provider: "OPENAI", model: aiConfig.model, usage: usageFromOpenAI(completion.usage), latencyMs: Date.now() - t0 });
       rawContent = completion.choices[0]?.message?.content ?? "";
     }
 
@@ -1060,6 +1082,7 @@ export async function generateCompetitorComparison(
     competitors: CompetitorScanSummary[];
   },
   aiConfig: AiConfig,
+  workspaceId?: string,
 ): Promise<CompetitorComparison | null> {
   if (!aiConfig.apiKey || input.competitors.length === 0) return null;
 
@@ -1089,22 +1112,26 @@ Return JSON with exactly this shape:
 
     if (aiConfig.provider === "ANTHROPIC") {
       const client = new Anthropic({ apiKey: aiConfig.apiKey, timeout: 30_000, maxRetries: 0 });
+      const t0 = Date.now();
       const message = await client.messages.stream({
         model: getModelForTask(aiConfig),
         max_tokens: 1024,
         messages: [{ role: "user", content: userMessage }],
       }).finalMessage();
+      if (workspaceId) recordAiUsage({ module: "PULSE", workspaceId, operation: "competitorComparison", provider: "ANTHROPIC", model: getModelForTask(aiConfig), usage: usageFromAnthropic(message.usage), latencyMs: Date.now() - t0 });
       const cBlock = message.content[0];
       if (!cBlock || cBlock.type !== "text") throw new Error("Unexpected response format from AI.");
       rawContent = cBlock.text ?? "";
     } else {
       const { default: OpenAI } = await import("openai");
       const client = new OpenAI({ apiKey: aiConfig.apiKey, baseURL: aiConfig.baseUrl ?? undefined });
+      const t0 = Date.now();
       const completion = await client.chat.completions.create({
         model: getModelForTask(aiConfig),
         max_tokens: 1024,
         messages: [{ role: "user", content: userMessage }],
       });
+      if (workspaceId) recordAiUsage({ module: "PULSE", workspaceId, operation: "competitorComparison", provider: "OPENAI", model: getModelForTask(aiConfig), usage: usageFromOpenAI(completion.usage), latencyMs: Date.now() - t0 });
       rawContent = completion.choices[0]?.message?.content ?? "";
     }
 

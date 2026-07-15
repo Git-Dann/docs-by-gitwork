@@ -11,6 +11,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { VisualAgentInsights } from "@/types/pulse";
+import { recordAiUsage, usageFromAnthropic } from "@/server/ai-usage";
 
 type AiConfig = { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null };
 
@@ -91,7 +92,7 @@ async function captureScreenshot(url: string): Promise<CaptureResult> {
   }
 }
 
-async function analyseScreenshot(base64Png: string, aiConfig: AiConfig): Promise<VisionResult | null> {
+async function analyseScreenshot(base64Png: string, aiConfig: AiConfig, workspaceId?: string): Promise<VisionResult | null> {
   if (!aiConfig.apiKey) return null;
   try {
     const client = new Anthropic({ apiKey: aiConfig.apiKey, timeout: VISION_TIMEOUT_MS, maxRetries: 1 });
@@ -104,7 +105,9 @@ async function analyseScreenshot(base64Png: string, aiConfig: AiConfig): Promise
         ],
       },
     ];
+    const t0 = Date.now();
     const response = await client.messages.create({ model: aiConfig.model, max_tokens: 600, messages });
+    if (workspaceId) recordAiUsage({ module: "PULSE", workspaceId, operation: "visualAgent", provider: "ANTHROPIC", model: aiConfig.model, usage: usageFromAnthropic(response.usage), latencyMs: Date.now() - t0 });
     const textBlock = response.content.find((b) => b.type === "text");
     if (!textBlock || textBlock.type !== "text") return null;
     const match = textBlock.text.match(/\{[\s\S]*\}/);
@@ -119,12 +122,12 @@ async function analyseScreenshot(base64Png: string, aiConfig: AiConfig): Promise
  * Best-effort visual-quality scan. Returns null unless the provider is Anthropic,
  * a screenshot is captured, and the model returns parseable scores.
  */
-export async function runVisualAgent(url: string, aiConfig: AiConfig): Promise<VisualAgentInsights | null> {
+export async function runVisualAgent(url: string, aiConfig: AiConfig, workspaceId?: string): Promise<VisualAgentInsights | null> {
   if (aiConfig.provider !== "ANTHROPIC" || !aiConfig.apiKey) return null;
 
   const run = (async (): Promise<VisualAgentInsights | null> => {
     const cap = await captureScreenshot(url);
-    const r = cap.base64 ? await analyseScreenshot(cap.base64, aiConfig) : null;
+    const r = cap.base64 ? await analyseScreenshot(cap.base64, aiConfig, workspaceId) : null;
     // Return insights if we got EITHER vision scores OR an axe a11y result.
     if (!r && cap.a11yViolations === null) return null;
     return {

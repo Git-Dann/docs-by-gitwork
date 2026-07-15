@@ -741,6 +741,7 @@ export async function reanalysePulseScan(
           checks,
         },
         aiConfig,
+        existing.workspaceId,
       ),
       200_000,
       "AI re-analysis",
@@ -777,6 +778,7 @@ export async function reanalysePulseScan(
             checks,
           },
           aiConfig,
+          existing.workspaceId,
         ),
         60_000,
         "discovery kit",
@@ -833,9 +835,10 @@ export async function runAnalysis(
     // bail out early rather than corrupting results with double-writes.
     const staleScan = await prisma.pulseScan.findUnique({
       where: { id: scanId },
-      select: { status: true, startedAt: true, targetMarkets: true },
+      select: { status: true, startedAt: true, targetMarkets: true, workspaceId: true },
     });
     if (staleScan && staleScan.status !== "RUNNING") return;
+    const workspaceId = staleScan?.workspaceId;
     // User-declared markets the product serves (drives compliance filtering + scorecard).
     const declaredMarkets = (Array.isArray(staleScan?.targetMarkets) ? staleScan!.targetMarkets : [])
       .filter((m): m is string => typeof m === "string")
@@ -955,7 +958,7 @@ export async function runAnalysis(
     // final persist. URL scans only; gated to the Anthropic provider inside the agent.
     const visualPromise: Promise<VisualAgentInsights | null> =
       input.inputType === "URL" && input.inputUrl
-        ? runVisualAgent(input.inputUrl, aiConfig).catch(() => null)
+        ? runVisualAgent(input.inputUrl, aiConfig, workspaceId).catch(() => null)
         : Promise.resolve(null);
 
     // ─── ANALYSING phase ──────────────────────────────────────────────────────
@@ -1025,6 +1028,7 @@ export async function runAnalysis(
               authContent,
             },
             aiConfig,
+            workspaceId,
           ),
           200_000,
           "AI analysis",
@@ -1075,6 +1079,7 @@ export async function runAnalysis(
                 checks: allChecks,
               },
               aiConfig,
+              workspaceId,
             ),
             60_000,
             "discovery kit",
@@ -1085,6 +1090,7 @@ export async function runAnalysis(
             generateCompetitorComparison(
               { projectName: input.projectName, mainScore: healthScore, mainTechStack: techStack, competitors: competitorScans },
               aiConfig,
+              workspaceId,
             ),
             45_000,
             "competitor comparison",

@@ -308,6 +308,7 @@ export async function submitVideo(token: string, submission: VideoSubmission): P
     transcript,
     question: DEFAULT_VIDEO_QUESTION,
     workspace: a.workspace,
+    workspaceId: a.workspace.id,
   });
 
   // Retention: keep the transcript only with consent; otherwise a hash + word count.

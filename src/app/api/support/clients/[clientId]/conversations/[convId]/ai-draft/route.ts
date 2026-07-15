@@ -5,6 +5,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { recordAiUsage, usageFromAnthropic, usageFromOpenAI } from "@/server/ai-usage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -14,7 +15,8 @@ export async function POST(
   { params }: { params: Promise<{ clientId: string; convId: string }> },
 ) {
   try {
-    assertCan(await getEffectiveUserOrNull(_req), canGenerateAi, "generate AI support drafts");
+    const effectiveUser = await getEffectiveUserOrNull(_req);
+    assertCan(effectiveUser, canGenerateAi, "generate AI support drafts");
     const { clientId, convId } = await params;
 
     const { workspace } = await ensureBaseRecords();
@@ -89,16 +91,28 @@ Write a professional reply to the customer's most recent message.`;
 
     if (provider === "ANTHROPIC") {
       const client = new Anthropic({ apiKey });
+      const t0 = Date.now();
       const response = await client.messages.create({
         model,
         max_tokens: 1024,
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
       });
+      recordAiUsage({
+        module: "SUPPORT",
+        workspaceId: workspace.id,
+        userId: effectiveUser?.id ?? null,
+        operation: "aiDraft",
+        provider: "ANTHROPIC",
+        model,
+        usage: usageFromAnthropic(response.usage),
+        latencyMs: Date.now() - t0,
+      });
       const block = response.content[0];
       draft = block.type === "text" ? block.text : "";
     } else {
       const openai = new OpenAI({ apiKey, ...(baseUrl ? { baseURL: baseUrl } : {}) });
+      const t0 = Date.now();
       const response = await openai.chat.completions.create({
         model,
         max_tokens: 1024,
@@ -106,6 +120,16 @@ Write a professional reply to the customer's most recent message.`;
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
+      });
+      recordAiUsage({
+        module: "SUPPORT",
+        workspaceId: workspace.id,
+        userId: effectiveUser?.id ?? null,
+        operation: "aiDraft",
+        provider,
+        model,
+        usage: usageFromOpenAI(response.usage),
+        latencyMs: Date.now() - t0,
       });
       draft = response.choices[0]?.message?.content ?? "";
     }

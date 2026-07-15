@@ -10,6 +10,12 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
+import {
+  recordAiUsage,
+  usageFromAnthropic,
+  usageFromOpenAI,
+  type AiUsageContext,
+} from "@/server/ai-usage";
 
 export interface WorkspaceAiFields {
   aiProvider: string;
@@ -113,6 +119,12 @@ export interface CompleteArgs {
    * Defaults to "standard" (workspace-configured model).
    */
   tier?: "light" | "standard";
+  /**
+   * Optional attribution context — when provided, the call's token usage/cost is logged
+   * (fire-and-forget) to AiUsageLog for the Super-Admin analytics dashboard. Omit it and the
+   * call is not logged (back-compat for callers that don't have a workspace/user in scope).
+   */
+  usageContext?: AiUsageContext;
 }
 
 /**
@@ -123,40 +135,96 @@ export interface CompleteArgs {
  * same system (triage bursts, agentic loops, cached-response misses) benefit from prompt caching
  * at $0.30/MTok reads vs $3.00/MTok regular input.
  */
-export async function completeText({ config, system, user, maxTokens = 1024, tier = "standard" }: CompleteArgs): Promise<string> {
+export async function completeText({ config, system, user, maxTokens = 1024, tier = "standard", usageContext }: CompleteArgs): Promise<string> {
   if (!config.apiKey) {
     throw new Error("No AI API key configured. Add one in Settings → Integrations.");
   }
 
   const model = (tier === "light" && LIGHT_MODELS[config.provider]) ? LIGHT_MODELS[config.provider]! : config.model;
+  const t0 = Date.now();
+  const logErr = (kind: string) => {
+    if (usageContext) {
+      recordAiUsage({
+        ...usageContext,
+        provider: config.provider,
+        model,
+        usage: { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 },
+        latencyMs: Date.now() - t0,
+        success: false,
+        errorKind: kind,
+      });
+    }
+  };
 
-  if (config.provider === "ANTHROPIC") {
-    const client = new Anthropic({ apiKey: config.apiKey });
-    const res = await client.messages.create({
+  try {
+    if (config.provider === "ANTHROPIC") {
+      const client = new Anthropic({ apiKey: config.apiKey });
+      const res = await client.messages.create({
+        model,
+        max_tokens: maxTokens,
+        system: [{ type: "text" as const, text: system, cache_control: { type: "ephemeral" as const } }],
+        messages: [{ role: "user", content: user }],
+      });
+      // Current models return HTTP 200 with stop_reason "refusal" (empty/partial content) when a
+      // safety classifier declines — surface it rather than returning silent empty text.
+      if (res.stop_reason === "refusal") {
+        logErr("refusal");
+        throw new Error("AI request was declined by a safety classifier (stop_reason: refusal).");
+      }
+      if (usageContext) {
+        recordAiUsage({
+          ...usageContext,
+          provider: "ANTHROPIC",
+          model,
+          usage: usageFromAnthropic(res.usage),
+          latencyMs: Date.now() - t0,
+        });
+      }
+      const block = res.content.find((b) => b.type === "text");
+      return block && block.type === "text" ? block.text.trim() : "";
+    }
+
+    const openai = new OpenAI({ apiKey: config.apiKey, ...(config.baseUrl ? { baseURL: config.baseUrl } : {}) });
+    const res = await openai.chat.completions.create({
       model,
       max_tokens: maxTokens,
-      system: [{ type: "text" as const, text: system, cache_control: { type: "ephemeral" as const } }],
-      messages: [{ role: "user", content: user }],
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
     });
-    // Current models return HTTP 200 with stop_reason "refusal" (empty/partial content) when a
-    // safety classifier declines — surface it rather than returning silent empty text.
-    if (res.stop_reason === "refusal") {
-      throw new Error("AI request was declined by a safety classifier (stop_reason: refusal).");
+    if (usageContext) {
+      recordAiUsage({
+        ...usageContext,
+        provider: config.provider,
+        model,
+        usage: usageFromOpenAI(res.usage),
+        latencyMs: Date.now() - t0,
+      });
     }
-    const block = res.content.find((b) => b.type === "text");
-    return block && block.type === "text" ? block.text.trim() : "";
+    return res.choices[0]?.message?.content?.trim() ?? "";
+  } catch (err) {
+    // The refusal path already logged; only log unexpected SDK/transport errors here.
+    if (!(err instanceof Error && err.message.includes("stop_reason: refusal"))) {
+      logErr(classifyAiError(err));
+    }
+    throw err;
   }
+}
 
-  const openai = new OpenAI({ apiKey: config.apiKey, ...(config.baseUrl ? { baseURL: config.baseUrl } : {}) });
-  const res = await openai.chat.completions.create({
-    model,
-    max_tokens: maxTokens,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
-  });
-  return res.choices[0]?.message?.content?.trim() ?? "";
+/** Map an SDK/transport error to a short errorKind classifier for AiUsageLog. */
+function classifyAiError(err: unknown): string {
+  const status = (err as { status?: unknown } | null)?.status;
+  if (typeof status === "number") {
+    if (status === 401 || status === 403) return "no_key";
+    if (status === 429) return "rate_limit";
+    if (status >= 400 && status < 500) return "http_4xx";
+    if (status >= 500) return "http_5xx";
+  }
+  const msg = err instanceof Error ? err.message.toLowerCase() : "";
+  if (msg.includes("timeout") || msg.includes("timed out")) return "timeout";
+  if (msg.includes("api key")) return "no_key";
+  return "unknown";
 }
 
 /** Best-effort extraction of a JSON object from a model response (handles ```json fences). */

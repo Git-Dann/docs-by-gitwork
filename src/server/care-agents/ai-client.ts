@@ -1,5 +1,6 @@
 import { resolveAiConfig, completeText } from "@/server/ai-provider";
 import type { WorkspaceAiFields } from "@/server/ai-provider";
+import type { AiUsageContext } from "@/server/ai-usage";
 
 /** Minimal workspace AI config the agents need — a structural subset of both
  *  the sync `SyncContext` and the old `AgentContext`, so either can be passed. */
@@ -15,9 +16,10 @@ export async function callAI(
   userPrompt: string,
   maxTokens = 2048,
   tier: "light" | "standard" = "standard",
+  usageContext?: AiUsageContext,
 ): Promise<string> {
   const config = resolveAiConfig(ctx.workspace);
-  return completeText({ config, system: systemPrompt, user: userPrompt, maxTokens, tier });
+  return completeText({ config, system: systemPrompt, user: userPrompt, maxTokens, tier, usageContext });
 }
 
 export function extractJson<T>(text: string, fallback: T): T {

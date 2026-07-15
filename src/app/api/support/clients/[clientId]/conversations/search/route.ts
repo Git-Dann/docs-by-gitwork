@@ -30,6 +30,7 @@ export async function POST(
     const workspace = await prisma.workspace.findFirst({
       where: { slug: DEFAULT_WORKSPACE_SLUG },
       select: {
+        id: true,
         openaiApiKey: true,
         aiProvider: true,
         anthropicApiKey: true,
@@ -45,7 +46,7 @@ export async function POST(
     const apiKey = process.env.OPENAI_API_KEY ?? workspace?.openaiApiKey ?? null;
     if (!apiKey) return apiError("OpenAI API key not configured — semantic search requires an OpenAI key", 400);
 
-    const queryEmbedding = await generateEmbedding(query, apiKey);
+    const queryEmbedding = await generateEmbedding(query, apiKey, workspace?.id);
     const vectorStr = `[${queryEmbedding.join(",")}]`;
 
     const rows = await prisma.$queryRawUnsafe<SearchResult[]>(

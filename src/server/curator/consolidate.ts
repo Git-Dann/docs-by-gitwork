@@ -153,6 +153,7 @@ export async function runConsolidation(opts: {
         user: JSON.stringify(inputs),
         maxTokens: 1500,
         tier: "light",
+        usageContext: { module: "CURATOR", workspaceId: opts.workspaceId, operation: "consolidate" },
       });
       const parsed = parseJsonObject<{ proposals?: RawProposal[] }>(raw);
       return {

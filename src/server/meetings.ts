@@ -209,7 +209,14 @@ export async function summariseMeeting(meetingId: string): Promise<void> {
     // once per meeting at ingest). It's always human-reviewed before any client-facing
     // use (the automation layer is manual-gated), so "light" trades ~3.75× cost for a
     // small, operator-caught quality margin. Revert to standard if summaries thin out.
-    raw = await completeText({ config, system: SUMMARY_SYSTEM, user: userPrompt, maxTokens: 4000, tier: "light" });
+    raw = await completeText({
+      config,
+      system: SUMMARY_SYSTEM,
+      user: userPrompt,
+      maxTokens: 4000,
+      tier: "light",
+      usageContext: { module: "SCRIBE", workspaceId: meeting.workspaceId, operation: "summariseMeeting" },
+    });
   } catch (err) {
     console.error("[scribe] AI completion failed", meetingId, err);
     await prisma.meeting.update({ where: { id: meetingId }, data: { status: "ERROR" } });

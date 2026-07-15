@@ -185,6 +185,7 @@ async function aiExtractCourses(
   const wc = await prisma.workspaceClient.findUnique({
     where: { id: workspaceClientId },
     select: {
+      workspaceId: true,
       workspace: {
         select: {
           aiProvider: true,
@@ -229,7 +230,14 @@ async function aiExtractCourses(
       try {
         // Pure classification (course-request? + name + country) — Haiku-class work.
         // "light" routes to the cheaper model (~3.75× less) with no quality loss here.
-        const raw = await completeText({ config, system, user, maxTokens: 1500, tier: "light" });
+        const raw = await completeText({
+          config,
+          system,
+          user,
+          maxTokens: 1500,
+          tier: "light",
+          usageContext: { module: "WIKI", workspaceId: wc.workspaceId, operation: "courseFeedback" },
+        });
         const parsed = parseJsonObject<{ results?: Array<{ i: number; isCourseRequest?: boolean; courseName?: string; country?: string }> }>(raw);
         for (const r of parsed?.results ?? []) {
           const item = chunk[r.i];

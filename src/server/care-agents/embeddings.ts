@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
 import type { WorkspaceAiFields } from "@/server/ai-provider";
+import { recordAiUsage, usageFromOpenAI } from "@/server/ai-usage";
 
 const EMBEDDING_MODEL = "text-embedding-3-small";
 const EMBEDDING_DIM = 1536;
@@ -9,13 +10,15 @@ function resolveOpenAiKey(ws: WorkspaceAiFields): string | null {
   return process.env.OPENAI_API_KEY ?? ws.openaiApiKey ?? null;
 }
 
-export async function generateEmbedding(text: string, apiKey: string): Promise<number[]> {
+export async function generateEmbedding(text: string, apiKey: string, workspaceId?: string): Promise<number[]> {
   const client = new OpenAI({ apiKey });
+  const t0 = Date.now();
   const response = await client.embeddings.create({
     model: EMBEDDING_MODEL,
     input: text.slice(0, 8000),
     encoding_format: "float",
   });
+  if (workspaceId) recordAiUsage({ module: "EMBEDDING", workspaceId, operation: "embeddings", provider: "OPENAI", model: EMBEDDING_MODEL, usage: usageFromOpenAI(response.usage), latencyMs: Date.now() - t0 });
   return response.data[0].embedding;
 }
 
@@ -28,6 +31,7 @@ function conversationText(conv: { subject: string; preview: string | null; tags:
 export async function embedConversation(
   convId: string,
   workspace: WorkspaceAiFields,
+  workspaceId?: string,
 ): Promise<void> {
   const apiKey = resolveOpenAiKey(workspace);
   if (!apiKey) return; // No OpenAI key configured — skip silently
@@ -41,7 +45,7 @@ export async function embedConversation(
   const text = conversationText(conv);
   if (!text.trim()) return;
 
-  const embedding = await generateEmbedding(text, apiKey);
+  const embedding = await generateEmbedding(text, apiKey, workspaceId);
   const vectorStr = `[${embedding.join(",")}]`;
 
   await prisma.$executeRaw`
