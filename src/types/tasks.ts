@@ -259,6 +259,15 @@ export type SlackUpdateLogDTO = {
   createdAt: string;
 };
 
+/** Workspace-wide status counts (scoped to the caller's visible clients) — powers
+ *  the HQ tasks widget without downloading every task row. */
+export type TaskCounts = {
+  counts: Record<TaskStatus, number>;
+  total: number;
+  /** total − DONE. */
+  open: number;
+};
+
 /** Counts per status for the compact card on a client detail page. */
 export type ClientTaskSummary = {
   clientId: string;

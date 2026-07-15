@@ -22,6 +22,7 @@ import {
   uploadTaskAttachment,
   deleteTaskAttachment,
   getClientTaskSummary,
+  getTaskCounts,
   getTaskAttention,
   getMyDay,
   pushDailyUpdate,
@@ -59,6 +60,7 @@ const QK = {
     ["tasks", "list", f.clientId ?? null, f.status ?? null, f.assigneeId ?? null, f.sourceMeetingId ?? null, f.archived ?? false] as const,
   task: (id: string) => ["tasks", "detail", id] as const,
   summary: (clientId: string) => ["tasks", "summary", clientId] as const,
+  counts: () => ["tasks", "counts"] as const,
   myDay: (date?: string) => ["tasks", "myday", date ?? "today"] as const,
   roster: ["tasks", "rollup"] as const,
   memberClients: (memberId: string) => ["tasks", "member-clients", memberId] as const,
@@ -114,6 +116,17 @@ export function useTask(id: string | null) {
     queryFn: () => getTask(id as string),
     enabled: Boolean(id),
     staleTime: 15_000,
+  });
+}
+
+/** Workspace-wide task counts for the HQ widget — a cheap groupBy, not the full
+ *  task list. */
+export function useTaskCounts(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: QK.counts(),
+    queryFn: () => getTaskCounts(),
+    enabled: opts.enabled ?? true,
+    staleTime: 30_000,
   });
 }
 

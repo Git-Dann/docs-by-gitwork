@@ -2787,6 +2787,7 @@ import type {
   TaskPriority,
   TaskLabel,
   ClientTaskSummary,
+  TaskCounts,
   TaskAttentionDTO,
   MyDayDTO,
   DailyUpdateDTO,
@@ -2822,6 +2823,10 @@ export function listTasks(opts: {
 
 export function getTask(id: string): Promise<TaskDetailDTO> {
   return apiFetch(`/api/tasks/${id}`);
+}
+
+export function getTaskCounts(): Promise<TaskCounts> {
+  return apiFetch("/api/tasks/counts");
 }
 
 export function createTask(input: {

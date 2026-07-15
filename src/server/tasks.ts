@@ -26,6 +26,7 @@ import type {
   TaskUserRef,
   TaskScribeSourceRef,
   ClientTaskSummary,
+  TaskCounts,
   TaskAttentionDTO,
 } from "@/types/tasks";
 import { TASK_STATUSES, TASK_STATUS_LABELS } from "@/types/tasks";
@@ -415,6 +416,24 @@ export async function getClientTaskSummary(
   for (const g of grouped) counts[g.status as TaskStatus] = g._count._all;
   const total = TASK_STATUSES.reduce((sum, s) => sum + counts[s], 0);
   return { clientId, counts, total, openTotal: total - counts.DONE };
+}
+
+/** Workspace-wide status counts, scoped to the caller's visible clients. Powers
+ *  the HQ tasks widget with one cheap groupBy — no need to download every task. */
+export async function getWorkspaceTaskCounts(user: EffectiveUser): Promise<TaskCounts> {
+  await ensureBaseRecords();
+  const where = await clientScopeWhere(user);
+  where.parentId = null; // top-level only, matching the board
+  where.archivedAt = null; // active tasks only
+  const grouped = await prisma.task.groupBy({
+    by: ["status"],
+    where,
+    _count: { _all: true },
+  });
+  const counts = Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
+  for (const g of grouped) counts[g.status as TaskStatus] = g._count._all;
+  const total = TASK_STATUSES.reduce((sum, s) => sum + counts[s], 0);
+  return { counts, total, open: total - counts.DONE };
 }
 
 /**
