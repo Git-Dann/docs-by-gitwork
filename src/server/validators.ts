@@ -866,16 +866,30 @@ export const leaveRequestInputSchema = z
 
 export const absenceKindSchema = z.enum(["AWAY", "ILL", "WFH", "APPOINTMENT"]);
 
-export const absenceInputSchema = z.object({
-  userId: z.string().cuid(),
-  kind: absenceKindSchema,
-  note: z.string().max(500).optional(),
-  // ISO day; defaults to today (UTC) server-side when omitted.
-  date: isoDateString.optional(),
-  // Slack channel to announce in (optional — absence is still recorded without it).
-  channelId: z.string().min(1).max(64).optional(),
-  channelName: z.string().max(200).optional(),
-});
+export const absenceInputSchema = z
+  .object({
+    userId: z.string().cuid(),
+    kind: absenceKindSchema,
+    note: z.string().max(500).optional(),
+    // ISO day; defaults to today (UTC) server-side when omitted.
+    date: isoDateString.optional(),
+    // Last day inclusive (multi-day absence). Omit for a single day.
+    endDate: isoDateString.optional(),
+    // Slack channel to announce in (optional — absence is still recorded without it).
+    channelId: z.string().min(1).max(64).optional(),
+    channelName: z.string().max(200).optional(),
+    // Cover: a stand-in dev picks up this person's work on ONE client for the period.
+    coverUserId: z.string().cuid().optional(),
+    coverClientId: z.string().cuid().optional(),
+  })
+  .refine((v) => !v.coverUserId || Boolean(v.coverClientId), {
+    message: "Pick a client for the cover dev to pick up.",
+    path: ["coverClientId"],
+  })
+  .refine((v) => !v.endDate || !v.date || new Date(v.endDate) >= new Date(v.date), {
+    message: "endDate must be on or after the start date",
+    path: ["endDate"],
+  });
 
 export const leaveRequestUpdateSchema = z.object({
   startDate: isoDateString.optional(),

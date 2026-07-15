@@ -198,6 +198,7 @@ model User {
   leaveRequestsApproved     LeaveRequest[]          @relation("LeaveApprover")
   absences                  Absence[]               @relation("AbsenceUser")
   absencesCreated           Absence[]               @relation("AbsenceCreator")
+  absencesCovering          Absence[]               @relation("AbsenceCover")
   expensesSubmitted         Expense[]               @relation("ExpenseClaimant")
   expensesReviewed          Expense[]               @relation("ExpenseReviewer")
   clientAssignments         ClientAssignment[]
@@ -307,6 +308,9 @@ model Workspace {
   slackSummaryChannelId       String? // legacy single-channel — kept for migration
   slackChannels               Json? // Array<{ id: string; name: string }>
   channelRoutes               Json? // { "pulse.alert": "C123", "care.escalation": "C456", ... }
+  // Backstage availability digest (combined leave + absence morning post) target.
+  availabilityDigestChannelId   String?
+  availabilityDigestChannelName String?
   emailProvider               String? // "RESEND" | "SMTP" | null
   emailApiKey                 String? // Resend API key when emailProvider = RESEND
   emailFromAddress            String?
@@ -1072,6 +1076,7 @@ model WorkspaceClient {
   tasks                    Task[]
   featureBlocks            FeatureBlock[]
   milestones               Milestone[]
+  absenceCovers            Absence[]                @relation("AbsenceCoverClient")
   /// Monthly retainer-day allocation. Optional — surfaced in the UI only when set.
   retainerDays             Int?
   /// Retainer days used in the current month (manually maintained). Paired with
@@ -3133,27 +3138,40 @@ model LeaveRequest {
 // NOT touch leave allowance and needs no approval. Marked from Backstage and
 // posted to a chosen Slack channel. Rendered as an overlay on the team calendar.
 model Absence {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   workspaceId      String
   userId           String // who is absent
-  date             DateTime // day-precision, UTC midnight (usually today)
+  date             DateTime // first day, day-precision UTC midnight (usually today)
+  endDate          DateTime? // last day inclusive; null → single day (= date)
   kind             String // AWAY | ILL | WFH | APPOINTMENT
   note             String?
   createdById      String? // who marked it
   slackChannelId   String?
   slackChannelName String?
-  slackPosted      Boolean  @default(false)
+  slackPosted      Boolean   @default(false)
   slackMessageTs   String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  // ── Cover: a stand-in dev who picks up the absent person's work on one client
+  //    for the absence period. Purely additive to the absent person's tasks; we
+  //    record exactly what we changed so it reverts cleanly (nothing changes for them).
+  coverUserId            String?
+  coverClientId          String?
+  coverTaskIds           String[] // tasks we ADDED the cover dev to (revert removes only these)
+  coverCreatedAssignment Boolean  @default(false) // did we create the temp ClientAssignment (vs it pre-existing)?
+  coverActive            Boolean  @default(false)
+  coverEndedAt           DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user      User      @relation("AbsenceUser", fields: [userId], references: [id], onDelete: Cascade)
-  createdBy User?     @relation("AbsenceCreator", fields: [createdById], references: [id])
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User             @relation("AbsenceUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy   User?            @relation("AbsenceCreator", fields: [createdById], references: [id])
+  coverUser   User?            @relation("AbsenceCover", fields: [coverUserId], references: [id])
+  coverClient WorkspaceClient? @relation("AbsenceCoverClient", fields: [coverClientId], references: [id])
 
   // One absence per person per day — re-marking updates in place.
   @@unique([workspaceId, userId, date])
   @@index([workspaceId, date])
+  @@index([coverActive])
 }
 
 model Expense {

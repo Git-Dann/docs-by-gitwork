@@ -232,15 +232,36 @@ export type AbsenceDTO = {
   userId: string;
   userName: string;
   userAvatarUrl: string | null;
-  /** ISO date (day-precision). */
+  /** ISO date (day-precision) — first day. */
   date: string;
+  /** ISO date — last day inclusive; null → single day. */
+  endDate: string | null;
   kind: AbsenceKind;
   note: string | null;
   createdById: string | null;
   createdByName: string | null;
   slackChannelName: string | null;
   slackPosted: boolean;
+  // Cover (a stand-in dev on one client for the period).
+  coverUserId: string | null;
+  coverUserName: string | null;
+  coverClientId: string | null;
+  coverClientName: string | null;
+  coverActive: boolean;
   createdAt: string;
+};
+
+/** A client the absent dev has active tasks on — cover options for a person. */
+export type CoverableClient = {
+  clientId: string;
+  clientName: string;
+  taskCount: number;
+};
+
+/** Workspace settings for the combined leave + absence morning digest. */
+export type AvailabilitySettings = {
+  digestChannelId: string | null;
+  digestChannelName: string | null;
 };
 
 /** A Slack channel option for the announce-channel picker. */

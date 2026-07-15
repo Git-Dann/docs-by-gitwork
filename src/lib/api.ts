@@ -2521,10 +2521,12 @@ export async function linkMeetingActionItemTask(
 import type {
   AbsenceDTO,
   AbsenceKind,
+  AvailabilitySettings,
   BackstageMember,
   CalendarConnectionMember,
   CalendarMonth,
   CalendarTimeline,
+  CoverableClient,
   ExpenseDTO,
   SlackChannelOption,
   LeaveAllowanceDTO,
@@ -2733,8 +2735,11 @@ export function markAbsence(input: {
   kind: AbsenceKind;
   note?: string;
   date?: string;
+  endDate?: string;
   channelId?: string;
   channelName?: string;
+  coverUserId?: string;
+  coverClientId?: string;
 }): Promise<AbsenceDTO> {
   return apiFetch("/api/backstage/absences", {
     method: "POST",
@@ -2746,8 +2751,30 @@ export function deleteAbsence(id: string): Promise<{ ok: boolean }> {
   return apiFetch(`/api/backstage/absences/${id}`, { method: "DELETE" });
 }
 
+export function endAbsenceCover(id: string): Promise<AbsenceDTO> {
+  return apiFetch(`/api/backstage/absences/${id}/end-cover`, { method: "POST" });
+}
+
+export function listCoverableClients(userId: string): Promise<CoverableClient[]> {
+  return apiFetch(`/api/backstage/absences/coverable?userId=${encodeURIComponent(userId)}`);
+}
+
 export function listSlackChannels(): Promise<{ channels: SlackChannelOption[] }> {
   return apiFetch("/api/integrations/slack/channels");
+}
+
+export function getAvailabilitySettings(): Promise<AvailabilitySettings> {
+  return apiFetch("/api/backstage/availability-settings");
+}
+
+export function setAvailabilityDigestChannel(
+  channelId: string | null,
+  channelName: string | null,
+): Promise<AvailabilitySettings> {
+  return apiFetch("/api/backstage/availability-settings", {
+    method: "PATCH",
+    body: JSON.stringify({ channelId, channelName }),
+  });
 }
 
 // ─── Tasks (Portal task tracker + standups) ────────────────────────────────

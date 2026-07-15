@@ -363,10 +363,18 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
   const absences = useMonthAbsences(year, month);
   const absencesByDay = new Map<string, AbsenceDTO[]>();
   for (const a of absences.data ?? []) {
-    const key = a.date.slice(0, 10);
-    const list = absencesByDay.get(key) ?? [];
-    list.push(a);
-    absencesByDay.set(key, list);
+    // Expand across the absence's day range (endDate inclusive; null → single day).
+    const cur = new Date(a.date.slice(0, 10) + "T00:00:00Z");
+    const end = new Date((a.endDate ?? a.date).slice(0, 10) + "T00:00:00Z");
+    let guard = 0;
+    while (cur <= end && guard < 60) {
+      const key = cur.toISOString().slice(0, 10);
+      const list = absencesByDay.get(key) ?? [];
+      list.push(a);
+      absencesByDay.set(key, list);
+      cur.setUTCDate(cur.getUTCDate() + 1);
+      guard++;
+    }
   }
 
   // ── Portal Gantt overlay → per-day markers ──
@@ -980,13 +988,20 @@ function DayDetail({
           {absences.map((a) => {
             const meta = ABSENCE_META[a.kind];
             return (
-              <div key={a.id} className="flex items-center gap-1.5 text-xs text-[var(--text-1)]">
-                <span className="shrink-0 text-sm leading-none">{meta.emoji}</span>
-                <span className="truncate font-medium">{a.userName}</span>
-                <span className="ml-auto truncate text-[10px] text-[var(--text-3)]">
-                  {meta.label}
-                  {a.note ? ` · ${a.note}` : ""}
-                </span>
+              <div key={a.id} className="text-xs">
+                <div className="flex items-center gap-1.5 text-[var(--text-1)]">
+                  <span className="shrink-0 text-sm leading-none">{meta.emoji}</span>
+                  <span className="truncate font-medium">{a.userName}</span>
+                  <span className="ml-auto truncate text-[10px] text-[var(--text-3)]">
+                    {meta.label}
+                    {a.note ? ` · ${a.note}` : ""}
+                  </span>
+                </div>
+                {a.coverActive && a.coverUserName ? (
+                  <p className="mt-0.5 truncate pl-[22px] text-[10px] text-[var(--brand-700)]">
+                    ↳ {a.coverUserName} covering {a.coverClientName}
+                  </p>
+                ) : null}
               </div>
             );
           })}

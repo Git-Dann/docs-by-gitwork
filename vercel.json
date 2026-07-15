@@ -42,6 +42,14 @@
     {
       "path": "/api/cron/wiki-monitors",
       "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/absence-cover-reconcile",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/availability-digest",
+      "schedule": "30 8 * * 1-5"
     }
   ]
 }

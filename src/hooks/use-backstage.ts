@@ -14,7 +14,11 @@ import {
   listMonthAbsences,
   markAbsence,
   deleteAbsence,
+  endAbsenceCover,
+  listCoverableClients,
   listSlackChannels,
+  getAvailabilitySettings,
+  setAvailabilityDigestChannel,
   getBackstageAlerts,
   getBackstageAllowance,
   getBackstageCalendar,
@@ -279,6 +283,26 @@ export function useDeleteAbsence() {
   });
 }
 
+export function useEndAbsenceCover() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => endAbsenceCover(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["backstage", "absences"] });
+    },
+  });
+}
+
+// Clients the selected absent person has active tasks on — cover targets.
+export function useCoverableClients(userId: string | null) {
+  return useQuery({
+    queryKey: ["backstage", "coverableClients", userId] as const,
+    queryFn: () => listCoverableClients(userId as string),
+    enabled: Boolean(userId),
+    staleTime: 30_000,
+  });
+}
+
 // Slack channel picker options (reuses the shared integrations endpoint).
 export function useSlackChannels(enabled: boolean) {
   return useQuery({
@@ -286,5 +310,26 @@ export function useSlackChannels(enabled: boolean) {
     queryFn: () => listSlackChannels(),
     enabled,
     staleTime: 5 * 60_000,
+  });
+}
+
+// Availability digest channel (combined leave + absence morning post).
+export function useAvailabilitySettings(enabled: boolean) {
+  return useQuery({
+    queryKey: ["backstage", "availabilitySettings"] as const,
+    queryFn: () => getAvailabilitySettings(),
+    enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useSetAvailabilityDigestChannel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ channelId, channelName }: { channelId: string | null; channelName: string | null }) =>
+      setAvailabilityDigestChannel(channelId, channelName),
+    onSuccess: (data) => {
+      qc.setQueryData(["backstage", "availabilitySettings"], data);
+    },
   });
 }
