@@ -1,21 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import { useTasks } from "@/hooks/use-tasks";
+import { useTaskCounts } from "@/hooks/use-tasks";
 import type { WidgetSize } from "@/components/app-overview";
 import { TASK_STATUSES, TASK_STATUS_LABELS, type TaskStatus } from "@/types/tasks";
 
+const ZERO_COUNTS = Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
+
 export default function TasksWidget({ size }: { size: WidgetSize }) {
-  const { data: tasks = [], isLoading } = useTasks({});
+  // Cheap groupBy count — not the full task list (which used to pull every row,
+  // ballooning HQ load). See getWorkspaceTaskCounts.
+  const { data, isLoading } = useTaskCounts();
 
-  const counts = useMemo(() => {
-    const c = Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
-    for (const t of tasks) c[t.status] += 1;
-    return c;
-  }, [tasks]);
-
-  const open = tasks.length - counts.DONE;
+  const counts = data?.counts ?? ZERO_COUNTS;
+  const open = data?.open ?? 0;
 
   if (isLoading) {
     return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
