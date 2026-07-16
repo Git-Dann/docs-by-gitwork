@@ -1,8 +1,9 @@
 // Gitwork Costing & Quote tool — shared DTO types (client-safe; no server imports).
 //
-// Aligned to the four packages on gitwork.co.uk. You pick a package, give it a couple of inputs, and
-// get a client price + (Super-Admin-only) internal cost & margin. The build cost comes from three
-// editable tier day-rates (Senior / Mid / Junior), seeded from the Rate Card and saved per workspace.
+// Aligned to the four packages on gitwork.co.uk. You pick a package, set the team by tier, and get a
+// client price + (Super-Admin-only) internal cost & margin. The build cost is the sum of each tier's
+// people × that tier's rate — so a mixed team (not all senior) is costed accurately. Tier rates are
+// editable (per day or per month), seeded from the Rate Card, and saved per workspace.
 
 export type PackageType = "launch_pad" | "mvp_sprint" | "greenfield" | "care_plan";
 export type DevTier = "junior" | "mid" | "senior";
@@ -19,6 +20,14 @@ export interface TierRates {
   junior: TierRate;
   mid: TierRate;
   senior: TierRate;
+}
+
+/** Team composition by tier. For build packages these are developer counts; for Care they are
+ *  engineer-days per month. */
+export interface TierCounts {
+  junior: number;
+  mid: number;
+  senior: number;
 }
 
 /** How a package's client price is formed. */
@@ -46,11 +55,8 @@ export const COSTING_PACKAGES: PackageMeta[] = [
 /** Advanced cost levers — sensible defaults; only affect the internal cost, not the client price. */
 export interface CostingAdvancedConfig {
   fxFromUsd: number;
-  /** Which tier the build is priced at. */
-  buildSeniority: DevTier;
   ukReviewOverheadPercent: number;
   contingencyPercent: number;
-  dayRateOverrideGbp?: number;
 }
 
 /** The persisted workspace costing config: the advanced levers plus the three tier rates. */
@@ -62,15 +68,15 @@ export interface PackageCostingInput {
   packageType: PackageType;
   /** Current (possibly-unsaved) tier rates from the editor, so the quote reflects edits live. */
   tierRates?: TierRates;
+  /** Team by tier — dev counts for build packages, eng-days/month for Care. */
+  team?: TierCounts;
   // Fixed packages (launch_pad, mvp_sprint):
   targetPriceGbp?: number;
   weeks?: number;
-  devs?: number;
   // Greenfield (per dev, per month):
   months?: number;
   pricePerDevMonthGbp?: number;
   // Care (per month):
-  effortDaysPerMonth?: number;
   pricePerMonthGbp?: number;
   // Advanced (shared):
   config?: Partial<CostingAdvancedConfig>;
@@ -84,6 +90,7 @@ export interface PackageCostingResult {
   internalCostGbp: number;
   marginPercent: number;
   markupPercent: number;
+  /** Effective blended £/day across the chosen team. */
   buildDayRateGbp: number;
   usedRateCard: boolean;
   breakdown: { buildCostGbp: number; ukReviewCostGbp: number; contingencyGbp: number };

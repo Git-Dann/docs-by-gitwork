@@ -1,9 +1,10 @@
 "use client";
 
 // Gitwork Costing & Quote — a Super-Admin calculator inside Studio, aligned to the four packages on
-// gitwork.co.uk. Pick a package, give it a couple of inputs, see the client price + (Super-Admin
-// only) the internal cost & margin. The build cost comes from three editable tier day-rates
-// (Senior / Mid / Junior), seeded from the Rate Card and saved to the workspace.
+// gitwork.co.uk. Pick a package, set the team by tier (Senior/Mid/Junior), see the client price +
+// (Super-Admin only) the internal cost & margin. The build cost is the sum of each tier's people ×
+// that tier's rate, so a mixed team is costed accurately. Tier rates are editable (per day or per
+// month), seeded from the Rate Card and saved to the workspace.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -16,34 +17,34 @@ import {
   type PackageCostingInput,
   type PackageType,
   type RatePeriod,
-  type TierRate,
+  type TierCounts,
   type TierRates,
 } from "@/types/costing";
 
 const gbp = (n: number) => "£" + Math.round(n).toLocaleString("en-GB");
 
-const ADVANCED_DEFAULTS: CostingAdvancedConfig = {
-  fxFromUsd: 0.79,
-  buildSeniority: "senior",
-  ukReviewOverheadPercent: 15,
-  contingencyPercent: 10,
-};
+const ADVANCED_DEFAULTS: CostingAdvancedConfig = { fxFromUsd: 0.79, ukReviewOverheadPercent: 15, contingencyPercent: 10 };
 const DEFAULT_TIER_RATES: TierRates = {
   junior: { amount: 45, period: "day" },
   mid: { amount: 50, period: "day" },
   senior: { amount: 65, period: "day" },
 };
-const WORKING_DAYS_PER_MONTH = 21.67;
-const tierRateToDay = (r: TierRate) => (r.period === "month" ? r.amount / WORKING_DAYS_PER_MONTH : r.amount);
+const TIERS: DevTier[] = ["senior", "mid", "junior"];
 
 type Form = Omit<PackageCostingInput, "packageType" | "config" | "tierRates">;
 
 function seedForm(id: PackageType): Form {
   const meta = COSTING_PACKAGES.find((p) => p.id === id)!;
-  if (id === "greenfield") return { devs: 1, months: 3, pricePerDevMonthGbp: meta.fromGbp };
-  if (id === "care_plan") return { months: 3, effortDaysPerMonth: 2, pricePerMonthGbp: meta.fromGbp };
-  return { targetPriceGbp: meta.fromGbp, weeks: id === "mvp_sprint" ? 5 : 3, devs: id === "mvp_sprint" ? 3 : 1 };
+  if (id === "greenfield") return { team: { junior: 0, mid: 1, senior: 0 }, months: 3, pricePerDevMonthGbp: meta.fromGbp };
+  if (id === "care_plan") return { team: { junior: 0, mid: 2, senior: 0 }, months: 3, pricePerMonthGbp: meta.fromGbp };
+  return {
+    targetPriceGbp: meta.fromGbp,
+    weeks: id === "mvp_sprint" ? 5 : 3,
+    team: id === "mvp_sprint" ? { junior: 0, mid: 2, senior: 1 } : { junior: 0, mid: 1, senior: 0 },
+  };
 }
+
+const emptyTeam: TierCounts = { junior: 0, mid: 0, senior: 0 };
 
 export function CostingWorkspace() {
   const [pkg, setPkg] = useState<PackageType>("launch_pad");
@@ -62,19 +63,12 @@ export function CostingWorkspace() {
     setForm(seedForm(pkg));
   }, [pkg]);
 
-  // Hydrate config + tier rates once, from the saved workspace config or the Rate-Card seed.
   useEffect(() => {
     if (hydrated.current || !cfg.data) return;
     hydrated.current = true;
     const { saved, seededTierRates, defaults } = cfg.data;
     if (saved) {
-      setConfig({
-        fxFromUsd: saved.fxFromUsd,
-        buildSeniority: saved.buildSeniority,
-        ukReviewOverheadPercent: saved.ukReviewOverheadPercent,
-        contingencyPercent: saved.contingencyPercent,
-        dayRateOverrideGbp: saved.dayRateOverrideGbp,
-      });
+      setConfig({ fxFromUsd: saved.fxFromUsd, ukReviewOverheadPercent: saved.ukReviewOverheadPercent, contingencyPercent: saved.contingencyPercent });
       setTierRates(saved.tierRates);
     } else {
       setConfig((c) => ({ ...c, fxFromUsd: defaults.fxFromUsd }));
@@ -91,9 +85,12 @@ export function CostingWorkspace() {
 
   const result = preview.data && preview.data.packageType === pkg ? preview.data : undefined;
   const setField = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
+  const setTeam = (tier: DevTier, v: number | undefined) =>
+    setForm((f) => ({ ...f, team: { ...(f.team ?? emptyTeam), [tier]: v ?? 0 } }));
   const setCfg = (patch: Partial<CostingAdvancedConfig>) => setConfig((c) => ({ ...c, ...patch }));
-  const setTier = (tier: DevTier, patch: Partial<TierRate>) => setTierRates((t) => ({ ...t, [tier]: { ...t[tier], ...patch } }));
+  const setTier = (tier: DevTier, patch: Partial<TierRates[DevTier]>) => setTierRates((t) => ({ ...t, [tier]: { ...t[tier], ...patch } }));
   const meta = COSTING_PACKAGES.find((p) => p.id === pkg)!;
+  const team = form.team ?? emptyTeam;
 
   const marginColor = useMemo(() => {
     const m = result?.marginPercent ?? 0;
@@ -122,9 +119,7 @@ export function CostingWorkspace() {
               onClick={() => setPkg(p.id)}
               className={
                 "rounded-[10px] border p-4 text-left transition " +
-                (active
-                  ? "border-[var(--brand-600)] bg-[var(--surface-brand)]"
-                  : "border-[var(--border-2)] bg-[var(--surface-0)] hover:border-[var(--border-1)]")
+                (active ? "border-[var(--brand-600)] bg-[var(--surface-brand)]" : "border-[var(--border-2)] bg-[var(--surface-0)] hover:border-[var(--border-1)]")
               }
             >
               <div className="text-[15px] font-semibold text-[var(--text-1)]">{p.name}</div>
@@ -146,8 +141,8 @@ export function CostingWorkspace() {
           <div className="flex flex-col gap-4 p-4">
             {pkg === "greenfield" ? (
               <>
-                <Num label="Squad size" unit="developers" value={form.devs} onChange={(v) => setField({ devs: v })} hint="How many embedded developers on the squad." />
-                <Num label="Engagement length" unit="months" value={form.months} onChange={(v) => setField({ months: v })} hint="How long the squad runs. Price = rate × devs × months." />
+                <TeamInput label="Squad" unit="developers by tier" team={team} onChange={setTeam} />
+                <Num label="Engagement length" unit="months" value={form.months} onChange={(v) => setField({ months: v })} hint="Price = rate × total devs × months." />
                 <Num
                   label="Price per developer / month"
                   unit="£"
@@ -158,7 +153,7 @@ export function CostingWorkspace() {
               </>
             ) : pkg === "care_plan" ? (
               <>
-                <Num label="Plan length" unit="months" value={form.months} onChange={(v) => setField({ months: v })} hint="How many months the Care Plan runs. Price = fee × months." />
+                <Num label="Plan length" unit="months" value={form.months} onChange={(v) => setField({ months: v })} hint="Price = fee × months." />
                 <Num
                   label="Monthly fee"
                   unit="£"
@@ -166,13 +161,7 @@ export function CostingWorkspace() {
                   onChange={(v) => setField({ pricePerMonthGbp: v })}
                   hint={`Client's monthly retainer — from ${gbp(meta.fromGbp)}. Sets the client price.`}
                 />
-                <Num
-                  label="Support effort per month"
-                  unit="eng-days"
-                  value={form.effortDaysPerMonth}
-                  onChange={(v) => setField({ effortDaysPerMonth: v })}
-                  hint="Engineer-days you expect to spend each month. Drives the internal cost only — not the price."
-                />
+                <TeamInput label="Support effort" unit="eng-days / month by tier" team={team} onChange={setTeam} />
               </>
             ) : (
               <>
@@ -183,8 +172,8 @@ export function CostingWorkspace() {
                   onChange={(v) => setField({ targetPriceGbp: v })}
                   hint={`The fixed price you'll quote — from ${gbp(meta.fromGbp)}. Sets the client price.`}
                 />
-                <Num label="Build effort" unit="weeks" value={form.weeks} onChange={(v) => setField({ weeks: v })} hint="Calendar weeks of build work. Drives the internal cost only — not the price." />
-                <Num label="Team size" unit="developers" value={form.devs} onChange={(v) => setField({ devs: v })} hint="Developers on the build. Drives the internal cost only." />
+                <Num label="Build effort" unit="weeks" value={form.weeks} onChange={(v) => setField({ weeks: v })} hint="Calendar weeks of build work." />
+                <TeamInput label="Team" unit="developers by tier" team={team} onChange={setTeam} />
               </>
             )}
           </div>
@@ -197,7 +186,6 @@ export function CostingWorkspace() {
           >
             <summary className="widget-data-label cursor-pointer select-none">Advanced — internal cost basis</summary>
 
-            {/* Tier day-rates */}
             <div className="mt-3 flex items-center justify-between">
               <span className="widget-data-label">Build cost rates</span>
               <button
@@ -210,7 +198,7 @@ export function CostingWorkspace() {
               </button>
             </div>
             <div className="mt-2 flex flex-col gap-2">
-              {(["senior", "mid", "junior"] as DevTier[]).map((tier) => (
+              {TIERS.map((tier) => (
                 <div key={tier} className="grid grid-cols-[64px_1fr_128px] items-center gap-2">
                   <span className="widget-data-label capitalize">{tier}</span>
                   <input
@@ -220,11 +208,7 @@ export function CostingWorkspace() {
                     value={tierRates[tier].amount}
                     onChange={(e) => setTier(tier, { amount: Number(e.target.value) || 0 })}
                   />
-                  <select
-                    className="app-select-compact"
-                    value={tierRates[tier].period}
-                    onChange={(e) => setTier(tier, { period: e.target.value as RatePeriod })}
-                  >
+                  <select className="app-select-compact" value={tierRates[tier].period} onChange={(e) => setTier(tier, { period: e.target.value as RatePeriod })}>
                     <option value="day">£ / day</option>
                     <option value="month">£ / month</option>
                   </select>
@@ -232,19 +216,7 @@ export function CostingWorkspace() {
               ))}
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <label className="flex flex-col gap-1">
-                <span className="widget-data-label">Priced at</span>
-                <select
-                  className="app-select-compact"
-                  value={config.buildSeniority}
-                  onChange={(e) => setCfg({ buildSeniority: e.target.value as DevTier })}
-                >
-                  <option value="senior">Senior · {gbp(tierRateToDay(tierRates.senior))}/day</option>
-                  <option value="mid">Mid · {gbp(tierRateToDay(tierRates.mid))}/day</option>
-                  <option value="junior">Junior · {gbp(tierRateToDay(tierRates.junior))}/day</option>
-                </select>
-              </label>
+            <div className="mt-4 grid grid-cols-2 gap-3">
               <Num label="UK review" unit="%" value={config.ukReviewOverheadPercent} onChange={(v) => setCfg({ ukReviewOverheadPercent: v ?? 0 })} />
               <Num label="Contingency" unit="%" value={config.contingencyPercent} onChange={(v) => setCfg({ contingencyPercent: v ?? 0 })} />
             </div>
@@ -275,22 +247,57 @@ export function CostingWorkspace() {
                 <Readout label="Internal cost" value={result ? gbp(result.internalCostGbp) : "—"} />
                 <Readout label="Margin" value={result ? `${result.marginPercent}%` : "—"} color={marginColor} />
                 <Readout label="Markup" value={result ? `${result.markupPercent}%` : "—"} />
-                <Readout label="Build cost / day" value={result ? gbp(result.buildDayRateGbp) : "—"} />
+                <Readout label="Blended £/day" value={result ? gbp(result.buildDayRateGbp) : "—"} />
               </div>
               <div className="mt-4">
                 <div className="widget-data-label">Cost breakdown</div>
                 <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-3)]">
                   {result
                     ? `Build ${gbp(result.breakdown.buildCostGbp)} · UK review ${gbp(result.breakdown.ukReviewCostGbp)} · contingency ${gbp(result.breakdown.contingencyGbp)}`
-                    : "Enter the inputs to see the internal breakdown."}
+                    : "Set the team to see the internal breakdown."}
                 </p>
-                {result ? (
-                  <p className="mt-1 text-[12px] leading-snug text-[var(--text-4)]">Priced at the {config.buildSeniority} tier rate.</p>
-                ) : null}
+                <p className="mt-1 text-[12px] leading-snug text-[var(--text-4)]">
+                  Team: {team.senior} senior · {team.mid} mid · {team.junior} junior
+                </p>
               </div>
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function TeamInput({
+  label,
+  unit,
+  team,
+  onChange,
+}: {
+  label: string;
+  unit: string;
+  team: TierCounts;
+  onChange: (tier: DevTier, v: number | undefined) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="widget-data-label">
+        {label}
+        <span className="text-[var(--text-4)]"> · {unit}</span>
+      </span>
+      <div className="grid grid-cols-3 gap-2">
+        {TIERS.map((tier) => (
+          <label key={tier} className="flex flex-col gap-1">
+            <span className="widget-data-label capitalize text-[var(--text-4)]">{tier}</span>
+            <input
+              type="number"
+              min={0}
+              className="app-input-compact"
+              value={team[tier]}
+              onChange={(e) => onChange(tier, e.target.value === "" ? undefined : Number(e.target.value))}
+            />
+          </label>
+        ))}
       </div>
     </div>
   );

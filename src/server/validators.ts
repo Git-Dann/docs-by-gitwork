@@ -1707,10 +1707,8 @@ export const devSignalNoticeUpdateSchema = z.object({
 // ── Gitwork Costing & Quote tool (Super-Admin only) — aligned to the site packages ──
 export const costingAdvancedConfigSchema = z.object({
   fxFromUsd: z.number().positive().max(100).optional(),
-  buildSeniority: z.enum(["junior", "mid", "senior"]).optional(),
   ukReviewOverheadPercent: z.number().min(0).max(100).optional(),
   contingencyPercent: z.number().min(0).max(100).optional(),
-  dayRateOverrideGbp: z.number().positive().max(100000).optional(),
 });
 
 export const tierRateSchema = z.object({
@@ -1724,14 +1722,19 @@ export const tierRatesSchema = z.object({
   senior: tierRateSchema,
 });
 
+export const tierCountsSchema = z.object({
+  junior: z.number().min(0).max(999),
+  mid: z.number().min(0).max(999),
+  senior: z.number().min(0).max(999),
+});
+
 export const costingPreviewSchema = z.object({
   packageType: z.enum(["launch_pad", "mvp_sprint", "greenfield", "care_plan"]),
   targetPriceGbp: z.number().min(0).max(100000000).optional(),
   weeks: z.number().min(0).max(520).optional(),
-  devs: z.number().min(1).max(20).optional(),
   months: z.number().min(1).max(60).optional(),
+  team: tierCountsSchema.optional(),
   pricePerDevMonthGbp: z.number().min(0).max(1000000).optional(),
-  effortDaysPerMonth: z.number().min(0).max(31).optional(),
   pricePerMonthGbp: z.number().min(0).max(1000000).optional(),
   tierRates: tierRatesSchema.optional(),
   config: costingAdvancedConfigSchema.optional(),
