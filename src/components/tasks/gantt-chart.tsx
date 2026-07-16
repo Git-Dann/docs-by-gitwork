@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/format";
 import { GANTT_SCALE_LABELS, TASK_STATUS_LABELS, type GanttScale, type TaskStatus } from "@/types/tasks";
 
@@ -658,39 +659,13 @@ export function GanttChart({
               {milestones.map((m) => {
                 const mx = daysBetween(model.domainStart, new Date(m.date)) * pxPerDay;
                 if (mx < 0 || mx > model.timelineWidth) return null;
-                const c = markColor(m.color);
-                const dateFmt = fmtShort(m.date);
                 return (
-                  // z-[45]: above the sticky header (z-40) so the hover tooltip is never
-                  // clipped behind it, but below the sticky left rail (z-50) so a milestone
-                  // scrolled under the Categories column stays hidden by the rail.
-                  <div key={m.id} className="absolute top-0 bottom-0 z-[45]" style={{ left: RAIL_W + mx }}>
-                    {/* Faint vertical guide down the timeline */}
-                    <div
-                      className="pointer-events-none absolute top-0 bottom-0 -translate-x-1/2 border-l border-dashed"
-                      style={{ borderColor: c, opacity: 0.4 }}
-                    />
-                    {/* Diamond marker + upright instant tooltip */}
-                    <div className="group absolute top-1 left-0 -translate-x-1/2">
-                      <button
-                        type="button"
-                        onClick={onMilestoneClick ? () => onMilestoneClick(m.id) : undefined}
-                        aria-label={`${m.name} · ${dateFmt}`}
-                        className="block h-3.5 w-3.5 rotate-45 rounded-[2px] border border-[var(--surface-0)] shadow-sm transition hover:scale-125"
-                        style={{ background: c, cursor: onMilestoneClick ? "pointer" : "default" }}
-                      />
-                      {/* Above the marker (not below) — matches the bar/slip tooltips elsewhere in
-                          this file. Below would get clipped by the row area's scroll bounds
-                          whenever the section is collapsed (short), since a diamond near the top
-                          of a short row area has no room below it for the tooltip to render into. */}
-                      <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--text-1)] px-2.5 py-1.5 text-left text-[11px] text-[var(--surface-0)] shadow-lg group-hover:block">
-                        <span className="font-medium">{m.name}</span>
-                        <span className="mt-0.5 block text-[var(--surface-0)]/75" style={{ fontFamily: "var(--font-mono)" }}>
-                          {dateFmt}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+                  <MilestoneMarker
+                    key={m.id}
+                    milestone={m}
+                    left={RAIL_W + mx}
+                    onMilestoneClick={onMilestoneClick}
+                  />
                 );
               })}
 
@@ -713,6 +688,82 @@ export function GanttChart({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Milestone diamond + hover/focus tooltip. The tooltip renders through a
+ * portal to document.body (position: fixed, computed from the marker's own
+ * getBoundingClientRect) instead of the previous CSS-only `group-hover`
+ * popup — that was clipped whenever the marker sat near the top of the
+ * Gantt's scroll rail (or the page's own scrolling content area), since a
+ * `bottom-full` popup has nowhere to render once it needs space above its
+ * nearest clipping ancestor. A portal escapes any such ancestor entirely.
+ */
+function MilestoneMarker({
+  milestone: m,
+  left,
+  onMilestoneClick,
+}: {
+  milestone: GanttMilestone;
+  left: number;
+  onMilestoneClick?: (milestoneId: string) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
+  const c = markColor(m.color);
+  const dateFmt = fmtShort(m.date);
+
+  const show = () => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setAnchor({ x: r.left + r.width / 2, y: r.top });
+  };
+  const hide = () => setAnchor(null);
+
+  return (
+    <div className="absolute top-0 bottom-0 z-[45]" style={{ left }}>
+      {/* Faint vertical guide down the timeline */}
+      <div
+        className="pointer-events-none absolute top-0 bottom-0 -translate-x-1/2 border-l border-dashed"
+        style={{ borderColor: c, opacity: 0.4 }}
+      />
+      <div
+        ref={ref}
+        className="absolute top-1 left-0 -translate-x-1/2"
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+      >
+        <button
+          type="button"
+          onClick={onMilestoneClick ? () => onMilestoneClick(m.id) : undefined}
+          aria-label={`${m.name} · ${dateFmt}`}
+          className="block h-3.5 w-3.5 rotate-45 rounded-[2px] border border-[var(--surface-0)] shadow-sm transition hover:scale-125"
+          style={{ background: c, cursor: onMilestoneClick ? "pointer" : "default" }}
+        />
+      </div>
+      {anchor && typeof document !== "undefined" &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              left: anchor.x,
+              top: anchor.y - 8,
+              transform: "translate(-50%, -100%)",
+            }}
+            className="pointer-events-none z-[100] whitespace-nowrap rounded-md bg-[var(--text-1)] px-2.5 py-1.5 text-left text-[11px] text-[var(--surface-0)] shadow-lg"
+          >
+            <span className="font-medium">{m.name}</span>
+            <span className="mt-0.5 block text-[var(--surface-0)]/75" style={{ fontFamily: "var(--font-mono)" }}>
+              {dateFmt}
+            </span>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
