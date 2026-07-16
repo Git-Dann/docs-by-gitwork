@@ -87,6 +87,8 @@ export function InfoTip({ text }: { text: string }) {
             lineHeight: 1.45,
             letterSpacing: 0,
             textTransform: "none",
+            whiteSpace: "normal",
+            overflowWrap: "anywhere",
             boxShadow: "0 6px 20px rgba(0,0,0,0.10)",
           }}
         >
