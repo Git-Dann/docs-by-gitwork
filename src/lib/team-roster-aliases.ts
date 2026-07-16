@@ -47,7 +47,9 @@ export const TEAM_ROSTER: RosterEntry[] = [
   { name: "Kashan Fayyaz", email: "kashan.fayyaz@gitwork.co.uk", kind: "dev", aliases: ["Kashan"] },
   { name: "Muhammad Usman", email: "muhammad.usman@gitwork.co.uk", kind: "dev", aliases: ["Usman"] },
   { name: "Sibghat Ullah", email: "sibghatullah@gitwork.co.uk", kind: "dev", aliases: ["Sibghatullah", "Sibghatullah Sibghatullah"] },
-  { name: "Syed Usama Bin Tahir", email: "syed@gitwork.co.uk", kind: "dev", aliases: ["Syed Usama"] },
+  // Admin, not a delivery developer — kept off the dev roster (dev-output leaderboard +
+  // standup roster) so the analytics reflect actual delivery devs.
+  { name: "Syed Usama Bin Tahir", email: "syed@gitwork.co.uk", kind: "admin", aliases: ["Syed Usama"] },
   { name: "Zain Ali", email: "zain@gitwork.co.uk", kind: "dev", aliases: ["ZAIN ALI"] },
   { name: "Syed Arquam", email: "syedarquam@gitwork.co.uk", kind: "dev", aliases: ["Arquam"] },
   { name: "Nasir", email: "nasir@gitwork.co.uk", kind: "dev" },

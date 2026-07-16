@@ -32,10 +32,13 @@ import { normalizeToMonthly } from "@/server/rate-card";
 import { getDeveloperUserIds } from "@/server/tasks-standup";
 import {
   buildThroughput,
+  computeDelta,
+  meanLeadTimeMs,
   round2,
   startOfUtcDay,
   tallyDevOutput,
   ymd,
+  type Delta,
 } from "@/server/analytics/portal-analytics-helpers";
 import type { ClientHealth } from "@/types/client";
 
@@ -65,6 +68,43 @@ export interface PortalAnalytics {
     monthlyCost: { amount: number; currency: string } | null;
     /** Mean business-days-elapsed across clients that have a dated Gantt start. */
     avgWorkingDays: number | null;
+    /** overdueNow / openNow — share of open work that's past due, or null when nothing's open. */
+    overdueRate: number | null;
+    /** Clients with a dated end within the next 30 days (0 ≤ daysLeft ≤ 30). */
+    clientsEndingSoon: number;
+    /** Clients whose end date has passed but still carry open work (delivery overrun). */
+    clientsPastEnd: number;
+  };
+  /** Period-over-period deltas vs the immediately-preceding window of equal length. */
+  trends: {
+    created: Delta;
+    completed: Delta;
+    completionRate: Delta;
+    avgLeadTimeMs: Delta;
+  };
+  /** Money view (for financial-visibility admins) — billable client burn, broken down. */
+  financials: {
+    /** Sum of per-client monthly cost in the dominant currency, or null when none priced. */
+    totalClientCost: { amount: number; currency: string } | null;
+    /** That total split by engagement type (dominant currency only). */
+    costByEngagement: Array<{ type: ClientEngagementType | "UNSET"; amount: number }>;
+    /** Clients with at least one priced billable dev. */
+    clientsWithCost: number;
+    /** Billable devs across all clients with no resolvable rate (excluded from totals). */
+    unpricedDevs: number;
+  };
+  /** Team utilisation — roster size vs who's actually carrying work this range. */
+  capacity: {
+    /** Dev-roster users who aren't off-bench (pro-bono). */
+    rosterDevs: number;
+    /** Devs who completed or hold open work in range (i.e. appear on the leaderboard). */
+    contributingDevs: number;
+    /** rosterDevs − contributingDevs (on the roster but no output / open work this range). */
+    idleDevs: number;
+    /** Mean open assigned tasks per contributing dev, or null. */
+    avgOpenPerDev: number | null;
+    /** Mean tasks completed in range per contributing dev, or null. */
+    avgCompletedPerDev: number | null;
   };
   throughput: Array<{ bucket: string; created: number; completed: number }>;
   /** Histogram of DOING→DONE lead time over tasks completed in range (that carry a startedAt). */
@@ -120,12 +160,20 @@ export async function getPortalAnalytics(
   const rangeDays = Math.max(1, Math.round((to.getTime() - from.getTime()) / MS_PER_DAY));
   const bucket: "day" | "week" = opts.bucket ?? (rangeDays > 120 ? "week" : "day");
 
+  // Immediately-preceding window of equal length, for period-over-period trends.
+  const windowMs = to.getTime() - from.getTime();
+  const prevTo = from;
+  const prevFrom = new Date(from.getTime() - windowMs);
+
   const startOfToday = startOfUtcDay(new Date());
 
   // Resolve id sets up front so every downstream query is join-free (42702-safe).
   const [clientRows, devIds] = await Promise.all([
+    // Only ACTIVE clients feed the analytics — pausing (INACTIVE), archiving (ARCHIVED),
+    // leads (LEAD) and pending-review clients drop out of every client-level view the moment
+    // their status changes (Engagement mix, Ending soon, Client activity, financials).
     prisma.workspaceClient.findMany({
-      where: { workspaceId },
+      where: { workspaceId, status: "ACTIVE" },
       select: { id: true, name: true, slug: true, engagementType: true, endDate: true },
     }),
     getDeveloperUserIds(workspaceId),
@@ -156,6 +204,8 @@ export async function getPortalAnalytics(
     financialsByClient,
     offBenchCandidates,
     activePlacements,
+    prevCreatedCount,
+    prevCompletedRows,
   ] = await Promise.all([
     devIds.length
       ? prisma.user.findMany({
@@ -255,6 +305,14 @@ export async function getPortalAnalytics(
         },
       },
     }),
+    // Previous-window flow, for trends (plain count + a light findMany for lead time — 42702-safe).
+    prisma.task.count({
+      where: { workspaceId, parentId: null, createdAt: { gte: prevFrom, lt: prevTo } },
+    }),
+    prisma.task.findMany({
+      where: { workspaceId, parentId: null, status: "DONE", completedAt: { gte: prevFrom, lt: prevTo } },
+      select: { completedAt: true, startedAt: true },
+    }),
   ]);
 
   // Throughput time-series (pure, gapless).
@@ -305,13 +363,19 @@ export async function getPortalAnalytics(
 
   // Standup compliance — distinct PM-pushed days per dev over the range's business days.
   const pmDaysByDev = new Map<string, Set<string>>();
+  let earliestPmDay: Date | null = null;
   for (const u of dailyUpdates) {
     if (!u.pmPushedAt) continue;
+    const day = startOfUtcDay(u.workDate);
     const set = pmDaysByDev.get(u.userId) ?? new Set<string>();
-    set.add(ymd(startOfUtcDay(u.workDate)));
+    set.add(ymd(day));
     pmDaysByDev.set(u.userId, set);
+    if (!earliestPmDay || day < earliestPmDay) earliestPmDay = day;
   }
-  const businessDays = businessDaysBetween(from, to);
+  // Compliance denominator = business days over the window standups have actually been in use
+  // (earliest team PM update → today), NOT the whole range — otherwise a 90-day range where
+  // standups only started recently pins every dev to single digits. Null when there's no data.
+  const standupWindowDays = earliestPmDay ? businessDaysBetween(earliestPmDay, to) : 0;
 
   // Only surface devs who are actually on project work: exclude off-bench (pro-bono) devs, and
   // drop anyone with no output AND no open assignments in range (unassigned / idle roster noise).
@@ -331,7 +395,7 @@ export async function getPortalAnalytics(
         completed: out?.completed ?? 0,
         openAssigned: openByDev.get(u.id) ?? 0,
         avgLeadTimeMs: out && out.leadN ? Math.round(out.leadSum / out.leadN) : null,
-        standupCompliancePct: businessDays ? Math.min(100, Math.round((pmDays / businessDays) * 100)) : null,
+        standupCompliancePct: standupWindowDays ? Math.min(100, Math.round((pmDays / standupWindowDays) * 100)) : null,
       };
     })
     .filter((d) => d.completed > 0 || d.openAssigned > 0)
@@ -407,6 +471,66 @@ export async function getPortalAnalytics(
 
   const createdInRange = createdRows.length;
   const completedInRange = completedRows.length;
+  const completionRate = createdInRange ? round2(completedInRange / createdInRange) : null;
+  const avgLeadTimeMs = leadN ? Math.round(leadSum / leadN) : null;
+
+  // Period-over-period trends vs the preceding equal-length window.
+  const prevCompletedCount = prevCompletedRows.length;
+  const trends: PortalAnalytics["trends"] = {
+    created: computeDelta(createdInRange, prevCreatedCount),
+    completed: computeDelta(completedInRange, prevCompletedCount),
+    completionRate: computeDelta(
+      completionRate,
+      prevCreatedCount ? round2(prevCompletedCount / prevCreatedCount) : null,
+    ),
+    avgLeadTimeMs: computeDelta(avgLeadTimeMs, meanLeadTimeMs(prevCompletedRows)),
+  };
+
+  // Financials — billable client burn by dominant currency, split by engagement type.
+  const clientCostByCurrency = new Map<string, number>();
+  const engByCurrency = new Map<string, Map<ClientEngagementType | "UNSET", number>>();
+  let clientsWithCost = 0;
+  let unpricedDevsTotal = 0;
+  for (const c of clientRows) {
+    const cost = financialsByClient.get(c.id)?.monthlyCost;
+    if (!cost) continue;
+    clientsWithCost += 1;
+    unpricedDevsTotal += cost.unpricedDevs;
+    clientCostByCurrency.set(cost.currency, (clientCostByCurrency.get(cost.currency) ?? 0) + cost.amount);
+    const key = (c.engagementType ?? "UNSET") as ClientEngagementType | "UNSET";
+    const em = engByCurrency.get(cost.currency) ?? new Map<ClientEngagementType | "UNSET", number>();
+    em.set(key, (em.get(key) ?? 0) + cost.amount);
+    engByCurrency.set(cost.currency, em);
+  }
+  const dominantClientCcy = [...clientCostByCurrency.entries()].sort((a, b) => b[1] - a[1])[0];
+  const financials: PortalAnalytics["financials"] = {
+    totalClientCost: dominantClientCcy
+      ? { amount: Math.round(dominantClientCcy[1]), currency: dominantClientCcy[0] }
+      : null,
+    costByEngagement: dominantClientCcy
+      ? [...(engByCurrency.get(dominantClientCcy[0]) ?? new Map()).entries()]
+          .map(([type, amount]) => ({ type, amount: Math.round(amount as number) }))
+          .sort((a, b) => b.amount - a.amount)
+      : [],
+    clientsWithCost,
+    unpricedDevs: unpricedDevsTotal,
+  };
+
+  // Capacity — roster size vs who's carrying work this range.
+  const rosterDevs = devUsers.filter((u) => !offBenchEmails.has(u.email.toLowerCase())).length;
+  const contributingDevs = leaderboard.length;
+  const sumOpenAssigned = leaderboard.reduce((a, d) => a + d.openAssigned, 0);
+  const sumCompletedByDev = leaderboard.reduce((a, d) => a + d.completed, 0);
+  const capacity: PortalAnalytics["capacity"] = {
+    rosterDevs,
+    contributingDevs,
+    idleDevs: Math.max(0, rosterDevs - contributingDevs),
+    avgOpenPerDev: contributingDevs ? round2(sumOpenAssigned / contributingDevs) : null,
+    avgCompletedPerDev: contributingDevs ? round2(sumCompletedByDev / contributingDevs) : null,
+  };
+
+  const clientsEndingSoon = clients.filter((c) => c.daysLeft != null && c.daysLeft >= 0 && c.daysLeft <= 30).length;
+  const clientsPastEnd = clients.filter((c) => c.daysLeft != null && c.daysLeft < 0 && c.open > 0).length;
 
   return {
     range: { from: from.toISOString(), to: to.toISOString(), bucket },
@@ -416,13 +540,19 @@ export async function getPortalAnalytics(
       openNow,
       overdueNow,
       inProgressNow,
-      completionRate: createdInRange ? round2(completedInRange / createdInRange) : null,
-      avgLeadTimeMs: leadN ? Math.round(leadSum / leadN) : null,
+      completionRate,
+      avgLeadTimeMs,
       leadTimeSamples: leadN,
       activeDevs,
       monthlyCost: workspaceMonthlyCost,
       avgWorkingDays,
+      overdueRate: openNow ? round2(overdueNow / openNow) : null,
+      clientsEndingSoon,
+      clientsPastEnd,
     },
+    trends,
+    financials,
+    capacity,
     throughput,
     leadTimeBuckets,
     byStatus: statusGroups

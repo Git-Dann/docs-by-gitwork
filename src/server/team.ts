@@ -21,7 +21,7 @@ export async function listMembers() {
     // jwt callback writes it whenever Google returns a refresh token — which `prompt: "consent"`
     // forces every sign-in). Its presence is therefore a reliable "has actually signed in"
     // signal, separating active members from those only provisioned/invited so far.
-    include: { user: { select: { id: true, name: true, email: true, googleOAuthEmail: true } } },
+    include: { user: { select: { id: true, name: true, email: true, avatarUrl: true, googleOAuthEmail: true } } },
     orderBy: { createdAt: "asc" },
   });
   // Normalise `permissions` (Json column) to a string array for the UI, and surface a derived

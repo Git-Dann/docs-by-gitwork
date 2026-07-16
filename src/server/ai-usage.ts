@@ -17,6 +17,7 @@
 import type { AiModule, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { estimateCostUsd, type TokenUsage } from "@/server/ai-pricing";
+import { computeDelta, type Delta } from "@/server/analytics/portal-analytics-helpers";
 
 export type { AiModule } from "@prisma/client";
 
@@ -146,6 +147,11 @@ export interface AiUsageAnalytics {
     errorRate: number | null;
     avgLatencyMs: number | null;
   };
+  /** Period-over-period deltas vs the immediately-preceding window of equal length. */
+  trends: {
+    calls: Delta;
+    costUsd: Delta;
+  };
   timeSeries: Array<{ bucket: string; calls: number; tokens: number; costUsd: number }>;
   byModule: Array<{ module: AiModule; calls: number; tokens: number; costUsd: number }>;
   byModel: Array<{ model: string; calls: number; tokens: number; costUsd: number }>;
@@ -187,7 +193,15 @@ export async function getAiUsageAnalytics(
   // AiUsageLog has no JOINs, so the 42702 ambiguous-createdAt trap doesn't apply. Pull the raw
   // rows for the range (bounded) and bucket + break down in JS — simpler than date_trunc and the
   // per-workspace volume over a bounded window is modest.
-  const [agg, errorCount, rows] = await Promise.all([
+  // Preceding equal-length window, for spend/volume trends.
+  const windowMs = to.getTime() - from.getTime();
+  const prevWhere: Prisma.AiUsageLogWhereInput = {
+    workspaceId,
+    createdAt: { gte: new Date(from.getTime() - windowMs), lt: from },
+    ...(opts.module ? { module: opts.module } : {}),
+  };
+
+  const [agg, errorCount, rows, prevAgg] = await Promise.all([
     prisma.aiUsageLog.aggregate({
       where,
       _count: { _all: true },
@@ -207,6 +221,11 @@ export async function getAiUsageAnalytics(
       },
       orderBy: { createdAt: "desc" },
       take: 50_000,
+    }),
+    prisma.aiUsageLog.aggregate({
+      where: prevWhere,
+      _count: { _all: true },
+      _sum: { costUsd: true },
     }),
   ]);
 
@@ -270,6 +289,10 @@ export async function getAiUsageAnalytics(
       costUsd: summedCostUsd,
       errorRate: calls ? round4(errorCount / calls) : null,
       avgLatencyMs: agg._avg.latencyMs != null ? Math.round(agg._avg.latencyMs) : null,
+    },
+    trends: {
+      calls: computeDelta(calls, prevAgg._count._all),
+      costUsd: computeDelta(summedCostUsd, round4(prevAgg._sum.costUsd ?? 0)),
     },
     timeSeries: [...buckets.entries()]
       .map(([b, v]) => ({ bucket: b, calls: v.calls, tokens: v.tokens, costUsd: round4(v.costUsd) }))

@@ -72,6 +72,40 @@ export function StatTile({
   );
 }
 
+/**
+ * Period-over-period trend chip: ▲/▼ + signed percentage, coloured by whether the move is *good*.
+ * `goodWhen` says which direction is favourable (e.g. "up" for completed, "down" for lead time,
+ * "neutral" for created — more isn't inherently better). Renders "—" when there's nothing to show.
+ */
+export function TrendBadge({
+  delta,
+  goodWhen = "up",
+  compact = false,
+}: {
+  delta?: { deltaPct: number | null; direction: "up" | "down" | "flat" } | null;
+  goodWhen?: "up" | "down" | "neutral";
+  compact?: boolean;
+}) {
+  const flat = (
+    <span style={{ fontFamily: MONO, fontSize: compact ? 10 : 11, letterSpacing: "0.04em", color: "var(--text-4)" }}>—</span>
+  );
+  if (!delta || delta.deltaPct == null || delta.direction === "flat") return flat;
+  const up = delta.direction === "up";
+  const good = goodWhen === "neutral" ? null : up === (goodWhen === "up");
+  const color = good == null ? "var(--text-3)" : good ? "var(--success-500)" : "var(--danger-500)";
+  const pct = Math.abs(Math.round(delta.deltaPct * 100));
+  return (
+    <span
+      className="inline-flex items-center gap-0.5 tabular-nums"
+      style={{ fontFamily: MONO, fontSize: compact ? 10 : 11, fontWeight: 600, letterSpacing: "0.02em", color }}
+      title="vs previous period"
+    >
+      <span aria-hidden style={{ fontSize: compact ? 8 : 9 }}>{up ? "▲" : "▼"}</span>
+      {pct}%
+    </span>
+  );
+}
+
 /** Labelled horizontal bar meter — value as a share of `total`. */
 export function BarMeter({
   label,
