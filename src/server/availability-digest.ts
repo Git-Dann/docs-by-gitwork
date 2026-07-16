@@ -1,10 +1,8 @@
-// Availability digest — ONE combined Slack post covering both approved leave
-// (holidays) and absences, so we never fan out separate "holiday" and "absence"
-// updates. Runs each weekday morning: Monday posts a week roll-up, Tue–Fri post
-// "out today". Silent when nobody's off.
-//
-// Holidays surface here when ACTIVE (no post on booking); absences also get their
-// own instant post at mark time — this digest is the once-a-morning summary.
+// Availability digest — a once-a-morning Slack post of who's on approved LEAVE
+// (holidays). Absences are deliberately NOT included here: they get their own
+// instant post at mark time, so listing them again in the digest just doubled up.
+// Runs each weekday morning: Monday posts a week roll-up, Tue–Fri "on leave today".
+// Silent when nobody's on leave. Holidays surface here when ACTIVE (no post on booking).
 
 import { prisma } from "@/lib/prisma";
 import { getSlackBotToken, postMessage } from "@/server/slack/client";
@@ -48,12 +46,6 @@ const LEAVE_LABEL: Record<string, string> = {
   UNPAID: "unpaid leave",
   OTHER: "leave",
 };
-const ABSENCE_LABEL: Record<string, string> = {
-  AWAY: "away",
-  ILL: "off ill",
-  WFH: "WFH",
-  APPOINTMENT: "appointment",
-};
 
 function displayName(u: { name: string | null; email: string }): string {
   return u.name?.trim() ? u.name : u.email;
@@ -61,7 +53,7 @@ function displayName(u: { name: string | null; email: string }): string {
 
 export type DigestMode = "daily" | "weekly";
 
-// Compose the digest text for a workspace + mode. Returns null when nobody's off.
+// Compose the digest text for a workspace + mode. Returns null when nobody's on leave.
 export async function buildAvailabilityDigest(
   workspaceId: string,
   mode: DigestMode,
@@ -71,73 +63,37 @@ export async function buildAvailabilityDigest(
   const rangeStart = mode === "weekly" ? mondayOf(ref) : today;
   const rangeEnd = mode === "weekly" ? addDays(mondayOf(ref), 6) : today; // Mon–Sun for the week
 
-  const [leave, absences] = await Promise.all([
-    prisma.leaveRequest.findMany({
-      where: {
-        workspaceId,
-        status: "APPROVED",
-        startDate: { lte: rangeEnd },
-        endDate: { gte: rangeStart },
-        user: { email: { not: BOOTSTRAP_USER_EMAIL } },
-      },
-      include: { user: { select: { name: true, email: true } } },
-      orderBy: { startDate: "asc" },
-    }),
-    prisma.absence.findMany({
-      where: {
-        workspaceId,
-        date: { lte: rangeEnd },
-        OR: [{ endDate: { gte: rangeStart } }, { endDate: null, date: { gte: rangeStart } }],
-      },
-      include: {
-        user: { select: { name: true, email: true } },
-        coverUser: { select: { name: true, email: true } },
-        coverClient: { select: { name: true } },
-      },
-      orderBy: { date: "asc" },
-    }),
-  ]);
+  const leave = await prisma.leaveRequest.findMany({
+    where: {
+      workspaceId,
+      status: "APPROVED",
+      startDate: { lte: rangeEnd },
+      endDate: { gte: rangeStart },
+      user: { email: { not: BOOTSTRAP_USER_EMAIL } },
+    },
+    include: { user: { select: { name: true, email: true } } },
+    orderBy: { startDate: "asc" },
+  });
 
-  if (leave.length === 0 && absences.length === 0) return null;
+  if (leave.length === 0) return null;
 
-  const lines: string[] = [];
+  const lines: string[] = [
+    mode === "weekly"
+      ? `*On leave this week — ${DM_FMT.format(rangeStart)}–${DM_FMT.format(rangeEnd)}*`
+      : `*On leave today — ${DAY_FMT.format(today)}*`,
+    "",
+  ];
 
-  if (mode === "weekly") {
-    lines.push(`*This week — ${DM_FMT.format(rangeStart)}–${DM_FMT.format(rangeEnd)}*`);
-  } else {
-    lines.push(`*Out today — ${DAY_FMT.format(today)}*`);
-  }
-
-  if (leave.length > 0) {
-    lines.push("", "🏖️ *Leave*");
-    for (const l of leave) {
-      const name = displayName(l.user);
-      const kind = LEAVE_LABEL[l.type] ?? "leave";
-      if (mode === "weekly") {
-        lines.push(`• ${name} — ${kind}, ${DM_FMT.format(l.startDate)}–${DM_FMT.format(l.endDate)}`);
-      } else {
-        const daysLeft = wholeDaysInclusive(today, l.endDate);
-        const back = DAY_FMT.format(nextWorkingDay(l.endDate));
-        const left = daysLeft === 1 ? "last day" : `${daysLeft} days left`;
-        lines.push(`• ${name} — ${kind}, back ${back} (${left})`);
-      }
-    }
-  }
-
-  if (absences.length > 0) {
-    lines.push("", "🗓️ *Absences*");
-    for (const a of absences) {
-      const name = displayName(a.user);
-      const kind = ABSENCE_LABEL[a.kind] ?? a.kind.toLowerCase();
-      const cover =
-        a.coverActive && a.coverUser
-          ? ` — ${displayName(a.coverUser)} covering${a.coverClient ? ` ${a.coverClient.name}` : ""}`
-          : "";
-      const span =
-        mode === "weekly" && a.endDate
-          ? ` (${DM_FMT.format(a.date)}–${DM_FMT.format(a.endDate)})`
-          : "";
-      lines.push(`• ${name} — ${kind}${span}${cover}`);
+  for (const l of leave) {
+    const name = displayName(l.user);
+    const kind = LEAVE_LABEL[l.type] ?? "leave";
+    if (mode === "weekly") {
+      lines.push(`• ${name} — ${kind}, ${DM_FMT.format(l.startDate)}–${DM_FMT.format(l.endDate)}`);
+    } else {
+      const daysLeft = wholeDaysInclusive(today, l.endDate);
+      const back = DAY_FMT.format(nextWorkingDay(l.endDate));
+      const left = daysLeft === 1 ? "last day" : `${daysLeft} days left`;
+      lines.push(`• ${name} — ${kind}, back ${back} (${left})`);
     }
   }
 
