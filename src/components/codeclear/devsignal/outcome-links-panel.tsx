@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Section } from "./devsignal-ui";
+import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { useCodeClearCandidate } from "@/hooks/use-codeclear";
 import { useNotice } from "./notice";
 import { useCreateDevSignalOutcomeLink } from "@/hooks/use-devsignal";
@@ -72,7 +72,7 @@ export function OutcomeLinksPanel({
   };
 
   return (
-    <Section title="Delivery outcomes">
+    <WidgetCard number="07" name="Delivery outcomes">
       <p className="text-xs text-[var(--text-4)]">
         Link this assessment to real project delivery. This is the data loop that lets the score be
         validated later — recalibration itself is not built yet.
@@ -120,7 +120,7 @@ export function OutcomeLinksPanel({
         </select>
         <div className="grid grid-cols-3 gap-2">
           <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Rating</span>
+            <span className="widget-data-label mb-1 block">Rating</span>
             <select value={rating} onChange={(e) => setRating(e.target.value)} className="app-select-compact w-full">
               <option value="">—</option>
               {[1, 2, 3, 4, 5].map((n) => (
@@ -129,7 +129,7 @@ export function OutcomeLinksPanel({
             </select>
           </label>
           <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Status</span>
+            <span className="widget-data-label mb-1 block">Status</span>
             <select value={status} onChange={(e) => setStatus(e.target.value)} className="app-select-compact w-full">
               <option value="">—</option>
               <option value="retained">Retained</option>
@@ -137,7 +137,7 @@ export function OutcomeLinksPanel({
             </select>
           </label>
           <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Tenure (d)</span>
+            <span className="widget-data-label mb-1 block">Tenure (d)</span>
             <input
               type="number"
               value={tenureDays}
@@ -162,6 +162,6 @@ export function OutcomeLinksPanel({
         </Button>
       </div>
       {noticeEl}
-    </Section>
+    </WidgetCard>
   );
 }

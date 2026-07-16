@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Section } from "./devsignal-ui";
+import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/format";
 import { useNotice } from "./notice";
@@ -18,6 +18,7 @@ import {
 import type { DevSignalAssessmentDTO, DevSignalStageResultDTO } from "@/types/devsignal";
 import { OutcomeLinksPanel } from "./outcome-links-panel";
 import { CompliancePanel } from "./compliance-panel";
+import { Meter, ScoreRing, matchTone, scoreTone, TONE_TEXT } from "./devsignal-ui";
 
 // Status label tone. Uses the semantic palette (emerald/amber/rose/sky) that
 // globals.css remaps for dark mode; neutral states use tokens.
@@ -55,7 +56,7 @@ export function AssessmentDetail({ id }: { id: string }) {
 
   return (
     <div className="space-y-6">
-      <Link href="/app/codeclear/devsignal" className="inline-block text-sm text-[var(--text-4)] transition hover:text-[var(--text-2)]">
+      <Link href="/app/codeclear/devsignal" className="widget-data-label inline-block text-[var(--text-4)] transition hover:text-[var(--text-2)]">
         ← Back to queue
       </Link>
 
@@ -85,14 +86,14 @@ function Masthead({ a }: { a: DevSignalAssessmentDTO }) {
     : null;
 
   return (
-    <section className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-5">
-      <div className="space-y-4">
+    <section className="widget-card">
+      <div className="widget-body space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold tracking-[-0.01em] text-[var(--text-1)]">
+            <h1 className="font-serif text-3xl leading-tight tracking-[-0.02em] text-[var(--text-1)]">
               {a.candidateName}
             </h1>
-            <p className="mt-1 text-sm text-[var(--text-4)]">
+            <p className="widget-data-label mt-1 normal-case tracking-normal">
               {a.candidateGithubHandle ?? "no handle"} · {a.status.replace("_", " ").toLowerCase()} · config {a.configVersion}
             </p>
           </div>
@@ -134,58 +135,89 @@ function Masthead({ a }: { a: DevSignalAssessmentDTO }) {
 
 function BestMatchCard({ a }: { a: DevSignalAssessmentDTO }) {
   const summary = a.bestMatchSummary;
+  const scored = typeof a.finalScore === "number";
+  const tone = matchTone(summary?.labelDisplay);
   return (
-    <Section title="Best match">
-      <p className="text-xl font-semibold text-[var(--text-1)]">{summary?.labelDisplay ?? "Not scored yet"}</p>
-      {typeof a.finalScore === "number" && (
-        <p className="mt-1 text-sm text-[var(--text-4)]">Internal score {a.finalScore}/100</p>
-      )}
+    <WidgetCard number="04" name="Best match">
+      <div className="flex items-center gap-4">
+        {scored ? (
+          <ScoreRing score={a.finalScore as number} />
+        ) : (
+          <div className="flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-full border-2 border-dashed border-[var(--border-2)]">
+            <span className="font-serif text-2xl text-[var(--text-4)]">—</span>
+          </div>
+        )}
+        <div className="min-w-0">
+          <p className={cn("font-serif text-2xl leading-tight", scored ? TONE_TEXT[tone] : "text-[var(--text-4)]")}>
+            {summary?.labelDisplay ?? "Not scored yet"}
+          </p>
+          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]">
+            {scored ? "Internal only — client sees the label" : "Run the automated stages to score"}
+          </p>
+        </div>
+      </div>
+
       {a.scoreBreakdown?.humanReviewRequired && (
-        <p className="mt-2 rounded-[6px] bg-amber-50 px-3 py-2 text-xs text-amber-700">Human review required.</p>
+        <p className="mt-3 flex items-center gap-1.5 rounded-[6px] bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Human review required
+        </p>
       )}
+
       {(summary?.strengths?.length ?? 0) > 0 && (
-        <ul className="mt-3 space-y-1">
+        <div className="mt-3 flex flex-wrap gap-1.5">
           {summary!.strengths.map((s) => (
-            <li key={s} className="text-sm text-[var(--text-3)]">• {s}</li>
+            <span
+              key={s}
+              className="rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-xs text-[var(--text-3)]"
+            >
+              {s}
+            </span>
           ))}
-        </ul>
+        </div>
       )}
-      <p className="mt-3 text-xs text-[var(--text-4)]">
-        Client-facing view shows this label only — never the number.
-      </p>
-    </Section>
+    </WidgetCard>
   );
 }
 
 function StageTimeline({ stages }: { stages: DevSignalStageResultDTO[] }) {
   return (
-    <Section title="Stage results">
+    <WidgetCard number="01" name="Stage results">
       {stages.length === 0 ? (
         <p className="text-sm text-[var(--text-4)]">No stages run yet.</p>
       ) : (
         <ul className="space-y-4">
           {stages.map((s) => (
             <li key={s.id} className="border-l-2 border-[var(--border-3)] pl-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-[var(--text-1)]">{s.stageName}</p>
-                <span className={cn("font-mono text-xs uppercase tracking-[0.08em]", STAGE_STATUS_STYLE[s.status] ?? "")}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="flex items-center gap-2 text-sm font-medium text-[var(--text-1)]">
+                  <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", (STAGE_STATUS_STYLE[s.status] ?? "").replace("text-", "bg-"))} />
+                  {s.stageName}
+                </p>
+                <span className={cn("font-mono text-[10px] uppercase tracking-[0.08em]", STAGE_STATUS_STYLE[s.status] ?? "")}>
                   {s.status}
                 </span>
               </div>
               {s.subScores.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
-                  {s.subScores.map((sub) => (
-                    <span key={sub.key} className="font-mono text-xs text-[var(--text-3)]">
-                      {sub.label}: {sub.score}/{sub.maxScore}
-                    </span>
-                  ))}
+                <div className="mt-2 space-y-1.5">
+                  {s.subScores.map((sub) => {
+                    const pct = sub.maxScore > 0 ? (sub.score / sub.maxScore) * 100 : 0;
+                    return (
+                      <div key={sub.key} className="flex items-center gap-2.5">
+                        <span className="w-28 shrink-0 truncate text-xs text-[var(--text-3)]">{sub.label}</span>
+                        <Meter value={pct} tone={scoreTone(pct)} className="flex-1" />
+                        <span className="w-12 shrink-0 text-right font-mono text-[10px] text-[var(--text-4)]">
+                          {sub.score}/{sub.maxScore}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               {s.flags.map((f, i) => (
                 <p
                   key={i}
                   className={cn(
-                    "mt-1 text-xs",
+                    "mt-1.5 text-xs",
                     f.severity === "block" ? "text-rose-600" : f.severity === "warn" ? "text-amber-600" : "text-[var(--text-4)]",
                   )}
                 >
@@ -196,7 +228,7 @@ function StageTimeline({ stages }: { stages: DevSignalStageResultDTO[] }) {
           ))}
         </ul>
       )}
-    </Section>
+    </WidgetCard>
   );
 }
 
@@ -206,17 +238,17 @@ function ScoreBreakdown({ a }: { a: DevSignalAssessmentDTO }) {
   const model = analytics.data?.analytics.modelStatus;
   if (!b) {
     return (
-      <Section title="Score breakdown">
+      <WidgetCard number="02" name="Score breakdown">
         <p className="text-sm text-[var(--text-4)]">
           Not scored yet — run the automated stages to compute the breakdown.
         </p>
-      </Section>
+      </WidgetCard>
     );
   }
   return (
-    <Section title="Score breakdown" meta={b.formulaVersion}>
-      <p className="text-xs text-[var(--text-4)]">
-        weighted {b.weightedScore}
+    <WidgetCard number="02" name="Score breakdown">
+      <p className="widget-data-label normal-case tracking-normal">
+        {b.formulaVersion} · weighted {b.weightedScore}
         {b.cap !== null ? ` · capped to ${b.cap} by ${b.cappedByStageId}` : ""}
       </p>
       {model && model.status !== "calibrated" && (
@@ -225,27 +257,25 @@ function ScoreBreakdown({ a }: { a: DevSignalAssessmentDTO }) {
           starting estimates until enough delivery outcomes are recorded.
         </p>
       )}
-      <table className="mt-3 w-full text-sm">
-        <tbody>
-          {b.stages
-            .filter((s) => s.included || s.effectiveWeight > 0 || s.contribution > 0)
-            .map((s) => (
-              <tr key={s.stageId} className="border-b border-[var(--border-3)]">
-                <td className="py-1 text-[var(--text-2)]">{s.stageId.replace(/_/g, " ")}</td>
-                <td className="py-1 text-right font-mono text-xs text-[var(--text-4)]">
-                  {s.rawStageScore} × {s.effectiveWeight}
-                </td>
-                <td className="py-1 text-right font-mono text-[var(--text-2)]">+{s.contribution.toFixed(1)}</td>
-              </tr>
-            ))}
-          <tr>
-            <td className="pt-2 font-medium text-[var(--text-1)]">Final</td>
-            <td />
-            <td className="pt-2 text-right font-mono font-semibold text-[var(--text-1)]">{b.finalScore}</td>
-          </tr>
-        </tbody>
-      </table>
-    </Section>
+      <div className="mt-3 space-y-2.5">
+        {b.stages
+          .filter((s) => s.included || s.effectiveWeight > 0 || s.contribution > 0)
+          .map((s) => (
+            <div key={s.stageId} className="flex items-center gap-3">
+              <span className="w-32 shrink-0 truncate text-xs text-[var(--text-2)]">{s.stageId.replace(/_/g, " ")}</span>
+              <Meter value={s.rawStageScore} tone={scoreTone(s.rawStageScore)} className="flex-1" />
+              <span className="w-14 shrink-0 text-right font-mono text-[10px] text-[var(--text-4)]">
+                {s.rawStageScore}×{s.effectiveWeight}
+              </span>
+              <span className="w-12 shrink-0 text-right font-mono text-xs text-[var(--text-2)]">+{s.contribution.toFixed(1)}</span>
+            </div>
+          ))}
+      </div>
+      <div className="mt-3 flex items-center justify-between border-t border-[var(--border-2)] pt-3">
+        <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]">Final score</span>
+        <span className="font-serif text-3xl leading-none text-[var(--text-1)]">{b.finalScore}</span>
+      </div>
+    </WidgetCard>
   );
 }
 
@@ -272,7 +302,7 @@ function InterviewScorecard({ id }: { id: string }) {
   };
 
   return (
-    <Section title="Leadership interview">
+    <WidgetCard number="03" name="Leadership interview">
       <p className="text-xs text-[var(--text-4)]">Human scorecard — supports the gate, doesn&apos;t replace your final audit.</p>
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {INTERVIEW_DIMENSIONS.map(([key, label]) => (
@@ -308,7 +338,7 @@ function InterviewScorecard({ id }: { id: string }) {
         </Button>
       </div>
       {noticeEl}
-    </Section>
+    </WidgetCard>
   );
 }
 
@@ -339,7 +369,7 @@ function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
   };
 
   return (
-    <Section title="Decision">
+    <WidgetCard number="05" name="Decision">
       <p className="text-sm text-[var(--text-3)]">
         Current: <span className="font-medium text-[var(--text-2)]">{a.decision.replace(/_/g, " ").toLowerCase()}</span>
       </p>
@@ -366,7 +396,7 @@ function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
           </div>
 
           <div className="mt-4 border-t border-[var(--border-3)] pt-4">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">The human gate</p>
+            <p className="widget-data-label text-[var(--text-4)]">The human gate</p>
             {!confirming ? (
               <Button
                 variant="primary"
@@ -401,6 +431,6 @@ function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
         </>
       )}
       {noticeEl}
-    </Section>
+    </WidgetCard>
   );
 }

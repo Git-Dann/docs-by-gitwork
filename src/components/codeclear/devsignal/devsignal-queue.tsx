@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useNotice } from "./notice";
 import { DevSignalAssessmentList } from "./assessment-list";
-import { Section, StatTile } from "./devsignal-ui";
+import { Meter, type Tone } from "./devsignal-ui";
 import {
   useClearDevSignalDemo,
   useCreateDevSignalAssessment,
@@ -33,16 +34,21 @@ export function DevSignalQueue() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold tracking-[-0.01em] text-[var(--text-1)]">Vetting — staging review</h2>
+          <p className="font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--brand-700)]">
+            DevSignal
+          </p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+            Vetting — staging review
+          </h2>
           <p className="mt-1 text-sm text-[var(--text-3)]">
             Candidates are assessed here and only enter Code when a human promotes them.
           </p>
           {a?.modelStatus && (
-            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-0.5 text-xs font-medium text-[var(--text-3)]">
+            <p className="mt-2 inline-flex items-center gap-1.5 rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-3)]">
               Model: {a.modelStatus.status}
               {a.modelStatus.status !== "calibrated" ? " · scores provisional" : ` · r=${a.modelStatus.overallValidity?.toFixed(2) ?? "—"}`}
               {` · n=${a.modelStatus.n}`}
-            </span>
+            </p>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -55,22 +61,27 @@ export function DevSignalQueue() {
 
       {/* Analytics strip */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <StatTile label="Assessed" value={a?.total ?? 0} />
-        <StatTile label="Pending review" value={a?.byStatus?.PENDING_HUMAN ?? 0} />
-        <StatTile label="Promoted to Code" value={a?.promotedToCode ?? 0} />
-        <StatTile label="Outcomes linked" value={a?.outcomeLinks ?? 0} />
-        <StatTile label="Avg score" value={a?.averageFinalScore ?? "—"} />
+        <StatCard n="01" label="Assessed" value={a?.total ?? 0} />
+        <StatCard n="02" label="Pending review" value={a?.byStatus?.PENDING_HUMAN ?? 0} />
+        <StatCard n="03" label="Promoted to Code" value={a?.promotedToCode ?? 0} />
+        <StatCard n="04" label="Outcomes linked" value={a?.outcomeLinks ?? 0} />
+        <StatCard n="05" label="Avg score" value={a?.averageFinalScore ?? "—"} />
       </div>
 
       {a?.funnel && a.funnel[0]?.n > 0 && <CompletionFunnel funnel={a.funnel} />}
 
-      <Section title="Assessment queue">
+      {/* Queue — starter-style candidate cards (matches /app/starters) */}
+      <div>
+        <p className="widget-data-label mb-3">
+          <span className="text-[var(--brand-700)]">07</span>
+          {" // Assessment queue"}
+        </p>
         {assessments.isLoading ? (
           <p className="text-sm text-[var(--text-4)]">Loading…</p>
         ) : (
           <DevSignalAssessmentList items={items} />
         )}
-      </Section>
+      </div>
 
       <PipelineConfigCard />
 
@@ -86,50 +97,55 @@ function PipelineConfigCard() {
   const weights = def.stageWeights;
   const stages = def.stageOrder.length ? def.stageOrder : Object.keys(weights);
   return (
-    <Section
-      title="Pipeline config"
-      meta={`${def.name} · ${def.version}`}
-    >
+    <WidgetCard number="08" name="Pipeline config">
       <p className="text-xs text-[var(--text-4)]">
-        Snapshotted onto every assessment so historical scores stay interpretable. Edit the weights
-        in the Model tab (super-admin).
+        {def.name} · {def.version} — snapshotted onto every assessment so historical scores stay
+        interpretable. Editing UI is coming; per-client configs are set via the API today.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         {stages.map((s) => (
           <span
             key={s}
-            className="inline-flex items-center gap-1 rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 text-xs text-[var(--text-3)]"
+            className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-1 font-mono text-xs text-[var(--text-3)]"
           >
-            {s.replace(/_/g, " ")} · <span className="tabular-nums font-medium text-[var(--text-2)]">{weights[s] ?? 0}</span>
+            {s.replace(/_/g, " ")} · {weights[s] ?? 0}
             {def.blockingRules[s] ? <span aria-label="blocking gate">🔒</span> : null}
           </span>
         ))}
       </div>
-    </Section>
+    </WidgetCard>
   );
 }
 
 function CompletionFunnel({ funnel }: { funnel: Array<{ key: string; label: string; n: number }> }) {
   const start = funnel[0]?.n || 1;
   return (
-    <Section title="Completion funnel" meta="where candidates drop off">
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+    <WidgetCard number="06" name="Completion funnel">
+      <ul className="space-y-2">
         {funnel.map((f, i) => {
           const pct = Math.round((f.n / start) * 100);
           const prev = i > 0 ? funnel[i - 1].n : f.n;
           const dropped = prev - f.n;
+          // Colour the row by retention vs the top of the funnel.
+          const tone: Tone = pct >= 90 ? "success" : pct >= 70 ? "brand" : pct >= 50 ? "warning" : "danger";
           return (
-            <div key={f.key} className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-2.5">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-4)]">{f.label}</p>
-              <p className="mt-1 text-lg font-bold tabular-nums text-[var(--text-1)]">{f.n}</p>
-              <p className="text-[10px] tabular-nums text-[var(--text-4)]">
+            <li key={f.key} className="flex items-center gap-3">
+              <span className="w-20 shrink-0 truncate font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--text-3)]">
+                {f.label}
+              </span>
+              <Meter value={pct} tone={tone} className="flex-1" />
+              <span className="w-10 shrink-0 text-right font-serif text-sm text-[var(--text-1)]">{f.n}</span>
+              <span className="w-16 shrink-0 text-right font-mono text-[10px] text-[var(--text-4)]">
                 {pct}%{i > 0 && dropped > 0 ? ` · −${dropped}` : ""}
-              </p>
-            </div>
+              </span>
+            </li>
           );
         })}
-      </div>
-    </Section>
+      </ul>
+      <p className="mt-3 border-t border-[var(--border-2)] pt-2 text-[11px] text-[var(--text-4)]">
+        Where candidates drop off — a big fall between two steps is friction worth fixing.
+      </p>
+    </WidgetCard>
   );
 }
 
@@ -174,6 +190,14 @@ function DemoSeedControls({ hasItems }: { hasItems: boolean }) {
       )}
       {noticeEl}
     </>
+  );
+}
+
+function StatCard({ n, label, value }: { n: string; label: string; value: number | string }) {
+  return (
+    <WidgetCard number={n} name={label} bodyClassName="!py-4">
+      <p className="widget-stat">{value}</p>
+    </WidgetCard>
   );
 }
 
@@ -246,7 +270,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">{label}</span>
+      <span className="widget-data-label mb-1 block">{label}</span>
       <input
         type={type}
         value={value}

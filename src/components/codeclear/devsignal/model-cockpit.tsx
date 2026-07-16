@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Section } from "./devsignal-ui";
+import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/format";
 import { useNotice } from "./notice";
@@ -79,7 +79,7 @@ function StatusCard({ report }: { report?: CalibrationReport }) {
   const n = report?.n ?? 0;
   const overall = report?.overallValidity ?? null;
   return (
-    <Section title="Model status">
+    <WidgetCard number="01" name="Model status">
       <div className="flex flex-wrap items-center gap-3">
         <span
           className={cn(
@@ -110,7 +110,7 @@ function StatusCard({ report }: { report?: CalibrationReport }) {
           ))}
         </ul>
       )}
-    </Section>
+    </WidgetCard>
   );
 }
 
@@ -118,7 +118,7 @@ function ValidityTable({ report }: { report?: CalibrationReport }) {
   const stages = report?.stages ?? [];
   if (stages.length === 0) return null;
   return (
-    <Section title="Stage validity">
+    <WidgetCard number="02" name="Stage validity">
       <p className="text-xs text-[var(--text-4)]">
         Observed = local correlation of the stage score with outcomes. Benchmark = revised
         operational validity for the equivalent method (Sackett et al. 2022). Observed is expected to
@@ -149,7 +149,7 @@ function ValidityTable({ report }: { report?: CalibrationReport }) {
           </tbody>
         </table>
       </div>
-    </Section>
+    </WidgetCard>
   );
 }
 
@@ -179,9 +179,9 @@ function WeightEditor({
 
   if (!config) {
     return (
-      <Section title="Weights">
+      <WidgetCard number="03" name="Weights">
         <p className="text-sm text-[var(--text-4)]">No pipeline config found.</p>
-      </Section>
+      </WidgetCard>
     );
   }
 
@@ -217,7 +217,7 @@ function WeightEditor({
   };
 
   return (
-    <Section title="Weights (editable)">
+    <WidgetCard number="03" name="Weights (editable)">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-[var(--text-4)]">
           Editing saves a <strong>new version</strong> as the default — historical scores keep the
@@ -271,6 +271,6 @@ function WeightEditor({
         </Button>
       </div>
       {noticeEl}
-    </Section>
+    </WidgetCard>
   );
 }
