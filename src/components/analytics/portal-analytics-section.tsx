@@ -46,6 +46,44 @@ function priorityColor(p: TaskPriority): string {
   return p === "HIGH" ? "var(--danger-500)" : p === "MEDIUM" ? "var(--warning-500)" : "var(--brand-300)";
 }
 
+type Engagement = "FIXED_SCOPE" | "PHASED" | "ROLLING" | "RETAINER" | "UNSET";
+const ENGAGEMENT_LABEL: Record<Engagement, string> = {
+  FIXED_SCOPE: "Fixed scope",
+  PHASED: "Phased",
+  ROLLING: "Rolling",
+  RETAINER: "Retainer",
+  UNSET: "Unset",
+};
+function engagementColor(e: Engagement): string {
+  switch (e) {
+    case "FIXED_SCOPE": return "var(--brand-700)";
+    case "PHASED": return "var(--brand-500)";
+    case "ROLLING": return "var(--brand-300)";
+    case "RETAINER": return "var(--success-500)";
+    default: return "var(--text-4)";
+  }
+}
+/** Ongoing for rolling/retainer; otherwise a short date. */
+function endsOngoing(type: Engagement | null): boolean {
+  return type === "ROLLING" || type === "RETAINER";
+}
+function shortDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${d.getUTCDate()} ${d.toLocaleString("en-GB", { month: "short", timeZone: "UTC" })}`;
+}
+
+function EngagementChip({ type }: { type: Engagement | null }) {
+  const e: Engagement = type ?? "UNSET";
+  const color = engagementColor(e);
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-[4px] px-1.5 py-0.5" style={{ background: "var(--surface-1)" }}>
+      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+      <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-3)" }}>{ENGAGEMENT_LABEL[e]}</span>
+    </span>
+  );
+}
+
 function DevAvatar({ name, avatarUrl }: { name: string; avatarUrl: string | null }) {
   if (avatarUrl) {
     return (
@@ -106,6 +144,11 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
     .slice(0, 6);
   const maxCost = Math.max(1, ...topCost.map((c) => c.monthlyCost?.amount ?? 0));
   const hasThroughput = data.throughput.some((b) => b.created > 0 || b.completed > 0);
+  const engagementTotal = data.byEngagement.reduce((a, e) => a + e.count, 0);
+  const endingSoon = [...data.clients]
+    .filter((c) => c.endDate != null)
+    .sort((a, b) => (a.daysLeft ?? Infinity) - (b.daysLeft ?? Infinity))
+    .slice(0, 8);
 
   return (
     <div className="grid grid-cols-12 gap-4">
@@ -268,8 +311,55 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         )}
       </WidgetCard>
 
-      {/* ── Row 5 · Dev output + client activity tables (5 + 7) ── */}
-      <WidgetCard number="12" label="Dev output" className="col-span-12 lg:col-span-5" bodyClassName="p-0">
+      {/* ── Row 5 · Engagement mix + ending soon (4 + 8) ── */}
+      <WidgetCard number="12" label="Engagement mix" className="col-span-12 lg:col-span-4">
+        {engagementTotal ? (
+          <Donut
+            centerLabel="clients"
+            segments={data.byEngagement.map((e) => ({ label: ENGAGEMENT_LABEL[e.type], value: e.count, color: engagementColor(e.type) }))}
+          />
+        ) : (
+          <p className="text-sm text-[var(--text-4)]">No clients yet.</p>
+        )}
+      </WidgetCard>
+
+      <WidgetCard number="13" label="Ending soon" className="col-span-12 lg:col-span-8"
+        status={<span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>fixed / phased engagements</span>}>
+        {endingSoon.length ? (
+          <div className="space-y-2.5">
+            {endingSoon.map((c) => {
+              const d = c.daysLeft ?? 0;
+              const over = d < 0;
+              const soon = d >= 0 && d <= 30;
+              const barColor = over ? "var(--danger-500)" : soon ? "var(--warning-500)" : "var(--brand-500)";
+              // Bar fills as the end approaches: 0 days → full, 180+ days → empty.
+              const pct = Math.max(4, Math.min(100, Math.round((1 - Math.min(Math.max(d, 0), 180) / 180) * 100)));
+              return (
+                <div key={c.clientId}>
+                  <div className="mb-1 flex items-baseline justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Link href={`/app/portal/${c.slug}/tasks`} className="truncate text-xs font-medium text-[var(--text-1)] hover:text-[var(--brand-700)]">{c.name}</Link>
+                      <EngagementChip type={c.engagementType} />
+                    </span>
+                    <span className="shrink-0 tabular-nums" style={{ fontFamily: MONO, fontSize: 11, color: over ? "var(--danger-500)" : "var(--text-3)" }}>
+                      {c.endDate ? shortDate(c.endDate) : "—"}
+                      <span style={{ color: over ? "var(--danger-500)" : "var(--text-4)" }}>{` · ${over ? `${Math.abs(d)}d over` : d === 0 ? "today" : `${d}d left`}`}</span>
+                    </span>
+                  </div>
+                  <span className="widget-progress block h-1.5 w-full">
+                    <span className="widget-progress__fill block h-full" style={{ width: `${pct}%`, background: barColor }} />
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-[var(--text-4)]">No dated engagements yet — set a client&apos;s engagement type + end date in Portal.</p>
+        )}
+      </WidgetCard>
+
+      {/* ── Row 6 · Dev output + client activity tables (5 + 7) ── */}
+      <WidgetCard number="14" label="Dev output" className="col-span-12 lg:col-span-5" bodyClassName="p-0">
         {data.leaderboard.length ? (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">
@@ -307,16 +397,17 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         )}
       </WidgetCard>
 
-      <WidgetCard number="13" label="Client activity" className="col-span-12 lg:col-span-7" bodyClassName="p-0">
+      <WidgetCard number="15" label="Client activity" className="col-span-12 lg:col-span-7" bodyClassName="p-0">
         {data.clients.length ? (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr>
                   <th className={analyticsTh} style={analyticsThStyle}>Client</th>
+                  <th className={analyticsTh} style={analyticsThStyle}>Type</th>
+                  <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Ends</th>
                   <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Devs</th>
                   <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Cost/mo</th>
-                  <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Days</th>
                   <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Open</th>
                   <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Overdue</th>
                   <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Done</th>
@@ -324,16 +415,26 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
                 </tr>
               </thead>
               <tbody>
-                {data.clients.map((c) => (
+                {data.clients.map((c) => {
+                  const d = c.daysLeft;
+                  const over = d != null && d < 0;
+                  return (
                   <tr key={c.clientId}>
                     <td className={analyticsTd}>
                       <Link href={`/app/portal/${c.slug}/tasks`} className="font-medium text-[var(--text-1)] hover:text-[var(--brand-700)]">{c.name}</Link>
+                    </td>
+                    <td className={analyticsTd}><EngagementChip type={c.engagementType} /></td>
+                    <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 11, color: over ? "var(--danger-500)" : "var(--text-3)" }}>
+                      {c.endDate ? (
+                        <span title={d != null ? (over ? `${Math.abs(d)}d over` : `${d}d left`) : undefined}>{shortDate(c.endDate)}</span>
+                      ) : (
+                        <span className="text-[var(--text-4)]">{endsOngoing(c.engagementType) ? "Ongoing" : "—"}</span>
+                      )}
                     </td>
                     <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-3)" }}>{c.devs || "—"}</td>
                     <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-2)" }} title={c.monthlyCost?.unpricedDevs ? `${c.monthlyCost.unpricedDevs} unpriced` : undefined}>
                       {c.monthlyCost ? formatMoney(c.monthlyCost.amount, c.monthlyCost.currency) : "—"}
                     </td>
-                    <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-3)" }}>{c.workingDays ?? "—"}</td>
                     <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-3)" }}>{c.open}</td>
                     <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 12, color: c.overdue > 0 ? "var(--danger-500)" : "var(--text-3)" }}>{c.overdue}</td>
                     <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-3)" }}>{c.completedInRange}</td>
@@ -346,7 +447,8 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

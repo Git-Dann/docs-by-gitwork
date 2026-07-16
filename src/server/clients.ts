@@ -18,6 +18,7 @@ import type {
   ClientPlatformLoginSummary,
   ClientSource,
   ClientTouchpoint,
+  ClientEngagementType,
   LeadStage,
   TouchpointType,
   WorkspaceClientStatus,
@@ -150,6 +151,8 @@ type ManualClientRecord = {
   retainerDays: number | null;
   retainerDaysUsed: number | null;
   retainerPeriodMonth: string | null;
+  engagementType: ClientEngagementType | null;
+  endDate: Date | null;
   leadSource: string | null;
   leadStage: LeadStage | null;
   leadFollowUpAt: Date | null;
@@ -193,6 +196,8 @@ type ClientContactInput = {
   billingCountry?: string;
   retainerDays?: number | null;
   retainerDaysUsed?: number | null;
+  engagementType?: ClientEngagementType | null;
+  endDate?: string | null;
   leadSource?: string | null;
   leadStage?: LeadStage | null;
   leadFollowUpAt?: string | null;
@@ -235,6 +240,8 @@ function emptyContactFields(): ClientDetailFields {
     billingCountry: null,
     retainerDays: null,
     retainerDaysUsed: null,
+    engagementType: null,
+    endDate: null,
     productTeamUserIds: [],
     leadSource: null,
     leadStage: null,
@@ -285,6 +292,8 @@ function contactFieldsFromRecord(
     retainerDays: record.retainerDays,
     // Lazy monthly reset — a prior-month figure reads as 0, matching the card.
     retainerDaysUsed: effectiveRetainerUsed(record.retainerDaysUsed, record.retainerPeriodMonth),
+    engagementType: record.engagementType,
+    endDate: record.endDate ? record.endDate.toISOString() : null,
     leadSource: record.leadSource,
     leadStage: record.leadStage,
     leadFollowUpAt: record.leadFollowUpAt ? record.leadFollowUpAt.toISOString() : null,
@@ -305,11 +314,13 @@ function buildContactData(input: ClientContactInput) {
   const data: Partial<{
     [K in keyof ClientContactInput]: K extends "retainerDays" | "retainerDaysUsed" | "leadValue"
       ? number | null
-      : K extends "leadFollowUpAt" | "resumeAt"
+      : K extends "leadFollowUpAt" | "resumeAt" | "endDate"
         ? Date | null
         : K extends "leadStage"
           ? LeadStage | null
-          : string | null;
+          : K extends "engagementType"
+            ? ClientEngagementType | null
+            : string | null;
   }> & { retainerPeriodMonth?: string | null } = {};
   const trim = (v: string) => v.trim() || null;
   // ISO string → Date (empty/invalid → null) for the DateTime columns.
@@ -358,6 +369,9 @@ function buildContactData(input: ClientContactInput) {
     // clearing the used value (null) clears the stamp too.
     data.retainerPeriodMonth = input.retainerDaysUsed == null ? null : currentRetainerMonth();
   }
+  // Engagement structure + end date (plain date column).
+  if (input.engagementType !== undefined)    data.engagementType    = input.engagementType ?? null;
+  if (input.endDate !== undefined)           data.endDate           = toDate(input.endDate);
   // Lead (LEAD) + paused-client (INACTIVE) fields.
   if (input.leadSource !== undefined)        data.leadSource        = input.leadSource?.trim() || null;
   if (input.leadStage !== undefined)         data.leadStage         = input.leadStage ?? null;
@@ -743,6 +757,20 @@ export async function listDerivedClients(filters?: {
     ),
   );
 
+  // Engagement type + end date by client id — manual-only, attached ungated (non-financial).
+  const engagementByClient = new Map(
+    manualClients.map(
+      (c) =>
+        [
+          c.id,
+          {
+            engagementType: c.engagementType,
+            endDate: c.endDate ? c.endDate.toISOString() : null,
+          },
+        ] as const,
+    ),
+  );
+
   // Lead (LEAD) + paused (INACTIVE) fields by client id — manual-only, attached ungated.
   const leadInfoByClient = new Map(
     manualClients.map(
@@ -791,6 +819,7 @@ export async function listDerivedClients(filters?: {
           pulseHealthScore: pulse?.healthScore ?? null,
           overdueTasks: overdueCounts.get(client.id) ?? 0,
         }),
+        ...(engagementByClient.get(client.id) ?? {}),
         ...(leadInfoByClient.get(client.id) ?? {}),
       };
     });
@@ -969,6 +998,8 @@ export async function updateClientRecord(
             retainerDays: null,
             retainerDaysUsed: null,
             retainerPeriodMonth: null,
+            engagementType: null,
+            endDate: null,
             leadSource: null,
             leadStage: null,
             leadFollowUpAt: null,

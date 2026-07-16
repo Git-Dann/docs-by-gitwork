@@ -19,6 +19,9 @@ export type LeadStage =
   | "WON"
   | "LOST";
 
+/** How the client engagement is structured (drives end-date semantics). */
+export type ClientEngagementType = "FIXED_SCOPE" | "PHASED" | "ROLLING" | "RETAINER";
+
 /** Kind of logged touchpoint on a lead/client. */
 export type TouchpointType = "CALL" | "EMAIL" | "MEETING" | "NOTE";
 
@@ -108,6 +111,10 @@ export interface ClientListItem extends ClientRecord {
   pulseScanId?: string | null;
   /** Composite delivery-health signal (overdue tasks + Pulse). Null when no signal exists. */
   health?: ClientHealth | null;
+  /** How the engagement is structured (fixed/phased/rolling/retainer). Attached ungated. */
+  engagementType?: ClientEngagementType | null;
+  /** Project/proposal end date (ISO). Null = ongoing (rolling/retainer). Attached ungated. */
+  endDate?: string | null;
   // Lead + paused fields — present (non-null) only for LEAD / INACTIVE clients respectively.
   leadSource?: string | null;
   leadStage?: LeadStage | null;
@@ -179,6 +186,10 @@ export interface ClientDetailFields extends ClientLeadFields {
   /** Monthly retainer-day allowance + days used this month (manual). */
   retainerDays: number | null;
   retainerDaysUsed: number | null;
+  /** How the engagement is structured (fixed/phased/rolling/retainer). */
+  engagementType: ClientEngagementType | null;
+  /** Project/proposal end date (ISO). Null = ongoing (rolling/retainer). */
+  endDate: string | null;
   /** Gitwork product/account leads shown on the wiki header (User ids, in order). */
   productTeamUserIds: string[];
 }

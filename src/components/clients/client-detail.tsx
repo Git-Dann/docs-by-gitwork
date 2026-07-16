@@ -76,6 +76,7 @@ import type {
   ClientDesignRecord,
   ClientPlatformRecord,
   ClientTouchpoint,
+  ClientEngagementType,
   LeadStage,
   TouchpointType,
 } from "@/types/client";
@@ -99,6 +100,10 @@ type EditFormState = {
   slackExternalChannelId: string;
   retainerDays: string;
   retainerDaysUsed: string;
+  /** Engagement structure ("" = unset). */
+  engagementType: ClientEngagementType | "";
+  /** Project end date as YYYY-MM-DD ("" = ongoing/unset). */
+  endDate: string;
   /** Gitwork product/account leads shown on the wiki header (User ids, in order). */
   productTeamUserIds: string[];
 };
@@ -387,6 +392,8 @@ export function ClientDetail({ slug }: { slug: string }) {
       slackExternalChannelId: client.slackExternalChannelId ?? "",
       retainerDays: client.retainerDays != null ? String(client.retainerDays) : "",
       retainerDaysUsed: client.retainerDaysUsed != null ? String(client.retainerDaysUsed) : "",
+      engagementType: client.engagementType ?? "",
+      endDate: client.endDate ? client.endDate.slice(0, 10) : "",
       productTeamUserIds: client.productTeamUserIds ?? [],
     });
     setEditing(true);
@@ -420,6 +427,8 @@ export function ClientDetail({ slug }: { slug: string }) {
         slackExternalChannelId: editForm.slackExternalChannelId || undefined,
         retainerDays: editForm.retainerDays.trim() === "" ? null : Number(editForm.retainerDays),
         retainerDaysUsed: editForm.retainerDaysUsed.trim() === "" ? null : Number(editForm.retainerDaysUsed),
+        engagementType: editForm.engagementType === "" ? null : editForm.engagementType,
+        endDate: editForm.endDate.trim() === "" ? null : editForm.endDate,
       });
       // Product team saves via its own endpoint (String[] doesn't fit the contact
       // update path). Only write when it actually changed.
@@ -3553,6 +3562,38 @@ function ClientEditModal({
                         </label>
                       </div>
                     )}
+                  </div>
+
+                  {/* Engagement structure + project end date. */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block">
+                      <span className="app-field-label">Engagement type</span>
+                      <select
+                        value={form.engagementType}
+                        onChange={(e) =>
+                          onChange({
+                            ...form,
+                            engagementType: e.target.value as ClientEngagementType | "",
+                          })
+                        }
+                        className="app-select w-full"
+                      >
+                        <option value="">— Unset —</option>
+                        <option value="FIXED_SCOPE">Fixed scope</option>
+                        <option value="PHASED">Phased</option>
+                        <option value="ROLLING">Rolling</option>
+                        <option value="RETAINER">Retainer</option>
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="app-field-label">End date</span>
+                      <input
+                        type="date"
+                        value={form.endDate}
+                        onChange={(e) => set("endDate", e.target.value)}
+                        className="app-input"
+                      />
+                    </label>
                   </div>
 
                   {/* Product team — Gitwork leads shown on the client wiki header. */}
