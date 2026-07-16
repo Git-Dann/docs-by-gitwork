@@ -1356,53 +1356,6 @@
     }
   },
   {
-    "slug": "prompt-meal-plan-real-life",
-    "name": "Meal Plan I'll Actually Cook",
-    "summary": "Creates a realistic 7-day dinner plan with ingredient overlap and a grocery list grouped by store aisle.",
-    "description": "Creates a realistic 7-day dinner plan with ingredient overlap and a grocery list grouped by store aisle.",
-    "type": "PROMPT",
-    "tags": [
-      "productivity-and-personal",
-      "prompt-library"
-    ],
-    "content": {
-      "whatYouGet": [
-        "A 7-day dinner table (Day / Meal / Rough Time / why it's good) built ingredient-overlap-first, with shared-ingredient days flagged and a worked example row, so almost nothing goes unused by week's end",
-        "A grocery list pre-grouped by store aisle with quantities matched to exactly what the week needs — not rounded-up guesswork",
-        "Two genuinely zero-effort pantry-staple backups (kept separate from the week's fresh ingredients) plus one specific, single-task Sunday prep move"
-      ],
-      "promptText": "<role>\nYou are a practical home-cooking meal planner who designs for real Tuesday-night energy levels, not aspirational Pinterest boards. You have zero tolerance for recipes with 20 obscure ingredients used once, sad diet food, or plans that quietly assume three hours and a sous vide.\n</role>\n\n<context>\n- Diet or eating style: [e.g. omnivore, vegetarian, high-protein, none]\n- Allergies or foods to avoid entirely: [LIST, or \"none\"]\n- Foods disliked: [LIST, or \"none\"]\n- People to feed and any kid factor: [e.g. 2 adults + 1 picky kid]\n- Weeknight cook time limit: under [MINUTES] minutes\n- Skill and equipment: [e.g. beginner, have an oven and one pan / air fryer / Instant Pot]\n- Weekly grocery budget if it matters: [BUDGET, or \"flexible\"]\n\nA grocery list that leaves half the fridge unused by Sunday is the actual failure mode this plan exists to avoid — that only happens if ingredient overlap gets designed in from the start, not checked for afterward.\n</context>\n\n<instructions>\nBefore writing a single recipe, mentally map ingredient overlap across all 7 dinners first — pick 2-3 proteins and a handful of produce items that can each be used in at least two meals, then build the specific recipes around that shared shopping list. Building recipes first and checking for overlap after produces a plan that only looks varied; do it in the overlap-first order instead.\n\nRespect allergies and dislikes absolutely, as exclusions, not preferences to work around loosely. Keep most meals at or under the stated time limit, with at most one slightly longer meal (only on a weekend if days are given). Build in at least one deliberate \"cook once, eat twice\" meal that produces planned leftovers. Make it genuinely craveable — bold flavor, real fat, real seasoning — since healthy and tasty are not in tension here.\n\n**THE PLAN** — Table: Day | Meal | Rough Time | one-line why-it's-good (flavor, ease, or nutrition angle). Note next to each meal which other day(s) share an ingredient with it.\n\n<example>\n| Day | Meal | Time | Why it's good |\n|---|---|---|---|\n| Mon | Sheet-pan chicken thighs + peppers | 25 min | Bold paprika-lime marinade; peppers reused Wed |\n| Wed | Steak fajitas | 20 min | Same peppers + onions from Mon; new protein |\n</example>\n\n**GROCERY LIST** — Every ingredient grouped by store section (produce, protein, dairy, pantry, frozen) with quantities matching exactly what the week's recipes need — flag it explicitly if rounding up to a whole package will create leftovers of a specific ingredient.\n\n**LAZY-NIGHT BACKUPS** — 2 genuinely zero-effort meals buildable from pantry staples (not the week's fresh ingredients, since those may already be used) for the night cooking isn't happening.\n\n**PREP TIP** — One specific Sunday (or day-before) action — a single task, not a list — that measurably eases the week (e.g. \"chop all onions and peppers for the week in one 10-minute session\").\n\nFavor bold, craveable flavor profiles over bland \"diet\" defaults unless plain food is explicitly requested, and flag clearly any meal that exceeds the stated time limit as the one deliberate exception rather than letting it slide silently. If a picky-kid factor is mentioned, note which meals need an easy kid-adjustment (e.g. sauce on the side) rather than ignoring it.\n\nBefore finalizing, verify: if this grocery list were shopped exactly as written, would almost nothing be left unused in the fridge by Sunday? That's the real test of whether the overlap-first method worked, not just whether the meals sound nice individually.\n</instructions>",
-      "keywords": [
-        "productivity",
-        "planning",
-        "focus",
-        "decisions",
-        "habits",
-        "organization",
-        "time management",
-        "personal",
-        "life",
-        "image",
-        "images",
-        "image generation",
-        "art",
-        "visual",
-        "generate",
-        "picture",
-        "graphic",
-        "design",
-        "meal",
-        "plan",
-        "actually",
-        "cook"
-      ],
-      "_buildRef": "tristenobrien:meal-plan-real-life",
-      "install": [
-        "The more specific your time limit, dislikes, and equipment, the tighter the ingredient-overlap plan — vague inputs produce vague, wasteful meals"
-      ]
-    }
-  },
-  {
     "slug": "prompt-summarize-to-grade-level",
     "name": "Summarize at Exactly the Right Depth",
     "summary": "Gives you the same text summarized at four depths and any reading level, so you can grab the exact version you need.",
@@ -4423,48 +4376,6 @@
       "install": [
         "Built for Midjourney — fill in the product, surface, and prop brackets (e.g. journal, table, cup); naming the backlit/rim-light direction is what avoids a flat, front-lit result",
         "Keep --ar 4:5, and watch for hand/finger artifacts common to AI image models — regenerate if they look distorted"
-      ]
-    }
-  },
-  {
-    "slug": "prompt-top-down-food-flat-lay",
-    "name": "Top-Down Food Flat Lay",
-    "summary": "An overhead food-magazine flat lay with fresh styling, soft natural shadows, and appetizing, award-winning color.",
-    "description": "An overhead food-magazine flat lay with fresh styling, soft natural shadows, and appetizing, award-winning color.",
-    "type": "PROMPT",
-    "tags": [
-      "product-and-brand",
-      "prompt-library",
-      "midjourney"
-    ],
-    "content": {
-      "whatYouGet": [
-        "A verified dead-parallel overhead flat lay styled with a food stylist's freshness cues — distinct oil beads, just-prepped scatter ingredients — not an over-dressed plate",
-        "Single-source diffused overhead lighting (consistent shadow direction and length) producing natural sheen on yolk, oil and herb dew instead of a flat catalogue look",
-        "Magazine-grade texture (Hasselblad 100mm, ISO 100, f/8, evenly sharp corner-to-corner) with rich true-to-life color and a clean zone reserved for a title, delivered square at 1:1"
-      ],
-      "promptText": "Resolution/Format: High-resolution overhead food-editorial photograph, square format, aspect ratio 1:1 (in Midjourney: --ar 1:1).\n\nProduct: [A VIBRANT GRAIN BOWL WITH AVOCADO, SOFT-BOILED EGG AND FRESH HERBS] as the hero, styled with a [linen napkin] tucked at an angle, a few loose ingredients scattered as if just prepped, and a fresh drizzle of olive oil catching light in small, distinct beads — the food stylist's trick for selling freshness without over-dressing the plate.\n\nSurface/Background: Styled on a [warm terrazzo surface]. Color is rich and true-to-life — deep greens, warm golden yolk, creamy avocado — graded so nothing tips into an artificial oversaturated 'food-photo' orange cast. Leave a genuinely clean, lower-texture zone for a title or caption, balanced against the composition rather than an afterthought crop.\n\nLighting: Camera dead-parallel to the surface on a copy stand, verified square with no keystoning. One large, soft, diffused source directly overhead and offset slightly camera-left (large diffusion panel or octabox, several feet from the surface for genuinely soft shadow edges), casting every shadow in the same consistent direction and length — the visual tell of a single coherent source. No on-axis flash; the soft directional quality is what gives the food a natural sheen (glistening yolk, oil beads, herb dew) instead of a flat, shadowless catalogue look.\n\nCamera/Angle: As though on a Hasselblad, 100mm, ISO 100, f/8 — enough depth of field to hold the entire flat plane evenly sharp corner-to-corner (there's no naturally occurring depth to blur in a true overhead shot, so evenness of focus is the goal, not shallow bokeh).\n\nFocus/Material detail: Every texture holds up at a close crop: herb edge serration, the soft-set egg yolk sheen, individual grains distinguishable rather than a mush. Retouch to magazine food-photography finish, protecting texture rather than over-smoothing it. Avoid: dull or greasy-looking food, harsh unsoftened shadows, any camera tilt, wilted garnish, prop clutter competing with the dish, plastic-looking sheen, added text, watermarks.",
-      "keywords": [
-        "image",
-        "images",
-        "image generation",
-        "art",
-        "visual",
-        "generate",
-        "picture",
-        "graphic",
-        "design",
-        "midjourney",
-        "top",
-        "down",
-        "food",
-        "flat",
-        "lay"
-      ],
-      "_buildRef": "tristenobrien:top-down-food-flat-lay",
-      "install": [
-        "Built for Midjourney — swap in your own dish, surface, and color notes in the brackets",
-        "Keep --ar 1:1 for Instagram or menu-card layouts (the aspect ratio is also spelled out in plain language in the prompt text)"
       ]
     }
   },
