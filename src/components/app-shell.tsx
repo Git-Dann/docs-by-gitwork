@@ -34,6 +34,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AiSpendCard } from "@/components/ai-spend-card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { PushPromptBanner } from "@/components/notifications/push-prompt-banner";
 
 // The Desk is a client-only interactive drawer that pulls in a heavy subtree
 // (globe world-land data ~28KB, the Brief + morning-brief ~29KB). It renders its
@@ -400,6 +401,7 @@ export function AppShell({
               </div>
             </header>
           )}
+          <PushPromptBanner />
           <main
             className={
               mainClassName ??
