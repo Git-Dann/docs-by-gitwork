@@ -3,17 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 
-export type NotificationChannel = "email" | "push" | "slack" | "inApp";
-
-export type NotificationEvent =
-  | "pulse.scan_failed"
-  | "pulse.monitor_drift"
-  | "study.report_ready"
-  | "care.ticket_created"
-  | "care.ticket_escalated"
-  | "docs.viewed_by_client"
-  | "docs.signed"
-  | "team.member_added";
+// Single source of truth — imported from the server registry so this client hook
+// can never drift out of sync with the real event list (it did before: only 8 of
+// the registered events were listed here).
+import type { NotificationChannel, NotificationEvent } from "@/server/notification-events";
+export type { NotificationChannel, NotificationEvent };
 
 export interface NotificationPreferences {
   emailEnabled: boolean;

@@ -18,6 +18,7 @@ import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { findSignerByToken, submitSignature } from "@/server/signatures";
 import { notifyDocumentEvent } from "@/server/slack-notify";
+import { dispatchNotification } from "@/server/notifications";
 
 interface RouteContext {
   params: Promise<{ token: string }>;
@@ -82,6 +83,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
       documentType: doc.documentType,
       kind: "DOC_SIGNED",
       detail: `${found.signer.name} (${found.signer.role || "signer"}) signed`,
+    });
+    dispatchNotification({
+      event: "docs.signed",
+      workspaceId: doc.workspaceId,
+      target: { kind: "permission", permission: "docs.manage" },
+      title:
+        updated.status === "COMPLETED"
+          ? `Fully signed: ${doc.title}`
+          : `${found.signer.name} signed: ${doc.title}`,
+      actionUrl: `/app/docs/${doc.id}`,
+      groupKey: `docs.signed:${doc.id}`,
     });
     if (updated.status === "COMPLETED") {
       void notifyDocumentEvent({

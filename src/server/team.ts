@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { dispatchNotification } from "@/server/notifications";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { ForbiddenError } from "@/server/auth/effective-user";
 import { recomputeMember } from "@/server/permissions";
@@ -233,11 +234,32 @@ export async function acceptInvite(token: string, userId: string) {
   if (invite.expiresAt && invite.expiresAt < new Date()) return null;
 
   // Ensure the user is a member of this workspace
+  const alreadyMember = await prisma.workspaceMember.findUnique({
+    where: { workspaceId_userId: { workspaceId: invite.workspaceId, userId } },
+    select: { id: true },
+  });
   await prisma.workspaceMember.upsert({
     where: { workspaceId_userId: { workspaceId: invite.workspaceId, userId } },
     update: {},
     create: { workspaceId: invite.workspaceId, userId, role: "STAFF", permissions: [] },
   });
+
+  // Only on a genuine first join (not a re-accept) — let admins know.
+  if (!alreadyMember) {
+    const joiner = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true },
+    });
+    const joinerName = joiner?.name?.trim() || joiner?.email || "A new teammate";
+    dispatchNotification({
+      event: "team.member_added",
+      workspaceId: invite.workspaceId,
+      target: { kind: "admins" },
+      title: `${joinerName} joined the workspace`,
+      actionUrl: "/app/settings/team",
+      groupKey: "team.member_added",
+    });
+  }
 
   return prisma.workspaceInvite.update({
     where: { id: invite.id },

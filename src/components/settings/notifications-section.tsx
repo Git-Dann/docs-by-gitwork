@@ -74,6 +74,84 @@ const EVENT_GROUPS: { module: string; events: { id: NotificationEvent; label: st
         label: "Signed",
         description: "A document reached SIGNED status.",
       },
+      {
+        id: "docs.accepted",
+        label: "Accepted",
+        description: "A client accepted a shared document in-page.",
+      },
+      {
+        id: "docs.declined",
+        label: "Declined",
+        description: "A client declined a shared document in-page.",
+      },
+    ],
+  },
+  {
+    module: "Tasks",
+    events: [
+      { id: "tasks.assigned", label: "Assigned", description: "You were assigned a task." },
+      {
+        id: "tasks.status_changed",
+        label: "Status changed",
+        description: "A task you're on moved to a new column.",
+      },
+      { id: "tasks.commented", label: "Commented", description: "A new comment on a task you're on." },
+      { id: "tasks.mentioned", label: "Mentioned", description: "You were @mentioned in a task comment." },
+      {
+        id: "tasks.blocker_response",
+        label: "Blocker answered",
+        description: "A client replied to a blocker you flagged.",
+      },
+      {
+        id: "tasks.client_request",
+        label: "Client request",
+        description: "A client submitted a request/task in their wiki for review.",
+      },
+    ],
+  },
+  {
+    module: "Backstage",
+    events: [
+      {
+        id: "backstage.leave_submitted",
+        label: "Leave submitted",
+        description: "A teammate requested leave (approvers).",
+      },
+      {
+        id: "backstage.leave_decided",
+        label: "Leave decided",
+        description: "Your leave request was approved or rejected.",
+      },
+      {
+        id: "backstage.expense_submitted",
+        label: "Expense submitted",
+        description: "A teammate submitted an expense (approvers).",
+      },
+      {
+        id: "backstage.expense_decided",
+        label: "Expense decided",
+        description: "Your expense was reviewed.",
+      },
+    ],
+  },
+  {
+    module: "Scribe",
+    events: [
+      {
+        id: "meetings.notes_ready",
+        label: "Notes ready",
+        description: "AI meeting notes finished for a client you're on.",
+      },
+    ],
+  },
+  {
+    module: "Portal",
+    events: [
+      {
+        id: "clients.onboarded",
+        label: "Client onboarded",
+        description: "A new client completed onboarding.",
+      },
     ],
   },
   {

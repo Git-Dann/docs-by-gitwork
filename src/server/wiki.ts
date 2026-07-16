@@ -10,6 +10,7 @@ import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { dispatchNotification } from "@/server/notifications";
 import type {
   WikiPageType,
   WikiPlatform,
@@ -1093,7 +1094,7 @@ export async function ingestWikiItemsByToken(
     select: {
       id: true,
       intakeEnabled: true,
-      client: { select: { id: true, slug: true, name: true } },
+      client: { select: { id: true, slug: true, name: true, workspaceId: true } },
       intakeItems: { select: { title: true, externalRef: true, status: true } },
     },
   });
@@ -1144,6 +1145,25 @@ export async function ingestWikiItemsByToken(
     created.push(serializeWikiIntakeItem(item));
     if (externalRef) seenRefs.add(externalRef);
     seenOpenTitles.add(titleKey);
+  }
+
+  // Flag new client requests to the client's attributed devs (clientTeam scope
+  // means only devs assigned to this client are notified). No actorId — the
+  // submitter is the client, not a workspace user, so nobody is excluded.
+  if (created.length > 0) {
+    const reqTitle = (n: number) =>
+      n === 1 ? `New client request: ${created[0].title}` : `${n} client requests to review`;
+    dispatchNotification({
+      event: "tasks.client_request",
+      workspaceId: wiki.client.workspaceId,
+      target: { kind: "clientTeam" },
+      clientId: wiki.client.id,
+      title: reqTitle(created.length),
+      titleForCount: reqTitle,
+      actionUrl: `/app/portal/${wiki.client.slug}/tasks`,
+      groupKey: `tasks.client_request:${wiki.client.id}`,
+      count: created.length,
+    });
   }
 
   return { client, created, skipped, count: created.length };
@@ -1236,7 +1256,7 @@ export async function promoteWikiIntakeItemToTask(
 ): Promise<{ item: WikiIntakeItemRecord; taskId: string }> {
   const item = await prisma.clientWikiIntakeItem.findUnique({
     where: { id: itemId },
-    include: { wiki: { include: { client: { select: { id: true, workspaceId: true } } } } },
+    include: { wiki: { include: { client: { select: { id: true, workspaceId: true, slug: true } } } } },
   });
   if (!item) throw new Error("Wiki intake item not found");
   if (item.taskId) return { item: serializeWikiIntakeItem(item), taskId: item.taskId };
@@ -1286,6 +1306,27 @@ export async function promoteWikiIntakeItemToTask(
     where: { id: item.id },
     data: { status: "PROMOTED", taskId: task.id },
   });
+
+  // This path builds the task with raw prisma.create (not createTask), so emit the
+  // assignment notification here too, to whoever it was handed to (minus the promoter).
+  const promoteAssignees = (opts.assigneeIds ?? []).filter((id) => id !== userId);
+  if (promoteAssignees.length > 0) {
+    dispatchNotification({
+      event: "tasks.assigned",
+      workspaceId: item.wiki.client.workspaceId,
+      actorId: userId,
+      target: { kind: "users", userIds: promoteAssignees },
+      clientId: item.wiki.client.id,
+      title: "You were assigned a task",
+      titleForCount: (n) =>
+        n === 1 ? "You were assigned a task" : `You were assigned ${n} tasks`,
+      body: `${wikiItemPrefix(item.type)} ${item.title}`,
+      actionUrl: `/app/portal/${item.wiki.client.slug}/tasks`,
+      groupKey: "tasks.assigned",
+      metadata: { taskIds: [task.id] },
+    });
+  }
+
   return { item: serializeWikiIntakeItem(updated), taskId: task.id };
 }
 

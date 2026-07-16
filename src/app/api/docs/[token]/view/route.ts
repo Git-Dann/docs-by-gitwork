@@ -15,6 +15,7 @@ import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { notifyDocumentEvent } from "@/server/slack-notify";
+import { dispatchNotification } from "@/server/notifications";
 import { recordDocumentView } from "@/server/document-analytics";
 import { clientIpFromRequest, geoFromRequest, parseUserAgent } from "@/server/visitor-context";
 
@@ -69,6 +70,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
         documentType: doc.documentType,
         kind: "DOC_FIRST_VIEWED",
         detail: where ? `Opened from ${where}` : undefined,
+      });
+      dispatchNotification({
+        event: "docs.viewed_by_client",
+        workspaceId: doc.workspaceId,
+        target: { kind: "permission", permission: "docs.manage" },
+        title: `${doc.title} was opened`,
+        body: where ? `Opened from ${where}` : null,
+        actionUrl: `/app/docs/${doc.id}`,
+        groupKey: `docs.viewed:${doc.id}`,
       });
     }
     void notifyDocumentEvent({
