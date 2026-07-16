@@ -4,26 +4,96 @@
 // DM Serif Display stat figures, JetBrains Mono data-labels, hairline cards, no shadows,
 // Gitwork Blue data highlights. Reused across the Portal + (future) AI-usage sections.
 
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 
 export const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 export const SERIF = "var(--font-display), 'Times New Roman', Georgia, serif";
 
 /**
- * Small "ⓘ" affordance carrying a plain-English explanation via the native title tooltip —
- * so a reader who doesn't know the in-house term (lead time, standup, …) can hover for it.
+ * Small info affordance carrying a plain-English explanation — so a reader who doesn't know the
+ * in-house term (lead time, standup, …) can get it. Click-to-reveal (no hover timer). The popover
+ * is fixed-positioned off the button's rect so it isn't clipped by the card's overflow:hidden.
  */
 export function InfoTip({ text }: { text: string }) {
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const open = pos != null;
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setPos(null);
+    const onDoc = (e: globalThis.MouseEvent) => {
+      if (btnRef.current && btnRef.current.contains(e.target as Node)) return;
+      close();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open]);
+
+  const toggle = (e: ReactMouseEvent) => {
+    e.stopPropagation();
+    if (open) {
+      setPos(null);
+      return;
+    }
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const width = 240;
+    const left = Math.min(Math.max(8, r.left + r.width / 2 - width / 2), window.innerWidth - width - 8);
+    setPos({ top: r.bottom + 6, left });
+  };
+
   return (
-    <span
-      role="img"
-      aria-label={text}
-      title={text}
-      className="ml-1 inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full border align-middle"
-      style={{ borderColor: "var(--text-4)", color: "var(--text-4)", fontFamily: MONO, fontSize: 8, lineHeight: 1 }}
-    >
-      i
-    </span>
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-label="What's this?"
+        aria-expanded={open}
+        onClick={toggle}
+        className="ml-1 inline-flex h-3.5 w-3.5 shrink-0 cursor-pointer items-center justify-center rounded-full p-0 align-middle"
+        style={{ color: open ? "var(--brand-600)" : "var(--text-4)" }}
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true">
+          <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.25" />
+          <circle cx="8" cy="4.7" r="1.05" fill="currentColor" />
+          <rect x="7.15" y="6.8" width="1.7" height="5" rx="0.85" fill="currentColor" />
+        </svg>
+      </button>
+      {open && pos ? (
+        <span
+          role="tooltip"
+          className="fixed z-[60] w-60 rounded-[8px] border p-2.5 text-left"
+          style={{
+            top: pos.top,
+            left: pos.left,
+            borderColor: "var(--border-2)",
+            background: "var(--surface-0)",
+            color: "var(--text-2)",
+            fontFamily: "var(--font-sans), system-ui, -apple-system, sans-serif",
+            fontSize: 11.5,
+            fontWeight: 400,
+            lineHeight: 1.45,
+            letterSpacing: 0,
+            textTransform: "none",
+            boxShadow: "0 6px 20px rgba(0,0,0,0.10)",
+          }}
+        >
+          {text}
+        </span>
+      ) : null}
+    </>
   );
 }
 
