@@ -112,7 +112,7 @@ export function StarterDetail({ starterId }: { starterId: string }) {
   const downloadUrl = `/api/starters/${starter.id}/download${downloadQs ? `?${downloadQs}` : ""}`;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="mx-auto max-w-7xl space-y-5">
       <div className="flex items-center justify-between gap-2">
         <Link
           href={scanId ? `/app/starters?scanId=${scanId}` : "/app/starters"}
@@ -160,148 +160,166 @@ export function StarterDetail({ starterId }: { starterId: string }) {
         )}
       </div>
 
-      <section className="widget-card">
-        <div className="widget-header">
-          <span className="widget-header__label">
-            <span className="widget-header__label--number">01</span>
-            {" // STARTER"}
-          </span>
-          <span
-            className={cn(
-              "inline-flex items-center rounded-[4px] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em]",
-              TYPE_TONE[starter.type] ?? TYPE_TONE.KIT,
-            )}
-          >
-            {TYPE_LABEL[starter.type]}
-          </span>
-        </div>
-        <div className="px-6 py-6">
-          <h1
-            className="text-3xl leading-tight tracking-[-0.02em] text-[var(--text-1)]"
-            style={{ fontFamily: "var(--font-display)" }}
-          >
-            {starter.name}
-          </h1>
-          <p className="mt-2 text-sm text-[var(--text-3)]">{starter.summary}</p>
+      {/* 01 // STARTER, 02 // ABOUT, 03 // WHAT YOU GET sit in a row — the overview at a glance —
+          leaving install/prompt below as the wider, dominant "main piece" of the page. */}
+      <div className="grid items-start gap-4 lg:grid-cols-3">
+        <section className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header__label">
+              <span className="widget-header__label--number">01</span>
+              {" // STARTER"}
+            </span>
+            <span
+              className={cn(
+                "inline-flex items-center rounded-[4px] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em]",
+                TYPE_TONE[starter.type] ?? TYPE_TONE.KIT,
+              )}
+            >
+              {TYPE_LABEL[starter.type]}
+            </span>
+          </div>
+          <div className="px-5 py-5">
+            <h1
+              className="text-2xl leading-tight tracking-[-0.02em] text-[var(--text-1)]"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              {starter.name}
+            </h1>
+            <p className="mt-2 text-sm text-[var(--text-3)]">{starter.summary}</p>
 
-          {/* Add to Claude — packages the starter as a Claude Skill .zip (also the backup). */}
-          <div className="mt-4 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <a
-                href={downloadUrl}
-                download
-                className={cn(buttonStyles({ variant: "primary", size: "sm" }), "inline-flex items-center gap-1.5")}
-              >
-                <ArrowDownTrayIcon className="h-3.5 w-3.5" />
-                {isSkillLike ? "Add to Claude" : "Download source (.zip)"}
-              </a>
-              {isSkillLike && (
+            {/* Add to Claude — packages the starter as a Claude Skill .zip (also the backup). */}
+            <div className="mt-4 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <a
-                  href="https://claude.ai/settings/capabilities"
+                  href={downloadUrl}
+                  download
+                  className={cn(buttonStyles({ variant: "primary", size: "sm" }), "inline-flex items-center gap-1.5")}
+                >
+                  <ArrowDownTrayIcon className="h-3.5 w-3.5" />
+                  {isSkillLike ? "Add to Claude" : "Download source (.zip)"}
+                </a>
+                {isSkillLike && (
+                  <a
+                    href="https://claude.ai/settings/capabilities"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+                  >
+                    Open Claude Skills settings
+                    <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
+              <p className="mt-2 text-xs leading-5 text-[var(--text-3)]">
+                {isSkillLike ? (
+                  <>
+                    Downloads a ready-to-install Skill. In Claude → <span className="font-medium text-[var(--text-2)]">Settings → Capabilities → Skills → Upload skill</span>,
+                    drop this <span className="font-mono">.zip</span> in (requires code execution). Doubles as your off-platform backup.
+                  </>
+                ) : (
+                  <>Downloads the full source as a <span className="font-mono">.zip</span> — your off-platform backup.</>
+                )}
+              </p>
+            </div>
+
+            {sourceUrl && (
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <a
+                  href={sourceUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+                  className={cn(buttonStyles({ variant: "primary", size: "sm" }), "inline-flex items-center gap-1.5")}
                 >
-                  Open Claude Skills settings
-                  <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+                  View &amp; use
+                  <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
                 </a>
-              )}
-            </div>
-            <p className="mt-2 text-xs leading-5 text-[var(--text-3)]">
-              {isSkillLike ? (
-                <>
-                  Downloads a ready-to-install Skill. In Claude → <span className="font-medium text-[var(--text-2)]">Settings → Capabilities → Skills → Upload skill</span>,
-                  drop this <span className="font-mono">.zip</span> in (requires code execution). Doubles as your off-platform backup.
-                </>
-              ) : (
-                <>Downloads the full source as a <span className="font-mono">.zip</span> — your off-platform backup.</>
-              )}
-            </p>
-          </div>
+                {sourceLabel && (
+                  <span className="font-mono text-[11px] text-[var(--text-4)]">
+                    based on <span className="text-[var(--text-3)]">{sourceLabel}</span>
+                  </span>
+                )}
+              </div>
+            )}
 
-          {sourceUrl && (
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <a
-                href={sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className={cn(buttonStyles({ variant: "primary", size: "sm" }), "inline-flex items-center gap-1.5")}
-              >
-                View &amp; use
-                <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
-              </a>
-              {sourceLabel && (
-                <span className="font-mono text-[11px] text-[var(--text-4)]">
-                  based on <span className="text-[var(--text-3)]">{sourceLabel}</span>
-                </span>
-              )}
-            </div>
-          )}
+            {starter.tags.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-1.5">
+                {starter.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-3)]"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
 
-          {starter.tags.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-1.5">
-              {starter.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-3)]"
+            {scan && (
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-[var(--mist-border)] bg-[var(--mist)] px-4 py-3">
+                <p className="text-xs text-[var(--text-2)]">
+                  Link this starter to the scan of{" "}
+                  <span className="font-semibold text-[var(--text-1)]">{scan.projectName || "this project"}</span>?
+                </p>
+                <button
+                  type="button"
+                  onClick={handleAdopt}
+                  disabled={adopting}
+                  className="inline-flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
                 >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {scan && (
-            <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-[var(--mist-border)] bg-[var(--mist)] px-4 py-3">
-              <p className="text-xs text-[var(--text-2)]">
-                Link this starter to the scan of{" "}
-                <span className="font-semibold text-[var(--text-1)]">{scan.projectName || "this project"}</span>?
-              </p>
-              <button
-                type="button"
-                onClick={handleAdopt}
-                disabled={adopting}
-                className="inline-flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
-              >
-                <CheckIcon className="h-4 w-4" />
-                Use this starter
-                <ArrowRightIcon className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {starter.description && (
-        <section className="widget-card">
-          <div className="widget-header">
-            <span className="widget-header__label">
-              <span className="widget-header__label--number">02</span>
-              {" // ABOUT"}
-            </span>
-          </div>
-          <div className="px-6 py-5 text-sm leading-6 text-[var(--text-2)]">
-            <Markdown>{starter.description}</Markdown>
+                  <CheckIcon className="h-4 w-4" />
+                  Use this starter
+                  <ArrowRightIcon className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         </section>
-      )}
 
-      {whatYouGet.length > 0 && (
+        {starter.description && (
+          <section className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header__label">
+                <span className="widget-header__label--number">02</span>
+                {" // ABOUT"}
+              </span>
+            </div>
+            <div className="px-5 py-5 text-sm leading-6 text-[var(--text-2)]">
+              <Markdown>{starter.description}</Markdown>
+            </div>
+          </section>
+        )}
+
+        {whatYouGet.length > 0 && (
+          <section className="widget-card">
+            <div className="widget-header">
+              <span className="widget-header__label">
+                <span className="widget-header__label--number">03</span>
+                {" // WHAT YOU GET"}
+              </span>
+            </div>
+            <ul className="space-y-2 px-5 py-5">
+              {whatYouGet.map((item, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-2)]">
+                  <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
+
+      {/* Main piece — the actual prompt (or, for kits without one, the install steps) gets the
+          full page width and the most visual weight; everything above is context for this. */}
+      {promptText && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">03</span>
-              {" // WHAT YOU GET"}
+              <span className="widget-header__label--number">04</span>
+              {" // PROMPT"}
             </span>
           </div>
-          <ul className="space-y-2 px-6 py-5">
-            {whatYouGet.map((item, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-2)]">
-                <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
-                {item}
-              </li>
-            ))}
-          </ul>
+          <StarterPromptEditor initialPromptText={promptText} onPicksChange={setEditorPicks} />
         </section>
       )}
 
@@ -309,7 +327,7 @@ export function StarterDetail({ starterId }: { starterId: string }) {
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">04</span>
+              <span className="widget-header__label--number">{promptText ? "05" : "04"}</span>
               {" // INSTALL"}
             </span>
           </div>
@@ -326,23 +344,11 @@ export function StarterDetail({ starterId }: { starterId: string }) {
         </section>
       )}
 
-      {promptText && (
-        <section className="widget-card">
-          <div className="widget-header">
-            <span className="widget-header__label">
-              <span className="widget-header__label--number">05</span>
-              {" // PROMPT"}
-            </span>
-          </div>
-          <StarterPromptEditor initialPromptText={promptText} onPicksChange={setEditorPicks} />
-        </section>
-      )}
-
       {techStack.length > 0 && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">06</span>
+              <span className="widget-header__label--number">{[promptText, install.length > 0].filter(Boolean).length + 4}</span>
               {" // STACK"}
             </span>
           </div>

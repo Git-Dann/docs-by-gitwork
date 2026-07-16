@@ -287,11 +287,24 @@ export function StarterList() {
       (terms.length === 0 || terms.every((t) => s.searchText.includes(t))),
   );
 
-  // "featured" = leave the server's default order untouched (featured desc, isDefault desc,
-  // createdAt desc); the other options are a plain client-side re-sort — 188 entries is small
-  // enough that this needs no server round-trip.
+  // "featured" (the hard default) is a real relevancy ordering, not raw import order:
+  // Gitwork Approved always leads (the server already orders by `featured desc`, preserved by
+  // `.filter()`'s stability), then everything else alphabetically — a predictable order instead
+  // of insertion order — then the Claude Design 2.0 tutorial steps last of all, since they're
+  // sequential/depend on prior context and are a poor "first thing to try." Their own relative
+  // order is preserved (not alphabetized) so the 10-step sequence still reads 1→10 within that
+  // group. The other sort options are a plain client-side re-sort — 188 entries is small enough
+  // that none of this needs a server round-trip.
   const sorted = useMemo(() => {
-    if (sort === "featured") return filtered;
+    if (sort === "featured") {
+      const approved = filtered.filter((s) => s.featured);
+      const rest = filtered.filter((s) => !s.featured);
+      const tutorial = rest.filter((s) => s.tags.includes("claude-design-2-0"));
+      const everythingElse = rest
+        .filter((s) => !s.tags.includes("claude-design-2-0"))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return [...approved, ...everythingElse, ...tutorial];
+    }
     const copy = [...filtered];
     switch (sort) {
       case "az":
@@ -394,7 +407,7 @@ export function StarterList() {
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               aria-label="Filter starters by content category"
-              className="app-select-compact w-44 shrink-0"
+              className="app-select-compact w-52 shrink-0"
             >
               <option value="all">All content</option>
               {categories.map((cat) => (
@@ -407,7 +420,7 @@ export function StarterList() {
               value={sort}
               onChange={(e) => setSort(e.target.value as SortOption)}
               aria-label="Sort starters"
-              className="app-select-compact w-44 shrink-0"
+              className="app-select-compact w-52 shrink-0"
             >
               {(Object.keys(SORT_LABEL) as SortOption[]).map((opt) => (
                 <option key={opt} value={opt}>
