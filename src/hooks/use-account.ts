@@ -15,6 +15,8 @@ export interface AccountProfile {
   email: string;
   name: string;
   avatarUrl: string;
+  /** CSS object-position for the avatar crop (e.g. "50% 30%"). "" → centred. */
+  avatarPosition: string;
   role: string;
   permissions: string[];
   showDevRates: boolean;
@@ -58,7 +60,7 @@ export function useUpdateAccount() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (
-      patch: Partial<Pick<AccountProfile, "name" | "avatarUrl">>,
+      patch: Partial<Pick<AccountProfile, "name" | "avatarUrl" | "avatarPosition">>,
     ): Promise<AccountProfile> => {
       const res = await apiFetch<{ account: Omit<AccountProfile, "role" | "permissions"> }>(
         "/api/account",
@@ -68,9 +70,11 @@ export function useUpdateAccount() {
           headers: { "Content-Type": "application/json" },
         },
       );
-      // Merge with cached role/permissions since PATCH doesn't return them
+      // Merge over the cached profile — PATCH only echoes the identity fields, so we keep
+      // everything else (role, permissions, showDevRates) from the existing cache entry.
       const existing = queryClient.getQueryData<AccountProfile>(ACCOUNT_KEY);
       return {
+        ...existing,
         ...res.account,
         role: existing?.role ?? "STAFF",
         permissions: existing?.permissions ?? [],

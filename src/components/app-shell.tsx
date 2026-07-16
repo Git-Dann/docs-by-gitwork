@@ -25,6 +25,7 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
+import { avatarPosition, resolveAvatar } from "@/lib/avatar";
 import { useAccount } from "@/hooks/use-account";
 import { isAtLeast, isSuperAdmin } from "@/types/auth";
 import { useViewAs, type ViewAsRole, type ViewAsUser } from "@/lib/view-as";
@@ -586,7 +587,7 @@ function SidebarNavItem({
   );
 }
 
-function Avatar({ name, url }: { name: string; url: string }) {
+function Avatar({ name, url, position }: { name: string; url: string; position?: string }) {
   const initials = name
     .split(" ")
     .map((w) => w[0] ?? "")
@@ -605,6 +606,7 @@ function Avatar({ name, url }: { name: string; url: string }) {
         loading="lazy"
         decoding="async"
         className="h-9 w-9 rounded-full object-cover"
+        style={position ? { objectPosition: position } : undefined}
         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; (e.currentTarget.nextSibling as HTMLElement | null)?.style.setProperty("display", "flex"); }}
       />
     );
@@ -664,7 +666,9 @@ function ProfileMenu({
   // it aggressively so it's a once-per-session fetch in practice.
   const displayName = session?.user?.name || "";
   const displayEmail = session?.user?.email || "";
-  const displayAvatar = account?.avatarUrl || session?.user?.image || "";
+  const resolvedAvatar = resolveAvatar(account?.avatarUrl, session?.user?.image);
+  const displayAvatar = resolvedAvatar.src;
+  const displayAvatarPosition = avatarPosition(account?.avatarPosition);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -699,7 +703,7 @@ function ProfileMenu({
           collapsed && "justify-center px-2",
         )}
       >
-        <Avatar name={displayName} url={displayAvatar} />
+        <Avatar name={displayName} url={displayAvatar} position={displayAvatarPosition} />
         {!collapsed ? (
           <>
             <div className="min-w-0 flex-1">
