@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { WidgetCard } from "@/components/codeclear/codeclear-shared";
+import { Section } from "./devsignal-ui";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/format";
 import { useNotice } from "./notice";
@@ -55,7 +55,7 @@ export function AssessmentDetail({ id }: { id: string }) {
 
   return (
     <div className="space-y-6">
-      <Link href="/app/codeclear/devsignal" className="widget-data-label inline-block text-[var(--text-4)] transition hover:text-[var(--text-2)]">
+      <Link href="/app/codeclear/devsignal" className="inline-block text-sm text-[var(--text-4)] transition hover:text-[var(--text-2)]">
         ← Back to queue
       </Link>
 
@@ -85,14 +85,14 @@ function Masthead({ a }: { a: DevSignalAssessmentDTO }) {
     : null;
 
   return (
-    <section className="widget-card">
-      <div className="widget-body space-y-4">
+    <section className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-5">
+      <div className="space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="font-serif text-3xl leading-tight tracking-[-0.02em] text-[var(--text-1)]">
+            <h1 className="text-2xl font-bold tracking-[-0.01em] text-[var(--text-1)]">
               {a.candidateName}
             </h1>
-            <p className="widget-data-label mt-1 normal-case tracking-normal">
+            <p className="mt-1 text-sm text-[var(--text-4)]">
               {a.candidateGithubHandle ?? "no handle"} · {a.status.replace("_", " ").toLowerCase()} · config {a.configVersion}
             </p>
           </div>
@@ -135,10 +135,10 @@ function Masthead({ a }: { a: DevSignalAssessmentDTO }) {
 function BestMatchCard({ a }: { a: DevSignalAssessmentDTO }) {
   const summary = a.bestMatchSummary;
   return (
-    <WidgetCard number="04" name="Best match">
+    <Section title="Best match">
       <p className="text-xl font-semibold text-[var(--text-1)]">{summary?.labelDisplay ?? "Not scored yet"}</p>
       {typeof a.finalScore === "number" && (
-        <p className="widget-data-label mt-1 normal-case tracking-normal">Internal score {a.finalScore}/100</p>
+        <p className="mt-1 text-sm text-[var(--text-4)]">Internal score {a.finalScore}/100</p>
       )}
       {a.scoreBreakdown?.humanReviewRequired && (
         <p className="mt-2 rounded-[6px] bg-amber-50 px-3 py-2 text-xs text-amber-700">Human review required.</p>
@@ -150,16 +150,16 @@ function BestMatchCard({ a }: { a: DevSignalAssessmentDTO }) {
           ))}
         </ul>
       )}
-      <p className="widget-data-label mt-3 text-[var(--text-4)]">
+      <p className="mt-3 text-xs text-[var(--text-4)]">
         Client-facing view shows this label only — never the number.
       </p>
-    </WidgetCard>
+    </Section>
   );
 }
 
 function StageTimeline({ stages }: { stages: DevSignalStageResultDTO[] }) {
   return (
-    <WidgetCard number="01" name="Stage results">
+    <Section title="Stage results">
       {stages.length === 0 ? (
         <p className="text-sm text-[var(--text-4)]">No stages run yet.</p>
       ) : (
@@ -196,7 +196,7 @@ function StageTimeline({ stages }: { stages: DevSignalStageResultDTO[] }) {
           ))}
         </ul>
       )}
-    </WidgetCard>
+    </Section>
   );
 }
 
@@ -206,17 +206,17 @@ function ScoreBreakdown({ a }: { a: DevSignalAssessmentDTO }) {
   const model = analytics.data?.analytics.modelStatus;
   if (!b) {
     return (
-      <WidgetCard number="02" name="Score breakdown">
+      <Section title="Score breakdown">
         <p className="text-sm text-[var(--text-4)]">
           Not scored yet — run the automated stages to compute the breakdown.
         </p>
-      </WidgetCard>
+      </Section>
     );
   }
   return (
-    <WidgetCard number="02" name="Score breakdown">
-      <p className="widget-data-label normal-case tracking-normal">
-        {b.formulaVersion} · weighted {b.weightedScore}
+    <Section title="Score breakdown" meta={b.formulaVersion}>
+      <p className="text-xs text-[var(--text-4)]">
+        weighted {b.weightedScore}
         {b.cap !== null ? ` · capped to ${b.cap} by ${b.cappedByStageId}` : ""}
       </p>
       {model && model.status !== "calibrated" && (
@@ -245,7 +245,7 @@ function ScoreBreakdown({ a }: { a: DevSignalAssessmentDTO }) {
           </tr>
         </tbody>
       </table>
-    </WidgetCard>
+    </Section>
   );
 }
 
@@ -272,7 +272,7 @@ function InterviewScorecard({ id }: { id: string }) {
   };
 
   return (
-    <WidgetCard number="03" name="Leadership interview">
+    <Section title="Leadership interview">
       <p className="text-xs text-[var(--text-4)]">Human scorecard — supports the gate, doesn&apos;t replace your final audit.</p>
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {INTERVIEW_DIMENSIONS.map(([key, label]) => (
@@ -308,7 +308,7 @@ function InterviewScorecard({ id }: { id: string }) {
         </Button>
       </div>
       {noticeEl}
-    </WidgetCard>
+    </Section>
   );
 }
 
@@ -339,7 +339,7 @@ function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
   };
 
   return (
-    <WidgetCard number="05" name="Decision">
+    <Section title="Decision">
       <p className="text-sm text-[var(--text-3)]">
         Current: <span className="font-medium text-[var(--text-2)]">{a.decision.replace(/_/g, " ").toLowerCase()}</span>
       </p>
@@ -366,7 +366,7 @@ function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
           </div>
 
           <div className="mt-4 border-t border-[var(--border-3)] pt-4">
-            <p className="widget-data-label text-[var(--text-4)]">The human gate</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">The human gate</p>
             {!confirming ? (
               <Button
                 variant="primary"
@@ -401,6 +401,6 @@ function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
         </>
       )}
       {noticeEl}
-    </WidgetCard>
+    </Section>
   );
 }

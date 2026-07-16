@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { WidgetCard } from "@/components/codeclear/codeclear-shared";
+import { Section } from "./devsignal-ui";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useNotice } from "./notice";
 import { useDevSignalNotice, useUpdateDevSignalNotice } from "@/hooks/use-devsignal";
@@ -57,9 +57,9 @@ export function NoticeEditor() {
         <p className="text-sm text-[var(--text-4)]">Loading…</p>
       ) : (
         <>
-          <WidgetCard number="01" name="Contact">
+          <Section title="Contact">
             <label className="block">
-              <span className="widget-data-label mb-1 block">Data-rights contact email</span>
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Data-rights contact email</span>
               <input
                 type="email"
                 value={content.contactEmail}
@@ -67,16 +67,16 @@ export function NoticeEditor() {
                 className="app-input w-full max-w-md"
               />
             </label>
-          </WidgetCard>
+          </Section>
 
-          <WidgetCard number="02" name="Consent checkboxes">
+          <Section title="Consent checkboxes">
             <p className="text-xs text-[var(--text-4)]">
               Both are required and their roles are fixed — edit the wording only.
             </p>
             <div className="mt-3 space-y-3">
               {content.consentItems.map((item, i) => (
                 <div key={item.key}>
-                  <span className="widget-data-label mb-1 block">{item.key}</span>
+                  <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">{item.key}</span>
                   <textarea
                     value={item.label}
                     rows={3}
@@ -90,9 +90,9 @@ export function NoticeEditor() {
                 </div>
               ))}
             </div>
-          </WidgetCard>
+          </Section>
 
-          <WidgetCard number="03" name="How you're assessed">
+          <Section title="How you're assessed">
             <p className="text-xs text-[var(--text-4)]">The per-stage explanation (Art. 22 transparency).</p>
             <div className="mt-3 space-y-3">
               {content.explanationStages.map((s, i) => (
@@ -158,9 +158,9 @@ export function NoticeEditor() {
             >
               + Add stage
             </Button>
-          </WidgetCard>
+          </Section>
 
-          <WidgetCard number="04" name="Data handling points">
+          <Section title="Data handling points">
             <div className="space-y-2">
               {content.dataHandlingPoints.map((p, i) => (
                 <div key={i} className="flex items-start gap-2">
@@ -194,7 +194,7 @@ export function NoticeEditor() {
             >
               + Add point
             </Button>
-          </WidgetCard>
+          </Section>
 
           <div className="flex items-center justify-end gap-3">
             <span className="text-xs text-[var(--text-4)]">Publishing creates a new notice version.</span>
