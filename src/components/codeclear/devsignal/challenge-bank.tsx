@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import { Section } from "./devsignal-ui";
+import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/format";
 import { useNotice } from "./notice";
@@ -64,8 +64,8 @@ export function ChallengeBank() {
         </p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {items.map((c) => (
-            <ChallengeCard key={c.id} c={c} onEdit={() => setEditing(c)} />
+          {items.map((c, i) => (
+            <ChallengeCard key={c.id} c={c} index={i} onEdit={() => setEditing(c)} />
           ))}
         </div>
       )}
@@ -82,14 +82,16 @@ export function ChallengeBank() {
 
 function ChallengeCard({
   c,
+  index,
   onEdit,
 }: {
   c: DevSignalChallengeDTO;
+  index: number;
   onEdit: () => void;
 }) {
   const hidden = c.tests.filter((t) => t.hidden).length;
   return (
-    <Section>
+    <WidgetCard number={String(index + 1).padStart(2, "0")} name="Challenge">
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-sm font-semibold leading-snug text-[var(--text-1)]">{c.title}</h3>
         <span
@@ -122,7 +124,7 @@ function ChallengeCard({
           Edit
         </Button>
       </div>
-    </Section>
+    </WidgetCard>
   );
 }
 
@@ -343,7 +345,7 @@ function TextField({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">{label}</span>
+      <span className="widget-data-label mb-1 block">{label}</span>
       <input
         type={type}
         value={value}
@@ -369,7 +371,7 @@ function SelectField({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">{label}</span>
+      <span className="widget-data-label mb-1 block">{label}</span>
       <select value={value} onChange={(e) => onChange(e.target.value)} className="app-select w-full">
         {options.map((o) => (
           <option key={o} value={o}>
@@ -396,7 +398,7 @@ function AreaField({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">{label}</span>
+      <span className="widget-data-label mb-1 block">{label}</span>
       <textarea
         value={value}
         rows={rows}
