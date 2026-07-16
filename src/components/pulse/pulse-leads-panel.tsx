@@ -20,55 +20,65 @@ export function PulseLeadsPanel() {
   if (isLoading || leads.length === 0) return null; // quietly absent until leads exist
 
   return (
-    <div className="app-card p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <p className="text-sm font-semibold text-[var(--text-1)]">Pulse leads</p>
-          <p className="mt-0.5 text-xs text-[var(--text-4)]">
-            Captured from the public scanner — import to run a full AI scan + proposal.
-          </p>
-        </div>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-[var(--text-1)]">Pulse leads</p>
         <span className="rounded-full bg-[var(--surface-2)] px-2.5 py-0.5 text-xs font-medium text-[var(--text-3)]">
-          {leads.length}
+          {leads.length} captured from the public scanner
         </span>
       </div>
 
-      <div className="divide-y divide-[var(--border-2)]">
-        {leads.map((lead) => (
-          <div key={lead.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-[var(--text-1)]">{lead.email}</p>
-              <p className="truncate text-xs text-[var(--text-4)]">
-                {lead.targetUrl}
-                <span className="ml-2 rounded-full bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-4)]">
-                  {lead.source}
-                </span>
-              </p>
-            </div>
-            {lead.criticalCount != null && lead.criticalCount > 0 && (
-              <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">
-                {lead.criticalCount} critical
+      <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)]">
+        {/* Table header */}
+        <div className="flex items-center gap-3 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-2.5">
+          <span className="flex-1 text-xs font-medium text-[var(--text-4)]">Lead</span>
+          <span className="hidden w-20 shrink-0 text-xs font-medium text-[var(--text-4)] sm:block">Critical</span>
+          <span className="hidden w-10 shrink-0 text-xs font-medium text-[var(--text-4)] sm:block">Score</span>
+          <span className="w-[136px] shrink-0" />
+        </div>
+
+        {/* Rows */}
+        <div className="divide-y divide-[var(--border-2)]">
+          {leads.map((lead) => (
+            <div key={lead.id} className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-[var(--surface-1)]">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-[var(--text-1)]">{lead.email}</p>
+                <p className="truncate text-xs text-[var(--text-4)]">
+                  {lead.targetUrl}
+                  <span className="ml-2 rounded-full bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-4)]">
+                    {lead.source}
+                  </span>
+                </p>
+              </div>
+              <div className="hidden w-20 shrink-0 sm:block">
+                {lead.criticalCount != null && lead.criticalCount > 0 && (
+                  <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">
+                    {lead.criticalCount} critical
+                  </span>
+                )}
+              </div>
+              <span className={cn("hidden w-10 shrink-0 text-sm font-bold tabular-nums sm:block", scoreTone(lead.healthScore))}>
+                {lead.healthScore ?? "—"}
               </span>
-            )}
-            <span className={cn("text-sm font-bold tabular-nums", scoreTone(lead.healthScore))}>
-              {lead.healthScore ?? "—"}
-            </span>
-            {lead.importedScanId ? (
-              <Link href={`/app/pulse/${lead.importedScanId}`}>
-                <Button variant="tertiary" size="sm">View scan →</Button>
-              </Link>
-            ) : (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => importLead(lead.id)}
-                loading={isPending && variables === lead.id}
-              >
-                Import to Foundry
-              </Button>
-            )}
-          </div>
-        ))}
+              <div className="flex w-[136px] shrink-0 justify-end">
+                {lead.importedScanId ? (
+                  <Link href={`/app/pulse/${lead.importedScanId}`}>
+                    <Button variant="tertiary" size="sm">View scan →</Button>
+                  </Link>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => importLead(lead.id)}
+                    loading={isPending && variables === lead.id}
+                  >
+                    Import to Foundry
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

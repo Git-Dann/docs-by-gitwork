@@ -15,9 +15,11 @@ export default function PulsePage() {
         {/* Four equal-height widget cards across the top (collapse-in-unison, collapsed by default). */}
         <PulseTopCards />
         <PulseChecksDisclosure />
-        <PulseLeadsPanel />
         <PulseMonitorsPanel />
         <PulseScanListView />
+        {/* Compact table below the main scan list — mirrors its row/header grammar so a lead
+            reads as "one more row of the same list", not a separate spacious card. */}
+        <PulseLeadsPanel />
       </div>
     </AppShell>
   );
