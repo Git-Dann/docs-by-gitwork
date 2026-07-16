@@ -113,23 +113,23 @@ export function AvatarEditModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Profile image" panelClassName="w-full max-w-lg">
-      <div className="space-y-5 p-5">
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*,.svg"
-          className="hidden"
-          onChange={(e) => {
-            handleFile(e.target.files?.[0] ?? null);
-            e.currentTarget.value = "";
-          }}
-        />
+    <Modal open={open} onClose={onClose} title="Profile image" panelClassName="w-full max-w-2xl">
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*,.svg"
+        className="hidden"
+        onChange={(e) => {
+          handleFile(e.target.files?.[0] ?? null);
+          e.currentTarget.value = "";
+        }}
+      />
 
-        {/* Live preview — the rectangular settings box + the circular sidebar chip, both
-            rendered with the exact cover-fit + placement that will be saved. */}
-        <div className="flex items-center gap-4">
-          <div className="h-32 w-full overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]">
+      {/* Two-column body: live preview on the left, controls on the right. */}
+      <div className="grid gap-6 p-6 sm:grid-cols-2">
+        {/* ── Left: live preview (square frame + circular sidebar chip) ── */}
+        <div className="space-y-4">
+          <div className="aspect-square w-full overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-1)]">
             {hasImage ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -139,13 +139,13 @@ export function AvatarEditModal({
                 style={{ objectPosition }}
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center bg-[var(--surface-brand)] text-2xl font-semibold text-[var(--brand-700)]">
+              <div className="flex h-full w-full items-center justify-center bg-[var(--surface-brand)] text-5xl font-semibold text-[var(--brand-700)]">
                 {initials}
               </div>
             )}
           </div>
-          <div className="shrink-0 text-center">
-            <div className="h-14 w-14 overflow-hidden rounded-full border border-[var(--border-2)] bg-[var(--surface-1)]">
+          <div className="flex items-center gap-3">
+            <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full border border-[var(--border-2)] bg-[var(--surface-1)]">
               {hasImage ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -160,78 +160,89 @@ export function AvatarEditModal({
                 </div>
               )}
             </div>
-            <p className="mt-1 text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]">Sidebar</p>
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-[var(--text-2)]">Sidebar</p>
+              <p className="text-[11px] text-[var(--text-4)]">How it appears in the nav.</p>
+            </div>
           </div>
         </div>
 
-        {/* Source picker */}
-        <div>
-          <span className="text-xs font-medium text-[var(--text-2)]">Source</span>
-          <div className="mt-1.5 grid grid-cols-3 gap-1.5">
-            <SourceTab
-              label="Upload"
-              active={source === "upload" && Boolean(uploadedUrl)}
-              onClick={() => fileRef.current?.click()}
-            />
-            <SourceTab
-              label="Google photo"
-              active={source === "google"}
-              disabled={!googleAvatarUrl}
-              onClick={() => setSource("google")}
-            />
-            <SourceTab
-              label="Initials"
-              active={source === "initials"}
-              onClick={() => setSource("initials")}
-            />
-          </div>
-          {source === "upload" && uploadedUrl ? (
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--brand-700)] hover:underline"
-            >
-              <ArrowUpTrayIcon className="h-3.5 w-3.5" />
-              Replace file
-            </button>
-          ) : null}
-        </div>
-
-        {/* Placement — only meaningful when an image is shown */}
-        {hasImage ? (
-          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-[var(--text-2)]">Placement</span>
+        {/* ── Right: controls ── */}
+        <div className="flex flex-col gap-5">
+          {/* Source picker */}
+          <div>
+            <span className="text-xs font-medium text-[var(--text-2)]">Source</span>
+            <div className="mt-1.5 grid gap-1.5">
+              <SourceTab
+                label="Upload a photo"
+                active={source === "upload" && Boolean(uploadedUrl)}
+                onClick={() => fileRef.current?.click()}
+              />
+              <SourceTab
+                label="Google photo"
+                active={source === "google"}
+                disabled={!googleAvatarUrl}
+                onClick={() => setSource("google")}
+              />
+              <SourceTab
+                label="Initials"
+                active={source === "initials"}
+                onClick={() => setSource("initials")}
+              />
+            </div>
+            {source === "upload" && uploadedUrl ? (
               <button
                 type="button"
-                onClick={() => setPos({ x: 50, y: 50 })}
-                className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--text-4)] transition hover:text-[var(--text-2)]"
+                onClick={() => fileRef.current?.click()}
+                className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--brand-700)] hover:underline"
               >
-                <ArrowPathIcon className="h-3 w-3" />
-                Centre
+                <ArrowUpTrayIcon className="h-3.5 w-3.5" />
+                Replace file
               </button>
-            </div>
-            <PositionSlider
-              label="Horizontal"
-              value={pos.x}
-              onChange={(x) => setPos((p) => ({ ...p, x }))}
-            />
-            <PositionSlider
-              label="Vertical"
-              value={pos.y}
-              onChange={(y) => setPos((p) => ({ ...p, y }))}
-            />
+            ) : null}
           </div>
-        ) : null}
 
-        <div className="flex items-center justify-end gap-2 border-t border-[var(--border-3)] pt-4">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
-          <Button type="button" variant="primary" onClick={handleSave} loading={saving}>
-            {saving ? "Saving…" : "Save"}
-          </Button>
+          {/* Placement — only meaningful when an image is shown */}
+          {hasImage ? (
+            <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-[var(--text-2)]">Placement</span>
+                <button
+                  type="button"
+                  onClick={() => setPos({ x: 50, y: 50 })}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--text-4)] transition hover:text-[var(--text-2)]"
+                >
+                  <ArrowPathIcon className="h-3 w-3" />
+                  Centre
+                </button>
+              </div>
+              <PositionSlider
+                label="Horizontal"
+                value={pos.x}
+                onChange={(x) => setPos((p) => ({ ...p, x }))}
+              />
+              <PositionSlider
+                label="Vertical"
+                value={pos.y}
+                onChange={(y) => setPos((p) => ({ ...p, y }))}
+              />
+            </div>
+          ) : (
+            <p className="text-[11px] leading-relaxed text-[var(--text-4)]">
+              Pick a photo to fine-tune how it&apos;s cropped.
+            </p>
+          )}
         </div>
+      </div>
+
+      {/* Footer spans the full width below both columns. */}
+      <div className="flex items-center justify-end gap-2 border-t border-[var(--border-3)] px-6 py-4">
+        <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
+          Cancel
+        </Button>
+        <Button type="button" variant="primary" onClick={handleSave} loading={saving}>
+          {saving ? "Saving…" : "Save"}
+        </Button>
       </div>
     </Modal>
   );
