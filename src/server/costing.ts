@@ -1,138 +1,141 @@
-// Gitwork Costing & Quote engine — deterministic, no AI.
+// Gitwork Costing & Quote engine — deterministic, no AI. Aligned to the four site packages.
 //
-// Builds on the Pulse pricing engine (blendedDayRateGbp + computePricingBands) but adds Gitwork's
-// cost→margin→price model. The Rate Card's `sourceRate` is treated as the internal COST rate, so
-// computePricingBands' price (dev-effort × build day rate) IS the build cost. On top of that we add
-// a UK senior-review overhead, a contingency, then a target margin to derive the client fixed price.
-//
-// Everything here is workspace-scoped. The pure functions (resolveCostingConfig, computeCostingBands)
-// are unit-testable with no I/O.
+// The Rate Card `sourceRate` is treated as the internal COST rate. We blend a build day rate from it
+// (reusing blendedDayRateGbp), estimate the build effort for the chosen package, add a UK
+// senior-review overhead + contingency to get internal cost, then compare against the client price:
+//   - fixed packages (Launch Pad, MVP Sprint): client price is the target price you'd quote.
+//   - Greenfield: devs × months × the per-dev-month rate (£5,000 default).
+//   - Care Plan: months × the monthly rate (£1,500 default).
+// Margin/markup fall out of (client price vs internal cost). Internal figures are Super-Admin only.
 
 import { prisma } from "@/lib/prisma";
 import { getUsdToGbpRate } from "@/server/fx";
-import { blendedDayRateGbp, computePricingBands } from "@/server/pulse-pricing";
-import type { EngagementEstimate } from "@/types/pulse";
-import type {
-  CostingBand,
-  CostingConfigResponse,
-  CostingScopeInput,
-  GitworkCostingConfig,
-  GitworkCostingResult,
+import { blendedDayRateGbp } from "@/server/pulse-pricing";
+import { WORKING_DAYS_PER_MONTH } from "@/server/rate-card";
+import {
+  COSTING_PACKAGES,
+  type CostingAdvancedConfig,
+  type CostingConfigResponse,
+  type PackageCostingInput,
+  type PackageCostingResult,
+  type PackageType,
 } from "@/types/costing";
 
-export const DEFAULT_COSTING_CONFIG: GitworkCostingConfig = {
+const DAYS_PER_WEEK = 5;
+
+export const DEFAULT_ADVANCED_CONFIG: CostingAdvancedConfig = {
   fxFromUsd: 0.79,
   buildSeniority: "senior",
   ukReviewOverheadPercent: 15,
   contingencyPercent: 10,
-  targetMarginPercent: 50,
+};
+
+// Per-package effort defaults (for the internal cost basis) when the user leaves inputs blank.
+const PACKAGE_DEFAULTS: Record<PackageType, { weeks: number; devs: number; months: number; effortDaysPerMonth: number }> = {
+  launch_pad: { weeks: 3, devs: 1, months: 1, effortDaysPerMonth: 5 },
+  mvp_sprint: { weeks: 5, devs: 3, months: 1, effortDaysPerMonth: 5 },
+  greenfield: { weeks: 4, devs: 1, months: 3, effortDaysPerMonth: 20 },
+  care_plan: { weeks: 1, devs: 1, months: 3, effortDaysPerMonth: 2 },
 };
 
 const clamp = (v: unknown, fallback: number, min: number, max: number): number =>
   typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
 
-const roundTo = (n: number, step: number) => Math.round(n / step) * step;
+const positive = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined);
 
-export function resolveCostingConfig(raw: unknown): GitworkCostingConfig {
-  const c = (raw && typeof raw === "object" ? raw : {}) as Partial<GitworkCostingConfig>;
+export function resolveAdvancedConfig(raw: unknown): CostingAdvancedConfig {
+  const c = (raw && typeof raw === "object" ? raw : {}) as Partial<CostingAdvancedConfig>;
   return {
-    fxFromUsd: clamp(c.fxFromUsd, DEFAULT_COSTING_CONFIG.fxFromUsd, 0.0001, 100),
-    dayRateOverrideGbp:
-      typeof c.dayRateOverrideGbp === "number" && c.dayRateOverrideGbp > 0 ? c.dayRateOverrideGbp : undefined,
+    fxFromUsd: clamp(c.fxFromUsd, DEFAULT_ADVANCED_CONFIG.fxFromUsd, 0.0001, 100),
     buildSeniority: c.buildSeniority === "mid" ? "mid" : "senior",
-    ukReviewOverheadPercent: clamp(c.ukReviewOverheadPercent, DEFAULT_COSTING_CONFIG.ukReviewOverheadPercent, 0, 100),
-    ukReviewDayRateGbp:
-      typeof c.ukReviewDayRateGbp === "number" && c.ukReviewDayRateGbp > 0 ? c.ukReviewDayRateGbp : undefined,
-    contingencyPercent: clamp(c.contingencyPercent, DEFAULT_COSTING_CONFIG.contingencyPercent, 0, 100),
-    targetMarginPercent: clamp(c.targetMarginPercent, DEFAULT_COSTING_CONFIG.targetMarginPercent, 0, 95),
+    ukReviewOverheadPercent: clamp(c.ukReviewOverheadPercent, DEFAULT_ADVANCED_CONFIG.ukReviewOverheadPercent, 0, 100),
+    contingencyPercent: clamp(c.contingencyPercent, DEFAULT_ADVANCED_CONFIG.contingencyPercent, 0, 100),
+    dayRateOverrideGbp: positive(c.dayRateOverrideGbp),
   };
 }
 
-function estimateFromScope(scope: CostingScopeInput): EngagementEstimate {
-  const low = Math.max(1, scope.weeksLow || 0);
-  const high = Math.max(low, scope.weeksHigh || low);
-  return {
-    summary: "",
-    weeksLow: low,
-    weeksHigh: high,
-    priceLow: 0,
-    priceHigh: 0,
-    confidence: "MEDIUM",
-    phases: scope.phases.map((p) => ({ name: p.name, weeks: p.weeks, outcome: p.outcome ?? "" })),
-  };
-}
+const gbp = (n: number) => "£" + Math.round(n).toLocaleString("en-GB");
 
-/**
- * Pure: turn build-cost bands (dev effort × build day rate) into internal cost + client price.
- * `buildDayRateGbp` is the internal COST day rate (from the rate card or an override).
- */
-export function computeCostingBands(
-  scope: CostingScopeInput,
+/** Pure: cost a package given the internal build day rate + resolved advanced config. */
+export function computePackageCosting(
+  input: PackageCostingInput,
   buildDayRateGbp: number,
-  config: GitworkCostingConfig,
-): CostingBand[] {
-  const estimate = estimateFromScope(scope);
-  const buildBands = computePricingBands(estimate, buildDayRateGbp);
-  const margin = config.targetMarginPercent / 100;
+  cfg: CostingAdvancedConfig,
+): PackageCostingResult {
+  const meta = COSTING_PACKAGES.find((p) => p.id === input.packageType) ?? COSTING_PACKAGES[0];
+  const d = PACKAGE_DEFAULTS[meta.id];
 
-  const cost = (buildCost: number) => {
-    const totalDevDays = buildDayRateGbp > 0 ? buildCost / buildDayRateGbp : 0;
-    const reviewDays = totalDevDays * (config.ukReviewOverheadPercent / 100);
-    const ukReviewCost = reviewDays * (config.ukReviewDayRateGbp ?? buildDayRateGbp);
-    const subtotal = buildCost + ukReviewCost;
-    const contingency = subtotal * (config.contingencyPercent / 100);
-    const internalCost = subtotal + contingency;
-    const clientPrice = margin < 1 ? internalCost / (1 - margin) : internalCost;
-    return { ukReviewCost, contingency, internalCost, clientPrice };
+  const weeks = clamp(input.weeks, d.weeks, 0, 520);
+  const devs = clamp(input.devs, d.devs, 1, 20);
+  const months = clamp(input.months, d.months, 1, 60);
+  const effortDaysPerMonth = clamp(input.effortDaysPerMonth, d.effortDaysPerMonth, 0, 31);
+
+  // Build effort in dev-days, by package shape.
+  let buildDevDays: number;
+  let clientPrice: number;
+  let priceBasisLabel: string;
+  switch (meta.id) {
+    case "greenfield": {
+      const rate = positive(input.pricePerDevMonthGbp) ?? meta.fromGbp;
+      buildDevDays = devs * months * WORKING_DAYS_PER_MONTH;
+      clientPrice = devs * months * rate;
+      priceBasisLabel = `${gbp(rate)}/dev/mo × ${devs} × ${months} mo`;
+      break;
+    }
+    case "care_plan": {
+      const rate = positive(input.pricePerMonthGbp) ?? meta.fromGbp;
+      buildDevDays = months * effortDaysPerMonth;
+      clientPrice = months * rate;
+      priceBasisLabel = `${gbp(rate)}/mo × ${months} mo`;
+      break;
+    }
+    default: {
+      // fixed packages: launch_pad, mvp_sprint
+      buildDevDays = weeks * DAYS_PER_WEEK * devs;
+      clientPrice = positive(input.targetPriceGbp) ?? meta.fromGbp;
+      priceBasisLabel = `fixed price (from ${gbp(meta.fromGbp)})`;
+      break;
+    }
+  }
+
+  const buildCost = buildDevDays * buildDayRateGbp;
+  const ukReviewCost = buildCost * (cfg.ukReviewOverheadPercent / 100);
+  const subtotal = buildCost + ukReviewCost;
+  const contingency = subtotal * (cfg.contingencyPercent / 100);
+  const internalCost = subtotal + contingency;
+
+  const marginPercent = clientPrice > 0 ? Math.round((1 - internalCost / clientPrice) * 100) : 0;
+  const markupPercent = internalCost > 0 ? Math.round((clientPrice / internalCost - 1) * 100) : 0;
+
+  return {
+    packageType: meta.id,
+    clientPriceGbp: Math.round(clientPrice),
+    priceBasisLabel,
+    internalCostGbp: Math.round(internalCost),
+    marginPercent,
+    markupPercent,
+    buildDayRateGbp,
+    usedRateCard: false, // set by the workspace wrapper
+    breakdown: {
+      buildCostGbp: Math.round(buildCost),
+      ukReviewCostGbp: Math.round(ukReviewCost),
+      contingencyGbp: Math.round(contingency),
+    },
   };
-
-  return buildBands.map((b) => {
-    const lo = cost(b.priceLowGbp);
-    const hi = cost(b.priceHighGbp);
-    const midBuild = (b.priceLowGbp + b.priceHighGbp) / 2;
-    const mid = cost(midBuild);
-    const midPrice = roundTo(mid.clientPrice, 250);
-    const markup = mid.internalCost > 0 ? (midPrice / mid.internalCost - 1) * 100 : 0;
-    const effectiveMargin = midPrice > 0 ? (1 - mid.internalCost / midPrice) * 100 : 0;
-    return {
-      devs: b.devs,
-      weeksLow: b.weeksLow,
-      weeksHigh: b.weeksHigh,
-      buildDayRateGbp,
-      internalCostLowGbp: Math.round(lo.internalCost),
-      internalCostHighGbp: Math.round(hi.internalCost),
-      marginPercent: Math.round(effectiveMargin),
-      markupPercent: Math.round(markup),
-      breakdown: {
-        buildCostGbp: Math.round(midBuild),
-        ukReviewCostGbp: Math.round(mid.ukReviewCost),
-        contingencyGbp: Math.round(mid.contingency),
-      },
-      clientPriceLowGbp: roundTo(lo.clientPrice, 250),
-      clientPriceHighGbp: roundTo(hi.clientPrice, 250),
-    };
-  });
 }
 
-/** Resolve config, blend the build day rate from the rate card, and cost the scope in one call. */
-export async function computeGitworkCosting(
-  workspaceId: string,
-  configRaw: unknown,
-  scope: CostingScopeInput,
-): Promise<GitworkCostingResult> {
-  const config = resolveCostingConfig(configRaw);
+/** Resolve config, blend the build day rate from the rate card, and cost the package in one call. */
+export async function computeGitworkCosting(workspaceId: string, input: PackageCostingInput): Promise<PackageCostingResult> {
+  const cfg = resolveAdvancedConfig(input.config);
   const buildDayRateGbp = await blendedDayRateGbp(workspaceId, {
-    fxFromUsd: config.fxFromUsd,
-    dayRateOverrideGbp: config.dayRateOverrideGbp,
-    seniority: config.buildSeniority,
+    fxFromUsd: cfg.fxFromUsd,
+    dayRateOverrideGbp: cfg.dayRateOverrideGbp,
+    seniority: cfg.buildSeniority,
   });
   const rateCardCount = await prisma.rateCardPerson.count({ where: { workspaceId, archivedAt: null } });
-  return {
-    buildDayRateGbp,
-    usedRateCard: rateCardCount > 0 && !config.dayRateOverrideGbp,
-    config,
-    bands: computeCostingBands(scope, buildDayRateGbp, config),
-  };
+  const result = computePackageCosting(input, buildDayRateGbp, cfg);
+  result.usedRateCard = rateCardCount > 0 && !cfg.dayRateOverrideGbp;
+  return result;
 }
 
 /** Prefill data for the tool: live FX, whether a rate card exists, and a sample blended rate. */
@@ -140,13 +143,13 @@ export async function getCostingConfigInfo(workspaceId: string): Promise<Costing
   const [fx, rateCardCount, blended] = await Promise.all([
     getUsdToGbpRate(),
     prisma.rateCardPerson.count({ where: { workspaceId, archivedAt: null } }),
-    blendedDayRateGbp(workspaceId, { fxFromUsd: DEFAULT_COSTING_CONFIG.fxFromUsd, seniority: "senior" }),
+    blendedDayRateGbp(workspaceId, { fxFromUsd: DEFAULT_ADVANCED_CONFIG.fxFromUsd, seniority: "senior" }),
   ]);
   return {
     liveFxFromUsd: fx?.rate ?? null,
     fxAsOf: fx?.asOf ?? null,
     hasRateCard: rateCardCount > 0,
     blendedBuildDayRateGbp: blended,
-    defaults: { ...DEFAULT_COSTING_CONFIG, fxFromUsd: fx?.rate ?? DEFAULT_COSTING_CONFIG.fxFromUsd },
+    defaults: { ...DEFAULT_ADVANCED_CONFIG, fxFromUsd: fx?.rate ?? DEFAULT_ADVANCED_CONFIG.fxFromUsd },
   };
 }

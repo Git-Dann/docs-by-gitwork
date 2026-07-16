@@ -1704,32 +1704,23 @@ export const devSignalNoticeUpdateSchema = z.object({
     .max(4),
 });
 
-// ── Gitwork Costing & Quote tool (Super-Admin only) ──────────────────────────
-export const costingConfigSchema = z.object({
+// ── Gitwork Costing & Quote tool (Super-Admin only) — aligned to the site packages ──
+export const costingAdvancedConfigSchema = z.object({
   fxFromUsd: z.number().positive().max(100).optional(),
-  dayRateOverrideGbp: z.number().positive().max(100000).optional(),
   buildSeniority: z.enum(["mid", "senior"]).optional(),
   ukReviewOverheadPercent: z.number().min(0).max(100).optional(),
-  ukReviewDayRateGbp: z.number().positive().max(100000).optional(),
   contingencyPercent: z.number().min(0).max(100).optional(),
-  targetMarginPercent: z.number().min(0).max(95).optional(),
-});
-
-export const costingScopeSchema = z.object({
-  phases: z
-    .array(
-      z.object({
-        name: z.string().max(200),
-        weeks: z.number().min(0).max(520),
-        outcome: z.string().max(500).optional(),
-      }),
-    )
-    .max(40),
-  weeksLow: z.number().min(0).max(520),
-  weeksHigh: z.number().min(0).max(520),
+  dayRateOverrideGbp: z.number().positive().max(100000).optional(),
 });
 
 export const costingPreviewSchema = z.object({
-  scope: costingScopeSchema,
-  config: costingConfigSchema.optional(),
+  packageType: z.enum(["launch_pad", "mvp_sprint", "greenfield", "care_plan"]),
+  targetPriceGbp: z.number().min(0).max(100000000).optional(),
+  weeks: z.number().min(0).max(520).optional(),
+  devs: z.number().min(1).max(20).optional(),
+  months: z.number().min(1).max(60).optional(),
+  pricePerDevMonthGbp: z.number().min(0).max(1000000).optional(),
+  effortDaysPerMonth: z.number().min(0).max(31).optional(),
+  pricePerMonthGbp: z.number().min(0).max(1000000).optional(),
+  config: costingAdvancedConfigSchema.optional(),
 });

@@ -1,65 +1,102 @@
 // Gitwork Costing & Quote tool — shared DTO types (client-safe; no server imports).
 //
-// Gitwork sells fixed scope / fixed price / fixed timeline. This tool costs an engagement
-// INTERNALLY (blended Islamabad build rate + a UK senior-review overhead + contingency), then
-// applies a target margin to derive the client-facing fixed price. Internal cost + margin are
-// Super-Admin-only and must never reach a client surface.
+// Aligned to the four packages published on gitwork.co.uk. You pick a package, give it a couple of
+// inputs, and get a client price + (Super-Admin-only) internal cost & margin. Fixed-price packages
+// (Launch Pad, MVP Sprint) take a target price and show the resulting margin; the recurring packages
+// (Greenfield, Care) compute the price from their published unit rate.
 
-/** The pricing levers. Extends the Pulse pricing config with Gitwork's cost/margin model. */
-export interface GitworkCostingConfig {
-  /** USD→GBP multiplier for converting the (USD) rate card. */
-  fxFromUsd: number;
-  /** If set, bypasses the rate-card blend and uses this build cost day rate directly. */
-  dayRateOverrideGbp?: number;
-  /** Which rate-card seniority band to blend for the build cost day rate. */
-  buildSeniority: "mid" | "senior";
-  /** UK senior review/QA/deploy overhead, as a % of build effort. */
-  ukReviewOverheadPercent: number;
-  /** Optional explicit UK senior cost day rate for the review overhead (else the build rate). */
-  ukReviewDayRateGbp?: number;
-  /** Delivery contingency, as a % of (build + review) cost. */
-  contingencyPercent: number;
-  /** Target gross margin on the client price. price = internalCost / (1 − margin). */
-  targetMarginPercent: number;
-}
+export type PackageType = "launch_pad" | "mvp_sprint" | "greenfield" | "care_plan";
 
-export interface CostingPhaseInput {
+/** How a package's client price is formed. */
+export type PriceBasis = "fixed" | "per_dev_month" | "per_month";
+
+export interface PackageMeta {
+  id: PackageType;
   name: string;
-  /** Calendar weeks for a ~2-dev team (the estimate's assumed team size). */
-  weeks: number;
-  outcome?: string;
+  tagline: string;
+  /** The published "from" price on the site (GBP). */
+  fromGbp: number;
+  basis: PriceBasis;
+  basisLabel: string;
+  typical: string;
 }
 
-export interface CostingScopeInput {
-  phases: CostingPhaseInput[];
-  /** Total calendar weeks for a ~2-dev team — low end. */
-  weeksLow: number;
-  /** Total calendar weeks — high end. */
-  weeksHigh: number;
+/** The four site packages, with their published "from" prices. Single source for the UI + defaults. */
+export const COSTING_PACKAGES: PackageMeta[] = [
+  {
+    id: "launch_pad",
+    name: "Launch Pad",
+    tagline: "Finish a vibe-coded app",
+    fromGbp: 4995,
+    basis: "fixed",
+    basisLabel: "fixed price",
+    typical: "2–4 weeks",
+  },
+  {
+    id: "mvp_sprint",
+    name: "MVP Sprint",
+    tagline: "Idea to MVP",
+    fromGbp: 25000,
+    basis: "fixed",
+    basisLabel: "fixed price",
+    typical: "4–6 weeks",
+  },
+  {
+    id: "greenfield",
+    name: "Greenfield Build",
+    tagline: "Embedded engineering squad",
+    fromGbp: 5000,
+    basis: "per_dev_month",
+    basisLabel: "per developer, per month",
+    typical: "quarterly",
+  },
+  {
+    id: "care_plan",
+    name: "Care Plan",
+    tagline: "Maintenance & ongoing",
+    fromGbp: 1500,
+    basis: "per_month",
+    basisLabel: "per month, rolling",
+    typical: "monthly",
+  },
+];
+
+/** Advanced cost levers — sensible defaults; only affect the internal cost, not the client price. */
+export interface CostingAdvancedConfig {
+  fxFromUsd: number;
+  buildSeniority: "mid" | "senior";
+  ukReviewOverheadPercent: number;
+  contingencyPercent: number;
+  dayRateOverrideGbp?: number;
 }
 
-/** A costed band for a given team size. Internal figures are Super-Admin-only. */
-export interface CostingBand {
-  devs: number;
-  weeksLow: number;
-  weeksHigh: number;
-  buildDayRateGbp: number;
-  // Internal (never client-facing):
-  internalCostLowGbp: number;
-  internalCostHighGbp: number;
+export interface PackageCostingInput {
+  packageType: PackageType;
+  // Fixed packages (launch_pad, mvp_sprint):
+  targetPriceGbp?: number;
+  weeks?: number;
+  devs?: number;
+  // Greenfield (per dev, per month):
+  months?: number;
+  pricePerDevMonthGbp?: number;
+  // Care (per month):
+  effortDaysPerMonth?: number;
+  pricePerMonthGbp?: number;
+  // Advanced (shared):
+  config?: Partial<CostingAdvancedConfig>;
+}
+
+export interface PackageCostingResult {
+  packageType: PackageType;
+  clientPriceGbp: number;
+  priceBasisLabel: string; // how the price was formed, e.g. "£5,000/dev/mo × 2 × 3 mo"
+  // Internal — Super-Admin only:
+  internalCostGbp: number;
   marginPercent: number;
   markupPercent: number;
-  breakdown: { buildCostGbp: number; ukReviewCostGbp: number; contingencyGbp: number }; // at the mid point
-  // Client-facing fixed price:
-  clientPriceLowGbp: number;
-  clientPriceHighGbp: number;
-}
-
-export interface GitworkCostingResult {
   buildDayRateGbp: number;
   usedRateCard: boolean;
-  config: GitworkCostingConfig;
-  bands: CostingBand[];
+  breakdown: { buildCostGbp: number; ukReviewCostGbp: number; contingencyGbp: number };
 }
 
 export interface CostingConfigResponse {
@@ -67,5 +104,5 @@ export interface CostingConfigResponse {
   fxAsOf: string | null;
   hasRateCard: boolean;
   blendedBuildDayRateGbp: number;
-  defaults: GitworkCostingConfig;
+  defaults: CostingAdvancedConfig;
 }

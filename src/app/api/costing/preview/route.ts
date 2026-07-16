@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     const user = await requireAuthedUser(req);
     assertSuperAdmin(user);
     const body = costingPreviewSchema.parse(await req.json());
-    return apiOk(await computeGitworkCosting(user.workspaceId, body.config, body.scope));
+    return apiOk(await computeGitworkCosting(user.workspaceId, body));
   } catch (e) {
     return fromError(e);
   }
