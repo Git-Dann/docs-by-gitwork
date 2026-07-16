@@ -21,6 +21,9 @@ import type {
   TaskAttentionDTO,
 } from "@/types/tasks";
 import type { GanttBlock, GanttMilestone } from "@/components/tasks/gantt-chart";
+import type { ClientDetailRecord } from "@/types/client";
+import type { WikiDTO } from "@/server/wiki";
+import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
 
 // ─── Demo identity ────────────────────────────────────────────────────────────
@@ -423,8 +426,8 @@ const demoDesignSystem = {
 // ─── Client wiki (WikiDTO) ───────────────────────────────────────────────────────
 
 /** Build a plausible monitor history strip: mostly UP, a couple of blips. */
-function monitorHistory(baseLatency: number, blips: number[] = []): unknown[] {
-  const pts: unknown[] = [];
+function monitorHistory(baseLatency: number, blips: number[] = []): WikiMonitorHistoryPoint[] {
+  const pts: WikiMonitorHistoryPoint[] = [];
   for (let i = 44; i >= 0; i--) {
     const blip = blips.includes(i);
     pts.push({
@@ -438,7 +441,7 @@ function monitorHistory(baseLatency: number, blips: number[] = []): unknown[] {
 
 const WIKI_CLIENT = CLIENTS[0]; // Northwind Studio
 
-const demoWiki = {
+const demoWiki: WikiDTO = {
   id: "wiki-northwind",
   clientId: WIKI_CLIENT.id,
   clientName: WIKI_CLIENT.name,
@@ -504,7 +507,9 @@ const demoWiki = {
     { id: "cl4", platform: "IOS", version: "3.1.0", title: "New player controls", body: "- Redesigned scrubber\n- Playback speed control", releasedAt: atDays(-24), createdAt: atDays(-25), status: "APPROVED" },
   ],
   courseRequests: [],
-  timeline: { blocks: demoGanttBlocks, milestones: demoGanttMilestones },
+  // The wiki timeline reuses the shared Gantt shape (rendered fine in prod); the two
+  // are separately typed, so bridge them here rather than duplicate the data.
+  timeline: { blocks: demoGanttBlocks, milestones: demoGanttMilestones } as unknown as WikiDTO["timeline"],
   designSystem: { tokens: demoDesignTokens, logoUrl: null, showFoundryBranding: true, guidelinesEnabled: true },
   monitors: {
     enabled: true,
@@ -582,7 +587,7 @@ const demoWiki = {
   users: [],
   intakeEnabled: true,
   intakeItems: [
-    { id: "wi1", type: "FEATURE", title: "Add a “continue watching” rail to the home screen", description: "Surface the last 10 partially-watched titles at the top of Home.", priority: "MEDIUM", status: "TRIAGED", requestedBy: "Priya Shah", externalRef: null, source: "wiki", taskId: null, hasImage: false, imageFilename: null, createdAt: atDays(-4), updatedAt: atDays(-2) },
+    { id: "wi1", type: "FEEDBACK", title: "Add a “continue watching” rail to the home screen", description: "Surface the last 10 partially-watched titles at the top of Home.", priority: "MEDIUM", status: "TRIAGED", requestedBy: "Priya Shah", externalRef: null, source: "wiki", taskId: null, hasImage: false, imageFilename: null, createdAt: atDays(-4), updatedAt: atDays(-2) },
     { id: "wi2", type: "BUG", title: "AirPlay handoff drops audio on iOS 18", description: "Video continues but audio cuts out when handing off to Apple TV.", priority: "HIGH", status: "NEW", requestedBy: "Priya Shah", externalRef: null, source: "wiki", taskId: null, hasImage: false, imageFilename: null, createdAt: atDays(-1), updatedAt: atDays(-1) },
   ],
   blockers: [
@@ -594,7 +599,7 @@ const demoWiki = {
 // ─── Client portal detail (ClientDetailRecord) ──────────────────────────────────
 // The live "Wiki →" link lives on this page's header; the demo enters the wiki from here.
 
-const demoClientDetail = {
+const demoClientDetail: ClientDetailRecord = {
   client: {
     id: WIKI_CLIENT.id,
     name: WIKI_CLIENT.name,
@@ -632,6 +637,7 @@ const demoClientDetail = {
     billingCounty: null, billingPostcode: null, billingCountry: null,
     bank: null,
     onboardingId: null, retainerDays: null, retainerDaysUsed: null,
+    productTeamUserIds: [],
   },
   lifecycle: [
     { id: "lc1", label: "Onboarded", detail: "Client created from onboarding", at: atDays(-120), status: "done" },
@@ -643,13 +649,13 @@ const demoClientDetail = {
       id: "pf1", clientId: WIKI_CLIENT.id, name: "Production web", platformType: "WEB",
       url: "https://app.northwind.co", stagingUrl: "https://staging.northwind.co",
       repoUrl: "https://github.com/northwind/app", hasUsername: false, hasPassword: false,
-      logins: [], notes: null, previewImageUrl: null, createdAt: atDays(-110), updatedAt: atDays(-4),
+      logins: [], notes: null, previewImageUrl: null, featuredInWiki: true, createdAt: atDays(-110), updatedAt: atDays(-4),
     },
     {
       id: "pf2", clientId: WIKI_CLIENT.id, name: "iOS app", platformType: "IOS",
       url: "https://apps.apple.com/app/northwind", stagingUrl: null,
       repoUrl: "https://github.com/northwind/ios", hasUsername: false, hasPassword: false,
-      logins: [], notes: null, previewImageUrl: null, createdAt: atDays(-90), updatedAt: atDays(-9),
+      logins: [], notes: null, previewImageUrl: null, featuredInWiki: false, createdAt: atDays(-90), updatedAt: atDays(-9),
     },
   ],
   designs: [
@@ -2079,6 +2085,7 @@ export function resolveDemoApi(pathname: string): unknown {
   if (pathname === "/api/backstage/calendar/team-events") return { events: [] };
   if (pathname === "/api/backstage/calendar/timeline") return { blocks: [], milestones: [] };
   if (pathname === "/api/backstage/absences") return []; // AbsenceDTO[] — iterated in CalendarTab
+  if (pathname === "/api/backstage/absences/covers") return []; // CoverAssignmentDTO[] — ClientDevelopersSection
   if (pathname === "/api/backstage/leave") return [];
   if (pathname === "/api/backstage/alerts") return demoStaffingAlerts;
 
