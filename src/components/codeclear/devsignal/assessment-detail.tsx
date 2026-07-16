@@ -18,6 +18,7 @@ import {
 import type { DevSignalAssessmentDTO, DevSignalStageResultDTO } from "@/types/devsignal";
 import { OutcomeLinksPanel } from "./outcome-links-panel";
 import { CompliancePanel } from "./compliance-panel";
+import { Meter, ScoreRing, matchTone, scoreTone, TONE_TEXT } from "./devsignal-ui";
 
 // Status label tone. Uses the semantic palette (emerald/amber/rose/sky) that
 // globals.css remaps for dark mode; neutral states use tokens.
@@ -134,25 +135,46 @@ function Masthead({ a }: { a: DevSignalAssessmentDTO }) {
 
 function BestMatchCard({ a }: { a: DevSignalAssessmentDTO }) {
   const summary = a.bestMatchSummary;
+  const scored = typeof a.finalScore === "number";
+  const tone = matchTone(summary?.labelDisplay);
   return (
     <WidgetCard number="04" name="Best match">
-      <p className="text-xl font-semibold text-[var(--text-1)]">{summary?.labelDisplay ?? "Not scored yet"}</p>
-      {typeof a.finalScore === "number" && (
-        <p className="widget-data-label mt-1 normal-case tracking-normal">Internal score {a.finalScore}/100</p>
-      )}
+      <div className="flex items-center gap-4">
+        {scored ? (
+          <ScoreRing score={a.finalScore as number} />
+        ) : (
+          <div className="flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-full border-2 border-dashed border-[var(--border-2)]">
+            <span className="font-serif text-2xl text-[var(--text-4)]">—</span>
+          </div>
+        )}
+        <div className="min-w-0">
+          <p className={cn("font-serif text-2xl leading-tight", scored ? TONE_TEXT[tone] : "text-[var(--text-4)]")}>
+            {summary?.labelDisplay ?? "Not scored yet"}
+          </p>
+          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]">
+            {scored ? "Internal only — client sees the label" : "Run the automated stages to score"}
+          </p>
+        </div>
+      </div>
+
       {a.scoreBreakdown?.humanReviewRequired && (
-        <p className="mt-2 rounded-[6px] bg-amber-50 px-3 py-2 text-xs text-amber-700">Human review required.</p>
+        <p className="mt-3 flex items-center gap-1.5 rounded-[6px] bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Human review required
+        </p>
       )}
+
       {(summary?.strengths?.length ?? 0) > 0 && (
-        <ul className="mt-3 space-y-1">
+        <div className="mt-3 flex flex-wrap gap-1.5">
           {summary!.strengths.map((s) => (
-            <li key={s} className="text-sm text-[var(--text-3)]">• {s}</li>
+            <span
+              key={s}
+              className="rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-xs text-[var(--text-3)]"
+            >
+              {s}
+            </span>
           ))}
-        </ul>
+        </div>
       )}
-      <p className="widget-data-label mt-3 text-[var(--text-4)]">
-        Client-facing view shows this label only — never the number.
-      </p>
     </WidgetCard>
   );
 }
@@ -166,26 +188,36 @@ function StageTimeline({ stages }: { stages: DevSignalStageResultDTO[] }) {
         <ul className="space-y-4">
           {stages.map((s) => (
             <li key={s.id} className="border-l-2 border-[var(--border-3)] pl-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-[var(--text-1)]">{s.stageName}</p>
-                <span className={cn("font-mono text-xs uppercase tracking-[0.08em]", STAGE_STATUS_STYLE[s.status] ?? "")}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="flex items-center gap-2 text-sm font-medium text-[var(--text-1)]">
+                  <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", (STAGE_STATUS_STYLE[s.status] ?? "").replace("text-", "bg-"))} />
+                  {s.stageName}
+                </p>
+                <span className={cn("font-mono text-[10px] uppercase tracking-[0.08em]", STAGE_STATUS_STYLE[s.status] ?? "")}>
                   {s.status}
                 </span>
               </div>
               {s.subScores.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
-                  {s.subScores.map((sub) => (
-                    <span key={sub.key} className="font-mono text-xs text-[var(--text-3)]">
-                      {sub.label}: {sub.score}/{sub.maxScore}
-                    </span>
-                  ))}
+                <div className="mt-2 space-y-1.5">
+                  {s.subScores.map((sub) => {
+                    const pct = sub.maxScore > 0 ? (sub.score / sub.maxScore) * 100 : 0;
+                    return (
+                      <div key={sub.key} className="flex items-center gap-2.5">
+                        <span className="w-28 shrink-0 truncate text-xs text-[var(--text-3)]">{sub.label}</span>
+                        <Meter value={pct} tone={scoreTone(pct)} className="flex-1" />
+                        <span className="w-12 shrink-0 text-right font-mono text-[10px] text-[var(--text-4)]">
+                          {sub.score}/{sub.maxScore}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               {s.flags.map((f, i) => (
                 <p
                   key={i}
                   className={cn(
-                    "mt-1 text-xs",
+                    "mt-1.5 text-xs",
                     f.severity === "block" ? "text-rose-600" : f.severity === "warn" ? "text-amber-600" : "text-[var(--text-4)]",
                   )}
                 >
@@ -225,26 +257,24 @@ function ScoreBreakdown({ a }: { a: DevSignalAssessmentDTO }) {
           starting estimates until enough delivery outcomes are recorded.
         </p>
       )}
-      <table className="mt-3 w-full text-sm">
-        <tbody>
-          {b.stages
-            .filter((s) => s.included || s.effectiveWeight > 0 || s.contribution > 0)
-            .map((s) => (
-              <tr key={s.stageId} className="border-b border-[var(--border-3)]">
-                <td className="py-1 text-[var(--text-2)]">{s.stageId.replace(/_/g, " ")}</td>
-                <td className="py-1 text-right font-mono text-xs text-[var(--text-4)]">
-                  {s.rawStageScore} × {s.effectiveWeight}
-                </td>
-                <td className="py-1 text-right font-mono text-[var(--text-2)]">+{s.contribution.toFixed(1)}</td>
-              </tr>
-            ))}
-          <tr>
-            <td className="pt-2 font-medium text-[var(--text-1)]">Final</td>
-            <td />
-            <td className="pt-2 text-right font-mono font-semibold text-[var(--text-1)]">{b.finalScore}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div className="mt-3 space-y-2.5">
+        {b.stages
+          .filter((s) => s.included || s.effectiveWeight > 0 || s.contribution > 0)
+          .map((s) => (
+            <div key={s.stageId} className="flex items-center gap-3">
+              <span className="w-32 shrink-0 truncate text-xs text-[var(--text-2)]">{s.stageId.replace(/_/g, " ")}</span>
+              <Meter value={s.rawStageScore} tone={scoreTone(s.rawStageScore)} className="flex-1" />
+              <span className="w-14 shrink-0 text-right font-mono text-[10px] text-[var(--text-4)]">
+                {s.rawStageScore}×{s.effectiveWeight}
+              </span>
+              <span className="w-12 shrink-0 text-right font-mono text-xs text-[var(--text-2)]">+{s.contribution.toFixed(1)}</span>
+            </div>
+          ))}
+      </div>
+      <div className="mt-3 flex items-center justify-between border-t border-[var(--border-2)] pt-3">
+        <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]">Final score</span>
+        <span className="font-serif text-3xl leading-none text-[var(--text-1)]">{b.finalScore}</span>
+      </div>
     </WidgetCard>
   );
 }

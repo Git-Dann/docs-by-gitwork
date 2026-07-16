@@ -7,6 +7,7 @@ import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useNotice } from "./notice";
 import { DevSignalAssessmentList } from "./assessment-list";
+import { Meter, type Tone } from "./devsignal-ui";
 import {
   useClearDevSignalDemo,
   useCreateDevSignalAssessment,
@@ -120,26 +121,30 @@ function CompletionFunnel({ funnel }: { funnel: Array<{ key: string; label: stri
   const start = funnel[0]?.n || 1;
   return (
     <WidgetCard number="06" name="Completion funnel">
-      <p className="text-xs text-[var(--text-4)]">
-        Where candidates drop off across the flow. A big fall between two steps is friction worth
-        fixing.
-      </p>
-      <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
+      <ul className="space-y-2">
         {funnel.map((f, i) => {
           const pct = Math.round((f.n / start) * 100);
           const prev = i > 0 ? funnel[i - 1].n : f.n;
           const dropped = prev - f.n;
+          // Colour the row by retention vs the top of the funnel.
+          const tone: Tone = pct >= 90 ? "success" : pct >= 70 ? "brand" : pct >= 50 ? "warning" : "danger";
           return (
-            <div key={f.key} className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-2.5">
-              <p className="widget-data-label">{f.label}</p>
-              <p className="mt-1 font-mono text-lg text-[var(--text-1)]">{f.n}</p>
-              <p className="font-mono text-[10px] text-[var(--text-4)]">
+            <li key={f.key} className="flex items-center gap-3">
+              <span className="w-20 shrink-0 truncate font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--text-3)]">
+                {f.label}
+              </span>
+              <Meter value={pct} tone={tone} className="flex-1" />
+              <span className="w-10 shrink-0 text-right font-serif text-sm text-[var(--text-1)]">{f.n}</span>
+              <span className="w-16 shrink-0 text-right font-mono text-[10px] text-[var(--text-4)]">
                 {pct}%{i > 0 && dropped > 0 ? ` · −${dropped}` : ""}
-              </p>
-            </div>
+              </span>
+            </li>
           );
         })}
-      </div>
+      </ul>
+      <p className="mt-3 border-t border-[var(--border-2)] pt-2 text-[11px] text-[var(--text-4)]">
+        Where candidates drop off — a big fall between two steps is friction worth fixing.
+      </p>
     </WidgetCard>
   );
 }
