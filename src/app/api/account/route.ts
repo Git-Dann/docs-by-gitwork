@@ -44,7 +44,7 @@ export async function GET() {
       }),
       prisma.workspace.findFirst({
         where: { slug: DEFAULT_WORKSPACE_SLUG },
-        select: { showDevRates: true },
+        select: { showDevRates: true, docsBackupEnabled: true },
       }),
     ]);
 
@@ -97,6 +97,7 @@ export async function GET() {
         permissions:
           (membership?.permissions as string[] | null) ?? session.user.permissions ?? [],
         showDevRates: workspace?.showDevRates ?? false,
+        docsBackupEnabled: workspace?.docsBackupEnabled ?? false,
       },
     });
   } catch (error) {

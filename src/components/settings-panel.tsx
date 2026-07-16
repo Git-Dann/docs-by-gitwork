@@ -26,7 +26,7 @@ import {
 import { cn, formatDate } from "@/lib/format";
 import { useUpdateWorkspaceBranding, useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import { useUpdateWorkspaceDefaults, useWorkspaceDefaults } from "@/hooks/use-workspace-defaults";
-import { useAccount, useToggleDevRates } from "@/hooks/use-account";
+import { useAccount, useToggleDevRates, useToggleDocsBackup } from "@/hooks/use-account";
 import { Button } from "@/components/ui/button";
 import { ImagePicker } from "@/components/ui/image-picker";
 import { LogoQuickSwap } from "@/components/ui/logo-quick-swap";
@@ -100,6 +100,7 @@ export function GeneralTab() {
   const updateBranding = useUpdateWorkspaceBranding();
   const account = useAccount();
   const toggleDevRates = useToggleDevRates();
+  const toggleDocsBackup = useToggleDocsBackup();
 
   const defaults = defaultsQuery.data;
   const branding = brandingQuery.data;
@@ -303,6 +304,43 @@ export function GeneralTab() {
               className={cn(
                 "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
                 account.data?.showDevRates ? "translate-x-5" : "translate-x-0",
+              )}
+            />
+          </button>
+        </div>
+      </SettingsCard>
+
+      <SettingsCard number="06" title="Drive backup">
+        <p className="text-sm leading-6 text-[var(--text-3)]">
+          When on, documents auto-mirror to Google Drive and the per-client{" "}
+          <span className="font-medium text-[var(--text-2)]">Archive to Drive</span> action works
+          (it exports the client&rsquo;s data to the backup account&rsquo;s Drive). When off, both
+          silently no-op. Requires a connected backup Google account (the owner&rsquo;s). Super Admin only.
+        </p>
+        <div className="mt-5 flex items-center justify-between rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+          <div>
+            <p className="text-sm font-medium text-[var(--text-1)]">Back up to Google Drive</p>
+            <p className="text-xs text-[var(--text-4)]">
+              {account.data?.docsBackupEnabled
+                ? "On — docs + client archives export to Drive"
+                : "Off — nothing is exported to Drive"}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={account.data?.docsBackupEnabled ?? false}
+            disabled={toggleDocsBackup.isPending}
+            onClick={() => toggleDocsBackup.mutate(!(account.data?.docsBackupEnabled ?? false))}
+            className={cn(
+              "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-700)] disabled:opacity-50",
+              account.data?.docsBackupEnabled ? "bg-[var(--brand-700)]" : "bg-[var(--border-1)]",
+            )}
+          >
+            <span
+              className={cn(
+                "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
+                account.data?.docsBackupEnabled ? "translate-x-5" : "translate-x-0",
               )}
             />
           </button>
