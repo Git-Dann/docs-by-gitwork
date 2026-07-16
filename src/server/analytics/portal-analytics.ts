@@ -106,6 +106,32 @@ export interface PortalAnalytics {
     /** Mean tasks completed in range per contributing dev, or null. */
     avgCompletedPerDev: number | null;
   };
+  /**
+   * Daily check-in accountability for the most recent working day — who missed their
+   * morning and/or end-of-day update, cross-referenced with booked time off so people who
+   * are legitimately away are shown as excused rather than flagged as missing.
+   */
+  checkins: {
+    /** The working day evaluated (ISO date) — today, or the last weekday if today is a weekend. */
+    workDate: string;
+    entries: Array<{
+      userId: string;
+      name: string;
+      avatarUrl: string | null;
+      /** Posted the morning update? */
+      am: boolean;
+      /** Posted the end-of-day update? */
+      pm: boolean;
+      /** Booked off (approved leave or a marked absence) for this day. */
+      absent: boolean;
+      /** Human-readable reason when absent (e.g. "On leave", "Off sick"). */
+      absenceReason: string | null;
+    }>;
+    /** Roster devs who missed AM and/or PM and are NOT booked off (the real gaps). */
+    missedCount: number;
+    /** Roster devs booked off for the day. */
+    absentCount: number;
+  };
   throughput: Array<{ bucket: string; created: number; completed: number }>;
   /** Histogram of DOING→DONE lead time over tasks completed in range (that carry a startedAt). */
   leadTimeBuckets: Array<{ label: string; count: number }>;
@@ -167,6 +193,13 @@ export async function getPortalAnalytics(
 
   const startOfToday = startOfUtcDay(new Date());
 
+  // The working day the check-in board evaluates: today, or the most recent weekday if today
+  // is a weekend (no standups expected Sat/Sun).
+  let checkinDay = startOfToday;
+  while (checkinDay.getUTCDay() === 0 || checkinDay.getUTCDay() === 6) {
+    checkinDay = new Date(checkinDay.getTime() - MS_PER_DAY);
+  }
+
   // Resolve id sets up front so every downstream query is join-free (42702-safe).
   const [clientRows, devIds] = await Promise.all([
     // Only ACTIVE clients feed the analytics — pausing (INACTIVE), archiving (ARCHIVED),
@@ -206,6 +239,9 @@ export async function getPortalAnalytics(
     activePlacements,
     prevCreatedCount,
     prevCompletedRows,
+    checkinUpdates,
+    approvedLeaveToday,
+    absencesToday,
   ] = await Promise.all([
     devIds.length
       ? prisma.user.findMany({
@@ -313,6 +349,30 @@ export async function getPortalAnalytics(
       where: { workspaceId, parentId: null, status: "DONE", completedAt: { gte: prevFrom, lt: prevTo } },
       select: { completedAt: true, startedAt: true },
     }),
+    // Daily check-in board (most recent working day) — updates posted + who's booked off.
+    devIds.length
+      ? prisma.dailyUpdate.findMany({
+          where: { workspaceId, userId: { in: devIds }, workDate: checkinDay },
+          select: { userId: true, amPushedAt: true, pmPushedAt: true },
+        })
+      : Promise.resolve([] as Array<{ userId: string; amPushedAt: Date | null; pmPushedAt: Date | null }>),
+    devIds.length
+      ? prisma.leaveRequest.findMany({
+          where: { workspaceId, userId: { in: devIds }, status: "APPROVED", startDate: { lte: checkinDay }, endDate: { gte: checkinDay } },
+          select: { userId: true, type: true },
+        })
+      : Promise.resolve([] as Array<{ userId: string; type: string }>),
+    devIds.length
+      ? prisma.absence.findMany({
+          where: {
+            workspaceId,
+            userId: { in: devIds },
+            date: { lte: checkinDay },
+            OR: [{ endDate: { gte: checkinDay } }, { endDate: null, date: checkinDay }],
+          },
+          select: { userId: true, kind: true },
+        })
+      : Promise.resolve([] as Array<{ userId: string; kind: string }>),
   ]);
 
   // Throughput time-series (pure, gapless).
@@ -382,9 +442,11 @@ export async function getPortalAnalytics(
   const offBenchEmails = new Set(
     offBenchCandidates.map((c) => c.email?.toLowerCase()).filter((e): e is string => !!e),
   );
+  // The delivery-dev roster (on-bench dev-roster users) — the set expected to check in daily
+  // and the pool the output leaderboard + capacity are measured against.
+  const eligibleDevUsers = devUsers.filter((u) => !offBenchEmails.has(u.email.toLowerCase()));
 
-  const leaderboard = devUsers
-    .filter((u) => !offBenchEmails.has(u.email.toLowerCase()))
+  const leaderboard = eligibleDevUsers
     .map((u) => {
       const out = devOutput.get(u.id);
       const pmDays = pmDaysByDev.get(u.id)?.size ?? 0;
@@ -517,7 +579,7 @@ export async function getPortalAnalytics(
   };
 
   // Capacity — roster size vs who's carrying work this range.
-  const rosterDevs = devUsers.filter((u) => !offBenchEmails.has(u.email.toLowerCase())).length;
+  const rosterDevs = eligibleDevUsers.length;
   const contributingDevs = leaderboard.length;
   const sumOpenAssigned = leaderboard.reduce((a, d) => a + d.openAssigned, 0);
   const sumCompletedByDev = leaderboard.reduce((a, d) => a + d.completed, 0);
@@ -527,6 +589,44 @@ export async function getPortalAnalytics(
     idleDevs: Math.max(0, rosterDevs - contributingDevs),
     avgOpenPerDev: contributingDevs ? round2(sumOpenAssigned / contributingDevs) : null,
     avgCompletedPerDev: contributingDevs ? round2(sumCompletedByDev / contributingDevs) : null,
+  };
+
+  // Daily check-in board for `checkinDay` — who missed AM/PM, excusing anyone booked off.
+  const leaveLabel = (type: string): string =>
+    type === "ANNUAL" ? "On leave" : type === "SICK" ? "Off sick" : type === "UNPAID" ? "Unpaid leave" : "Time off";
+  const absenceLabel = (kind: string): string =>
+    kind === "ILL" ? "Off sick" : kind === "APPOINTMENT" ? "Appointment" : "Away";
+  const absenceReasonByUser = new Map<string, string>();
+  for (const l of approvedLeaveToday) absenceReasonByUser.set(l.userId, leaveLabel(l.type));
+  for (const a of absencesToday) {
+    if (a.kind === "WFH") continue; // WFH = working, still expected to check in
+    if (!absenceReasonByUser.has(a.userId)) absenceReasonByUser.set(a.userId, absenceLabel(a.kind));
+  }
+  const checkinByUser = new Map(checkinUpdates.map((u) => [u.userId, u]));
+  const checkinEntries = eligibleDevUsers
+    .map((u) => {
+      const cu = checkinByUser.get(u.id);
+      const reason = absenceReasonByUser.get(u.id) ?? null;
+      return {
+        userId: u.id,
+        name: u.name?.trim() || u.email,
+        avatarUrl: u.avatarUrl,
+        am: Boolean(cu?.amPushedAt),
+        pm: Boolean(cu?.pmPushedAt),
+        absent: reason != null,
+        absenceReason: reason,
+      };
+    })
+    // Only surface exceptions: anyone who didn't complete both check-ins (absentees included,
+    // shown as excused). Fully-checked-in devs are the silent majority and are omitted.
+    .filter((e) => !e.am || !e.pm)
+    // Real gaps first (not booked off), then excused; alphabetical within each.
+    .sort((a, b) => Number(a.absent) - Number(b.absent) || a.name.localeCompare(b.name));
+  const checkins: PortalAnalytics["checkins"] = {
+    workDate: checkinDay.toISOString(),
+    entries: checkinEntries,
+    missedCount: checkinEntries.filter((e) => !e.absent).length,
+    absentCount: eligibleDevUsers.filter((u) => absenceReasonByUser.has(u.id)).length,
   };
 
   const clientsEndingSoon = clients.filter((c) => c.daysLeft != null && c.daysLeft >= 0 && c.daysLeft <= 30).length;
@@ -553,6 +653,7 @@ export async function getPortalAnalytics(
     trends,
     financials,
     capacity,
+    checkins,
     throughput,
     leadTimeBuckets,
     byStatus: statusGroups

@@ -9,11 +9,30 @@ import type { ReactNode } from "react";
 export const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 export const SERIF = "var(--font-display), 'Times New Roman', Georgia, serif";
 
+/**
+ * Small "ⓘ" affordance carrying a plain-English explanation via the native title tooltip —
+ * so a reader who doesn't know the in-house term (lead time, standup, …) can hover for it.
+ */
+export function InfoTip({ text }: { text: string }) {
+  return (
+    <span
+      role="img"
+      aria-label={text}
+      title={text}
+      className="ml-1 inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full border align-middle"
+      style={{ borderColor: "var(--text-4)", color: "var(--text-4)", fontFamily: MONO, fontSize: 8, lineHeight: 1 }}
+    >
+      i
+    </span>
+  );
+}
+
 /** Standard numbered widget card — the Foundry brand signature (`NN // NAME`). */
 export function WidgetCard({
   number,
   label,
   status,
+  hint,
   children,
   className = "",
   bodyClassName = "p-4",
@@ -21,6 +40,8 @@ export function WidgetCard({
   number: string;
   label: string;
   status?: ReactNode;
+  /** Plain-English one-liner shown as a hover tooltip beside the title, for non-jargon readers. */
+  hint?: string;
   children: ReactNode;
   className?: string;
   bodyClassName?: string;
@@ -31,6 +52,7 @@ export function WidgetCard({
         <span className="widget-header__label">
           <span className="widget-header__label--number">{number}</span>
           {` // ${label}`}
+          {hint ? <InfoTip text={hint} /> : null}
         </span>
         {status ? <span className="widget-header__status">{status}</span> : null}
       </div>
