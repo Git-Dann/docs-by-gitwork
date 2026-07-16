@@ -113,6 +113,20 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
   };
 }
 
+/**
+ * Board/list consumers only need task card fields. Descriptions, acceptance
+ * criteria, and imported ClickUp metadata can be arbitrarily large, so keep
+ * them behind the detail endpoint instead of repeating them for every card.
+ */
+function taskListDTO(task: TaskDTO): TaskDTO {
+  return {
+    ...task,
+    description: null,
+    acceptanceCriteria: null,
+    metadata: null,
+  };
+}
+
 function metadataString(metadata: Record<string, unknown> | null, key: string): string | null {
   const value = metadata?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -374,7 +388,8 @@ export async function listTasks(
     include: taskInclude,
     ...(opts.limit ? { take: opts.limit } : {}),
   });
-  return attachScribeSources(user.workspaceId, rows.map(taskRowToDTO));
+  const tasks = await attachScribeSources(user.workspaceId, rows.map(taskRowToDTO));
+  return tasks.map(taskListDTO);
 }
 
 export async function getTask(user: EffectiveUser, id: string): Promise<TaskDetailDTO> {
