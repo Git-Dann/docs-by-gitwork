@@ -340,6 +340,7 @@ model Workspace {
   expenseCategories           Json? // Optional override of the hardcoded category list
   curatorConfig               Json? // Curator settings: { enabled, staleAfterDays, archiveAfterDays, consolidate, intervalDays }
   pulsePricingConfig          Json? // PulsePricingConfig — { fxFromUsd, dayRateOverrideGbp?, seniority? } for Pulse engagement pricing
+  costingConfig               Json? // SavedCostingConfig — Studio Costing tool: advanced levers + editable per-dev cost rates (seeded from the Rate Card)
   /// Master switch for the public Pulse embed (/embed/pulse + its API routes). Off = all
   /// public scan/unlock requests are rejected with a "temporarily unavailable" message.
   pulseEmbedEnabled           Boolean                    @default(true)

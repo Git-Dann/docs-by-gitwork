@@ -1,4 +1,4 @@
-import type { CostingConfigResponse, PackageCostingInput, PackageCostingResult } from "@/types/costing";
+import type { CostingConfigResponse, PackageCostingInput, PackageCostingResult, SavedCostingConfig } from "@/types/costing";
 import type {
   AuditLog,
   Connection,
@@ -4128,6 +4128,14 @@ export function getCostingConfig() {
 export function previewCosting(payload: PackageCostingInput) {
   return apiFetch<PackageCostingResult>("/api/costing/preview", {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function saveCostingConfig(payload: SavedCostingConfig) {
+  return apiFetch<SavedCostingConfig>("/api/costing/config", {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });

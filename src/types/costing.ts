@@ -70,8 +70,25 @@ export interface CostingAdvancedConfig {
   dayRateOverrideGbp?: number;
 }
 
+export type DevTier = "junior" | "mid" | "senior";
+
+/** One editable developer cost rate. Seeded from the Rate Card, editable + saved per workspace. */
+export interface CostingRate {
+  id: string;
+  label: string;
+  tier: DevTier;
+  dayRateGbp: number;
+}
+
+/** The persisted workspace costing config: the advanced levers plus the editable dev rate table. */
+export interface SavedCostingConfig extends CostingAdvancedConfig {
+  rates: CostingRate[];
+}
+
 export interface PackageCostingInput {
   packageType: PackageType;
+  /** Current (possibly-unsaved) dev rates from the editor, so the quote reflects edits live. */
+  rates?: CostingRate[];
   // Fixed packages (launch_pad, mvp_sprint):
   targetPriceGbp?: number;
   weeks?: number;
@@ -105,4 +122,8 @@ export interface CostingConfigResponse {
   hasRateCard: boolean;
   blendedBuildDayRateGbp: number;
   defaults: CostingAdvancedConfig;
+  /** The persisted workspace config, or null if never saved. */
+  saved: SavedCostingConfig | null;
+  /** Dev rates derived live from the Rate Card — the seed / "reset to Rate Card" target. */
+  seededRates: CostingRate[];
 }
