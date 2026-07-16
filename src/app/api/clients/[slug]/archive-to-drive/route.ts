@@ -3,6 +3,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { enqueueJob } from "@/server/jobs/queue";
+import { getClientArchiveReadiness } from "@/server/client-archive";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 
@@ -26,11 +27,15 @@ export async function GET(
     });
     if (!client) return apiError("Client not found", 404);
 
+    const readiness = await getClientArchiveReadiness(workspace.id);
+
     return apiOk({
       archivedToDriveAt: client.archivedToDriveAt?.toISOString() ?? null,
       folderUrl: client.archiveDriveFolderId
         ? `https://drive.google.com/drive/folders/${client.archiveDriveFolderId}`
         : null,
+      ready: readiness.ready,
+      reason: readiness.reason,
     });
   } catch (error) {
     return fromError(error);
@@ -54,6 +59,18 @@ export async function POST(
       select: { id: true },
     });
     if (!client) return apiError("Client not found", 404);
+
+    // Refuse to enqueue when Drive backup isn't configured — otherwise the job silently skips
+    // and the operator is left thinking a copy was saved when nothing left the platform.
+    const readiness = await getClientArchiveReadiness(workspace.id);
+    if (!readiness.ready) {
+      return apiError(
+        readiness.reason === "backup_disabled"
+          ? "Drive backup is turned off for this workspace, so there's nothing to archive to. Enable Docs/Drive backup first."
+          : "No Google account is connected to receive the archive. Connect the backup account's Google, then try again.",
+        409,
+      );
+    }
 
     const { id, deduped } = await enqueueJob({
       type: "CLIENT_ARCHIVE",

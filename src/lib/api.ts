@@ -2296,6 +2296,11 @@ export async function getDeskMentions(): Promise<DeskMentionsResult> {
 export interface ClientDriveArchiveStatus {
   archivedToDriveAt: string | null;
   folderUrl: string | null;
+  /** Whether Drive backup is actually configured (master switch on + a connected Google
+   *  account). When false the export would silently no-op, so the UI blocks it. */
+  ready: boolean;
+  /** Why it's not ready, when `ready` is false. */
+  reason: "backup_disabled" | "no_backup_account" | null;
 }
 
 /** Read the client's Google Drive archive status. */

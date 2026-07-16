@@ -46,6 +46,30 @@ export interface ClientArchiveResult {
   sections?: string[];
 }
 
+export type ClientArchiveBlockReason = "backup_disabled" | "no_backup_account";
+
+/**
+ * Is the Drive archive actually configured for this workspace? Mirrors the two gates
+ * `resolveBackupAuth` enforces (the `docsBackupEnabled` master switch + a connected backup
+ * Google account) but stays cheap — no OAuth client is built. Lets the UI show *why* an archive
+ * would no-op instead of a job silently skipping after a fake "Queued ✓".
+ */
+export async function getClientArchiveReadiness(
+  workspaceId: string,
+): Promise<{ ready: boolean; reason: ClientArchiveBlockReason | null }> {
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { docsBackupEnabled: true },
+  });
+  if (!workspace?.docsBackupEnabled) return { ready: false, reason: "backup_disabled" };
+  const account = await prisma.user.findFirst({
+    where: { googleOAuthRefreshToken: { not: null } },
+    select: { id: true },
+  });
+  if (!account) return { ready: false, reason: "no_backup_account" };
+  return { ready: true, reason: null };
+}
+
 // ── HTML helpers ────────────────────────────────────────────────────────────
 
 function esc(value: unknown): string {
