@@ -1,32 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { ArrowRightIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { usePermissions } from "@/hooks/use-permissions";
-import { cn } from "@/lib/format";
 import { useNotice } from "./notice";
+import { DevSignalAssessmentList } from "./assessment-list";
 import {
   useCreateDevSignalAssessment,
   useDevSignalAnalytics,
   useDevSignalAssessments,
   useDevSignalConfigs,
 } from "@/hooks/use-devsignal";
-import type { DevSignalAssessmentDTO } from "@/types/devsignal";
-
-// Status pill tones. Semantic colours (sky/amber/emerald/rose) are remapped for
-// dark mode in globals.css; neutral states use design tokens so they flip too.
-const STATUS_STYLE: Record<string, string> = {
-  DRAFT: "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]",
-  RUNNING: "border-sky-200 bg-sky-50 text-sky-700",
-  PENDING_HUMAN: "border-amber-200 bg-amber-50 text-amber-700",
-  COMPLETED: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  FAILED: "border-rose-200 bg-rose-50 text-rose-700",
-  ARCHIVED: "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-4)]",
-};
 
 export function DevSignalQueue() {
   const { canManageDevSignal } = usePermissions();
@@ -86,16 +72,8 @@ export function DevSignalQueue() {
         </p>
         {assessments.isLoading ? (
           <p className="text-sm text-[var(--text-4)]">Loading…</p>
-        ) : items.length === 0 ? (
-          <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-8 text-center text-sm text-[var(--text-4)]">
-            No assessments yet. Create one to mint a candidate invite link.
-          </p>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {items.map((item, i) => (
-              <AssessmentCard key={item.id} item={item} index={i} />
-            ))}
-          </div>
+          <DevSignalAssessmentList items={items} />
         )}
       </div>
 
@@ -166,71 +144,6 @@ function StatCard({ n, label, value }: { n: string; label: string; value: number
     <WidgetCard number={n} name={label} bodyClassName="!py-4">
       <p className="widget-stat">{value}</p>
     </WidgetCard>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  return (
-    <span
-      className={cn(
-        "rounded-[4px] border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em]",
-        STATUS_STYLE[status] ?? "",
-      )}
-    >
-      {status.replace("_", " ")}
-    </span>
-  );
-}
-
-// Starter-style candidate card (mirrors /app/starters' StarterCard).
-function AssessmentCard({ item, index }: { item: DevSignalAssessmentDTO; index: number }) {
-  const numberLabel = String(index + 1).padStart(2, "0");
-  const label = item.bestMatchSummary?.labelDisplay ?? "Not scored yet";
-  const href = `/app/codeclear/devsignal/${item.id}`;
-  return (
-    <article className="widget-card group transition-shadow hover:shadow-[rgba(0,0,0,0.04)_0px_2px_8px]">
-      <div className="widget-header">
-        <span className="widget-header__label">
-          <span className="widget-header__label--number">{numberLabel}</span>
-          {" // CANDIDATE"}
-        </span>
-        <StatusBadge status={item.status} />
-      </div>
-
-      <Link href={href} className="block min-w-0 px-4 pt-4">
-        <h3 className="line-clamp-1 text-sm font-semibold leading-snug text-[var(--text-1)] group-hover:text-[var(--brand-700)]">
-          {item.candidateName}
-        </h3>
-        <p className="mt-1 line-clamp-1 font-mono text-xs text-[var(--text-4)]">
-          {item.candidateGithubHandle ?? "no handle"}
-        </p>
-      </Link>
-
-      <p className="mx-4 mt-2.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--brand-700)]">
-        {label}
-      </p>
-
-      <div className="mt-3 flex items-center justify-between border-t border-[var(--border-2)] px-4 py-2.5">
-        <span className="widget-timestamp">{new Date(item.createdAt).toLocaleDateString()}</span>
-        <div className="flex items-center gap-3">
-          {typeof item.finalScore === "number" && (
-            <span className="font-mono text-sm text-[var(--text-2)]">{item.finalScore}</span>
-          )}
-          {item.promotedToCode && (
-            <span className="rounded-[4px] bg-[var(--brand-600)] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-white">
-              in Code
-            </span>
-          )}
-          <Link
-            href={href}
-            className="inline-flex items-center gap-1 rounded-[6px] bg-[var(--brand-700)] px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-white transition hover:opacity-90"
-          >
-            Review
-            <ArrowRightIcon className="h-3 w-3" />
-          </Link>
-        </div>
-      </div>
-    </article>
   );
 }
 
