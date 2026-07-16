@@ -92,14 +92,14 @@ export function CostingWorkspace() {
         })}
       </div>
 
-      <div className="mt-3 grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2">
+      <div className="mt-3 grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
         {/* Inputs */}
-        <div className="widget-card h-full">
+        <div className="widget-card">
           <div className="widget-header">
             <span className="widget-header-label">01 // {meta.name.toUpperCase()}</span>
             <span className="widget-header-right widget-data-label">{meta.typical.toUpperCase()}</span>
           </div>
-          <div className="flex flex-1 flex-col gap-4 p-4">
+          <div className="flex flex-col gap-4 p-4">
             {pkg === "greenfield" ? (
               <>
                 <Num label="Squad size" unit="developers" value={form.devs} onChange={(v) => setField({ devs: v })} hint="How many embedded developers on the squad." />
@@ -184,16 +184,16 @@ export function CostingWorkspace() {
         </div>
 
         {/* Quote */}
-        <div className="widget-card h-full">
+        <div className="widget-card">
           <div className="widget-header">
             <span className="widget-header-label">02 // QUOTE</span>
             <span className="widget-header-right widget-data-label">{preview.isPending ? "CALCULATING…" : "CLIENT PRICE"}</span>
           </div>
-          <div className="flex flex-1 flex-col p-4">
+          <div className="flex flex-col p-4">
             <div className="widget-stat leading-none">{result ? gbp(result.clientPriceGbp) : "—"}</div>
             <div className="widget-data-label mt-1.5">{result?.priceBasisLabel ?? " "}</div>
 
-            <div className="mt-4 flex flex-1 flex-col rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
+            <div className="mt-4 flex flex-col rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
               <div className="widget-data-label" style={{ color: "var(--danger-500)" }}>
                 INTERNAL · SUPER ADMIN
               </div>
@@ -203,7 +203,7 @@ export function CostingWorkspace() {
                 <Readout label="Markup" value={result ? `${result.markupPercent}%` : "—"} />
                 <Readout label="Build cost / day" value={result ? gbp(result.buildDayRateGbp) : "—"} />
               </div>
-              <div className="mt-auto pt-4">
+              <div className="mt-4">
                 <div className="widget-data-label">Cost breakdown</div>
                 <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-3)]">
                   {result
