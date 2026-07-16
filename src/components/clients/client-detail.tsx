@@ -534,23 +534,6 @@ export function ClientDetail({ slug }: { slug: string }) {
                 Care
               </Link>
             )}
-            {/* Integration quick-links */}
-            {client.googleDriveFolderUrl && (
-              <a
-                href={client.googleDriveFolderUrl}
-                target="_blank"
-                rel="noreferrer"
-                title="Open Google Drive folder"
-                className="opacity-40 hover:opacity-80 transition-opacity"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="https://www.google.com/s2/favicons?domain=drive.google.com&sz=16"
-                  alt="Google Drive"
-                  className="h-4 w-4 grayscale"
-                />
-              </a>
-            )}
             {canManageClients && !isSuggested && client.status === "LEAD" && (
               <Button type="button" variant="primary" size="xs" onClick={() => changeStatus("ACTIVE")} disabled={setStatus.isPending}>
                 <ArrowRightCircleIcon className="h-3 w-3" />
@@ -558,21 +541,21 @@ export function ClientDetail({ slug }: { slug: string }) {
               </Button>
             )}
             {canManageClients && (
-              <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
-                <PencilIcon className="h-3 w-3" />
-                Edit
-              </Button>
-            )}
-            {canManageClients && !isSuggested && !isLead && (
               <Menu as="div" className="relative">
                 <MenuButton
                   className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] border border-[var(--border-2)] bg-white text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-                  aria-label="More client actions"
-                  title="More client actions"
+                  aria-label="Client actions"
+                  title="Client actions"
                 >
                   <EllipsisHorizontalIcon className="h-4 w-4" />
                 </MenuButton>
                 <MenuItems anchor="bottom end" className={actionMenuPanel}>
+                  <MenuItem>
+                    <button type="button" className={actionMenuItem} onClick={openEdit}>
+                      <PencilIcon className="h-4 w-4 text-[var(--text-4)]" />
+                      Edit client
+                    </button>
+                  </MenuItem>
                   {client.status === "ACTIVE" && (
                     <MenuItem>
                       <button
@@ -598,9 +581,11 @@ export function ClientDetail({ slug }: { slug: string }) {
                       </button>
                     </MenuItem>
                   )}
-                  <MenuItem>
-                    <ClientDriveArchiveButton slug={slug} presentation="menuItem" />
-                  </MenuItem>
+                  {!isSuggested && !isLead && (
+                    <MenuItem>
+                      <ClientDriveArchiveButton slug={slug} presentation="menuItem" />
+                    </MenuItem>
+                  )}
                 </MenuItems>
               </Menu>
             )}
