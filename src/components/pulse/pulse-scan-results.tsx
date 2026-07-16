@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
+  ArrowLeftIcon,
   ArrowRightIcon,
   ArrowPathIcon,
   CheckCircleIcon,
@@ -15,6 +16,7 @@ import {
   CurrencyDollarIcon,
   DocumentTextIcon,
   DocumentArrowDownIcon,
+  EllipsisHorizontalIcon,
   EnvelopeIcon,
   ExclamationTriangleIcon,
   LinkIcon,
@@ -24,6 +26,7 @@ import {
   QuestionMarkCircleIcon,
   XCircleIcon,
 } from "@heroicons/react/24/outline";
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal, usePulseBenchmarks, usePulseScanHistory, usePulseScanDiff, useEmailPulseAudit } from "@/hooks/use-pulse";
@@ -37,11 +40,17 @@ import type { PulseScanRecord, PulseScanCheckRecord, ProductionBlocker, Producti
 import { AI_MATURITY_LABELS } from "@/types/pulse";
 import {
   PulseCheckStatusIcon,
+  PulseScanStatusBadge,
   PulseUrgencyBadge,
   PulseEffortBadge,
   PulseValueBadge,
 } from "@/components/pulse/pulse-shared";
 import { DocumentCover, HealthScoreRing, type DocumentCoverStat, type DocumentCoverMeta } from "@/components/document-cover";
+
+const actionMenuPanel =
+  "z-50 mt-1.5 w-52 rounded-[10px] border border-[rgba(0,0,0,0.10)] bg-white p-1.5 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)] focus:outline-none";
+const actionMenuItem =
+  "flex w-full items-center gap-2 rounded-[6px] px-2.5 py-1.5 text-left text-[13px] font-medium text-[var(--text-2)] transition data-[focus]:bg-[var(--surface-1)] data-[focus]:text-[var(--text-1)] disabled:opacity-50";
 
 function groupChecksByCategory(checks: PulseScanCheckRecord[]) {
   const map = new Map<string, PulseScanCheckRecord[]>();
@@ -1712,16 +1721,13 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   }
   if (scan.healthScore !== null) {
     const criticalBlockers = (llm?.productionBlockers ?? []).filter((b) => b.urgency === "CRITICAL").length;
-    const failingChecks = scan.checks.filter((c) => c.status === "FAIL").length;
     const ready = scan.healthScore >= 80 && criticalBlockers === 0;
     const nearly = !ready && scan.healthScore >= 55 && criticalBlockers <= 2;
+    // Just the verdict word here — the blocker/failing-check count it's gated on is
+    // already the headline of the "01 // PRODUCTION BLOCKERS" card below, so stating
+    // it twice on one screen read as redundant.
     const verdict = ready ? "Launch-ready" : nearly ? "Nearly there" : "Not launch-ready";
-    const gate = criticalBlockers > 0
-      ? `${criticalBlockers} critical blocker${criticalBlockers !== 1 ? "s" : ""}`
-      : failingChecks > 0
-        ? `${failingChecks} failing check${failingChecks !== 1 ? "s" : ""}`
-        : "no hard blockers";
-    heroMeta.push({ label: "Readiness", value: `${verdict} · ${gate}` });
+    heroMeta.push({ label: "Readiness", value: verdict });
   }
   if (scan.previousHealthScore !== null && scan.healthScore !== null && scan.healthScore !== scan.previousHealthScore) {
     const delta = scan.healthScore - scan.previousHealthScore;
@@ -1763,54 +1769,23 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         )}
       </Modal>
 
-      {/* Hero — Gitwork navy cover (see computed heroMeta/heroStats/heroDated above) */}
-      <div className="overflow-hidden rounded-[10px]">
-        <DocumentCover
-          variant="screen"
-          boldPalette="navy"
-          eyebrow="PULSE // PROJECT HEALTH"
-          title={scan.projectName}
-          subtitle={scan.inputUrl ?? (scan.inputGithubRepo ? `github.com/${scan.inputGithubRepo}` : undefined)}
-          rightSlot={scan.healthScore !== null ? <HealthScoreRing score={scan.healthScore} /> : undefined}
-          meta={heroMeta}
-          stats={scan.healthScore !== null ? heroStats : undefined}
-          executiveSummary={llm?.executiveSummary || undefined}
-          callout={llm?.proposalHook ? { text: llm.proposalHook, tone: "blue" } : undefined}
-          dated={heroDated}
-        />
-      </div>
-      {!llm && (
-        <AiUnavailable aiError={scan.aiError} />
-      )}
-
-      {/* Action bar — moved under the cover so the hero stays a clean title card */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="tertiary"
-            size="sm"
-            onClick={handleRescan}
-            loading={rescanning}
-            leadingIcon={<ArrowPathIcon className="h-4 w-4" />}
+      {/* Toolbar — back link + status in line with the breadcrumb (page.tsx suppresses its own
+          breadcrumb row once the scan is COMPLETED so this is the only one rendered), primary
+          actions (Generate proposal / Share) stay visible, the rest tuck into a 3-dot menu. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/app/pulse"
+            className="inline-flex items-center gap-1.5 text-sm text-[var(--text-3)] hover:text-[var(--text-1)]"
           >
-            Re-scan
-          </Button>
-          <Link href={`/app/pulse/${scan.id}/report`} target="_blank" rel="noopener noreferrer">
-            <Button variant="tertiary" size="sm" leadingIcon={<DocumentTextIcon className="h-4 w-4" />}>
-              Report
-            </Button>
+            <ArrowLeftIcon className="h-4 w-4" />
+            All scans
           </Link>
-          {scan.status === "COMPLETED" && (
-            <>
-              <Button variant="tertiary" size="sm" onClick={handleDownloadPdf} loading={pdfPending} leadingIcon={<DocumentArrowDownIcon className="h-4 w-4" />}>
-                PDF
-              </Button>
-              <Button variant="tertiary" size="sm" onClick={() => { setEmailSent(false); setEmailError(null); setEmailModalOpen(true); }} leadingIcon={<EnvelopeIcon className="h-4 w-4" />}>
-                Email audit
-              </Button>
-            </>
-          )}
-          {scan.status === "COMPLETED" && llm && (
+          <PulseScanStatusBadge status={scan.status} />
+        </div>
+
+        <div className="flex items-center gap-2">
+          {llm && (
             scan.generatedProposalId ? (
               <Link href={`/app/docs/${scan.generatedProposalId}`}>
                 <Button variant="secondary" size="sm" leadingIcon={<DocumentTextIcon className="h-4 w-4" />}>
@@ -1829,31 +1804,71 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               </Button>
             )
           )}
-          {scan.status === "COMPLETED" && (
-            isShared ? (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleCopy}
-                leadingIcon={copied ? <ClipboardDocumentCheckIcon className="h-4 w-4" /> : <ClipboardDocumentIcon className="h-4 w-4" />}
-              >
-                {copied ? "Copied!" : "Copy link"}
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleShare}
-                loading={sharing}
-                leadingIcon={<LinkIcon className="h-4 w-4" />}
-              >
-                Share report
-              </Button>
-            )
+          {isShared ? (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleCopy}
+              leadingIcon={copied ? <ClipboardDocumentCheckIcon className="h-4 w-4" /> : <ClipboardDocumentIcon className="h-4 w-4" />}
+            >
+              {copied ? "Copied!" : "Copy link"}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleShare}
+              loading={sharing}
+              leadingIcon={<LinkIcon className="h-4 w-4" />}
+            >
+              Share report
+            </Button>
           )}
-        </div>
 
-        <div className="flex flex-col items-end gap-2">
+          <Menu as="div" className="relative">
+            <MenuButton
+              className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] border border-[var(--border-2)] text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)] focus:outline-none"
+              aria-label="More actions"
+              title="More actions"
+            >
+              <EllipsisHorizontalIcon className="h-4 w-4" />
+            </MenuButton>
+            <MenuItems anchor="bottom end" className={actionMenuPanel}>
+              <MenuItem>
+                <button type="button" className={actionMenuItem} onClick={handleRescan} disabled={rescanning}>
+                  <ArrowPathIcon className="h-4 w-4 text-[var(--text-4)]" />
+                  {rescanning ? "Re-scanning…" : "Re-scan"}
+                </button>
+              </MenuItem>
+              <MenuItem>
+                <Link href={`/app/pulse/${scan.id}/report`} target="_blank" rel="noopener noreferrer" className={actionMenuItem}>
+                  <DocumentTextIcon className="h-4 w-4 text-[var(--text-4)]" />
+                  Report
+                </Link>
+              </MenuItem>
+              <MenuItem>
+                <button type="button" className={actionMenuItem} onClick={handleDownloadPdf} disabled={pdfPending}>
+                  <DocumentArrowDownIcon className="h-4 w-4 text-[var(--text-4)]" />
+                  {pdfPending ? "Preparing PDF…" : "PDF"}
+                </button>
+              </MenuItem>
+              <MenuItem>
+                <button
+                  type="button"
+                  className={actionMenuItem}
+                  onClick={() => { setEmailSent(false); setEmailError(null); setEmailModalOpen(true); }}
+                >
+                  <EnvelopeIcon className="h-4 w-4 text-[var(--text-4)]" />
+                  Email audit
+                </button>
+              </MenuItem>
+            </MenuItems>
+          </Menu>
+        </div>
+      </div>
+
+      {(isShared && reportUrl) || shareError || proposalGenError ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {isShared && reportUrl && (
             <div className="flex items-center gap-2">
               <span className="max-w-[220px] truncate rounded border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-1 font-mono text-[11px] text-[var(--text-3)]">
@@ -1876,7 +1891,27 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             <p className="text-[11px] text-red-600">{proposalGenError}</p>
           )}
         </div>
+      ) : null}
+
+      {/* Hero — Gitwork navy cover (see computed heroMeta/heroStats/heroDated above) */}
+      <div className="overflow-hidden rounded-[10px]">
+        <DocumentCover
+          variant="screen"
+          boldPalette="navy"
+          eyebrow="PULSE // PROJECT HEALTH"
+          title={scan.projectName}
+          subtitle={scan.inputUrl ?? (scan.inputGithubRepo ? `github.com/${scan.inputGithubRepo}` : undefined)}
+          rightSlot={scan.healthScore !== null ? <HealthScoreRing score={scan.healthScore} /> : undefined}
+          meta={heroMeta}
+          stats={scan.healthScore !== null ? heroStats : undefined}
+          executiveSummary={llm?.executiveSummary || undefined}
+          callout={llm?.proposalHook ? { text: llm.proposalHook, tone: "blue" } : undefined}
+          dated={heroDated}
+        />
       </div>
+      {!llm && (
+        <AiUnavailable aiError={scan.aiError} />
+      )}
 
       {/* Detail annotation row — trust-bucket confidence breakdown, letter grades, AI maturity,
           and the score-history trend. Secondary/detail context under the cover's primary

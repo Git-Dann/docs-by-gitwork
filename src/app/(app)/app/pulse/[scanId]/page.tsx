@@ -296,16 +296,20 @@ export default function PulseScanDetailPage({
       hideContentHeader={true}
     >
       <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/app/pulse"
-            className="inline-flex items-center gap-1.5 text-sm text-[var(--text-3)] hover:text-[var(--text-1)]"
-          >
-            <ArrowLeftIcon className="h-4 w-4" />
-            All scans
-          </Link>
-          {scan && <PulseScanStatusBadge status={scan.status} />}
-        </div>
+        {/* PulseScanResults renders its own back-link + status row (with the action toolbar
+            in line beside it) once the scan is COMPLETED — don't double up here. */}
+        {scan?.status !== "COMPLETED" && (
+          <div className="flex items-center gap-3">
+            <Link
+              href="/app/pulse"
+              className="inline-flex items-center gap-1.5 text-sm text-[var(--text-3)] hover:text-[var(--text-1)]"
+            >
+              <ArrowLeftIcon className="h-4 w-4" />
+              All scans
+            </Link>
+            {scan && <PulseScanStatusBadge status={scan.status} />}
+          </div>
+        )}
 
         {isLoading && (
           <div className="space-y-3">
