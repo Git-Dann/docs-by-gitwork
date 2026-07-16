@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { LockClosedIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowRightIcon,
+  CheckCircleIcon,
+  CheckIcon,
+  LockClosedIcon,
+  QuestionMarkCircleIcon,
+  XCircleIcon,
+} from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -407,6 +414,33 @@ function DecisionChip({ decision }: { decision: string }) {
   );
 }
 
+const DECISION_OPTIONS = [
+  {
+    key: "APPROVED_FOR_STAGING" as const,
+    label: "Approve for staging",
+    Icon: CheckCircleIcon,
+    icon: "text-emerald-500",
+    hover: "hover:border-emerald-300 hover:bg-emerald-50",
+    active: "border-emerald-400 bg-emerald-50 text-emerald-700",
+  },
+  {
+    key: "NEEDS_MORE_INFO" as const,
+    label: "Needs more info",
+    Icon: QuestionMarkCircleIcon,
+    icon: "text-amber-500",
+    hover: "hover:border-amber-300 hover:bg-amber-50",
+    active: "border-amber-400 bg-amber-50 text-amber-700",
+  },
+  {
+    key: "REJECTED" as const,
+    label: "Reject",
+    Icon: XCircleIcon,
+    icon: "text-rose-500",
+    hover: "hover:border-rose-300 hover:bg-rose-50",
+    active: "border-rose-400 bg-rose-50 text-rose-700",
+  },
+];
+
 function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
   const { showOk, showErr, noticeEl } = useNotice();
   const decision = useRecordDevSignalDecision(id);
@@ -433,6 +467,13 @@ function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
     }
   };
 
+  const gateBlockedReason =
+    a.status === "DRAFT" || a.status === "RUNNING"
+      ? "Run the automated stages before promoting."
+      : a.decision === "REJECTED"
+        ? "This candidate was rejected — record a different decision to promote."
+        : null;
+
   return (
     <WidgetCard number="05" name="Decision">
       <div className="flex items-center gap-2 text-sm text-[var(--text-3)]">
@@ -447,38 +488,47 @@ function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
         </p>
       ) : (
         <>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setDecision("APPROVED_FOR_STAGING")}>
-              Approve for staging
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setDecision("NEEDS_MORE_INFO")}>
-              Needs more info
-            </Button>
-            <button
-              onClick={() => setDecision("REJECTED")}
-              className="rounded-[6px] border border-rose-200 px-3 py-1.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
-            >
-              Reject
-            </button>
+          <div className="mt-3 space-y-2">
+            {DECISION_OPTIONS.map((opt) => {
+              const active = a.decision === opt.key;
+              return (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setDecision(opt.key)}
+                  disabled={decision.isPending}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-[6px] border px-3 py-2.5 text-left text-sm font-medium transition disabled:opacity-60",
+                    active ? opt.active : `border-[var(--border-2)] text-[var(--text-2)] ${opt.hover}`,
+                  )}
+                >
+                  <opt.Icon className={cn("h-4 w-4 shrink-0", active ? "" : opt.icon)} />
+                  {opt.label}
+                  {active && <CheckIcon className="ml-auto h-4 w-4 shrink-0" />}
+                </button>
+              );
+            })}
           </div>
 
           <div className="mt-4 border-t border-[var(--border-3)] pt-4">
             <p className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]">
               <LockClosedIcon className="h-3 w-3" /> The human gate
             </p>
-            {!confirming ? (
-              <Button
-                variant="primary"
-                className="mt-2 w-full"
-                onClick={() => setConfirming(true)}
-                disabled={a.decision === "REJECTED" || a.status === "DRAFT" || a.status === "RUNNING"}
-              >
-                Promote to Code →
+            {gateBlockedReason ? (
+              <div className="mt-2">
+                <div className="flex w-full items-center justify-center gap-1.5 rounded-[6px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2.5 text-sm font-medium text-[var(--text-4)]">
+                  <LockClosedIcon className="h-4 w-4" /> Promote to Code
+                </div>
+                <p className="mt-1.5 text-xs leading-relaxed text-[var(--text-4)]">{gateBlockedReason}</p>
+              </div>
+            ) : !confirming ? (
+              <Button variant="primary" className="mt-2 w-full" onClick={() => setConfirming(true)}>
+                Promote to Code <ArrowRightIcon className="ml-1 inline h-3.5 w-3.5" />
               </Button>
             ) : (
-              <div className="mt-2 space-y-2">
-                <p className="text-sm text-[var(--text-3)]">
-                  This adds {a.candidateName} to the Code roster. Only you can do this.
+              <div className="mt-2 space-y-2 rounded-[6px] border border-[var(--brand-200)] bg-[var(--surface-brand-soft)] p-3">
+                <p className="text-sm text-[var(--text-2)]">
+                  This adds <span className="font-medium">{a.candidateName}</span> to the Code roster. Only you can do this.
                 </p>
                 <input
                   value={reason}
@@ -490,7 +540,7 @@ function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
                   <Button variant="secondary" size="sm" onClick={() => setConfirming(false)}>
                     Cancel
                   </Button>
-                  <Button variant="primary" size="sm" onClick={doPromote} disabled={promote.isPending}>
+                  <Button variant="primary" size="sm" className="ml-auto" onClick={doPromote} disabled={promote.isPending}>
                     {promote.isPending ? "Promoting…" : "Confirm promotion"}
                   </Button>
                 </div>

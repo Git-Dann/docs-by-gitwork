@@ -6,6 +6,7 @@ import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { useCodeClearCandidate } from "@/hooks/use-codeclear";
 import { useNotice } from "./notice";
 import { useCreateDevSignalOutcomeLink } from "@/hooks/use-devsignal";
+import { cn } from "@/lib/format";
 import type { DevSignalOutcomeLinkDTO } from "@/types/devsignal";
 
 /**
@@ -118,34 +119,69 @@ export function OutcomeLinksPanel({
             </option>
           ))}
         </select>
-        <div className="grid grid-cols-3 gap-2">
+        <div>
+          <span className="widget-data-label mb-1.5 block">Client rating</span>
+          <div className="flex gap-1">
+            {[1, 2, 3, 4, 5].map((n) => {
+              const active = rating === String(n);
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setRating(active ? "" : String(n))}
+                  className={cn(
+                    "flex h-9 flex-1 items-center justify-center rounded-[6px] border text-sm font-medium tabular-nums transition",
+                    active
+                      ? "border-[var(--brand-600)] bg-[var(--surface-brand)] text-[var(--brand-700)]"
+                      : "border-[var(--border-2)] text-[var(--text-3)] hover:border-[var(--border-1)] hover:bg-[var(--surface-1)]",
+                  )}
+                >
+                  {n}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <span className="widget-data-label mb-1.5 block">Status</span>
+            <div className="grid grid-cols-2 gap-1">
+              {(
+                [
+                  ["retained", "Retained", "border-emerald-400 bg-emerald-50 text-emerald-700"],
+                  ["churned", "Churned", "border-rose-400 bg-rose-50 text-rose-700"],
+                ] as const
+              ).map(([v, label, activeCls]) => {
+                const active = status === v;
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setStatus(active ? "" : v)}
+                    className={cn(
+                      "flex h-9 items-center justify-center rounded-[6px] border text-xs font-medium transition",
+                      active ? activeCls : "border-[var(--border-2)] text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+                    )}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <label className="block">
-            <span className="widget-data-label mb-1 block">Rating</span>
-            <select value={rating} onChange={(e) => setRating(e.target.value)} className="app-select-compact w-full">
-              <option value="">—</option>
-              {[1, 2, 3, 4, 5].map((n) => (
-                <option key={n} value={n}>{n}/5</option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="widget-data-label mb-1 block">Status</span>
-            <select value={status} onChange={(e) => setStatus(e.target.value)} className="app-select-compact w-full">
-              <option value="">—</option>
-              <option value="retained">Retained</option>
-              <option value="churned">Churned</option>
-            </select>
-          </label>
-          <label className="block">
-            <span className="widget-data-label mb-1 block">Tenure (d)</span>
+            <span className="widget-data-label mb-1.5 block">Tenure (days)</span>
             <input
               type="number"
               value={tenureDays}
               onChange={(e) => setTenureDays(e.target.value)}
-              className="app-input w-full"
+              placeholder="—"
+              className="app-input h-9 w-full"
             />
           </label>
         </div>
+
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -153,11 +189,11 @@ export function OutcomeLinksPanel({
           placeholder="Delivery notes (e.g. shipped on time, strong client feedback)…"
           className="app-textarea w-full"
         />
-        <p className="text-[11px] text-[var(--text-4)]">
+        <p className="text-[11px] leading-relaxed text-[var(--text-4)]">
           A recorded rating/status is the criterion the score is validated against — it feeds the
           calibration model.
         </p>
-        <Button variant="secondary" className="w-full" onClick={submit} disabled={create.isPending}>
+        <Button variant="primary" className="w-full" onClick={submit} disabled={create.isPending}>
           {create.isPending ? "Linking…" : "Link delivery outcome"}
         </Button>
       </div>
