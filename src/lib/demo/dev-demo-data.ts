@@ -620,6 +620,7 @@ const demoClientDetail: ClientDetailRecord = {
     health: { level: "green", reasons: ["No overdue tasks", "Pulse health 86"] },
     leadSource: null, leadStage: null, leadFollowUpAt: null, leadValue: null,
     leadValueCurrency: null, resumeAt: null, pauseNote: null,
+    engagementType: null, endDate: null,
     // ClientDetailFields
     website: "https://northwind.co",
     addressLine1: "18 Rivington Street", addressLine2: null, city: "London",

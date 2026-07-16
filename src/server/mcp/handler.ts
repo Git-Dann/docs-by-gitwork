@@ -262,6 +262,7 @@ const WORKSPACE_CLIENT_STATUS_VALUES = [
   "ARCHIVED",
 ] as const;
 const LEAD_STAGE_VALUES = ["NEW", "CONTACTED", "QUALIFIED", "PROPOSAL_SENT", "WON", "LOST"] as const;
+const ENGAGEMENT_TYPE_VALUES = ["FIXED_SCOPE", "PHASED", "ROLLING", "RETAINER"] as const;
 
 // Full editable client field set — mirrors buildContactData in src/server/clients.ts so anything
 // the Portal Edit-client modal can set is settable via MCP. Shared by create + update.
@@ -285,6 +286,9 @@ const clientContactShape = {
   clickupUrl: z.string().optional(),
   retainerDays: z.coerce.number().int().min(0).max(31).nullable().optional(),
   retainerDaysUsed: z.coerce.number().int().min(0).max(31).nullable().optional(),
+  // Engagement shape + project/proposal end date (fixed/phased have an end; rolling/retainer ongoing).
+  engagementType: z.enum(ENGAGEMENT_TYPE_VALUES).nullable().optional(),
+  endDate: z.string().nullable().optional(),
   // Lead fields (client is a LEAD) + paused-client fields (INACTIVE).
   leadSource: z.string().nullable().optional(),
   leadStage: z.enum(LEAD_STAGE_VALUES).nullable().optional(),
@@ -488,6 +492,8 @@ const CLIENT_FIELD_PROPERTIES: Record<string, Record<string, unknown>> = {
   clickupUrl: { type: "string", description: "ClickUp space/list URL." },
   retainerDays: { type: "number", description: "Monthly retainer-day allowance (0–31)." },
   retainerDaysUsed: { type: "number", description: "Retainer days used this month (0–31)." },
+  engagementType: { type: "string", enum: ["FIXED_SCOPE", "PHASED", "ROLLING", "RETAINER"], description: "Engagement shape. FIXED_SCOPE/PHASED have an end date; ROLLING/RETAINER are ongoing." },
+  endDate: { type: "string", description: "Project/proposal end date (ISO, e.g. 2026-08-31). Applies to fixed-scope/phased work." },
   leadSource: { type: "string", description: "Where the lead came from (LEAD clients)." },
   leadStage: { type: "string", enum: ["NEW", "CONTACTED", "QUALIFIED", "PROPOSAL_SENT", "WON", "LOST"] },
   leadValue: { type: "number", description: "Estimated deal value (LEAD clients)." },
