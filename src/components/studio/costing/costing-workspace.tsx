@@ -196,54 +196,45 @@ export function CostingWorkspace() {
             onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
           >
             <summary className="widget-data-label cursor-pointer select-none">Advanced — internal cost basis</summary>
-            <p className="mt-2 text-[12px] leading-snug text-[var(--text-4)]">
-              These tune how the internal cost is estimated. They don&apos;t change the client price — edit any value, then Save.
-            </p>
 
             {/* Tier day-rates */}
-            <div className="mt-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-              <div className="flex items-center justify-between">
-                <span className="widget-data-label">Build cost rates · £/day</span>
-                <button
-                  type="button"
-                  className="text-[12px] text-[var(--brand-700)] hover:underline disabled:opacity-50"
-                  onClick={() => cfg.data && setTierRates(cfg.data.seededTierRates)}
-                  disabled={!cfg.data}
-                >
-                  Reset to Rate Card
-                </button>
-              </div>
-              <div className="mt-2 flex flex-col gap-2">
-                {(["senior", "mid", "junior"] as DevTier[]).map((tier) => (
-                  <div key={tier} className="grid grid-cols-[64px_1fr_128px] items-center gap-2">
-                    <span className="widget-data-label capitalize">{tier}</span>
-                    <input
-                      type="number"
-                      min={0}
-                      className="app-input-compact"
-                      value={tierRates[tier].amount}
-                      onChange={(e) => setTier(tier, { amount: Number(e.target.value) || 0 })}
-                    />
-                    <select
-                      className="app-select-compact"
-                      value={tierRates[tier].period}
-                      onChange={(e) => setTier(tier, { period: e.target.value as RatePeriod })}
-                    >
-                      <option value="day">£ / day</option>
-                      <option value="month">£ / month</option>
-                    </select>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-2 text-[12px] leading-snug text-[var(--text-4)]">
-                Set each tier per day or per month — month rates convert at {WORKING_DAYS_PER_MONTH} working days for the build
-                cost. Seeded from your Rate Card; the build is priced at the tier selected below.
-              </p>
+            <div className="mt-3 flex items-center justify-between">
+              <span className="widget-data-label">Build cost rates</span>
+              <button
+                type="button"
+                className="text-[12px] text-[var(--brand-700)] hover:underline disabled:opacity-50"
+                onClick={() => cfg.data && setTierRates(cfg.data.seededTierRates)}
+                disabled={!cfg.data}
+              >
+                Reset to Rate Card
+              </button>
+            </div>
+            <div className="mt-2 flex flex-col gap-2">
+              {(["senior", "mid", "junior"] as DevTier[]).map((tier) => (
+                <div key={tier} className="grid grid-cols-[64px_1fr_128px] items-center gap-2">
+                  <span className="widget-data-label capitalize">{tier}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    className="app-input-compact"
+                    value={tierRates[tier].amount}
+                    onChange={(e) => setTier(tier, { amount: Number(e.target.value) || 0 })}
+                  />
+                  <select
+                    className="app-select-compact"
+                    value={tierRates[tier].period}
+                    onChange={(e) => setTier(tier, { period: e.target.value as RatePeriod })}
+                  >
+                    <option value="day">£ / day</option>
+                    <option value="month">£ / month</option>
+                  </select>
+                </div>
+              ))}
             </div>
 
-            <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
               <label className="flex flex-col gap-1">
-                <span className="widget-data-label">Build tier</span>
+                <span className="widget-data-label">Priced at</span>
                 <select
                   className="app-select-compact"
                   value={config.buildSeniority}
@@ -253,19 +244,9 @@ export function CostingWorkspace() {
                   <option value="mid">Mid · {gbp(tierRateToDay(tierRates.mid))}/day</option>
                   <option value="junior">Junior · {gbp(tierRateToDay(tierRates.junior))}/day</option>
                 </select>
-                <span className="text-[12px] leading-snug text-[var(--text-4)]">Which tier rate above to price the build at.</span>
               </label>
-              <Num label="FX rate" unit="USD→GBP" value={config.fxFromUsd} step={0.01} onChange={(v) => setCfg({ fxFromUsd: v ?? ADVANCED_DEFAULTS.fxFromUsd })} hint="Used when seeding tier rates from the USD Rate Card." />
-              <Num label="UK review overhead" unit="%" value={config.ukReviewOverheadPercent} onChange={(v) => setCfg({ ukReviewOverheadPercent: v ?? 0 })} hint="UK senior review / QA / deploy, as a % of build cost." />
-              <Num label="Contingency" unit="%" value={config.contingencyPercent} onChange={(v) => setCfg({ contingencyPercent: v ?? 0 })} hint="Delivery buffer on top of build + review." />
-              <Num
-                label="Build day-rate override"
-                unit="£/day"
-                value={config.dayRateOverrideGbp}
-                placeholder="from tier rates"
-                onChange={(v) => setCfg({ dayRateOverrideGbp: v })}
-                hint="Force a single custom build cost day rate. Leave blank to use the tier rates."
-              />
+              <Num label="UK review" unit="%" value={config.ukReviewOverheadPercent} onChange={(v) => setCfg({ ukReviewOverheadPercent: v ?? 0 })} />
+              <Num label="Contingency" unit="%" value={config.contingencyPercent} onChange={(v) => setCfg({ contingencyPercent: v ?? 0 })} />
             </div>
 
             <div className="mt-4 flex items-center justify-end">
@@ -304,11 +285,7 @@ export function CostingWorkspace() {
                     : "Enter the inputs to see the internal breakdown."}
                 </p>
                 {result ? (
-                  <p className="mt-1 text-[12px] leading-snug text-[var(--text-4)]">
-                    {config.dayRateOverrideGbp
-                      ? "Using the build day-rate override."
-                      : `Priced at the ${config.buildSeniority} tier rate.`}
-                  </p>
+                  <p className="mt-1 text-[12px] leading-snug text-[var(--text-4)]">Priced at the {config.buildSeniority} tier rate.</p>
                 ) : null}
               </div>
             </div>
