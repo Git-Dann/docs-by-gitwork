@@ -1707,17 +1707,16 @@ export const devSignalNoticeUpdateSchema = z.object({
 // ── Gitwork Costing & Quote tool (Super-Admin only) — aligned to the site packages ──
 export const costingAdvancedConfigSchema = z.object({
   fxFromUsd: z.number().positive().max(100).optional(),
-  buildSeniority: z.enum(["mid", "senior"]).optional(),
+  buildSeniority: z.enum(["junior", "mid", "senior"]).optional(),
   ukReviewOverheadPercent: z.number().min(0).max(100).optional(),
   contingencyPercent: z.number().min(0).max(100).optional(),
   dayRateOverrideGbp: z.number().positive().max(100000).optional(),
 });
 
-export const costingRateSchema = z.object({
-  id: z.string().max(80),
-  label: z.string().max(120),
-  tier: z.enum(["junior", "mid", "senior"]),
-  dayRateGbp: z.number().min(0).max(100000),
+export const tierRatesSchema = z.object({
+  junior: z.number().min(0).max(100000),
+  mid: z.number().min(0).max(100000),
+  senior: z.number().min(0).max(100000),
 });
 
 export const costingPreviewSchema = z.object({
@@ -1729,10 +1728,10 @@ export const costingPreviewSchema = z.object({
   pricePerDevMonthGbp: z.number().min(0).max(1000000).optional(),
   effortDaysPerMonth: z.number().min(0).max(31).optional(),
   pricePerMonthGbp: z.number().min(0).max(1000000).optional(),
-  rates: z.array(costingRateSchema).max(200).optional(),
+  tierRates: tierRatesSchema.optional(),
   config: costingAdvancedConfigSchema.optional(),
 });
 
 export const costingConfigSaveSchema = costingAdvancedConfigSchema.extend({
-  rates: z.array(costingRateSchema).max(200),
+  tierRates: tierRatesSchema,
 });

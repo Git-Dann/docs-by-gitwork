@@ -2,22 +2,20 @@
 
 // Gitwork Costing & Quote — a Super-Admin calculator inside Studio, aligned to the four packages on
 // gitwork.co.uk. Pick a package, give it a couple of inputs, see the client price + (Super-Admin
-// only) the internal cost & margin. The build cost comes from an editable per-dev rate table
-// (seeded from the Rate Card, saved to the workspace). Advanced cost levers are tucked away.
+// only) the internal cost & margin. The build cost comes from three editable tier day-rates
+// (Senior / Mid / Junior), seeded from the Rate Card and saved to the workspace.
 
-import { PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { useCostingConfig, useCostingPreview, useSaveCostingConfig } from "@/hooks/use-costing";
 import {
   COSTING_PACKAGES,
   type CostingAdvancedConfig,
-  type CostingRate,
   type DevTier,
   type PackageCostingInput,
   type PackageType,
+  type TierRates,
 } from "@/types/costing";
 
 const gbp = (n: number) => "£" + Math.round(n).toLocaleString("en-GB");
@@ -28,8 +26,9 @@ const ADVANCED_DEFAULTS: CostingAdvancedConfig = {
   ukReviewOverheadPercent: 15,
   contingencyPercent: 10,
 };
+const DEFAULT_TIER_RATES: TierRates = { junior: 45, mid: 50, senior: 65 };
 
-type Form = Omit<PackageCostingInput, "packageType" | "config" | "rates">;
+type Form = Omit<PackageCostingInput, "packageType" | "config" | "tierRates">;
 
 function seedForm(id: PackageType): Form {
   const meta = COSTING_PACKAGES.find((p) => p.id === id)!;
@@ -42,23 +41,24 @@ export function CostingWorkspace() {
   const [pkg, setPkg] = useState<PackageType>("launch_pad");
   const [form, setForm] = useState<Form>(() => seedForm("launch_pad"));
   const [config, setConfig] = useState<CostingAdvancedConfig>(ADVANCED_DEFAULTS);
-  const [rates, setRates] = useState<CostingRate[]>([]);
+  const [tierRates, setTierRates] = useState<TierRates>(DEFAULT_TIER_RATES);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [ratesOpen, setRatesOpen] = useState(false);
 
   const cfg = useCostingConfig(true);
   const preview = useCostingPreview();
+  const save = useSaveCostingConfig();
+  const { success, error } = useToast();
   const hydrated = useRef(false);
 
   useEffect(() => {
     setForm(seedForm(pkg));
   }, [pkg]);
 
-  // Hydrate config + rate table once, from the saved workspace config or the Rate-Card seed.
+  // Hydrate config + tier rates once, from the saved workspace config or the Rate-Card seed.
   useEffect(() => {
     if (hydrated.current || !cfg.data) return;
     hydrated.current = true;
-    const { saved, seededRates, defaults } = cfg.data;
+    const { saved, seededTierRates, defaults } = cfg.data;
     if (saved) {
       setConfig({
         fxFromUsd: saved.fxFromUsd,
@@ -67,29 +67,39 @@ export function CostingWorkspace() {
         contingencyPercent: saved.contingencyPercent,
         dayRateOverrideGbp: saved.dayRateOverrideGbp,
       });
-      setRates(saved.rates.length ? saved.rates : seededRates);
+      setTierRates(saved.tierRates);
     } else {
       setConfig((c) => ({ ...c, fxFromUsd: defaults.fxFromUsd }));
-      setRates(seededRates);
+      setTierRates(seededTierRates);
     }
   }, [cfg.data]);
 
   const run = useRef(preview.mutate);
   run.current = preview.mutate;
   useEffect(() => {
-    const t = setTimeout(() => run.current({ packageType: pkg, ...form, config, rates }), 350);
+    const t = setTimeout(() => run.current({ packageType: pkg, ...form, config, tierRates }), 350);
     return () => clearTimeout(t);
-  }, [pkg, form, config, rates]);
+  }, [pkg, form, config, tierRates]);
 
   const result = preview.data && preview.data.packageType === pkg ? preview.data : undefined;
   const setField = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
   const setCfg = (patch: Partial<CostingAdvancedConfig>) => setConfig((c) => ({ ...c, ...patch }));
+  const setTier = (tier: DevTier, v: number | undefined) => setTierRates((t) => ({ ...t, [tier]: v ?? 0 }));
   const meta = COSTING_PACKAGES.find((p) => p.id === pkg)!;
 
   const marginColor = useMemo(() => {
     const m = result?.marginPercent ?? 0;
     return m >= 40 ? "var(--success-500)" : m >= 20 ? "var(--warning-500)" : "var(--danger-500)";
   }, [result?.marginPercent]);
+
+  const onSave = async () => {
+    try {
+      await save.mutateAsync({ ...config, tierRates });
+      success("Cost settings saved");
+    } catch {
+      error("Couldn't save cost settings");
+    }
+  };
 
   return (
     <div className="h-full min-h-0 overflow-y-auto pb-2">
@@ -179,46 +189,63 @@ export function CostingWorkspace() {
           >
             <summary className="widget-data-label cursor-pointer select-none">Advanced — internal cost basis</summary>
             <p className="mt-2 text-[12px] leading-snug text-[var(--text-4)]">
-              These tune how the internal cost is estimated. They don&apos;t change the client price — edit any value.
+              These tune how the internal cost is estimated. They don&apos;t change the client price — edit any value, then Save.
             </p>
 
-            {/* Dev rate table entry point */}
-            <div className="mt-3 flex items-center justify-between rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2.5">
-              <div>
-                <div className="widget-data-label">Dev cost rates</div>
-                <div className="text-[12px] leading-snug text-[var(--text-4)]">
-                  {rates.length} {rates.length === 1 ? "developer" : "developers"} · blended by seniority band
-                </div>
+            {/* Tier day-rates */}
+            <div className="mt-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+              <div className="flex items-center justify-between">
+                <span className="widget-data-label">Build cost rates · £/day</span>
+                <button
+                  type="button"
+                  className="text-[12px] text-[var(--brand-700)] hover:underline disabled:opacity-50"
+                  onClick={() => cfg.data && setTierRates(cfg.data.seededTierRates)}
+                  disabled={!cfg.data}
+                >
+                  Reset to Rate Card
+                </button>
               </div>
-              <Button variant="secondary" size="sm" onClick={() => setRatesOpen(true)}>
-                Edit rates
-              </Button>
+              <div className="mt-2 grid grid-cols-3 gap-3">
+                <Num label="Senior" unit="£" value={tierRates.senior} onChange={(v) => setTier("senior", v)} />
+                <Num label="Mid" unit="£" value={tierRates.mid} onChange={(v) => setTier("mid", v)} />
+                <Num label="Junior" unit="£" value={tierRates.junior} onChange={(v) => setTier("junior", v)} />
+              </div>
+              <p className="mt-2 text-[12px] leading-snug text-[var(--text-4)]">
+                Seeded from your Rate Card by tier. The build is priced at the tier selected below.
+              </p>
             </div>
 
             <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-1">
-                <span className="widget-data-label">Build seniority</span>
+                <span className="widget-data-label">Build tier</span>
                 <select
                   className="app-select-compact"
                   value={config.buildSeniority}
-                  onChange={(e) => setCfg({ buildSeniority: e.target.value === "mid" ? "mid" : "senior" })}
+                  onChange={(e) => setCfg({ buildSeniority: e.target.value as DevTier })}
                 >
                   <option value="senior">Senior</option>
                   <option value="mid">Mid</option>
+                  <option value="junior">Junior</option>
                 </select>
-                <span className="text-[12px] leading-snug text-[var(--text-4)]">Which band of your dev rates to blend for the build cost.</span>
+                <span className="text-[12px] leading-snug text-[var(--text-4)]">Which tier rate above to price the build at.</span>
               </label>
-              <Num label="FX rate" unit="USD→GBP" value={config.fxFromUsd} step={0.01} onChange={(v) => setCfg({ fxFromUsd: v ?? ADVANCED_DEFAULTS.fxFromUsd })} hint="Used when seeding rates from the USD Rate Card. Live rate prefilled." />
+              <Num label="FX rate" unit="USD→GBP" value={config.fxFromUsd} step={0.01} onChange={(v) => setCfg({ fxFromUsd: v ?? ADVANCED_DEFAULTS.fxFromUsd })} hint="Used when seeding tier rates from the USD Rate Card." />
               <Num label="UK review overhead" unit="%" value={config.ukReviewOverheadPercent} onChange={(v) => setCfg({ ukReviewOverheadPercent: v ?? 0 })} hint="UK senior review / QA / deploy, as a % of build cost." />
               <Num label="Contingency" unit="%" value={config.contingencyPercent} onChange={(v) => setCfg({ contingencyPercent: v ?? 0 })} hint="Delivery buffer on top of build + review." />
               <Num
                 label="Build day-rate override"
                 unit="£/day"
                 value={config.dayRateOverrideGbp}
-                placeholder="from dev rates"
+                placeholder="from tier rates"
                 onChange={(v) => setCfg({ dayRateOverrideGbp: v })}
-                hint="Force a single custom build cost day rate. Leave blank to blend your dev rates."
+                hint="Force a single custom build cost day rate. Leave blank to use the tier rates."
               />
+            </div>
+
+            <div className="mt-4 flex items-center justify-end">
+              <Button variant="primary" size="sm" loading={save.isPending} onClick={onSave}>
+                Save cost settings
+              </Button>
             </div>
           </details>
         </div>
@@ -254,9 +281,7 @@ export function CostingWorkspace() {
                   <p className="mt-1 text-[12px] leading-snug text-[var(--text-4)]">
                     {config.dayRateOverrideGbp
                       ? "Using the build day-rate override."
-                      : rates.length > 0
-                        ? "Build cost blended from your saved dev rates."
-                        : "No dev rates yet — using the fallback build rate."}
+                      : `Priced at the ${config.buildSeniority} tier rate.`}
                   </p>
                 ) : null}
               </div>
@@ -264,115 +289,7 @@ export function CostingWorkspace() {
           </div>
         </div>
       </div>
-
-      <RatesModal
-        open={ratesOpen}
-        onClose={() => setRatesOpen(false)}
-        rates={rates}
-        seededRates={cfg.data?.seededRates ?? []}
-        config={config}
-        onSaved={(next) => setRates(next)}
-      />
     </div>
-  );
-}
-
-function RatesModal({
-  open,
-  onClose,
-  rates,
-  seededRates,
-  config,
-  onSaved,
-}: {
-  open: boolean;
-  onClose: () => void;
-  rates: CostingRate[];
-  seededRates: CostingRate[];
-  config: CostingAdvancedConfig;
-  onSaved: (rates: CostingRate[]) => void;
-}) {
-  const [draft, setDraft] = useState<CostingRate[]>(rates);
-  const save = useSaveCostingConfig();
-  const { success, error } = useToast();
-
-  // Reset the draft to the live rates each time the modal opens.
-  useEffect(() => {
-    if (open) setDraft(rates);
-  }, [open, rates]);
-
-  const setRow = (i: number, patch: Partial<CostingRate>) => setDraft((d) => d.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  const addRow = () => setDraft((d) => [...d, { id: `custom-${Date.now()}-${d.length}`, label: "", tier: "mid", dayRateGbp: 0 }]);
-  const removeRow = (i: number) => setDraft((d) => d.filter((_, j) => j !== i));
-
-  const onSave = async () => {
-    try {
-      const saved = await save.mutateAsync({ ...config, rates: draft });
-      onSaved(saved.rates);
-      success("Dev cost rates saved");
-      onClose();
-    } catch {
-      error("Couldn't save rates");
-    }
-  };
-
-  return (
-    <Modal open={open} onClose={onClose} title="Dev cost rates" panelClassName="w-full max-w-2xl">
-      <div className="p-4">
-        <p className="text-[13px] leading-relaxed text-[var(--text-3)]">
-          Internal build cost per developer (£/day). Seeded from your Rate Card — edit, add, or remove rows. The build
-          cost blends the rows in the selected seniority band. Saved to this workspace.
-        </p>
-
-        <div className="mt-4 flex flex-col gap-2">
-          <div className="grid grid-cols-[1fr_120px_110px_36px] gap-2">
-            <span className="widget-data-label">Developer</span>
-            <span className="widget-data-label">Tier</span>
-            <span className="widget-data-label">£ / day</span>
-            <span />
-          </div>
-          {draft.map((r, i) => (
-            <div key={r.id} className="grid grid-cols-[1fr_120px_110px_36px] items-center gap-2">
-              <input className="app-input-compact" value={r.label} placeholder="Name / role" onChange={(e) => setRow(i, { label: e.target.value })} />
-              <select className="app-select-compact" value={r.tier} onChange={(e) => setRow(i, { tier: e.target.value as DevTier })}>
-                <option value="junior">Junior</option>
-                <option value="mid">Mid</option>
-                <option value="senior">Senior</option>
-              </select>
-              <input
-                type="number"
-                min={0}
-                className="app-input-compact"
-                value={r.dayRateGbp}
-                onChange={(e) => setRow(i, { dayRateGbp: Number(e.target.value) || 0 })}
-              />
-              <button type="button" className="app-button app-button-tertiary app-button-icon-sm" aria-label="Remove developer" onClick={() => removeRow(i)}>
-                <TrashIcon className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
-          {draft.length === 0 ? <p className="text-[13px] text-[var(--text-4)]">No rates yet — add a developer or reset to the Rate Card.</p> : null}
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button variant="secondary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />} onClick={addRow}>
-            Add developer
-          </Button>
-          <Button variant="tertiary" size="sm" onClick={() => setDraft(seededRates)} disabled={seededRates.length === 0}>
-            Reset to Rate Card
-          </Button>
-        </div>
-
-        <div className="mt-5 flex items-center justify-end gap-2 border-t border-[var(--border-3)] pt-4">
-          <Button variant="tertiary" size="sm" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="primary" size="sm" loading={save.isPending} onClick={onSave}>
-            Save rates
-          </Button>
-        </div>
-      </div>
-    </Modal>
   );
 }
 

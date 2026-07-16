@@ -1,9 +1,9 @@
 // Gitwork Costing & Quote engine — deterministic, no AI. Aligned to the four site packages.
 //
-// The build cost day rate comes from an editable per-dev rate table (CostingRate[]) that's seeded
-// from the workspace Rate Card and saved on Workspace.costingConfig. We blend the rates in the
-// chosen seniority band, estimate the build effort for the package, add a UK senior-review overhead
-// + contingency to get internal cost, then compare against the client price:
+// The build cost day rate comes from three editable tier rates (Senior / Mid / Junior) that are
+// seeded from the workspace Rate Card and saved on Workspace.costingConfig. The chosen build
+// seniority picks the tier rate; we estimate the build effort for the package, add a UK
+// senior-review overhead + contingency to get internal cost, then compare against the client price:
 //   - fixed packages (Launch Pad, MVP Sprint): client price is the target price you'd quote.
 //   - Greenfield: devs × months × the per-dev-month rate (£5,000 default).
 //   - Care Plan: months × the monthly rate (£1,500 default).
@@ -12,22 +12,20 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getUsdToGbpRate } from "@/server/fx";
-import { blendedDayRateGbp } from "@/server/pulse-pricing";
 import { WORKING_DAYS_PER_MONTH, normalizeToMonthly } from "@/server/rate-card";
 import {
   COSTING_PACKAGES,
   type CostingAdvancedConfig,
   type CostingConfigResponse,
-  type CostingRate,
   type DevTier,
   type PackageCostingInput,
   type PackageCostingResult,
   type PackageType,
   type SavedCostingConfig,
+  type TierRates,
 } from "@/types/costing";
 
 const DAYS_PER_WEEK = 5;
-const DEFAULT_DAY_RATE_GBP = 450;
 
 export const DEFAULT_ADVANCED_CONFIG: CostingAdvancedConfig = {
   fxFromUsd: 0.79,
@@ -35,6 +33,8 @@ export const DEFAULT_ADVANCED_CONFIG: CostingAdvancedConfig = {
   ukReviewOverheadPercent: 15,
   contingencyPercent: 10,
 };
+
+export const DEFAULT_TIER_RATES: TierRates = { junior: 45, mid: 50, senior: 65 };
 
 const PACKAGE_DEFAULTS: Record<PackageType, { weeks: number; devs: number; months: number; effortDaysPerMonth: number }> = {
   launch_pad: { weeks: 3, devs: 1, months: 1, effortDaysPerMonth: 5 },
@@ -54,16 +54,26 @@ const gbp = (n: number) => "£" + Math.round(n).toLocaleString("en-GB");
 
 export function resolveAdvancedConfig(raw: unknown): CostingAdvancedConfig {
   const c = (raw && typeof raw === "object" ? raw : {}) as Partial<CostingAdvancedConfig>;
+  const tier: DevTier = c.buildSeniority === "junior" ? "junior" : c.buildSeniority === "mid" ? "mid" : "senior";
   return {
     fxFromUsd: clamp(c.fxFromUsd, DEFAULT_ADVANCED_CONFIG.fxFromUsd, 0.0001, 100),
-    buildSeniority: c.buildSeniority === "mid" ? "mid" : "senior",
+    buildSeniority: tier,
     ukReviewOverheadPercent: clamp(c.ukReviewOverheadPercent, DEFAULT_ADVANCED_CONFIG.ukReviewOverheadPercent, 0, 100),
     contingencyPercent: clamp(c.contingencyPercent, DEFAULT_ADVANCED_CONFIG.contingencyPercent, 0, 100),
     dayRateOverrideGbp: positive(c.dayRateOverrideGbp),
   };
 }
 
-// ── Dev rate table ────────────────────────────────────────────────────────────
+export function resolveTierRates(raw: unknown): TierRates {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Partial<TierRates>;
+  return {
+    junior: clamp(r.junior, DEFAULT_TIER_RATES.junior, 0, 100000),
+    mid: clamp(r.mid, DEFAULT_TIER_RATES.mid, 0, 100000),
+    senior: clamp(r.senior, DEFAULT_TIER_RATES.senior, 0, 100000),
+  };
+}
+
+// ── Tier rates ──────────────────────────────────────────────────────────────
 
 function tierFromArea(area: string): DevTier {
   if (/junior|grad|trainee/i.test(area)) return "junior";
@@ -71,71 +81,42 @@ function tierFromArea(area: string): DevTier {
   return "mid";
 }
 
-/** Build the editable dev-rate table from the workspace Rate Card (costs → GBP day rates). */
-export async function seedRatesFromRateCard(workspaceId: string, fxFromUsd: number): Promise<CostingRate[]> {
+/** Seed the three tier rates by averaging each tier's cost day rate from the Rate Card. */
+export async function seedTierRatesFromRateCard(workspaceId: string, fxFromUsd: number): Promise<TierRates> {
   const people = await prisma.rateCardPerson.findMany({
     where: { workspaceId, archivedAt: null },
-    select: { id: true, name: true, area: true, sourceRate: true, sourceCurrencyCode: true, billingPeriod: true },
-    orderBy: { name: "asc" },
+    select: { area: true, sourceRate: true, sourceCurrencyCode: true, billingPeriod: true },
   });
-  return people.map((p) => {
+  const buckets: Record<DevTier, number[]> = { junior: [], mid: [], senior: [] };
+  for (const p of people) {
     const monthly = normalizeToMonthly(p.sourceRate, p.billingPeriod);
     const code = (p.sourceCurrencyCode || "USD").toUpperCase();
     const monthlyGbp = code === "GBP" ? monthly : monthly * fxFromUsd;
-    return {
-      id: p.id,
-      label: p.name,
-      tier: tierFromArea(p.area),
-      dayRateGbp: roundToFive(monthlyGbp / WORKING_DAYS_PER_MONTH),
-    };
-  });
-}
-
-/** Blend the rate table into a single build day rate for the chosen seniority band. */
-function blendRates(rates: CostingRate[], seniority: "mid" | "senior"): number {
-  const usable = rates.filter((r) => typeof r.dayRateGbp === "number" && r.dayRateGbp > 0);
-  if (usable.length === 0) return DEFAULT_DAY_RATE_GBP;
-  const band = usable.filter((r) => (seniority === "senior" ? r.tier === "senior" : r.tier !== "senior"));
-  const pool = band.length > 0 ? band : usable;
-  const avg = pool.reduce((s, r) => s + r.dayRateGbp, 0) / pool.length;
-  return roundToFive(avg);
+    buckets[tierFromArea(p.area)].push(monthlyGbp / WORKING_DAYS_PER_MONTH);
+  }
+  const avg = (arr: number[], fallback: number) => (arr.length ? roundToFive(arr.reduce((s, n) => s + n, 0) / arr.length) : fallback);
+  return {
+    junior: avg(buckets.junior, DEFAULT_TIER_RATES.junior),
+    mid: avg(buckets.mid, DEFAULT_TIER_RATES.mid),
+    senior: avg(buckets.senior, DEFAULT_TIER_RATES.senior),
+  };
 }
 
 // ── Saved config (Workspace.costingConfig) ─────────────────────────────────────
-
-function isRate(v: unknown): v is CostingRate {
-  const r = v as CostingRate;
-  return (
-    !!r &&
-    typeof r.id === "string" &&
-    typeof r.label === "string" &&
-    (r.tier === "junior" || r.tier === "mid" || r.tier === "senior") &&
-    typeof r.dayRateGbp === "number"
-  );
-}
 
 export async function getSavedCostingConfig(workspaceId: string): Promise<SavedCostingConfig | null> {
   const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { costingConfig: true } });
   const raw = ws?.costingConfig;
   if (!raw || typeof raw !== "object") return null;
-  const obj = raw as Partial<SavedCostingConfig>;
-  const rates = Array.isArray(obj.rates) ? obj.rates.filter(isRate) : [];
-  return { ...resolveAdvancedConfig(obj), rates };
+  const obj = raw as { tierRates?: unknown };
+  return { ...resolveAdvancedConfig(obj), tierRates: resolveTierRates(obj.tierRates) };
 }
 
 export async function saveCostingConfig(
   workspaceId: string,
-  config: Partial<CostingAdvancedConfig> & { rates?: CostingRate[] },
+  config: Partial<CostingAdvancedConfig> & { tierRates?: unknown },
 ): Promise<SavedCostingConfig> {
-  const clean: SavedCostingConfig = {
-    ...resolveAdvancedConfig(config),
-    rates: (config.rates ?? []).filter(isRate).slice(0, 200).map((r) => ({
-      id: r.id,
-      label: r.label.slice(0, 120),
-      tier: r.tier,
-      dayRateGbp: clamp(r.dayRateGbp, 0, 0, 100000),
-    })),
-  };
+  const clean: SavedCostingConfig = { ...resolveAdvancedConfig(config), tierRates: resolveTierRates(config.tierRates) };
   await prisma.workspace.update({
     where: { id: workspaceId },
     data: { costingConfig: clean as unknown as Prisma.InputJsonValue },
@@ -213,47 +194,45 @@ export function computePackageCosting(
 
 /**
  * Resolve the build day rate for a workspace, in priority order:
- * 1. explicit day-rate override, 2. the dev rate table (passed edits, else saved config),
- * 3. the live Rate Card blend (pre-save fallback).
+ * 1. explicit day-rate override, 2. the chosen tier's rate (passed edits, else saved, else seeded).
  */
 async function resolveBuildDayRate(
   workspaceId: string,
   cfg: CostingAdvancedConfig,
-  passedRates: CostingRate[] | undefined,
-): Promise<{ rate: number; source: "override" | "rates" | "live" }> {
+  passedTierRates: TierRates | undefined,
+): Promise<{ rate: number; source: "override" | "tiers" }> {
   if (cfg.dayRateOverrideGbp) return { rate: cfg.dayRateOverrideGbp, source: "override" };
-  const rates = passedRates && passedRates.length > 0 ? passedRates : (await getSavedCostingConfig(workspaceId))?.rates;
-  if (rates && rates.length > 0) return { rate: blendRates(rates, cfg.buildSeniority), source: "rates" };
-  const live = await blendedDayRateGbp(workspaceId, { fxFromUsd: cfg.fxFromUsd, seniority: cfg.buildSeniority });
-  return { rate: live, source: "live" };
+  const tiers =
+    passedTierRates ?? (await getSavedCostingConfig(workspaceId))?.tierRates ?? (await seedTierRatesFromRateCard(workspaceId, cfg.fxFromUsd));
+  return { rate: tiers[cfg.buildSeniority], source: "tiers" };
 }
 
 /** Resolve config + build day rate, and cost the package in one call. */
 export async function computeGitworkCosting(workspaceId: string, input: PackageCostingInput): Promise<PackageCostingResult> {
   const cfg = resolveAdvancedConfig(input.config);
-  const { rate, source } = await resolveBuildDayRate(workspaceId, cfg, input.rates);
+  const tiers = input.tierRates ? resolveTierRates(input.tierRates) : undefined;
+  const { rate, source } = await resolveBuildDayRate(workspaceId, cfg, tiers);
   const result = computePackageCosting(input, rate, cfg);
   result.usedRateCard = source !== "override";
   return result;
 }
 
-/** Prefill data for the tool: live FX, saved config, and the Rate-Card-seeded dev rates. */
+/** Prefill data for the tool: live FX, saved config, and the Rate-Card-seeded tier rates. */
 export async function getCostingConfigInfo(workspaceId: string): Promise<CostingConfigResponse> {
   const fx = await getUsdToGbpRate();
   const fxFromUsd = fx?.rate ?? DEFAULT_ADVANCED_CONFIG.fxFromUsd;
-  const [rateCardCount, blended, saved, seededRates] = await Promise.all([
+  const [rateCardCount, saved, seededTierRates] = await Promise.all([
     prisma.rateCardPerson.count({ where: { workspaceId, archivedAt: null } }),
-    blendedDayRateGbp(workspaceId, { fxFromUsd, seniority: "senior" }),
     getSavedCostingConfig(workspaceId),
-    seedRatesFromRateCard(workspaceId, fxFromUsd),
+    seedTierRatesFromRateCard(workspaceId, fxFromUsd),
   ]);
   return {
     liveFxFromUsd: fx?.rate ?? null,
     fxAsOf: fx?.asOf ?? null,
     hasRateCard: rateCardCount > 0,
-    blendedBuildDayRateGbp: blended,
+    blendedBuildDayRateGbp: seededTierRates.senior,
     defaults: { ...DEFAULT_ADVANCED_CONFIG, fxFromUsd },
     saved,
-    seededRates,
+    seededTierRates,
   };
 }
