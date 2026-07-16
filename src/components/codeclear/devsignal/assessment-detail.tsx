@@ -19,7 +19,7 @@ import {
 import type { DevSignalAssessmentDTO, DevSignalStageResultDTO } from "@/types/devsignal";
 import { OutcomeLinksPanel } from "./outcome-links-panel";
 import { CompliancePanel } from "./compliance-panel";
-import { Meter, scoreTone } from "./devsignal-ui";
+import { Meter, scoreTone, TONE_STROKE } from "./devsignal-ui";
 import {
   DocumentCover,
   HealthScoreRing,
@@ -333,23 +333,29 @@ function InterviewScorecard({ id }: { id: string }) {
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2">
-        {INTERVIEW_DIMENSIONS.map(([key, label]) => (
-          <div key={key} className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm text-[var(--text-2)]">{label}</span>
+      <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+        {INTERVIEW_DIMENSIONS.map(([key, label]) => {
+          const v = scores[key] ?? 0;
+          return (
+            <div key={key} className="min-w-0">
+              <div className="mb-1.5 flex items-baseline justify-between gap-3">
+                <span className="truncate text-sm text-[var(--text-2)]">{label}</span>
+                <span className="shrink-0 font-mono text-xs tabular-nums text-[var(--text-1)]">{v}</span>
+              </div>
               <input
-                type="number"
+                type="range"
                 min={0}
                 max={100}
-                value={scores[key]}
-                onChange={(e) => setScores({ ...scores, [key]: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
-                className="app-input-compact w-14 text-right"
+                step={5}
+                value={v}
+                onChange={(e) => setScores({ ...scores, [key]: Number(e.target.value) })}
+                aria-label={label}
+                className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[var(--border-2)]"
+                style={{ accentColor: TONE_STROKE[scoreTone(v)] }}
               />
             </div>
-            <Meter value={scores[key] ?? 0} tone={scoreTone(scores[key] ?? 0)} />
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <textarea
@@ -357,16 +363,21 @@ function InterviewScorecard({ id }: { id: string }) {
         onChange={(e) => setNotes(e.target.value)}
         placeholder="Evidence / notes…"
         rows={3}
-        className="app-textarea mt-4 w-full"
+        className="app-textarea mt-5 w-full"
       />
-      <div className="mt-3 flex items-center gap-2">
-        <select value={verdict} onChange={(e) => setVerdict(e.target.value as typeof verdict)} className="app-select flex-1">
+      <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-[var(--border-2)] pt-4">
+        <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]">Verdict</span>
+        <select
+          value={verdict}
+          onChange={(e) => setVerdict(e.target.value as typeof verdict)}
+          className="app-select w-44"
+        >
           <option value="PASS">Pass</option>
           <option value="WARN">Warn</option>
           <option value="FAIL">Fail</option>
           <option value="NEEDS_SECOND_REVIEW">Needs second review</option>
         </select>
-        <Button variant="primary" onClick={submit} disabled={record.isPending}>
+        <Button variant="primary" className="ml-auto" onClick={submit} disabled={record.isPending}>
           {record.isPending ? "Saving…" : "Record interview"}
         </Button>
       </div>
