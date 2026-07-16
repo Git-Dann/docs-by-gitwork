@@ -120,10 +120,32 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
  */
 function taskListDTO(task: TaskDTO): TaskDTO {
   return {
-    ...task,
+    // Keep this an explicit allowlist. Spreading TaskDTO here would make a
+    // future large field leak into every board/list response again.
+    id: task.id,
+    workspaceId: task.workspaceId,
+    client: task.client,
+    assignees: task.assignees,
+    createdBy: task.createdBy,
+    featureBlock: task.featureBlock,
+    parentId: task.parentId,
+    title: task.title,
     description: null,
     acceptanceCriteria: null,
+    status: task.status,
+    priority: task.priority,
+    orderKey: task.orderKey,
+    dueDate: task.dueDate,
+    startedAt: task.startedAt,
+    completedAt: task.completedAt,
+    archivedAt: task.archivedAt,
+    commentCount: task.commentCount,
+    subtaskCount: task.subtaskCount,
+    subtaskDoneCount: task.subtaskDoneCount,
     metadata: null,
+    scribeSource: task.scribeSource,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
   };
 }
 
