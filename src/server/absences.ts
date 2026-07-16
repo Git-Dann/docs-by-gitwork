@@ -15,7 +15,7 @@ import type { EffectiveUser } from "@/server/auth/effective-user";
 import { ForbiddenError } from "@/server/auth/effective-user";
 import { monthGridRange } from "@/server/backstage-gcal";
 import { getSlackBotToken, postMessage } from "@/server/slack/client";
-import type { AbsenceDTO, AbsenceKind, CoverableClient } from "@/types/backstage";
+import type { AbsenceDTO, AbsenceKind, CoverableClient, CoverAssignmentDTO } from "@/types/backstage";
 
 const BOOTSTRAP_USER_EMAIL = "owner@gitwork.io";
 
@@ -143,6 +143,32 @@ export async function listCoverableClients(
     clientName: v.name,
     taskCount: v.count,
   })).sort((a, b) => b.taskCount - a.taskCount || a.clientName.localeCompare(b.clientName));
+}
+
+// Active covers on a given client — who's standing in for whom right now.
+// Surfaced on the client's DEVELOPERS card so cover is visible without changing
+// the placed dev.
+export async function listActiveCoversForClient(
+  user: EffectiveUser,
+  clientId: string,
+): Promise<CoverAssignmentDTO[]> {
+  await ensureBaseRecords();
+  const rows = await prisma.absence.findMany({
+    where: { workspaceId: user.workspaceId, coverClientId: clientId, coverActive: true },
+    include: {
+      user: { select: { name: true, email: true } },
+      coverUser: { select: { name: true, email: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map((r) => ({
+    absenceId: r.id,
+    coverUserId: r.coverUserId,
+    coverUserName: r.coverUser ? displayName(r.coverUser) : null,
+    absentUserId: r.userId,
+    absentUserName: displayName(r.user),
+    endDate: r.endDate ? r.endDate.toISOString() : null,
+  }));
 }
 
 // Add the cover dev to the absent person's active tasks on one client (additive),

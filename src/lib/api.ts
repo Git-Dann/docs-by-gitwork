@@ -2563,6 +2563,7 @@ import type {
   CalendarMonth,
   CalendarTimeline,
   CoverableClient,
+  CoverAssignmentDTO,
   ExpenseDTO,
   SlackChannelOption,
   LeaveAllowanceDTO,
@@ -2793,6 +2794,10 @@ export function endAbsenceCover(id: string): Promise<AbsenceDTO> {
 
 export function listCoverableClients(userId: string): Promise<CoverableClient[]> {
   return apiFetch(`/api/backstage/absences/coverable?userId=${encodeURIComponent(userId)}`);
+}
+
+export function listClientActiveCovers(clientId: string): Promise<CoverAssignmentDTO[]> {
+  return apiFetch(`/api/backstage/absences/covers?clientId=${encodeURIComponent(clientId)}`);
 }
 
 export function listSlackChannels(): Promise<{ channels: SlackChannelOption[] }> {

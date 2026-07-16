@@ -63,6 +63,7 @@ import {
   useUpdateClientProductTeam,
 } from "@/hooks/use-proposals";
 import { useCreateTask, useDeleteTask, useTasks } from "@/hooks/use-tasks";
+import { useClientActiveCovers } from "@/hooks/use-backstage";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import { detectPlatformIcon } from "@/lib/platform-icons";
@@ -2425,13 +2426,19 @@ function MeetingNotesTaskRail({
 // ClientDevelopersSection — compact name roster, Portal read-only view
 // ---------------------------------------------------------------------------
 function ClientDevelopersSection({
+  clientId,
   placements,
 }: {
   clientId: string;
   clientName: string;
   placements: import("@/types/client").ClientPlacementRecord[];
 }) {
-  if (placements.length === 0) {
+  // Active covers (stand-in devs) on this client — a temporary overlay on top of
+  // the placed devs; the placed dev is unchanged.
+  const covers = useClientActiveCovers(clientId);
+  const coverList = covers.data ?? [];
+
+  if (placements.length === 0 && coverList.length === 0) {
     return (
       <div className="p-5">
         <p className="text-sm text-[var(--text-4)]">
@@ -2464,7 +2471,7 @@ function ClientDevelopersSection({
 
   return (
     <div className="p-5">
-      {active.length === 0 ? (
+      {active.length === 0 && coverList.length === 0 ? (
         <p className="text-sm text-[var(--text-4)]">
           No active developers.{" "}
           <Link href="/app/codeclear/candidates" className="text-[var(--brand-700)] hover:underline">
@@ -2482,6 +2489,29 @@ function ClientDevelopersSection({
               <Avatar name={p.candidateName} />
               {p.candidateName}
             </Link>
+          ))}
+          {coverList.map((c) => (
+            <div
+              key={c.absenceId}
+              className="flex items-center gap-1.5 rounded-[6px] border border-dashed border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900"
+              title={`Covering ${c.absentUserName}${
+                c.endDate
+                  ? ` until ${new Date(c.endDate).toLocaleDateString("en-GB", {
+                      day: "numeric",
+                      month: "short",
+                    })}`
+                  : " today"
+              }`}
+            >
+              <Avatar name={c.coverUserName ?? "Cover"} />
+              {c.coverUserName ?? "Cover"}
+              <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-800">
+                cover
+              </span>
+              <span className="text-[10px] font-normal text-amber-700">
+                for {c.absentUserName.split(" ")[0]}
+              </span>
+            </div>
           ))}
         </div>
       )}

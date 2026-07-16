@@ -264,6 +264,17 @@ export type AvailabilitySettings = {
   digestChannelName: string | null;
 };
 
+/** An active cover on a client — a stand-in dev picking up an absent dev's work. */
+export type CoverAssignmentDTO = {
+  absenceId: string;
+  coverUserId: string | null;
+  coverUserName: string | null;
+  absentUserId: string;
+  absentUserName: string;
+  /** ISO — last day of the absence (null → single day). */
+  endDate: string | null;
+};
+
 /** A Slack channel option for the announce-channel picker. */
 export type SlackChannelOption = {
   id: string;

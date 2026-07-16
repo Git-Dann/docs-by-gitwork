@@ -16,6 +16,7 @@ import {
   deleteAbsence,
   endAbsenceCover,
   listCoverableClients,
+  listClientActiveCovers,
   listSlackChannels,
   getAvailabilitySettings,
   setAvailabilityDigestChannel,
@@ -299,6 +300,16 @@ export function useCoverableClients(userId: string | null) {
     queryKey: ["backstage", "coverableClients", userId] as const,
     queryFn: () => listCoverableClients(userId as string),
     enabled: Boolean(userId),
+    staleTime: 30_000,
+  });
+}
+
+// Active covers on a client — for the client's DEVELOPERS card.
+export function useClientActiveCovers(clientId: string | null) {
+  return useQuery({
+    queryKey: ["backstage", "clientCovers", clientId] as const,
+    queryFn: () => listClientActiveCovers(clientId as string),
+    enabled: Boolean(clientId),
     staleTime: 30_000,
   });
 }
