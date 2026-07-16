@@ -72,7 +72,7 @@ export function OutcomeLinksPanel({
   };
 
   return (
-    <WidgetCard number="06" name="Delivery outcomes">
+    <WidgetCard number="07" name="Delivery outcomes">
       <p className="text-xs text-[var(--text-4)]">
         Link this assessment to real project delivery. This is the data loop that lets the score be
         validated later — recalibration itself is not built yet.

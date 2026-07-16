@@ -6,9 +6,11 @@ import {
   createDevSignalChallenge,
   createDevSignalOutcomeLink,
   createDevSignalPipelineConfig,
+  clearDevSignalDemo,
   getDevSignalAnalytics,
   getDevSignalCalibration,
   getDevSignalNotice,
+  seedDevSignalDemo,
   updateDevSignalNotice,
   getDevSignalAssessment,
   listDevSignalAssessments,
@@ -55,6 +57,22 @@ export function useDevSignalCalibration(enabled = true) {
     queryFn: getDevSignalCalibration,
     enabled,
     staleTime: 1000 * 30,
+  });
+}
+
+export function useSeedDevSignalDemo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: seedDevSignalDemo,
+    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
+  });
+}
+
+export function useClearDevSignalDemo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: clearDevSignalDemo,
+    onSuccess: () => qc.invalidateQueries({ queryKey: [KEY] }),
   });
 }
 

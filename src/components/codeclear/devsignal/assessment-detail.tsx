@@ -135,7 +135,7 @@ function Masthead({ a }: { a: DevSignalAssessmentDTO }) {
 function BestMatchCard({ a }: { a: DevSignalAssessmentDTO }) {
   const summary = a.bestMatchSummary;
   return (
-    <WidgetCard number="01" name="Best match">
+    <WidgetCard number="04" name="Best match">
       <p className="text-xl font-semibold text-[var(--text-1)]">{summary?.labelDisplay ?? "Not scored yet"}</p>
       {typeof a.finalScore === "number" && (
         <p className="widget-data-label mt-1 normal-case tracking-normal">Internal score {a.finalScore}/100</p>
@@ -159,7 +159,7 @@ function BestMatchCard({ a }: { a: DevSignalAssessmentDTO }) {
 
 function StageTimeline({ stages }: { stages: DevSignalStageResultDTO[] }) {
   return (
-    <WidgetCard number="02" name="Stage results">
+    <WidgetCard number="01" name="Stage results">
       {stages.length === 0 ? (
         <p className="text-sm text-[var(--text-4)]">No stages run yet.</p>
       ) : (
@@ -204,9 +204,17 @@ function ScoreBreakdown({ a }: { a: DevSignalAssessmentDTO }) {
   const b = a.scoreBreakdown;
   const analytics = useDevSignalAnalytics();
   const model = analytics.data?.analytics.modelStatus;
-  if (!b) return null;
+  if (!b) {
+    return (
+      <WidgetCard number="02" name="Score breakdown">
+        <p className="text-sm text-[var(--text-4)]">
+          Not scored yet — run the automated stages to compute the breakdown.
+        </p>
+      </WidgetCard>
+    );
+  }
   return (
-    <WidgetCard number="03" name="Score breakdown">
+    <WidgetCard number="02" name="Score breakdown">
       <p className="widget-data-label normal-case tracking-normal">
         {b.formulaVersion} · weighted {b.weightedScore}
         {b.cap !== null ? ` · capped to ${b.cap} by ${b.cappedByStageId}` : ""}
@@ -264,7 +272,7 @@ function InterviewScorecard({ id }: { id: string }) {
   };
 
   return (
-    <WidgetCard number="04" name="Leadership interview">
+    <WidgetCard number="03" name="Leadership interview">
       <p className="text-xs text-[var(--text-4)]">Human scorecard — supports the gate, doesn&apos;t replace your final audit.</p>
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {INTERVIEW_DIMENSIONS.map(([key, label]) => (
