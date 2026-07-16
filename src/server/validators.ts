@@ -187,6 +187,13 @@ export const leadStageSchema = z.enum([
   "LOST",
 ]);
 
+export const clientEngagementTypeSchema = z.enum([
+  "FIXED_SCOPE",
+  "PHASED",
+  "ROLLING",
+  "RETAINER",
+]);
+
 export const touchpointTypeSchema = z.enum(["CALL", "EMAIL", "MEETING", "NOTE"]);
 
 /** Optional ISO date string (or empty/null to clear) coerced through trim. */
@@ -215,6 +222,9 @@ const clientContactFields = {
   vatNumber: z.string().trim().optional(),
   retainerDays: z.coerce.number().int().min(0).max(31).nullable().optional(),
   retainerDaysUsed: z.coerce.number().int().min(0).max(31).nullable().optional(),
+  // Engagement structure + project end date — optional/clearable.
+  engagementType: clientEngagementTypeSchema.nullable().optional(),
+  endDate: optionalDateString,
   // Lead (status LEAD) + paused-client (status INACTIVE) fields — all optional/clearable.
   leadSource: z.string().trim().nullable().optional(),
   leadStage: leadStageSchema.nullable().optional(),

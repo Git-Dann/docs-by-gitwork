@@ -32,7 +32,7 @@ import {
 import { useOnboardingForms } from "@/hooks/use-onboarding-forms";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate } from "@/lib/format";
-import type { ClientListItem, LeadStage } from "@/types/client";
+import type { ClientEngagementType, ClientListItem, LeadStage } from "@/types/client";
 import type { OnboardingLinkRecord } from "@/lib/api";
 
 type Tab = "active" | "leads" | "inactive" | "pending" | "onboarding";
@@ -323,6 +323,14 @@ function formatShortDate(iso: string): string {
     return "";
   }
 }
+
+/** Short label for a client's engagement structure. */
+const ENGAGEMENT_LABELS: Record<ClientEngagementType, string> = {
+  FIXED_SCOPE: "Fixed",
+  PHASED: "Phased",
+  ROLLING: "Rolling",
+  RETAINER: "Retainer",
+};
 
 /** Bottom of a LEAD card — est. value + stage + follow-up (overdue flagged). */
 function LeadCardBody({ client }: { client: ClientListItem }) {
@@ -650,6 +658,15 @@ function ClientCard({
               style={{ width: `${retainerOver ? 100 : retainerPct}%` }}
             />
           </div>
+        )}
+
+        {/* Engagement structure + end date — non-financial, shown for everyone. */}
+        {client.engagementType && (
+          <p className="widget-data-label whitespace-nowrap text-[var(--text-2)]">
+            {ENGAGEMENT_LABELS[client.engagementType]}
+            {" · "}
+            {client.endDate ? `ends ${formatShortDate(client.endDate)}` : "ongoing"}
+          </p>
         )}
           </>
         )}

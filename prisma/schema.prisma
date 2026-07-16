@@ -984,6 +984,18 @@ enum WorkspaceClientStatus {
   INACTIVE
 }
 
+/// How a client's engagement is scoped/billed — drives whether an end date applies.
+enum ClientEngagementType {
+  /// Fixed-scope project with a defined deliverable + end date.
+  FIXED_SCOPE
+  /// Multi-phase delivery; endDate is the current/overall phase end.
+  PHASED
+  /// Ongoing delivery with no fixed end date.
+  ROLLING
+  /// Ongoing monthly retainer (see retainerDays) with no fixed end date.
+  RETAINER
+}
+
 /// Sales pipeline stage for a lead (status = LEAD). Surfaced on the lead card + detail.
 enum LeadStage {
   NEW
@@ -1086,6 +1098,13 @@ model WorkspaceClient {
   featureBlocks            FeatureBlock[]
   milestones               Milestone[]
   absenceCovers            Absence[]                @relation("AbsenceCoverClient")
+  /// Engagement shape — how this client's work is scoped/billed. Drives whether an end date
+  /// applies (FIXED_SCOPE / PHASED have one; ROLLING / RETAINER are ongoing). Nullable = unset.
+  engagementType           ClientEngagementType?
+  /// Project / proposal end date — when the current engagement is contracted to end. Applies to
+  /// fixed-scope + phased work; null (ongoing) for rolling / retainer. Manually maintained,
+  /// typically set from the signed proposal relative to when devs started.
+  endDate                  DateTime?
   /// Monthly retainer-day allocation. Optional — surfaced in the UI only when set.
   retainerDays             Int?
   /// Retainer days used in the current month (manually maintained). Paired with

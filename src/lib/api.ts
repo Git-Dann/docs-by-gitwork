@@ -20,6 +20,7 @@ import type {
   ClientPlatformReveal,
   ClientPlatformLoginSummary,
   ClientTouchpoint,
+  ClientEngagementType,
   LeadStage,
   TouchpointType,
   WorkspaceClientStatus,
@@ -670,6 +671,8 @@ export async function updateClient(
     slackExternalChannelId?: string;
     retainerDays?: number | null;
     retainerDaysUsed?: number | null;
+    engagementType?: ClientEngagementType | null;
+    endDate?: string | null;
   } & LeadInput,
 ): Promise<{ client: ClientListItem }> {
   return apiFetch<{ client: ClientListItem }>(`/api/clients/${slug}`, {

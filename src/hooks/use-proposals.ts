@@ -56,6 +56,7 @@ import {
 } from "@/lib/api";
 import type {
   ClientDesignRecord,
+  ClientEngagementType,
   ClientPlatformRecord,
   TouchpointType,
   WorkspaceClientStatus,
@@ -259,6 +260,8 @@ type ClientUpdatePayload = {
   slackExternalChannelId?: string;
   retainerDays?: number | null;
   retainerDaysUsed?: number | null;
+  engagementType?: ClientEngagementType | null;
+  endDate?: string | null;
 } & LeadInput;
 
 export function useUpdateClient(slug: string) {

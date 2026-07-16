@@ -18,7 +18,7 @@
  * All numeric outputs are plain numbers; all timestamps are ISO strings — a stable JSON contract.
  */
 
-import type { TaskStatus, TaskPriority, TaskLabel } from "@prisma/client";
+import type { TaskStatus, TaskPriority, TaskLabel, ClientEngagementType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   businessDaysBetween,
@@ -95,8 +95,16 @@ export interface PortalAnalytics {
     monthlyCost: { amount: number; currency: string; unpricedDevs: number } | null;
     /** Business days since the earliest dated feature block, or null when no Gantt timeline. */
     workingDays: number | null;
+    /** Engagement shape (fixed/phased have an end; rolling/retainer are ongoing). */
+    engagementType: ClientEngagementType | null;
+    /** Project/proposal end date (ISO), or null when ongoing / unset. */
+    endDate: string | null;
+    /** Calendar days from today until endDate (negative = past end); null when no endDate. */
+    daysLeft: number | null;
     health: ClientHealth | null;
   }>;
+  /** Client count by engagement type (for the mix donut); null → "UNSET". */
+  byEngagement: Array<{ type: ClientEngagementType | "UNSET"; count: number }>;
 }
 
 const MS_PER_DAY = 86_400_000;
@@ -118,7 +126,7 @@ export async function getPortalAnalytics(
   const [clientRows, devIds] = await Promise.all([
     prisma.workspaceClient.findMany({
       where: { workspaceId },
-      select: { id: true, name: true, slug: true },
+      select: { id: true, name: true, slug: true, engagementType: true, endDate: true },
     }),
     getDeveloperUserIds(workspaceId),
   ]);
@@ -352,6 +360,7 @@ export async function getPortalAnalytics(
   const openByClient = new Map<string, number>();
   for (const g of clientOpenGroups) openByClient.set(g.clientId, g._count._all);
 
+  const dayFloor = startOfToday.getTime();
   const clients = clientRows
     .map((c) => {
       const open = openByClient.get(c.id) ?? 0;
@@ -359,6 +368,9 @@ export async function getPortalAnalytics(
       const pulse = pulseHealthByClient.get(c.id);
       const fin = financialsByClient.get(c.id);
       const cost = fin?.monthlyCost ?? null;
+      const daysLeft = c.endDate
+        ? Math.round((startOfUtcDay(c.endDate).getTime() - dayFloor) / MS_PER_DAY)
+        : null;
       return {
         clientId: c.id,
         name: c.name,
@@ -369,11 +381,24 @@ export async function getPortalAnalytics(
         devs: devCountByClient.get(c.id) ?? 0,
         monthlyCost: cost ? { amount: cost.amount, currency: cost.currency, unpricedDevs: cost.unpricedDevs } : null,
         workingDays: fin?.workingDays ?? null,
+        engagementType: c.engagementType,
+        endDate: c.endDate ? c.endDate.toISOString() : null,
+        daysLeft,
         health: deriveClientHealth({ pulseHealthScore: pulse?.healthScore ?? null, overdueTasks: overdue }),
       };
     })
-    .filter((c) => c.open > 0 || c.overdue > 0 || c.completedInRange > 0 || c.devs > 0)
+    .filter((c) => c.open > 0 || c.overdue > 0 || c.completedInRange > 0 || c.devs > 0 || c.engagementType != null)
     .sort((a, b) => b.open + b.overdue - (a.open + a.overdue) || b.completedInRange - a.completedInRange);
+
+  // Engagement-type distribution across all clients (for the mix donut).
+  const engagementCounts = new Map<ClientEngagementType | "UNSET", number>();
+  for (const c of clientRows) {
+    const key = c.engagementType ?? "UNSET";
+    engagementCounts.set(key, (engagementCounts.get(key) ?? 0) + 1);
+  }
+  const byEngagement = [...engagementCounts.entries()]
+    .map(([type, count]) => ({ type, count }))
+    .sort((a, b) => b.count - a.count);
 
   const workingDayVals = clients.map((c) => c.workingDays).filter((d): d is number => d != null);
   const avgWorkingDays = workingDayVals.length
@@ -411,5 +436,6 @@ export async function getPortalAnalytics(
       .sort((a, b) => b.count - a.count),
     leaderboard,
     clients,
+    byEngagement,
   };
 }
