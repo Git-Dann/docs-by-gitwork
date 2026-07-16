@@ -8,14 +8,16 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useNotice } from "./notice";
 import { DevSignalAssessmentList } from "./assessment-list";
 import {
+  useClearDevSignalDemo,
   useCreateDevSignalAssessment,
   useDevSignalAnalytics,
   useDevSignalAssessments,
   useDevSignalConfigs,
+  useSeedDevSignalDemo,
 } from "@/hooks/use-devsignal";
 
 export function DevSignalQueue() {
-  const { canManageDevSignal } = usePermissions();
+  const { canManageDevSignal, canCalibrateDevSignal } = usePermissions();
   const assessments = useDevSignalAssessments();
   const analytics = useDevSignalAnalytics();
   const [modalOpen, setModalOpen] = useState(false);
@@ -48,9 +50,12 @@ export function DevSignalQueue() {
             </p>
           )}
         </div>
-        <Button variant="primary" onClick={() => setModalOpen(true)}>
-          New assessment
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {canCalibrateDevSignal && <DemoSeedControls hasItems={items.length > 0} />}
+          <Button variant="primary" onClick={() => setModalOpen(true)}>
+            New assessment
+          </Button>
+        </div>
       </div>
 
       {/* Analytics strip */}
@@ -136,6 +141,50 @@ function CompletionFunnel({ funnel }: { funnel: Array<{ key: string; label: stri
         })}
       </div>
     </WidgetCard>
+  );
+}
+
+// One-click showcase data (super-admin) so nobody has to hit the API by hand.
+function DemoSeedControls({ hasItems }: { hasItems: boolean }) {
+  const { showOk, showErr, noticeEl } = useNotice();
+  const seed = useSeedDevSignalDemo();
+  const clear = useClearDevSignalDemo();
+  const busy = seed.isPending || clear.isPending;
+
+  return (
+    <>
+      <Button
+        variant="secondary"
+        disabled={busy}
+        onClick={async () => {
+          try {
+            const res = await seed.mutateAsync();
+            showOk("Demo data loaded", `${res.created} added${res.skipped ? `, ${res.skipped} already present` : ""}.`);
+          } catch (e) {
+            showErr("Could not seed", e instanceof Error ? e.message : undefined);
+          }
+        }}
+      >
+        {seed.isPending ? "Loading…" : "Load demo data"}
+      </Button>
+      {hasItems && (
+        <Button
+          variant="tertiary"
+          disabled={busy}
+          onClick={async () => {
+            try {
+              const res = await clear.mutateAsync();
+              showOk("Demo data cleared", `${res.removed} removed.`);
+            } catch (e) {
+              showErr("Could not clear", e instanceof Error ? e.message : undefined);
+            }
+          }}
+        >
+          {clear.isPending ? "Clearing…" : "Clear demo"}
+        </Button>
+      )}
+      {noticeEl}
+    </>
   );
 }
 

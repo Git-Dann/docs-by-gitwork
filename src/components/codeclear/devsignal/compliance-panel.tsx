@@ -25,7 +25,7 @@ export function CompliancePanel({ id, a }: { id: string; a: DevSignalAssessmentD
   const requests = a.dataRequests ?? [];
 
   return (
-    <WidgetCard number="09" name="Compliance">
+    <WidgetCard number="06" name="Compliance">
       <div>
         <p className="widget-data-label mb-1">Consent</p>
         {consent ? (

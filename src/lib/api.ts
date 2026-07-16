@@ -4052,6 +4052,14 @@ export async function updateDevSignalNotice(content: NoticeContent) {
   });
 }
 
+export async function seedDevSignalDemo() {
+  return apiFetch<{ created: number; skipped: number }>("/api/dev/seed-devsignal-demo", { method: "POST" });
+}
+
+export async function clearDevSignalDemo() {
+  return apiFetch<{ removed: number }>("/api/dev/seed-devsignal-demo", { method: "DELETE" });
+}
+
 export async function createDevSignalPipelineConfig(input: {
   name: string;
   version: string;
