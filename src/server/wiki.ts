@@ -405,13 +405,21 @@ async function loadWikiBlockers(clientId: string): Promise<WikiBlockerRecord[]> 
 }
 
 async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
-  const blocks = await prisma.featureBlock.findMany({
-    where: { clientId },
-    orderBy: [{ orderKey: "asc" }, { startDate: "asc" }],
-    include: {
-      tasks: { select: { title: true, status: true, dueDate: true }, orderBy: { orderKey: "asc" } },
-    },
-  });
+  // Independent queries — run together instead of one round-trip after the other.
+  const [blocks, milestones] = await Promise.all([
+    prisma.featureBlock.findMany({
+      where: { clientId },
+      orderBy: [{ orderKey: "asc" }, { startDate: "asc" }],
+      include: {
+        tasks: { select: { title: true, status: true, dueDate: true }, orderBy: { orderKey: "asc" } },
+      },
+    }),
+    prisma.milestone.findMany({
+      where: { clientId },
+      orderBy: { date: "asc" },
+      select: { id: true, name: true, date: true, color: true },
+    }),
+  ]);
 
   const timelineBlocks: WikiTimelineBlock[] = blocks
     .map((b) => {
@@ -438,12 +446,6 @@ async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
       };
     })
     .filter((b): b is WikiTimelineBlock => b !== null);
-
-  const milestones = await prisma.milestone.findMany({
-    where: { clientId },
-    orderBy: { date: "asc" },
-    select: { id: true, name: true, date: true, color: true },
-  });
 
   return {
     blocks: timelineBlocks,
@@ -541,6 +543,20 @@ async function buildDTO(
   },
   opts?: { includeUsers?: boolean },
 ): Promise<WikiDTO> {
+  // These 9 section loaders are independent — run them together instead of one
+  // round-trip after another (this ran on every wiki page load with zero caching).
+  const [blockers, timeline, designSystem, monitors, codeHandover, team, productTeam, headerLinks, documents] =
+    await Promise.all([
+      loadWikiBlockers(wiki.clientId),
+      loadWikiTimeline(wiki.clientId),
+      loadWikiDesignSystem(wiki.clientId),
+      loadWikiMonitors(wiki.clientId),
+      loadWikiCodeHandover(wiki.clientId),
+      loadWikiTeam(wiki.clientId),
+      loadWikiProductTeam(wiki.clientId),
+      loadWikiHeaderLinks(wiki.clientId),
+      loadWikiDocuments(wiki.clientId),
+    ]);
   return {
     id: wiki.id,
     clientId: wiki.clientId,
@@ -585,15 +601,15 @@ async function buildDTO(
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .map(serializeWikiIntakeItem),
     intakeEnabled: wiki.intakeEnabled ?? true,
-    blockers: await loadWikiBlockers(wiki.clientId),
-    timeline: await loadWikiTimeline(wiki.clientId),
-    designSystem: await loadWikiDesignSystem(wiki.clientId),
-    monitors: await loadWikiMonitors(wiki.clientId),
-    codeHandover: await loadWikiCodeHandover(wiki.clientId),
-    team: await loadWikiTeam(wiki.clientId),
-    productTeam: await loadWikiProductTeam(wiki.clientId),
-    headerLinks: await loadWikiHeaderLinks(wiki.clientId),
-    documents: await loadWikiDocuments(wiki.clientId),
+    blockers,
+    timeline,
+    designSystem,
+    monitors,
+    codeHandover,
+    team,
+    productTeam,
+    headerLinks,
+    documents,
     users: opts?.includeUsers
       ? (wiki.wikiUsers ?? [])
           .slice()
