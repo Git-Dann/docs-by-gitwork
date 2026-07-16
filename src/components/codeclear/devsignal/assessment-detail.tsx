@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { LockClosedIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -316,33 +317,50 @@ function InterviewScorecard({ id }: { id: string }) {
     }
   };
 
+  const avg = Math.round(
+    INTERVIEW_DIMENSIONS.reduce((sum, [k]) => sum + (scores[k] ?? 0), 0) / INTERVIEW_DIMENSIONS.length,
+  );
+
   return (
     <WidgetCard number="03" name="Leadership interview">
-      <p className="text-xs text-[var(--text-4)]">Human scorecard — supports the gate, doesn&apos;t replace your final audit.</p>
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="flex items-start justify-between gap-4">
+        <p className="max-w-md text-xs text-[var(--text-4)]">
+          Human scorecard — supports the gate, doesn&apos;t replace your final audit.
+        </p>
+        <div className="shrink-0 text-right">
+          <p className="font-serif text-2xl leading-none text-[var(--text-1)]">{avg}</p>
+          <p className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-[var(--text-4)]">avg score</p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2">
         {INTERVIEW_DIMENSIONS.map(([key, label]) => (
-          <label key={key} className="flex items-center justify-between gap-3">
-            <span className="text-sm text-[var(--text-2)]">{label}</span>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={scores[key]}
-              onChange={(e) => setScores({ ...scores, [key]: Number(e.target.value) })}
-              className="app-input-compact w-16 text-right"
-            />
-          </label>
+          <div key={key} className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-[var(--text-2)]">{label}</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={scores[key]}
+                onChange={(e) => setScores({ ...scores, [key]: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+                className="app-input-compact w-14 text-right"
+              />
+            </div>
+            <Meter value={scores[key] ?? 0} tone={scoreTone(scores[key] ?? 0)} />
+          </div>
         ))}
       </div>
+
       <textarea
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
         placeholder="Evidence / notes…"
         rows={3}
-        className="app-textarea mt-3 w-full"
+        className="app-textarea mt-4 w-full"
       />
       <div className="mt-3 flex items-center gap-2">
-        <select value={verdict} onChange={(e) => setVerdict(e.target.value as typeof verdict)} className="app-select">
+        <select value={verdict} onChange={(e) => setVerdict(e.target.value as typeof verdict)} className="app-select flex-1">
           <option value="PASS">Pass</option>
           <option value="WARN">Warn</option>
           <option value="FAIL">Fail</option>
@@ -354,6 +372,27 @@ function InterviewScorecard({ id }: { id: string }) {
       </div>
       {noticeEl}
     </WidgetCard>
+  );
+}
+
+const DECISION_CHIP: Record<string, string> = {
+  NONE: "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]",
+  APPROVED_FOR_STAGING: "border-sky-200 bg-sky-50 text-sky-700",
+  APPROVED_FOR_CODE: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  NEEDS_MORE_INFO: "border-amber-200 bg-amber-50 text-amber-700",
+  REJECTED: "border-rose-200 bg-rose-50 text-rose-700",
+};
+
+function DecisionChip({ decision }: { decision: string }) {
+  return (
+    <span
+      className={cn(
+        "rounded-[4px] border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em]",
+        DECISION_CHIP[decision] ?? DECISION_CHIP.NONE,
+      )}
+    >
+      {decision.replace(/_/g, " ")}
+    </span>
   );
 }
 
@@ -385,13 +424,15 @@ function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
 
   return (
     <WidgetCard number="05" name="Decision">
-      <p className="text-sm text-[var(--text-3)]">
-        Current: <span className="font-medium text-[var(--text-2)]">{a.decision.replace(/_/g, " ").toLowerCase()}</span>
-      </p>
+      <div className="flex items-center gap-2 text-sm text-[var(--text-3)]">
+        <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]">Current</span>
+        <DecisionChip decision={a.decision} />
+      </div>
 
       {a.promotedToCode ? (
-        <p className="mt-3 rounded-[6px] bg-[var(--surface-brand)] px-3 py-2 text-sm text-[var(--brand-700)]">
-          ✓ Promoted into Code{a.promotedToCodeAt ? ` on ${new Date(a.promotedToCodeAt).toLocaleDateString()}` : ""}.
+        <p className="mt-3 flex items-center gap-1.5 rounded-[6px] bg-[var(--surface-brand)] px-3 py-2 text-sm font-medium text-[var(--brand-700)]">
+          <span className="h-1.5 w-1.5 rounded-full bg-[var(--brand-600)]" />
+          Promoted into Code{a.promotedToCodeAt ? ` on ${new Date(a.promotedToCodeAt).toLocaleDateString()}` : ""}.
         </p>
       ) : (
         <>
@@ -411,7 +452,9 @@ function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
           </div>
 
           <div className="mt-4 border-t border-[var(--border-3)] pt-4">
-            <p className="widget-data-label text-[var(--text-4)]">The human gate</p>
+            <p className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]">
+              <LockClosedIcon className="h-3 w-3" /> The human gate
+            </p>
             {!confirming ? (
               <Button
                 variant="primary"
