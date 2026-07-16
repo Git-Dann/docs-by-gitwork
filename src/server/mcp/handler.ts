@@ -18,6 +18,7 @@ import {
   DocumentType,
   DocumentStatus,
   type WorkspaceClientStatus,
+  type WikiMonitorType,
   type Prisma as PrismaTypes,
 } from "@prisma/client";
 import type { EffectiveUser } from "@/server/auth/effective-user";
@@ -49,6 +50,7 @@ import {
   getDerivedClientDetail,
 } from "@/server/clients";
 import { listConversations, listSupportClients } from "@/server/support";
+import { createMonitor, loadWikiMonitors } from "@/server/wiki-monitors";
 import {
   assignedClientIds,
   listTasks,
@@ -105,7 +107,8 @@ const SERVER_INSTRUCTIONS =
   "Foundry by Gitwork — Gitwork's design-and-build agency platform. Use these tools to work with " +
   "the workspace on the signed-in user's behalf (their permissions apply): list/create clients, " +
   "list/create/update tasks, list members, search Scribe meeting notes, create documents " +
-  "(proposals/SOW/SLA/HANDOVER/…) and then fill in their content with update_document, and run " +
+  "(proposals/SOW/SLA/HANDOVER/…) and then fill in their content with update_document, add/list " +
+  "a client's uptime monitors (add_monitor/list_monitors), and run " +
   "or fetch Pulse production-readiness scans. Foundry Starters " +
   "(reusable prompts/skills/kits) are exposed as MCP prompts — list them with prompts/list and " +
   "pull one in with prompts/get. Prefer resolving a client by slug; use list_members for assignee ids.";
@@ -337,6 +340,22 @@ const addPlatformSchema = z.object({
 });
 
 const listPlatformsSchema = z.object({ client: z.string().min(1) });
+
+const MONITOR_TYPE_VALUES = ["HTTP", "TCP"] as const;
+
+const addMonitorSchema = z.object({
+  client: z.string().min(1),
+  name: z.string().min(1),
+  type: z.enum(MONITOR_TYPE_VALUES),
+  target: z.string().min(1),
+  method: z.string().optional(),
+  expectedStatus: z.number().int().min(100).max(599).nullable().optional(),
+  keyword: z.string().max(200).nullable().optional(),
+  degradedMs: z.number().int().min(1).max(120000).nullable().optional(),
+  intervalMinutes: z.number().int().min(1).max(1440).optional(),
+});
+
+const listMonitorsSchema = z.object({ client: z.string().min(1) });
 
 const listTasksSchema = z.object({
   client: z.string().optional(),
@@ -674,6 +693,85 @@ const TOOLS: ToolDef[] = [
       return textResult(
         { platforms },
         `${resolved.name} — ${platforms.length} platform${platforms.length === 1 ? "" : "s"}.`,
+      );
+    },
+  },
+  {
+    name: "add_monitor",
+    description:
+      "Add an uptime monitor to a client wiki's Monitors section (HTTP or TCP). Requires the " +
+      "'Manage clients' permission. Resolve the client by slug, name, or cuid. Runs an immediate " +
+      "probe on creation so the status is populated right away — use list_monitors to see it, " +
+      "or read this call's own response (it includes the fresh status).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        name: { type: "string", description: "Monitor name (e.g. 'Course backend API')." },
+        type: {
+          type: "string",
+          enum: [...MONITOR_TYPE_VALUES],
+          description: "HTTP checks a URL; TCP checks host:port reachability.",
+        },
+        target: { type: "string", description: "For HTTP: the URL to probe. For TCP: 'host:port'." },
+        method: { type: "string", description: "HTTP method (default GET)." },
+        expectedStatus: {
+          type: "integer",
+          description: "Expected HTTP status code (e.g. 200). Any 2xx/3xx counts as up if omitted.",
+        },
+        keyword: { type: "string", description: "Optional substring the response body must contain to count as up." },
+        degradedMs: {
+          type: "integer",
+          description: "Latency (ms) above which the monitor is marked DEGRADED instead of UP.",
+        },
+        intervalMinutes: { type: "integer", description: "How often to probe (default 5, max 1440)." },
+      },
+      required: ["client", "name", "type", "target"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "add monitors");
+      const parsed = addMonitorSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const monitor = await createMonitor(resolved.id, {
+        name: parsed.name,
+        type: parsed.type as WikiMonitorType,
+        target: parsed.target,
+        method: parsed.method,
+        expectedStatus: parsed.expectedStatus,
+        keyword: parsed.keyword,
+        degradedMs: parsed.degradedMs,
+        intervalMinutes: parsed.intervalMinutes,
+      });
+      return textResult(
+        monitor,
+        `Added monitor "${monitor.name}" to ${resolved.name} — status: ${monitor.status}` +
+          `${monitor.latencyMs != null ? ` (${monitor.latencyMs}ms)` : ""}` +
+          `${monitor.error ? ` — ${monitor.error}` : ""}.`,
+      );
+    },
+  },
+  {
+    name: "list_monitors",
+    description:
+      "List a client wiki's uptime monitors — status, latency, uptime % (24h/7d/30d), and recent " +
+      "check history. Resolve the client by slug, name, or cuid.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+      },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = listMonitorsSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const section = await loadWikiMonitors(resolved.id);
+      return textResult(
+        section,
+        `${resolved.name} — ${section.monitors.length} monitor${section.monitors.length === 1 ? "" : "s"}` +
+          `${section.enabled ? "" : " (section currently hidden)"}.`,
       );
     },
   },
