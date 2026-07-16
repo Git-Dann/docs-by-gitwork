@@ -103,6 +103,20 @@ function DevAvatar({ name, avatarUrl }: { name: string; avatarUrl: string | null
   );
 }
 
+/** AM/PM check-in pill — green tick when posted, red cross when missed. */
+function CheckPill({ ok, label }: { ok: boolean; label: string }) {
+  const color = ok ? "var(--success-500)" : "var(--danger-500)";
+  return (
+    <span
+      className="inline-flex items-center gap-0.5 rounded-[4px] border px-1.5 py-0.5"
+      style={{ fontFamily: MONO, fontSize: 9, fontWeight: 600, letterSpacing: "0.04em", borderColor: color, color }}
+      title={`${label} update ${ok ? "posted" : "missing"}`}
+    >
+      {label} {ok ? "✓" : "✗"}
+    </span>
+  );
+}
+
 function AxisLabels({ labels }: { labels: string[] }) {
   const tickEvery = Math.max(1, Math.ceil(labels.length / 6));
   return (
@@ -162,13 +176,13 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
   return (
     <div className="grid grid-cols-12 gap-4">
       {/* ── Row 1 · KPI scorecard (4 × span-3 = 12) ── */}
-      <WidgetCard number="01" label="Completed" className="col-span-12 sm:col-span-6 lg:col-span-3">
+      <WidgetCard number="01" label="Completed" hint="Tasks the team finished during the selected period. The arrow compares it with the previous period of the same length." className="col-span-12 sm:col-span-6 lg:col-span-3">
         <div className="flex items-center gap-2">
           <div style={HERO} className="tabular-nums">{t.completedInRange}</div>
           <TrendBadge delta={tr.completed} goodWhen="up" />
         </div>
         <div className="mt-1 flex items-center gap-1.5" style={CAPTION}>
-          <span>{`${t.createdInRange} created · ${formatPct(t.completionRate)} rate`}</span>
+          <span>{`${t.createdInRange} created · ${formatPct(t.completionRate)} completed`}</span>
           <TrendBadge delta={tr.completionRate} goodWhen="up" compact />
         </div>
         <div className="mt-3 h-8">
@@ -176,7 +190,7 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         </div>
       </WidgetCard>
 
-      <WidgetCard number="02" label="Open work" className="col-span-12 sm:col-span-6 lg:col-span-3">
+      <WidgetCard number="02" label="Open work" hint="Unfinished tasks right now. Overdue = past their due date." className="col-span-12 sm:col-span-6 lg:col-span-3">
         <div className="flex items-end gap-4">
           <div>
             <div style={HERO} className="tabular-nums">{t.openNow}</div>
@@ -192,28 +206,28 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         </div>
       </WidgetCard>
 
-      <WidgetCard number="03" label="Devs on projects" className="col-span-12 sm:col-span-6 lg:col-span-3">
+      <WidgetCard number="03" label="Developers on projects" hint="Developers currently assigned to a live client project." className="col-span-12 sm:col-span-6 lg:col-span-3">
         <div style={HERO} className="tabular-nums">{t.activeDevs}</div>
-        <div className="mt-1" style={CAPTION}>Active placements</div>
+        <div className="mt-1" style={CAPTION}>Currently assigned</div>
         <div className="mt-3" style={CAPTION}>
           {t.avgWorkingDays != null ? `${t.avgWorkingDays} avg days / project` : "no dated timeline"}
         </div>
       </WidgetCard>
 
-      <WidgetCard number="04" label="Monthly burn" className="col-span-12 sm:col-span-6 lg:col-span-3">
+      <WidgetCard number="04" label="Monthly cost" hint="What we pay developers per month across active client work. Also shows the average time a task takes to finish." className="col-span-12 sm:col-span-6 lg:col-span-3">
         <div style={HERO} className="tabular-nums">
           {t.monthlyCost ? formatMoney(t.monthlyCost.amount, t.monthlyCost.currency) : "—"}
         </div>
-        <div className="mt-1" style={CAPTION}>Active dev cost / mo</div>
+        <div className="mt-1" style={CAPTION}>Developer cost / month</div>
         <div className="mt-3 flex items-center gap-1.5" style={CAPTION}>
-          <span>{t.leadTimeSamples ? `${formatLeadTimeDays(t.avgLeadTimeMs)} avg lead` : "no lead-time data"}</span>
+          <span>{t.leadTimeSamples ? `${formatLeadTimeDays(t.avgLeadTimeMs)} avg to finish a task` : "no timing data"}</span>
           {t.leadTimeSamples ? <TrendBadge delta={tr.avgLeadTimeMs} goodWhen="down" compact /> : null}
         </div>
       </WidgetCard>
 
       {/* ── Row 2 · Financials + capacity (8 + 4) ── */}
-      <WidgetCard number="05" label="Client billing" className="col-span-12 lg:col-span-8"
-        status={<span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>billable burn / mo</span>}>
+      <WidgetCard number="05" label="Client billing" hint="What clients are billed for developer time each month, split by how their work is scoped (fixed / phased / rolling / retainer)." className="col-span-12 lg:col-span-8"
+        status={<span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>billed / month</span>}>
         {fin.totalClientCost ? (
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
             <div className="sm:w-44 sm:shrink-0">
@@ -249,23 +263,23 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         )}
       </WidgetCard>
 
-      <WidgetCard number="06" label="Capacity" className="col-span-12 lg:col-span-4">
+      <WidgetCard number="06" label="Team capacity" hint="How much of the developer team is actively carrying work: how many have tasks vs. how many are on the roster." className="col-span-12 lg:col-span-4">
         <div className="flex items-baseline gap-2">
           <div style={HERO} className="tabular-nums">{cap.contributingDevs}</div>
           <div className="text-sm text-[var(--text-4)] tabular-nums" style={{ fontFamily: MONO }}>{`/ ${cap.rosterDevs}`}</div>
         </div>
-        <div className="mt-1" style={CAPTION}>Devs contributing</div>
+        <div className="mt-1" style={CAPTION}>Developers with active work</div>
         <div className="mt-3 space-y-1.5" style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-3)" }}>
           <div className="flex items-center justify-between">
-            <span style={CAPTION}>Idle on roster</span>
+            <span style={CAPTION}>On roster, no work</span>
             <span className="tabular-nums" style={{ color: cap.idleDevs > 0 ? "var(--warning-500)" : "var(--text-3)" }}>{cap.idleDevs}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span style={CAPTION}>Avg open / dev</span>
+            <span style={CAPTION}>Avg open tasks / dev</span>
             <span className="tabular-nums">{cap.avgOpenPerDev ?? "—"}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span style={CAPTION}>Avg done / dev</span>
+            <span style={CAPTION}>Avg completed / dev</span>
             <span className="tabular-nums">{cap.avgCompletedPerDev ?? "—"}</span>
           </div>
         </div>
@@ -274,7 +288,8 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
       {/* ── Row 3 · Throughput trend + status donut (8 + 4) ── */}
       <WidgetCard
         number="07"
-        label="Throughput"
+        label="Work created vs completed"
+        hint="New tasks opened vs. tasks finished over time — shows whether the team is keeping pace with incoming work."
         className="col-span-12 lg:col-span-8"
         status={
           <span className="inline-flex items-center gap-3" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase" }}>
@@ -294,7 +309,7 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         {hasThroughput ? <AxisLabels labels={axis} /> : null}
       </WidgetCard>
 
-      <WidgetCard number="08" label="Status mix" className="col-span-12 lg:col-span-4">
+      <WidgetCard number="08" label="Status mix" hint="Where all tasks currently sit in the workflow (backlog → to-do → in progress → done)." className="col-span-12 lg:col-span-4">
         {statusTotal ? (
           <Donut
             centerLabel="tasks"
@@ -306,8 +321,8 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
       </WidgetCard>
 
       {/* ── Row 4 · Net flow + cumulative + priority (4 + 4 + 4) ── */}
-      <WidgetCard number="09" label="Net flow" className="col-span-12 lg:col-span-4"
-        status={<span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>done − created</span>}>
+      <WidgetCard number="09" label="Backlog trend" hint="Tasks finished minus new tasks each period. Green bars = clearing the backlog; red bars = the backlog is growing." className="col-span-12 lg:col-span-4"
+        status={<span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>completed − created</span>}>
         <div className="h-28">
           {hasThroughput ? (
             <MiniColumns values={netFlow} positiveColor="var(--success-500)" negativeColor="var(--danger-500)" height={112} />
@@ -315,20 +330,20 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
             <div className="flex h-full items-center justify-center text-sm text-[var(--text-4)]">No activity</div>
           )}
         </div>
-        <p className="mt-2 text-[10px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>Green = burning down · red = backlog growing</p>
+        <p className="mt-2 text-[10px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>Green = clearing backlog · red = backlog growing</p>
       </WidgetCard>
 
-      <WidgetCard number="10" label="Cumulative done" className="col-span-12 lg:col-span-4">
+      <WidgetCard number="10" label="Total delivered" hint="Running total of completed tasks across the period." className="col-span-12 lg:col-span-4">
         <div style={{ fontFamily: SERIF, fontSize: 28, lineHeight: 1, color: "var(--text-1)" }} className="tabular-nums">
           {cumulativeDone[cumulativeDone.length - 1] ?? 0}
         </div>
-        <div className="mt-1" style={CAPTION}>Completed, cumulative</div>
+        <div className="mt-1" style={CAPTION}>Completed tasks, running total</div>
         <div className="mt-2 h-20">
           {hasThroughput ? <AreaSparkline points={cumulativeDone} height={80} color="var(--brand-600)" /> : null}
         </div>
       </WidgetCard>
 
-      <WidgetCard number="11" label="Priority mix" className="col-span-12 lg:col-span-4">
+      <WidgetCard number="11" label="Priority mix" hint="Priority breakdown of the open (unfinished) tasks." className="col-span-12 lg:col-span-4">
         {priorityTotal ? (
           <Donut
             centerLabel="open"
@@ -340,8 +355,8 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
       </WidgetCard>
 
       {/* ── Row 5 · Lead-time histogram + client cost (6 + 6) ── */}
-      <WidgetCard number="12" label="Lead time" className="col-span-12 lg:col-span-6"
-        status={<span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>doing → done</span>}>
+      <WidgetCard number="12" label="Time to complete" hint="How long tasks take from when work starts to when they're finished. Shorter is better." className="col-span-12 lg:col-span-6"
+        status={<span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>start → finish</span>}>
         {t.leadTimeSamples ? (
           <>
             <div className="h-28"><MiniColumns values={data.leadTimeBuckets.map((b) => b.count)} positiveColor="var(--brand-500)" height={112} /></div>
@@ -351,16 +366,16 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
               ))}
             </div>
             <p className="mt-2 flex items-center gap-1.5 text-[10px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
-              <span>{t.leadTimeSamples} timed · {formatLeadTimeDays(t.avgLeadTimeMs)} avg</span>
+              <span>{t.leadTimeSamples} measured · {formatLeadTimeDays(t.avgLeadTimeMs)} average</span>
               <TrendBadge delta={tr.avgLeadTimeMs} goodWhen="down" compact />
             </p>
           </>
         ) : (
-          <p className="text-sm text-[var(--text-4)]">No lead-time data (tasks need a DOING → DONE transition).</p>
+          <p className="text-sm text-[var(--text-4)]">No timing data yet (a task must move from In progress to Done to be measured).</p>
         )}
       </WidgetCard>
 
-      <WidgetCard number="13" label="Cost by client" className="col-span-12 lg:col-span-6">
+      <WidgetCard number="13" label="Cost by client" hint="Monthly developer cost per client, largest first." className="col-span-12 lg:col-span-6">
         {topCost.length ? (
           <div className="space-y-2.5">
             {topCost.map((c) => {
@@ -388,7 +403,7 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
       </WidgetCard>
 
       {/* ── Row 6 · Engagement mix + ending soon (4 + 8) ── */}
-      <WidgetCard number="14" label="Engagement mix" className="col-span-12 lg:col-span-4">
+      <WidgetCard number="14" label="Engagement mix" hint="How client work is scoped — Fixed scope: set deliverable & end date · Phased: milestone stages · Rolling: ongoing monthly · Retainer: fixed monthly allowance." className="col-span-12 lg:col-span-4">
         {engagementTotal ? (
           <Donut
             centerLabel="clients"
@@ -399,7 +414,7 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         )}
       </WidgetCard>
 
-      <WidgetCard number="15" label="Ending soon" className="col-span-12 lg:col-span-8"
+      <WidgetCard number="15" label="Ending soon" hint="Fixed-scope & phased projects ordered by how close they are to their end date. Red = past the end date but still has open work." className="col-span-12 lg:col-span-8"
         status={
           <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>
             {`${t.clientsEndingSoon} ≤30d`}
@@ -440,7 +455,7 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
       </WidgetCard>
 
       {/* ── Row 7 · Dev output + client activity tables (5 + 7) ── */}
-      <WidgetCard number="16" label="Dev output" className="col-span-12 lg:col-span-5" bodyClassName="p-0">
+      <WidgetCard number="16" label="Developer output" hint="Per developer: tasks completed, tasks still open, average time to finish a task, and daily check-in rate (share of working days they posted their end-of-day update)." className="col-span-12 lg:col-span-5" bodyClassName="p-0">
         {data.leaderboard.length ? (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">
@@ -449,8 +464,8 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
                   <th className={analyticsTh} style={analyticsThStyle}>Developer</th>
                   <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Done</th>
                   <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Open</th>
-                  <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Lead</th>
-                  <th className={analyticsTh} style={analyticsThStyle}>Standup</th>
+                  <th className={`${analyticsTh} text-right`} style={analyticsThStyle} title="Average time to finish a task">Avg time</th>
+                  <th className={analyticsTh} style={analyticsThStyle} title="Share of working days they posted their end-of-day update">Check-ins</th>
                 </tr>
               </thead>
               <tbody>
@@ -478,7 +493,7 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         )}
       </WidgetCard>
 
-      <WidgetCard number="17" label="Client activity" className="col-span-12 lg:col-span-7" bodyClassName="p-0">
+      <WidgetCard number="17" label="Client activity" hint="Per-client summary — engagement type, end date, developers, monthly cost, open/overdue/completed tasks, and a health dot (green/amber/red)." className="col-span-12 lg:col-span-7" bodyClassName="p-0">
         {data.clients.length ? (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">
@@ -535,6 +550,49 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
           </div>
         ) : (
           <p className="p-4 text-sm text-[var(--text-4)]">No client activity in this range.</p>
+        )}
+      </WidgetCard>
+
+      {/* ── Row 8 · Daily check-ins (span-12) ── */}
+      <WidgetCard
+        number="18"
+        label="Daily check-ins"
+        hint="For the most recent working day: developers who missed their morning (AM) and/or end-of-day (PM) update. Anyone booked off (leave or a marked absence) is shown as excused, not flagged."
+        className="col-span-12"
+        status={
+          <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>
+            {shortDate(data.checkins.workDate)}
+            {" · "}
+            <span style={{ color: data.checkins.missedCount > 0 ? "var(--danger-500)" : "var(--text-4)" }}>{`${data.checkins.missedCount} missed`}</span>
+            {data.checkins.absentCount ? ` · ${data.checkins.absentCount} away` : ""}
+          </span>
+        }
+      >
+        {data.checkins.entries.length ? (
+          <div className="flex flex-wrap gap-2">
+            {data.checkins.entries.map((e) => (
+              <div
+                key={e.userId}
+                className="flex items-center gap-2 rounded-[8px] border px-2.5 py-1.5"
+                style={{ borderColor: "var(--border-2)", background: e.absent ? "var(--surface-1)" : "transparent" }}
+              >
+                <DevAvatar name={e.name} avatarUrl={e.avatarUrl} />
+                <span className="text-xs font-medium text-[var(--text-1)]">{e.name}</span>
+                {e.absent ? (
+                  <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-4)" }}>
+                    {e.absenceReason}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1">
+                    <CheckPill ok={e.am} label="AM" />
+                    <CheckPill ok={e.pm} label="PM" />
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-[var(--text-4)]">Everyone on the roster has checked in. ✓</p>
         )}
       </WidgetCard>
     </div>
