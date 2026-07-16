@@ -1,6 +1,6 @@
 "use client";
 
-import { WidgetCard } from "@/components/codeclear/codeclear-shared";
+import { Section } from "./devsignal-ui";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import { useNotice } from "./notice";
@@ -25,9 +25,9 @@ export function CompliancePanel({ id, a }: { id: string; a: DevSignalAssessmentD
   const requests = a.dataRequests ?? [];
 
   return (
-    <WidgetCard number="06" name="Compliance">
+    <Section title="Compliance">
       <div>
-        <p className="widget-data-label mb-1">Consent</p>
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Consent</p>
         {consent ? (
           <p className="text-xs leading-relaxed text-[var(--text-3)]">
             Accepted {new Date(consent.agreedAt).toLocaleDateString()} · notice {consent.noticeVersion}
@@ -40,7 +40,7 @@ export function CompliancePanel({ id, a }: { id: string; a: DevSignalAssessmentD
       </div>
 
       <div className="mt-4">
-        <p className="widget-data-label mb-1.5">Data requests</p>
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Data requests</p>
         {requests.length === 0 ? (
           <p className="text-xs text-[var(--text-4)]">None.</p>
         ) : (
@@ -51,7 +51,7 @@ export function CompliancePanel({ id, a }: { id: string; a: DevSignalAssessmentD
           </div>
         )}
       </div>
-    </WidgetCard>
+    </Section>
   );
 }
 
