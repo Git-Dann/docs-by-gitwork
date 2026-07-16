@@ -18,7 +18,13 @@ import {
 import type { DevSignalAssessmentDTO, DevSignalStageResultDTO } from "@/types/devsignal";
 import { OutcomeLinksPanel } from "./outcome-links-panel";
 import { CompliancePanel } from "./compliance-panel";
-import { Meter, ScoreRing, matchTone, scoreTone, TONE_TEXT } from "./devsignal-ui";
+import { Meter, scoreTone } from "./devsignal-ui";
+import {
+  DocumentCover,
+  HealthScoreRing,
+  type DocumentCoverMeta,
+  type DocumentCoverStat,
+} from "@/components/document-cover";
 
 // Status label tone. Uses the semantic palette (emerald/amber/rose/sky) that
 // globals.css remaps for dark mode; neutral states use tokens.
@@ -56,11 +62,7 @@ export function AssessmentDetail({ id }: { id: string }) {
 
   return (
     <div className="space-y-6">
-      <Link href="/app/codeclear/devsignal" className="widget-data-label inline-block text-[var(--text-4)] transition hover:text-[var(--text-2)]">
-        ← Back to queue
-      </Link>
-
-      <Masthead a={a} />
+      <ProfileHeader a={a} />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <StageTimeline stages={a.stageResults ?? []} />
@@ -68,7 +70,6 @@ export function AssessmentDetail({ id }: { id: string }) {
           <InterviewScorecard id={id} />
         </div>
         <div className="space-y-6">
-          <BestMatchCard a={a} />
           <DecisionPanel id={id} a={a} />
           <CompliancePanel id={id} a={a} />
           <OutcomeLinksPanel assessmentId={id} candidateId={a.candidateId} links={a.outcomeLinks ?? []} />
@@ -78,43 +79,68 @@ export function AssessmentDetail({ id }: { id: string }) {
   );
 }
 
-function Masthead({ a }: { a: DevSignalAssessmentDTO }) {
+/** Colour a signal cell (0–100) for the hero stat strip. */
+function statColor(score: number): { color: string; bg: string } {
+  const tone = scoreTone(score);
+  if (tone === "success") return { color: "#16a34a", bg: "#f0fdf4" };
+  if (tone === "brand") return { color: "#1d4ed8", bg: "#eff6ff" };
+  if (tone === "warning") return { color: "#d97706", bg: "#fffbeb" };
+  return { color: "#dc2626", bg: "#fef2f2" };
+}
+
+// Clean, scannable candidate profile hero — the same Gitwork navy DocumentCover
+// Pulse uses for its report, so the two read as one product. Score ring + serif
+// name + a mono fact grid + a tinted signal strip, above the detail drill-down.
+function ProfileHeader({ a }: { a: DevSignalAssessmentDTO }) {
   const { showOk, showErr, noticeEl } = useNotice();
   const run = useRunDevSignalAssessment(a.id);
+  const analytics = useDevSignalAnalytics();
+  const model = analytics.data?.analytics.modelStatus;
+  const summary = a.bestMatchSummary;
+  const b = a.scoreBreakdown;
+  const scored = typeof a.finalScore === "number";
   const inviteUrl = a.publicToken
     ? `${typeof window !== "undefined" ? window.location.origin : ""}/vet/${a.publicToken}`
     : null;
 
+  const meta: DocumentCoverMeta[] = [];
+  if (scored && summary?.labelDisplay) meta.push({ label: "Match", value: summary.labelDisplay });
+  meta.push({ label: "Status", value: a.status.replace(/_/g, " ").toLowerCase() });
+  meta.push({ label: "GitHub", value: a.candidateGithubHandle ?? "—" });
+  meta.push({ label: "Config", value: a.configVersion });
+
+  const STAGE_LABELS: Record<string, string> = {
+    coding_challenge: "Coding",
+    online_footprint: "Footprint",
+    video_assessment: "Comms",
+    leadership_interview: "Interview",
+  };
+  const stats: DocumentCoverStat[] | undefined =
+    scored && b
+      ? b.stages
+          .filter((s) => STAGE_LABELS[s.stageId] && (s.included || s.rawStageScore > 0))
+          .map((s) => ({ count: s.rawStageScore, label: STAGE_LABELS[s.stageId], ...statColor(s.rawStageScore) }))
+      : undefined;
+
+  const execSummary = scored
+    ? `${summary?.labelDisplay ?? "Scored"} — internal score ${a.finalScore}/100.${
+        b?.humanReviewRequired ? " Human review is required before promotion." : ""
+      }${
+        (summary?.strengths?.length ?? 0) > 0 ? ` Strengths: ${summary!.strengths.join(", ")}.` : ""
+      }`
+    : "Not scored yet — run the automated stages to compute the breakdown and best-match label. A person makes the final call; the score only informs it.";
+
   return (
-    <section className="widget-card">
-      <div className="widget-body space-y-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="font-serif text-3xl leading-tight tracking-[-0.02em] text-[var(--text-1)]">
-              {a.candidateName}
-            </h1>
-            <p className="widget-data-label mt-1 normal-case tracking-normal">
-              {a.candidateGithubHandle ?? "no handle"} · {a.status.replace("_", " ").toLowerCase()} · config {a.configVersion}
-            </p>
-          </div>
-          <Button
-            variant="secondary"
-            onClick={async () => {
-              try {
-                await run.mutateAsync();
-                showOk("Assessment run", "Automated stages scored.");
-              } catch (e) {
-                showErr("Run failed", e instanceof Error ? e.message : undefined);
-              }
-            }}
-            disabled={run.isPending}
-          >
-            {run.isPending ? "Running…" : "Run automated stages"}
-          </Button>
-        </div>
-        {inviteUrl && (
-          <div className="flex items-center gap-2">
-            <input readOnly value={inviteUrl} className="app-input flex-1 font-mono text-xs" />
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link
+          href="/app/codeclear/devsignal"
+          className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-[var(--text-4)] transition hover:text-[var(--text-2)]"
+        >
+          ← Back to queue
+        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          {inviteUrl && (
             <Button
               variant="secondary"
               size="sm"
@@ -125,57 +151,46 @@ function Masthead({ a }: { a: DevSignalAssessmentDTO }) {
             >
               Copy invite link
             </Button>
-          </div>
-        )}
+          )}
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={run.isPending}
+            onClick={async () => {
+              try {
+                await run.mutateAsync();
+                showOk("Assessment run", "Automated stages scored.");
+              } catch (e) {
+                showErr("Run failed", e instanceof Error ? e.message : undefined);
+              }
+            }}
+          >
+            {run.isPending ? "Running…" : "Run automated stages"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-[10px]">
+        <DocumentCover
+          variant="screen"
+          boldPalette="navy"
+          eyebrow="DEVSIGNAL // CANDIDATE ASSESSMENT"
+          title={a.candidateName}
+          subtitle={a.candidateGithubHandle ? `github.com/${a.candidateGithubHandle}` : undefined}
+          rightSlot={scored ? <HealthScoreRing score={a.finalScore as number} /> : undefined}
+          meta={meta}
+          stats={stats}
+          executiveSummary={execSummary}
+          callout={
+            scored && model && model.status !== "calibrated"
+              ? { text: `Score is provisional — the model isn't calibrated on outcomes yet (n=${model.n}). It informs the human call, it doesn't make it.`, tone: "blue" }
+              : undefined
+          }
+          dated={`Created ${new Date(a.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`}
+        />
       </div>
       {noticeEl}
-    </section>
-  );
-}
-
-function BestMatchCard({ a }: { a: DevSignalAssessmentDTO }) {
-  const summary = a.bestMatchSummary;
-  const scored = typeof a.finalScore === "number";
-  const tone = matchTone(summary?.labelDisplay);
-  return (
-    <WidgetCard number="04" name="Best match">
-      <div className="flex items-center gap-4">
-        {scored ? (
-          <ScoreRing score={a.finalScore as number} />
-        ) : (
-          <div className="flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-full border-2 border-dashed border-[var(--border-2)]">
-            <span className="font-serif text-2xl text-[var(--text-4)]">—</span>
-          </div>
-        )}
-        <div className="min-w-0">
-          <p className={cn("font-serif text-2xl leading-tight", scored ? TONE_TEXT[tone] : "text-[var(--text-4)]")}>
-            {summary?.labelDisplay ?? "Not scored yet"}
-          </p>
-          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]">
-            {scored ? "Internal only — client sees the label" : "Run the automated stages to score"}
-          </p>
-        </div>
-      </div>
-
-      {a.scoreBreakdown?.humanReviewRequired && (
-        <p className="mt-3 flex items-center gap-1.5 rounded-[6px] bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Human review required
-        </p>
-      )}
-
-      {(summary?.strengths?.length ?? 0) > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {summary!.strengths.map((s) => (
-            <span
-              key={s}
-              className="rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-xs text-[var(--text-3)]"
-            >
-              {s}
-            </span>
-          ))}
-        </div>
-      )}
-    </WidgetCard>
+    </div>
   );
 }
 
