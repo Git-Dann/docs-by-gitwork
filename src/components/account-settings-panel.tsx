@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useSession } from "next-auth/react";
+import { PencilSquareIcon } from "@heroicons/react/24/outline";
 import { useAccount, useUpdateAccount } from "@/hooks/use-account";
 import { Button } from "@/components/ui/button";
-import { ImagePicker } from "@/components/ui/image-picker";
 import { SettingsCard } from "@/components/settings/settings-card";
+import { AvatarEditModal, type AvatarEditResult } from "@/components/account/avatar-edit-modal";
+import { avatarPosition, initialsFrom, resolveAvatar } from "@/lib/avatar";
 import { roleLabel } from "@/types/auth";
 
 export function AccountSettingsPanel() {
@@ -22,46 +24,23 @@ export function AccountSettingsPanel() {
   const sessionEmail = session?.user?.email ?? "";
   const googleAvatarUrl = session?.user?.image ?? "";
 
-  const [avatarUrl, setAvatarUrl] = useState("");
-  const [dirty, setDirty] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Pre-fill the picker with whatever's currently displayed. Priority is:
-  //   1. The user's custom avatar from /api/account
-  //   2. The Google profile photo from the session
-  // If we showed an empty preview while the API call is in flight the page would flicker.
-  useEffect(() => {
-    if (profile) {
-      setAvatarUrl(profile.avatarUrl || googleAvatarUrl);
-      setDirty(false);
-      setSaveError(null);
-    }
-  }, [profile?.avatarUrl, googleAvatarUrl]);
+  // What the preview actually renders — the same resolution + cover-fit + placement the
+  // sidebar uses, so this box matches the avatar everywhere else in Foundry.
+  const resolved = resolveAvatar(profile?.avatarUrl, googleAvatarUrl);
+  const position = avatarPosition(profile?.avatarPosition);
+  const initials = initialsFrom(sessionName);
 
-  function save() {
+  function handleSave(result: AvatarEditResult) {
     setSaveError(null);
-    // Only persist when the user actually picked a custom value. If they left it as the Google
-    // photo, we send an empty string so /api/account stays "no custom avatar" and Google's
-    // image stays the source of truth.
-    const value = avatarUrl === googleAvatarUrl ? "" : avatarUrl;
-    updateAccount.mutate(
-      { avatarUrl: value },
-      {
-        onSuccess: () => setDirty(false),
-        onError: (err) =>
-          setSaveError(err instanceof Error ? err.message : "Couldn't save — try again."),
-      },
-    );
+    updateAccount.mutate(result, {
+      onSuccess: () => setEditing(false),
+      onError: (err) =>
+        setSaveError(err instanceof Error ? err.message : "Couldn't save — try again."),
+    });
   }
-
-  function resetToGoogle() {
-    setAvatarUrl(googleAvatarUrl);
-    setDirty(Boolean(profile?.avatarUrl));
-    setSaveError(null);
-  }
-
-  const loading = accountQuery.isLoading && !profile;
-  const hasCustomAvatar = Boolean(profile?.avatarUrl);
 
   return (
     <div className="proposal-form-theme space-y-6">
@@ -74,35 +53,38 @@ export function AccountSettingsPanel() {
 
         <div className="mt-5 grid gap-5 lg:grid-cols-[200px_minmax(0,1fr)]">
           {/* Avatar column */}
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             <span className="text-sm font-medium text-[var(--text-2)]">Profile image</span>
-            <ImagePicker
-              value={avatarUrl}
-              onChange={(value) => {
-                setAvatarUrl(value);
-                setDirty(true);
+            <div className="h-40 w-full overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]">
+              {resolved.isInitials ? (
+                <div className="flex h-full w-full items-center justify-center bg-[var(--surface-brand)] text-3xl font-semibold text-[var(--brand-700)]">
+                  {initials}
+                </div>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={resolved.src}
+                  alt="Your profile"
+                  className="h-full w-full object-cover"
+                  style={{ objectPosition: position }}
+                />
+              )}
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
                 setSaveError(null);
+                setEditing(true);
               }}
-              previewClassName="h-40 w-full"
-              imageClassName="object-contain"
-            />
-            {hasCustomAvatar || avatarUrl !== googleAvatarUrl ? (
-              <button
-                type="button"
-                onClick={resetToGoogle}
-                className="text-xs font-medium text-[var(--brand-700)] hover:underline"
-              >
-                Use my Google photo
-              </button>
-            ) : googleAvatarUrl ? (
-              <p className="text-xs text-[var(--text-4)]">
-                Currently showing your Google photo. Choose a custom one to override.
-              </p>
-            ) : (
-              <p className="text-xs text-[var(--text-4)]">
-                Google hasn&apos;t supplied a profile photo. Upload one here.
-              </p>
-            )}
+              leadingIcon={<PencilSquareIcon className="h-4 w-4" />}
+              className="w-full justify-center"
+            >
+              Edit image
+            </Button>
+            {saveError ? (
+              <p className="text-xs text-[var(--danger-500)]">{saveError}</p>
+            ) : null}
           </div>
 
           {/* Read-only identity */}
@@ -130,23 +112,18 @@ export function AccountSettingsPanel() {
             </p>
           </div>
         </div>
-
-        <div className="mt-6 flex items-center justify-end gap-3">
-          {saveError ? (
-            <span className="text-xs text-[var(--danger-500)]">{saveError}</span>
-          ) : dirty ? (
-            <span className="text-xs text-[var(--text-4)]">Unsaved changes</span>
-          ) : null}
-          <Button
-            type="button"
-            variant="primary"
-            onClick={save}
-            disabled={!dirty || updateAccount.isPending || loading}
-          >
-            {updateAccount.isPending ? "Saving…" : "Save changes"}
-          </Button>
-        </div>
       </SettingsCard>
+
+      <AvatarEditModal
+        open={editing}
+        onClose={() => setEditing(false)}
+        name={sessionName}
+        googleAvatarUrl={googleAvatarUrl}
+        initialAvatarUrl={profile?.avatarUrl ?? ""}
+        initialPosition={profile?.avatarPosition ?? ""}
+        saving={updateAccount.isPending}
+        onSave={handleSave}
+      />
     </div>
   );
 }

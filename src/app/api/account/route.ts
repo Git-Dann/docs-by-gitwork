@@ -35,6 +35,7 @@ export async function GET() {
           email: true,
           name: true,
           avatarUrl: true,
+          avatarPosition: true,
           memberships: {
             where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
             take: 1,
@@ -65,6 +66,7 @@ export async function GET() {
           email: true,
           name: true,
           avatarUrl: true,
+          avatarPosition: true,
           memberships: {
             where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
             take: 1,
@@ -93,6 +95,7 @@ export async function GET() {
         email: mutableUser.email,
         name: mutableUser.name ?? "",
         avatarUrl: mutableUser.avatarUrl ?? "",
+        avatarPosition: mutableUser.avatarPosition ?? "",
         role: membership?.role ?? (session.user.role ?? "STAFF"),
         permissions:
           (membership?.permissions as string[] | null) ?? session.user.permissions ?? [],
@@ -110,6 +113,14 @@ export async function GET() {
 // User row — eventual move to an object-storage upload pipeline can shrink this back down.
 const patchSchema = z.object({
   avatarUrl: z.string().trim().max(8_000_000).optional(),
+  // CSS object-position — "50% 30%" style, or empty to clear (centre). Kept short and
+  // constrained so it can never be an injection vector when written into an inline style.
+  avatarPosition: z
+    .string()
+    .trim()
+    .max(20)
+    .regex(/^$|^\d{1,3}% \d{1,3}%$/, "Invalid position")
+    .optional(),
 });
 
 export async function PATCH(request: NextRequest) {
@@ -129,8 +140,11 @@ export async function PATCH(request: NextRequest) {
       where: { id: session.user.id },
       data: {
         ...(parsed.data.avatarUrl !== undefined ? { avatarUrl: parsed.data.avatarUrl } : {}),
+        ...(parsed.data.avatarPosition !== undefined
+          ? { avatarPosition: parsed.data.avatarPosition }
+          : {}),
       },
-      select: { id: true, email: true, name: true, avatarUrl: true },
+      select: { id: true, email: true, name: true, avatarUrl: true, avatarPosition: true },
     });
 
     return apiOk({
@@ -139,6 +153,7 @@ export async function PATCH(request: NextRequest) {
         email: updated.email,
         name: updated.name ?? "",
         avatarUrl: updated.avatarUrl ?? "",
+        avatarPosition: updated.avatarPosition ?? "",
       },
     });
   } catch (error) {

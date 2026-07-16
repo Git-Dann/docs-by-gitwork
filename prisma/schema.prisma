@@ -177,6 +177,9 @@ model User {
   email                     String                  @unique
   name                      String?
   avatarUrl                 String?
+  // CSS object-position for the avatar crop (e.g. "50% 30%"). Lets a user nudge the
+  // cover-fit so faces aren't cut off. Null → centred. Additive (safe for db push).
+  avatarPosition            String?
   passwordHash              String?
   createdAt                 DateTime                @default(now())
   updatedAt                 DateTime                @updatedAt

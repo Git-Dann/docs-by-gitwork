@@ -638,6 +638,7 @@ const demoClientDetail: ClientDetailRecord = {
     billingCounty: null, billingPostcode: null, billingCountry: null,
     bank: null,
     onboardingId: null, retainerDays: null, retainerDaysUsed: null,
+    engagementType: null, endDate: null,
     productTeamUserIds: [],
   },
   lifecycle: [
