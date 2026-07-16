@@ -6,12 +6,19 @@
 
 export type PackageType = "launch_pad" | "mvp_sprint" | "greenfield" | "care_plan";
 export type DevTier = "junior" | "mid" | "senior";
+export type RatePeriod = "day" | "month";
 
-/** Editable internal build cost day-rates (£/day) by seniority tier. */
+/** One tier's internal build cost — an amount that's either per day or per month. */
+export interface TierRate {
+  amount: number;
+  period: RatePeriod;
+}
+
+/** Editable internal build cost rates by seniority tier (each per day or per month). */
 export interface TierRates {
-  junior: number;
-  mid: number;
-  senior: number;
+  junior: TierRate;
+  mid: TierRate;
+  senior: TierRate;
 }
 
 /** How a package's client price is formed. */

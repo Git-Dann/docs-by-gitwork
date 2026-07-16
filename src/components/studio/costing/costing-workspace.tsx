@@ -15,6 +15,8 @@ import {
   type DevTier,
   type PackageCostingInput,
   type PackageType,
+  type RatePeriod,
+  type TierRate,
   type TierRates,
 } from "@/types/costing";
 
@@ -26,7 +28,13 @@ const ADVANCED_DEFAULTS: CostingAdvancedConfig = {
   ukReviewOverheadPercent: 15,
   contingencyPercent: 10,
 };
-const DEFAULT_TIER_RATES: TierRates = { junior: 45, mid: 50, senior: 65 };
+const DEFAULT_TIER_RATES: TierRates = {
+  junior: { amount: 45, period: "day" },
+  mid: { amount: 50, period: "day" },
+  senior: { amount: 65, period: "day" },
+};
+const WORKING_DAYS_PER_MONTH = 21.67;
+const tierRateToDay = (r: TierRate) => (r.period === "month" ? r.amount / WORKING_DAYS_PER_MONTH : r.amount);
 
 type Form = Omit<PackageCostingInput, "packageType" | "config" | "tierRates">;
 
@@ -84,7 +92,7 @@ export function CostingWorkspace() {
   const result = preview.data && preview.data.packageType === pkg ? preview.data : undefined;
   const setField = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
   const setCfg = (patch: Partial<CostingAdvancedConfig>) => setConfig((c) => ({ ...c, ...patch }));
-  const setTier = (tier: DevTier, v: number | undefined) => setTierRates((t) => ({ ...t, [tier]: v ?? 0 }));
+  const setTier = (tier: DevTier, patch: Partial<TierRate>) => setTierRates((t) => ({ ...t, [tier]: { ...t[tier], ...patch } }));
   const meta = COSTING_PACKAGES.find((p) => p.id === pkg)!;
 
   const marginColor = useMemo(() => {
@@ -205,13 +213,31 @@ export function CostingWorkspace() {
                   Reset to Rate Card
                 </button>
               </div>
-              <div className="mt-2 grid grid-cols-3 gap-3">
-                <Num label="Senior" unit="£" value={tierRates.senior} onChange={(v) => setTier("senior", v)} />
-                <Num label="Mid" unit="£" value={tierRates.mid} onChange={(v) => setTier("mid", v)} />
-                <Num label="Junior" unit="£" value={tierRates.junior} onChange={(v) => setTier("junior", v)} />
+              <div className="mt-2 flex flex-col gap-2">
+                {(["senior", "mid", "junior"] as DevTier[]).map((tier) => (
+                  <div key={tier} className="grid grid-cols-[64px_1fr_128px] items-center gap-2">
+                    <span className="widget-data-label capitalize">{tier}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      className="app-input-compact"
+                      value={tierRates[tier].amount}
+                      onChange={(e) => setTier(tier, { amount: Number(e.target.value) || 0 })}
+                    />
+                    <select
+                      className="app-select-compact"
+                      value={tierRates[tier].period}
+                      onChange={(e) => setTier(tier, { period: e.target.value as RatePeriod })}
+                    >
+                      <option value="day">£ / day</option>
+                      <option value="month">£ / month</option>
+                    </select>
+                  </div>
+                ))}
               </div>
               <p className="mt-2 text-[12px] leading-snug text-[var(--text-4)]">
-                Seeded from your Rate Card by tier. The build is priced at the tier selected below.
+                Set each tier per day or per month — month rates convert at {WORKING_DAYS_PER_MONTH} working days for the build
+                cost. Seeded from your Rate Card; the build is priced at the tier selected below.
               </p>
             </div>
 
@@ -223,9 +249,9 @@ export function CostingWorkspace() {
                   value={config.buildSeniority}
                   onChange={(e) => setCfg({ buildSeniority: e.target.value as DevTier })}
                 >
-                  <option value="senior">Senior · {gbp(tierRates.senior)}/day</option>
-                  <option value="mid">Mid · {gbp(tierRates.mid)}/day</option>
-                  <option value="junior">Junior · {gbp(tierRates.junior)}/day</option>
+                  <option value="senior">Senior · {gbp(tierRateToDay(tierRates.senior))}/day</option>
+                  <option value="mid">Mid · {gbp(tierRateToDay(tierRates.mid))}/day</option>
+                  <option value="junior">Junior · {gbp(tierRateToDay(tierRates.junior))}/day</option>
                 </select>
                 <span className="text-[12px] leading-snug text-[var(--text-4)]">Which tier rate above to price the build at.</span>
               </label>

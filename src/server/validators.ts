@@ -1713,10 +1713,15 @@ export const costingAdvancedConfigSchema = z.object({
   dayRateOverrideGbp: z.number().positive().max(100000).optional(),
 });
 
+export const tierRateSchema = z.object({
+  amount: z.number().min(0).max(10000000),
+  period: z.enum(["day", "month"]),
+});
+
 export const tierRatesSchema = z.object({
-  junior: z.number().min(0).max(100000),
-  mid: z.number().min(0).max(100000),
-  senior: z.number().min(0).max(100000),
+  junior: tierRateSchema,
+  mid: tierRateSchema,
+  senior: tierRateSchema,
 });
 
 export const costingPreviewSchema = z.object({
