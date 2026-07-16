@@ -539,7 +539,22 @@ export async function getSupportDashboardSummary(options?: {
       orderBy: { receivedAt: "desc" },
       take: limit,
       include: {
-        client: true,
+        // Narrowed to exactly what serializeSupportClient reads — this pulled
+        // the entire SupportClient row (incl. encrypted scraperConfig) per
+        // conversation before.
+        client: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            status: true,
+            supportDaysPerMonth: true,
+            supportDaysUsed: true,
+            reportingRecipient: true,
+            reportDueDay: true,
+            workspaceClientId: true,
+          },
+        },
         tickets: { select: { id: true }, take: 1 },
       },
     }),
@@ -1265,16 +1280,13 @@ export async function getClientHealthScore(
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 3600_000);
 
-  const [tickets, conversations] = await Promise.all([
-    prisma.supportConversation.findMany({
-      where: { clientId, receivedAt: { gte: thirtyDaysAgo } },
-      select: { status: true, priority: true, firstTriagedAt: true, receivedAt: true },
-    }),
-    prisma.supportConversation.findMany({
-      where: { clientId, receivedAt: { gte: thirtyDaysAgo } },
-      select: { sentiment: true },
-    }),
-  ]);
+  // Single query — tickets and conversations were the same row set fetched twice
+  // with different `select`s; sentiment is just another column on the same rows.
+  const tickets = await prisma.supportConversation.findMany({
+    where: { clientId, receivedAt: { gte: thirtyDaysAgo } },
+    select: { status: true, priority: true, firstTriagedAt: true, receivedAt: true, sentiment: true },
+  });
+  const conversations = tickets;
 
   // Factor 1: time-to-triage performance (30 pts)
   const frtMs = tickets

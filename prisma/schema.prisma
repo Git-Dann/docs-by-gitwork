@@ -2302,6 +2302,10 @@ model PulseScan {
   @@index([workspaceId, status])
   @@index([workspaceId, createdAt])
   @@index([clientId, createdAt])
+  // Covers computeClientPulseHealth (client-metrics.ts) — every Portal client-list
+  // load filters clientId IN (...) + status="COMPLETED" ordered by completedAt desc;
+  // the [clientId, createdAt] index above doesn't cover status or completedAt.
+  @@index([clientId, status, completedAt])
   @@index([shareToken])
 }
 
