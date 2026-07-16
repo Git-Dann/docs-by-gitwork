@@ -1945,6 +1945,43 @@ export async function setClientStatus(
       },
     });
   }
+
+  // Pausing or archiving a client auto-unassigns its team: closes every open Placement
+  // (endDate = now — the same mechanism the CodeClear pipeline's drag-to-"Unassigned" uses,
+  // src/app/api/codeclear/candidates/[id]/current-clients/route.ts) so those devs drop off
+  // the client's dev count and reappear in the pipeline's Unassigned column, and clears
+  // internal-staff ClientAssignment rows (Settings → Team access scoping). Reactivating a
+  // client does NOT restore either — reassignment is manual, on purpose.
+  if (
+    previous.status !== persisted.status &&
+    (persisted.status === "ARCHIVED" || persisted.status === "INACTIVE")
+  ) {
+    const [{ count: placementsClosed }, { count: assignmentsRemoved }] = await Promise.all([
+      prisma.placement.updateMany({
+        where: { clientId: persisted.id, endDate: null },
+        data: { endDate: new Date() },
+      }),
+      prisma.clientAssignment.deleteMany({ where: { clientId: persisted.id } }),
+    ]);
+    if (placementsClosed > 0 || assignmentsRemoved > 0) {
+      await recordAuditEntry({
+        workspaceId: workspace.id,
+        actorId: actor?.id ?? null,
+        action: "foundry.client.team_auto_unassigned",
+        target: `client:${persisted.id}`,
+        before: { status: previous.status },
+        after: { status: persisted.status },
+        metadata: {
+          clientId: persisted.id,
+          clientSlug: persisted.slug,
+          clientName: persisted.name,
+          placementsClosed,
+          assignmentsRemoved,
+        },
+      });
+    }
+  }
+
   revalidateTag("client-collections");
   return toClientListItem({
     id: persisted.id,
