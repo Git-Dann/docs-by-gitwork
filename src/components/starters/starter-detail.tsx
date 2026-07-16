@@ -209,30 +209,30 @@ export function StarterDetail({ starterId }: { starterId: string }) {
           </div>
         </div>
 
-        <div className="p-5">
-          <div className="flex flex-wrap items-start gap-5">
+        <div className="p-4">
+          <div className="flex flex-wrap items-start gap-3.5">
             {/* Type icon */}
             <div
               className={cn(
-                "flex h-16 w-16 shrink-0 items-center justify-center rounded-[10px]",
+                "flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px]",
                 TYPE_TONE[starter.type] ?? TYPE_TONE.KIT,
               )}
             >
-              <TypeIcon className="h-7 w-7" />
+              <TypeIcon className="h-5 w-5" />
             </div>
 
             {/* Identity */}
             <div className="min-w-0 flex-1">
               <h1
-                className="text-2xl leading-tight tracking-[-0.02em] text-[var(--text-1)]"
+                className="text-lg leading-tight tracking-[-0.02em] text-[var(--text-1)]"
                 style={{ fontFamily: "var(--font-display)" }}
               >
                 {starter.name}
               </h1>
-              <p className="mt-1.5 max-w-2xl text-sm text-[var(--text-3)]">{starter.summary}</p>
+              <p className="mt-1 max-w-2xl text-sm text-[var(--text-3)]">{starter.summary}</p>
 
               {(sourceUrl || starter.tags.length > 0) && (
-                <div className="mt-3 flex flex-wrap items-center gap-3">
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                   {sourceUrl && (
                     <a
                       href={sourceUrl}
@@ -257,7 +257,7 @@ export function StarterDetail({ starterId }: { starterId: string }) {
             </div>
 
             {/* Right-side action stack — bottom-aligned, mirrors the Portal "Wiki →" pill. */}
-            <div className="ml-auto flex shrink-0 flex-col items-end justify-end gap-1.5 self-stretch">
+            <div className="ml-auto flex shrink-0 flex-col items-end justify-end gap-1 self-stretch">
               <a
                 href={downloadUrl}
                 download
@@ -273,7 +273,7 @@ export function StarterDetail({ starterId }: { starterId: string }) {
           </div>
 
           {scan && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-[var(--mist-border)] bg-[var(--mist)] px-4 py-2.5">
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-[var(--mist-border)] bg-[var(--mist)] px-4 py-2">
               <p className="text-xs text-[var(--text-2)]">
                 Link this starter to the scan of{" "}
                 <span className="font-semibold text-[var(--text-1)]">{scan.projectName || "this project"}</span>?
@@ -292,10 +292,10 @@ export function StarterDetail({ starterId }: { starterId: string }) {
           )}
 
           {hasOverview && (
-            <div className="mt-4 grid gap-x-6 gap-y-3 border-t border-[var(--border-2)] pt-4 sm:grid-cols-2">
+            <div className="mt-3 grid gap-x-6 gap-y-2.5 border-t border-[var(--border-2)] pt-3 sm:grid-cols-2">
               {starter.description && (
                 <div className={cn(whatYouGet.length === 0 && install.length === 0 && "sm:col-span-2")}>
-                  <p className="widget-data-label mb-1.5">About</p>
+                  <p className="widget-data-label mb-1">About</p>
                   <div className="text-sm leading-6 text-[var(--text-2)]">
                     <Markdown>{starter.description}</Markdown>
                   </div>
@@ -303,11 +303,11 @@ export function StarterDetail({ starterId }: { starterId: string }) {
               )}
 
               {(whatYouGet.length > 0 || install.length > 0) && (
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   {whatYouGet.length > 0 && (
                     <div>
-                      <p className="widget-data-label mb-1.5">What you get</p>
-                      <ul className="space-y-1.5">
+                      <p className="widget-data-label mb-1">What you get</p>
+                      <ul className="space-y-1">
                         {whatYouGet.map((item, i) => (
                           <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-2)]">
                             <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
@@ -320,8 +320,8 @@ export function StarterDetail({ starterId }: { starterId: string }) {
 
                   {install.length > 0 && (
                     <div>
-                      <p className="widget-data-label mb-1.5">Install</p>
-                      <ol className="space-y-1.5">
+                      <p className="widget-data-label mb-1">Install</p>
+                      <ol className="space-y-1">
                         {install.map((step, i) => (
                           <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-2)]">
                             <span className="mt-0.5 font-mono text-[11px] font-semibold text-[var(--brand-700)]">
