@@ -172,6 +172,9 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
     .sort((a, b) => (a.daysLeft ?? Infinity) - (b.daysLeft ?? Infinity))
     .slice(0, 8);
   const totalClientCostAmt = fin.totalClientCost?.amount ?? 0;
+  // Today's check-in status by dev — entries only list those who missed AM/PM or are away;
+  // anyone absent from the map checked in both. Drives the "Today" column on Developer output.
+  const checkinByUser = new Map(data.checkins.entries.map((e) => [e.userId, e]));
 
   return (
     <div className="grid grid-cols-12 gap-4">
@@ -454,8 +457,20 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         )}
       </WidgetCard>
 
-      {/* ── Row 7 · Dev output + client activity tables (5 + 7) ── */}
-      <WidgetCard number="16" label="Developer output" hint="Per developer: tasks completed, tasks still open, average time to finish a task, and daily check-in rate (share of working days they posted their end-of-day update)." className="col-span-12 lg:col-span-5" bodyClassName="p-0">
+      {/* ── Row 7 · Dev output + client activity tables (6 + 6) ── */}
+      <WidgetCard
+        number="16"
+        label="Developer output"
+        hint={`Per developer: tasks completed, tasks still open, today's check-ins (AM = morning, PM = end-of-day; anyone booked off shows as away), and overall check-in rate. Today = ${shortDate(data.checkins.workDate)}.`}
+        className="col-span-12 lg:col-span-6"
+        bodyClassName="p-0"
+        status={
+          <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>
+            <span style={{ color: data.checkins.missedCount > 0 ? "var(--danger-500)" : "var(--text-4)" }}>{`${data.checkins.missedCount} missed today`}</span>
+            {data.checkins.absentCount ? ` · ${data.checkins.absentCount} away` : ""}
+          </span>
+        }
+      >
         {data.leaderboard.length ? (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">
@@ -464,12 +479,14 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
                   <th className={analyticsTh} style={analyticsThStyle}>Developer</th>
                   <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Done</th>
                   <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Open</th>
-                  <th className={`${analyticsTh} text-right`} style={analyticsThStyle} title="Average time to finish a task">Avg time</th>
-                  <th className={analyticsTh} style={analyticsThStyle} title="Share of working days they posted their end-of-day update">Check-ins</th>
+                  <th className={analyticsTh} style={analyticsThStyle} title="Today's morning (AM) and end-of-day (PM) updates">Today</th>
+                  <th className={analyticsTh} style={analyticsThStyle} title="Share of working days they posted their end-of-day update">Check-in rate</th>
                 </tr>
               </thead>
               <tbody>
-                {data.leaderboard.map((d) => (
+                {data.leaderboard.map((d) => {
+                  const ci = checkinByUser.get(d.userId);
+                  return (
                   <tr key={d.userId}>
                     <td className={analyticsTd}>
                       <span className="flex items-center gap-2.5">
@@ -481,10 +498,20 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
                       <span className="tabular-nums" style={{ fontFamily: SERIF, fontSize: 18, color: "var(--text-1)" }}>{d.completed}</span>
                     </td>
                     <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-3)" }}>{d.openAssigned}</td>
-                    <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-3)" }}>{formatLeadTimeDays(d.avgLeadTimeMs)}</td>
+                    <td className={analyticsTd}>
+                      {ci?.absent ? (
+                        <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-4)" }}>{ci.absenceReason}</span>
+                      ) : (
+                        <span className="flex items-center gap-1">
+                          <CheckPill ok={ci ? ci.am : true} label="AM" />
+                          <CheckPill ok={ci ? ci.pm : true} label="PM" />
+                        </span>
+                      )}
+                    </td>
                     <td className={analyticsTd}><ProgressCell value={d.standupCompliancePct} /></td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -493,7 +520,7 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         )}
       </WidgetCard>
 
-      <WidgetCard number="17" label="Client activity" hint="Per-client summary — engagement type, end date, developers, monthly cost, open/overdue/completed tasks, and a health dot (green/amber/red)." className="col-span-12 lg:col-span-7" bodyClassName="p-0">
+      <WidgetCard number="17" label="Client activity" hint="Per-client summary — engagement type, end date, developers, monthly cost, open/overdue/completed tasks, and a health dot (green/amber/red)." className="col-span-12 lg:col-span-6" bodyClassName="p-0">
         {data.clients.length ? (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">
@@ -553,48 +580,6 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         )}
       </WidgetCard>
 
-      {/* ── Row 8 · Daily check-ins (span-12) ── */}
-      <WidgetCard
-        number="18"
-        label="Daily check-ins"
-        hint="For the most recent working day: developers who missed their morning (AM) and/or end-of-day (PM) update. Anyone booked off (leave or a marked absence) is shown as excused, not flagged."
-        className="col-span-12"
-        status={
-          <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>
-            {shortDate(data.checkins.workDate)}
-            {" · "}
-            <span style={{ color: data.checkins.missedCount > 0 ? "var(--danger-500)" : "var(--text-4)" }}>{`${data.checkins.missedCount} missed`}</span>
-            {data.checkins.absentCount ? ` · ${data.checkins.absentCount} away` : ""}
-          </span>
-        }
-      >
-        {data.checkins.entries.length ? (
-          <div className="flex flex-wrap gap-2">
-            {data.checkins.entries.map((e) => (
-              <div
-                key={e.userId}
-                className="flex items-center gap-2 rounded-[8px] border px-2.5 py-1.5"
-                style={{ borderColor: "var(--border-2)", background: e.absent ? "var(--surface-1)" : "transparent" }}
-              >
-                <DevAvatar name={e.name} avatarUrl={e.avatarUrl} />
-                <span className="text-xs font-medium text-[var(--text-1)]">{e.name}</span>
-                {e.absent ? (
-                  <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-4)" }}>
-                    {e.absenceReason}
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1">
-                    <CheckPill ok={e.am} label="AM" />
-                    <CheckPill ok={e.pm} label="PM" />
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-[var(--text-4)]">Everyone on the roster has checked in. ✓</p>
-        )}
-      </WidgetCard>
     </div>
   );
 }
