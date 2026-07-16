@@ -102,6 +102,10 @@ export function StarterDetail({ starterId }: { starterId: string }) {
   // not just for SKILL/PROMPT types. isSkillLike above stays type-based: it only decides the
   // download button's label ("Add to Claude" vs "Download source"), a separate concern.
   const hasEditablePrompt = Boolean(promptText);
+  // Everything except the STARTER card + the main PROMPT folds into one "OVERVIEW" card, so every
+  // starter renders the same clean two-card top row regardless of which sections it happens to have.
+  const hasOverview =
+    Boolean(starter.description) || whatYouGet.length > 0 || install.length > 0 || techStack.length > 0;
   const downloadParams = new URLSearchParams();
   if (hasEditablePrompt) {
     if (editorPicks.clientSlug) downloadParams.set("clientSlug", editorPicks.clientSlug);
@@ -160,9 +164,9 @@ export function StarterDetail({ starterId }: { starterId: string }) {
         )}
       </div>
 
-      {/* 01 // STARTER, 02 // ABOUT, 03 // WHAT YOU GET sit in a row — the overview at a glance —
-          leaving install/prompt below as the wider, dominant "main piece" of the page. */}
-      <div className="grid items-start gap-4 lg:grid-cols-3">
+      {/* 01 // STARTER + 02 // OVERVIEW sit as two equal-height cards — the context at a glance —
+          leaving the prompt below as the wider, dominant "main piece" of the page. */}
+      <div className={cn("grid items-stretch gap-4", hasOverview && "lg:grid-cols-2")}>
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
@@ -275,93 +279,85 @@ export function StarterDetail({ starterId }: { starterId: string }) {
           </div>
         </section>
 
-        {starter.description && (
+        {hasOverview && (
           <section className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
                 <span className="widget-header__label--number">02</span>
-                {" // ABOUT"}
+                {" // OVERVIEW"}
               </span>
             </div>
-            <div className="px-5 py-5 text-sm leading-6 text-[var(--text-2)]">
-              <Markdown>{starter.description}</Markdown>
-            </div>
-          </section>
-        )}
+            <div className="flex flex-1 flex-col divide-y divide-[var(--border-2)]">
+              {starter.description && (
+                <div className="px-5 py-5">
+                  <p className="widget-data-label mb-2.5">About</p>
+                  <div className="text-sm leading-6 text-[var(--text-2)]">
+                    <Markdown>{starter.description}</Markdown>
+                  </div>
+                </div>
+              )}
 
-        {whatYouGet.length > 0 && (
-          <section className="widget-card">
-            <div className="widget-header">
-              <span className="widget-header__label">
-                <span className="widget-header__label--number">03</span>
-                {" // WHAT YOU GET"}
-              </span>
+              {whatYouGet.length > 0 && (
+                <div className="px-5 py-5">
+                  <p className="widget-data-label mb-2.5">What you get</p>
+                  <ul className="space-y-2">
+                    {whatYouGet.map((item, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-2)]">
+                        <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {install.length > 0 && (
+                <div className="px-5 py-5">
+                  <p className="widget-data-label mb-2.5">Install</p>
+                  <ol className="space-y-2">
+                    {install.map((step, i) => (
+                      <li key={i} className="flex items-start gap-3 text-sm text-[var(--text-2)]">
+                        <span className="mt-0.5 font-mono text-[11px] font-semibold text-[var(--brand-700)]">
+                          {String(i + 1).padStart(2, "0")}
+                        </span>
+                        {step}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+
+              {techStack.length > 0 && (
+                <div className="px-5 py-5">
+                  <p className="widget-data-label mb-2.5">Stack</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {techStack.map((t) => (
+                      <span
+                        key={t}
+                        className="inline-flex items-center rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-2)]"
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            <ul className="space-y-2 px-5 py-5">
-              {whatYouGet.map((item, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-2)]">
-                  <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
-                  {item}
-                </li>
-              ))}
-            </ul>
           </section>
         )}
       </div>
 
-      {/* Main piece — the actual prompt (or, for kits without one, the install steps) gets the
-          full page width and the most visual weight; everything above is context for this. */}
+      {/* Main piece — the actual prompt gets the full page width and the most visual weight;
+          everything above is context for this. */}
       {promptText && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">04</span>
+              <span className="widget-header__label--number">03</span>
               {" // PROMPT"}
             </span>
           </div>
           <StarterPromptEditor initialPromptText={promptText} onPicksChange={setEditorPicks} />
-        </section>
-      )}
-
-      {install.length > 0 && (
-        <section className="widget-card">
-          <div className="widget-header">
-            <span className="widget-header__label">
-              <span className="widget-header__label--number">{promptText ? "05" : "04"}</span>
-              {" // INSTALL"}
-            </span>
-          </div>
-          <ol className="space-y-2 px-6 py-5">
-            {install.map((step, i) => (
-              <li key={i} className="flex items-start gap-3 text-sm text-[var(--text-2)]">
-                <span className="mt-0.5 font-mono text-[11px] font-semibold text-[var(--brand-700)]">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                {step}
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
-
-      {techStack.length > 0 && (
-        <section className="widget-card">
-          <div className="widget-header">
-            <span className="widget-header__label">
-              <span className="widget-header__label--number">{[promptText, install.length > 0].filter(Boolean).length + 4}</span>
-              {" // STACK"}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-1.5 px-6 py-5">
-            {techStack.map((t) => (
-              <span
-                key={t}
-                className="inline-flex items-center rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-2)]"
-              >
-                {t}
-              </span>
-            ))}
-          </div>
         </section>
       )}
     </div>
