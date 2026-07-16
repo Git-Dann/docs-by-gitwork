@@ -27,20 +27,33 @@ export function CompliancePanel({ id, a }: { id: string; a: DevSignalAssessmentD
   return (
     <WidgetCard number="06" name="Compliance">
       <div>
-        <p className="widget-data-label mb-1">Consent</p>
+        <p className="widget-data-label mb-1.5">Consent</p>
         {consent ? (
-          <p className="text-xs leading-relaxed text-[var(--text-3)]">
-            Accepted {new Date(consent.agreedAt).toLocaleDateString()} · notice {consent.noticeVersion}
-            {" · "}processing ✓ · human-review acknowledged ✓
-            {consent.transcriptRetention ? " · transcript retention ✓" : ""}
-          </p>
+          <>
+            <span className="inline-flex items-center gap-1.5 rounded-[4px] border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Consented
+            </span>
+            <p className="mt-1.5 text-xs leading-relaxed text-[var(--text-4)]">
+              {new Date(consent.agreedAt).toLocaleDateString()} · notice {consent.noticeVersion} · processing ✓ ·
+              human-review ✓{consent.transcriptRetention ? " · transcript ✓" : ""}
+            </p>
+          </>
         ) : (
-          <p className="text-xs text-[var(--text-4)]">Not yet given — candidate hasn&apos;t accepted the notice.</p>
+          <span className="inline-flex items-center gap-1.5 rounded-[4px] border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Awaiting consent
+          </span>
         )}
       </div>
 
       <div className="mt-4">
-        <p className="widget-data-label mb-1.5">Data requests</p>
+        <p className="mb-1.5 flex items-center gap-2 widget-data-label">
+          Data requests
+          {requests.length > 0 && (
+            <span className="rounded-full bg-[var(--surface-2)] px-1.5 font-mono text-[10px] font-semibold text-[var(--text-3)]">
+              {requests.length}
+            </span>
+          )}
+        </p>
         {requests.length === 0 ? (
           <p className="text-xs text-[var(--text-4)]">None.</p>
         ) : (
