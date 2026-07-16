@@ -33,6 +33,14 @@ to `/tmp/foundry-cron.log`. This is what's actually installed on the box:
 0 9 * * *  /opt/apps/foundry/run-cron.sh meet-transcripts     >> /tmp/foundry-cron.log 2>&1
 0 10 * * * /opt/apps/foundry/run-cron.sh care-digest          >> /tmp/foundry-cron.log 2>&1
 
+# Backstage availability — ONE combined leave + absence Slack digest each weekday
+# morning (08:30; Mon posts a week roll-up, Tue–Fri "out today"; silent when nobody's
+# off, needs a digest channel set in the Absences modal). Plus the cover-reconcile
+# that ends absence covers whose return date has passed (daily 11:00; manual "End
+# cover" does the same on demand).
+30 8 * * 1-5 /opt/apps/foundry/run-cron.sh availability-digest      >> /tmp/foundry-cron.log 2>&1
+0 11 * * *   /opt/apps/foundry/run-cron.sh absence-cover-reconcile  >> /tmp/foundry-cron.log 2>&1
+
 # Curator — weekly library maintenance (Monday 01:00). Enqueues a CURATOR_RUN job per due
 # workspace; the `jobs` worker below actually runs it, so both must be installed.
 0 1 * * 1  /opt/apps/foundry/run-cron.sh curator              >> /tmp/foundry-cron.log 2>&1
