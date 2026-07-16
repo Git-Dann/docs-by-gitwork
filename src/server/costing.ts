@@ -22,6 +22,7 @@ import {
   type PackageCostingResult,
   type PackageType,
   type SavedCostingConfig,
+  type TierRate,
   type TierRates,
 } from "@/types/costing";
 
@@ -34,7 +35,16 @@ export const DEFAULT_ADVANCED_CONFIG: CostingAdvancedConfig = {
   contingencyPercent: 10,
 };
 
-export const DEFAULT_TIER_RATES: TierRates = { junior: 45, mid: 50, senior: 65 };
+export const DEFAULT_TIER_RATES: TierRates = {
+  junior: { amount: 45, period: "day" },
+  mid: { amount: 50, period: "day" },
+  senior: { amount: 65, period: "day" },
+};
+
+/** Normalize a tier rate to a £/day figure (month rates ÷ working days per month). */
+export function tierRateToDay(r: TierRate): number {
+  return r.period === "month" ? r.amount / WORKING_DAYS_PER_MONTH : r.amount;
+}
 
 const PACKAGE_DEFAULTS: Record<PackageType, { weeks: number; devs: number; months: number; effortDaysPerMonth: number }> = {
   launch_pad: { weeks: 3, devs: 1, months: 1, effortDaysPerMonth: 5 },
@@ -64,12 +74,22 @@ export function resolveAdvancedConfig(raw: unknown): CostingAdvancedConfig {
   };
 }
 
+function resolveTierRate(raw: unknown, fallback: TierRate): TierRate {
+  // Backward-compat: an older shape stored a bare number (£/day).
+  if (typeof raw === "number") return { amount: clamp(raw, fallback.amount, 0, 10000000), period: "day" };
+  const r = (raw && typeof raw === "object" ? raw : {}) as Partial<TierRate>;
+  return {
+    amount: clamp(r.amount, fallback.amount, 0, 10000000),
+    period: r.period === "month" ? "month" : "day",
+  };
+}
+
 export function resolveTierRates(raw: unknown): TierRates {
   const r = (raw && typeof raw === "object" ? raw : {}) as Partial<TierRates>;
   return {
-    junior: clamp(r.junior, DEFAULT_TIER_RATES.junior, 0, 100000),
-    mid: clamp(r.mid, DEFAULT_TIER_RATES.mid, 0, 100000),
-    senior: clamp(r.senior, DEFAULT_TIER_RATES.senior, 0, 100000),
+    junior: resolveTierRate(r.junior, DEFAULT_TIER_RATES.junior),
+    mid: resolveTierRate(r.mid, DEFAULT_TIER_RATES.mid),
+    senior: resolveTierRate(r.senior, DEFAULT_TIER_RATES.senior),
   };
 }
 
@@ -94,11 +114,12 @@ export async function seedTierRatesFromRateCard(workspaceId: string, fxFromUsd: 
     const monthlyGbp = code === "GBP" ? monthly : monthly * fxFromUsd;
     buckets[tierFromArea(p.area)].push(monthlyGbp / WORKING_DAYS_PER_MONTH);
   }
-  const avg = (arr: number[], fallback: number) => (arr.length ? roundToFive(arr.reduce((s, n) => s + n, 0) / arr.length) : fallback);
+  const day = (arr: number[], fallback: TierRate): TierRate =>
+    arr.length ? { amount: roundToFive(arr.reduce((s, n) => s + n, 0) / arr.length), period: "day" } : { ...fallback };
   return {
-    junior: avg(buckets.junior, DEFAULT_TIER_RATES.junior),
-    mid: avg(buckets.mid, DEFAULT_TIER_RATES.mid),
-    senior: avg(buckets.senior, DEFAULT_TIER_RATES.senior),
+    junior: day(buckets.junior, DEFAULT_TIER_RATES.junior),
+    mid: day(buckets.mid, DEFAULT_TIER_RATES.mid),
+    senior: day(buckets.senior, DEFAULT_TIER_RATES.senior),
   };
 }
 
@@ -204,7 +225,7 @@ async function resolveBuildDayRate(
   if (cfg.dayRateOverrideGbp) return { rate: cfg.dayRateOverrideGbp, source: "override" };
   const tiers =
     passedTierRates ?? (await getSavedCostingConfig(workspaceId))?.tierRates ?? (await seedTierRatesFromRateCard(workspaceId, cfg.fxFromUsd));
-  return { rate: tiers[cfg.buildSeniority], source: "tiers" };
+  return { rate: tierRateToDay(tiers[cfg.buildSeniority]), source: "tiers" };
 }
 
 /** Resolve config + build day rate, and cost the package in one call. */
@@ -230,7 +251,7 @@ export async function getCostingConfigInfo(workspaceId: string): Promise<Costing
     liveFxFromUsd: fx?.rate ?? null,
     fxAsOf: fx?.asOf ?? null,
     hasRateCard: rateCardCount > 0,
-    blendedBuildDayRateGbp: seededTierRates.senior,
+    blendedBuildDayRateGbp: tierRateToDay(seededTierRates.senior),
     defaults: { ...DEFAULT_ADVANCED_CONFIG, fxFromUsd },
     saved,
     seededTierRates,
