@@ -33,7 +33,40 @@ export function MissionWall() {
   const ambers = clients.filter((c) => c.health?.level === "amber").length;
 
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.4fr)_minmax(220px,0.7fr)]">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(180px,0.6fr)_minmax(260px,0.8fr)_minmax(0,1.4fr)_minmax(200px,0.6fr)]">
+      {/* Agent — Claw'd placeholder for layout. The live animated Claw'd lives on the
+          Stream Deck (it's Anthropic's mascot, not shipped in-product; and an HTTPS
+          page can't reach the local bridge). This slot just shows where it sits. */}
+      <section className="flex flex-col rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-0)] p-4">
+        <h2 className="mb-3 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--text-3)]">Agent</h2>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3">
+          <div
+            className="flex h-[150px] w-[150px] items-center justify-center rounded-[18px]"
+            style={{ background: "#0e0f12", boxShadow: "0 0 44px -10px rgba(224,87,64,.55)" }}
+          >
+            <span style={{ fontSize: "84px", lineHeight: 1 }} role="img" aria-label="Claw'd placeholder">🦀</span>
+          </div>
+          <div className="font-mono text-[13px] font-bold tracking-[0.1em] text-[var(--text-1)]">CLAW&rsquo;D</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-3)]">placeholder · lives on the deck</div>
+        </div>
+        <div className="mb-2 mt-4 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-3)]">Reasoning effort</div>
+        <div className="grid grid-cols-4 gap-2">
+          {["Low", "Med", "High", "Max"].map((e, i) => (
+            <div
+              key={e}
+              className={
+                "rounded-[10px] border py-2.5 text-center font-mono text-[12px] uppercase " +
+                (i === 1
+                  ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                  : "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]")
+              }
+            >
+              {e}
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* Project health */}
       <section className="rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-0)] p-4">
         <header className="mb-3 flex items-baseline justify-between">
