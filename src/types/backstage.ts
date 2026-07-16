@@ -256,6 +256,9 @@ export type CoverableClient = {
   clientId: string;
   clientName: string;
   taskCount: number;
+  /** Devs already scoped to this client (ClientAssignment). Used to warn when a chosen cover
+   *  dev is already on the client — a cover would then show them twice on the DEVELOPERS card. */
+  assignedUserIds: string[];
 };
 
 /** Workspace settings for the combined leave + absence morning digest. */

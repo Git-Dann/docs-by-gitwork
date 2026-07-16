@@ -106,6 +106,14 @@ export function AbsencesModal({ open, onClose }: { open: boolean; onClose: () =>
   const coverableList = coverable.data ?? [];
   const endDateIso = daysOut > 1 ? isoFromToday(daysOut - 1) : undefined;
 
+  // The cover dev is already scoped to the chosen client → adding a cover would show them
+  // twice on the client's DEVELOPERS card. Warn (don't block — it can still be intentional).
+  const selectedCoverClient = coverableList.find((c) => c.clientId === coverClientId);
+  const coverDevAlreadyOnClient = Boolean(
+    coverUserId && selectedCoverClient?.assignedUserIds.includes(coverUserId),
+  );
+  const coverDevName = team.data?.find((m) => m.id === coverUserId)?.name ?? "This dev";
+
   async function submit() {
     if (!userId) {
       info("Pick a person", "Choose who's out today.");
@@ -286,6 +294,13 @@ export function AbsencesModal({ open, onClose }: { open: boolean; onClose: () =>
                       Their tasks on this client move to the cover dev for the period, then revert.
                     </p>
                   )}
+                  {coverDevAlreadyOnClient ? (
+                    <p className="mt-1.5 rounded-[6px] border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+                      {coverDevName} is already on {selectedCoverClient?.clientName}. They&apos;ll
+                      still pick up the tasks, but they&apos;ll show twice on the client&apos;s
+                      Developers card (once as a dev, once as cover). Pick someone else if you don&apos;t want the duplicate.
+                    </p>
+                  ) : null}
                 </div>
               </div>
             ) : null}

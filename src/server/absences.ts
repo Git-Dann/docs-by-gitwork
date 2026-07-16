@@ -138,10 +138,26 @@ export async function listCoverableClients(
     cur.count += 1;
     byClient.set(t.clientId, cur);
   }
+  // Devs already scoped to each of these clients (ClientAssignment) — so the modal can warn
+  // when the chosen cover dev is already on the client (which would double them on the card).
+  const clientIds = Array.from(byClient.keys());
+  const assignments = clientIds.length
+    ? await prisma.clientAssignment.findMany({
+        where: { workspaceId: user.workspaceId, clientId: { in: clientIds } },
+        select: { clientId: true, userId: true },
+      })
+    : [];
+  const assignedByClient = new Map<string, string[]>();
+  for (const a of assignments) {
+    const list = assignedByClient.get(a.clientId) ?? [];
+    list.push(a.userId);
+    assignedByClient.set(a.clientId, list);
+  }
   return Array.from(byClient, ([clientId, v]) => ({
     clientId,
     clientName: v.name,
     taskCount: v.count,
+    assignedUserIds: assignedByClient.get(clientId) ?? [],
   })).sort((a, b) => b.taskCount - a.taskCount || a.clientName.localeCompare(b.clientName));
 }
 
