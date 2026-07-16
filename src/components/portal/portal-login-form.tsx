@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
 import { ArrowRightIcon, ArrowLeftIcon } from "@heroicons/react/24/outline";
 
 // The boss's bespoke design: warm cream, violet accent (NOT the Foundry blue
@@ -107,6 +107,11 @@ function PreviewPanel() {
  * workspace), several → a chooser.
  */
 export function PortalLoginForm({ next }: { next: string | null }) {
+  // Gitwork staff who've already signed in with Google carry a live NextAuth session.
+  // When that's the case, the "Gitwork team" entrance should drop them straight into
+  // the app instead of bouncing back through Google's consent screen every visit.
+  const { status: authStatus } = useSession();
+  const isStaffAuthed = authStatus === "authenticated";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -293,14 +298,21 @@ export function PortalLoginForm({ next }: { next: string | null }) {
               {/* Discreet Gitwork-team entrance. Kept low-key so clients skim
                   past it. Enforcement is server-side: the Google signIn callback
                   (auth.ts) rejects any account that isn't @gitwork.co.uk, so a
-                  client who clicks it can never actually get in. */}
+                  client who clicks it can never actually get in.
+
+                  If the visitor already has a live staff session, skip Google
+                  entirely and go straight to the app — no repeat consent screen. */}
               <button
                 type="button"
-                onClick={() => void signIn("google", { callbackUrl: "/app" })}
+                onClick={() =>
+                  isStaffAuthed
+                    ? window.location.assign("/app")
+                    : void signIn("google", { callbackUrl: "/app" })
+                }
                 className="mt-5 block w-full text-center text-[12px] transition hover:opacity-70"
                 style={{ color: FAINT }}
               >
-                Gitwork team? Sign in →
+                {isStaffAuthed ? "Continue to Foundry →" : "Gitwork team? Sign in →"}
               </button>
             </>
           )}
