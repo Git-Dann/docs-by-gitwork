@@ -37,9 +37,9 @@ export const DEFAULT_ADVANCED_CONFIG: CostingAdvancedConfig = {
 };
 
 export const DEFAULT_TIER_RATES: TierRates = {
-  junior: { amount: 45, period: "day" },
-  mid: { amount: 50, period: "day" },
-  senior: { amount: 65, period: "day" },
+  junior: { amount: 975, period: "month" },
+  mid: { amount: 1100, period: "month" },
+  senior: { amount: 1400, period: "month" },
 };
 
 /** Normalize a tier rate to a £/day figure (month rates ÷ working days per month). */
@@ -120,14 +120,15 @@ export async function seedTierRatesFromRateCard(workspaceId: string, fxFromUsd: 
     const monthly = normalizeToMonthly(p.sourceRate, p.billingPeriod);
     const code = (p.sourceCurrencyCode || "USD").toUpperCase();
     const monthlyGbp = code === "GBP" ? monthly : monthly * fxFromUsd;
-    buckets[tierFromArea(p.area)].push(monthlyGbp / WORKING_DAYS_PER_MONTH);
+    buckets[tierFromArea(p.area)].push(monthlyGbp);
   }
-  const day = (arr: number[], fallback: TierRate): TierRate =>
-    arr.length ? { amount: roundToFive(arr.reduce((s, n) => s + n, 0) / arr.length), period: "day" } : { ...fallback };
+  // Default to per-month rates (the Rate Card is monthly).
+  const month = (arr: number[], fallback: TierRate): TierRate =>
+    arr.length ? { amount: roundToFive(arr.reduce((s, n) => s + n, 0) / arr.length), period: "month" } : { ...fallback };
   return {
-    junior: day(buckets.junior, DEFAULT_TIER_RATES.junior),
-    mid: day(buckets.mid, DEFAULT_TIER_RATES.mid),
-    senior: day(buckets.senior, DEFAULT_TIER_RATES.senior),
+    junior: month(buckets.junior, DEFAULT_TIER_RATES.junior),
+    mid: month(buckets.mid, DEFAULT_TIER_RATES.mid),
+    senior: month(buckets.senior, DEFAULT_TIER_RATES.senior),
   };
 }
 

@@ -25,11 +25,18 @@ const gbp = (n: number) => "£" + Math.round(n).toLocaleString("en-GB");
 
 const ADVANCED_DEFAULTS: CostingAdvancedConfig = { fxFromUsd: 0.79, ukReviewOverheadPercent: 15, contingencyPercent: 10 };
 const DEFAULT_TIER_RATES: TierRates = {
-  junior: { amount: 45, period: "day" },
-  mid: { amount: 50, period: "day" },
-  senior: { amount: 65, period: "day" },
+  junior: { amount: 975, period: "month" },
+  mid: { amount: 1100, period: "month" },
+  senior: { amount: 1400, period: "month" },
 };
 const TIERS: DevTier[] = ["senior", "mid", "junior"];
+const WORKING_DAYS_PER_MONTH = 21.67;
+// Convert a rate amount when the period toggles, so the real cost stays the same.
+const convertAmount = (amount: number, from: RatePeriod, to: RatePeriod): number => {
+  if (from === to) return amount;
+  const raw = to === "month" ? amount * WORKING_DAYS_PER_MONTH : amount / WORKING_DAYS_PER_MONTH;
+  return Math.round(raw / 5) * 5;
+};
 
 type Form = Omit<PackageCostingInput, "packageType" | "config" | "tierRates">;
 
@@ -208,7 +215,15 @@ export function CostingWorkspace() {
                     value={tierRates[tier].amount}
                     onChange={(e) => setTier(tier, { amount: Number(e.target.value) || 0 })}
                   />
-                  <select className="app-select-compact" value={tierRates[tier].period} onChange={(e) => setTier(tier, { period: e.target.value as RatePeriod })}>
+                  <select
+                    className="app-select-compact"
+                    value={tierRates[tier].period}
+                    onChange={(e) => {
+                      const to = e.target.value as RatePeriod;
+                      const cur = tierRates[tier];
+                      setTier(tier, { period: to, amount: convertAmount(cur.amount, cur.period, to) });
+                    }}
+                  >
                     <option value="day">£ / day</option>
                     <option value="month">£ / month</option>
                   </select>
