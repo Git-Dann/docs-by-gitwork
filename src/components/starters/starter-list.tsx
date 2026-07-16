@@ -12,9 +12,7 @@ import {
   ArrowRightIcon,
   ArrowDownTrayIcon,
   MagnifyingGlassIcon,
-  StarIcon as StarOutline,
 } from "@heroicons/react/24/outline";
-import { StarIcon as StarSolid } from "@heroicons/react/24/solid";
 import { useStarterList, useDeleteStarter, useAdoptStarter, useToggleStarterFeatured } from "@/hooks/use-starters";
 import { usePulseScan } from "@/hooks/use-pulse";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -27,12 +25,39 @@ type Filter = "all" | StarterType;
 type SortOption = "featured" | "az" | "za" | "recent" | "used";
 
 const SORT_LABEL: Record<SortOption, string> = {
-  featured: "Featured",
+  featured: "Gitwork Approved",
   az: "Name A–Z",
   za: "Name Z–A",
   recent: "Recently added",
   used: "Most used",
 };
+
+/** Blue "G" badge — the "Gitwork Approved" mark, replacing a plain star so it reads as an
+ * editorial stamp rather than a generic favourite. */
+function GitworkApprovedBadge({ approved }: { approved: boolean }) {
+  return (
+    <span
+      className={cn(
+        "flex h-4 w-4 shrink-0 items-center justify-center rounded-full font-mono text-[9px] font-bold leading-none",
+        approved
+          ? "bg-[var(--brand-700)] text-white"
+          : "border border-[var(--border-2)] text-[var(--text-4)]",
+      )}
+    >
+      G
+    </span>
+  );
+}
+
+// The first tag on a starter doubles as its content category (e.g. "photorealistic-portraits",
+// "business-and-marketing") — these 6 are workflow-stage labels specific to the single Claude
+// Design 2.0 tutorial sequence, not real content categories, so they're excluded from the filter
+// options (the entries themselves are untouched — this only trims the dropdown's option list).
+const NON_CATEGORY_TAGS = new Set(["setup", "prototype", "slides", "document", "wireframe", "animation"]);
+
+function humanizeTag(tag: string): string {
+  return tag.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 const TYPE_LABEL: Record<StarterType, string> = {
   PROMPT: "Prompt",
@@ -99,14 +124,11 @@ function StarterCard({
             <button
               type="button"
               onClick={() => onToggleFeatured(starter.id, !starter.featured)}
-              className={cn(
-                "rounded-[6px] p-0.5 transition hover:bg-[var(--surface-1)]",
-                starter.featured ? "text-amber-500" : "text-[var(--text-4)] hover:text-amber-500",
-              )}
-              title={starter.featured ? "Unfeature" : "Feature"}
-              aria-label={starter.featured ? "Unfeature" : "Feature"}
+              className="rounded-[6px] p-0.5 transition hover:bg-[var(--surface-1)]"
+              title={starter.featured ? "Remove Gitwork Approved" : "Mark Gitwork Approved"}
+              aria-label={starter.featured ? "Remove Gitwork Approved" : "Mark Gitwork Approved"}
             >
-              {starter.featured ? <StarSolid className="h-4 w-4" /> : <StarOutline className="h-4 w-4" />}
+              <GitworkApprovedBadge approved={starter.featured} />
             </button>
           )}
           {starter.curatorState === "STALE" ? (
@@ -212,6 +234,7 @@ export function StarterList() {
   const [sort, setSort] = useState<SortOption>(() =>
     sortParam && sortParam in SORT_LABEL ? (sortParam as SortOption) : "featured",
   );
+  const [category, setCategory] = useState<string>(() => searchParams.get("content") ?? "all");
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -221,12 +244,14 @@ export function StarterList() {
     else params.delete("q");
     if (sort === "featured") params.delete("sort");
     else params.set("sort", sort);
+    if (category === "all") params.delete("content");
+    else params.set("content", category);
     const qs = params.toString();
     router.replace(qs ? `/app/starters?${qs}` : "/app/starters", { scroll: false });
-    // Only re-sync when the filter/query/sort themselves change — not on every searchParams
-    // identity change, which would include our own replace() and loop.
+    // Only re-sync when the filter/query/sort/category themselves change — not on every
+    // searchParams identity change, which would include our own replace() and loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, query, sort]);
+  }, [filter, query, sort, category]);
 
   async function handleAdopt(starterId: string) {
     if (!scanId) return;
@@ -239,6 +264,18 @@ export function StarterList() {
   const recommendations = scan ? recommendStartersForScan(scan, all).slice(0, 4) : [];
   const typeCount = (t: StarterType) => all.filter((s) => s.type === t).length;
 
+  // Content categories — a starter's first tag doubles as its category (e.g. "cinematic-scenes",
+  // "business-and-marketing"). This is a lightweight filter dimension separate from type (Prompt/
+  // Skill/…), useful for narrowing the library to what's relevant for a given piece of work.
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    (starters ?? []).forEach((s) => {
+      const cat = s.tags[0];
+      if (cat && !NON_CATEGORY_TAGS.has(cat)) set.add(cat);
+    });
+    return Array.from(set).sort();
+  }, [starters]);
+
   // Smart search: every whitespace-separated term must appear somewhere in the item's searchText
   // (name + summary + description + tags + hidden function/use-case keywords). So "sales email" or
   // "make a logo" find the right prompt even when those exact words aren't in the title.
@@ -246,6 +283,7 @@ export function StarterList() {
   const filtered = all.filter(
     (s) =>
       (filter === "all" ? true : s.type === filter) &&
+      (category === "all" ? true : s.tags[0] === category) &&
       (terms.length === 0 || terms.every((t) => s.searchText.includes(t))),
   );
 
@@ -352,6 +390,19 @@ export function StarterList() {
                 className="w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] py-2 pl-9 pr-3 text-sm text-[var(--text-1)] outline-none transition placeholder:text-[var(--text-4)] focus:border-[var(--brand-400)]"
               />
             </div>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              aria-label="Filter starters by content category"
+              className="app-select-compact w-44 shrink-0"
+            >
+              <option value="all">All content</option>
+              {categories.map((cat) => (
+                <option key={cat} value={cat}>
+                  {humanizeTag(cat)}
+                </option>
+              ))}
+            </select>
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as SortOption)}

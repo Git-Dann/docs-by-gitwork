@@ -14,6 +14,7 @@ import {
   HomeModernIcon,
   LifebuoyIcon,
   PhotoIcon,
+  RectangleStackIcon,
   SignalIcon,
   UserGroupIcon,
   WrenchScrewdriverIcon,
@@ -256,6 +257,12 @@ export function AppShell({
               description: "Delivery, output & AI usage",
               icon: ChartBarIcon,
             },
+            {
+              href: "/app/starters",
+              label: "Starters",
+              description: "Prompt→Production library",
+              icon: RectangleStackIcon,
+            },
           ]
         : [],
     [isSuper],
@@ -304,17 +311,13 @@ export function AppShell({
           </div>
           <div className="mt-auto space-y-1 border-t border-[var(--border-2)] px-3 py-3">
             <AiSpendCard />
-            {isSuper ? (
+            {secondaryNav.map((item) => (
               <SidebarNavItem
-                item={{
-                  href: "/app/analytics",
-                  label: "Analytics",
-                  description: "Delivery, output & AI usage",
-                  icon: ChartBarIcon,
-                }}
-                active={Boolean(isActivePath(pathname, "/app/analytics"))}
+                key={item.label}
+                item={item}
+                active={Boolean(item.href && isActivePath(pathname, item.href))}
               />
-            ) : null}
+            ))}
             <SidebarNavItem
               item={{
                 href: "/app/handbook",
