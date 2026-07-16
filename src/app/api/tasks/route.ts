@@ -2,9 +2,46 @@ import { apiOk, fromError } from "@/lib/api-response";
 import { requireAuthedUser } from "@/server/auth/effective-user";
 import { listTasks, createTask } from "@/server/tasks";
 import { taskInputSchema, taskListQuerySchema } from "@/server/validators";
-import type { TaskStatus } from "@/types/tasks";
+import type { TaskDTO, TaskStatus } from "@/types/tasks";
 
 export const dynamic = "force-dynamic";
+const MAX_TASK_LIST_ROWS = 500;
+
+/** Keep the public list contract small even if TaskDTO gains new fields. */
+function taskListResponse(task: TaskDTO): TaskDTO {
+  return {
+    id: task.id,
+    workspaceId: task.workspaceId,
+    client: task.client,
+    assignees: task.assignees,
+    createdBy: task.createdBy,
+    featureBlock: task.featureBlock,
+    parentId: task.parentId,
+    title: task.title,
+    description: null,
+    acceptanceCriteria: null,
+    status: task.status,
+    priority: task.priority,
+    label: task.label,
+    orderKey: task.orderKey,
+    dueDate: task.dueDate,
+    startedAt: task.startedAt,
+    completedAt: task.completedAt,
+    archivedAt: task.archivedAt,
+    blockedReason: null,
+    blockedAt: null,
+    blockedResponse: null,
+    blockedResponseAt: null,
+    commentCount: task.commentCount,
+    subtaskCount: task.subtaskCount,
+    subtaskDoneCount: task.subtaskDoneCount,
+    attachmentCount: task.attachmentCount,
+    metadata: null,
+    scribeSource: task.scribeSource,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+  };
+}
 
 export async function GET(req: Request) {
   try {
@@ -34,17 +71,12 @@ export async function GET(req: Request) {
       assigneeId: q.assigneeId,
       sourceMeetingId: q.sourceMeetingId,
       archived: q.archived === "true",
-      limit: q.limit,
+      // Prevent an unbounded board request from becoming another multi-MB
+      // response when a workspace has a large backlog.
+      limit: Math.min(q.limit ?? MAX_TASK_LIST_ROWS, MAX_TASK_LIST_ROWS),
       doneWithinDays,
     });
-    // The board / list / Gantt never render description or acceptance criteria —
-    // the detail drawer fetches the full task (GET /api/tasks/[id]) on open. Drop
-    // these @db.Text fields from the LIST response: ClickUp-imported tasks can
-    // carry very large descriptions (sometimes with embedded/base64 images), which
-    // — even after the metadata strip — bloated this endpoint to 150MB+. listTasks
-    // itself is unchanged, so the Slack "titles + descriptions" push still has them.
-    const lite = tasks.map((t) => ({ ...t, description: null, acceptanceCriteria: null }));
-    return apiOk(lite);
+    return apiOk(tasks.map(taskListResponse));
   } catch (e) {
     return fromError(e);
   }
