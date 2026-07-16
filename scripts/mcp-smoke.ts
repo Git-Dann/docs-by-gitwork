@@ -64,7 +64,7 @@ console.log("tools/list");
   });
   if (res && "result" in res) {
     const tools = (res.result as { tools: Array<{ name: string; inputSchema: object }> }).tools;
-    check("returns 23 tools", tools.length === 23, `got ${tools.length}`);
+    check("returns 29 tools", tools.length === 29, `got ${tools.length}`);
     const expected = [
       "list_clients",
       "create_client",
@@ -74,6 +74,12 @@ console.log("tools/list");
       "add_platform",
       "list_platforms",
       "add_design",
+      "add_monitor",
+      "list_monitors",
+      "list_wiki",
+      "get_wiki_page",
+      "upsert_wiki_page",
+      "delete_wiki_page",
       "list_conversations",
       "list_tasks",
       "get_task",

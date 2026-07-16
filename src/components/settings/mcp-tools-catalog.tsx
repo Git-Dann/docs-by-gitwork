@@ -65,6 +65,44 @@ const TOOLS: Tool[] = [
     examples: ["Add the Figma link to Speakify's designs.", "Save the Big Wedge brand kit to Designs."],
   },
   {
+    name: "list_wiki",
+    blurb:
+      "Overview of a client's wiki — which pages exist, which of the 11 page types are still empty, and section counts (changelog, monitors, docs, requests, team).",
+    examples: ["What's on Big Wedge's wiki?", "Which wiki pages does Speakify still need?"],
+  },
+  {
+    name: "get_wiki_page",
+    blurb:
+      "Read the full content of one wiki page (runbook, architecture, API docs, app-store listing, etc.).",
+    examples: ["Show me Big Wedge's runbook.", "Read Speakify's architecture page."],
+  },
+  {
+    name: "upsert_wiki_page",
+    blurb:
+      "Create or update ANY of the 11 wiki page types (IA guide, dev/API guide, API docs, architecture, runbook, data model, app-store iOS/Android/Firestick, system status, custom). Requires 'Manage clients'.",
+    examples: [
+      "Write a runbook for Big Wedge covering deploys and rollbacks.",
+      "Draft Speakify's iOS App Store listing page.",
+    ],
+  },
+  {
+    name: "delete_wiki_page",
+    blurb:
+      "Remove a wiki page and hide its sidebar section until re-added. Requires 'Manage clients'.",
+    examples: ["Delete the data-model page from Big Wedge's wiki."],
+  },
+  {
+    name: "add_monitor",
+    blurb:
+      "Add an uptime monitor (HTTP or TCP) to a client wiki's Monitors section; runs an immediate probe. Requires 'Manage clients'.",
+    examples: ["Monitor bigwedge.golf every 5 minutes.", "Add a TCP monitor for Speakify's API on port 443."],
+  },
+  {
+    name: "list_monitors",
+    blurb: "List a client wiki's uptime monitors — status, latency, and uptime % (24h/7d/30d).",
+    examples: ["Is Big Wedge up?", "Show me Speakify's monitor uptime this week."],
+  },
+  {
     name: "get_client",
     blurb:
       "Open one client's profile — contact, website, active devs, links, and counts. Financials show only if you can see them; never returns bank or credentials.",
