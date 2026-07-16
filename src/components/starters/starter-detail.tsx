@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
   PencilSquareIcon,
   DocumentDuplicateIcon,
@@ -12,6 +13,12 @@ import {
   ArrowRightIcon,
   ArrowTopRightOnSquareIcon,
   ArrowDownTrayIcon,
+  EllipsisHorizontalIcon,
+  ChatBubbleLeftRightIcon,
+  WrenchScrewdriverIcon,
+  PuzzlePieceIcon,
+  CubeIcon,
+  RectangleStackIcon,
 } from "@heroicons/react/24/outline";
 import {
   useStarter,
@@ -23,7 +30,7 @@ import { usePulseScan } from "@/hooks/use-pulse";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/format";
 import { Markdown } from "@/lib/markdown";
-import { Button, buttonStyles } from "@/components/ui/button";
+import { buttonStyles } from "@/components/ui/button";
 import { StarterForm } from "@/components/starters/starter-form";
 import { StarterPromptEditor, type StarterEditorPicks } from "@/components/starters/starter-prompt-editor";
 import type { StarterType } from "@/server/starters";
@@ -43,6 +50,20 @@ const TYPE_TONE: Record<StarterType, string> = {
   KIT: "bg-amber-50 text-amber-700 border border-amber-200",
   COLLECTION: "bg-[var(--surface-1)] text-[var(--text-3)] border border-[var(--border-2)]",
 };
+
+const TYPE_ICON: Record<StarterType, typeof ChatBubbleLeftRightIcon> = {
+  PROMPT: ChatBubbleLeftRightIcon,
+  SKILL: WrenchScrewdriverIcon,
+  PLUGIN: PuzzlePieceIcon,
+  KIT: CubeIcon,
+  COLLECTION: RectangleStackIcon,
+};
+
+// Matches the client-detail "..." action menu (src/components/clients/client-detail.tsx) verbatim.
+const actionMenuPanel =
+  "z-50 mt-1.5 w-56 rounded-[10px] border border-[rgba(0,0,0,0.10)] bg-white p-1.5 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)] focus:outline-none";
+const actionMenuItem =
+  "flex w-full items-center gap-2 rounded-[6px] px-2.5 py-1.5 text-left text-[13px] font-medium text-[var(--text-2)] transition data-[focus]:bg-[var(--surface-1)] data-[focus]:text-[var(--text-1)] disabled:opacity-50";
 
 export function StarterDetail({ starterId }: { starterId: string }) {
   const router = useRouter();
@@ -115,64 +136,28 @@ export function StarterDetail({ starterId }: { starterId: string }) {
   const downloadQs = downloadParams.toString();
   const downloadUrl = `/api/starters/${starter.id}/download${downloadQs ? `?${downloadQs}` : ""}`;
 
+  const TypeIcon = TYPE_ICON[starter.type] ?? CubeIcon;
+
   return (
     <div className="mx-auto max-w-7xl space-y-5">
-      <div className="flex items-center justify-between gap-2">
-        <Link
-          href={scanId ? `/app/starters?scanId=${scanId}` : "/app/starters"}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
-        >
-          <ArrowLeftIcon className="h-3.5 w-3.5" />
-          {scanId ? "Back to recommendations" : "Back to library"}
-        </Link>
-        {canManageStarters && (
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={handleDuplicate}
-              loading={duplicating}
-              leadingIcon={!duplicating ? <DocumentDuplicateIcon className="h-4 w-4" /> : null}
-            >
-              Duplicate
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => setEditing(true)}
-              leadingIcon={<PencilSquareIcon className="h-4 w-4" />}
-            >
-              Edit
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                if (confirm("Delete this starter?")) {
-                  deleteStarter(starter.id);
-                  router.push("/app/starters");
-                }
-              }}
-              leadingIcon={<TrashIcon className="h-4 w-4" />}
-            >
-              Delete
-            </Button>
-          </div>
-        )}
-      </div>
+      <Link
+        href={scanId ? `/app/starters?scanId=${scanId}` : "/app/starters"}
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+      >
+        <ArrowLeftIcon className="h-3.5 w-3.5" />
+        {scanId ? "Back to recommendations" : "Back to library"}
+      </Link>
 
-      {/* 01 // STARTER + 02 // OVERVIEW sit as two equal-height cards — the context at a glance —
-          leaving the prompt below as the wider, dominant "main piece" of the page. */}
-      <div className={cn("grid items-stretch gap-4", hasOverview && "lg:grid-cols-2")}>
-        <section className="widget-card">
-          <div className="widget-header">
-            <span className="widget-header__label">
-              <span className="widget-header__label--number">01</span>
-              {" // STARTER"}
-            </span>
+      {/* 01 // STARTER — mirrors the Portal client-record card: icon + identity + a right-side
+          pill action, "…" menu for edit/duplicate/delete, and (if present) about/what-you-get/
+          install/stack in a compact two-column body below. */}
+      <section className="widget-card">
+        <div className="widget-header">
+          <span className="widget-header__label">
+            <span className="widget-header__label--number">01</span>
+            {" // STARTER"}
+          </span>
+          <div className="flex items-center gap-2">
             <span
               className={cn(
                 "inline-flex items-center rounded-[4px] px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em]",
@@ -181,171 +166,193 @@ export function StarterDetail({ starterId }: { starterId: string }) {
             >
               {TYPE_LABEL[starter.type]}
             </span>
-          </div>
-          <div className="px-5 py-5">
-            <h1
-              className="text-2xl leading-tight tracking-[-0.02em] text-[var(--text-1)]"
-              style={{ fontFamily: "var(--font-display)" }}
-            >
-              {starter.name}
-            </h1>
-            <p className="mt-2 text-sm text-[var(--text-3)]">{starter.summary}</p>
-
-            {/* Add to Claude — packages the starter as a Claude Skill .zip (also the backup). */}
-            <div className="mt-4 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
-              <div className="flex flex-wrap items-center gap-3">
-                <a
-                  href={downloadUrl}
-                  download
-                  className={cn(buttonStyles({ variant: "primary", size: "sm" }), "inline-flex items-center gap-1.5")}
+            {canManageStarters && (
+              <Menu as="div" className="relative">
+                <MenuButton
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] border border-[var(--border-2)] bg-white text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+                  aria-label="Starter actions"
+                  title="Starter actions"
                 >
-                  <ArrowDownTrayIcon className="h-3.5 w-3.5" />
-                  {isSkillLike ? "Add to Claude" : "Download source (.zip)"}
-                </a>
-                {isSkillLike && (
-                  <a
-                    href="https://claude.ai/settings/capabilities"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--text-3)] transition hover:text-[var(--text-1)]"
-                  >
-                    Open Claude Skills settings
-                    <ArrowTopRightOnSquareIcon className="h-3 w-3" />
-                  </a>
-                )}
-              </div>
-              <p className="mt-2 text-xs leading-5 text-[var(--text-3)]">
-                {isSkillLike ? (
-                  <>
-                    Downloads a ready-to-install Skill. In Claude → <span className="font-medium text-[var(--text-2)]">Settings → Capabilities → Skills → Upload skill</span>,
-                    drop this <span className="font-mono">.zip</span> in (requires code execution). Doubles as your off-platform backup.
-                  </>
-                ) : (
-                  <>Downloads the full source as a <span className="font-mono">.zip</span> — your off-platform backup.</>
-                )}
+                  <EllipsisHorizontalIcon className="h-4 w-4" />
+                </MenuButton>
+                <MenuItems anchor="bottom end" className={actionMenuPanel}>
+                  <MenuItem>
+                    <button type="button" className={actionMenuItem} onClick={handleDuplicate} disabled={duplicating}>
+                      <DocumentDuplicateIcon className="h-4 w-4 text-[var(--text-4)]" />
+                      Duplicate
+                    </button>
+                  </MenuItem>
+                  <MenuItem>
+                    <button type="button" className={actionMenuItem} onClick={() => setEditing(true)}>
+                      <PencilSquareIcon className="h-4 w-4 text-[var(--text-4)]" />
+                      Edit
+                    </button>
+                  </MenuItem>
+                  <MenuItem>
+                    <button
+                      type="button"
+                      className={actionMenuItem}
+                      onClick={() => {
+                        if (confirm("Delete this starter?")) {
+                          deleteStarter(starter.id);
+                          router.push("/app/starters");
+                        }
+                      }}
+                    >
+                      <TrashIcon className="h-4 w-4 text-[var(--text-4)]" />
+                      Delete
+                    </button>
+                  </MenuItem>
+                </MenuItems>
+              </Menu>
+            )}
+          </div>
+        </div>
+
+        <div className="p-5">
+          <div className="flex flex-wrap items-start gap-5">
+            {/* Type icon */}
+            <div
+              className={cn(
+                "flex h-16 w-16 shrink-0 items-center justify-center rounded-[10px]",
+                TYPE_TONE[starter.type] ?? TYPE_TONE.KIT,
+              )}
+            >
+              <TypeIcon className="h-7 w-7" />
+            </div>
+
+            {/* Identity */}
+            <div className="min-w-0 flex-1">
+              <h1
+                className="text-2xl leading-tight tracking-[-0.02em] text-[var(--text-1)]"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {starter.name}
+              </h1>
+              <p className="mt-1.5 max-w-2xl text-sm text-[var(--text-3)]">{starter.summary}</p>
+
+              {(sourceUrl || starter.tags.length > 0) && (
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  {sourceUrl && (
+                    <a
+                      href={sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-[var(--brand-700)] hover:underline"
+                    >
+                      <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+                      {sourceLabel ? `Based on ${sourceLabel}` : "View & use"}
+                    </a>
+                  )}
+                  {starter.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-3)]"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Right-side action stack — bottom-aligned, mirrors the Portal "Wiki →" pill. */}
+            <div className="ml-auto flex shrink-0 flex-col items-end justify-end gap-1.5 self-stretch">
+              <a
+                href={downloadUrl}
+                download
+                className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
+              >
+                <ArrowDownTrayIcon className="h-3.5 w-3.5" />
+                {isSkillLike ? "Add to Claude" : "Download source"}
+              </a>
+              <p className="text-right font-mono text-[10px] leading-4 text-[var(--text-4)]">
+                {isSkillLike ? "Claude → Settings → Skills" : "Zip is your off-platform backup"}
               </p>
             </div>
-
-            {sourceUrl && (
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                <a
-                  href={sourceUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={cn(buttonStyles({ variant: "primary", size: "sm" }), "inline-flex items-center gap-1.5")}
-                >
-                  View &amp; use
-                  <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
-                </a>
-                {sourceLabel && (
-                  <span className="font-mono text-[11px] text-[var(--text-4)]">
-                    based on <span className="text-[var(--text-3)]">{sourceLabel}</span>
-                  </span>
-                )}
-              </div>
-            )}
-
-            {starter.tags.length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-1.5">
-                {starter.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-3)]"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {scan && (
-              <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-[var(--mist-border)] bg-[var(--mist)] px-4 py-3">
-                <p className="text-xs text-[var(--text-2)]">
-                  Link this starter to the scan of{" "}
-                  <span className="font-semibold text-[var(--text-1)]">{scan.projectName || "this project"}</span>?
-                </p>
-                <button
-                  type="button"
-                  onClick={handleAdopt}
-                  disabled={adopting}
-                  className="inline-flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
-                >
-                  <CheckIcon className="h-4 w-4" />
-                  Use this starter
-                  <ArrowRightIcon className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            )}
           </div>
-        </section>
 
-        {hasOverview && (
-          <section className="widget-card">
-            <div className="widget-header">
-              <span className="widget-header__label">
-                <span className="widget-header__label--number">02</span>
-                {" // OVERVIEW"}
-              </span>
+          {scan && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-[var(--mist-border)] bg-[var(--mist)] px-4 py-2.5">
+              <p className="text-xs text-[var(--text-2)]">
+                Link this starter to the scan of{" "}
+                <span className="font-semibold text-[var(--text-1)]">{scan.projectName || "this project"}</span>?
+              </p>
+              <button
+                type="button"
+                onClick={handleAdopt}
+                disabled={adopting}
+                className="inline-flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              >
+                <CheckIcon className="h-4 w-4" />
+                Use this starter
+                <ArrowRightIcon className="h-3.5 w-3.5" />
+              </button>
             </div>
-            <div className="flex flex-1 flex-col divide-y divide-[var(--border-2)]">
+          )}
+
+          {hasOverview && (
+            <div className="mt-4 grid gap-x-6 gap-y-3 border-t border-[var(--border-2)] pt-4 sm:grid-cols-2">
               {starter.description && (
-                <div className="px-5 py-5">
-                  <p className="widget-data-label mb-2.5">About</p>
+                <div className={cn(whatYouGet.length === 0 && install.length === 0 && "sm:col-span-2")}>
+                  <p className="widget-data-label mb-1.5">About</p>
                   <div className="text-sm leading-6 text-[var(--text-2)]">
                     <Markdown>{starter.description}</Markdown>
                   </div>
                 </div>
               )}
 
-              {whatYouGet.length > 0 && (
-                <div className="px-5 py-5">
-                  <p className="widget-data-label mb-2.5">What you get</p>
-                  <ul className="space-y-2">
-                    {whatYouGet.map((item, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-2)]">
-                        <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              {(whatYouGet.length > 0 || install.length > 0) && (
+                <div className="space-y-3">
+                  {whatYouGet.length > 0 && (
+                    <div>
+                      <p className="widget-data-label mb-1.5">What you get</p>
+                      <ul className="space-y-1.5">
+                        {whatYouGet.map((item, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-2)]">
+                            <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
-              {install.length > 0 && (
-                <div className="px-5 py-5">
-                  <p className="widget-data-label mb-2.5">Install</p>
-                  <ol className="space-y-2">
-                    {install.map((step, i) => (
-                      <li key={i} className="flex items-start gap-3 text-sm text-[var(--text-2)]">
-                        <span className="mt-0.5 font-mono text-[11px] font-semibold text-[var(--brand-700)]">
-                          {String(i + 1).padStart(2, "0")}
-                        </span>
-                        {step}
-                      </li>
-                    ))}
-                  </ol>
+                  {install.length > 0 && (
+                    <div>
+                      <p className="widget-data-label mb-1.5">Install</p>
+                      <ol className="space-y-1.5">
+                        {install.map((step, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-2)]">
+                            <span className="mt-0.5 font-mono text-[11px] font-semibold text-[var(--brand-700)]">
+                              {String(i + 1).padStart(2, "0")}
+                            </span>
+                            {step}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
                 </div>
               )}
 
               {techStack.length > 0 && (
-                <div className="px-5 py-5">
-                  <p className="widget-data-label mb-2.5">Stack</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {techStack.map((t) => (
-                      <span
-                        key={t}
-                        className="inline-flex items-center rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-2)]"
-                      >
-                        {t}
-                      </span>
-                    ))}
-                  </div>
+                <div className="sm:col-span-2 flex flex-wrap items-center gap-1.5">
+                  <p className="widget-data-label mr-1">Stack</p>
+                  {techStack.map((t) => (
+                    <span
+                      key={t}
+                      className="inline-flex items-center rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-2)]"
+                    >
+                      {t}
+                    </span>
+                  ))}
                 </div>
               )}
             </div>
-          </section>
-        )}
-      </div>
+          )}
+        </div>
+      </section>
 
       {/* Main piece — the actual prompt gets the full page width and the most visual weight;
           everything above is context for this. */}
@@ -353,7 +360,7 @@ export function StarterDetail({ starterId }: { starterId: string }) {
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">03</span>
+              <span className="widget-header__label--number">02</span>
               {" // PROMPT"}
             </span>
           </div>
