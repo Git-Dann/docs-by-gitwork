@@ -55,9 +55,9 @@ export function AccountSettingsPanel() {
           {/* Avatar column */}
           <div className="space-y-2.5">
             <span className="text-sm font-medium text-[var(--text-2)]">Profile image</span>
-            <div className="h-40 w-full overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]">
+            <div className="aspect-square w-full max-w-[200px] overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-1)]">
               {resolved.isInitials ? (
-                <div className="flex h-full w-full items-center justify-center bg-[var(--surface-brand)] text-3xl font-semibold text-[var(--brand-700)]">
+                <div className="flex h-full w-full items-center justify-center bg-[var(--surface-brand)] text-4xl font-semibold text-[var(--brand-700)]">
                   {initials}
                 </div>
               ) : (
