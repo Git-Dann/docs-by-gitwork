@@ -19,6 +19,7 @@ import {
   DocumentStatus,
   type WorkspaceClientStatus,
   type WikiMonitorType,
+  type WikiPageType,
   type Prisma as PrismaTypes,
 } from "@prisma/client";
 import type { EffectiveUser } from "@/server/auth/effective-user";
@@ -51,6 +52,7 @@ import {
 } from "@/server/clients";
 import { listConversations, listSupportClients } from "@/server/support";
 import { createMonitor, loadWikiMonitors } from "@/server/wiki-monitors";
+import { getOrCreateWiki, upsertWikiPage, deleteWikiPage } from "@/server/wiki";
 import {
   assignedClientIds,
   listTasks,
@@ -356,6 +358,43 @@ const addMonitorSchema = z.object({
 });
 
 const listMonitorsSchema = z.object({ client: z.string().min(1) });
+
+// ── wiki pages ──
+const WIKI_PAGE_TYPE_VALUES = [
+  "IA_GUIDE",
+  "DEV_API_GUIDE",
+  "API_DOCS",
+  "ARCHITECTURE",
+  "RUNBOOK",
+  "DATA_MODEL",
+  "APP_STORE_IOS",
+  "APP_STORE_ANDROID",
+  "APP_STORE_FIRESTICK",
+  "SYSTEM_STATUS",
+  "CUSTOM",
+] as const;
+// Page content is a markdown string for prose pages, or a structured object/array for the few
+// structured types (e.g. API_DOCS → { endpoints: [...] }). Accept any of them.
+const wikiPageContentSchema = z.union([
+  z.string(),
+  z.record(z.string(), z.unknown()),
+  z.array(z.unknown()),
+]);
+const listWikiSchema = z.object({ client: z.string().min(1) });
+const getWikiPageSchema = z.object({
+  client: z.string().min(1),
+  type: z.enum(WIKI_PAGE_TYPE_VALUES),
+});
+const upsertWikiPageSchema = z.object({
+  client: z.string().min(1),
+  type: z.enum(WIKI_PAGE_TYPE_VALUES),
+  title: z.string().min(1).max(200),
+  content: wikiPageContentSchema.optional(),
+});
+const deleteWikiPageSchema = z.object({
+  client: z.string().min(1),
+  type: z.enum(WIKI_PAGE_TYPE_VALUES),
+});
 
 const listTasksSchema = z.object({
   client: z.string().optional(),
@@ -772,6 +811,165 @@ const TOOLS: ToolDef[] = [
         section,
         `${resolved.name} — ${section.monitors.length} monitor${section.monitors.length === 1 ? "" : "s"}` +
           `${section.enabled ? "" : " (section currently hidden)"}.`,
+      );
+    },
+  },
+  {
+    name: "list_wiki",
+    description:
+      "Overview of a client's wiki — which pages exist (type, title, last updated) and which of the " +
+      "11 page types are still empty, plus counts for the other sections (changelog, monitors, " +
+      "documents, requests, team). Use this to see what's there before upsert_wiki_page / get_wiki_page. " +
+      "Resolve the client by slug, name, or cuid.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+      },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = listWikiSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const wiki = await getOrCreateWiki(resolved.id);
+      const present = new Set(wiki.pages.map((p) => p.type));
+      const pages = wiki.pages.map((p) => ({
+        type: p.type,
+        title: p.title,
+        updatedAt: p.updatedAt,
+        contentType: typeof p.content === "string" ? "markdown" : p.content == null ? "empty" : "structured",
+        preview:
+          typeof p.content === "string"
+            ? p.content.slice(0, 200) + (p.content.length > 200 ? "…" : "")
+            : undefined,
+      }));
+      const overview = {
+        client: { id: resolved.id, slug: resolved.slug, name: resolved.name },
+        shareEnabled: wiki.shareEnabled,
+        pages,
+        emptyPageTypes: WIKI_PAGE_TYPE_VALUES.filter((t) => !present.has(t)),
+        sections: {
+          changelog: wiki.changelog.length,
+          courseRequests: wiki.courseRequests.length,
+          intakeItems: wiki.intakeItems.length,
+          monitors: wiki.monitors.monitors.length,
+          documents: wiki.documents.documents.length,
+          users: wiki.users.length,
+          team: wiki.team.length,
+        },
+      };
+      return textResult(
+        overview,
+        `${resolved.name} wiki — ${pages.length} page${pages.length === 1 ? "" : "s"}, ${
+          overview.emptyPageTypes.length
+        } type${overview.emptyPageTypes.length === 1 ? "" : "s"} still empty.`,
+      );
+    },
+  },
+  {
+    name: "get_wiki_page",
+    description:
+      "Get the full content of one wiki page by type (e.g. RUNBOOK, ARCHITECTURE, API_DOCS). " +
+      "Content is markdown for prose pages, or a structured object for a few types. Resolve the " +
+      "client by slug, name, or cuid.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        type: {
+          type: "string",
+          enum: [...WIKI_PAGE_TYPE_VALUES],
+          description: "Which wiki page to fetch.",
+        },
+      },
+      required: ["client", "type"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = getWikiPageSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const wiki = await getOrCreateWiki(resolved.id);
+      const page = wiki.pages.find((p) => p.type === parsed.type);
+      if (!page) {
+        return textResult(
+          { exists: false, type: parsed.type },
+          `${resolved.name} has no ${parsed.type} page yet — create one with upsert_wiki_page.`,
+        );
+      }
+      return textResult(page, `${resolved.name} — ${parsed.type}: "${page.title}".`);
+    },
+  },
+  {
+    name: "upsert_wiki_page",
+    description:
+      "Create or update ANY of a client wiki's 11 page types — IA_GUIDE, DEV_API_GUIDE, API_DOCS, " +
+      "ARCHITECTURE, RUNBOOK, DATA_MODEL, APP_STORE_IOS, APP_STORE_ANDROID, APP_STORE_FIRESTICK, " +
+      "SYSTEM_STATUS, CUSTOM. One page per type per client; calling again overwrites it (and unhides " +
+      "the sidebar section). `content` is markdown for prose pages, or a structured object for a few " +
+      "types (e.g. API_DOCS → { endpoints: [...] }). Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        type: {
+          type: "string",
+          enum: [...WIKI_PAGE_TYPE_VALUES],
+          description: "Which wiki page to write.",
+        },
+        title: { type: "string", description: "Page title shown in the sidebar + header." },
+        content: {
+          type: ["string", "object", "array"],
+          description: "Markdown string for prose pages, or a structured object/array for typed pages.",
+        },
+      },
+      required: ["client", "type", "title"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit the wiki");
+      const parsed = upsertWikiPageSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const page = await upsertWikiPage(resolved.id, {
+        type: parsed.type as WikiPageType,
+        title: parsed.title,
+        content: parsed.content,
+      });
+      return textResult(
+        { id: page.id, type: page.type, title: page.title, updatedAt: page.updatedAt },
+        `Saved ${parsed.type} page "${page.title}" on ${resolved.name}.`,
+      );
+    },
+  },
+  {
+    name: "delete_wiki_page",
+    description:
+      "Delete a client wiki page by type and hide its sidebar section until re-added. Requires the " +
+      "'Manage clients' permission. Only the sidebar page types (IA_GUIDE, DEV_API_GUIDE, API_DOCS, " +
+      "ARCHITECTURE, RUNBOOK, DATA_MODEL) are removable this way.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        type: {
+          type: "string",
+          enum: [...WIKI_PAGE_TYPE_VALUES],
+          description: "Which wiki page to delete.",
+        },
+      },
+      required: ["client", "type"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit the wiki");
+      const parsed = deleteWikiPageSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const result = await deleteWikiPage(resolved.id, { type: parsed.type as WikiPageType });
+      return textResult(
+        result,
+        result.deleted
+          ? `Deleted ${parsed.type} page from ${resolved.name}.`
+          : `No ${parsed.type} page to delete on ${resolved.name}.`,
       );
     },
   },
