@@ -280,6 +280,14 @@ export function AppShell({
 
       {/* ── Mobile nav dropdown (drops below header, overlays content) ── */}
       {mobileOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={() => setMobileOpen(false)}
+          className="absolute inset-0 top-[56px] z-30 bg-[var(--surface-canvas)]/60 backdrop-blur-[1px] lg:hidden"
+        />
+      )}
+      {mobileOpen && (
         <div className="absolute inset-x-0 top-[56px] z-40 flex max-h-[calc(100dvh-56px)] flex-col overflow-y-auto border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_60%)] shadow-xl lg:hidden">
           <div className="px-3 py-4">
             <nav className="space-y-1">
@@ -706,7 +714,7 @@ function ProfileMenu({
       {open ? (
         <div
           className={cn(
-            "absolute bottom-[calc(100%+12px)] z-50 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-2 shadow-[var(--shadow-lg)]",
+            "absolute bottom-[calc(100%+12px)] z-50 max-h-[70vh] overflow-y-auto rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-2 shadow-[var(--shadow-lg)]",
             collapsed ? "left-0 w-72" : "left-0 right-0",
           )}
         >

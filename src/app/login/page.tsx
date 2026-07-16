@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { useFormStatus } from "react-dom";
+import { useSession } from "next-auth/react";
 import { signInWithGoogle } from "./actions";
 
 // Match the client portal login (src/components/portal/portal-login-form.tsx):
@@ -89,6 +90,9 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/app";
   const authError = searchParams.get("error");
+  // Already signed in? Don't bounce back through Google — offer a direct way in.
+  const { status: authStatus } = useSession();
+  const isAuthed = authStatus === "authenticated";
 
   return (
     <div
@@ -123,10 +127,20 @@ function LoginForm() {
             </p>
           )}
 
-          <form action={signInWithGoogle} className="mt-7">
-            <input type="hidden" name="callbackUrl" value={callbackUrl} />
-            <GoogleButton />
-          </form>
+          {isAuthed ? (
+            <a
+              href={callbackUrl}
+              className="mt-7 flex w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-[15px] font-semibold text-white transition hover:opacity-90"
+              style={{ background: PURPLE }}
+            >
+              Continue to Foundry →
+            </a>
+          ) : (
+            <form action={signInWithGoogle} className="mt-7">
+              <input type="hidden" name="callbackUrl" value={callbackUrl} />
+              <GoogleButton />
+            </form>
+          )}
 
           <p className="mt-4 text-center text-[13px]" style={{ color: FAINT }}>
             Foundry by Gitwork · Gitwork team access only

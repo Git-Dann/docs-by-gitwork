@@ -84,7 +84,7 @@ export function AccountSettingsPanel() {
                 setSaveError(null);
               }}
               previewClassName="h-40 w-full"
-              imageClassName="object-cover"
+              imageClassName="object-contain"
             />
             {hasCustomAvatar || avatarUrl !== googleAvatarUrl ? (
               <button

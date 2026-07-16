@@ -247,8 +247,10 @@ export function SettingsShell({
 
   return (
     <div className="grid gap-6 xl:grid-cols-[260px_minmax(0,1fr)]">
-      {/* Mobile: collapsible settings nav (hidden on xl+) */}
-      <div className="xl:hidden">
+      {/* Mobile: collapsible settings nav (hidden on xl+). The expanded panel is
+          absolutely positioned so it floats OVER the page content instead of
+          pushing everything below it down. */}
+      <div className="relative xl:hidden">
         <button
           type="button"
           onClick={() => setMobileNavOpen((v) => !v)}
@@ -268,8 +270,15 @@ export function SettingsShell({
           />
         </button>
         {mobileNavOpen && (
-          <div className="mt-2 space-y-3 rounded-[10px] border border-[var(--border-2)] bg-white p-2 shadow-[var(--shadow-sm)]">
-            {navGroups.map((group) => (
+          <>
+            {/* Tap-away backdrop — closes the menu without shifting layout. */}
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setMobileNavOpen(false)}
+              aria-hidden
+            />
+            <div className="absolute inset-x-0 top-[calc(100%+8px)] z-50 max-h-[70vh] space-y-3 overflow-y-auto rounded-[10px] border border-[var(--border-2)] bg-white p-2 shadow-[var(--shadow-lg)]">
+              {navGroups.map((group) => (
               <div key={group.id}>
                 <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
                   {group.label}
@@ -303,8 +312,9 @@ export function SettingsShell({
                   })}
                 </nav>
               </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 
