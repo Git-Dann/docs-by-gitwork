@@ -3,6 +3,7 @@
 // Portal analytics — a chart-led delivery/cost/capacity backend. GA4-style, on the Foundry
 // widget grammar. Every grid row sums to 12 columns so the bento tiles with no gaps.
 
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import {
   TASK_STATUS_LABELS,
@@ -24,6 +25,7 @@ import {
   MiniColumns,
   Donut,
   ProgressCell,
+  TrendBadge,
   MONO,
   SERIF,
   analyticsTd,
@@ -72,6 +74,9 @@ function shortDate(iso: string): string {
   if (Number.isNaN(d.getTime())) return "—";
   return `${d.getUTCDate()} ${d.toLocaleString("en-GB", { month: "short", timeZone: "UTC" })}`;
 }
+
+const CAPTION: CSSProperties = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" };
+const HERO: CSSProperties = { fontFamily: SERIF, fontSize: 40, lineHeight: 1, letterSpacing: "-0.02em", color: "var(--text-1)" };
 
 function EngagementChip({ type }: { type: Engagement | null }) {
   const e: Engagement = type ?? "UNSET";
@@ -129,6 +134,9 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
   if (!data) return null;
 
   const t = data.totals;
+  const tr = data.trends;
+  const fin = data.financials;
+  const cap = data.capacity;
   const bucket = data.range.bucket;
   const axis = data.throughput.map((b) => formatBucketLabel(b.bucket, bucket));
   const completedSeries = data.throughput.map((b) => b.completed);
@@ -149,16 +157,19 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
     .filter((c) => c.endDate != null)
     .sort((a, b) => (a.daysLeft ?? Infinity) - (b.daysLeft ?? Infinity))
     .slice(0, 8);
+  const totalClientCostAmt = fin.totalClientCost?.amount ?? 0;
 
   return (
     <div className="grid grid-cols-12 gap-4">
       {/* ── Row 1 · KPI scorecard (4 × span-3 = 12) ── */}
       <WidgetCard number="01" label="Completed" className="col-span-12 sm:col-span-6 lg:col-span-3">
-        <div style={{ fontFamily: SERIF, fontSize: 40, lineHeight: 1, letterSpacing: "-0.02em", color: "var(--text-1)" }} className="tabular-nums">
-          {t.completedInRange}
+        <div className="flex items-center gap-2">
+          <div style={HERO} className="tabular-nums">{t.completedInRange}</div>
+          <TrendBadge delta={tr.completed} goodWhen="up" />
         </div>
-        <div className="mt-1" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>
-          {`${t.createdInRange} created · ${formatPct(t.completionRate)} rate`}
+        <div className="mt-1 flex items-center gap-1.5" style={CAPTION}>
+          <span>{`${t.createdInRange} created · ${formatPct(t.completionRate)} rate`}</span>
+          <TrendBadge delta={tr.completionRate} goodWhen="up" compact />
         </div>
         <div className="mt-3 h-8">
           {hasThroughput ? <AreaSparkline points={completedSeries} height={32} /> : null}
@@ -168,44 +179,106 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
       <WidgetCard number="02" label="Open work" className="col-span-12 sm:col-span-6 lg:col-span-3">
         <div className="flex items-end gap-4">
           <div>
-            <div style={{ fontFamily: SERIF, fontSize: 40, lineHeight: 1, letterSpacing: "-0.02em", color: "var(--text-1)" }} className="tabular-nums">{t.openNow}</div>
-            <div className="mt-1" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>Open now</div>
+            <div style={HERO} className="tabular-nums">{t.openNow}</div>
+            <div className="mt-1" style={CAPTION}>Open now</div>
           </div>
           <div className="pb-1">
             <div style={{ fontFamily: SERIF, fontSize: 26, lineHeight: 1, color: t.overdueNow > 0 ? "var(--danger-500)" : "var(--text-2)" }} className="tabular-nums">{t.overdueNow}</div>
-            <div className="mt-1" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>Overdue</div>
+            <div className="mt-1" style={CAPTION}>Overdue</div>
           </div>
         </div>
-        <div className="mt-3" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>
-          {`${t.inProgressNow} in progress`}
+        <div className="mt-3" style={CAPTION}>
+          {`${t.inProgressNow} in progress${t.overdueRate != null ? ` · ${formatPct(t.overdueRate)} overdue` : ""}`}
         </div>
       </WidgetCard>
 
       <WidgetCard number="03" label="Devs on projects" className="col-span-12 sm:col-span-6 lg:col-span-3">
-        <div style={{ fontFamily: SERIF, fontSize: 40, lineHeight: 1, letterSpacing: "-0.02em", color: "var(--text-1)" }} className="tabular-nums">{t.activeDevs}</div>
-        <div className="mt-1" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>Active placements</div>
-        <div className="mt-3" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>
+        <div style={HERO} className="tabular-nums">{t.activeDevs}</div>
+        <div className="mt-1" style={CAPTION}>Active placements</div>
+        <div className="mt-3" style={CAPTION}>
           {t.avgWorkingDays != null ? `${t.avgWorkingDays} avg days / project` : "no dated timeline"}
         </div>
       </WidgetCard>
 
       <WidgetCard number="04" label="Monthly burn" className="col-span-12 sm:col-span-6 lg:col-span-3">
-        <div style={{ fontFamily: SERIF, fontSize: 40, lineHeight: 1, letterSpacing: "-0.02em", color: "var(--text-1)" }} className="tabular-nums">
+        <div style={HERO} className="tabular-nums">
           {t.monthlyCost ? formatMoney(t.monthlyCost.amount, t.monthlyCost.currency) : "—"}
         </div>
-        <div className="mt-1" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>Active dev cost / mo</div>
-        <div className="mt-3" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>
-          {t.leadTimeSamples ? `${formatLeadTimeDays(t.avgLeadTimeMs)} avg lead time` : "no lead-time data"}
+        <div className="mt-1" style={CAPTION}>Active dev cost / mo</div>
+        <div className="mt-3 flex items-center gap-1.5" style={CAPTION}>
+          <span>{t.leadTimeSamples ? `${formatLeadTimeDays(t.avgLeadTimeMs)} avg lead` : "no lead-time data"}</span>
+          {t.leadTimeSamples ? <TrendBadge delta={tr.avgLeadTimeMs} goodWhen="down" compact /> : null}
         </div>
       </WidgetCard>
 
-      {/* ── Row 2 · Throughput trend + status donut (8 + 4) ── */}
+      {/* ── Row 2 · Financials + capacity (8 + 4) ── */}
+      <WidgetCard number="05" label="Client billing" className="col-span-12 lg:col-span-8"
+        status={<span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>billable burn / mo</span>}>
+        {fin.totalClientCost ? (
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            <div className="sm:w-44 sm:shrink-0">
+              <div style={HERO} className="tabular-nums">{formatMoney(fin.totalClientCost.amount, fin.totalClientCost.currency)}</div>
+              <div className="mt-1" style={CAPTION}>Total client cost / mo</div>
+              <div className="mt-2" style={CAPTION}>
+                {`${fin.clientsWithCost} client${fin.clientsWithCost === 1 ? "" : "s"} priced${fin.unpricedDevs ? ` · ${fin.unpricedDevs} unpriced dev${fin.unpricedDevs === 1 ? "" : "s"}` : ""}`}
+              </div>
+            </div>
+            <div className="min-w-0 flex-1 space-y-2.5">
+              {fin.costByEngagement.map((e) => {
+                const pct = Math.round((e.amount / Math.max(1, totalClientCostAmt)) * 100);
+                const type = e.type as Engagement;
+                return (
+                  <div key={e.type}>
+                    <div className="mb-1 flex items-baseline justify-between gap-2">
+                      <span className="truncate text-xs font-medium text-[var(--text-2)]">{ENGAGEMENT_LABEL[type]}</span>
+                      <span className="tabular-nums" style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-2)" }}>
+                        {formatMoney(e.amount, fin.totalClientCost?.currency)}
+                        <span className="text-[var(--text-4)]">{` · ${pct}%`}</span>
+                      </span>
+                    </div>
+                    <span className="widget-progress block h-1.5 w-full">
+                      <span className="widget-progress__fill block h-full" style={{ width: `${pct}%`, background: engagementColor(type) }} />
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-[var(--text-4)]">No priced client cost yet — link dev rates in Code → Rate Card.</p>
+        )}
+      </WidgetCard>
+
+      <WidgetCard number="06" label="Capacity" className="col-span-12 lg:col-span-4">
+        <div className="flex items-baseline gap-2">
+          <div style={HERO} className="tabular-nums">{cap.contributingDevs}</div>
+          <div className="text-sm text-[var(--text-4)] tabular-nums" style={{ fontFamily: MONO }}>{`/ ${cap.rosterDevs}`}</div>
+        </div>
+        <div className="mt-1" style={CAPTION}>Devs contributing</div>
+        <div className="mt-3 space-y-1.5" style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-3)" }}>
+          <div className="flex items-center justify-between">
+            <span style={CAPTION}>Idle on roster</span>
+            <span className="tabular-nums" style={{ color: cap.idleDevs > 0 ? "var(--warning-500)" : "var(--text-3)" }}>{cap.idleDevs}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span style={CAPTION}>Avg open / dev</span>
+            <span className="tabular-nums">{cap.avgOpenPerDev ?? "—"}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span style={CAPTION}>Avg done / dev</span>
+            <span className="tabular-nums">{cap.avgCompletedPerDev ?? "—"}</span>
+          </div>
+        </div>
+      </WidgetCard>
+
+      {/* ── Row 3 · Throughput trend + status donut (8 + 4) ── */}
       <WidgetCard
-        number="05"
+        number="07"
         label="Throughput"
         className="col-span-12 lg:col-span-8"
         status={
           <span className="inline-flex items-center gap-3" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            <TrendBadge delta={tr.completed} goodWhen="up" compact />
             <span className="inline-flex items-center gap-1.5 text-[var(--text-3)]"><span className="inline-block h-0.5 w-3" style={{ background: "var(--brand-500)" }} /> Completed</span>
             <span className="inline-flex items-center gap-1.5 text-[var(--text-4)]"><span className="inline-block h-0.5 w-3 border-t border-dashed" style={{ borderColor: "var(--text-4)" }} /> Created</span>
           </span>
@@ -221,7 +294,7 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         {hasThroughput ? <AxisLabels labels={axis} /> : null}
       </WidgetCard>
 
-      <WidgetCard number="06" label="Status mix" className="col-span-12 lg:col-span-4">
+      <WidgetCard number="08" label="Status mix" className="col-span-12 lg:col-span-4">
         {statusTotal ? (
           <Donut
             centerLabel="tasks"
@@ -232,8 +305,8 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         )}
       </WidgetCard>
 
-      {/* ── Row 3 · Net flow + cumulative + priority (4 + 4 + 4) ── */}
-      <WidgetCard number="07" label="Net flow" className="col-span-12 lg:col-span-4"
+      {/* ── Row 4 · Net flow + cumulative + priority (4 + 4 + 4) ── */}
+      <WidgetCard number="09" label="Net flow" className="col-span-12 lg:col-span-4"
         status={<span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>done − created</span>}>
         <div className="h-28">
           {hasThroughput ? (
@@ -245,17 +318,17 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         <p className="mt-2 text-[10px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>Green = burning down · red = backlog growing</p>
       </WidgetCard>
 
-      <WidgetCard number="08" label="Cumulative done" className="col-span-12 lg:col-span-4">
+      <WidgetCard number="10" label="Cumulative done" className="col-span-12 lg:col-span-4">
         <div style={{ fontFamily: SERIF, fontSize: 28, lineHeight: 1, color: "var(--text-1)" }} className="tabular-nums">
           {cumulativeDone[cumulativeDone.length - 1] ?? 0}
         </div>
-        <div className="mt-1" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>Completed, cumulative</div>
+        <div className="mt-1" style={CAPTION}>Completed, cumulative</div>
         <div className="mt-2 h-20">
           {hasThroughput ? <AreaSparkline points={cumulativeDone} height={80} color="var(--brand-600)" /> : null}
         </div>
       </WidgetCard>
 
-      <WidgetCard number="09" label="Priority mix" className="col-span-12 lg:col-span-4">
+      <WidgetCard number="11" label="Priority mix" className="col-span-12 lg:col-span-4">
         {priorityTotal ? (
           <Donut
             centerLabel="open"
@@ -266,8 +339,8 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         )}
       </WidgetCard>
 
-      {/* ── Row 4 · Lead-time histogram + client cost (6 + 6) ── */}
-      <WidgetCard number="10" label="Lead time" className="col-span-12 lg:col-span-6"
+      {/* ── Row 5 · Lead-time histogram + client cost (6 + 6) ── */}
+      <WidgetCard number="12" label="Lead time" className="col-span-12 lg:col-span-6"
         status={<span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>doing → done</span>}>
         {t.leadTimeSamples ? (
           <>
@@ -277,14 +350,17 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
                 <span key={b.label} className="flex-1 text-center">{b.label}</span>
               ))}
             </div>
-            <p className="mt-2 text-[10px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>{t.leadTimeSamples} timed · {formatLeadTimeDays(t.avgLeadTimeMs)} avg</p>
+            <p className="mt-2 flex items-center gap-1.5 text-[10px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+              <span>{t.leadTimeSamples} timed · {formatLeadTimeDays(t.avgLeadTimeMs)} avg</span>
+              <TrendBadge delta={tr.avgLeadTimeMs} goodWhen="down" compact />
+            </p>
           </>
         ) : (
           <p className="text-sm text-[var(--text-4)]">No lead-time data (tasks need a DOING → DONE transition).</p>
         )}
       </WidgetCard>
 
-      <WidgetCard number="11" label="Cost by client" className="col-span-12 lg:col-span-6">
+      <WidgetCard number="13" label="Cost by client" className="col-span-12 lg:col-span-6">
         {topCost.length ? (
           <div className="space-y-2.5">
             {topCost.map((c) => {
@@ -311,8 +387,8 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         )}
       </WidgetCard>
 
-      {/* ── Row 5 · Engagement mix + ending soon (4 + 8) ── */}
-      <WidgetCard number="12" label="Engagement mix" className="col-span-12 lg:col-span-4">
+      {/* ── Row 6 · Engagement mix + ending soon (4 + 8) ── */}
+      <WidgetCard number="14" label="Engagement mix" className="col-span-12 lg:col-span-4">
         {engagementTotal ? (
           <Donut
             centerLabel="clients"
@@ -323,8 +399,13 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         )}
       </WidgetCard>
 
-      <WidgetCard number="13" label="Ending soon" className="col-span-12 lg:col-span-8"
-        status={<span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>fixed / phased engagements</span>}>
+      <WidgetCard number="15" label="Ending soon" className="col-span-12 lg:col-span-8"
+        status={
+          <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>
+            {`${t.clientsEndingSoon} ≤30d`}
+            {t.clientsPastEnd ? <span style={{ color: "var(--danger-500)" }}>{` · ${t.clientsPastEnd} overrun`}</span> : null}
+          </span>
+        }>
         {endingSoon.length ? (
           <div className="space-y-2.5">
             {endingSoon.map((c) => {
@@ -358,8 +439,8 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         )}
       </WidgetCard>
 
-      {/* ── Row 6 · Dev output + client activity tables (5 + 7) ── */}
-      <WidgetCard number="14" label="Dev output" className="col-span-12 lg:col-span-5" bodyClassName="p-0">
+      {/* ── Row 7 · Dev output + client activity tables (5 + 7) ── */}
+      <WidgetCard number="16" label="Dev output" className="col-span-12 lg:col-span-5" bodyClassName="p-0">
         {data.leaderboard.length ? (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">
@@ -397,7 +478,7 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         )}
       </WidgetCard>
 
-      <WidgetCard number="15" label="Client activity" className="col-span-12 lg:col-span-7" bodyClassName="p-0">
+      <WidgetCard number="17" label="Client activity" className="col-span-12 lg:col-span-7" bodyClassName="p-0">
         {data.clients.length ? (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">

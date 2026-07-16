@@ -54,7 +54,26 @@ interface Member {
   createdAt: string;
   /** True once the member has actually signed in (Google OAuth captured); false = provisioned/invited only. */
   hasSignedIn: boolean;
-  user: { id: string; name: string | null; email: string };
+  user: { id: string; name: string | null; email: string; avatarUrl?: string | null };
+}
+
+/** Member avatar: profile photo when present, initial fallback otherwise. */
+function MemberAvatar({ user, size = 32 }: { user: Member["user"]; size?: number }) {
+  const initial = (user.name ?? user.email)[0]?.toUpperCase() ?? "?";
+  if (user.avatarUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- dynamic user avatar, not a static asset
+      <img src={user.avatarUrl} alt="" width={size} height={size} className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />
+    );
+  }
+  return (
+    <div
+      className="flex shrink-0 items-center justify-center rounded-full bg-[var(--brand-100)] font-semibold text-[var(--brand-700)]"
+      style={{ width: size, height: size, fontSize: size <= 32 ? 12 : 14 }}
+    >
+      {initial}
+    </div>
+  );
 }
 
 export function TeamSection() {
@@ -270,9 +289,7 @@ export function TeamSection() {
                   className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-6 py-3.5 sm:grid-cols-[minmax(0,1fr)_110px_minmax(0,220px)_80px]"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--brand-100)] text-xs font-semibold text-[var(--brand-700)]">
-                      {(m.user.name ?? m.user.email)[0].toUpperCase()}
-                    </div>
+                    <MemberAvatar user={m.user} size={32} />
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="truncate text-sm font-medium text-[var(--text-1)]">
@@ -610,9 +627,7 @@ function MemberAccessModal({
         {/* Header */}
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--border-2)] px-6 py-4">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--brand-100)] text-sm font-semibold text-[var(--brand-700)]">
-              {(member.user.name ?? member.user.email)[0].toUpperCase()}
-            </div>
+            <MemberAvatar user={member.user} size={40} />
             <div className="min-w-0">
               <p className="app-eyebrow">Edit member</p>
               <h2 className="mt-0.5 truncate text-lg font-semibold text-[var(--text-1)]">

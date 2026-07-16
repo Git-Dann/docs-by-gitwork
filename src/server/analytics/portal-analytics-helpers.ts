@@ -91,3 +91,45 @@ export function tallyDevOutput(
 export function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
+
+/** Period-over-period comparison for a single metric. `deltaPct` is a signed ratio (0.12 = +12%). */
+export interface Delta {
+  current: number | null;
+  previous: number | null;
+  /** (current − previous) / previous. null when it can't be expressed (no previous, or grew from 0). */
+  deltaPct: number | null;
+  direction: "up" | "down" | "flat";
+}
+
+/**
+ * Pure period-over-period delta. Handles the awkward cases explicitly:
+ *  - either side null → flat, no percentage (not enough data to compare)
+ *  - previous 0, current 0 → flat, 0%
+ *  - previous 0, current > 0 → up, but no finite percentage (∞) → deltaPct null
+ */
+export function computeDelta(current: number | null, previous: number | null): Delta {
+  if (current == null || previous == null) {
+    return { current, previous, deltaPct: null, direction: "flat" };
+  }
+  if (previous === 0) {
+    return { current, previous, deltaPct: current === 0 ? 0 : null, direction: current > 0 ? "up" : "flat" };
+  }
+  const deltaPct = round2((current - previous) / previous);
+  const direction = current > previous ? "up" : current < previous ? "down" : "flat";
+  return { current, previous, deltaPct, direction };
+}
+
+/** Mean DOING→DONE lead time (ms) over completed rows that carry both timestamps; null if none. */
+export function meanLeadTimeMs(
+  rows: Array<{ startedAt: Date | null; completedAt: Date | null }>,
+): number | null {
+  let sum = 0;
+  let n = 0;
+  for (const r of rows) {
+    if (r.startedAt && r.completedAt) {
+      sum += Math.max(0, r.completedAt.getTime() - r.startedAt.getTime());
+      n += 1;
+    }
+  }
+  return n ? Math.round(sum / n) : null;
+}

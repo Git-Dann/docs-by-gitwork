@@ -14,6 +14,7 @@ import {
   StatTile,
   BarMeter,
   DualSparkline,
+  TrendBadge,
   MONO,
   SERIF,
   analyticsTd,
@@ -76,11 +77,15 @@ export function AiUsageSection({ days }: { days?: number }) {
       >
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <div style={{ fontFamily: SERIF, fontSize: 44, lineHeight: 1, letterSpacing: "-0.02em", color: "var(--text-1)" }} className="tabular-nums">
-              {formatUsd(data.totals.costUsd)}
+            <div className="flex items-center gap-2">
+              <div style={{ fontFamily: SERIF, fontSize: 44, lineHeight: 1, letterSpacing: "-0.02em", color: "var(--text-1)" }} className="tabular-nums">
+                {formatUsd(data.totals.costUsd)}
+              </div>
+              <TrendBadge delta={data.trends.costUsd} goodWhen="down" />
             </div>
-            <div className="mt-1" style={{ fontFamily: MONO, fontSize: 10, fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>
-              {`Estimated · ${data.totals.calls} calls`}
+            <div className="mt-1 flex items-center gap-1.5" style={{ fontFamily: MONO, fontSize: 10, fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>
+              <span>{`Estimated · ${data.totals.calls} calls`}</span>
+              <TrendBadge delta={data.trends.calls} goodWhen="neutral" compact />
             </div>
           </div>
         </div>
