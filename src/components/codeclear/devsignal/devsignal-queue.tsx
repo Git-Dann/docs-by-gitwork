@@ -29,6 +29,7 @@ export function DevSignalQueue() {
 
   const items = assessments.data?.items ?? [];
   const a = analytics.data?.analytics;
+  const hasFunnel = Boolean(a?.funnel && a.funnel[0]?.n > 0);
 
   return (
     <div className="space-y-6">
@@ -59,16 +60,17 @@ export function DevSignalQueue() {
         </div>
       </div>
 
-      {/* Analytics strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <StatCard n="01" label="Assessed" value={a?.total ?? 0} />
-        <StatCard n="02" label="Pending review" value={a?.byStatus?.PENDING_HUMAN ?? 0} />
-        <StatCard n="03" label="Promoted to Code" value={a?.promotedToCode ?? 0} />
-        <StatCard n="04" label="Outcomes linked" value={a?.outcomeLinks ?? 0} />
-        <StatCard n="05" label="Avg score" value={a?.averageFinalScore ?? "—"} />
+      {/* Top band — stat tiles + a compact funnel share one row on wide screens. */}
+      <div className={hasFunnel ? "grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px]" : ""}>
+        <div className={hasFunnel ? "grid grid-cols-2 gap-3 sm:grid-cols-3" : "grid grid-cols-2 gap-3 sm:grid-cols-5"}>
+          <StatCard n="01" label="Assessed" value={a?.total ?? 0} />
+          <StatCard n="02" label="Pending" value={a?.byStatus?.PENDING_HUMAN ?? 0} />
+          <StatCard n="03" label="Promoted" value={a?.promotedToCode ?? 0} />
+          <StatCard n="04" label="Outcomes" value={a?.outcomeLinks ?? 0} />
+          <StatCard n="05" label="Avg score" value={a?.averageFinalScore ?? "—"} />
+        </div>
+        {hasFunnel && a?.funnel && <CompletionFunnel funnel={a.funnel} />}
       </div>
-
-      {a?.funnel && a.funnel[0]?.n > 0 && <CompletionFunnel funnel={a.funnel} />}
 
       {/* Queue — starter-style candidate cards (matches /app/starters) */}
       <div>
@@ -121,7 +123,7 @@ function CompletionFunnel({ funnel }: { funnel: Array<{ key: string; label: stri
   const start = funnel[0]?.n || 1;
   return (
     <WidgetCard number="06" name="Completion funnel">
-      <ul className="space-y-2">
+      <ul className="space-y-1.5">
         {funnel.map((f, i) => {
           const pct = Math.round((f.n / start) * 100);
           const prev = i > 0 ? funnel[i - 1].n : f.n;
@@ -129,22 +131,19 @@ function CompletionFunnel({ funnel }: { funnel: Array<{ key: string; label: stri
           // Colour the row by retention vs the top of the funnel.
           const tone: Tone = pct >= 90 ? "success" : pct >= 70 ? "brand" : pct >= 50 ? "warning" : "danger";
           return (
-            <li key={f.key} className="flex items-center gap-3">
-              <span className="w-20 shrink-0 truncate font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--text-3)]">
+            <li key={f.key} className="flex items-center gap-2">
+              <span className="w-16 shrink-0 truncate font-mono text-[9px] uppercase tracking-[0.06em] text-[var(--text-3)]">
                 {f.label}
               </span>
               <Meter value={pct} tone={tone} className="flex-1" />
-              <span className="w-10 shrink-0 text-right font-serif text-sm text-[var(--text-1)]">{f.n}</span>
-              <span className="w-16 shrink-0 text-right font-mono text-[10px] text-[var(--text-4)]">
-                {pct}%{i > 0 && dropped > 0 ? ` · −${dropped}` : ""}
+              <span className="w-5 shrink-0 text-right font-serif text-sm leading-none text-[var(--text-1)]">{f.n}</span>
+              <span className="w-14 shrink-0 text-right font-mono text-[9px] text-[var(--text-4)]">
+                {pct}%{i > 0 && dropped > 0 ? ` −${dropped}` : ""}
               </span>
             </li>
           );
         })}
       </ul>
-      <p className="mt-3 border-t border-[var(--border-2)] pt-2 text-[11px] text-[var(--text-4)]">
-        Where candidates drop off — a big fall between two steps is friction worth fixing.
-      </p>
     </WidgetCard>
   );
 }
