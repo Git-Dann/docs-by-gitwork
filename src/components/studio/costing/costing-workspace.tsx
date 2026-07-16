@@ -37,12 +37,10 @@ export function CostingWorkspace() {
   const preview = useCostingPreview();
   const fxPrefilled = useRef(false);
 
-  // Reset inputs to the package's sensible defaults whenever the package changes.
   useEffect(() => {
     setForm(seedForm(pkg));
   }, [pkg]);
 
-  // Prefill FX from the live rate once (unless already touched).
   useEffect(() => {
     if (!fxPrefilled.current && cfg.data?.defaults?.fxFromUsd) {
       fxPrefilled.current = true;
@@ -68,7 +66,7 @@ export function CostingWorkspace() {
   }, [result?.marginPercent]);
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto">
+    <div className="h-full min-h-0 overflow-y-auto pb-2">
       {/* Package picker */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {COSTING_PACKAGES.map((p) => {
@@ -94,39 +92,70 @@ export function CostingWorkspace() {
         })}
       </div>
 
-      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+      <div className="mt-3 grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2">
         {/* Inputs */}
-        <div className="widget-card">
+        <div className="widget-card h-full">
           <div className="widget-header">
             <span className="widget-header-label">01 // {meta.name.toUpperCase()}</span>
             <span className="widget-header-right widget-data-label">{meta.typical.toUpperCase()}</span>
           </div>
-          <div className="grid grid-cols-2 gap-3 p-4">
+          <div className="flex flex-1 flex-col gap-4 p-4">
             {pkg === "greenfield" ? (
               <>
-                <NumField label="Developers" value={form.devs} onChange={(v) => setField({ devs: v })} />
-                <NumField label="Months" value={form.months} onChange={(v) => setField({ months: v })} />
-                <NumField label="Price / dev / month £" value={form.pricePerDevMonthGbp} onChange={(v) => setField({ pricePerDevMonthGbp: v })} />
+                <Num label="Squad size" unit="developers" value={form.devs} onChange={(v) => setField({ devs: v })} hint="How many embedded developers on the squad." />
+                <Num label="Engagement length" unit="months" value={form.months} onChange={(v) => setField({ months: v })} hint="How long the squad runs. Price = rate × devs × months." />
+                <Num
+                  label="Price per developer / month"
+                  unit="£"
+                  value={form.pricePerDevMonthGbp}
+                  onChange={(v) => setField({ pricePerDevMonthGbp: v })}
+                  hint={`Client rate per developer — from ${gbp(meta.fromGbp)}. Sets the client price.`}
+                />
               </>
             ) : pkg === "care_plan" ? (
               <>
-                <NumField label="Months" value={form.months} onChange={(v) => setField({ months: v })} />
-                <NumField label="Price / month £" value={form.pricePerMonthGbp} onChange={(v) => setField({ pricePerMonthGbp: v })} />
-                <NumField label="Effort days / month" value={form.effortDaysPerMonth} onChange={(v) => setField({ effortDaysPerMonth: v })} />
+                <Num label="Plan length" unit="months" value={form.months} onChange={(v) => setField({ months: v })} hint="How many months the Care Plan runs. Price = fee × months." />
+                <Num
+                  label="Monthly fee"
+                  unit="£"
+                  value={form.pricePerMonthGbp}
+                  onChange={(v) => setField({ pricePerMonthGbp: v })}
+                  hint={`Client's monthly retainer — from ${gbp(meta.fromGbp)}. Sets the client price.`}
+                />
+                <Num
+                  label="Support effort per month"
+                  unit="eng-days"
+                  value={form.effortDaysPerMonth}
+                  onChange={(v) => setField({ effortDaysPerMonth: v })}
+                  hint="Engineer-days you expect to spend each month. Drives the internal cost only — not the price."
+                />
               </>
             ) : (
               <>
-                <NumField label="Target price £" value={form.targetPriceGbp} onChange={(v) => setField({ targetPriceGbp: v })} />
-                <NumField label="Duration (weeks)" value={form.weeks} onChange={(v) => setField({ weeks: v })} />
-                <NumField label="Team size (devs)" value={form.devs} onChange={(v) => setField({ devs: v })} />
+                <Num
+                  label="Target price"
+                  unit="£"
+                  value={form.targetPriceGbp}
+                  onChange={(v) => setField({ targetPriceGbp: v })}
+                  hint={`The fixed price you'll quote — from ${gbp(meta.fromGbp)}. Sets the client price.`}
+                />
+                <Num label="Build effort" unit="weeks" value={form.weeks} onChange={(v) => setField({ weeks: v })} hint="Calendar weeks of build work. Drives the internal cost only — not the price." />
+                <Num label="Team size" unit="developers" value={form.devs} onChange={(v) => setField({ devs: v })} hint="Developers on the build. Drives the internal cost only." />
               </>
             )}
           </div>
 
-          {/* Advanced (collapsed) */}
-          <details className="border-t border-[var(--border-3)] px-4 py-3" open={advancedOpen} onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}>
-            <summary className="widget-data-label cursor-pointer select-none">Advanced cost inputs</summary>
-            <div className="mt-3 grid grid-cols-2 gap-3">
+          {/* Advanced */}
+          <details
+            className="border-t border-[var(--border-3)] px-4 py-3"
+            open={advancedOpen}
+            onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
+          >
+            <summary className="widget-data-label cursor-pointer select-none">Advanced — internal cost basis</summary>
+            <p className="mt-2 text-[12px] leading-snug text-[var(--text-4)]">
+              These tune how the internal cost is estimated. They don&apos;t change the client price — edit any value.
+            </p>
+            <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-1">
                 <span className="widget-data-label">Build seniority</span>
                 <select
@@ -137,50 +166,60 @@ export function CostingWorkspace() {
                   <option value="senior">Senior</option>
                   <option value="mid">Mid</option>
                 </select>
+                <span className="text-[12px] leading-snug text-[var(--text-4)]">Which Rate Card band to blend for the build cost.</span>
               </label>
-              <NumField label="FX USD→GBP" value={config.fxFromUsd} step={0.01} onChange={(v) => setCfg({ fxFromUsd: v ?? ADVANCED_DEFAULTS.fxFromUsd })} />
-              <NumField label="UK review overhead %" value={config.ukReviewOverheadPercent} onChange={(v) => setCfg({ ukReviewOverheadPercent: v ?? 0 })} />
-              <NumField label="Contingency %" value={config.contingencyPercent} onChange={(v) => setCfg({ contingencyPercent: v ?? 0 })} />
-              <NumField label="Build £/day override" value={config.dayRateOverrideGbp} placeholder="from rate card" onChange={(v) => setCfg({ dayRateOverrideGbp: v })} />
+              <Num label="FX rate" unit="USD→GBP" value={config.fxFromUsd} step={0.01} onChange={(v) => setCfg({ fxFromUsd: v ?? ADVANCED_DEFAULTS.fxFromUsd })} hint="Converts the USD Rate Card to GBP. Live rate prefilled." />
+              <Num label="UK review overhead" unit="%" value={config.ukReviewOverheadPercent} onChange={(v) => setCfg({ ukReviewOverheadPercent: v ?? 0 })} hint="UK senior review / QA / deploy, as a % of build cost." />
+              <Num label="Contingency" unit="%" value={config.contingencyPercent} onChange={(v) => setCfg({ contingencyPercent: v ?? 0 })} hint="Delivery buffer on top of build + review." />
+              <Num
+                label="Build day-rate override"
+                unit="£/day"
+                value={config.dayRateOverrideGbp}
+                placeholder="from Rate Card"
+                onChange={(v) => setCfg({ dayRateOverrideGbp: v })}
+                hint="Force a custom build cost day rate. Leave blank to blend it from the Rate Card."
+              />
             </div>
-            <p className="mt-2 text-[12px] text-[var(--text-4)]">
-              {result
-                ? result.usedRateCard
-                  ? `Build cost blended from the Rate Card at ${gbp(result.buildDayRateGbp)}/day.`
-                  : `Using the ${gbp(result.buildDayRateGbp)}/day build override.`
-                : cfg.data && !cfg.data.hasRateCard
-                  ? "No Rate Card people yet — using the fallback build rate."
-                  : " "}
-            </p>
           </details>
         </div>
 
-        {/* Result */}
-        <div className="widget-card">
+        {/* Quote */}
+        <div className="widget-card h-full">
           <div className="widget-header">
             <span className="widget-header-label">02 // QUOTE</span>
             <span className="widget-header-right widget-data-label">{preview.isPending ? "CALCULATING…" : "CLIENT PRICE"}</span>
           </div>
-          <div className="p-4">
-            <div className="widget-stat">{result ? gbp(result.clientPriceGbp) : "—"}</div>
-            <div className="widget-data-label mt-1">{result?.priceBasisLabel ?? ""}</div>
+          <div className="flex flex-1 flex-col p-4">
+            <div className="widget-stat leading-none">{result ? gbp(result.clientPriceGbp) : "—"}</div>
+            <div className="widget-data-label mt-1.5">{result?.priceBasisLabel ?? " "}</div>
 
-            <div className="mt-4 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+            <div className="mt-4 flex flex-1 flex-col rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
               <div className="widget-data-label" style={{ color: "var(--danger-500)" }}>
                 INTERNAL · SUPER ADMIN
               </div>
-              <div className="mt-2 grid grid-cols-2 gap-3">
+              <div className="mt-3 grid grid-cols-2 gap-4">
                 <Readout label="Internal cost" value={result ? gbp(result.internalCostGbp) : "—"} />
                 <Readout label="Margin" value={result ? `${result.marginPercent}%` : "—"} color={marginColor} />
                 <Readout label="Markup" value={result ? `${result.markupPercent}%` : "—"} />
-                <Readout label="Build £/day" value={result ? gbp(result.buildDayRateGbp) : "—"} />
+                <Readout label="Build cost / day" value={result ? gbp(result.buildDayRateGbp) : "—"} />
               </div>
-              {result ? (
-                <p className="mt-3 text-[12px] text-[var(--text-4)]">
-                  Build {gbp(result.breakdown.buildCostGbp)} · UK review {gbp(result.breakdown.ukReviewCostGbp)} · contingency{" "}
-                  {gbp(result.breakdown.contingencyGbp)}
+              <div className="mt-auto pt-4">
+                <div className="widget-data-label">Cost breakdown</div>
+                <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-3)]">
+                  {result
+                    ? `Build ${gbp(result.breakdown.buildCostGbp)} · UK review ${gbp(result.breakdown.ukReviewCostGbp)} · contingency ${gbp(result.breakdown.contingencyGbp)}`
+                    : "Enter the inputs to see the internal breakdown."}
                 </p>
-              ) : null}
+                {result ? (
+                  <p className="mt-1 text-[12px] leading-snug text-[var(--text-4)]">
+                    {result.usedRateCard
+                      ? "Build cost blended from the workspace Rate Card."
+                      : cfg.data && !cfg.data.hasRateCard
+                        ? "No Rate Card people yet — using the fallback build rate."
+                        : "Using the build day-rate override."}
+                  </p>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
@@ -189,22 +228,29 @@ export function CostingWorkspace() {
   );
 }
 
-function NumField({
+function Num({
   label,
+  unit,
   value,
   onChange,
   step,
   placeholder,
+  hint,
 }: {
   label: string;
+  unit?: string;
   value: number | undefined;
   onChange: (v: number | undefined) => void;
   step?: number;
   placeholder?: string;
+  hint?: string;
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="widget-data-label">{label}</span>
+      <span className="widget-data-label">
+        {label}
+        {unit ? <span className="text-[var(--text-4)]"> · {unit}</span> : null}
+      </span>
       <input
         type="number"
         step={step}
@@ -216,6 +262,7 @@ function NumField({
           onChange(raw === "" ? undefined : Number(raw));
         }}
       />
+      {hint ? <span className="text-[12px] leading-snug text-[var(--text-4)]">{hint}</span> : null}
     </label>
   );
 }
