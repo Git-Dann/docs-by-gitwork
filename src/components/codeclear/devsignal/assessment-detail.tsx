@@ -446,12 +446,14 @@ function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
   const decision = useRecordDevSignalDecision(id);
   const promote = usePromoteDevSignalToCode(id);
   const [confirming, setConfirming] = useState(false);
+  const [confirmingReject, setConfirmingReject] = useState(false);
   const [reason, setReason] = useState("");
 
   const setDecision = async (d: "APPROVED_FOR_STAGING" | "REJECTED" | "NEEDS_MORE_INFO") => {
     try {
       await decision.mutateAsync({ decision: d });
       showOk("Decision recorded");
+      setConfirmingReject(false);
     } catch (e) {
       showErr("Failed", e instanceof Error ? e.message : undefined);
     }
@@ -495,7 +497,7 @@ function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
                 <button
                   key={opt.key}
                   type="button"
-                  onClick={() => setDecision(opt.key)}
+                  onClick={() => (opt.key === "REJECTED" ? setConfirmingReject(true) : setDecision(opt.key))}
                   disabled={decision.isPending}
                   className={cn(
                     "flex w-full items-center gap-2.5 rounded-[6px] border px-3 py-2.5 text-left text-sm font-medium transition disabled:opacity-60",
@@ -509,6 +511,28 @@ function DecisionPanel({ id, a }: { id: string; a: DevSignalAssessmentDTO }) {
               );
             })}
           </div>
+
+          {confirmingReject && (
+            <div className="mt-2 space-y-2 rounded-[6px] border border-rose-200 bg-rose-50 p-3">
+              <p className="text-sm text-rose-800">
+                Reject <span className="font-medium">{a.candidateName}</span>? This ends their assessment — they won&apos;t
+                proceed to Code.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="secondary" size="sm" onClick={() => setConfirmingReject(false)}>
+                  Cancel
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setDecision("REJECTED")}
+                  disabled={decision.isPending}
+                  className="ml-auto rounded-[6px] bg-rose-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-rose-700 disabled:opacity-60"
+                >
+                  {decision.isPending ? "Rejecting…" : "Confirm reject"}
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="mt-4 border-t border-[var(--border-3)] pt-4">
             <p className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]">
