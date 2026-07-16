@@ -18,6 +18,8 @@ export interface AccountProfile {
   role: string;
   permissions: string[];
   showDevRates: boolean;
+  /** Workspace master switch for backing up Docs + client archives to Google Drive. */
+  docsBackupEnabled: boolean;
 }
 
 const ACCOUNT_KEY = ["account", "me"] as const;
@@ -49,6 +51,24 @@ export function useToggleDevRates() {
     onSuccess: (_data, showDevRates) => {
       queryClient.setQueryData<AccountProfile>(ACCOUNT_KEY, (prev) =>
         prev ? { ...prev, showDevRates } : prev,
+      );
+    },
+  });
+}
+
+export function useToggleDocsBackup() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (docsBackupEnabled: boolean): Promise<void> => {
+      await apiFetch("/api/settings/docs-backup", {
+        method: "PATCH",
+        body: JSON.stringify({ docsBackupEnabled }),
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+    onSuccess: (_data, docsBackupEnabled) => {
+      queryClient.setQueryData<AccountProfile>(ACCOUNT_KEY, (prev) =>
+        prev ? { ...prev, docsBackupEnabled } : prev,
       );
     },
   });
