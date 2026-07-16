@@ -223,9 +223,9 @@ export function CostingWorkspace() {
                   value={config.buildSeniority}
                   onChange={(e) => setCfg({ buildSeniority: e.target.value as DevTier })}
                 >
-                  <option value="senior">Senior</option>
-                  <option value="mid">Mid</option>
-                  <option value="junior">Junior</option>
+                  <option value="senior">Senior · {gbp(tierRates.senior)}/day</option>
+                  <option value="mid">Mid · {gbp(tierRates.mid)}/day</option>
+                  <option value="junior">Junior · {gbp(tierRates.junior)}/day</option>
                 </select>
                 <span className="text-[12px] leading-snug text-[var(--text-4)]">Which tier rate above to price the build at.</span>
               </label>
