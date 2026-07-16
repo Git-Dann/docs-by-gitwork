@@ -5,14 +5,16 @@
 // shell chrome, the export pipeline (export.ts) and the shared control primitives (studio-ui.tsx).
 // The chosen mode + client persist to localStorage. Admin/Super-Admin gated at the route layer.
 
-import { DevicePhoneMobileIcon, PhotoIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
+import { BanknotesIcon, DevicePhoneMobileIcon, PhotoIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
 import { useEffect, useState } from "react";
+import { usePermissions } from "@/hooks/use-permissions";
 import { StudioBrandProvider, useStudioBrand } from "./brand";
+import { CostingWorkspace } from "./costing/costing-workspace";
 import { IconsWorkspace } from "./icons/icons-workspace";
 import { ScreenshotsWorkspace } from "./screenshots/screenshots-workspace";
 import { StudioWorkspace } from "./studio-workspace";
 
-type Mode = "social" | "screenshots" | "icons";
+type Mode = "social" | "screenshots" | "icons" | "costing";
 const MODE_KEY = "gitwork.studio.mode.v1";
 
 export function StudioRoot() {
@@ -26,10 +28,11 @@ export function StudioRoot() {
 function StudioRootInner() {
   const [mode, setMode] = useState<Mode>("social");
   const [hydrated, setHydrated] = useState(false);
+  const { isSuperAdmin } = usePermissions();
 
   useEffect(() => {
     const raw = typeof window !== "undefined" ? window.localStorage.getItem(MODE_KEY) : null;
-    if (raw === "social" || raw === "screenshots" || raw === "icons") setMode(raw);
+    if (raw === "social" || raw === "screenshots" || raw === "icons" || raw === "costing") setMode(raw);
     setHydrated(true);
   }, []);
   useEffect(() => {
@@ -49,10 +52,27 @@ function StudioRootInner() {
           <ModeButton active={mode === "social"} onClick={() => setMode("social")} icon={<Squares2X2Icon className="h-4 w-4" />} label="Social" />
           <ModeButton active={mode === "screenshots"} onClick={() => setMode("screenshots")} icon={<PhotoIcon className="h-4 w-4" />} label="App Screenshots" />
           <ModeButton active={mode === "icons"} onClick={() => setMode("icons")} icon={<DevicePhoneMobileIcon className="h-4 w-4" />} label="App Icons" />
+          {isSuperAdmin ? (
+            <ModeButton active={mode === "costing"} onClick={() => setMode("costing")} icon={<BanknotesIcon className="h-4 w-4" />} label="Costing" />
+          ) : null}
         </div>
-        <ClientBrandPicker />
+        {mode === "costing" ? null : <ClientBrandPicker />}
       </div>
-      <div className="min-h-0 flex-1">{mode === "social" ? <StudioWorkspace /> : mode === "screenshots" ? <ScreenshotsWorkspace /> : <IconsWorkspace />}</div>
+      <div className="min-h-0 flex-1">
+        {mode === "costing" ? (
+          isSuperAdmin ? (
+            <CostingWorkspace />
+          ) : (
+            <StudioWorkspace />
+          )
+        ) : mode === "social" ? (
+          <StudioWorkspace />
+        ) : mode === "screenshots" ? (
+          <ScreenshotsWorkspace />
+        ) : (
+          <IconsWorkspace />
+        )}
+      </div>
     </div>
   );
 }

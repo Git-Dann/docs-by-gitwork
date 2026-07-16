@@ -1,4 +1,10 @@
 import type {
+  CostingConfigResponse,
+  CostingScopeInput,
+  GitworkCostingConfig,
+  GitworkCostingResult,
+} from "@/types/costing";
+import type {
   AuditLog,
   Connection,
   Conversation,
@@ -4108,5 +4114,18 @@ export async function updateDevSignalDataRequest(
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),
+  });
+}
+
+// ── Costing & Quote (Super-Admin) ────────────────────────────────────────────
+export function getCostingConfig() {
+  return apiFetch<CostingConfigResponse>("/api/costing/config");
+}
+
+export function previewCosting(payload: { scope: CostingScopeInput; config?: Partial<GitworkCostingConfig> }) {
+  return apiFetch<GitworkCostingResult>("/api/costing/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   });
 }

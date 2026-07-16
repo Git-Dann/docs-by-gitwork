@@ -1703,3 +1703,33 @@ export const devSignalNoticeUpdateSchema = z.object({
     )
     .max(4),
 });
+
+// ── Gitwork Costing & Quote tool (Super-Admin only) ──────────────────────────
+export const costingConfigSchema = z.object({
+  fxFromUsd: z.number().positive().max(100).optional(),
+  dayRateOverrideGbp: z.number().positive().max(100000).optional(),
+  buildSeniority: z.enum(["mid", "senior"]).optional(),
+  ukReviewOverheadPercent: z.number().min(0).max(100).optional(),
+  ukReviewDayRateGbp: z.number().positive().max(100000).optional(),
+  contingencyPercent: z.number().min(0).max(100).optional(),
+  targetMarginPercent: z.number().min(0).max(95).optional(),
+});
+
+export const costingScopeSchema = z.object({
+  phases: z
+    .array(
+      z.object({
+        name: z.string().max(200),
+        weeks: z.number().min(0).max(520),
+        outcome: z.string().max(500).optional(),
+      }),
+    )
+    .max(40),
+  weeksLow: z.number().min(0).max(520),
+  weeksHigh: z.number().min(0).max(520),
+});
+
+export const costingPreviewSchema = z.object({
+  scope: costingScopeSchema,
+  config: costingConfigSchema.optional(),
+});
