@@ -176,7 +176,15 @@ model User {
   id                        String                  @id @default(cuid())
   email                     String                  @unique
   name                      String?
+  // ALWAYS a small value safe to embed in API payloads: an external https URL
+  // (Google photo) or our served path `/api/avatars/{id}`. NEVER a base64 data
+  // URL — those are stored in `avatarImage` and served by the endpoint. This is
+  // the invariant that keeps list responses (tasks board, portal, etc.) small:
+  // any code selecting avatarUrl gets a ~30-char string, not a multi-MB blob.
   avatarUrl                 String?
+  // Private: the raw uploaded avatar as a base64 data URL (up to ~8MB). Served
+  // by GET /api/avatars/{id}; NEVER selected into an API list/DTO. Additive.
+  avatarImage               String?                 @db.Text
   // CSS object-position for the avatar crop (e.g. "50% 30%"). Lets a user nudge the
   // cover-fit so faces aren't cut off. Null → centred. Additive (safe for db push).
   avatarPosition            String?
