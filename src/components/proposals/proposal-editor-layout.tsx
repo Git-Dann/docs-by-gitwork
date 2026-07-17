@@ -818,8 +818,12 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           : "border-[var(--border-2)] bg-white text-[var(--text-3)]";
 
   return (
-    <div className="space-y-5">
-      <section className="widget-card overflow-hidden">
+    // Desktop: a FIXED-HEIGHT frame (fills <main>) so the page never scrolls past the viewport —
+    // the header/toolbar are fixed and the canvas + outline scroll internally. Mobile keeps normal
+    // document flow. (Never revert this to an unbounded flow: a long doc used to grow the whole
+    // page. See DESIGN.md → "Docs editor is a fixed-height frame".)
+    <div className="flex flex-col gap-5 lg:h-full lg:min-h-0">
+      <section className="widget-card overflow-hidden lg:shrink-0">
         <div className="widget-header">
           <span className="widget-header-label">01 // DOCUMENT</span>
           <span className="widget-header-right">
@@ -1228,7 +1232,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       </section>
 
       {activeTab === "overview" ? (
-        <div className="space-y-5">
+        <div className="space-y-5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
           <OverviewCanvas proposal={draft} sections={sectionEntries.map((entry) => entry.section)} />
           <RightRailTabs
             defaultTabId="collab"
@@ -1243,10 +1247,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           />
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="flex flex-col gap-3 lg:min-h-0 lg:flex-1">
           {/* Toolbar — the canvas IS the working area. A tidy "Overlay" toggle reveals the outline
               as a floating panel (no reserved column), so the canvas always uses the full width. */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between lg:shrink-0">
             <button
               type="button"
               onClick={() => setOutlineOpen((v) => !v)}
@@ -1266,13 +1270,13 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           </div>
 
           <section
-            className={`grid gap-4 ${outlineOpen ? "lg:grid-cols-[280px_minmax(0,1fr)]" : "lg:grid-cols-1"}`}
+            className={`grid gap-4 lg:min-h-0 lg:flex-1 lg:[grid-template-rows:minmax(0,1fr)] ${outlineOpen ? "lg:grid-cols-[280px_minmax(0,1fr)]" : "lg:grid-cols-1"}`}
           >
             {/* Outline (02) — the hub. On desktop it's a sticky rail beside the canvas; on mobile it
                 stacks above with a capped, scrollable height so it never buries the document. It
                 lists the blocks and drills into a block's Options in-place (with a back to the list). */}
             {outlineOpen ? (
-              <div className="max-h-[55vh] overflow-y-auto pr-1 lg:max-h-none lg:overflow-visible lg:pr-0 lg:sticky lg:top-6 lg:self-start">
+              <div className="max-h-[55vh] overflow-y-auto pr-1 lg:max-h-none lg:min-h-0 lg:h-full lg:overflow-y-auto lg:pr-1">
                 {optionsEntry ? (
                   <section className="widget-card overflow-hidden">
                     <div className="widget-header">
@@ -1286,7 +1290,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                       </button>
                       <span className="widget-header-right truncate">{optionsEntry.section.title}</span>
                     </div>
-                    <div className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+                    <div>
                       <ProposalBuilderPanel
                         embedded
                         proposal={draft}
@@ -1314,18 +1318,19 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
 
             {/* Canvas — the live document; ALL text edited inline. The ✎ on a block opens its
                 settings in the outline. */}
-            <div className="min-w-0">
-              <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)]">
-                <div className="flex items-center justify-between border-b border-[var(--border-2)] bg-white px-3 py-2">
+            <div className="min-w-0 lg:flex lg:min-h-0 lg:flex-col">
+              <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+                <div className="flex items-center justify-between border-b border-[var(--border-2)] bg-white px-3 py-2 lg:shrink-0">
                   <span className="font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-4)]">
                     03 // CANVAS
                   </span>
                   <span className="text-[11px] text-[var(--text-4)]">What the client sees</span>
                 </div>
-                {/* The canvas scrolls INSIDE this bounded pane — never let it grow to the full
-                    height of every A4 page (that turned the whole editor into one giant page
-                    scroll). The toolbar/outline stay put; the document scrolls here. */}
-                <div className="max-h-[calc(100dvh-11rem)] min-h-[440px] overflow-auto p-4 sm:p-6">
+                {/* The canvas scrolls INSIDE this pane. On desktop the editor is a fixed-height
+                    frame (root is lg:h-full), so this pane is lg:flex-1 lg:min-h-0 and the document
+                    scrolls here — the page itself never scrolls past the viewport. On mobile it
+                    flows normally. NEVER give this an unbounded height on desktop. */}
+                <div className="overflow-auto p-4 sm:p-6 lg:min-h-0 lg:flex-1">
                   <ProposalPreview
                     proposal={draft}
                     showTableOfContents={false}

@@ -523,6 +523,32 @@ below); on mobile the outline stacks above with a capped, scrollable height so i
 document, and the page title + document padding scale down. Block **style choices are always
 dropdowns/toggles in the block's Options** — the canvas stays clean.
 
+**The Docs editor is a FIXED-HEIGHT FRAME (desktop) — the page must NEVER scroll past the
+viewport.** On `lg` the editor root is `lg:h-full lg:min-h-0 lg:flex lg:flex-col` (fills `<main>`);
+the document header + toolbar are `lg:shrink-0`, and the outline+canvas `<section>` is
+`lg:flex-1 lg:min-h-0` with `lg:[grid-template-rows:minmax(0,1fr)]` so its row fills the frame
+instead of growing to content. The **canvas scrolls INTERNALLY** — the canvas card is
+`lg:flex lg:flex-1 lg:min-h-0 lg:flex-col` and its scroll pane is `lg:flex-1 lg:min-h-0 overflow-auto`;
+the outline rail is `lg:h-full lg:min-h-0 lg:overflow-y-auto`. **NEVER give the canvas pane an
+unbounded or `max-h-[calc(100dvh…)]` height on desktop** — a multi-page document then grows the
+whole page and the editor scrolls past the viewport with dead space. (Mobile keeps normal document
+flow; the fixed frame is `lg:`-only.) This is a hard rule — regressing it is a P0 UI bug.
+
+**Rail editors are SINGLE-COLUMN / STACKED — fields are never crammed horizontally.** Every block
+editor renders in the ~280–360px Options rail, so:
+- Use **container queries**, never viewport breakpoints, for editor field grids: a `@container`
+  ancestor + `@[26rem]:grid-cols-2` / `@[26rem]:col-span-2` (fields go two-up only when the rail is
+  genuinely wide). `sm:`/`md:`/`lg:` on an editor field grid is a bug — it keys off the window, not
+  the rail.
+- Repeatable items are an **`ItemCard`** (`src/components/proposals/editor-primitives.tsx`): the
+  move/delete controls sit in a **header row** (compact `icon-sm`, `shrink-0`), never beside the
+  fields; the label is `min-w-0 truncate`; fields stack full-width below.
+- Section "Add …" headers use **`EditorSectionHeader`** (or `flex flex-wrap … gap-x-3 gap-y-2` with a
+  `min-w-0` label) so the button wraps below instead of overlapping the label.
+- A **grid/matrix editor never renders a cell per column side-by-side in the rail** (they crop to
+  junk like "1-", "Au"). Stack instead: one card per row, each cell a full-width input **labelled by
+  its column** (see `data_table`'s Rows editor).
+
 **`statement-cover`** (`DocumentCover` when `coverStyle !== "bold"`) — a full cream page:
 - Header: brand logo left, a mono **classification stack** right (`DOC TYPE` · `PREPARED {date}` ·
   `CONFIDENTIAL`), then a full-width hairline.

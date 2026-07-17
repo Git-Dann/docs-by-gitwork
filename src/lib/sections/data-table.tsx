@@ -90,21 +90,24 @@ export const dataTableSection = defineSection<DataTableSectionData>({
               <PlusIcon className="h-3.5 w-3.5" /> Add column
             </button>
           </div>
-          <div className="flex flex-wrap gap-2">
+          {/* Full-width column rows so long names never crop in the narrow rail (the old fixed
+              w-32 chips clipped names like "Delivery area"). */}
+          <div className="space-y-2">
             {cols.map((col, i) => (
-              <div key={i} className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-1">
+              <div key={i} className="flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-2.5 py-1.5">
                 <input
                   value={col}
                   onChange={(e) => updateCol(i, e.target.value)}
-                  className="w-32 border-0 bg-transparent p-0 text-sm focus:outline-none focus:ring-0"
+                  className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm focus:outline-none focus:ring-0"
                   maxLength={80}
+                  placeholder={`Column ${i + 1}`}
                 />
                 <button
                   type="button"
                   onClick={() => removeCol(i)}
                   disabled={cols.length <= 1}
                   aria-label="Remove column"
-                  className="text-rose-600 hover:text-rose-700 disabled:opacity-30"
+                  className="shrink-0 text-rose-600 hover:text-rose-700 disabled:opacity-30"
                 >
                   <TrashIcon className="h-3.5 w-3.5" />
                 </button>
@@ -114,41 +117,46 @@ export const dataTableSection = defineSection<DataTableSectionData>({
         </div>
 
         <div>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-[var(--text-2)]">Rows</span>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <span className="min-w-0 text-sm font-medium text-[var(--text-2)]">Rows</span>
             <button
               type="button"
               onClick={addRow}
-              className="inline-flex items-center gap-1 text-sm font-medium text-[var(--brand-700)] hover:underline"
+              className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-[var(--brand-700)] hover:underline"
             >
               <PlusIcon className="h-3.5 w-3.5" /> Add row
             </button>
           </div>
-          <div className="space-y-2">
+          {/* One card per row with the cells STACKED and each labelled by its column — so a wide
+              table (4+ columns) is fully editable in the narrow rail instead of being squeezed into
+              tiny cropped inputs side by side. */}
+          <div className="space-y-3">
             {rows.map((row, rowIndex) => (
-              <div key={rowIndex} className="flex items-center gap-2">
-                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)] w-6 shrink-0">
-                  {String(rowIndex + 1).padStart(2, "0")}
-                </span>
-                <div className="grid flex-1 gap-1" style={{ gridTemplateColumns: `repeat(${cols.length}, minmax(0, 1fr))` }}>
-                  {cols.map((_, colIndex) => (
-                    <input
-                      key={colIndex}
-                      value={row[colIndex] ?? ""}
-                      onChange={(e) => updateCell(rowIndex, colIndex, e.target.value)}
-                      className="app-input text-sm"
-                      placeholder={`R${rowIndex + 1}C${colIndex + 1}`}
-                    />
+              <div key={rowIndex} className="rounded-[10px] border border-[var(--border-2)] bg-white p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="app-eyebrow min-w-0 truncate">Row {rowIndex + 1}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeRow(rowIndex)}
+                    aria-label={`Remove row ${rowIndex + 1}`}
+                    className="shrink-0 text-rose-600 hover:text-rose-700"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {cols.map((colName, colIndex) => (
+                    <label key={colIndex} className="block space-y-1">
+                      <span className="app-field-label">{colName || `Column ${colIndex + 1}`}</span>
+                      <input
+                        value={row[colIndex] ?? ""}
+                        onChange={(e) => updateCell(rowIndex, colIndex, e.target.value)}
+                        className="app-input w-full text-sm"
+                        placeholder="—"
+                      />
+                    </label>
                   ))}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => removeRow(rowIndex)}
-                  aria-label="Remove row"
-                  className="text-rose-600 hover:text-rose-700 shrink-0"
-                >
-                  <TrashIcon className="h-3.5 w-3.5" />
-                </button>
               </div>
             ))}
           </div>
