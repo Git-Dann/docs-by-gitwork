@@ -471,18 +471,27 @@ async function _ensureBaseRecords() {
 }
 
 // One-time, idempotent backfill (July 2026): the "UI Done" task status/column
-// was retired (see taskRowToDTO — legacy UI_DONE rows now render as In Review).
-// To preserve the signal that those tasks were UI work, tag any that don't yet
-// carry a label with the UI/UX label. Scoped to `label: null` so an existing
-// label (BACKEND/FRONTEND/…) is never clobbered. Runs once per container via the
-// ensureBaseRecords cache; after the first run the filter matches nothing, so
-// it's a no-op on later boots. The DB enum value is kept (dropping it is a
-// data-losing migration), so we identify the rows by the retained status.
+// was retired. Two steps, in order:
+//   1. Preserve the signal that those tasks were UI work — tag any that don't
+//      yet carry a label with the UI/UX label. Scoped to `label: null` so an
+//      existing label (BACKEND/FRONTEND/…) is never clobbered.
+//   2. Fully retire the old value in the data — move every remaining UI_DONE
+//      row to IN_REVIEW (its nearest surviving column). Must run AFTER step 1,
+//      which keys off status = UI_DONE.
+// Runs once per container via the ensureBaseRecords cache; after the first run
+// both filters match nothing, so it's a no-op on later boots. The DB enum value
+// UI_DONE is kept (dropping it is a data-losing migration) but is now unused.
+// taskRowToDTO still coalesces UI_DONE → IN_REVIEW defensively for any row that
+// predates this backfill running.
 async function backfillUiDoneLabel(workspaceId: string) {
   try {
     await prisma.task.updateMany({
       where: { workspaceId, status: "UI_DONE", label: null },
       data: { label: "UI_UX" },
+    });
+    await prisma.task.updateMany({
+      where: { workspaceId, status: "UI_DONE" },
+      data: { status: "IN_REVIEW" },
     });
   } catch {
     // Non-critical — never block boot on a backfill.
