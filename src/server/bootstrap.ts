@@ -461,11 +461,32 @@ async function _ensureBaseRecords() {
   await ensureSampleCodeClearCandidates({ workspace });
   await ensureFellasLoadedReport();
 
+  await backfillUiDoneLabel(workspace.id);
+
   return {
     user,
     workspace,
     template,
   };
+}
+
+// One-time, idempotent backfill (July 2026): the "UI Done" task status/column
+// was retired (see taskRowToDTO — legacy UI_DONE rows now render as In Review).
+// To preserve the signal that those tasks were UI work, tag any that don't yet
+// carry a label with the UI/UX label. Scoped to `label: null` so an existing
+// label (BACKEND/FRONTEND/…) is never clobbered. Runs once per container via the
+// ensureBaseRecords cache; after the first run the filter matches nothing, so
+// it's a no-op on later boots. The DB enum value is kept (dropping it is a
+// data-losing migration), so we identify the rows by the retained status.
+async function backfillUiDoneLabel(workspaceId: string) {
+  try {
+    await prisma.task.updateMany({
+      where: { workspaceId, status: "UI_DONE", label: null },
+      data: { label: "UI_UX" },
+    });
+  } catch {
+    // Non-critical — never block boot on a backfill.
+  }
 }
 
 const FELLAS_MAY_2026_PAYLOAD = {
