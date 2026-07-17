@@ -1276,10 +1276,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 stacks above with a capped, scrollable height so it never buries the document. It
                 lists the blocks and drills into a block's Options in-place (with a back to the list). */}
             {outlineOpen ? (
-              <div className="max-h-[55vh] overflow-y-auto pr-1 lg:max-h-none lg:min-h-0 lg:h-full lg:overflow-y-auto lg:pr-1">
+              <div className="max-h-[55vh] overflow-y-auto pr-1 lg:max-h-none lg:min-h-0 lg:h-full lg:overflow-visible lg:pr-0">
                 {optionsEntry ? (
-                  <section className="widget-card overflow-hidden">
-                    <div className="widget-header">
+                  <section className="widget-card overflow-hidden lg:flex lg:h-full lg:flex-col">
+                    <div className="widget-header lg:shrink-0">
                       <button
                         type="button"
                         onClick={() => setOptionsForId(null)}
@@ -1290,7 +1290,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                       </button>
                       <span className="widget-header-right truncate">{optionsEntry.section.title}</span>
                     </div>
-                    <div>
+                    <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto [scrollbar-gutter:stable]">
                       <ProposalBuilderPanel
                         embedded
                         proposal={draft}
@@ -1330,7 +1330,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                     frame (root is lg:h-full), so this pane is lg:flex-1 lg:min-h-0 and the document
                     scrolls here — the page itself never scrolls past the viewport. On mobile it
                     flows normally. NEVER give this an unbounded height on desktop. */}
-                <div className="overflow-auto p-4 sm:p-6 lg:min-h-0 lg:flex-1">
+                <div className="overflow-auto p-4 sm:p-6 lg:min-h-0 lg:flex-1 [scrollbar-gutter:stable]">
                   <ProposalPreview
                     proposal={draft}
                     showTableOfContents={false}
@@ -1450,14 +1450,14 @@ function TableOfContentsCard({
   }
 
   return (
-    <aside className="widget-card overflow-hidden">
-      <div className="widget-header">
+    <aside className="widget-card overflow-hidden lg:flex lg:h-full lg:flex-col">
+      <div className="widget-header lg:shrink-0">
         <span className="widget-header-label">02 {"// "}OUTLINE</span>
         <span className="widget-header-right">
           {sections.length} BLOCK{sections.length === 1 ? "" : "S"}
         </span>
       </div>
-      <div className="p-3">
+      <div className="p-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto [scrollbar-gutter:stable]">
         {sections.length ? (
           editable ? (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

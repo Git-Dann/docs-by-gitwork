@@ -537,7 +537,12 @@ viewport.** On `lg` the editor root is `lg:h-full lg:min-h-0 lg:flex lg:flex-col
 document still SPILLS out and grows the scrollable page — the exact "page scrolls past the viewport"
 bug. The document header + toolbar are `lg:shrink-0`, and the outline+canvas `<section>` is
 `lg:flex-1 lg:min-h-0 lg:grid-rows-1` (the `grid-rows-1` = `minmax(0,1fr)` single row so it fills the
-frame instead of growing to content — do NOT use an `auto` row here). The **canvas scrolls INTERNALLY** — the canvas card is
+frame instead of growing to content — do NOT use an `auto` row here). **Both columns FILL the
+frame and scroll internally — no dead space.** The outline card is `lg:h-full lg:flex lg:flex-col`
+with its list `lg:flex-1 lg:overflow-y-auto` (a short block list must not leave a tall empty column
+below it); the canvas pane is `lg:flex-1 lg:min-h-0 overflow-auto`. Scroll panes carry
+`[scrollbar-gutter:stable]` so a scrollbar appearing on hover never shifts the layout (the
+"hovering shifts the whole screen" bug on classic-scrollbar setups). The **canvas scrolls INTERNALLY** — the canvas card is
 `lg:flex lg:flex-1 lg:min-h-0 lg:flex-col` and its scroll pane is `lg:flex-1 lg:min-h-0 overflow-auto`;
 the outline rail is `lg:h-full lg:min-h-0 lg:overflow-y-auto`. **NEVER give the canvas pane an
 unbounded or `max-h-[calc(100dvh…)]` height on desktop** — a multi-page document then grows the
