@@ -109,7 +109,9 @@ export function EditorialRow({
   return (
     <section
       className={cn(
-        "grid gap-x-10 gap-y-4 py-7 md:grid-cols-[210px_minmax(0,1fr)]",
+        // Two-column only when the desk CONTAINER is genuinely wide (@3xl ≈ 768px);
+        // otherwise stack (label above content) so the content column keeps full width.
+        "grid gap-x-10 gap-y-4 py-7 @3xl:grid-cols-[210px_minmax(0,1fr)]",
         !first && "border-t border-[var(--border-2)]",
       )}
     >

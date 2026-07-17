@@ -187,7 +187,9 @@ export function DeskDrawer({ sidebarCollapsed = false }: { sidebarCollapsed?: bo
           <DeskHandle onClick={() => setOpen(false)} label={`Close ${WORDMARK}`} />
           <DeskHeader tab={tab} onSelect={setTab} onClose={() => setOpen(false)} />
           <div className="min-h-0 flex-1 overflow-auto">
-            <div className="mx-auto max-w-5xl px-6 py-2">
+            {/* @container: desk rows stack on the panel's own width, not the viewport
+                (the panel is far narrower than the screen — viewport breakpoints misfire). */}
+            <div className="@container mx-auto max-w-5xl px-6 py-2">
               <DeskBody tab={tab} onNavigate={setTab} />
               <DeskFooter />
             </div>
@@ -209,7 +211,7 @@ export function DeskDrawer({ sidebarCollapsed = false }: { sidebarCollapsed?: bo
           onClose={() => setOpen(false)}
           titleId="desk-sheet-title"
         />
-        <div className="min-h-0 flex-1 overflow-auto px-4 py-2">
+        <div className="@container min-h-0 flex-1 overflow-auto px-4 py-2">
           <DeskBody tab={tab} onNavigate={setTab} />
           <DeskFooter />
         </div>

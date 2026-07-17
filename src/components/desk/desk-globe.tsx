@@ -302,8 +302,10 @@ export function DeskGlobe({
   const availablePresets = PRESETS.filter((p) => !cities.some((c) => c.id === p.id) && p.tz !== home.tz);
 
   return (
-    <div className="w-full rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] p-3.5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+    <div className="@container w-full rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] p-3.5">
+      {/* Globe beside the clocks only when this card is wide enough (@[440px]); else
+          stack (globe above) so the clock/legend text keeps full width and doesn't wrap. */}
+      <div className="flex flex-col gap-4 @[440px]:flex-row @[440px]:items-center">
         {/* Globe — inherits `currentColor` (theme ink) for land/coast/graticule. */}
         <svg
           viewBox="0 0 240 240"
