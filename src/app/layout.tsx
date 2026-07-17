@@ -80,12 +80,13 @@ export default function RootLayout({
           page never flashes the wrong theme. Resolves the stored mode (default
           "system"), but FORCES light on guest-facing client-deliverable routes +
           the print/PDF render path so shared documents and PDFs stay light
-          regardless of the visitor's OS preference. Kept in sync with the
-          FORCE_LIGHT regex in src/components/providers/theme-provider.tsx.
+          regardless of the visitor's OS preference. It also FORCES dark on the
+          Corsair Edge exec board (/edge). Kept in sync with the FORCE_LIGHT /
+          FORCE_DARK regexes in src/components/providers/theme-provider.tsx.
         */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var p=location.pathname,force=/^\\/(docs|report|sign|timeline|brand|onboarding|preview|embed|demo|apply|vet)(?:\\/|$)/.test(p);var m=localStorage.getItem('gitwork.theme.v1')||'system';var dark=!force&&(m==='dark'||(m==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches));document.documentElement.setAttribute('data-theme',dark?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();`,
+            __html: `(function(){try{var p=location.pathname,force=/^\\/(docs|report|sign|timeline|brand|onboarding|preview|embed|demo|apply|vet)(?:\\/|$)/.test(p),fdark=/^\\/edge(?:\\/|$)/.test(p);var m=localStorage.getItem('gitwork.theme.v1')||'system';var dark=fdark||(!force&&(m==='dark'||(m==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches)));document.documentElement.setAttribute('data-theme',dark?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();`,
           }}
         />
         {/*

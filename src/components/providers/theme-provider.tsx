@@ -28,6 +28,14 @@ const EVENT = "gitwork:theme-changed";
 // tail matches both `/demo/…` module pages AND the bare `/demo` hub (no trailing slash).
 const FORCE_LIGHT = /^\/(docs|report|sign|timeline|brand|onboarding|preview|embed|demo|apply|vet)(?:\/|$)/;
 
+/**
+ * Routes that must ALWAYS render dark, regardless of the visitor's OS / stored
+ * preference: the Corsair Xeneon Edge exec board (`/edge`) is a fixed dark surface
+ * designed for a mounted display. Kept in sync with the inline anti-flash script in
+ * src/app/layout.tsx. Takes precedence over FORCE_LIGHT (the paths don't overlap).
+ */
+const FORCE_DARK = /^\/edge(?:\/|$)/;
+
 type ThemeContextValue = {
   /** The user's chosen mode. */
   mode: ThemeMode;
@@ -51,6 +59,10 @@ function isForcedLight(path: string | null | undefined): boolean {
   return !!path && FORCE_LIGHT.test(path);
 }
 
+function isForcedDark(path: string | null | undefined): boolean {
+  return !!path && FORCE_DARK.test(path);
+}
+
 function readStoredMode(): ThemeMode {
   if (typeof window === "undefined") return "system";
   try {
@@ -63,6 +75,7 @@ function readStoredMode(): ThemeMode {
 }
 
 function resolveTheme(mode: ThemeMode, path: string | null | undefined): "light" | "dark" {
+  if (isForcedDark(path)) return "dark";
   if (isForcedLight(path)) return "light";
   if (mode === "system") return systemPrefersDark() ? "dark" : "light";
   return mode;
