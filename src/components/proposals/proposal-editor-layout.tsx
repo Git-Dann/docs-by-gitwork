@@ -822,7 +822,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     // the header/toolbar are fixed and the canvas + outline scroll internally. Mobile keeps normal
     // document flow. (Never revert this to an unbounded flow: a long doc used to grow the whole
     // page. See DESIGN.md → "Docs editor is a fixed-height frame".)
-    <div className="flex flex-col gap-5 lg:h-full lg:min-h-0">
+    <div className="flex flex-col gap-5 lg:h-full lg:min-h-0 lg:overflow-hidden">
       <section className="widget-card overflow-hidden lg:shrink-0">
         <div className="widget-header">
           <span className="widget-header-label">01 // DOCUMENT</span>
@@ -1247,7 +1247,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           />
         </div>
       ) : (
-        <div className="flex flex-col gap-3 lg:min-h-0 lg:flex-1">
+        <div className="flex flex-col gap-3 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
           {/* Toolbar — the canvas IS the working area. A tidy "Overlay" toggle reveals the outline
               as a floating panel (no reserved column), so the canvas always uses the full width. */}
           <div className="flex items-center justify-between lg:shrink-0">
@@ -1270,7 +1270,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           </div>
 
           <section
-            className={`grid gap-4 lg:min-h-0 lg:flex-1 lg:[grid-template-rows:minmax(0,1fr)] ${outlineOpen ? "lg:grid-cols-[280px_minmax(0,1fr)]" : "lg:grid-cols-1"}`}
+            className={`grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-rows-1 ${outlineOpen ? "lg:grid-cols-[280px_minmax(0,1fr)]" : "lg:grid-cols-1"}`}
           >
             {/* Outline (02) — the hub. On desktop it's a sticky rail beside the canvas; on mobile it
                 stacks above with a capped, scrollable height so it never buries the document. It
