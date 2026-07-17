@@ -176,6 +176,28 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
   // anyone absent from the map checked in both. Drives the "Today" column on Developer output.
   const checkinByUser = new Map(data.checkins.entries.map((e) => [e.userId, e]));
 
+  // Overruns — projects past their assigned end date that are still consuming resources
+  // (open work or active devs). "Overage" = burn spent since the end date (monthly cost prorated
+  // by days over, ~30d/mo). Rolling/retainer clients have no end date and never appear here.
+  const overruns = data.clients
+    .filter((c) => c.daysLeft != null && c.daysLeft < 0 && (c.devs > 0 || c.open > 0))
+    .map((c) => {
+      const daysOver = -(c.daysLeft as number);
+      const monthly = c.monthlyCost?.amount ?? 0;
+      return { c, daysOver, monthly, currency: c.monthlyCost?.currency, overage: Math.round(monthly * (daysOver / 30)) };
+    })
+    .sort((a, b) => b.daysOver - a.daysOver);
+  const overrunBurnByCcy = new Map<string, number>();
+  const overrunOverageByCcy = new Map<string, number>();
+  for (const o of overruns) {
+    if (!o.c.monthlyCost) continue;
+    overrunBurnByCcy.set(o.currency!, (overrunBurnByCcy.get(o.currency!) ?? 0) + o.monthly);
+    overrunOverageByCcy.set(o.currency!, (overrunOverageByCcy.get(o.currency!) ?? 0) + o.overage);
+  }
+  const domOverrunCcy = [...overrunBurnByCcy.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const overrunBurn = domOverrunCcy ? { amount: overrunBurnByCcy.get(domOverrunCcy)!, currency: domOverrunCcy } : null;
+  const overrunOverage = domOverrunCcy ? { amount: overrunOverageByCcy.get(domOverrunCcy) ?? 0, currency: domOverrunCcy } : null;
+
   return (
     <div className="grid grid-cols-12 gap-4">
       {/* ── Row 1 · KPI scorecard (4 × span-3 = 12) ── */}
@@ -457,9 +479,66 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         )}
       </WidgetCard>
 
-      {/* ── Row 7 · Dev output + client activity tables (6 + 6) ── */}
+      {/* ── Row 6b · Project overruns + burn (span-12) ── */}
       <WidgetCard
         number="16"
+        label="Project overruns"
+        hint="Fixed-scope & phased projects past their assigned end date that still have open work or developers on them. Burn = what we pay per month on them; overage = that burn spent since the end date passed."
+        className="col-span-12"
+        status={
+          <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            <span style={{ color: overruns.length ? "var(--danger-500)" : "var(--text-4)" }}>{overruns.length ? `${overruns.length} over end date` : "none over"}</span>
+          </span>
+        }
+      >
+        {overruns.length ? (
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+            <div className="lg:w-52 lg:shrink-0">
+              <div style={{ ...HERO, color: "var(--danger-500)" }} className="tabular-nums">
+                {overrunBurn ? formatMoney(overrunBurn.amount, overrunBurn.currency) : "—"}
+              </div>
+              <div className="mt-1" style={CAPTION}>Burning / month on overruns</div>
+              {overrunOverage && overrunOverage.amount > 0 ? (
+                <div className="mt-2" style={CAPTION}>{`${formatMoney(overrunOverage.amount, overrunOverage.currency)} spent past end date`}</div>
+              ) : null}
+            </div>
+            <div className="min-w-0 flex-1 overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr>
+                    <th className={analyticsTh} style={analyticsThStyle}>Project</th>
+                    <th className={analyticsTh} style={analyticsThStyle}>Type</th>
+                    <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Ended</th>
+                    <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Over</th>
+                    <th className={`${analyticsTh} text-right`} style={analyticsThStyle}>Cost/mo</th>
+                    <th className={`${analyticsTh} text-right`} style={analyticsThStyle} title="Monthly cost spent since the end date passed">Overage</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {overruns.map((o) => (
+                    <tr key={o.c.clientId}>
+                      <td className={analyticsTd}>
+                        <Link href={`/app/portal/${o.c.slug}/tasks`} className="font-medium text-[var(--text-1)] hover:text-[var(--brand-700)]">{o.c.name}</Link>
+                      </td>
+                      <td className={analyticsTd}><EngagementChip type={o.c.engagementType} /></td>
+                      <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-3)" }}>{o.c.endDate ? shortDate(o.c.endDate) : "—"}</td>
+                      <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 12, color: "var(--danger-500)" }}>{`${o.daysOver}d`}</td>
+                      <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-2)" }}>{o.c.monthlyCost ? formatMoney(o.monthly, o.currency) : "—"}</td>
+                      <td className={`${analyticsTd} text-right tabular-nums`} style={{ fontFamily: MONO, fontSize: 12, color: o.overage > 0 ? "var(--danger-500)" : "var(--text-4)" }}>{o.c.monthlyCost ? formatMoney(o.overage, o.currency) : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-[var(--text-4)]">No projects are past their assigned end date. ✓</p>
+        )}
+      </WidgetCard>
+
+      {/* ── Row 7 · Dev output + client activity tables (6 + 6) ── */}
+      <WidgetCard
+        number="17"
         label="Developer output"
         hint={`Per developer: tasks completed, tasks still open, today's check-ins (AM = morning, PM = end-of-day; anyone booked off shows as away), and overall check-in rate. Today = ${shortDate(data.checkins.workDate)}.`}
         className="col-span-12 lg:col-span-6"
@@ -520,7 +599,7 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         )}
       </WidgetCard>
 
-      <WidgetCard number="17" label="Client activity" hint="Per-client summary — engagement type, end date, developers, monthly cost, open/overdue/completed tasks, and a health dot (green/amber/red)." className="col-span-12 lg:col-span-6" bodyClassName="p-0">
+      <WidgetCard number="18" label="Client activity" hint="Per-client summary — engagement type, end date, developers, monthly cost, open/overdue/completed tasks, and a health dot (green/amber/red)." className="col-span-12 lg:col-span-6" bodyClassName="p-0">
         {data.clients.length ? (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">
