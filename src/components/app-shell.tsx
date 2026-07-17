@@ -349,7 +349,11 @@ export function AppShell({
 
       <div
         className={cn(
-          "min-h-0 flex-1 w-full lg:grid",
+          // grid-rows-[minmax(0,1fr)] makes the single row (and therefore <main>) a DEFINITE height
+          // bounded to the viewport, so <main overflow-auto> becomes the scroll container instead of
+          // the body growing. Without it, height-framed pages (the Docs editor) can't bound to the
+          // viewport and the whole page scrolls. (demo-shell already does this — keep them in sync.)
+          "min-h-0 flex-1 w-full lg:grid lg:grid-rows-[minmax(0,1fr)]",
           collapsed ? "lg:grid-cols-[76px_minmax(0,1fr)]" : "lg:grid-cols-[280px_minmax(0,1fr)]",
         )}
       >

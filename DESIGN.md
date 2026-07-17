@@ -532,7 +532,12 @@ dropdowns/toggles in the block's Options** — the canvas stays clean.
 
 **The Docs editor is a FIXED-HEIGHT FRAME (desktop) — the page must NEVER scroll past the
 viewport.** On `lg` the editor root is `lg:h-full lg:min-h-0 lg:flex lg:flex-col lg:overflow-hidden`
-(fills `<main>` — the shell is `h-[100dvh]`, a definite chain, so `h-full` resolves). The
+(fills `<main>` — the shell is `h-[100dvh]`, a definite chain, so `h-full` resolves). **This
+requires the app-shell layout grid to carry `lg:grid-rows-[minmax(0,1fr)]`** (both `app-shell.tsx`
+and `demo-shell.tsx`) so its single row — and therefore `<main overflow-auto>` — is a definite,
+viewport-bounded height and becomes the scroll container. Without that row template the grid row is
+`auto`, `<main>` grows with content, and any height-framed page overflows the whole viewport. Keep
+the two shells in sync. The
 **`lg:overflow-hidden` is load-bearing**: without it, `h-full` sizes the root correctly but the tall
 document still SPILLS out and grows the scrollable page — the exact "page scrolls past the viewport"
 bug. The document header + toolbar are `lg:shrink-0`, and the outline+canvas `<section>` is
