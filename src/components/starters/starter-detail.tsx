@@ -99,7 +99,7 @@ export function StarterDetail({ starterId }: { starterId: string }) {
   }
 
   if (editing) {
-    return <StarterForm starter={starter} onSaved={() => setEditing(false)} />;
+    return <StarterForm starter={starter} onSaved={() => setEditing(false)} onCancel={() => setEditing(false)} />;
   }
 
   async function handleDuplicate() {
@@ -305,9 +305,9 @@ export function StarterDetail({ starterId }: { starterId: string }) {
               {starter.description && (
                 <div className={cn(whatYouGet.length === 0 && install.length === 0 && "sm:col-span-2")}>
                   <p className="widget-data-label mb-1">About</p>
-                  <div className="text-sm leading-6 text-[var(--text-2)]">
-                    <Markdown>{starter.description}</Markdown>
-                  </div>
+                  <Markdown compact className="space-y-3">
+                    {starter.description}
+                  </Markdown>
                 </div>
               )}
 

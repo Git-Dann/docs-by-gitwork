@@ -475,9 +475,7 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
               {task.description ? (
                 <div>
                   <p className="app-eyebrow mb-2">Description</p>
-                  <Markdown className="text-sm leading-relaxed text-[var(--text-2)]">
-                    {task.description}
-                  </Markdown>
+                  <Markdown compact>{task.description}</Markdown>
                 </div>
               ) : null}
 
@@ -485,9 +483,7 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
               {task.acceptanceCriteria ? (
                 <div>
                   <p className="app-eyebrow mb-2">Acceptance criteria</p>
-                  <Markdown className="text-sm leading-relaxed text-[var(--text-2)]">
-                    {task.acceptanceCriteria}
-                  </Markdown>
+                  <Markdown compact>{task.acceptanceCriteria}</Markdown>
                 </div>
               ) : null}
 

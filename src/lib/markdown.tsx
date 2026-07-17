@@ -12,6 +12,7 @@
  */
 
 import type { ReactNode } from "react";
+import { cn } from "@/lib/format";
 
 // One pass matches the earliest inline marker; precedence: link → bold → italic → underscore-italic → code.
 // Exported so rich-inline-editor.tsx's canvas editor can parse/serialize with the exact same
@@ -92,9 +93,13 @@ function linesToInline(lines: string[], keyPrefix: string): ReactNode[] {
   );
 }
 
-function renderBlock(block: string, idx: number): ReactNode {
+function renderBlock(block: string, idx: number, compact: boolean): ReactNode {
   const lines = block.split("\n");
   const key = `b${idx}`;
+  // compact matches the site-wide body-copy convention exactly: plain `text-sm`, no explicit
+  // leading override, so it gets Tailwind's own paired line-height like every other text-sm
+  // element on the site (the summary line, What You Get items, etc.) — never the looser leading-6.
+  const bodySize = compact ? "text-sm" : "text-[16px] leading-8";
 
   // Heading
   const heading = /^(#{1,6})\s+(.*)$/.exec(block.trim());
@@ -123,7 +128,7 @@ function renderBlock(block: string, idx: number): ReactNode {
   // Unordered list
   if (lines.length > 0 && lines.every((l) => /^\s*[-*]\s+/.test(l))) {
     return (
-      <ul key={key} className="list-disc space-y-1 pl-5 text-[16px] leading-8 text-[var(--text-2)]">
+      <ul key={key} className={cn("list-disc space-y-1 pl-5 text-[var(--text-2)]", bodySize)}>
         {lines.map((l, i) => (
           <li key={i}>{renderInline(l.replace(/^\s*[-*]\s+/, ""), `${key}-li${i}`)}</li>
         ))}
@@ -134,7 +139,7 @@ function renderBlock(block: string, idx: number): ReactNode {
   // Ordered list
   if (lines.length > 0 && lines.every((l) => /^\s*\d+\.\s+/.test(l))) {
     return (
-      <ol key={key} className="list-decimal space-y-1 pl-5 text-[16px] leading-8 text-[var(--text-2)]">
+      <ol key={key} className={cn("list-decimal space-y-1 pl-5 text-[var(--text-2)]", bodySize)}>
         {lines.map((l, i) => (
           <li key={i}>{renderInline(l.replace(/^\s*\d+\.\s+/, ""), `${key}-li${i}`)}</li>
         ))}
@@ -144,13 +149,24 @@ function renderBlock(block: string, idx: number): ReactNode {
 
   // Paragraph
   return (
-    <p key={key} className="text-[16px] leading-8 text-[var(--text-2)]">
+    <p key={key} className={cn("text-[var(--text-2)]", bodySize)}>
       {linesToInline(lines, key)}
     </p>
   );
 }
 
-export function Markdown({ children, className }: { children: string | null | undefined; className?: string }) {
+export function Markdown({
+  children,
+  className,
+  compact,
+}: {
+  children: string | null | undefined;
+  className?: string;
+  /** Renders paragraph/list body text at the app's standard text-sm/leading-6 size instead of the
+   * larger 16px/leading-8 doc-reading size — for Markdown embedded in a compact card, not a full
+   * document preview. */
+  compact?: boolean;
+}) {
   const text = (children ?? "").replace(/\r\n/g, "\n");
   const blocks = text
     .split(/\n{2,}/)
@@ -159,5 +175,7 @@ export function Markdown({ children, className }: { children: string | null | un
 
   if (blocks.length === 0) return null;
 
-  return <div className={className ?? "space-y-4"}>{blocks.map(renderBlock)}</div>;
+  return (
+    <div className={className ?? "space-y-4"}>{blocks.map((block, idx) => renderBlock(block, idx, Boolean(compact)))}</div>
+  );
 }
