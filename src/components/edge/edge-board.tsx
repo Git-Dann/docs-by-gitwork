@@ -3,8 +3,47 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { DeskToday } from "@/components/desk/desk-today";
+import { ClawdSprite, type ClawdState } from "@/components/edge/clawd-sprite";
 import { useClientList } from "@/hooks/use-proposals";
 import type { ClientListItem } from "@/types/client";
+
+const AGENT_STATES: ClawdState[] = ["idle", "thinking", "needs-you", "done", "error"];
+
+// Poll the agent-status beacon (/api/agents/status). Authenticated browser session is
+// authorised by middleware, so no key needed. Drives Claw'd's live animation.
+function useAgentState(): ClawdState {
+  const [state, setState] = useState<ClawdState>("idle");
+  useEffect(() => {
+    let alive = true;
+    async function tick() {
+      try {
+        const r = await fetch("/api/agents/status", { cache: "no-store" });
+        if (!r.ok) return;
+        const j = await r.json();
+        if (alive && typeof j?.state === "string" && (AGENT_STATES as string[]).includes(j.state)) {
+          setState(j.state as ClawdState);
+        }
+      } catch {
+        /* transient — keep last state */
+      }
+    }
+    tick();
+    const t = setInterval(tick, 4000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, []);
+  return state;
+}
+
+const STATE_LABEL: Record<ClawdState, string> = {
+  idle: "idle",
+  thinking: "working…",
+  "needs-you": "needs you",
+  done: "done",
+  error: "error",
+};
 
 // Corsair Xeneon Edge exec board — dark, chrome-free, tuned for the 2560×720 panel but
 // responsive so it previews on any screen. Signed-in session → real data as the viewer.
@@ -98,6 +137,7 @@ export function EdgeBoard() {
   const { actions, save, reset } = useEdgeActions();
   const [editing, setEditing] = useState(false);
   const now = useClock();
+  const agentState = useAgentState();
 
   const updateAction = (i: number, patch: Partial<QuickAction>) =>
     save(actions.map((a, idx) => (idx === i ? { ...a, ...patch } : a)));
@@ -134,18 +174,18 @@ export function EdgeBoard() {
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(190px,0.6fr)_minmax(260px,0.85fr)_minmax(0,1.5fr)_minmax(210px,0.65fr)]">
-        {/* Agent — Claw'd placeholder. The live scuttling Claw'd is on the Stream Deck. */}
+        {/* Agent — live Claw'd sprite, animated per agent state from the status beacon. */}
         <section className="flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-[var(--border-2)] bg-[var(--surface-0)] p-4">
           <h2 className="mb-3 flex-none font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--text-3)]">Agent</h2>
           <div className="flex flex-1 flex-col items-center justify-center gap-3">
             <div
-              className="flex h-[132px] w-[132px] items-center justify-center rounded-[18px]"
-              style={{ background: "#0e0f12", boxShadow: "0 0 44px -10px rgba(224,87,64,.55)" }}
+              className="rounded-[18px]"
+              style={{ boxShadow: "0 0 44px -10px rgba(224,87,64,.55)" }}
             >
-              <span style={{ fontSize: "76px", lineHeight: 1 }} role="img" aria-label="Claw'd placeholder">🦀</span>
+              <ClawdSprite state={agentState} size={132} />
             </div>
             <div className="font-mono text-[13px] font-bold tracking-[0.1em]">CLAW&rsquo;D</div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-3)]">lives on the deck</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-3)]">{STATE_LABEL[agentState]}</div>
           </div>
           <div className="mb-2 mt-4 flex-none font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-3)]">Reasoning effort</div>
           <div className="grid flex-none grid-cols-4 gap-2">
