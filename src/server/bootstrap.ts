@@ -43,6 +43,9 @@ import { isSeedAccountEmail } from "@/server/seed-accounts";
 // prisma db push may not apply reliably through a pooler connection.
 async function ensurePortalSchema() {
   const statements = [
+    // Private avatar blob column (base64 image moved off avatarUrl — see
+    // backfillAvatarBlobs). Ensured here in case db push hasn't applied it yet.
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "avatarImage" TEXT`,
     // New nullable columns on Client (@@map("Client") = WorkspaceClient model)
     `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "website" TEXT`,
     `ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "addressLine1" TEXT`,
@@ -462,12 +465,35 @@ async function _ensureBaseRecords() {
   await ensureFellasLoadedReport();
 
   await backfillUiDoneLabel(workspace.id);
+  await backfillAvatarBlobs();
 
   return {
     user,
     workspace,
     template,
   };
+}
+
+// One-time, idempotent migration (July 2026): move any base64 `data:` avatar out
+// of User.avatarUrl into the private User.avatarImage column, and replace
+// avatarUrl with the short served path (/api/avatars/{id}). Historically the
+// account editor stored ~8MB data URLs directly in avatarUrl, which got inlined
+// per-row into every list that embeds an avatar (task board, portal, standup…) —
+// a single board response reached 156MB. After this runs, no avatarUrl is a blob,
+// so those payloads carry a ~30-char URL instead. The WHERE clause makes it a
+// no-op once migrated. Runs once per container via the ensureBaseRecords cache.
+async function backfillAvatarBlobs() {
+  try {
+    await prisma.$executeRawUnsafe(
+      `UPDATE "User"
+         SET "avatarImage" = "avatarUrl",
+             "avatarUrl" = '/api/avatars/' || "id"
+       WHERE "avatarUrl" LIKE 'data:%'
+         AND "avatarImage" IS NULL`,
+    );
+  } catch {
+    // Non-critical — never block boot on a backfill.
+  }
 }
 
 // One-time, idempotent backfill (July 2026): the "UI Done" task status/column

@@ -58,3 +58,43 @@ export function avatarPosition(position?: string | null): string {
   const p = (position ?? "").trim();
   return p || AVATAR_POSITION_DEFAULT;
 }
+
+// ── Blob-safe storage (the invariant that keeps API payloads small) ──────────
+//
+// `User.avatarUrl` must NEVER hold a base64 `data:` URL — those blobs (up to
+// ~8MB) get inlined per-row into every list that selects avatarUrl (task board,
+// portal, standup, backstage…), which is what ballooned a response to 156MB.
+// Instead the blob lives privately in `User.avatarImage` and is streamed by
+// GET /api/avatars/[id]; avatarUrl carries the short served path. Any consumer
+// selecting avatarUrl therefore gets a ~30-char string, not a blob.
+
+/** The public, embeddable path that serves a user's stored avatar image. */
+export function avatarServePath(userId: string): string {
+  return `/api/avatars/${userId}`;
+}
+
+/** True when a value is a base64/data URL (a blob), not a normal URL/path. */
+export function isDataUrl(value: string | null | undefined): boolean {
+  return typeof value === "string" && value.startsWith("data:");
+}
+
+/**
+ * Normalise an incoming avatar value into what we persist:
+ *  - a `data:` URL  → store the blob in `avatarImage`, put a served path
+ *    (cache-busted by `version`) in `avatarUrl`
+ *  - anything else (http(s) URL, the AVATAR_INITIALS sentinel) → store it
+ *    directly in `avatarUrl`, clear `avatarImage`
+ *  - empty string   → clear both
+ */
+export function splitAvatarInput(
+  raw: string,
+  userId: string,
+  version: number,
+): { avatarUrl: string | null; avatarImage: string | null } {
+  const value = raw.trim();
+  if (!value) return { avatarUrl: null, avatarImage: null };
+  if (isDataUrl(value)) {
+    return { avatarUrl: `${avatarServePath(userId)}?v=${version}`, avatarImage: value };
+  }
+  return { avatarUrl: value, avatarImage: null };
+}

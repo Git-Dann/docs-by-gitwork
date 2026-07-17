@@ -12,6 +12,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { splitAvatarInput } from "@/lib/avatar";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 
 export const dynamic = "force-dynamic";
@@ -136,10 +137,20 @@ export async function PATCH(request: NextRequest) {
       return apiError(parsed.error.issues.map((issue) => issue.message).join(", "), 400);
     }
 
+    // A `data:` avatar must never land in `avatarUrl` (it would be inlined per
+    // row into every list that embeds an avatar). Split it: the blob goes to the
+    // private `avatarImage` column, and `avatarUrl` gets the short served path.
+    const avatarData =
+      parsed.data.avatarUrl !== undefined
+        ? splitAvatarInput(parsed.data.avatarUrl, session.user.id, Date.now())
+        : null;
+
     const updated = await prisma.user.update({
       where: { id: session.user.id },
       data: {
-        ...(parsed.data.avatarUrl !== undefined ? { avatarUrl: parsed.data.avatarUrl } : {}),
+        ...(avatarData
+          ? { avatarUrl: avatarData.avatarUrl, avatarImage: avatarData.avatarImage }
+          : {}),
         ...(parsed.data.avatarPosition !== undefined
           ? { avatarPosition: parsed.data.avatarPosition }
           : {}),
