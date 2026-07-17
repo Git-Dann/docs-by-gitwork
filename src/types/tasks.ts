@@ -42,7 +42,7 @@ export const TASK_LABELS: TaskLabel[] = ["BACKEND", "FRONTEND", "UI_UX", "RESEAR
 export const TASK_LABEL_LABELS: Record<TaskLabel, string> = {
   BACKEND: "Backend",
   FRONTEND: "Frontend",
-  UI_UX: "UI/UX",
+  UI_UX: "UI/UX Done",
   RESEARCH: "Research",
   DESIGN: "Design",
 };
