@@ -20,7 +20,6 @@ import {
   ArrowUpIcon,
   TrashIcon,
 } from "@heroicons/react/24/outline";
-import { Button } from "@/components/ui/button";
 import type { ReactNode } from "react";
 
 /** Stable id for new list items (SSR-safe). */
@@ -43,17 +42,24 @@ export function MoveDeleteControls({
   onDelete: () => void;
   ariaLabel: string;
 }) {
+  // Compact ghost buttons (no borders, tight gap) so the row's label keeps room in the narrow rail.
+  const btn = "inline-flex h-6 w-6 items-center justify-center rounded-[6px] text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]";
   return (
-    <div className="flex shrink-0 items-center gap-1">
-      <Button type="button" onClick={onMoveUp} variant="secondary" size="icon-sm" aria-label={`Move ${ariaLabel} up`}>
+    <div className="flex shrink-0 items-center gap-0.5">
+      <button type="button" onClick={onMoveUp} aria-label={`Move ${ariaLabel} up`} className={btn}>
         <ArrowUpIcon className="h-3.5 w-3.5" />
-      </Button>
-      <Button type="button" onClick={onMoveDown} variant="secondary" size="icon-sm" aria-label={`Move ${ariaLabel} down`}>
+      </button>
+      <button type="button" onClick={onMoveDown} aria-label={`Move ${ariaLabel} down`} className={btn}>
         <ArrowDownIcon className="h-3.5 w-3.5" />
-      </Button>
-      <Button type="button" onClick={onDelete} variant="danger" size="icon-sm" aria-label={`Delete ${ariaLabel}`}>
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        aria-label={`Delete ${ariaLabel}`}
+        className="inline-flex h-6 w-6 items-center justify-center rounded-[6px] text-[var(--text-3)] transition hover:bg-[var(--danger-50)] hover:text-[var(--danger-500)]"
+      >
         <TrashIcon className="h-3.5 w-3.5" />
-      </Button>
+      </button>
     </div>
   );
 }

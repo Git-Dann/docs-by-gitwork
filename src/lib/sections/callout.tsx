@@ -38,7 +38,7 @@ export const calloutSection = defineSection<CalloutSectionData>({
     <SimpleForm>
       <label className="block space-y-1.5">
         <span className="text-sm font-medium text-[var(--text-2)]">Tone</span>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {(Object.keys(TONE_PALETTE) as CalloutSectionData["tone"][]).map((tone) => {
             const active = data.tone === tone;
             const palette = TONE_PALETTE[tone];
@@ -49,10 +49,10 @@ export const calloutSection = defineSection<CalloutSectionData>({
                 onClick={() => onChange({ ...data, tone })}
                 className={
                   active
-                    ? "inline-flex items-center rounded-[6px] px-3 py-2 text-sm font-medium"
-                    : "inline-flex items-center rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm font-medium text-[var(--text-2)] transition hover:border-[var(--border-1)]"
+                    ? "inline-flex items-center rounded-[6px] px-2.5 py-1 text-xs font-medium"
+                    : "inline-flex items-center rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:border-[var(--border-1)]"
                 }
-                style={active ? { background: palette.bg, color: palette.eyebrow, borderColor: palette.border, borderWidth: 2, borderStyle: "solid" } : undefined}
+                style={active ? { background: palette.bg, color: palette.eyebrow, borderColor: palette.border, borderWidth: 1, borderStyle: "solid" } : undefined}
               >
                 {TONE_LABEL[tone]}
               </button>

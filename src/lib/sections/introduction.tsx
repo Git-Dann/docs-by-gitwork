@@ -3,7 +3,6 @@
 import { ChatBubbleLeftEllipsisIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { EditorHint, FormTextArea, SimpleForm } from "@/lib/sections/_shared";
-import { MarkdownField } from "@/components/proposals/markdown-field";
 import { Markdown } from "@/lib/markdown";
 import { InlineTextArea } from "@/lib/sections/inline-text";
 import { RichInlineEditor } from "@/lib/sections/rich-inline-editor";
@@ -30,12 +29,19 @@ export const introductionSection = defineSection<IntroductionSectionData>({
         value={data.statement}
         onChange={(statement) => onChange({ ...data, statement })}
       />
-      <MarkdownField
-        label="Positioning summary"
-        value={data.summary}
-        onChange={(summary) => onChange({ ...data, summary })}
-        rows={5}
-      />
+      <label className="block space-y-1.5">
+        <span className="text-sm font-medium text-[var(--text-2)]">Positioning summary</span>
+        {/* WYSIWYG: shows bold/italic/links as real formatting (not **stars**), stores Markdown. */}
+        <div className="rounded-[8px] border border-[var(--border-2)] px-3 py-2 text-sm leading-6 focus-within:border-[var(--brand-500)]">
+          <RichInlineEditor
+            value={data.summary}
+            onChange={(summary) => onChange({ ...data, summary })}
+            placeholder="Positioning summary — highlight text to bold / italicise / link it."
+            ariaLabel="Positioning summary"
+            className="text-[var(--text-1)]"
+          />
+        </div>
+      </label>
       <EditorHint message="Section graphics are managed in Supporting Links & Assets." />
     </SimpleForm>
   ),

@@ -39,12 +39,12 @@ export const checklistSection = defineSection<ChecklistSectionData>({
               className={
                 data.polarity === p
                   ? p === "INCLUDE"
-                    ? "rounded-[6px] bg-[var(--success-50)] px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--success-500)]"
-                    : "rounded-[6px] bg-[var(--danger-50)] px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--danger-500)]"
-                  : "rounded-[6px] px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)] hover:text-[var(--text-2)]"
+                    ? "whitespace-nowrap rounded-[6px] bg-[var(--success-50)] px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--success-500)]"
+                    : "whitespace-nowrap rounded-[6px] bg-[var(--danger-50)] px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--danger-500)]"
+                  : "whitespace-nowrap rounded-[6px] px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)] hover:text-[var(--text-2)]"
               }
             >
-              {p === "INCLUDE" ? "Include / ticks" : "Exclude / crosses"}
+              {p === "INCLUDE" ? "Ticks" : "Crosses"}
             </button>
           ))}
         </div>
