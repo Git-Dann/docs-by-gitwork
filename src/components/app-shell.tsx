@@ -269,7 +269,12 @@ export function AppShell({
   );
 
   return (
-    <div className="relative flex h-[100dvh] flex-col bg-[var(--surface-canvas)] text-[var(--text-1)]">
+    // overflow-hidden is load-bearing: the shell is a fixed h-[100dvh] frame and <main> is the
+    // scroll container. Without it, any tall absolutely-positioned descendant that escapes <main>
+    // (e.g. the paged-document's off-screen measurer at left:-99999) attaches to this root and
+    // grows the whole PAGE — the page then scrolls past the viewport even though <main> is bounded.
+    // demo-shell.tsx already clips here; keep the two in sync.
+    <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-[var(--surface-canvas)] text-[var(--text-1)]">
       {/* ── Mobile top bar (hidden on lg+) ── */}
       <div className="flex shrink-0 items-center justify-between border-b border-[var(--border-2)] bg-[var(--surface-0)] px-4 py-3 lg:hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}

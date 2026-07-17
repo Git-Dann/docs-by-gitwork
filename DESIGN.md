@@ -536,8 +536,12 @@ viewport.** On `lg` the editor root is `lg:h-full lg:min-h-0 lg:flex lg:flex-col
 requires the app-shell layout grid to carry `lg:grid-rows-[minmax(0,1fr)]`** (both `app-shell.tsx`
 and `demo-shell.tsx`) so its single row — and therefore `<main overflow-auto>` — is a definite,
 viewport-bounded height and becomes the scroll container. Without that row template the grid row is
-`auto`, `<main>` grows with content, and any height-framed page overflows the whole viewport. Keep
-the two shells in sync. The
+`auto`, `<main>` grows with content, and any height-framed page overflows the whole viewport. The
+shell root must ALSO be `overflow-hidden` (it's a fixed `h-[100dvh]` frame; `<main overflow-auto>`
+is the scroll container) — without it a tall absolutely-positioned descendant that escapes `<main>`
+(e.g. the paged-document's off-screen measurer at `left:-99999`) attaches to the root and grows the
+whole PAGE, so it scrolls past the viewport even though `<main>` is correctly bounded. Keep the two
+shells in sync (both `relative … h-[100dvh] overflow-hidden` root + `lg:grid-rows-[minmax(0,1fr)]`). The
 **`lg:overflow-hidden` is load-bearing**: without it, `h-full` sizes the root correctly but the tall
 document still SPILLS out and grows the scrollable page — the exact "page scrolls past the viewport"
 bug. The document header + toolbar are `lg:shrink-0`, and the outline+canvas `<section>` is
