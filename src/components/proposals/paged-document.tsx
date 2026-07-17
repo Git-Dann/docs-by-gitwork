@@ -184,10 +184,13 @@ export function PagedDocument({
     <div className="doc-a4-stack" data-doc-paginated="true">
       {/* Hidden measurer: a reference page (to read the exact available body height) + every
           block rendered once at the true 170mm body width so we can measure its height. */}
+      {/* `position: fixed` (not absolute) so this off-screen measurer contributes NOTHING to page
+          scroll — an absolute one with no clipping ancestor attaches to the shell root and grows the
+          whole page. Fixed elements are excluded from scrollHeight yet still measure via offsetHeight. */}
       <div
         ref={measureRef}
         aria-hidden="true"
-        style={{ position: "absolute", left: "-99999px", top: 0, width: "230mm", visibility: "hidden", pointerEvents: "none" }}
+        style={{ position: "fixed", left: "-99999px", top: 0, width: "230mm", visibility: "hidden", pointerEvents: "none" }}
       >
         <div className="doc-a4-page">
           <div className="doc-a4-page__margin">

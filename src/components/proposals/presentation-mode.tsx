@@ -297,7 +297,7 @@ export function PresentationMode({
         <div
           ref={measureRef}
           aria-hidden="true"
-          style={{ position: "absolute", left: "-99999px", top: 0, width: dims.contentW, visibility: "hidden", pointerEvents: "none" }}
+          style={{ position: "fixed", left: "-99999px", top: 0, width: dims.contentW, visibility: "hidden", pointerEvents: "none" }}
         >
           <div className="proposal-document" data-doc-theme={docTheme} style={{ width: dims.contentW }}>
             <div className="space-y-7">
