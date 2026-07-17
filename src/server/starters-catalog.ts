@@ -728,6 +728,124 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
       "_buildRef": "gitwork-authored"
     }
   },
+  {
+    slug: "proposal-builder",
+    name: "Proposal Builder",
+    summary:
+      "Paste a project brief, get a clear delivery timeline — team, rate, tiers & milestones, anchored to anonymised reference engagements.",
+    description:
+      "A **prompt** you paste into an LLM to size a new project: describe what's being built and it returns a clear, defensible delivery timeline — closest analogues, fixed-price vs retainer, 2–3 cumulative tiers, a phased schedule with a drift buffer, team, day rate and milestones. It carries a set of anonymised reference engagements and the house scoping rules inline, so it reasons from real delivery patterns rather than generic benchmarks. Two modes: internal deal-sizing, or a client-facing draft. Best practice: keep the reference block current as new work closes — that grounding is what keeps the estimates sharp.",
+    type: "PROMPT",
+    tags: ["proposals", "estimation", "scoping", "delivery"],
+    featured: true,
+    content: {
+      whatYouGet: [
+        "A clear phased delivery timeline with the drift buffer stated (raw quoted + buffered)",
+        "Closest-analogue matching against a set of anonymised reference engagements",
+        "Fixed-price vs retainer, 2–3 cumulative tiers, team, day rate and milestone schedule",
+        "An internal deal-sizing mode and a client-facing draft mode",
+      ],
+      install: [
+        "Paste the whole prompt into a fresh LLM chat",
+        "Fill in the project block at the bottom, then send",
+      ],
+      promptText: `<role>
+You are a senior delivery lead at a small UK software design-and-build agency, helping me size a new
+project. Give me a clear, defensible delivery timeline — anchored to how we have actually scoped and
+quoted our own past work, which is provided below. Do not use generic industry benchmarks; reason
+from these real engagements.
+</role>
+
+<reference_data>
+Our historical engagements (archetype · quoted timeline · team · day/monthly rate · total value).
+Use these as your anchors — find the closest analogues to the new project and reason from them.
+
+- R1  — mobile+web subscription MVP · 11 weeks · 1 Flutter + 1 Backend (PM/TL incl.) · £4,000/dev/mo · £20k
+- R2  — two-sided marketplace + admin store, shared backend · 16 weeks · 2 devs (1 FE, 1 FS/BE)
+- R3  — AI diligence/decision platform (3 tiers) · 26 weeks (12+8+6) · 2 FS + 1 AI/ML
+- R4  — two-sided booking marketplace MVP · 10 weeks · 2 FS (PM incl.)
+- R5  — booking-platform expansion: AI search + contracts + multi-currency · 16 weeks · 2 FS + 1 AI + designer(8wk) · £190.4/day · £55k
+- R6  — IoT occupancy sensing + dashboard · 16 weeks (6wk hardware + 10wk software) · 1 FS · £166.6/day · £14.9k
+- R7  — sports scoring mobile app, GPS + competitions · retainer (P1 2–3mo / P2 3–5mo / P3 5–7mo) · 2 devs · £4,000/dev/mo (£3,500 referral)
+- R8  — mental-health video platform · 16 weeks · 1 Flutter + 1 FS (PM/TL incl.) · ~£28–32k
+- R9  — multi-tenant community platform · 32 weeks (18+8+6, 3 phases) · 2 devs · £3,500/dev/mo · £56k
+- R10 — live-commerce streaming platform · 27 weeks (3wk parallel design + 12+7+3+3) · 2 FS + 1 Flutter + designer · £3,500/dev/mo · £63k
+- R11 — services marketplace, 3 tiers · V1 ~63d / V2 ~55d / V3 40–45d (2-mo floor) · 2 devs (PM incl.) · £166.6/day · V1 £21k / V2 £18.3k / V3 £15k
+- R12 — recruitment platform, AI candidate matching · 38 weeks @1 dev → 13 weeks @3 devs · £190.4/day · £30k
+- R13 — legacy CRM modernisation (.NET/Vue) · retainer (scope evolving) · 1 Senior FS (PM incl.) · £166.6/day
+- R14 — warranty-claim RPA/AI automation MVP · 12 weeks (2+8+2–4) · 1 AI FS (PM/architect incl.) · £166.6/day · £30k fixed
+- R15 — M&A deal-lifecycle SaaS · MVP 79 dev-days + post-MVP 32d · 2 FS + 1 AI(~1.5mo) (PM/designer/TL incl.) · £166.6/day (AI £190.4) · £31k
+- R16 — WordPress marketing-site rebuild · 64 days (~3mo) · 1 FS (PM incl.) · £166.6/day · £10.5k
+- R17 — legal-tech + digital-legacy platform · 64 days (P1 25d + P2 39d) · 2 FS (PM/QA incl.) · £166.6/day · ~£21k then £3,500/mo retainer
+- R18 — brand/agency marketplace + AI chatbot · 18 weeks @1 dev → 10 weeks @2 devs
+- R19 — dealership customer-service automation (parts/warranty/comms) · 22 weeks (2 parallel tracks) · 1 FS + 1 AI Engineer
+- R20 — two AI compliance modules (built in parallel) · 10 days · 2–3 devs (1–2 FS + 1 AI, PM incl.) · £250/day · £5,750 fixed
+- R21 — media analytics dashboard, 3 tiers · Bronze 4–6wk / Silver 9–11wk / Gold 15–16wk · 2 devs (1 FE, 1 BE)
+- R22 — hardening/bugfix punch-list on an existing product · 38 hours (~1 week), itemised per task
+</reference_data>
+
+<house_rules>
+Patterns to apply, all derived from the engagements above:
+
+1. QUOTES ARE OPTIMISTIC. These are quoted timelines, not delivered ones — our tracked delivery slips
+   against plan. Treat any timeline as a best case and add a realistic drift buffer; say explicitly
+   what buffer you applied.
+2. FIXED-PRICE vs RETAINER — decide on whether scope is genuinely knowable up front, not on size.
+   New bounded build → fixed-price, milestone-based. Evolving/legacy system or scope the client can't
+   yet fix → monthly retainer (team + rate only, no total, no end date), like R7 and R13.
+3. OFFER 2–3 CUMULATIVE TIERS by default (each higher tier = the lower one's scope PLUS more), like
+   R3 / R11 / R21 — unless a single number is explicitly wanted.
+4. THREE PROJECT SHAPES — don't force one into another: small/fast (days–hours per task, e.g. R20 10d,
+   R22 38h, audits); single-phase MVP (10–22 weeks); multi-phase roadmap (sequential phases, each
+   shorter than the last, e.g. 12–18wk / 7–8wk / 6wk).
+5. TEAM COMPRESSION is sub-linear: ~1.8× speedup going 1→2 devs, ~2.9× going 1→3 (R12: 38wk@1 → 13wk@3;
+   R18: 18wk@1 → 10wk@2). Never promise linear speedup from adding people.
+6. TEAM SHAPE: Flutter for mobile, full-stack for web/backend, an AI/ML engineer ONLY for genuine AI
+   beyond calling an LLM API, a designer ONLY for a bounded number of days. A Product Manager (and a
+   Technical Lead where relevant) are ALWAYS included at no extra charge.
+7. DAY RATE scales inversely with commitment length: ~£166.60/day (£3,500/mo) for retainers or 3-month+
+   engagements; ~£190.40/day (£4,000/mo) for fixed builds under 3 months; ~£250/day for very short,
+   tightly-fixed add-ons (days not weeks) — a real but thin data point.
+8. PAYMENT (fixed-price): 50/50 for the shortest work; kick-off/midpoint/delivery (3 milestones) for a
+   typical MVP; 30/40/30 per phase for a multi-phase roadmap. 7-day terms; IP transfers on payment.
+9. WIDEN the band and say so for hardware/IoT, RPA against systems the client doesn't control, or novel
+   AI — "time allocated to edge cases found during implementation." Pure software MVPs instead caveat on
+   client-side dependencies (assets, credentials, feedback turnaround, scope discipline).
+</house_rules>
+
+<the_project>
+Fill this in, then send:
+
+- What we're building (platforms — mobile/web/both; core features; any AI, payments, hardware/IoT):
+- Is the scope knowable up front? (yes = bounded new build · no = evolving/legacy or can't fix a feature list):
+- Want tiers or a single estimate?:
+- Known constraints (fixed budget, fixed deadline, missing client-side dependencies — or "none"):
+- Team size available (if you want it sized to a specific headcount):
+- This estimate is for: (internal deal-sizing · or a client-facing proposal draft)
+</the_project>
+
+<what_to_give_me>
+Work through it step by step, then give me:
+
+1. CLOSEST ANALOGUES — name the 2–3 reference engagements above this most resembles, and what that implies.
+2. STRUCTURE — fixed-price or retainer, with the one-line reason.
+3. TIMELINE — phase-by-phase (or day/task for small-fast work), rounded to the week (or day), with the
+   drift buffer stated. Give the raw quoted figure AND the buffered figure.
+4. TEAM — roles, counts, and day rate; PM/TL marked "included". If a headcount was given, size to it
+   using the compression rule.
+5. COST — per tier if tiered (low–high range is fine); omit any fixed total for a retainer.
+6. PAYMENT — milestones + terms, fixed-price only.
+7. CONFIDENCE & RISK — state that this is derived from our own past quotes (which run optimistic), and
+   flag anything (hardware, novel AI, unclear third-party dependencies, unfixable scope) that widens the
+   band or argues for a retainer.
+
+If this is for internal deal-sizing, skip marketing language — just the numbers and reasoning, hedging
+visible. If it's a client-facing draft, present cleanly without exposing the internal
+retainer-vs-fixed reasoning or the confidence hedge.
+</what_to_give_me>`,
+      _buildRef: "gitwork-authored",
+    },
+  },
 ];
 
 // The Prompts category — a large pack of PROMPT-type starters parsed from the prompt packs into
