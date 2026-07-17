@@ -73,8 +73,8 @@ export function PartiesEditor({
         />
       </div>
 
-      <div className="flex items-center justify-between">
-        <p className="app-eyebrow">Parties</p>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <p className="app-eyebrow min-w-0">Parties</p>
         <Button
           type="button"
           variant="secondary"
@@ -201,8 +201,8 @@ export function ServiceTiersEditor({
         />
       </div>
 
-      <div className="flex items-center justify-between">
-        <p className="app-eyebrow">Tiers</p>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <p className="app-eyebrow min-w-0">Tiers</p>
         <Button
           type="button"
           variant="secondary"
@@ -311,8 +311,8 @@ export function ResponseTimesEditor({
         />
       </div>
 
-      <div className="flex items-center justify-between">
-        <p className="app-eyebrow">Priority levels</p>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <p className="app-eyebrow min-w-0">Priority levels</p>
         <Button
           type="button"
           variant="secondary"
@@ -423,8 +423,8 @@ export function EscalationEditor({
         />
       </div>
 
-      <div className="flex items-center justify-between">
-        <p className="app-eyebrow">Escalation ladder</p>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <p className="app-eyebrow min-w-0">Escalation ladder</p>
         <Button
           type="button"
           variant="secondary"
@@ -534,8 +534,8 @@ export function ExclusionsEditor({
         />
       </div>
 
-      <div className="flex items-center justify-between">
-        <p className="app-eyebrow">Exclusions</p>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <p className="app-eyebrow min-w-0">Exclusions</p>
         <Button
           type="button"
           variant="secondary"
@@ -622,8 +622,8 @@ export function PenaltiesEditor({
         />
       </div>
 
-      <div className="flex items-center justify-between">
-        <p className="app-eyebrow">Service credit tiers</p>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <p className="app-eyebrow min-w-0">Service credit tiers</p>
         <Button
           type="button"
           variant="secondary"
@@ -812,8 +812,8 @@ export function SignaturesEditor({
         />
       </div>
 
-      <div className="flex items-center justify-between">
-        <p className="app-eyebrow">Signature blocks</p>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <p className="app-eyebrow min-w-0">Signature blocks</p>
         <Button
           type="button"
           variant="secondary"

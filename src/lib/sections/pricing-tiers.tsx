@@ -85,11 +85,11 @@ export const pricingTiersSection = defineSection<PricingTiersSectionData>({
 
         {tiers.map((tier, i) => (
           <div key={i} className="@container rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
                 Tier {i + 1}
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setHighlighted(i)}
@@ -124,8 +124,8 @@ export const pricingTiersSection = defineSection<PricingTiersSectionData>({
             </div>
 
             <div className="mt-3">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-sm font-medium text-[var(--text-2)]">Features</span>
+              <div className="mb-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                <span className="min-w-0 text-sm font-medium text-[var(--text-2)]">Features</span>
                 <button
                   type="button"
                   onClick={() => addFeature(i)}

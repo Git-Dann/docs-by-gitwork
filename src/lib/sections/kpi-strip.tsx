@@ -48,11 +48,11 @@ export const kpiStripSection = defineSection<KpiStripSectionData>({
       <SimpleForm>
         {items.map((item, i) => (
           <div key={i} className="@container rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
                 KPI {i + 1}
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
                   onClick={() => update(i, { emphasis: !item.emphasis })}

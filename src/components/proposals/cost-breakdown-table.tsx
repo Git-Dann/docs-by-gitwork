@@ -653,8 +653,8 @@ function CostBreakdownTableInner({ value, onChange }: CostBreakdownTableProps) {
       </div>
 
       <section className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4 shadow-[var(--shadow-xs)]">
-        <div className="flex items-center justify-between gap-4">
-          <h4 className="text-base font-semibold text-[var(--text-1)]">Budget breakdown</h4>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <h4 className="min-w-0 text-base font-semibold text-[var(--text-1)]">Budget breakdown</h4>
           <Button
             type="button"
             variant="secondary"
@@ -805,8 +805,8 @@ function CostBreakdownTableInner({ value, onChange }: CostBreakdownTableProps) {
       </section>
 
       <section className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4 shadow-[var(--shadow-xs)]">
-        <div className="flex items-center justify-between gap-4">
-          <h4 className="text-base font-semibold text-[var(--text-1)]">Payment Schedule</h4>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <h4 className="min-w-0 text-base font-semibold text-[var(--text-1)]">Payment Schedule</h4>
           <Button
             type="button"
             variant="secondary"

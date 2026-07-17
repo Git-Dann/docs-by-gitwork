@@ -17,8 +17,8 @@ export function ListItemsEditor({
 
   return (
     <div className="app-subtle-panel space-y-4 p-5">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="min-w-0">
           <p className="app-eyebrow">List</p>
           <p className="mt-2 text-base font-semibold text-[var(--text-1)]">{title}</p>
         </div>

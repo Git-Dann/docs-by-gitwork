@@ -30,7 +30,8 @@ export function editorId(): string {
     : `id-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** Move-up / move-down / delete cluster. Lives in an <ItemCard> header, never beside fields. */
+/** Move-up / move-down / delete cluster. Lives in an <ItemCard> header, never beside fields.
+ *  Compact (icon-sm, tight gap) so the header label keeps room in the narrow rail. */
 export function MoveDeleteControls({
   onMoveUp,
   onMoveDown,
@@ -43,16 +44,37 @@ export function MoveDeleteControls({
   ariaLabel: string;
 }) {
   return (
-    <div className="flex shrink-0 items-center gap-1.5">
-      <Button type="button" onClick={onMoveUp} variant="secondary" size="icon-md" aria-label={`Move ${ariaLabel} up`}>
-        <ArrowUpIcon className="h-4 w-4" />
+    <div className="flex shrink-0 items-center gap-1">
+      <Button type="button" onClick={onMoveUp} variant="secondary" size="icon-sm" aria-label={`Move ${ariaLabel} up`}>
+        <ArrowUpIcon className="h-3.5 w-3.5" />
       </Button>
-      <Button type="button" onClick={onMoveDown} variant="secondary" size="icon-md" aria-label={`Move ${ariaLabel} down`}>
-        <ArrowDownIcon className="h-4 w-4" />
+      <Button type="button" onClick={onMoveDown} variant="secondary" size="icon-sm" aria-label={`Move ${ariaLabel} down`}>
+        <ArrowDownIcon className="h-3.5 w-3.5" />
       </Button>
-      <Button type="button" onClick={onDelete} variant="danger" size="icon-md" aria-label={`Delete ${ariaLabel}`}>
-        <TrashIcon className="h-4 w-4" />
+      <Button type="button" onClick={onDelete} variant="danger" size="icon-sm" aria-label={`Delete ${ariaLabel}`}>
+        <TrashIcon className="h-3.5 w-3.5" />
       </Button>
+    </div>
+  );
+}
+
+/**
+ * Header for a list section inside an editor: a label on the left + an action (usually an
+ * "Add …" button) on the right. Wraps the action below the label when the rail is too narrow to
+ * hold both on one line — so the label and button never overlap (the old `justify-between` row
+ * with no wrap collided in the ~280px rail).
+ */
+export function EditorSectionHeader({
+  label,
+  action,
+}: {
+  label: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+      <p className="app-eyebrow min-w-0">{label}</p>
+      {action ? <div className="shrink-0">{action}</div> : null}
     </div>
   );
 }
