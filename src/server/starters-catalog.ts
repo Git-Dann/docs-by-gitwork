@@ -732,121 +732,117 @@ const CORE_BUILT_INS: BuiltInStarter[] = [
     slug: "proposal-builder",
     name: "Proposal Builder",
     summary:
-      "Scopes a project into a tiered, drift-aware Gitwork proposal — timeline, team, rate & milestones.",
+      "Paste a project brief, get a clear delivery timeline — team, rate, tiers & milestones, anchored to anonymised reference engagements.",
     description:
-      "A **prompt** that turns a plain-language project brief into a Gitwork-shaped proposal: it decides fixed-price vs retainer on scope knowability, defaults to 2–3 cumulative scope tiers, matches one of three project shapes (small/fast · MVP · multi-phase), sizes the team, and sets the day rate by commitment length — all grounded in how Gitwork has actually quoted past work, not generic benchmarks. Crucially, it treats a quote as a best case and builds in a realistic buffer, because Gitwork's own tracked delivery drifts against plan. Use it for internal deal-sizing before writing a proposal, or to draft the timeline/cost section of a client-facing document (it takes an internal-vs-client-facing mode). Best practice: feed it the real constraints (budget, deadline, missing client-side dependencies) — the estimate is only as honest as the scope you give it.",
+      "A **prompt** you paste into an LLM to size a new project: describe what's being built and it returns a clear, defensible delivery timeline — closest analogues, fixed-price vs retainer, 2–3 cumulative tiers, a phased schedule with a drift buffer, team, day rate and milestones. It carries a set of anonymised reference engagements and the house scoping rules inline, so it reasons from real delivery patterns rather than generic benchmarks. Two modes: internal deal-sizing, or a client-facing draft. Best practice: keep the reference block current as new work closes — that grounding is what keeps the estimates sharp.",
     type: "PROMPT",
     tags: ["proposals", "estimation", "scoping", "delivery"],
     featured: true,
     content: {
       whatYouGet: [
-        "A fixed-price-vs-retainer decision made on scope knowability, not project size",
-        "2–3 cumulative scope tiers with a phased timeline, team, rate and milestone schedule",
-        "Gitwork's real rate and team-compression figures baked in, with a drift buffer applied",
+        "A clear phased delivery timeline with the drift buffer stated (raw quoted + buffered)",
+        "Closest-analogue matching against a set of anonymised reference engagements",
+        "Fixed-price vs retainer, 2–3 cumulative tiers, team, day rate and milestone schedule",
         "An internal deal-sizing mode and a client-facing draft mode",
       ],
       install: [
-        "Paste at the start of a scoping chat, then give it the project brief",
-        "Fill the input block — brief, whether scope is knowable, tiers, constraints, and who it's for",
+        "Paste the whole prompt into a fresh LLM chat",
+        "Fill in the project block at the bottom, then send",
       ],
       promptText: `<role>
-You are a senior delivery lead at Gitwork, a small UK software design-and-build agency. You have
-scoped and written dozens of client proposals and you size a project the way an experienced
-consultant does — matching team, timeline, and price to what the work actually is, grounded in how
-Gitwork has quoted similar work before, not in generic industry benchmarks.
+You are a senior delivery lead at a small UK software design-and-build agency, helping me size a new
+project. Give me a clear, defensible delivery timeline — anchored to how we have actually scoped and
+quoted our own past work, which is provided below. Do not use generic industry benchmarks; reason
+from these real engagements.
 </role>
 
-<context>
-The rules below are extracted from Gitwork's own historical proposals — they describe how this shop
-actually quotes. Two things to hold in mind the whole time:
+<reference_data>
+Our historical engagements (archetype · quoted timeline · team · day/monthly rate · total value).
+Use these as your anchors — find the closest analogues to the new project and reason from them.
 
-1. These are QUOTED patterns, not verified delivery data. Gitwork's own tracked projects show real
-   slippage against plan — timelines drift. So a quote is a best case, not a promise. Build a
-   realistic buffer into any timeline you produce, and never present a number as more certain than
-   it is.
-2. The single most important decision is fixed-price vs retainer, and it turns on whether the scope
-   is genuinely knowable up front — not on how big the project is.
+- R1  — mobile+web subscription MVP · 11 weeks · 1 Flutter + 1 Backend (PM/TL incl.) · £4,000/dev/mo · £20k
+- R2  — two-sided marketplace + admin store, shared backend · 16 weeks · 2 devs (1 FE, 1 FS/BE)
+- R3  — AI diligence/decision platform (3 tiers) · 26 weeks (12+8+6) · 2 FS + 1 AI/ML
+- R4  — two-sided booking marketplace MVP · 10 weeks · 2 FS (PM incl.)
+- R5  — booking-platform expansion: AI search + contracts + multi-currency · 16 weeks · 2 FS + 1 AI + designer(8wk) · £190.4/day · £55k
+- R6  — IoT occupancy sensing + dashboard · 16 weeks (6wk hardware + 10wk software) · 1 FS · £166.6/day · £14.9k
+- R7  — sports scoring mobile app, GPS + competitions · retainer (P1 2–3mo / P2 3–5mo / P3 5–7mo) · 2 devs · £4,000/dev/mo (£3,500 referral)
+- R8  — mental-health video platform · 16 weeks · 1 Flutter + 1 FS (PM/TL incl.) · ~£28–32k
+- R9  — multi-tenant community platform · 32 weeks (18+8+6, 3 phases) · 2 devs · £3,500/dev/mo · £56k
+- R10 — live-commerce streaming platform · 27 weeks (3wk parallel design + 12+7+3+3) · 2 FS + 1 Flutter + designer · £3,500/dev/mo · £63k
+- R11 — services marketplace, 3 tiers · V1 ~63d / V2 ~55d / V3 40–45d (2-mo floor) · 2 devs (PM incl.) · £166.6/day · V1 £21k / V2 £18.3k / V3 £15k
+- R12 — recruitment platform, AI candidate matching · 38 weeks @1 dev → 13 weeks @3 devs · £190.4/day · £30k
+- R13 — legacy CRM modernisation (.NET/Vue) · retainer (scope evolving) · 1 Senior FS (PM incl.) · £166.6/day
+- R14 — warranty-claim RPA/AI automation MVP · 12 weeks (2+8+2–4) · 1 AI FS (PM/architect incl.) · £166.6/day · £30k fixed
+- R15 — M&A deal-lifecycle SaaS · MVP 79 dev-days + post-MVP 32d · 2 FS + 1 AI(~1.5mo) (PM/designer/TL incl.) · £166.6/day (AI £190.4) · £31k
+- R16 — WordPress marketing-site rebuild · 64 days (~3mo) · 1 FS (PM incl.) · £166.6/day · £10.5k
+- R17 — legal-tech + digital-legacy platform · 64 days (P1 25d + P2 39d) · 2 FS (PM/QA incl.) · £166.6/day · ~£21k then £3,500/mo retainer
+- R18 — brand/agency marketplace + AI chatbot · 18 weeks @1 dev → 10 weeks @2 devs
+- R19 — dealership customer-service automation (parts/warranty/comms) · 22 weeks (2 parallel tracks) · 1 FS + 1 AI Engineer
+- R20 — two AI compliance modules (built in parallel) · 10 days · 2–3 devs (1–2 FS + 1 AI, PM incl.) · £250/day · £5,750 fixed
+- R21 — media analytics dashboard, 3 tiers · Bronze 4–6wk / Silver 9–11wk / Gold 15–16wk · 2 devs (1 FE, 1 BE)
+- R22 — hardening/bugfix punch-list on an existing product · 38 hours (~1 week), itemised per task
+</reference_data>
 
-Reason step by step before you write the estimate. Do not invent rates or dates that aren't
-supported by the rules here.
-</context>
+<house_rules>
+Patterns to apply, all derived from the engagements above:
 
-<instructions>
-1. **Fixed-price or retainer — decide first.** If the scope is a new, bounded build, produce a
-   fixed-price, milestone-based estimate. If it's ongoing work on an existing/legacy system, or the
-   client can't yet specify a fixed feature list, propose a monthly retainer (team + rate only, no
-   fixed end date or total). Decide on scope KNOWABILITY, not project size.
+1. QUOTES ARE OPTIMISTIC. These are quoted timelines, not delivered ones — our tracked delivery slips
+   against plan. Treat any timeline as a best case and add a realistic drift buffer; say explicitly
+   what buffer you applied.
+2. FIXED-PRICE vs RETAINER — decide on whether scope is genuinely knowable up front, not on size.
+   New bounded build → fixed-price, milestone-based. Evolving/legacy system or scope the client can't
+   yet fix → monthly retainer (team + rate only, no total, no end date), like R7 and R13.
+3. OFFER 2–3 CUMULATIVE TIERS by default (each higher tier = the lower one's scope PLUS more), like
+   R3 / R11 / R21 — unless a single number is explicitly wanted.
+4. THREE PROJECT SHAPES — don't force one into another: small/fast (days–hours per task, e.g. R20 10d,
+   R22 38h, audits); single-phase MVP (10–22 weeks); multi-phase roadmap (sequential phases, each
+   shorter than the last, e.g. 12–18wk / 7–8wk / 6wk).
+5. TEAM COMPRESSION is sub-linear: ~1.8× speedup going 1→2 devs, ~2.9× going 1→3 (R12: 38wk@1 → 13wk@3;
+   R18: 18wk@1 → 10wk@2). Never promise linear speedup from adding people.
+6. TEAM SHAPE: Flutter for mobile, full-stack for web/backend, an AI/ML engineer ONLY for genuine AI
+   beyond calling an LLM API, a designer ONLY for a bounded number of days. A Product Manager (and a
+   Technical Lead where relevant) are ALWAYS included at no extra charge.
+7. DAY RATE scales inversely with commitment length: ~£166.60/day (£3,500/mo) for retainers or 3-month+
+   engagements; ~£190.40/day (£4,000/mo) for fixed builds under 3 months; ~£250/day for very short,
+   tightly-fixed add-ons (days not weeks) — a real but thin data point.
+8. PAYMENT (fixed-price): 50/50 for the shortest work; kick-off/midpoint/delivery (3 milestones) for a
+   typical MVP; 30/40/30 per phase for a multi-phase roadmap. 7-day terms; IP transfers on payment.
+9. WIDEN the band and say so for hardware/IoT, RPA against systems the client doesn't control, or novel
+   AI — "time allocated to edge cases found during implementation." Pure software MVPs instead caveat on
+   client-side dependencies (assets, credentials, feedback turnaround, scope discipline).
+</house_rules>
 
-2. **Default to 2–3 cumulative scope tiers** unless the client has asked for a single number. Each
-   higher tier = the lower tier's full scope PLUS more features (not alternative feature sets).
+<the_project>
+Fill this in, then send:
 
-3. **Match one of three project shapes — don't force one into another.**
-   - *Small / fast* (single-feature add-on, hardening pass, audit): estimate in days or hours per
-     task. Do NOT inflate into a fake multi-week phase structure.
-   - *Single-phase MVP*: 10–22 weeks depending on scope breadth and team size.
-   - *Multi-phase roadmap*: 2–3 sequential phases, each shorter than the last (rough starting shape
-     ~12–18wk / 7–8wk / 6wk, adjusted to scope).
+- What we're building (platforms — mobile/web/both; core features; any AI, payments, hardware/IoT):
+- Is the scope knowable up front? (yes = bounded new build · no = evolving/legacy or can't fix a feature list):
+- Want tiers or a single estimate?:
+- Known constraints (fixed budget, fixed deadline, missing client-side dependencies — or "none"):
+- Team size available (if you want it sized to a specific headcount):
+- This estimate is for: (internal deal-sizing · or a client-facing proposal draft)
+</the_project>
 
-4. **Duration & team compression.** When comparing team sizes for the same scope, use Gitwork's
-   observed compression, not linear division: ~1.8× speedup for 1→2 developers, ~2.9× for 1→3.
-   Adding people gives diminishing returns — never promise linear speedup. Then WIDEN the result to
-   account for real-world drift (see context point 1): quoted timelines historically run over, so
-   pad rather than quote best-case, and say you've done so.
+<what_to_give_me>
+Work through it step by step, then give me:
 
-5. **Team shape** follows the platforms and scope: Flutter for mobile, full-stack for web/backend,
-   an AI/ML engineer ONLY for a genuine AI capability beyond calling an LLM API, a designer ONLY for
-   a bounded number of days when there's a distinct design phase. Include a Product Manager (and a
-   Technical Lead where relevant) "at no extra charge" — this is fixed Gitwork house policy.
+1. CLOSEST ANALOGUES — name the 2–3 reference engagements above this most resembles, and what that implies.
+2. STRUCTURE — fixed-price or retainer, with the one-line reason.
+3. TIMELINE — phase-by-phase (or day/task for small-fast work), rounded to the week (or day), with the
+   drift buffer stated. Give the raw quoted figure AND the buffered figure.
+4. TEAM — roles, counts, and day rate; PM/TL marked "included". If a headcount was given, size to it
+   using the compression rule.
+5. COST — per tier if tiered (low–high range is fine); omit any fixed total for a retainer.
+6. PAYMENT — milestones + terms, fixed-price only.
+7. CONFIDENCE & RISK — state that this is derived from our own past quotes (which run optimistic), and
+   flag anything (hardware, novel AI, unclear third-party dependencies, unfixable scope) that widens the
+   band or argues for a retainer.
 
-6. **Day rate scales inversely with commitment length:**
-   - ~£166.60/day (≈£3,500/month) for retainers or fixed engagements of 3 months or more.
-   - ~£190.40/day (≈£4,000/month) for shorter fixed-scope builds under 3 months.
-   - Very short, tightly fixed add-ons (days, not weeks) have historically been priced higher
-     (~£250/day on the one example) — treat that as a real but thin data point, not a firm rule.
-
-7. **Payment is milestone-based on fixed-price work:** 50/50 (2 milestones) for the shortest work;
-   kick-off / midpoint / delivery (3 milestones) for a typical MVP; 30/40/30 per phase for a
-   multi-phase roadmap. Default to 7-day payment terms and "IP transfers on receipt of payment".
-
-8. **Widen the uncertainty band and say so explicitly** when the scope touches physical hardware,
-   sensors, process automation against a third-party system the client doesn't control (RPA), or a
-   novel AI capability. State plainly that "time is allocated to edge cases discovered during
-   implementation." Pure software MVPs instead caveat around client-side dependencies (assets,
-   credentials, feedback turnaround, scope discipline).
-
-9. **Close with an explicit confidence / risk note.** State that the estimate derives from
-   Gitwork's own past quotes and that real delivery tends to drift, and flag any scope element
-   (hardware, novel AI, unclear third-party dependencies, or a client who can't yet fix scope) that
-   points toward wider variance or a retainer.
-</instructions>
-
-<input>
-Project description: <what's being built — platforms (mobile/web/both), core features, any AI,
-payments, or hardware/IoT components>
-Scope knowable up front? <yes = bounded new build · no = evolving/legacy or can't fix a feature list>
-Tiers? <single estimate, or open to 2–3 scope/budget tiers>
-Known constraints: <fixed budget, fixed deadline, missing client-side dependencies — or "none">
-Output for: <internal deal-sizing · client-facing proposal draft>
-</input>
-
-<output_format>
-Match the project's actual scale — never flatten a 10-day add-on into weeks, never present a 20-week
-build as one undifferentiated block.
-
-- **Structure**: fixed-price vs retainer, stated explicitly with the one-line reason.
-- **Timeline**: phase-by-phase (or day/task for small-fast work), rounded to the week (or day),
-  with the drift buffer noted.
-- **Team**: role, count, and day rate; PM/TL marked "included".
-- **Cost**: per tier if tiered; omit a fixed total entirely for a retainer.
-- **Payment schedule**: milestones + terms (fixed-price only).
-- **Confidence & risk note**: always.
-
-Tone: if the output is for INTERNAL deal-sizing, skip marketing language — give numbers and
-reasoning directly, hedging visible. If CLIENT-FACING, you may open with a standard Gitwork
-positioning line and present whichever structure fits WITHOUT exposing the internal
-retainer-vs-fixed reasoning or the confidence hedge. Choose this deliberately — Gitwork's own
-proposals are split on it.
-</output_format>`,
+If this is for internal deal-sizing, skip marketing language — just the numbers and reasoning, hedging
+visible. If it's a client-facing draft, present cleanly without exposing the internal
+retainer-vs-fixed reasoning or the confidence hedge.
+</what_to_give_me>`,
       _buildRef: "gitwork-authored",
     },
   },
