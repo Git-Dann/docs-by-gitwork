@@ -75,12 +75,11 @@ const STATUS_FILL: Record<TaskStatus, string> = {
   DONE: "bg-emerald-500",
 };
 // Left → right within the filled portion (most complete first).
-const STATUS_FILL_ORDER: TaskStatus[] = ["DONE", "UI_DONE", "IN_REVIEW", "DOING"];
+const STATUS_FILL_ORDER: TaskStatus[] = ["DONE", "IN_REVIEW", "DOING"];
 // Legend order (full flow) + dot colours for the legend chips.
 const STATUS_LEGEND: { status: TaskStatus; dot: string }[] = [
   { status: "DOING", dot: "bg-amber-500" },
   { status: "IN_REVIEW", dot: "bg-blue-500" },
-  { status: "UI_DONE", dot: "bg-teal-500" },
   { status: "DONE", dot: "bg-emerald-500" },
 ];
 
@@ -99,9 +98,9 @@ function StatusFill({ counts }: { counts: Record<TaskStatus, number> }) {
   );
 }
 
-/** "12 done · 3 UI done · 2 in review …" — omits zero-count statuses. */
+/** "12 done · 2 in review · 3 doing …" — omits zero-count statuses. */
 function statusBreakdown(counts: Record<TaskStatus, number>): string {
-  const order: TaskStatus[] = ["DONE", "UI_DONE", "IN_REVIEW", "DOING", "TODO", "BACKLOG"];
+  const order: TaskStatus[] = ["DONE", "IN_REVIEW", "DOING", "TODO", "BACKLOG"];
   return order
     .filter((s) => (counts[s] ?? 0) > 0)
     .map((s) => `${counts[s]} ${TASK_STATUS_LABELS[s].toLowerCase()}`)
