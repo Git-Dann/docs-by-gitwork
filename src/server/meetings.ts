@@ -175,7 +175,15 @@ Use empty arrays when there are no decisions or action items.`;
 export async function summariseMeeting(meetingId: string): Promise<void> {
   const meeting = await prisma.meeting.findUnique({
     where: { id: meetingId },
-    select: { id: true, workspaceId: true, clientId: true, title: true, transcriptText: true },
+    select: {
+      id: true,
+      workspaceId: true,
+      clientId: true,
+      title: true,
+      transcriptText: true,
+      attendees: true,
+      client: { select: { slug: true, name: true } },
+    },
   });
   if (!meeting?.transcriptText) return;
 
@@ -258,15 +266,45 @@ export async function summariseMeeting(meetingId: string): Promise<void> {
   ]);
 
   // Notes are ready — tell the client's team (only when attributed to a client).
-  if (meeting.clientId) {
+  // Notes are ready. Recipients: anyone who was ON the call (attendees matched to
+  // workspace users — so a super-admin on lots of calls gets their notes regardless
+  // of client attribution) PLUS the client's team when attributed. Group per client
+  // so many calls for the same client collapse into "N meeting notes ready · Client".
+  const attendeeUserIds =
+    meeting.attendees.length > 0
+      ? (
+          await prisma.user.findMany({
+            where: {
+              email: { in: meeting.attendees },
+              memberships: { some: { workspaceId: meeting.workspaceId } },
+            },
+            select: { id: true },
+          })
+        ).map((u) => u.id)
+      : [];
+
+  if (meeting.clientId || attendeeUserIds.length > 0) {
+    const clientName = meeting.client?.name;
+    const title = (n: number) =>
+      n === 1
+        ? `Notes ready: ${meeting.title ?? "meeting"}`
+        : `${n} meeting notes ready${clientName ? ` · ${clientName}` : ""}`;
     dispatchNotification({
       event: "meetings.notes_ready",
       workspaceId: meeting.workspaceId,
-      target: { kind: "clientTeam" },
-      clientId: meeting.clientId,
-      title: `Notes ready: ${meeting.title ?? "meeting"}`,
-      actionUrl: "/app/portal",
-      groupKey: `meetings.notes_ready:${meeting.id}`,
+      // Attendees are always notified; the client team is added (scoped) when attributed.
+      target: meeting.clientId
+        ? { kind: "clientTeam" }
+        : { kind: "users", userIds: attendeeUserIds },
+      clientId: meeting.clientId ?? null,
+      alwaysUserIds: attendeeUserIds,
+      title: title(1),
+      titleForCount: title,
+      actionUrl: meeting.client?.slug ? `/app/portal/${meeting.client.slug}` : "/app/portal",
+      groupKey: meeting.clientId
+        ? `meetings.notes_ready:${meeting.clientId}`
+        : `meetings.notes_ready:attendee`,
+      metadata: { meetingId: meeting.id },
     });
   }
 }

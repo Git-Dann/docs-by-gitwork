@@ -55,6 +55,10 @@ export interface DispatchInput {
   groupKey: string;
   /** How many underlying items this dispatch represents. Bulk paths pass N. Default 1. */
   count?: number;
+  /** Extra recipients always included, bypassing client-scope filtering — e.g. meeting
+   *  attendees who were on the call (relevant regardless of client attribution). Unioned
+   *  with the target set; the actor is still excluded. */
+  alwaysUserIds?: string[];
 }
 
 /** Same unread group within this window is incremented rather than re-created. */
@@ -136,6 +140,14 @@ async function resolveRecipients(input: DispatchInput): Promise<string[]> {
   // named — e.g. assigned the task — is itself the authorization to be told).
   if (applyClientScope && input.clientId) {
     userIds = await intersectClientScope(input.workspaceId, input.clientId, userIds);
+  }
+
+  // Always-include recipients (e.g. meeting attendees) bypass scope but still exclude the actor.
+  if (input.alwaysUserIds?.length) {
+    const extra = input.actorId
+      ? input.alwaysUserIds.filter((id) => id !== input.actorId)
+      : input.alwaysUserIds;
+    userIds = [...userIds, ...extra];
   }
 
   return [...new Set(userIds)];

@@ -1256,7 +1256,7 @@ export async function promoteWikiIntakeItemToTask(
 ): Promise<{ item: WikiIntakeItemRecord; taskId: string }> {
   const item = await prisma.clientWikiIntakeItem.findUnique({
     where: { id: itemId },
-    include: { wiki: { include: { client: { select: { id: true, workspaceId: true, slug: true } } } } },
+    include: { wiki: { include: { client: { select: { id: true, workspaceId: true, slug: true, name: true } } } } },
   });
   if (!item) throw new Error("Wiki intake item not found");
   if (item.taskId) return { item: serializeWikiIntakeItem(item), taskId: item.taskId };
@@ -1317,12 +1317,13 @@ export async function promoteWikiIntakeItemToTask(
       actorId: userId,
       target: { kind: "users", userIds: promoteAssignees },
       clientId: item.wiki.client.id,
-      title: "You were assigned a task",
+      title: `New task assigned to you · ${item.wiki.client.name}`,
       titleForCount: (n) =>
-        n === 1 ? "You were assigned a task" : `You were assigned ${n} tasks`,
+        (n === 1 ? "New task assigned to you" : `${n} tasks assigned to you`) +
+        ` · ${item.wiki.client.name}`,
       body: `${wikiItemPrefix(item.type)} ${item.title}`,
       actionUrl: `/app/portal/${item.wiki.client.slug}/tasks`,
-      groupKey: "tasks.assigned",
+      groupKey: `tasks.assigned:${item.wiki.client.id}`,
       metadata: { taskIds: [task.id] },
     });
   }

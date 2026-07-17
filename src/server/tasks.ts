@@ -589,8 +589,11 @@ async function nextOrderKey(workspaceId: string, clientId: string, status: TaskS
 
 // ─── Notification helpers (in-app bell/Desk) ────────────────────────────────
 const clientTasksUrl = (slug: string) => `/app/portal/${slug}/tasks`;
-const assignedTitle = (n: number) =>
-  n === 1 ? "You were assigned a task" : `You were assigned ${n} tasks`;
+// Per-client assignment title — groups many assignments for one client into a count
+// ("4 tasks assigned to you · Wedge") rather than repeating identical rows.
+const assignedTitle = (n: number, client?: string) =>
+  (n === 1 ? "New task assigned to you" : `${n} tasks assigned to you`) +
+  (client ? ` · ${client}` : "");
 
 export async function createTask(
   user: EffectiveUser,
@@ -673,11 +676,11 @@ export async function createTask(
       actorId: user.id,
       target: { kind: "users", userIds: createdAssignees },
       clientId: input.clientId,
-      title: assignedTitle(1),
-      titleForCount: assignedTitle,
+      title: assignedTitle(1, row.client.name),
+      titleForCount: (n) => assignedTitle(n, row.client.name),
       body: row.title,
       actionUrl: clientTasksUrl(row.client.slug),
-      groupKey: "tasks.assigned",
+      groupKey: `tasks.assigned:${row.client.id}`,
       metadata: { taskIds: [row.id] },
     });
   }
@@ -884,7 +887,7 @@ export async function updateTask(
         titleForCount: assignedTitle,
         body: row.title,
         actionUrl: clientTasksUrl(row.client.slug),
-        groupKey: "tasks.assigned",
+        groupKey: `tasks.assigned:${row.client.id}`,
         metadata: { taskIds: [row.id] },
       });
     }
