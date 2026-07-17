@@ -99,7 +99,7 @@ export function StarterDetail({ starterId }: { starterId: string }) {
   }
 
   if (editing) {
-    return <StarterForm starter={starter} onSaved={() => setEditing(false)} />;
+    return <StarterForm starter={starter} onSaved={() => setEditing(false)} onCancel={() => setEditing(false)} />;
   }
 
   async function handleDuplicate() {

@@ -27,7 +27,17 @@ function csvToArray(value: string): string[] {
     .filter(Boolean);
 }
 
-export function StarterForm({ starter, onSaved }: { starter?: StarterRecord; onSaved?: (id: string) => void }) {
+export function StarterForm({
+  starter,
+  onSaved,
+  onCancel,
+}: {
+  starter?: StarterRecord;
+  onSaved?: (id: string) => void;
+  /** Defaults to navigating to the library — pass this when the form is rendered inline over a
+   * starter's own detail view, so Cancel returns to that view instead of leaving the page. */
+  onCancel?: () => void;
+}) {
   const router = useRouter();
   const create = useCreateStarter();
   const update = useUpdateStarter(starter?.id ?? "");
@@ -80,7 +90,7 @@ export function StarterForm({ starter, onSaved }: { starter?: StarterRecord; onS
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto max-w-2xl space-y-5">
+    <form onSubmit={handleSubmit} className="mx-auto max-w-7xl space-y-5">
       <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label">
@@ -89,33 +99,35 @@ export function StarterForm({ starter, onSaved }: { starter?: StarterRecord; onS
           </span>
         </div>
         <div className="space-y-4 px-5 py-5">
-          <div>
-            <label className={labelClass} htmlFor="starter-name">
-              Name
-            </label>
-            <input
-              id="starter-name"
-              className={`${inputClass} mt-1.5`}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Gitwork Launch Kit"
-            />
-          </div>
-
-          <div>
-            <label className={labelClass} htmlFor="starter-summary">
-              Summary
-            </label>
-            <input
-              id="starter-summary"
-              className={`${inputClass} mt-1.5`}
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-              placeholder="One-line description shown on the card"
-            />
-          </div>
-
           <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className={labelClass} htmlFor="starter-name">
+                Name
+              </label>
+              <input
+                id="starter-name"
+                className={`${inputClass} mt-1.5`}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Gitwork Launch Kit"
+              />
+            </div>
+
+            <div>
+              <label className={labelClass} htmlFor="starter-summary">
+                Summary
+              </label>
+              <input
+                id="starter-summary"
+                className={`${inputClass} mt-1.5`}
+                value={summary}
+                onChange={(e) => setSummary(e.target.value)}
+                placeholder="One-line description shown on the card"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
             <div>
               <label className={labelClass} htmlFor="starter-type">
                 Type
@@ -150,19 +162,18 @@ export function StarterForm({ starter, onSaved }: { starter?: StarterRecord; onS
                 ))}
               </select>
             </div>
-          </div>
-
-          <div>
-            <label className={labelClass} htmlFor="starter-tags">
-              Tags (comma-separated)
-            </label>
-            <input
-              id="starter-tags"
-              className={`${inputClass} mt-1.5`}
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder="design-system, ui, audit"
-            />
+            <div>
+              <label className={labelClass} htmlFor="starter-tags">
+                Tags (comma-separated)
+              </label>
+              <input
+                id="starter-tags"
+                className={`${inputClass} mt-1.5`}
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+                placeholder="design-system, ui, audit"
+              />
+            </div>
           </div>
         </div>
       </section>
@@ -244,7 +255,7 @@ export function StarterForm({ starter, onSaved }: { starter?: StarterRecord; onS
           type="button"
           variant="secondary"
           size="md"
-          onClick={() => router.push("/app/starters")}
+          onClick={onCancel ?? (() => router.push("/app/starters"))}
         >
           Cancel
         </Button>

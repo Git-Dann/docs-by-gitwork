@@ -96,7 +96,10 @@ function linesToInline(lines: string[], keyPrefix: string): ReactNode[] {
 function renderBlock(block: string, idx: number, compact: boolean): ReactNode {
   const lines = block.split("\n");
   const key = `b${idx}`;
-  const bodySize = compact ? "text-sm leading-6" : "text-[16px] leading-8";
+  // compact matches the site-wide body-copy convention exactly: plain `text-sm`, no explicit
+  // leading override, so it gets Tailwind's own paired line-height like every other text-sm
+  // element on the site (the summary line, What You Get items, etc.) — never the looser leading-6.
+  const bodySize = compact ? "text-sm" : "text-[16px] leading-8";
 
   // Heading
   const heading = /^(#{1,6})\s+(.*)$/.exec(block.trim());
