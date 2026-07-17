@@ -412,7 +412,16 @@ async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
       where: { clientId },
       orderBy: [{ orderKey: "asc" }, { startDate: "asc" }],
       include: {
-        tasks: { select: { title: true, status: true, dueDate: true }, orderBy: { orderKey: "asc" } },
+        // Top-level, active tasks only — matching the internal Gantt/board (see
+        // getWorkspaceTaskCounts and client-tasks-workspace.tsx). Without this
+        // filter, subtasks and archived tasks were also counted here, so the
+        // wiki's task counts (though not its done/total percentage, since both
+        // move together) badly overstated the real board's numbers.
+        tasks: {
+          where: { parentId: null, archivedAt: null },
+          select: { title: true, status: true, dueDate: true },
+          orderBy: { orderKey: "asc" },
+        },
       },
     }),
     prisma.milestone.findMany({
