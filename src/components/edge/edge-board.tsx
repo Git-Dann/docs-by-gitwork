@@ -117,7 +117,7 @@ export function EdgeBoard() {
       <header className="mb-3 flex flex-none items-center justify-between px-1">
         <div className="flex items-baseline gap-3">
           <span className="font-mono text-[12px] uppercase tracking-[0.2em] text-[var(--accent)]">Foundry</span>
-          <span className="font-mono text-[12px] uppercase tracking-[0.18em] text-[var(--text-3)]">// Mission Control</span>
+          <span className="font-mono text-[12px] uppercase tracking-[0.18em] text-[var(--text-3)]">{"// Mission Control"}</span>
         </div>
         <div className="flex items-baseline gap-4 font-mono text-[var(--text-3)]">
           {now && (
