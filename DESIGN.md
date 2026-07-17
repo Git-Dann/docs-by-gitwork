@@ -141,6 +141,13 @@ The system pairs **Geist** (a crisp geometric sans) with **Lora** (a transitiona
 - **Widget header**: Full-width strip inside each card — 36px tall, bottom border `1px solid {colors.hairline}`.
 - **Marketing pages**: 1280px max-width, 32px gutters
 - **Modals and drawers**: Centered 560px max-width panels for forms; 720px for detail views
+- **Fixed-height two-column popup** (the standard "list + inspector" pattern — version history,
+  pickers, browse-and-inspect surfaces): use the shared `<Modal>` at ~`max-w-3xl` with a **fixed body
+  height** (e.g. `h-[460px]` — never content-driven, so the popup doesn't resize as you click rows)
+  split into **two columns** — a scrollable list on the left (`minmax(0,320px)`) and a scrollable
+  detail/preview on the right (`minmax(0,1fr)`), divided by a `{colors.hairline}` rule, each column
+  its own `overflow-y-auto`. Select-on-left → render-on-right; default-select the first item on open.
+  Reach for this shape before inventing a new layout for any "pick one of a list and inspect it" popup.
 
 ---
 

@@ -14,6 +14,7 @@ import {
   ArrowTopRightOnSquareIcon,
   ArrowDownTrayIcon,
   EllipsisHorizontalIcon,
+  ClockIcon,
   ChatBubbleLeftRightIcon,
   WrenchScrewdriverIcon,
   PuzzlePieceIcon,
@@ -33,7 +34,7 @@ import { Markdown } from "@/lib/markdown";
 import { buttonStyles } from "@/components/ui/button";
 import { StarterForm } from "@/components/starters/starter-form";
 import { StarterPromptEditor, type StarterEditorPicks } from "@/components/starters/starter-prompt-editor";
-import { StarterVersionsPanel } from "@/components/starters/starter-versions-panel";
+import { StarterVersionsModal } from "@/components/starters/starter-versions-modal";
 import type { StarterType } from "@/server/starters";
 
 const TYPE_LABEL: Record<StarterType, string> = {
@@ -81,6 +82,7 @@ export function StarterDetail({ starterId }: { starterId: string }) {
   // Session-only picks from the prompt editor (PROMPT/SKILL only) — threaded onto the download
   // link so the downloaded Skill resolves the same client/document/scan shown on screen.
   const [editorPicks, setEditorPicks] = useState<StarterEditorPicks>({});
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   if (isLoading) {
     return <div className="h-64 animate-pulse rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]" />;
@@ -187,6 +189,12 @@ export function StarterDetail({ starterId }: { starterId: string }) {
                     <button type="button" className={actionMenuItem} onClick={() => setEditing(true)}>
                       <PencilSquareIcon className="h-4 w-4 text-[var(--text-4)]" />
                       Edit
+                    </button>
+                  </MenuItem>
+                  <MenuItem>
+                    <button type="button" className={actionMenuItem} onClick={() => setHistoryOpen(true)}>
+                      <ClockIcon className="h-4 w-4 text-[var(--text-4)]" />
+                      Version history
                     </button>
                   </MenuItem>
                   <MenuItem>
@@ -369,7 +377,9 @@ export function StarterDetail({ starterId }: { starterId: string }) {
         </section>
       )}
 
-      {canManageStarters && <StarterVersionsPanel starterId={starter.id} />}
+      {canManageStarters && (
+        <StarterVersionsModal open={historyOpen} onClose={() => setHistoryOpen(false)} starterId={starter.id} />
+      )}
     </div>
   );
 }
