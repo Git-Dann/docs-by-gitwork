@@ -7,13 +7,16 @@ export type TaskStatus = "BACKLOG" | "TODO" | "DOING" | "IN_REVIEW" | "UI_DONE" 
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
 export type TaskLabel = "BACKEND" | "FRONTEND" | "UI_UX" | "RESEARCH" | "DESIGN";
 
-/** Board column order. */
+/** Board column order. "UI_DONE" is intentionally omitted — the "UI Done"
+ *  column was removed (redundant; convey UI/backend/frontend via the task title
+ *  or the UI/UX label). The status stays in the union/DB enum for legacy rows,
+ *  which are coalesced to In Review on read (see taskRowToDTO), so it never
+ *  appears as a column or a selectable status. */
 export const TASK_STATUSES: TaskStatus[] = [
   "BACKLOG",
   "TODO",
   "DOING",
   "IN_REVIEW",
-  "UI_DONE",
   "DONE",
 ];
 

@@ -90,7 +90,12 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
     title: row.title,
     description: row.description,
     acceptanceCriteria: row.acceptanceCriteria,
-    status: row.status as TaskStatus,
+    // "UI Done" was removed as a board column (July 2026 — devs found it
+    // redundant; use the task title or the UI/UX label instead). The DB enum
+    // value is kept (dropping it is a data-losing migration), so coalesce any
+    // legacy UI_DONE row to In Review on read — it renders/behaves as In Review
+    // everywhere and can be moved on normally. No new task can be set to it.
+    status: (row.status === "UI_DONE" ? "IN_REVIEW" : row.status) as TaskStatus,
     priority: row.priority as TaskPriority,
     label: row.label as TaskLabel | null,
     orderKey: row.orderKey,
