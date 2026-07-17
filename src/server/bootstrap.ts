@@ -34,6 +34,7 @@ import { getDefaultRateCardPeoplePayload } from "@/server/rate-card";
 import { getDefaultCodeClearCandidatePayloads } from "@/server/codeclear";
 import { migratePermissionModel } from "@/server/permissions";
 import { seedBuiltInStarters } from "@/server/starters-catalog";
+import { seedMasterPromptStarter } from "@/server/master-prompt-starter";
 import { seedHandbookArticles } from "@/server/handbook-catalog";
 import { seedGolfClubs } from "@/server/golf-clubs";
 import { isSeedAccountEmail } from "@/server/seed-accounts";
@@ -444,6 +445,8 @@ async function _ensureBaseRecords() {
   // Seed the built-in Starters library (Prompt→Production building blocks) so it's populated
   // with no manual "load" step. Idempotent upsert by slug — see seedBuiltInStarters.
   await seedBuiltInStarters(workspace.id);
+  // The editable, versioned master build-prompt template — workspace-owned + create-only.
+  await seedMasterPromptStarter(workspace.id);
 
   // Seed / refresh the built-in Handbook (developer standards, languages, how we operate) —
   // version-gated so improved content ships on deploy without clobbering members' edits.
