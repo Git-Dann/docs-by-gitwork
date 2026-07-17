@@ -22,15 +22,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    assertCan(await getEffectiveUserOrNull(request), canManageStarters, "update starters");
+    const user = await getEffectiveUserOrNull(request);
+    assertCan(user, canManageStarters, "update starters");
     const { id } = await params;
     const body = await request.json();
     const data = starterUpdateSchema.parse(body);
-    const starter = await updateStarter(id, {
-      ...data,
-      description: data.description === undefined ? undefined : data.description ?? null,
-      content: data.content === undefined ? undefined : data.content ?? null,
-    });
+    const starter = await updateStarter(
+      id,
+      {
+        ...data,
+        description: data.description === undefined ? undefined : data.description ?? null,
+        content: data.content === undefined ? undefined : data.content ?? null,
+      },
+      user?.id ?? null,
+    );
     if (!starter) return apiError("Starter not found", 404);
     return apiOk({ starter });
   } catch (error) {

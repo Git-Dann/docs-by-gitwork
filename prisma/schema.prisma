@@ -2913,8 +2913,26 @@ model Starter {
   curatorState StarterCuratorState @default(ACTIVE)
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
+  versions     StarterVersion[]
 
   @@index([workspaceId, createdAt])
+}
+
+// Point-in-time snapshot of a Starter, captured automatically before each content-changing save
+// (and before a restore) so edits are reversible. `snapshot` freezes the restorable fields
+// (name/summary/description/tags/type/status/content) as one JSON blob.
+model StarterVersion {
+  id          String   @id @default(cuid())
+  starterId   String
+  version     Int
+  snapshot    Json
+  changelog   String?  @db.Text
+  createdById String?
+  createdAt   DateTime @default(now())
+  starter     Starter  @relation(fields: [starterId], references: [id], onDelete: Cascade)
+
+  @@unique([starterId, version])
+  @@index([starterId, createdAt])
 }
 
 // ─── Handbook (internal developer knowledgebase) ────────────────────────────

@@ -39,6 +39,7 @@ export function StarterForm({ starter, onSaved }: { starter?: StarterRecord; onS
   const [status, setStatus] = useState<StarterStatus>(starter?.status ?? "PUBLISHED");
   const [tags, setTags] = useState((starter?.tags ?? []).join(", "));
   const [description, setDescription] = useState(starter?.description ?? "");
+  const [promptText, setPromptText] = useState(starter?.content?.promptText ?? "");
   const [whatYouGet, setWhatYouGet] = useState((starter?.content?.whatYouGet ?? []).join("\n"));
   const [install, setInstall] = useState((starter?.content?.install ?? []).join("\n"));
   const [techStack, setTechStack] = useState((starter?.content?.techStack ?? []).join(", "));
@@ -55,6 +56,7 @@ export function StarterForm({ starter, onSaved }: { starter?: StarterRecord; onS
     }
     const content: StarterInput["content"] = {
       ...(starter?.content ?? {}),
+      promptText: promptText.trim() || undefined,
       whatYouGet: linesToArray(whatYouGet),
       install: linesToArray(install),
       techStack: csvToArray(techStack),
@@ -173,6 +175,18 @@ export function StarterForm({ starter, onSaved }: { starter?: StarterRecord; onS
           </span>
         </div>
         <div className="space-y-4 px-5 py-5">
+          <div>
+            <label className={labelClass} htmlFor="starter-prompt">
+              Prompt text
+            </label>
+            <textarea
+              id="starter-prompt"
+              className={`${inputClass} mt-1.5 min-h-[240px] resize-y font-mono text-[13px]`}
+              value={promptText}
+              onChange={(e) => setPromptText(e.target.value)}
+              placeholder="The full prompt this starter hands to an agent. Paste and edit it here — every save is versioned."
+            />
+          </div>
           <div>
             <label className={labelClass} htmlFor="starter-description">
               Description (markdown)

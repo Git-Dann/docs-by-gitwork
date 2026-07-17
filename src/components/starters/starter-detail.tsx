@@ -33,6 +33,7 @@ import { Markdown } from "@/lib/markdown";
 import { buttonStyles } from "@/components/ui/button";
 import { StarterForm } from "@/components/starters/starter-form";
 import { StarterPromptEditor, type StarterEditorPicks } from "@/components/starters/starter-prompt-editor";
+import { StarterVersionsPanel } from "@/components/starters/starter-versions-panel";
 import type { StarterType } from "@/server/starters";
 
 const TYPE_LABEL: Record<StarterType, string> = {
@@ -367,6 +368,8 @@ export function StarterDetail({ starterId }: { starterId: string }) {
           <StarterPromptEditor initialPromptText={promptText} onPicksChange={setEditorPicks} />
         </section>
       )}
+
+      {canManageStarters && <StarterVersionsPanel starterId={starter.id} />}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { createStarterVersion, starterToSnapshot } from "@/server/starter-versions";
 
 // ── Starters (Prompt→Production library) ────────────────────────────────────────
 // A Gitwork-branded catalog of reusable building blocks, surfaced as an admin-only tool inside
@@ -236,28 +237,40 @@ export async function updateStarter(
     pinned?: boolean;
     curatorState?: StarterCuratorState;
   },
+  actorId?: string | null,
 ): Promise<StarterRecord | null> {
   const workspace = await getWorkspace();
   const existing = await prisma.starter.findFirst({ where: { id, ...scopeWhere(workspace.id) } });
   if (!existing) return null;
-  const row = await prisma.starter.update({
-    where: { id },
-    data: {
-      ...(data.name !== undefined && { name: data.name }),
-      ...(data.summary !== undefined && { summary: data.summary }),
-      ...(data.description !== undefined && { description: data.description }),
-      ...(data.type !== undefined && { type: data.type }),
-      ...(data.status !== undefined && { status: data.status }),
-      ...(data.tags !== undefined && { tags: data.tags }),
-      ...(data.content !== undefined && {
-        content: (data.content ?? Prisma.JsonNull) as Prisma.InputJsonValue | typeof Prisma.JsonNull,
-      }),
-      ...(data.featured !== undefined && { featured: data.featured }),
-      ...(data.isArchived !== undefined && { isArchived: data.isArchived }),
-      ...(data.pinned !== undefined && { pinned: data.pinned }),
-      ...(data.curatorState !== undefined && { curatorState: data.curatorState }),
-    },
-  });
+  // Auto-snapshot the prior state before any content-changing save (toggles like featured/pinned
+  // don't count), so every meaningful edit is reversible from the version history.
+  const CONTENT_KEYS = ["name", "summary", "description", "type", "status", "tags", "content"] as const;
+  const contentChanging = CONTENT_KEYS.some((k) => k in data);
+  const applyUpdate = (db: Prisma.TransactionClient | typeof prisma) =>
+    db.starter.update({
+      where: { id },
+      data: {
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.summary !== undefined && { summary: data.summary }),
+        ...(data.description !== undefined && { description: data.description }),
+        ...(data.type !== undefined && { type: data.type }),
+        ...(data.status !== undefined && { status: data.status }),
+        ...(data.tags !== undefined && { tags: data.tags }),
+        ...(data.content !== undefined && {
+          content: (data.content ?? Prisma.JsonNull) as Prisma.InputJsonValue | typeof Prisma.JsonNull,
+        }),
+        ...(data.featured !== undefined && { featured: data.featured }),
+        ...(data.isArchived !== undefined && { isArchived: data.isArchived }),
+        ...(data.pinned !== undefined && { pinned: data.pinned }),
+        ...(data.curatorState !== undefined && { curatorState: data.curatorState }),
+      },
+    });
+  const row = contentChanging
+    ? await prisma.$transaction(async (tx) => {
+        await createStarterVersion(tx, id, starterToSnapshot(existing), null, actorId ?? null);
+        return applyUpdate(tx);
+      })
+    : await applyUpdate(prisma);
   return serializeStarter(row);
 }
 

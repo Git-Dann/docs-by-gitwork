@@ -8,6 +8,7 @@ import type {
   StarterStatus,
   StarterContent,
 } from "@/server/starters";
+import type { StarterVersionListItem, StarterVersionRecord } from "@/server/starter-versions";
 
 // ── Fetch helper ──────────────────────────────────────────────────────────────
 
@@ -128,6 +129,42 @@ export function useAdoptStarter() {
     onSuccess: (result) => {
       // Refresh the linked scan so the scan-results "Starters" slot flips to "View starter".
       qc.invalidateQueries({ queryKey: ["pulse-scan", result.scanId] });
+    },
+  });
+}
+
+// ── Version history ─────────────────────────────────────────────────────────────
+
+export function useStarterVersions(id: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ["starters", id, "versions"],
+    queryFn: () =>
+      apiFetch<{ versions: StarterVersionListItem[] }>(`/api/starters/${id}/versions`).then((r) => r.versions),
+    enabled: Boolean(id) && enabled,
+    staleTime: 1000 * 10,
+  });
+}
+
+export function useStarterVersion(id: string | null, versionId: string | null) {
+  return useQuery({
+    queryKey: ["starters", id, "versions", versionId],
+    queryFn: () =>
+      apiFetch<{ version: StarterVersionRecord }>(`/api/starters/${id}/versions/${versionId}`).then((r) => r.version),
+    enabled: Boolean(id) && Boolean(versionId),
+    staleTime: 1000 * 60,
+  });
+}
+
+export function useRestoreStarterVersion(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (versionId: string) =>
+      apiFetch<{ starter: StarterRecord }>(`/api/starters/${id}/versions/${versionId}/restore`, {
+        method: "POST",
+      }).then((r) => r.starter),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["starters", id] });
+      qc.invalidateQueries({ queryKey: ["starters", "list"] });
     },
   });
 }
