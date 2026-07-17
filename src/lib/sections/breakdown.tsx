@@ -42,14 +42,14 @@ export const breakdownSection = defineSection<BreakdownSectionData>({
     return (
       <SimpleForm>
         {items.map((item, i) => (
-          <div key={i} className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+          <div key={i} className="@container rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
                 Item {i + 1}
               </span>
               <InlineRemoveButton onClick={() => remove(i)} label="Remove item" />
             </div>
-            <div className="grid gap-2 sm:grid-cols-[1fr_80px]">
+            <div className="grid gap-2 @[26rem]:grid-cols-[1fr_80px]">
               <FormInput label="Label" value={item.label} onChange={(label) => update(i, { label })} placeholder="Subscription confusion" />
               <FormInput label="Count" value={item.count ?? ""} onChange={(count) => update(i, { count })} placeholder="6" />
             </div>

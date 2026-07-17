@@ -47,7 +47,7 @@ export const kpiStripSection = defineSection<KpiStripSectionData>({
     return (
       <SimpleForm>
         {items.map((item, i) => (
-          <div key={i} className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+          <div key={i} className="@container rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
                 KPI {i + 1}
@@ -77,7 +77,7 @@ export const kpiStripSection = defineSection<KpiStripSectionData>({
                 </button>
               </div>
             </div>
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid gap-2 @[34rem]:grid-cols-3">
               <FormInput label="Value" value={item.value} onChange={(value) => update(i, { value })} placeholder="85%" />
               <FormInput label="Label" value={item.label} onChange={(label) => update(i, { label })} placeholder="Retention" />
               <FormInput label="Context (optional)" value={item.context ?? ""} onChange={(context) => update(i, { context })} placeholder="Q2 result" />

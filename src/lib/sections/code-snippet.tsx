@@ -24,19 +24,21 @@ export const codeSnippetSection = defineSection<CodeSnippetSectionData>({
   aiExpandable: false,
   Editor: ({ data, onChange }) => (
     <SimpleForm>
-      <div className="grid gap-2 sm:grid-cols-2">
-        <FormInput
-          label="Language label"
-          value={data.language ?? ""}
-          onChange={(language) => onChange({ ...data, language })}
-          placeholder="TypeScript"
-        />
-        <FormInput
-          label="Filename (optional)"
-          value={data.filename ?? ""}
-          onChange={(filename) => onChange({ ...data, filename })}
-          placeholder="server/index.ts"
-        />
+      <div className="@container">
+        <div className="grid gap-2 @[26rem]:grid-cols-2">
+          <FormInput
+            label="Language label"
+            value={data.language ?? ""}
+            onChange={(language) => onChange({ ...data, language })}
+            placeholder="TypeScript"
+          />
+          <FormInput
+            label="Filename (optional)"
+            value={data.filename ?? ""}
+            onChange={(filename) => onChange({ ...data, filename })}
+            placeholder="server/index.ts"
+          />
+        </div>
       </div>
       <label className="block space-y-1.5">
         <span className="text-sm font-medium text-[var(--text-2)]">Code</span>

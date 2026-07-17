@@ -1322,7 +1322,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                   </span>
                   <span className="text-[11px] text-[var(--text-4)]">What the client sees</span>
                 </div>
-                <div className="overflow-auto p-4 sm:p-6">
+                {/* The canvas scrolls INSIDE this bounded pane — never let it grow to the full
+                    height of every A4 page (that turned the whole editor into one giant page
+                    scroll). The toolbar/outline stay put; the document scrolls here. */}
+                <div className="max-h-[calc(100dvh-11rem)] min-h-[440px] overflow-auto p-4 sm:p-6">
                   <ProposalPreview
                     proposal={draft}
                     showTableOfContents={false}

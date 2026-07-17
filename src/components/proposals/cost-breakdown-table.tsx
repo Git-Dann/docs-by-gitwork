@@ -605,8 +605,8 @@ function CostBreakdownTableInner({ value, onChange }: CostBreakdownTableProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-3">
+    <div className="@container space-y-4">
+      <div className="grid gap-3 @[34rem]:grid-cols-3">
         <MetricFieldCard label="Currency">
           <CurrencyField
             value={value.currency}
@@ -1283,7 +1283,7 @@ function BudgetEditorDialog({
           </Button>
         </div>
 
-        <div className="space-y-3.5 px-5 pb-5 pt-4">
+        <div className="@container space-y-3.5 px-5 pb-5 pt-4">
           <label className="block space-y-1.5">
             <span className="text-sm font-medium text-[var(--text-2)]">Developer</span>
             <select
@@ -1333,7 +1333,7 @@ function BudgetEditorDialog({
             </label>
           ) : null}
 
-          <div className="grid gap-3 grid-cols-2">
+          <div className="grid gap-3 grid-cols-1 @[20rem]:grid-cols-2">
             <label className="block space-y-1.5">
               <span className="text-sm font-medium text-[var(--text-2)]">Months required</span>
               <input

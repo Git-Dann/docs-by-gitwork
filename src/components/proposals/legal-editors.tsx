@@ -5,19 +5,25 @@
  * Editors operate in-memory only; the parent (section-editor → proposal-builder-panel →
  * proposal-editor-layout) drives autosave by serialising the whole proposal back to the API.
  *
- * Visual pattern follows the existing proposal editors (objectives-editor, list-items-editor):
- * a wrapper panel + per-row card with move-up/down/delete + a single "Add" button.
+ * LAYOUT CONTRACT (important): these editors render inside the ~300–360px Options rail, NOT a wide
+ * canvas. So each repeatable item is an <ItemCard>: a `@container` with the move/delete controls in
+ * a header row (never beside the fields, where they used to overlap) and fields that stack in one
+ * column by default, going two-up only when the rail itself is genuinely wide (`@[26rem]:`). Never
+ * use viewport breakpoints (`sm:`/`md:`) for the field grid here — they fire on the window width,
+ * not the rail's, and re-introduce the overlap.
  */
 
 "use client";
 
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  PlusIcon,
-  TrashIcon,
-} from "@heroicons/react/24/outline";
+import { PlusIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
+import {
+  EmptyHint,
+  FieldLabel,
+  ItemCard,
+  editorId as id,
+  makeMover,
+} from "@/components/proposals/editor-primitives";
 import type {
   EscalationLevelItem,
   EscalationSectionData,
@@ -35,73 +41,6 @@ import type {
   SignatureBlockItem,
   TermSectionData,
 } from "@/types/proposal";
-
-function id() {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `id-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-// ── Generic helpers ─────────────────────────────────────────────────────────
-
-function MoveDeleteControls({
-  onMoveUp,
-  onMoveDown,
-  onDelete,
-  ariaLabel,
-}: {
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  onDelete: () => void;
-  ariaLabel: string;
-}) {
-  return (
-    <div className="flex shrink-0 items-start gap-1.5">
-      <Button
-        type="button"
-        onClick={onMoveUp}
-        variant="secondary"
-        size="icon-md"
-        aria-label={`Move ${ariaLabel} up`}
-      >
-        <ArrowUpIcon className="h-4 w-4" />
-      </Button>
-      <Button
-        type="button"
-        onClick={onMoveDown}
-        variant="secondary"
-        size="icon-md"
-        aria-label={`Move ${ariaLabel} down`}
-      >
-        <ArrowDownIcon className="h-4 w-4" />
-      </Button>
-      <Button
-        type="button"
-        onClick={onDelete}
-        variant="danger"
-        size="icon-md"
-        aria-label={`Delete ${ariaLabel}`}
-      >
-        <TrashIcon className="h-4 w-4" />
-      </Button>
-    </div>
-  );
-}
-
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <span className="app-field-label">{children}</span>;
-}
-
-function makeMover<T>(items: T[], onChange: (next: T[]) => void) {
-  return (index: number, delta: -1 | 1) => {
-    const nextIndex = index + delta;
-    if (nextIndex < 0 || nextIndex >= items.length) return;
-    const clone = [...items];
-    const [entry] = clone.splice(index, 1);
-    clone.splice(nextIndex, 0, entry);
-    onChange(clone);
-  };
-}
 
 // ── Parties ─────────────────────────────────────────────────────────────────
 
@@ -165,11 +104,15 @@ export function PartiesEditor({
       {parties.length ? (
         <div className="space-y-3">
           {parties.map((party, index) => (
-            <div
+            <ItemCard
               key={party.id}
-              className="flex items-start gap-3 rounded-[10px] border border-[var(--border-2)] bg-white p-4"
+              label={party.name || `Party ${index + 1}`}
+              onMoveUp={() => move(index, -1)}
+              onMoveDown={() => move(index, 1)}
+              onDelete={() => onChange({ ...data, parties: parties.filter((_, i) => i !== index) })}
+              ariaLabel={`party ${party.name || index + 1}`}
             >
-              <div className="grid flex-1 gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 @[26rem]:grid-cols-2">
                 <label className="space-y-1.5">
                   <FieldLabel>Display name</FieldLabel>
                   <input
@@ -207,7 +150,7 @@ export function PartiesEditor({
                     placeholder="hello@gitwork.io"
                   />
                 </label>
-                <label className="col-span-full flex items-center gap-2 text-sm text-[var(--text-2)]">
+                <label className="flex items-center gap-2 text-sm text-[var(--text-2)] @[26rem]:col-span-2">
                   <input
                     type="checkbox"
                     checked={party.signatureRequired}
@@ -217,18 +160,7 @@ export function PartiesEditor({
                   Signature required on this document
                 </label>
               </div>
-              <MoveDeleteControls
-                onMoveUp={() => move(index, -1)}
-                onMoveDown={() => move(index, 1)}
-                onDelete={() =>
-                  onChange({
-                    ...data,
-                    parties: parties.filter((_, i) => i !== index),
-                  })
-                }
-                ariaLabel={`party ${party.name || index + 1}`}
-              />
-            </div>
+            </ItemCard>
           ))}
         </div>
       ) : (
@@ -293,11 +225,15 @@ export function ServiceTiersEditor({
       {tiers.length ? (
         <div className="space-y-3">
           {tiers.map((tier, index) => (
-            <div
+            <ItemCard
               key={tier.id}
-              className="flex items-start gap-3 rounded-[10px] border border-[var(--border-2)] bg-white p-4"
+              label={tier.name || `Tier ${index + 1}`}
+              onMoveUp={() => move(index, -1)}
+              onMoveDown={() => move(index, 1)}
+              onDelete={() => onChange({ ...data, tiers: tiers.filter((_, i) => i !== index) })}
+              ariaLabel={`tier ${tier.name || index + 1}`}
             >
-              <div className="grid flex-1 gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 @[26rem]:grid-cols-2">
                 <label className="space-y-1.5">
                   <FieldLabel>Tier name</FieldLabel>
                   <input
@@ -316,7 +252,7 @@ export function ServiceTiersEditor({
                     placeholder="99.9%"
                   />
                 </label>
-                <label className="space-y-1.5 sm:col-span-2">
+                <label className="space-y-1.5 @[26rem]:col-span-2">
                   <FieldLabel>Services included</FieldLabel>
                   <textarea
                     value={tier.services}
@@ -325,7 +261,7 @@ export function ServiceTiersEditor({
                     placeholder="Hosting, monitoring, weekly dependency updates, business-hours support."
                   />
                 </label>
-                <label className="space-y-1.5 sm:col-span-2">
+                <label className="space-y-1.5 @[26rem]:col-span-2">
                   <FieldLabel>Support hours</FieldLabel>
                   <input
                     value={tier.supportHours}
@@ -335,15 +271,7 @@ export function ServiceTiersEditor({
                   />
                 </label>
               </div>
-              <MoveDeleteControls
-                onMoveUp={() => move(index, -1)}
-                onMoveDown={() => move(index, 1)}
-                onDelete={() =>
-                  onChange({ ...data, tiers: tiers.filter((_, i) => i !== index) })
-                }
-                ariaLabel={`tier ${tier.name || index + 1}`}
-              />
-            </div>
+            </ItemCard>
           ))}
         </div>
       ) : (
@@ -407,12 +335,18 @@ export function ResponseTimesEditor({
       {priorities.length ? (
         <div className="space-y-3">
           {priorities.map((item, index) => (
-            <div
+            <ItemCard
               key={item.id}
-              className="flex items-start gap-3 rounded-[10px] border border-[var(--border-2)] bg-white p-4"
+              label={item.priority || `Priority ${index + 1}`}
+              onMoveUp={() => move(index, -1)}
+              onMoveDown={() => move(index, 1)}
+              onDelete={() =>
+                onChange({ ...data, priorities: priorities.filter((_, i) => i !== index) })
+              }
+              ariaLabel={`priority ${item.priority || index + 1}`}
             >
-              <div className="grid flex-1 gap-3 sm:grid-cols-2">
-                <label className="space-y-1.5 sm:col-span-2">
+              <div className="grid gap-3 @[26rem]:grid-cols-2">
+                <label className="space-y-1.5 @[26rem]:col-span-2">
                   <FieldLabel>Priority label</FieldLabel>
                   <input
                     value={item.priority}
@@ -421,7 +355,7 @@ export function ResponseTimesEditor({
                     placeholder="P1 – Critical"
                   />
                 </label>
-                <label className="space-y-1.5 sm:col-span-2">
+                <label className="space-y-1.5 @[26rem]:col-span-2">
                   <FieldLabel>Definition</FieldLabel>
                   <textarea
                     value={item.definition}
@@ -449,18 +383,7 @@ export function ResponseTimesEditor({
                   />
                 </label>
               </div>
-              <MoveDeleteControls
-                onMoveUp={() => move(index, -1)}
-                onMoveDown={() => move(index, 1)}
-                onDelete={() =>
-                  onChange({
-                    ...data,
-                    priorities: priorities.filter((_, i) => i !== index),
-                  })
-                }
-                ariaLabel={`priority ${item.priority || index + 1}`}
-              />
-            </div>
+            </ItemCard>
           ))}
         </div>
       ) : (
@@ -524,11 +447,15 @@ export function EscalationEditor({
       {levels.length ? (
         <div className="space-y-3">
           {levels.map((item, index) => (
-            <div
+            <ItemCard
               key={item.id}
-              className="flex items-start gap-3 rounded-[10px] border border-[var(--border-2)] bg-white p-4"
+              label={`Level ${item.level}`}
+              onMoveUp={() => move(index, -1)}
+              onMoveDown={() => move(index, 1)}
+              onDelete={() => onChange({ ...data, levels: levels.filter((_, i) => i !== index) })}
+              ariaLabel={`level ${item.level}`}
             >
-              <div className="grid flex-1 gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 @[26rem]:grid-cols-2">
                 <label className="space-y-1.5">
                   <FieldLabel>Level</FieldLabel>
                   <input
@@ -567,15 +494,7 @@ export function EscalationEditor({
                   />
                 </label>
               </div>
-              <MoveDeleteControls
-                onMoveUp={() => move(index, -1)}
-                onMoveDown={() => move(index, 1)}
-                onDelete={() =>
-                  onChange({ ...data, levels: levels.filter((_, i) => i !== index) })
-                }
-                ariaLabel={`level ${item.level}`}
-              />
-            </div>
+            </ItemCard>
           ))}
         </div>
       ) : (
@@ -636,11 +555,15 @@ export function ExclusionsEditor({
       {items.length ? (
         <div className="space-y-3">
           {items.map((item, index) => (
-            <div
+            <ItemCard
               key={item.id}
-              className="flex items-start gap-3 rounded-[10px] border border-[var(--border-2)] bg-white p-4"
+              label={item.exclusion || `Exclusion ${index + 1}`}
+              onMoveUp={() => move(index, -1)}
+              onMoveDown={() => move(index, 1)}
+              onDelete={() => onChange({ ...data, items: items.filter((_, i) => i !== index) })}
+              ariaLabel={`exclusion ${index + 1}`}
             >
-              <div className="grid flex-1 gap-3">
+              <div className="grid gap-3">
                 <label className="space-y-1.5">
                   <FieldLabel>Exclusion</FieldLabel>
                   <input
@@ -659,15 +582,7 @@ export function ExclusionsEditor({
                   />
                 </label>
               </div>
-              <MoveDeleteControls
-                onMoveUp={() => move(index, -1)}
-                onMoveDown={() => move(index, 1)}
-                onDelete={() =>
-                  onChange({ ...data, items: items.filter((_, i) => i !== index) })
-                }
-                ariaLabel={`exclusion ${index + 1}`}
-              />
-            </div>
+            </ItemCard>
           ))}
         </div>
       ) : (
@@ -728,11 +643,15 @@ export function PenaltiesEditor({
       {tiers.length ? (
         <div className="space-y-3">
           {tiers.map((item, index) => (
-            <div
+            <ItemCard
               key={item.id}
-              className="flex items-start gap-3 rounded-[10px] border border-[var(--border-2)] bg-white p-4"
+              label={item.trigger || `Credit tier ${index + 1}`}
+              onMoveUp={() => move(index, -1)}
+              onMoveDown={() => move(index, 1)}
+              onDelete={() => onChange({ ...data, tiers: tiers.filter((_, i) => i !== index) })}
+              ariaLabel={`credit tier ${index + 1}`}
             >
-              <div className="grid flex-1 gap-3">
+              <div className="grid gap-3">
                 <label className="space-y-1.5">
                   <FieldLabel>Trigger</FieldLabel>
                   <input
@@ -742,7 +661,7 @@ export function PenaltiesEditor({
                     placeholder="Uptime falls below 99.0%"
                   />
                 </label>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 @[26rem]:grid-cols-2">
                   <label className="space-y-1.5">
                     <FieldLabel>Service credit</FieldLabel>
                     <input
@@ -763,15 +682,7 @@ export function PenaltiesEditor({
                   </label>
                 </div>
               </div>
-              <MoveDeleteControls
-                onMoveUp={() => move(index, -1)}
-                onMoveDown={() => move(index, 1)}
-                onDelete={() =>
-                  onChange({ ...data, tiers: tiers.filter((_, i) => i !== index) })
-                }
-                ariaLabel={`credit tier ${index + 1}`}
-              />
-            </div>
+            </ItemCard>
           ))}
         </div>
       ) : (
@@ -791,8 +702,8 @@ export function TermEditor({
   onChange: (next: TermSectionData) => void;
 }) {
   return (
-    <div className="app-subtle-panel space-y-4 p-5">
-      <div className="grid gap-3 sm:grid-cols-2">
+    <div className="app-subtle-panel @container space-y-4 p-5">
+      <div className="grid gap-3 @[26rem]:grid-cols-2">
         <label className="space-y-1.5">
           <FieldLabel>Effective date</FieldLabel>
           <input
@@ -831,7 +742,7 @@ export function TermEditor({
             placeholder="England and Wales"
           />
         </label>
-        <label className="col-span-full flex items-center gap-2 text-sm text-[var(--text-2)]">
+        <label className="flex items-center gap-2 text-sm text-[var(--text-2)] @[26rem]:col-span-2">
           <input
             type="checkbox"
             checked={data.autoRenew ?? false}
@@ -840,7 +751,7 @@ export function TermEditor({
           />
           Auto-renew at end of initial term
         </label>
-        <label className="space-y-1.5 sm:col-span-2">
+        <label className="space-y-1.5 @[26rem]:col-span-2">
           <FieldLabel>Renewal term description</FieldLabel>
           <input
             value={data.renewalTerm ?? ""}
@@ -849,7 +760,7 @@ export function TermEditor({
             placeholder="Successive 12-month periods"
           />
         </label>
-        <label className="space-y-1.5 sm:col-span-2">
+        <label className="space-y-1.5 @[26rem]:col-span-2">
           <FieldLabel>Termination for cause</FieldLabel>
           <textarea
             value={data.terminationForCause ?? ""}
@@ -883,20 +794,13 @@ export function SignaturesEditor({
 
   return (
     <div className="app-subtle-panel space-y-4 p-5">
-      {/* Explain the flow up front so operators don't expect the in-doc signature blocks to be
-          interactive. Actual signing runs through the right-rail Signatures tab → /sign/[token]. */}
-      <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--brand-200)]/30 px-4 py-3 text-sm leading-6 text-[var(--text-2)]">
-        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--brand-700)]">
-          How signing works
-        </p>
-        <p className="mt-1.5">
-          The blocks below are the <strong>layout</strong> &mdash; they appear on the rendered
-          document so signers can see who&rsquo;s expected to sign. To actually collect signatures,
-          open the <strong>Signatures</strong> tab on the right and click <em>Send for signature</em>.
-          Each signer gets a unique signing link (no email needed) and the audit trail is
-          captured on the Certificate of Completion.
-        </p>
-      </div>
+      {/* One-line reminder that these are layout blocks; signing itself runs from the Signatures
+          tab. Kept compact on purpose — it used to be a paragraph that buried the actual editor. */}
+      <p className="text-xs leading-5 text-[var(--text-3)]">
+        These blocks show <strong className="font-semibold text-[var(--text-2)]">who signs</strong> on
+        the document. To collect signatures, open the <strong className="font-semibold text-[var(--text-2)]">Signatures</strong> tab
+        and choose <em>Send for signature</em>.
+      </p>
 
       <div className="space-y-2">
         <FieldLabel>Introduction</FieldLabel>
@@ -939,11 +843,15 @@ export function SignaturesEditor({
       {blocks.length ? (
         <div className="space-y-3">
           {blocks.map((block, index) => (
-            <div
+            <ItemCard
               key={block.id}
-              className="flex items-start gap-3 rounded-[10px] border border-[var(--border-2)] bg-white p-4"
+              label={block.partyName || block.signatoryName || `Signatory ${index + 1}`}
+              onMoveUp={() => move(index, -1)}
+              onMoveDown={() => move(index, 1)}
+              onDelete={() => onChange({ ...data, blocks: blocks.filter((_, i) => i !== index) })}
+              ariaLabel={`signature block ${index + 1}`}
             >
-              <div className="grid flex-1 gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 @[26rem]:grid-cols-2">
                 <label className="space-y-1.5">
                   <FieldLabel>Party</FieldLabel>
                   <input
@@ -980,30 +888,12 @@ export function SignaturesEditor({
                   />
                 </label>
               </div>
-              <MoveDeleteControls
-                onMoveUp={() => move(index, -1)}
-                onMoveDown={() => move(index, 1)}
-                onDelete={() =>
-                  onChange({ ...data, blocks: blocks.filter((_, i) => i !== index) })
-                }
-                ariaLabel={`signature block ${index + 1}`}
-              />
-            </div>
+            </ItemCard>
           ))}
         </div>
       ) : (
         <EmptyHint>Add a signature block per signatory.</EmptyHint>
       )}
     </div>
-  );
-}
-
-// ── Shared empty hint ───────────────────────────────────────────────────────
-
-function EmptyHint({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-4 text-sm text-[var(--text-4)]">
-      {children}
-    </p>
   );
 }

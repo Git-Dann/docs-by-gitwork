@@ -42,8 +42,19 @@ export function ListItemsEditor({
             {safeItems.map((item, index) => (
               <SortableRow key={index} id={String(index)}>
                 {({ handleProps }) => (
-                  <div className="flex items-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-white p-3">
-                    <DragHandle {...handleProps} />
+                  <div className="@container rounded-[10px] border border-[var(--border-2)] bg-white p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <DragHandle {...handleProps} />
+                      <Button
+                        type="button"
+                        onClick={() => onChange(safeItems.filter((_, entryIndex) => entryIndex !== index))}
+                        variant="danger"
+                        size="icon-md"
+                        aria-label="Delete item"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </Button>
+                    </div>
                     <input
                       value={item}
                       onChange={(event) =>
@@ -53,17 +64,8 @@ export function ListItemsEditor({
                           ),
                         )
                       }
-                      className="app-input-compact flex-1"
+                      className="app-input-compact w-full"
                     />
-                    <Button
-                      type="button"
-                      onClick={() => onChange(safeItems.filter((_, entryIndex) => entryIndex !== index))}
-                      variant="danger"
-                      size="icon-md"
-                      aria-label="Delete item"
-                    >
-                      <TrashIcon className="h-4 w-4" />
-                    </Button>
                   </div>
                 )}
               </SortableRow>

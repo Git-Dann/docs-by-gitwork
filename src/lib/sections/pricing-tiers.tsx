@@ -84,7 +84,7 @@ export const pricingTiersSection = defineSection<PricingTiersSectionData>({
         />
 
         {tiers.map((tier, i) => (
-          <div key={i} className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+          <div key={i} className="@container rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
                 Tier {i + 1}
@@ -114,7 +114,7 @@ export const pricingTiersSection = defineSection<PricingTiersSectionData>({
               </div>
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2 @[26rem]:grid-cols-2">
               <FormInput label="Name" value={tier.name} onChange={(name) => updateTier(i, { name })} />
               <FormInput label="Tagline (optional)" value={tier.tagline ?? ""} onChange={(tagline) => updateTier(i, { tagline })} />
               <FormInput label="Price" value={tier.price} onChange={(price) => updateTier(i, { price })} placeholder="£1,500" />

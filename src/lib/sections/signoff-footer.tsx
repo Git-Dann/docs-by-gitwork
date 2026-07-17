@@ -53,22 +53,25 @@ export const signoffFooterSection = defineSection<SignoffFooterSectionData>({
         value={data.footerNote}
         onChange={(footerNote) => onChange({ ...data, footerNote })}
       />
-      <div className="grid gap-4 sm:grid-cols-2">
-        <FormInput
-          label="Signature name"
-          value={data.signatureName ?? ""}
-          onChange={(signatureName) => onChange({ ...data, signatureName })}
-          placeholder="Dan Lindsay"
-        />
-        <FormInput
-          label="Signature date"
-          value={data.signatureDate ?? ""}
-          onChange={(signatureDate) => onChange({ ...data, signatureDate })}
-          type="date"
-        />
+      <div className="@container">
+        <div className="grid gap-4 @[26rem]:grid-cols-2">
+          <FormInput
+            label="Signature name"
+            value={data.signatureName ?? ""}
+            onChange={(signatureName) => onChange({ ...data, signatureName })}
+            placeholder="Dan Lindsay"
+          />
+          <FormInput
+            label="Signature date"
+            value={data.signatureDate ?? ""}
+            onChange={(signatureDate) => onChange({ ...data, signatureDate })}
+            type="date"
+          />
+        </div>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        <label className="inline-flex items-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-2)] shadow-[var(--shadow-xs)]">
+      <div className="@container">
+        <div className="grid gap-2 @[26rem]:grid-cols-2">
+          <label className="inline-flex items-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3 text-sm text-[var(--text-2)] shadow-[var(--shadow-xs)]">
           <input
             type="checkbox"
             checked={data.showBrandingBlock}
@@ -78,7 +81,8 @@ export const signoffFooterSection = defineSection<SignoffFooterSectionData>({
             className="app-checkbox"
           />
           Show Gitwork branding block
-        </label>
+          </label>
+        </div>
       </div>
     </SimpleForm>
   ),

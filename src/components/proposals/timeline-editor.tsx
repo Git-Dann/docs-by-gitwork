@@ -50,41 +50,41 @@ export function TimelineEditor({
         sorted.map((phase, index) => (
           <article
             key={phase.id ?? `${phase.name}-${index}`}
-            className="rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-4 shadow-[var(--shadow-xs)]"
+            className="@container rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-4 shadow-[var(--shadow-xs)]"
           >
-            <div className="flex items-start justify-between gap-4">
-              <div className="grid min-w-0 flex-1 gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
-                <label className="space-y-1.5">
-                  <span className="text-sm font-medium text-[var(--text-2)]">Phase title</span>
-                  <input
-                    value={phase.name}
-                    onChange={(event) => updatePhase(index, { name: event.target.value })}
-                    className="app-input"
-                    placeholder="Discovery"
-                  />
-                </label>
-
-                <label className="space-y-1.5">
-                  <span className="text-sm font-medium text-[var(--text-2)]">Duration</span>
-                  <input
-                    value={phase.duration}
-                    onChange={(event) => updatePhase(index, { duration: event.target.value })}
-                    className="app-input"
-                    placeholder="Week 1"
-                  />
-                </label>
-              </div>
-
+            <div className="mb-3 flex items-center justify-end">
               <Button
                 type="button"
                 onClick={() => removePhase(index)}
                 variant="utility"
                 size="icon-md"
-                className="mt-7 text-rose-500 hover:text-rose-600"
+                className="text-rose-500 hover:text-rose-600"
                 aria-label="Remove phase"
               >
                 <TrashIcon className="h-4 w-4" />
               </Button>
+            </div>
+
+            <div className="grid gap-3 @[26rem]:grid-cols-[minmax(0,1fr)_140px]">
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium text-[var(--text-2)]">Phase title</span>
+                <input
+                  value={phase.name}
+                  onChange={(event) => updatePhase(index, { name: event.target.value })}
+                  className="app-input"
+                  placeholder="Discovery"
+                />
+              </label>
+
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium text-[var(--text-2)]">Duration</span>
+                <input
+                  value={phase.duration}
+                  onChange={(event) => updatePhase(index, { duration: event.target.value })}
+                  className="app-input"
+                  placeholder="Week 1"
+                />
+              </label>
             </div>
 
             <label className="mt-4 block space-y-1.5">

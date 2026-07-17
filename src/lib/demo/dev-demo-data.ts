@@ -1050,7 +1050,17 @@ function buildApiHandoverDoc(item: (typeof demoProposals.proposals)[number]) {
         },
       },
       {
-        key: "cta_next_steps", title: "Handover complete", sortOrder: 9, isVisible: true,
+        key: "signatures", title: "Sign-off", sortOrder: 9, isVisible: true,
+        data: {
+          intro: "Accepted and signed for and on behalf of:",
+          blocks: [
+            { id: "sig-1", partyName: "Northwind Studio", signatoryName: "", signatoryRole: "Head of Product", signatoryEmail: "", signatureDate: "" },
+            { id: "sig-2", partyName: "Gitwork", signatoryName: "Alex Rivera", signatoryRole: "Delivery Lead", signatoryEmail: "", signatureDate: "" },
+          ],
+        },
+      },
+      {
+        key: "cta_next_steps", title: "Handover complete", sortOrder: 10, isVisible: true,
         data: {
           headline: "Questions after today?",
           body: "Post in #northwind-dev or ping Alex Rivera — this doc stays the source of truth and is kept up to date.",

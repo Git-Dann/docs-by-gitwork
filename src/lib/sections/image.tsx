@@ -51,9 +51,10 @@ export const imageSection = defineSection<ImageSectionData>({
         value={data.caption ?? ""}
         onChange={(caption) => onChange({ ...data, caption })}
       />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block space-y-1.5">
-          <span className="text-sm font-medium text-[var(--text-2)]">Size</span>
+      <div className="@container">
+        <div className="grid gap-3 @[26rem]:grid-cols-2">
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium text-[var(--text-2)]">Size</span>
           <select
             value={data.size}
             onChange={(e) => onChange({ ...data, size: e.target.value as ImageSectionData["size"] })}
@@ -78,6 +79,7 @@ export const imageSection = defineSection<ImageSectionData>({
             <option value="right">Right</option>
           </select>
         </label>
+        </div>
       </div>
     </SimpleForm>
   ),

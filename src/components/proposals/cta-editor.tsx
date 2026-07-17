@@ -44,7 +44,7 @@ export function CTAEditor({
   }
 
   return (
-    <div className="app-subtle-panel space-y-4 p-5">
+    <div className="app-subtle-panel @container space-y-4 p-5">
       <div>
         <p className="app-eyebrow">Actions</p>
         <p className="mt-2 text-base font-semibold text-[var(--text-1)]">Calls to action</p>
@@ -53,7 +53,7 @@ export function CTAEditor({
         </p>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 @[26rem]:grid-cols-2">
         <RoleCard
           title="Primary action"
           description="The most important next step."
@@ -90,7 +90,7 @@ function RoleCard({
   const selectedOption = destinationOptions.find((option) => option.value === value.destinationType) ?? destinationOptions[0];
 
   return (
-    <section className="space-y-4 rounded-[10px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]">
+    <section className="@container space-y-4 rounded-[10px] border border-[var(--border-2)] bg-white p-4 shadow-[var(--shadow-xs)]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h4 className="text-sm font-semibold text-[var(--text-1)]">{title}</h4>
@@ -108,7 +108,7 @@ function RoleCard({
         )}
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 @[26rem]:grid-cols-2">
         <label className="space-y-1.5">
           <span className="text-xs text-[var(--text-3)]">Button label</span>
           <input

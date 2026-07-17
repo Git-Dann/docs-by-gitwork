@@ -98,13 +98,15 @@ export const comparisonTableSection = defineSection<ComparisonTableSectionData>(
 
     return (
       <SimpleForm>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <FormInput label="Our column heading" value={data.usLabel} onChange={(usLabel) => onChange({ ...data, usLabel })} />
-          <FormInput label="Their column heading" value={data.themLabel} onChange={(themLabel) => onChange({ ...data, themLabel })} />
+        <div className="@container">
+          <div className="grid gap-2 @[26rem]:grid-cols-2">
+            <FormInput label="Our column heading" value={data.usLabel} onChange={(usLabel) => onChange({ ...data, usLabel })} />
+            <FormInput label="Their column heading" value={data.themLabel} onChange={(themLabel) => onChange({ ...data, themLabel })} />
+          </div>
         </div>
         <div className="space-y-2">
           {rows.map((row, i) => (
-            <div key={i} className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+            <div key={i} className="@container rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
               <div className="mb-2 flex items-center justify-between">
                 <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
                   Row {i + 1}
@@ -122,7 +124,7 @@ export const comparisonTableSection = defineSection<ComparisonTableSectionData>(
               <div className="space-y-2">
                 <FormInput label="Label" value={row.label} onChange={(label) => update(i, { label })} placeholder="Capability" />
                 <FormInput label="Detail (optional)" value={row.detail ?? ""} onChange={(detail) => update(i, { detail })} placeholder="One-line elaboration" />
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2 @[26rem]:grid-cols-2">
                   <div>
                     <span className="mb-1 block text-xs font-medium text-[var(--text-2)]">{data.usLabel}</span>
                     <CellEditor value={row.us} onChange={(us) => update(i, { us })} />
