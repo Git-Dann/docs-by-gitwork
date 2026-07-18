@@ -436,6 +436,8 @@ model Workspace {
   milestones                  Milestone[]
   contentSnippets             ContentSnippet[]
   starters                    Starter[]
+  starterRecipes              StarterRecipe[]
+  starterOutcomes             StarterOutcome[]
   mcpConnections              McpConnection[]
   slackMessageRefs            SlackMessageRef[]
   slackUpdateLogs             SlackUpdateLog[]
@@ -2923,6 +2925,52 @@ model Starter {
   updatedAt    DateTime            @updatedAt
   versions     StarterVersion[]
 
+  @@index([workspaceId, createdAt])
+}
+
+// A named, curated bundle of existing Starters — "give me the whole stack for X kind of
+// project" in one click. Pure grouping layer: no new content, just an ordered list of Starter
+// ids. Loose ids (String[], no join table/FK) — same low-ceremony convention as Starter.tags;
+// membership is validated at the app layer (a stale id is silently dropped from the resolved
+// view, never a hard error, since a Recipe should keep working if a member Starter is deleted).
+model StarterRecipe {
+  id          String    @id @default(cuid())
+  workspaceId String? // nullable → global built-in vs workspace-authored, mirrors Starter
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  name        String
+  slug        String    @unique
+  summary     String // one-line card subtitle
+  description String? // longer body (markdown)
+  starterIds  String[]  @default([]) // ordered — the sequence a user should reach for them in
+  isDefault   Boolean   @default(false) // shipped Gitwork built-in recipe
+  isArchived  Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([workspaceId, createdAt])
+}
+
+// Closed-loop proof that a Starter actually helped: recorded automatically when a project is
+// re-scanned after a prior scan of the SAME target (url/repo) had a Starter linked
+// (PulseScan.linkedStarterId). beforeScore/afterScore are the two scans' healthScore at the
+// time of each scan; delta is the improvement. Loose ids throughout (no FK) — matches the
+// cross-module convention (a Starter/PulseScan can be deleted without orphaning this row's
+// meaning; it's a historical fact, not a live reference). Written once per (beforeScanId,
+// afterScanId) pair — see recordStarterOutcomeIfApplicable() in src/server/pulse.ts.
+model StarterOutcome {
+  id          String   @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  starterId   String
+  beforeScanId String
+  beforeScore  Int
+  afterScanId  String
+  afterScore   Int
+  delta        Int // afterScore - beforeScore; positive = improved
+  createdAt    DateTime @default(now())
+
+  @@unique([beforeScanId, afterScanId])
+  @@index([starterId])
   @@index([workspaceId, createdAt])
 }
 

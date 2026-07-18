@@ -182,6 +182,17 @@ export interface PublicVetCandidate {
   availability: string | null;
 }
 
+/** Candidate-safe view of the Starter picked for the Starter Fluency stage — never the
+ * starter's raw internal promptText or _buildRef, just a condensed public brief. */
+export interface PublicStarterFixtureDTO {
+  starterId: string;
+  starterName: string;
+  starterSummary: string;
+  techStack: string[];
+  briefMarkdown: string;
+  scenario: string;
+}
+
 export interface PublicVetSession {
   token: string;
   status: DevSignalAssessmentStatus;
@@ -195,6 +206,8 @@ export interface PublicVetSession {
   githubConnected: boolean;
   challenge: PublicChallengeDTO | null;
   challengeSubmitted: boolean;
+  starterFixture: PublicStarterFixtureDTO | null;
+  starterFluencySubmitted: boolean;
   videoQuestion: string;
   videoSubmitted: boolean;
   identitySubmitted: boolean;

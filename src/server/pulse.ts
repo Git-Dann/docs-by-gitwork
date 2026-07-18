@@ -328,6 +328,62 @@ export async function getScanHistory(scanId: string): Promise<{ id: string; comp
   return rows.slice(-12).map((r) => ({ id: r.id, completedAt: r.completedAt?.toISOString() ?? null, healthScore: r.healthScore }));
 }
 
+/**
+ * Closed-loop proof that a Starter helped: called once a scan finishes (from runAnalysis). If the
+ * previous COMPLETED scan of the same target (url/repo) had a Starter linked, and this scan has a
+ * final healthScore, records the before→after score delta as a StarterOutcome — the evidence a
+ * Starter's card shows ("+18 avg health score after adoption, n=4"). Best-effort: never throws,
+ * so a recording hiccup can't fail the scan it's attached to. Idempotent via the
+ * (beforeScanId, afterScanId) unique constraint — a re-run of the same completion is a no-op.
+ */
+export async function recordStarterOutcomeIfApplicable(scanId: string): Promise<void> {
+  try {
+    const current = await prisma.pulseScan.findUnique({
+      where: { id: scanId },
+      select: {
+        workspaceId: true, inputType: true, inputUrl: true, inputGithubRepo: true,
+        completedAt: true, healthScore: true,
+      },
+    });
+    if (!current || !current.completedAt || current.healthScore === null) return;
+    const target =
+      current.inputType === "URL" && current.inputUrl ? { inputUrl: current.inputUrl } :
+      current.inputType === "GITHUB_REPO" && current.inputGithubRepo ? { inputGithubRepo: current.inputGithubRepo } :
+      null;
+    if (!target) return;
+
+    const prev = await prisma.pulseScan.findFirst({
+      where: {
+        workspaceId: current.workspaceId,
+        status: "COMPLETED",
+        completedAt: { lt: current.completedAt },
+        linkedStarterId: { not: null },
+        healthScore: { not: null },
+        ...target,
+      },
+      orderBy: { completedAt: "desc" },
+      select: { id: true, healthScore: true, linkedStarterId: true },
+    });
+    if (!prev || prev.healthScore === null || !prev.linkedStarterId) return;
+
+    await prisma.starterOutcome.upsert({
+      where: { beforeScanId_afterScanId: { beforeScanId: prev.id, afterScanId: scanId } },
+      create: {
+        workspaceId: current.workspaceId,
+        starterId: prev.linkedStarterId,
+        beforeScanId: prev.id,
+        beforeScore: prev.healthScore,
+        afterScanId: scanId,
+        afterScore: current.healthScore,
+        delta: current.healthScore - prev.healthScore,
+      },
+      update: {},
+    });
+  } catch {
+    /* closed-loop recording is non-critical — never break scan completion over it */
+  }
+}
+
 /** Diff this scan against the previous COMPLETED scan of the same target — what got
  *  fixed, what regressed, what's new. Null when there's no prior scan. */
 export async function getScanDiff(scanId: string): Promise<PulseScanDiff | null> {
@@ -1138,6 +1194,10 @@ export async function runAnalysis(
         agentData: { codeInsights, deployInsights, browserInsights, visualInsights, aiError: aiError ?? undefined, ...(authContent ? { authContent } : {}) } as unknown as Prisma.InputJsonValue,
       },
     });
+
+    // Closed-loop proof: if the previous scan of this same target had a Starter linked, record
+    // the before→after score delta. Best-effort — recordStarterOutcomeIfApplicable never throws.
+    await recordStarterOutcomeIfApplicable(scanId);
 
     // Scan → Action reconciliation: if this scan is linked to a client, any
     // open task created from a check that now PASSes is auto-closed. Best-effort

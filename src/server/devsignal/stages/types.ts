@@ -2,8 +2,8 @@ import type { DevSignalStageStatus } from "@prisma/client";
 import type { DevSignalConfigSnapshot } from "../config";
 
 /**
- * DevSignal — the 8-stage developer vetting pipeline. Each stage emits one
- * structured StageResult. Stage 8 (score_report) is aggregation only and
+ * DevSignal — the 9-stage developer vetting pipeline. Each stage emits one
+ * structured StageResult. Stage 9 (score_report) is aggregation only and
  * carries no predictive weight.
  *
  * Statuses use the Prisma `DevSignalStageStatus` enum casing (UPPERCASE) as the
@@ -16,6 +16,7 @@ export const DEV_SIGNAL_STAGE_IDS = [
   "profile_connections",
   "video_assessment",
   "coding_challenge",
+  "starter_fluency",
   "online_footprint",
   "identity_verification",
   "leadership_interview",
@@ -34,6 +35,7 @@ export const DEV_SIGNAL_STAGE_NAMES: Record<DevSignalStageId, string> = {
   profile_connections: "Profile & channel connections",
   video_assessment: "Video assessment",
   coding_challenge: "Timed coding challenge",
+  starter_fluency: "Starter fluency",
   online_footprint: "Online footprint analysis",
   identity_verification: "Identity verification",
   leadership_interview: "Leadership interview",

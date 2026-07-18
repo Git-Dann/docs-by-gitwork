@@ -1443,6 +1443,24 @@ export const starterAdoptSchema = z.object({
   starterId: z.string().min(1),
 });
 
+// ── Starter Recipes (curated bundles of existing Starters) ───────────────────
+export const starterRecipeCreateSchema = z.object({
+  name: z.string().min(1).max(120),
+  summary: z.string().min(1).max(280),
+  description: z.string().max(20000).nullish(),
+  starterIds: z.array(z.string().min(1)).max(20).optional(),
+});
+
+export const starterRecipeUpdateSchema = z
+  .object({
+    name: z.string().min(1).max(120).optional(),
+    summary: z.string().min(1).max(280).optional(),
+    description: z.string().max(20000).nullish(),
+    starterIds: z.array(z.string().min(1)).max(20).optional(),
+    isArchived: z.boolean().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: "At least one field is required" });
+
 // ── Curator (background maintenance agent) ───────────────────────────────────
 export const curatorRunSchema = z.object({
   mode: z.enum(["prune", "consolidate"]).optional(),
@@ -1599,6 +1617,11 @@ export const vetChallengeSubmitSchema = z.object({
   testsTotal: z.number().int().min(0),
   timeTakenSec: z.number().int().min(0),
   telemetry: z.array(vetTelemetryEventSchema).max(20_000).default([]),
+});
+
+export const vetStarterFluencySubmitSchema = z.object({
+  starterId: z.string().min(1),
+  response: z.string().min(1).max(20_000),
 });
 
 export const devSignalInterviewSchema = z.object({

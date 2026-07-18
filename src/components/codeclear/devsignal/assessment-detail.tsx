@@ -119,6 +119,7 @@ function ProfileHeader({ a }: { a: DevSignalAssessmentDTO }) {
 
   const STAGE_LABELS: Record<string, string> = {
     coding_challenge: "Coding",
+    starter_fluency: "Starter",
     online_footprint: "Footprint",
     video_assessment: "Comms",
     leadership_interview: "Interview",

@@ -48,16 +48,25 @@ export interface DevSignalConfigSnapshot {
  * aggregation (weight 0). Only identity is blocking by default — "can we
  * confirm the person tested is the person hired" is the one signal that should
  * cap a score when it fails. Everything else is advisory unless a client opts in.
+ *
+ * `starter_fluency` (added alongside the Foundry Starters library integration) scores how a
+ * candidate extends/adapts a real internal Starter spec — a work-sample signal closer to actual
+ * delivery work than the pure-function coding_challenge kata, but genuinely new and unproven
+ * against real outcome data yet. Weighted to debut meaningfully (matching online_footprint)
+ * without displacing coding_challenge as the single highest-weighted stage or touching the one
+ * blocking gate (identity_verification). Rebalanced from coding_challenge (30→25),
+ * profile_connections (10→5), and online_footprint (20→15) to keep the total at 100.
  */
 const DEFAULT_STAGE_CONFIG: Record<DevSignalStageId, DevSignalStageConfig> = {
   application_intake: { enabled: true, order: 1, weight: 5, blocking: false },
-  profile_connections: { enabled: true, order: 2, weight: 10, blocking: false },
+  profile_connections: { enabled: true, order: 2, weight: 5, blocking: false },
   video_assessment: { enabled: true, order: 3, weight: 5, blocking: false },
-  coding_challenge: { enabled: true, order: 4, weight: 30, blocking: false },
-  online_footprint: { enabled: true, order: 5, weight: 20, blocking: false },
-  identity_verification: { enabled: true, order: 6, weight: 10, blocking: true },
-  leadership_interview: { enabled: true, order: 7, weight: 20, blocking: false },
-  score_report: { enabled: true, order: 8, weight: 0, blocking: false },
+  coding_challenge: { enabled: true, order: 4, weight: 25, blocking: false },
+  starter_fluency: { enabled: true, order: 5, weight: 15, blocking: false },
+  online_footprint: { enabled: true, order: 6, weight: 15, blocking: false },
+  identity_verification: { enabled: true, order: 7, weight: 10, blocking: true },
+  leadership_interview: { enabled: true, order: 8, weight: 20, blocking: false },
+  score_report: { enabled: true, order: 9, weight: 0, blocking: false },
 };
 
 export function buildDefaultConfigSnapshot(): DevSignalConfigSnapshot {
