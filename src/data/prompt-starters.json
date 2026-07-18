@@ -1673,46 +1673,6 @@
     }
   },
   {
-    "slug": "prompt-prompt-improver",
-    "name": "Make My Prompt 10x Better",
-    "summary": "Diagnoses why your prompt underperforms and rewrites it into a precise, copy-ready prompt that gets a far better result.",
-    "description": "Diagnoses precisely why your prompt underperforms against the full craft — role, context, constraints, format, examples, success criteria — then rewrites it into a copy-ready, reusable prompt built the same way this library's prompts are.",
-    "type": "PROMPT",
-    "tags": [
-      "coding-and-tech",
-      "prompt-library"
-    ],
-    "content": {
-      "whatYouGet": [
-        "A checklist-driven diagnosis (role, context, task, method/priority-order, constraints, output format, missing-info handling, success criteria) naming exactly which gaps exist and what each one costs in the output",
-        "A copy-paste-ready rewritten prompt engineered on that same checklist — expert role, explicit reasoning order, named failure modes to avoid, precise output format, and reusable [PLACEHOLDER] fields",
-        "A short, specific list of upgrades made, each one tied back to the exact diagnosed gap it closes"
-      ],
-      "promptText": "<role>\nYou are a world-class prompt engineer who builds prompts the way a senior engineer builds an API contract: explicit inputs, explicit method, explicit output shape, explicit handling for missing information — nothing left for the model to guess at that the user could have specified.\n</role>\n\n<diagnostic_checklist>\nThe real checklist every prompt gets diagnosed against, with what a gap in each actually costs (not vibes):\n\n- ROLE — a specific expert persona calibrates judgment; \"you are an assistant\" costs a generic, hedge-everything tone.\n- CONTEXT — situational facts (audience, stakes, environment) let the model make good judgment calls; missing context costs guessed assumptions the user never sees.\n- TASK — one precise, singular ask; a bundled multi-task prompt costs a shallow pass at each sub-task instead of a good one at any.\n- METHOD/PRIORITY ORDER — for any task with real reasoning steps, the order to reason in (e.g. correctness before style, evidence before conclusion); missing this costs equally-weighted output where the one thing that matters gets buried.\n- CONSTRAINTS — naming the task's known failure modes (hedging, padding, hallucinated confidence, generic advice) as things to actively avoid; missing this costs exactly those failure modes showing up unchecked.\n- OUTPUT FORMAT — the exact structure (sections, order, contents); missing this costs an inconsistent shape run to run.\n- MISSING-INFO HANDLING — whether the model should ask or assume-and-label when something isn't supplied; missing this costs silent, unflagged assumptions.\n- SUCCESS CRITERIA — a stated quality bar the model can self-check against; missing this costs a plausible-sounding but unverified answer.\n\n<example>\nTarget granularity for one diagnosis line (illustrative): \"METHOD: the prompt asks the model to 'review this code' with no priority order — cost: correctness bugs and style nits get listed with equal weight, so the one bug that matters is buried in a list of 12 equally-weighted bullets.\"\n</example>\n</diagnostic_checklist>\n\n<input>\nMy rough prompt:\n[PASTE YOUR PROMPT]\n\nWhat I actually want out of it: [THE OUTCOME OR DECISION THIS PROMPT SERVES]\nWho or what will run it: [e.g. ChatGPT, Claude, an app backend, a coding agent] — and who reads the output: [AUDIENCE]\n</input>\n\n<instructions>\nDiagnose the prompt in <input> against the checklist above, not vibes, and be concrete about what each gap actually costs in the output. If the stated goal is unclear enough to change the rewrite materially, ask up to 2 clarifying questions first; otherwise proceed directly.\n\nWork through the checklist in <thinking> tags, item by item against the actual prompt text, skipping forward past anything already well-handled rather than padding the diagnosis to look thorough. Then give the final deliverable in <answer> tags:\n\n1. DIAGNOSIS — walk the checklist against the actual prompt, naming which items are missing or weak and what each gap concretely costs in the resulting output.\n2. IMPROVED PROMPT — a clean, copy-paste-ready rewrite that fixes every real gap from the diagnosis: a specific expert role, the necessary context, a precise and singular task, an explicit reasoning method with priority order where relevant, named failure modes to actively avoid, an exact output format, explicit missing-info handling, and a concrete quality bar. Use clearly labeled [PLACEHOLDERS] for anything the end user must supply, so the prompt stays reusable. Do not use em dashes.\n3. EMBEDDED CLARIFYING QUESTIONS — if the task benefits from the model asking the user something before answering, write those 1-3 questions directly into the rewritten prompt (not as commentary here).\n4. KEY UPGRADES — a short bullet list, one line per change, naming the specific checklist gap it closes — not a generic \"made it clearer.\"\n\nQUALITY BAR: the rewritten prompt should be self-contained and unambiguous enough that a stranger with zero context on this conversation could paste it and get a strong, consistent result on the first try, every time they run it.\n</instructions>",
-      "keywords": [
-        "code",
-        "coding",
-        "programming",
-        "debug",
-        "debugging",
-        "engineering",
-        "developer",
-        "software",
-        "code review",
-        "regex",
-        "technical",
-        "build",
-        "prompt",
-        "10x",
-        "better"
-      ],
-      "_buildRef": "tristenobrien:prompt-improver",
-      "install": [
-        "Paste the exact prompt you're currently using, not a summary of it, and say who reads the output — the diagnosis depends on the real wording and the audience changes which gaps matter most."
-      ]
-    }
-  },
-  {
     "slug": "prompt-first-principles-breakdown",
     "name": "First-Principles Breakdown",
     "summary": "Strips a problem down to what is actually, provably true, then rebuilds a solution from scratch and shows where conventional wisdom is just inherited habit.",
