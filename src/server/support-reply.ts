@@ -19,7 +19,7 @@ export type ReplyResult =
   | { sent: false; manual: true; reason: string };
 
 /** Sources the UI should offer a real Send button for. */
-export const SENDABLE_SOURCES = new Set(["discord", "gmail", "app_reviews"]);
+export const SENDABLE_SOURCES = new Set(["discord", "gmail", "app_reviews", "imap"]);
 
 /** Google Play caps a developer reply at 350 characters (AndroidPublisher API). */
 export const PLAY_REPLY_MAX_CHARS = 350;
@@ -41,8 +41,34 @@ export async function sendReply(
     case "DISCORD":     return discordReply(clientId, conv.externalId, body);
     case "GMAIL":       return gmailReply(clientId, conv.externalId, conv.subject, conv.customerLabel, body);
     case "APP_REVIEWS": return appReviewReply(clientId, conv.externalId, body);
+    case "IMAP":        return imapReplyDispatch(clientId, conv.externalId, body);
     default:
       return { sent: false, manual: true, reason: `${conv.source} requires a manual reply` };
+  }
+}
+
+// ─── IMAP / SMTP ───────────────────────────────────────────────────────────────
+
+async function imapReplyDispatch(
+  clientId: string,
+  externalId: string,
+  body: string,
+): Promise<ReplyResult> {
+  const conn = await prisma.accountConnection.findFirst({
+    where: { clientId, source: "IMAP", health: "CONNECTED" },
+    select: { id: true },
+  });
+  if (!conn) {
+    return { sent: false, manual: true, reason: "No connected email (IMAP/SMTP) mailbox for this client" };
+  }
+  try {
+    const { buildSyncContext } = await import("./support-sync");
+    const { sendImapReply } = await import("./support-channels/imap");
+    const ctx = await buildSyncContext(conn.id);
+    await sendImapReply(ctx, externalId, body);
+    return { sent: true, manual: false };
+  } catch (err) {
+    return { sent: false, manual: true, reason: `Email reply failed: ${err instanceof Error ? err.message : String(err)}` };
   }
 }
 

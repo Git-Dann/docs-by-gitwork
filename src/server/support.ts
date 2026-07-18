@@ -213,7 +213,7 @@ export function serializeSupportClient(row: {
 
 // ─── Scraper config encryption helpers ───────────────────────────────────────
 
-const SENSITIVE_SCRAPER_KEYS = ["botToken", "serviceAccountJson", "apiToken", "webhookToken"];
+const SENSITIVE_SCRAPER_KEYS = ["botToken", "serviceAccountJson", "apiToken", "webhookToken", "password"];
 
 /**
  * Encrypts sensitive values in a scraperConfig object using AES-256-GCM.

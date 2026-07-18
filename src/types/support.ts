@@ -1,5 +1,6 @@
 export type SupportSource =
   | "gmail"
+  | "imap"
   | "reddit"
   | "instagram"
   | "youtube"
@@ -112,6 +113,20 @@ export interface Connection {
     country?: string;
     // Webhook
     webhookToken?: string;
+    // IMAP/SMTP mailbox
+    imapHost?: string;
+    imapPort?: number;
+    imapSecure?: boolean;
+    smtpHost?: string;
+    smtpPort?: number;
+    smtpSecure?: boolean;
+    username?: string;
+    password?: string;
+    fromName?: string;
+    fromAddress?: string;
+    folder?: string;
+    // Per-connector auto-fetch cadence (minutes; 0 = manual). Read by the sync cron.
+    syncIntervalMinutes?: number;
     // Legacy / generic
     intervalHours?: number;
     channelId?: string;

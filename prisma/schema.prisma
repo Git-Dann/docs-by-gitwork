@@ -2420,6 +2420,7 @@ enum SupportClientStatus {
 
 enum SupportSource {
   GMAIL
+  IMAP
   REDDIT
   INSTAGRAM
   YOUTUBE

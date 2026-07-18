@@ -41,6 +41,7 @@ export function SourceIcon({ source, className }: { source: SupportSource; class
 
 export const SOURCE_LABEL: Record<SupportSource, string> = {
   gmail: "Gmail",
+  imap: "Email",
   reddit: "Reddit",
   instagram: "Instagram",
   youtube: "YouTube",
