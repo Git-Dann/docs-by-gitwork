@@ -8,6 +8,7 @@ import type { JobHandler, JobType } from "@/server/jobs/types";
 import { runClientArchive } from "@/server/client-archive";
 import { runRetentionSweep } from "@/server/retention/sweep";
 import { runCurator } from "@/server/curator/run";
+import { runForeman } from "@/server/foreman/run";
 
 const registry: { [K in JobType]: JobHandler<K> } = {
   CLIENT_ARCHIVE: async (payload) => {
@@ -22,6 +23,14 @@ const registry: { [K in JobType]: JobHandler<K> } = {
     const result = await runCurator({
       workspaceId: payload.workspaceId,
       mode: payload.mode,
+      dryRun: payload.dryRun,
+    });
+    return result as unknown as Prisma.InputJsonValue;
+  },
+  FOREMAN_RUN: async (payload) => {
+    const result = await runForeman({
+      workspaceId: payload.workspaceId,
+      consolidate: payload.consolidate,
       dryRun: payload.dryRun,
     });
     return result as unknown as Prisma.InputJsonValue;

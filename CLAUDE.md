@@ -1147,3 +1147,48 @@ automatically; everything the LLM suggests is a proposal a Super-Admin approves.
   proposal, Restore; hit `GET /api/cron/curator` with `CRON_SECRET`. **Deferred:** idle-gate (interval
   only), one-click starter *consolidation* (advisory — merge manually), auto-tar backups (transitions
   are reversible via Restore).
+
+## 29. Recent Changes (July 2026) — Foreman (daily delivery-risk watchdog on the Desk)
+
+A native scheduled agent that audits delivery every morning and pushes overdue / at-risk projects and
+developers to admins' **On Your Desk** drawer. Modelled on the Curator (§28) — same durable-job +
+cron + run-report spine — but it **only reads/aggregates** (never mutates client data), so it's safe
+by construction. **Deterministic-first, anti-false-flag by design:** every flag uses the app's own
+authoritative overdue rule, carries the evidence that triggered it + a concrete suggested fix, and the
+agent **calls out its own blind spots** (missing due dates/timelines) as info rather than guessing.
+
+- **Engine** — `src/server/foreman/`: `scan.ts` (batched `gatherWorkspace` + a **pure** `detectFindings`
+  over clients/tasks/feature-blocks/milestones/assignees — unit-testable, no DB), `recommend.ts` (pure
+  deterministic "ways it might improve" per finding kind), `narrate.ts` (**opt-in** one-shot Haiku
+  narrative, cached via `getCachedAiResponse`, £0 when off/quiet), `run.ts` (orchestrator: gather →
+  detect → **trend-diff vs the previous run** → optional AI → persist `ForemanRun` → dispatch digest →
+  audit), `queries.ts` (status/runs/report/config + `isForemanDue`), `config.ts`/`types.ts`.
+- **Detection rules** (all consistent with `getTaskAttention` / `computeClientOverdueTaskCounts`):
+  overdue tasks (warn, → critical at `criticalOverdue`), slipping dated feature blocks (endDate past +
+  progress<100 + has tasks; critical ≥7d), missed/imminent milestones (only when work outstanding),
+  due-soon clusters ("about to be late"), unowned time-critical work; developer overdue/stalled/
+  overloaded. **Never** flags an undated task, an empty client, a completed/undated/task-less block.
+  Blind spots (NO_TIMELINE / NO_DUE_DATES / BLOCK_NO_DATES) are surfaced separately as info.
+- **Push to the Desk** — `dispatchNotification({ event: "foreman.digest", target: {kind:"admins"} })`
+  fires **only when there are real (warn/critical) risks** and it's a live run — all-clear mornings are
+  silent (no false pings). New notification event + `["inApp","push"]` routing + `event-map` entry.
+  Plus a dedicated **"Delivery watch"** panel on the Desk TODAY tab (`desk-foreman.tsx`, admin-only) that
+  renders the frozen latest report: each risk with severity chip, evidence, suggested fix + a trend
+  badge (`↑ 3→5` / `New`), and a "Blind spots" reveal. Developers are unaffected (they keep the TASKS tab).
+- **Schedule** — `JobType "FOREMAN_RUN"` + handler; new **daily 09:00** cron `GET /api/cron/foreman`
+  (`0 9 * * *` in `vercel.json` + `docs/vps-crons.md`) that *enqueues* a deduped job per enabled
+  workspace that **hasn't run today**; the every-minute `jobs` worker drains it, so the digest lands
+  just after 09:00. Manual "Run now"/"Dry run"/"Run with AI summary" execute inline via `POST /api/foreman/runs`.
+- **API** (`src/app/api/foreman/*`, all `assertAtLeastAdmin` = Admins & Super Admins): `status`, `runs`
+  (GET list + POST run), `config` (PATCH), `report` (GET — the Desk panel's frozen report).
+- **UI** — Admin **Settings → Foreman** tab (`src/components/settings/foreman/foreman-panel.tsx`, hook
+  `src/hooks/use-foreman.ts`): status + Run/Dry-run/AI-summary, latest findings, config knobs
+  (`enabled`, `dueSoonDays`, `criticalOverdue`, `staleDoingDays`, AI toggle), run history.
+- **Schema (additive → applies via the guarded `prisma db push`):** `ForemanRun` (per-run report:
+  `findings`/`stats`/`narrative` JSON), `Workspace.foremanConfig` (+ `foremanRuns` relation), `AiModule
+  FOREMAN`. No new env, no OAuth re-consent.
+- **Verified:** `tsc` + `eslint` clean; `npm test` (135 tests, incl. 14 new Foreman unit tests for the
+  pure detection/recommendation/config/sort logic). App is auth-gated with no local DB → **post-deploy**:
+  Settings → Foreman → Dry run, Run now (check the digest lands on the Desk + ALERTS), hit
+  `GET /api/cron/foreman` with `CRON_SECRET`. **Deferred:** per-developer digests (management-only for
+  now), configurable notification recipients, a "why not flagged" explain view.

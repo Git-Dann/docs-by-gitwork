@@ -40,6 +40,8 @@ export const NOTIFICATION_EVENTS = [
   "meetings.notes_ready",
   // Portal / clients
   "clients.onboarded",
+  // Foreman (daily delivery-risk watchdog)
+  "foreman.digest",
 ] as const;
 export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];
 
@@ -79,4 +81,6 @@ export const DEFAULT_EVENT_ROUTING: Record<NotificationEvent, NotificationChanne
   "backstage.expense_decided": ["inApp", "push"],
   "meetings.notes_ready": ["inApp"],
   "clients.onboarded": ["inApp"],
+  // Directed at admins each morning — in-app feed + a native push so it lands on the phone.
+  "foreman.digest": ["inApp", "push"],
 };

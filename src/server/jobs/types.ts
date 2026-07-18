@@ -10,7 +10,7 @@
 import type { Prisma, BackgroundJob } from "@prisma/client";
 
 /** Registered job types. Add a member here + a handler in `handlers.ts` to introduce a new job. */
-export type JobType = "CLIENT_ARCHIVE" | "RETENTION_SWEEP" | "CURATOR_RUN";
+export type JobType = "CLIENT_ARCHIVE" | "RETENTION_SWEEP" | "CURATOR_RUN" | "FOREMAN_RUN";
 
 /** Payload shape per job type. Keep these small + serialisable (they live in a JSON column). */
 export interface JobPayloads {
@@ -29,6 +29,14 @@ export interface JobPayloads {
     /** "prune" = deterministic only; "consolidate" = force LLM pass. Omitted = follow config. */
     mode?: "prune" | "consolidate";
     /** Compute everything but mutate nothing. */
+    dryRun?: boolean;
+  };
+  FOREMAN_RUN: {
+    /** Target workspace; omitted = the default base workspace. */
+    workspaceId?: string;
+    /** Force the AI narrative pass on. Omitted = follow config. */
+    consolidate?: boolean;
+    /** Compute everything but persist a dry_run marker + never notify. */
     dryRun?: boolean;
   };
 }

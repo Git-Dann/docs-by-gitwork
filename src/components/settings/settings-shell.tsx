@@ -44,6 +44,7 @@ export type SettingsSectionId =
   | "agents"
   | "checks"
   | "curator"
+  | "foreman"
   | "mcp"
   | "agents-checks" // legacy — redirects to "agents"
   // System
@@ -161,6 +162,13 @@ const GROUPS: SectionGroup[] = [
         description: "Weekly upkeep of Starters + Pulse checks.",
         icon: SparklesIcon,
         superAdminOnly: true,
+      },
+      {
+        id: "foreman",
+        label: "Foreman",
+        description: "Daily delivery-risk audit pushed to your Desk.",
+        icon: ShieldCheckIcon,
+        adminOnly: true,
       },
       {
         id: "mcp",

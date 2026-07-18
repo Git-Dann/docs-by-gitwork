@@ -31,6 +31,7 @@ to `/tmp/foundry-cron.log`. This is what's actually installed on the box:
 0 7 * * *  /opt/apps/foundry/run-cron.sh embed-conversations  >> /tmp/foundry-cron.log 2>&1
 0 8 * * *  /opt/apps/foundry/run-cron.sh support-sync         >> /tmp/foundry-cron.log 2>&1
 0 9 * * *  /opt/apps/foundry/run-cron.sh meet-transcripts     >> /tmp/foundry-cron.log 2>&1
+0 9 * * *  /opt/apps/foundry/run-cron.sh foreman              >> /tmp/foundry-cron.log 2>&1
 0 10 * * * /opt/apps/foundry/run-cron.sh care-digest          >> /tmp/foundry-cron.log 2>&1
 
 # Backstage availability — ONE combined leave + absence Slack digest each weekday
@@ -45,6 +46,10 @@ to `/tmp/foundry-cron.log`. This is what's actually installed on the box:
 # workspace; the `jobs` worker below actually runs it, so both must be installed.
 0 1 * * 1  /opt/apps/foundry/run-cron.sh curator              >> /tmp/foundry-cron.log 2>&1
 
+# Foreman — daily delivery-risk digest (09:00). Enqueues a FOREMAN_RUN per enabled workspace that
+# hasn't run today; the `jobs` worker runs it and pushes the digest to admins' Desks just after 09:00.
+0 9 * * *  /opt/apps/foundry/run-cron.sh foreman              >> /tmp/foundry-cron.log 2>&1
+
 # Background-job worker — drains the BackgroundJob queue (curator runs, client archives, retention).
 # Idempotent + deduped, safe every minute.
 * * * * *  /opt/apps/foundry/run-cron.sh jobs                 >> /tmp/foundry-cron.log 2>&1
@@ -53,9 +58,9 @@ to `/tmp/foundry-cron.log`. This is what's actually installed on the box:
 30 1 * * 0 /opt/apps/foundry/deploy/db-backup.sh >> /opt/apps/foundry/backups/backup.log 2>&1
 ```
 
-> **Note** — the `curator` cron only *enqueues*; the durable `jobs` worker is what executes the
-> run. If `jobs` isn't installed the CURATOR_RUN sits PENDING forever. (`jobs` also drains client
-> archives + retention sweeps, so it's worth having regardless.)
+> **Note** — the `curator` and `foreman` crons only *enqueue*; the durable `jobs` worker is what
+> executes the run. If `jobs` isn't installed the CURATOR_RUN / FOREMAN_RUN sits PENDING forever.
+> (`jobs` also drains client archives + retention sweeps, so it's worth having regardless.)
 
 ### Optional: twice-daily Care sync (per PR #351)
 
