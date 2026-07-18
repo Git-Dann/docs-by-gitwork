@@ -3,9 +3,12 @@
 import { useMemo } from "react";
 import { ArrowPathIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
-import type { SupportClient } from "@/types/support";
+import type { SupportClient, ConversationStatus } from "@/types/support";
 import { useSupportClients, useSupportConversations, useSyncSupportClient } from "@/hooks/use-support";
-import { formatAge } from "./care-constants";
+import { formatAge, STATUS_TONE, STATUS_LABEL } from "./care-constants";
+
+// Statuses shown on the overview breakdown, in workflow order.
+const OVERVIEW_STATUSES: ConversationStatus[] = ["new", "open", "snoozed", "closed"];
 
 function ClientCard({ client, onOpen }: { client: SupportClient; onOpen: () => void }) {
   const convsQ = useSupportConversations(client.id);
@@ -19,7 +22,9 @@ function ClientCard({ client, onOpen }: { client: SupportClient; onOpen: () => v
       (acc, c) => (!acc || new Date(c.receivedAt) < new Date(acc) ? c.receivedAt : acc),
       null,
     );
-    return { needsAction: active.length, urgent: urgent.length, oldest };
+    const byStatus = {} as Record<ConversationStatus, number>;
+    for (const c of convs) byStatus[c.status] = (byStatus[c.status] ?? 0) + 1;
+    return { needsAction: active.length, urgent: urgent.length, oldest, byStatus };
   }, [convsQ.data]);
 
   return (
@@ -52,7 +57,16 @@ function ClientCard({ client, onOpen }: { client: SupportClient; onOpen: () => v
           <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">Urgent</div>
         </div>
       </div>
-      <div className="mt-3 font-mono text-[11px] text-[var(--text-4)]">
+      {/* All-status breakdown — colour-coded so the overview monitors every status, not just
+          "needs action". Only non-zero statuses render. */}
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {OVERVIEW_STATUSES.filter((s) => (stats.byStatus[s] ?? 0) > 0).map((s) => (
+          <span key={s} className={cn("rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium", STATUS_TONE[s])}>
+            {stats.byStatus[s]} {STATUS_LABEL[s]}
+          </span>
+        ))}
+      </div>
+      <div className="mt-2 font-mono text-[11px] text-[var(--text-4)]">
         {stats.oldest ? `Oldest unactioned ${formatAge(stats.oldest)} ago` : convsQ.isLoading ? "Loading…" : "All clear"}
       </div>
     </button>

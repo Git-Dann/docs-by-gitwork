@@ -78,8 +78,10 @@ export const PRIORITY_LABEL: Record<ConversationPriority, string> = {
 export const PRIORITY_TONE: Record<ConversationPriority, string> = {
   urgent: "bg-red-50 text-red-700 border border-red-200",
   high: "bg-amber-50 text-amber-700 border border-amber-200",
-  normal: "bg-[var(--surface-1)] text-[var(--text-3)]",
-  low: "bg-[var(--surface-1)] text-[var(--text-4)]",
+  // normal vs low were both flat grey and read as identical — give normal a slate tint + border
+  // so the four priorities land as a visible scale.
+  normal: "bg-slate-50 text-slate-600 border border-slate-200",
+  low: "bg-[var(--surface-1)] text-[var(--text-4)] border border-[var(--border-2)]",
 };
 
 export const PRIORITY_DOT: Record<ConversationPriority, string> = {
