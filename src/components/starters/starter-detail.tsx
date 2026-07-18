@@ -20,6 +20,7 @@ import {
   PuzzlePieceIcon,
   CubeIcon,
   RectangleStackIcon,
+  ArrowTrendingUpIcon,
 } from "@heroicons/react/24/outline";
 import {
   useStarter,
@@ -261,6 +262,17 @@ export function StarterDetail({ starterId }: { starterId: string }) {
                       {tag}
                     </span>
                   ))}
+                </div>
+              )}
+
+              {starter.outcomeStats && (
+                <div
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-[4px] bg-[var(--success-50)] px-2 py-1 text-[11px] font-medium text-[var(--success-500)]"
+                  title="Average Pulse health-score change across every project re-scanned after adopting this starter"
+                >
+                  <ArrowTrendingUpIcon className="h-3.5 w-3.5" />
+                  {starter.outcomeStats.avgDelta > 0 ? "+" : ""}
+                  {starter.outcomeStats.avgDelta} avg health score after adoption (n={starter.outcomeStats.count})
                 </div>
               )}
             </div>

@@ -459,10 +459,16 @@ export function StarterList() {
           </div>
 
           {canManageStarters ? (
-            <Link href="/app/starters/new" className={buttonStyles({ variant: "primary", size: "sm" })}>
-              <PlusIcon className="h-4 w-4" />
-              New starter
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link href="/app/starters/recipes" className={buttonStyles({ variant: "secondary", size: "sm" })}>
+                <RectangleStackIcon className="h-4 w-4" />
+                Recipes
+              </Link>
+              <Link href="/app/starters/new" className={buttonStyles({ variant: "primary", size: "sm" })}>
+                <PlusIcon className="h-4 w-4" />
+                New starter
+              </Link>
+            </div>
           ) : null}
           </div>
         </div>

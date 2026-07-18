@@ -34,6 +34,8 @@ import { computeGrades } from "@/server/pulse-checks/grades";
 import { rankFindings } from "@/server/pulse-checks/priority";
 import { useBatchCreateTasks, useTasks } from "@/hooks/use-tasks";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useStarterList } from "@/hooks/use-starters";
+import { recommendStartersForScan } from "@/lib/starters-recommend";
 import type { FixAgentResult } from "@/lib/api";
 import { cn, formatRelative } from "@/lib/format";
 import type { PulseScanRecord, PulseScanCheckRecord, ProductionBlocker, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights, CodeAgentInsights, DeployAgentInsights, ScoreBreakdown, PulseScanDiff } from "@/types/pulse";
@@ -820,6 +822,9 @@ function AgentPanel({
   const { mutateAsync: runBrowser, isPending: runningBrowser } = useRunBrowserAgent();
   const { mutateAsync: runDiscovery, isPending: runningDiscovery } = useRunDiscoveryKit();
   const { canManageStudy, canManageStarters } = usePermissions();
+  // Gated fetch, same pattern as Study — only admins pay for this, and only when the slot needs it.
+  const { data: allStarters } = useStarterList(canManageStarters);
+  const topStarterMatch = allStarters ? recommendStartersForScan(scan, allStarters)[0] : undefined;
   const [browserError, setBrowserError] = useState<string | null>(null);
   const [discoveryError, setDiscoveryError] = useState<string | null>(null);
   const [agentsOpen, setAgentsOpen] = useState(false);
@@ -1006,7 +1011,9 @@ function AgentPanel({
       status: scan.linkedStarterId ? "completed" : "available",
       summary: scan.linkedStarterId
         ? "A starter is linked to this scan"
-        : "Browse the Prompt→Production library, recommended for this project",
+        : topStarterMatch
+          ? `Top pick: ${topStarterMatch.starter.name} (matches ${topStarterMatch.reasons.join(", ")})`
+          : "Browse the Prompt→Production library, recommended for this project",
       actionLabel: scan.linkedStarterId ? "View starter" : "Browse starters",
       onAction: scan.linkedStarterId
         ? () => { window.location.href = `/app/starters/${scan.linkedStarterId}`; }

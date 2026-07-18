@@ -16,14 +16,15 @@ import {
 } from "@/components/onboarding/brand";
 import { DATA_REQUEST_LABELS, type DataRequestType } from "@/lib/devsignal/processing-notice";
 
-type Step = "welcome" | "consent" | "intake" | "connect" | "challenge" | "video" | "identity" | "done";
-const STEPS: Step[] = ["welcome", "consent", "intake", "connect", "challenge", "video", "identity", "done"];
+type Step = "welcome" | "consent" | "intake" | "connect" | "challenge" | "starter_fluency" | "video" | "identity" | "done";
+const STEPS: Step[] = ["welcome", "consent", "intake", "connect", "challenge", "starter_fluency", "video", "identity", "done"];
 const STEP_LABEL: Record<Step, string> = {
   welcome: "Welcome",
   consent: "Consent",
   intake: "About you",
   connect: "GitHub",
   challenge: "Challenge",
+  starter_fluency: "Starter task",
   video: "Intro",
   identity: "Identity",
   done: "Done",
@@ -52,6 +53,7 @@ function resumeStep(s: PublicVetSession): Step {
   if (!s.consentGiven) return "welcome";
   if (!s.githubConnected) return "intake";
   if (!s.challengeSubmitted) return "challenge";
+  if (!s.starterFluencySubmitted) return "starter_fluency";
   if (!s.videoSubmitted) return "video";
   if (!s.identitySubmitted) return "identity";
   return "done";
@@ -147,6 +149,19 @@ export function VetFlow({ token }: { token: string }) {
             ) : (
               <>
                 <Lede>No challenge assigned for this assessment.</Lede>
+                <div className="mt-6"><BrandButton onClick={next}>Continue →</BrandButton></div>
+              </>
+            )}
+          </BrandCard>
+        )}
+
+        {step === "starter_fluency" && (
+          <BrandCard eyebrow="Step 3.5 · Starter task" title="Extend a real internal spec.">
+            {session.starterFixture ? (
+              <StarterFluencyStep token={token} fixture={session.starterFixture} onDone={advance} onSkip={next} />
+            ) : (
+              <>
+                <Lede>No starter task assigned for this assessment.</Lede>
                 <div className="mt-6"><BrandButton onClick={next}>Continue →</BrandButton></div>
               </>
             )}
@@ -391,6 +406,72 @@ function VideoStep({ token, question, onDone, onSkip }: { token: string; questio
         <BrandLinkButton onClick={onSkip}>Skip for now</BrandLinkButton>
       </div>
     </BrandCard>
+  );
+}
+
+function StarterFluencyStep({
+  token,
+  fixture,
+  onDone,
+  onSkip,
+}: {
+  token: string;
+  fixture: NonNullable<PublicVetSession["starterFixture"]>;
+  onDone: () => void;
+  onSkip: () => void;
+}) {
+  const [response, setResponse] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (!response.trim()) {
+      setErr("Write a response before submitting.");
+      return;
+    }
+    setSubmitting(true);
+    setErr(null);
+    try {
+      await sendJson(`/api/vet/${token}/starter-fluency`, "POST", {
+        starterId: fixture.starterId,
+        response: response.trim(),
+      });
+      onDone();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not submit");
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <>
+      <Lede>{fixture.scenario}</Lede>
+      <div className="mt-4 rounded-lg border-l-2 border-[#6B52FF] bg-[#EAE5DC] p-4">
+        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#6B6B6B]">{fixture.starterName}</p>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#46464C]">{fixture.briefMarkdown}</p>
+        {fixture.techStack.length > 0 && (
+          <p className="mt-2 font-mono text-[11px] text-[#9a978f]">{fixture.techStack.join(" · ")}</p>
+        )}
+      </div>
+      <div className="mt-4">
+        <BrandField label="Your response">
+          <textarea
+            value={response}
+            onChange={(e) => setResponse(e.target.value)}
+            rows={8}
+            placeholder="A plan, an adapted prompt, or a short code sketch — whatever fits the brief above."
+            className={brandInputClass()}
+          />
+        </BrandField>
+      </div>
+      {err && <p className="mt-3 text-sm text-[#d14343]">{err}</p>}
+      <div className="mt-6 flex items-center gap-4">
+        <BrandButton onClick={submit} disabled={submitting || !response.trim()}>
+          {submitting ? "Submitting…" : "Submit response →"}
+        </BrandButton>
+        <BrandLinkButton onClick={onSkip}>Skip for now</BrandLinkButton>
+      </div>
+    </>
   );
 }
 

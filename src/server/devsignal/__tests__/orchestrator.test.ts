@@ -21,6 +21,7 @@ describe("planStages", () => {
       "profile_connections",
       "video_assessment",
       "coding_challenge",
+      "starter_fluency",
       "online_footprint",
       "identity_verification",
       "leadership_interview",
@@ -42,7 +43,7 @@ describe("runStages", () => {
       context,
       stageIds: planStages(config),
     });
-    expect(results).toHaveLength(7);
+    expect(results).toHaveLength(8);
     expect(results.every((r) => r.status === "PASS")).toBe(true);
   });
 

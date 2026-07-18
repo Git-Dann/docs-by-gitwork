@@ -32,13 +32,13 @@ describe("default pipeline config", () => {
     const a = buildDefaultConfigSnapshot();
     a.stages.coding_challenge.weight = 999;
     const b = buildDefaultConfigSnapshot();
-    expect(b.stages.coding_challenge.weight).toBe(30);
+    expect(b.stages.coding_challenge.weight).toBe(25);
   });
 
   it("db config row mirrors the snapshot", () => {
     const row = buildDefaultConfigRow();
     expect(row.isDefault).toBe(true);
-    expect((row.stageWeights as Record<string, number>).coding_challenge).toBe(30);
+    expect((row.stageWeights as Record<string, number>).coding_challenge).toBe(25);
     expect(row.stageOrder[0]).toBe("application_intake");
     expect(row.enabledStages).toContain("score_report");
   });

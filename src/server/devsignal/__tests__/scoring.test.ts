@@ -59,8 +59,8 @@ describe("computeScore — default config", () => {
       s.stageId === "coding_challenge" ? { ...s, status: "FAIL" as DevSignalStageStatus } : s,
     );
     const b = computeScore(config, inputs);
-    // coding_challenge = 30 weight at raw 0 → 100 - 30 = 70
-    expect(b.finalScore).toBe(70);
+    // coding_challenge = 25 weight at raw 0 → 100 - 25 = 75
+    expect(b.finalScore).toBe(75);
     expect(b.humanReviewRequired).toBe(false);
   });
 });
@@ -85,7 +85,7 @@ describe("computeScore — missing stages", () => {
       s.stageId === "coding_challenge" ? { ...s, status: "PENDING" as DevSignalStageStatus } : s,
     );
     const b = computeScore(config, inputs);
-    expect(b.finalScore).toBe(70); // 100 - 30 (coding contributes 0)
+    expect(b.finalScore).toBe(75); // 100 - 25 (coding contributes 0)
   });
 
   it("a stage with no input at all forces human review", () => {

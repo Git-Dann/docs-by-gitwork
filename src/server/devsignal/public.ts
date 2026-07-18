@@ -7,6 +7,7 @@ import { getChallengeBySlug, pickChallengeFor } from "./challenge-store";
 import { summarizeTelemetry, type TelemetryEvent } from "./telemetry";
 import { evaluateChallenge } from "./challenge-eval";
 import { scoreVideoTranscript } from "./video-scoring";
+import { pickStarterFixtureFor, scoreStarterFluencyResponse } from "./starter-fluency";
 import { getTranscriptionProvider } from "./providers/transcription";
 import { MockIdentityProvider } from "./providers/identity/mock";
 import { applyStageResult } from "./assessment";
@@ -132,6 +133,10 @@ async function buildSession(a: LoadedAssessment): Promise<PublicVetSession> {
     primaryStack: c.primaryStack,
     yearsExperience: c.yearsExperience,
   });
+  // Same idea for the Starter Fluency fixture — deterministic on the candidate's declared stack,
+  // so re-picking on every session load (same pattern as `challenge` above) still lands on the
+  // same starter across reloads rather than needing separate persistence.
+  const starterFixture = await pickStarterFixtureFor({ primaryStack: c.primaryStack });
 
   return {
     token: a.publicToken ?? "",
@@ -154,6 +159,8 @@ async function buildSession(a: LoadedAssessment): Promise<PublicVetSession> {
     githubConnected: Boolean(c.githubHandle && c.githubHandle.trim() && c.githubHandle !== "unknown"),
     challenge: toPublicChallenge(challenge),
     challengeSubmitted: doneStages.has("coding_challenge"),
+    starterFixture,
+    starterFluencySubmitted: doneStages.has("starter_fluency"),
     videoQuestion: DEFAULT_VIDEO_QUESTION,
     videoSubmitted: doneStages.has("video_assessment"),
     identitySubmitted: doneStages.has("identity_verification"),
@@ -249,6 +256,44 @@ export async function submitChallenge(
     evidence: [{ type: "challenge", label: challenge.title, sourceRef: challenge.id }],
     flags: evalResult.flags,
     durationMs: submission.timeTakenSec * 1000,
+  });
+  return { ok: true };
+}
+
+export interface StarterFluencySubmission {
+  starterId: string;
+  response: string;
+}
+
+export async function submitStarterFluency(
+  token: string,
+  submission: StarterFluencySubmission,
+): Promise<{ ok: boolean }> {
+  const a = await loadByToken(token);
+  if (!a || isExpired(a)) return { ok: false };
+  assertConsent(a);
+
+  const fixture = await pickStarterFixtureFor({ primaryStack: a.candidate.primaryStack });
+  if (!fixture) return { ok: false };
+
+  const scored = await scoreStarterFluencyResponse({
+    response: submission.response,
+    fixture,
+    workspace: a.workspace,
+    workspaceId: a.workspace.id,
+  });
+
+  const stageId: DevSignalStageId = "starter_fluency";
+  await applyStageResult(a.workspace.id, a.id, {
+    stageId,
+    stageName: DEV_SIGNAL_STAGE_NAMES[stageId],
+    stageVersion: "starter-fluency-v1",
+    status: scored.status,
+    weight: 0,
+    subScores: scored.subScores,
+    rawSignals: { starterId: fixture.starterId, starterName: fixture.starterName, response: submission.response },
+    evidence: [{ type: "starter", label: fixture.starterName, sourceRef: fixture.starterId }],
+    flags: scored.flags,
   });
   return { ok: true };
 }

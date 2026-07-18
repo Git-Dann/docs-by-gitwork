@@ -61,9 +61,17 @@ export interface StarterListItem {
   searchText: string;
 }
 
+/** Closed-loop proof: aggregated before→after health-score deltas across every project that
+ * re-scanned after adopting this starter. Null when there's no outcome data yet. */
+export interface StarterOutcomeStats {
+  count: number;
+  avgDelta: number;
+}
+
 export interface StarterRecord extends StarterListItem {
   description: string | null;
   content: StarterContent | null;
+  outcomeStats: StarterOutcomeStats | null;
 }
 
 type StarterRow = {
@@ -120,12 +128,24 @@ function publicContent(content: unknown): StarterContent | null {
   return rest as StarterContent;
 }
 
-function serializeStarter(s: StarterRow): StarterRecord {
+function serializeStarter(s: StarterRow, outcomeStats: StarterOutcomeStats | null): StarterRecord {
   return {
     ...serializeListItem(s),
     description: s.description,
     content: publicContent(s.content),
+    outcomeStats,
   };
+}
+
+/** Aggregate every recorded before→after outcome for this starter. One query, read-only. */
+export async function getStarterOutcomeStats(starterId: string): Promise<StarterOutcomeStats | null> {
+  const agg = await prisma.starterOutcome.aggregate({
+    where: { starterId },
+    _count: true,
+    _avg: { delta: true },
+  });
+  if (agg._count === 0 || agg._avg.delta === null) return null;
+  return { count: agg._count, avgDelta: Math.round(agg._avg.delta * 10) / 10 };
 }
 
 // ── Workspace helper ──────────────────────────────────────────────────────────
@@ -186,13 +206,15 @@ export async function listStarters(filters?: {
 export async function getStarter(id: string): Promise<StarterRecord | null> {
   const workspace = await getWorkspace();
   const row = await prisma.starter.findFirst({ where: { id, ...scopeWhere(workspace.id) } });
-  return row ? serializeStarter(row) : null;
+  if (!row) return null;
+  return serializeStarter(row, await getStarterOutcomeStats(row.id));
 }
 
 export async function getStarterBySlug(slug: string): Promise<StarterRecord | null> {
   const workspace = await getWorkspace();
   const row = await prisma.starter.findFirst({ where: { slug, ...scopeWhere(workspace.id) } });
-  return row ? serializeStarter(row) : null;
+  if (!row) return null;
+  return serializeStarter(row, await getStarterOutcomeStats(row.id));
 }
 
 export async function createStarter(data: {
@@ -219,7 +241,7 @@ export async function createStarter(data: {
       content: (data.content ?? undefined) as Prisma.InputJsonValue | undefined,
     },
   });
-  return serializeStarter(row);
+  return serializeStarter(row, null);
 }
 
 export async function updateStarter(
@@ -271,7 +293,7 @@ export async function updateStarter(
         return applyUpdate(tx);
       })
     : await applyUpdate(prisma);
-  return serializeStarter(row);
+  return serializeStarter(row, null);
 }
 
 export async function deleteStarter(id: string): Promise<boolean> {
@@ -306,7 +328,7 @@ export async function duplicateStarter(id: string): Promise<StarterRecord | null
       isDefault: false,
     },
   });
-  return serializeStarter(row);
+  return serializeStarter(row, null);
 }
 
 /**

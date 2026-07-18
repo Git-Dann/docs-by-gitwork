@@ -6,7 +6,7 @@ describe("configRowToSnapshot", () => {
     const row = buildDefaultConfigRow();
     const snap = configRowToSnapshot(row);
     expect(totalEnabledWeight(snap)).toBe(100);
-    expect(snap.stages.coding_challenge.weight).toBe(30);
+    expect(snap.stages.coding_challenge.weight).toBe(25);
     expect(snap.stages.identity_verification.blocking).toBe(true);
     expect(snap.stages.application_intake.order).toBe(1);
     expect(snap.stages.score_report.weight).toBe(0);
