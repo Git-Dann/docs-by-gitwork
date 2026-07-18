@@ -1483,6 +1483,20 @@ export const curatorProposalActionSchema = z.object({
 
 export const curatorRestoreSchema = z.object({ runId: z.string().min(1) });
 
+// ── Foreman (daily delivery-risk watchdog) ───────────────────────────────────
+export const foremanRunSchema = z.object({
+  consolidate: z.boolean().optional(),
+  dryRun: z.boolean().optional(),
+});
+
+export const foremanConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  dueSoonDays: z.number().int().min(1).max(30).optional(),
+  criticalOverdue: z.number().int().min(1).max(100).optional(),
+  staleDoingDays: z.number().int().min(1).max(90).optional(),
+  consolidate: z.boolean().optional(),
+});
+
 // ── Handbook (internal developer knowledgebase) ──────────────────────────────
 export const handbookStatusSchema = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);
 

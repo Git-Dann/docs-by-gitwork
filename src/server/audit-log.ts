@@ -57,7 +57,9 @@ export type AuditAction =
   | "curator.run.completed"
   | "curator.proposal.applied"
   | "curator.proposal.dismissed"
-  | "curator.run.restored";
+  | "curator.run.restored"
+  // Foreman (daily delivery-risk watchdog)
+  | "foreman.run.completed";
 
 export interface RecordAuditEntryInput {
   workspaceId: string;

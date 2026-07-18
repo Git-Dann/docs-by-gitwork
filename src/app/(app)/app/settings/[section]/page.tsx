@@ -23,6 +23,7 @@ const IntegrationsTab = dynamic(() => import("@/components/settings-panel").then
 const AgentsPanel = dynamic(() => import("@/components/settings/agents-panel").then((m) => ({ default: m.AgentsPanel })));
 const ChecksPanel = dynamic(() => import("@/components/settings/checks-panel").then((m) => ({ default: m.ChecksPanel })));
 const CuratorPanel = dynamic(() => import("@/components/settings/curator/curator-panel").then((m) => ({ default: m.CuratorPanel })));
+const ForemanPanel = dynamic(() => import("@/components/settings/foreman/foreman-panel").then((m) => ({ default: m.ForemanPanel })));
 const DeveloperTab = dynamic<{ apiKeyConfigured: boolean }>(() =>
   import("@/components/settings-panel").then((m) => ({ default: m.DeveloperTab })),
 );
@@ -53,6 +54,7 @@ const VALID_SECTIONS: SettingsSectionId[] = [
   "agents",
   "checks",
   "curator",
+  "foreman",
   "mcp",
   "agents-checks", // legacy — redirects to "agents"
   "analytics", // link-out rail entry — redirects to the full-page /app/analytics
@@ -79,6 +81,7 @@ const ADMIN_ONLY_SECTIONS = new Set<SettingsSectionId>([
   "workspace",
   "onboarding",
   "demo",
+  "foreman",
 ]);
 
 // Old standalone routes now live in different sections — redirect for back-compat.
@@ -189,6 +192,10 @@ const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string 
   curator: {
     title: "Curator",
     subtitle: "Weekly background maintenance for the Starters library and Pulse checks.",
+  },
+  foreman: {
+    title: "Foreman",
+    subtitle: "The daily delivery-risk watchdog — overdue and at-risk projects and developers, pushed to your Desk at 09:00.",
   },
   // Legacy URL — present in the meta so the type stays exhaustive; the page-level
   // redirect (PEOPLE_REDIRECTS) catches this slug before this meta is ever read.
@@ -332,6 +339,7 @@ export default async function SettingsSectionPage({
         {sectionId === "agents" ? <AgentsPanel /> : null}
         {sectionId === "checks" ? <ChecksPanel /> : null}
         {sectionId === "curator" ? <CuratorPanel /> : null}
+        {sectionId === "foreman" ? <ForemanPanel /> : null}
         {sectionId === "audit" ? <AuditLogSection /> : null}
         {sectionId === "developer" ? <DeveloperTab apiKeyConfigured={apiKeyConfigured} /> : null}
         {sectionId === "privacy" ? <PrivacySection /> : null}

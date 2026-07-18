@@ -25,6 +25,7 @@ import { WorldClocks, HQ_TZ, TEAM_TZ } from "./desk-time";
 import { DeskGlobe } from "./desk-globe";
 import { DeskNeedsReply } from "./desk-needs-reply";
 import { PurgeReviewBanner } from "./desk-purge-review";
+import { DeskForeman } from "./desk-foreman";
 import { BriefPeek } from "@/components/brief/brief-peek";
 
 type Counterpart = { tz: string; label: string };
@@ -105,6 +106,10 @@ export function DeskToday({ onNavigate }: { onNavigate?: (tab: DeskTab) => void 
 
       {/* Retention purge review — admins only, shown when there are cold archives past their window. */}
       <PurgeReviewBanner enabled={isAdminOrAbove} />
+
+      {/* Delivery watch — Foreman's daily overdue/at-risk audit. Admins & super-admins only;
+          developers already see their own overdue work in the TASKS tab. */}
+      {isAdminOrAbove ? <DeskForeman enabled={isAdminOrAbove} /> : null}
 
       {/* Your day — the first-glance hero: focus, standup, numbers and agenda in one place
           (formerly two near-identical "Push your work" + "Your day" rows). */}

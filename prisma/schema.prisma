@@ -347,6 +347,7 @@ model Workspace {
   defaultAnnualLeaveDays      Int                        @default(25)
   expenseCategories           Json? // Optional override of the hardcoded category list
   curatorConfig               Json? // Curator settings: { enabled, staleAfterDays, archiveAfterDays, consolidate, intervalDays }
+  foremanConfig               Json? // Foreman settings: { enabled, dueSoonDays, criticalOverdue, staleDoingDays, consolidate }
   pulsePricingConfig          Json? // PulsePricingConfig — { fxFromUsd, dayRateOverrideGbp?, seniority? } for Pulse engagement pricing
   costingConfig               Json? // SavedCostingConfig — Studio Costing tool: advanced levers + editable per-dev cost rates (seeded from the Rate Card)
   /// Master switch for the public Pulse embed (/embed/pulse + its API routes). Off = all
@@ -451,6 +452,7 @@ model Workspace {
   devSignalDataRequests       DevSignalDataRequest[]
   devSignalNotices            DevSignalNotice[]
   backgroundJobs              BackgroundJob[]
+  foremanRuns                 ForemanRun[]
   coldArchives                ColdArchive[]
   handbookArticles            HandbookArticle[]
   golfClubs                   GolfClub[]
@@ -3113,6 +3115,29 @@ model CuratorRun {
   @@index([workspaceId, startedAt])
 }
 
+// Foreman — the daily delivery-risk watchdog. One row per run (scheduled 09:00 or manual).
+// A pure read/aggregate pass over clients, tasks, feature blocks, milestones and placements:
+// it flags overdue / slipping projects and overloaded / stalled developers, always with the
+// evidence that triggered the flag and a suggested fix, and audits its own blind spots (missing
+// due dates / timelines) so it never flags what it can't actually see. `findings` is the frozen
+// report the Desk panel renders; `stats` is the roll-up (+ deltas vs the previous run for trend).
+model ForemanRun {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mode        String // "scan" | "dry_run"
+  status      String    @default("running") // "running" | "succeeded" | "failed"
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  stats       Json? // ForemanStats — counts by severity/subject + deltas vs the previous run
+  findings    Json? // ForemanFinding[] — the flagged projects/developers + blind spots
+  narrative   Json? // { summary, priorities[] } from the opt-in AI pass, or null when skipped
+  aiModel     String? // model used by the narrative pass, or null when skipped
+  error       String?   @db.Text
+
+  @@index([workspaceId, startedAt])
+}
+
 // Per-user notification preferences. One row per user.
 // `events` shape: { [eventKey: string]: ("email" | "push" | "slack" | "inApp")[] }
 // `digestCadence`: OFF | DAILY | WEEKLY
@@ -3212,6 +3237,7 @@ enum AiModule {
   SCRIBE
   CARE
   CURATOR
+  FOREMAN
   DEVSIGNAL
   DOCS
   PROOF
