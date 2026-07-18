@@ -209,6 +209,7 @@ function SourceIcon({ source, className }: { source: SupportSource; className?: 
   const cls = cn("h-4 w-4", className);
   switch (source) {
     case "gmail":
+    case "imap":
       return <EnvelopeIcon className={cls} />;
     case "reddit":
     case "instagram":
@@ -231,6 +232,7 @@ function SourceIcon({ source, className }: { source: SupportSource; className?: 
 
 const SOURCE_LABEL: Record<SupportSource, string> = {
   gmail: "Gmail",
+  imap: "Email (IMAP/SMTP)",
   reddit: "Reddit",
   instagram: "Instagram",
   youtube: "YouTube",
@@ -241,10 +243,21 @@ const SOURCE_LABEL: Record<SupportSource, string> = {
   webhook: "Webhook",
 };
 
-const LIVE_SOURCES: SupportSource[] = ["gmail", "discord", "reddit", "analytics", "app_reviews", "webhook"];
+const LIVE_SOURCES: SupportSource[] = ["gmail", "imap", "discord", "reddit", "analytics", "app_reviews", "webhook"];
+
+// IMAP/SMTP provider presets — prefill host/port/security so most setups are just email + app password.
+const IMAP_PRESETS: Record<
+  "gmail" | "outlook" | "custom",
+  { imapHost: string; imapPort: number; imapSecure: boolean; smtpHost: string; smtpPort: number; smtpSecure: boolean; hint: string }
+> = {
+  gmail: { imapHost: "imap.gmail.com", imapPort: 993, imapSecure: true, smtpHost: "smtp.gmail.com", smtpPort: 465, smtpSecure: true, hint: "Requires 2-step verification + an App Password + IMAP enabled on the mailbox." },
+  outlook: { imapHost: "outlook.office365.com", imapPort: 993, imapSecure: true, smtpHost: "smtp.office365.com", smtpPort: 587, smtpSecure: false, hint: "Some Microsoft 365 tenants block basic auth — may need OAuth (coming later)." },
+  custom: { imapHost: "", imapPort: 993, imapSecure: true, smtpHost: "", smtpPort: 465, smtpSecure: true, hint: "" },
+};
 
 const SOURCE_TAGLINE: Partial<Record<SupportSource, string>> = {
   gmail: "Email forwarding via your support inbox",
+  imap: "Connect any mailbox via IMAP/SMTP — read & reply, no admin",
   discord: "Monitor channels on a client's server",
   reddit: "Watch public subreddits for mentions",
   analytics: "Pull product metrics into monthly reports",
@@ -617,6 +630,18 @@ function AddConnectorModal({
   // Webhook fields — token auto-generated, shown after creation
   const [webhookToken] = useState(() => crypto.randomUUID());
 
+  // IMAP/SMTP mailbox fields
+  const [imapProvider, setImapProvider] = useState<"gmail" | "outlook" | "custom">("gmail");
+  const [imapEmail, setImapEmail] = useState("");
+  const [imapPassword, setImapPassword] = useState("");
+  const [imapFromName, setImapFromName] = useState("");
+  const [imapHostField, setImapHostField] = useState("");
+  const [imapPortField, setImapPortField] = useState("993");
+  const [smtpHostField, setSmtpHostField] = useState("");
+  const [smtpPortField, setSmtpPortField] = useState("465");
+  const [imapTest, setImapTest] = useState<{ imap?: { ok: boolean; error?: string }; smtp?: { ok: boolean; error?: string } } | null>(null);
+  const [imapTesting, setImapTesting] = useState(false);
+
   // Analytics API fields
   const [analyticsAdapter, setAnalyticsAdapter] = useState(ANALYTICS_ADAPTERS[0].key);
   const [analyticsBaseUrl, setAnalyticsBaseUrl] = useState(ANALYTICS_ADAPTERS[0].defaultBaseUrl);
@@ -718,6 +743,22 @@ function AddConnectorModal({
     if (source === "webhook") {
       return { webhookToken };
     }
+    if (source === "imap") {
+      const preset = IMAP_PRESETS[imapProvider];
+      const custom = imapProvider === "custom";
+      return {
+        imapHost: custom ? imapHostField.trim() : preset.imapHost,
+        imapPort: custom ? Number(imapPortField) || 993 : preset.imapPort,
+        imapSecure: preset.imapSecure,
+        smtpHost: custom ? smtpHostField.trim() : preset.smtpHost,
+        smtpPort: custom ? Number(smtpPortField) || 465 : preset.smtpPort,
+        smtpSecure: custom ? (Number(smtpPortField) || 465) === 465 : preset.smtpSecure,
+        username: imapEmail.trim(),
+        password: imapPassword,
+        fromAddress: imapEmail.trim(),
+        fromName: imapFromName.trim() || undefined,
+      } as Connection["scraperConfig"];
+    }
     return undefined;
   }
 
@@ -735,7 +776,29 @@ function AddConnectorModal({
     }
     if (source === "app_reviews") return appId.trim() ? "connected" : "needs_setup";
     if (source === "webhook") return "connected";
+    if (source === "imap") {
+      const hasHosts = imapProvider !== "custom" || (imapHostField.trim() && smtpHostField.trim());
+      return imapEmail.trim() && imapPassword && hasHosts ? "connected" : "needs_setup";
+    }
     return source === "gmail" || source === "reddit" ? "connected" : "needs_setup";
+  }
+
+  async function handleTestImap() {
+    setImapTesting(true);
+    setImapTest(null);
+    try {
+      const res = await fetch(`/api/support/clients/${clientId}/connections/test-imap`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: buildScraperConfig() }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { data?: { imap?: { ok: boolean; error?: string }; smtp?: { ok: boolean; error?: string } } };
+      setImapTest(json.data ?? { imap: { ok: false, error: "No response" }, smtp: { ok: false } });
+    } catch (err) {
+      setImapTest({ imap: { ok: false, error: err instanceof Error ? err.message : String(err) }, smtp: { ok: false } });
+    } finally {
+      setImapTesting(false);
+    }
   }
 
   function isSubmitDisabled() {
@@ -750,6 +813,10 @@ function AddConnectorModal({
       return !hasBase || !hasToken;
     }
     if (source === "app_reviews") return !appId.trim();
+    if (source === "imap") {
+      const hasHosts = imapProvider !== "custom" || (imapHostField.trim() && smtpHostField.trim());
+      return !imapEmail.trim() || !imapPassword || !hasHosts;
+    }
     return false;
   }
 
@@ -852,6 +919,106 @@ function AddConnectorModal({
                     </p>
                   </div>
                 </details>
+              </div>
+            )}
+
+            {/* IMAP/SMTP config */}
+            {source === "imap" && (
+              <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+                <p className="text-[11px] text-[var(--text-4)]">
+                  Connect any mailbox directly — read over IMAP and reply over SMTP as that address. No Google admin or domain-wide delegation needed.
+                </p>
+                <label className="block space-y-1">
+                  <span className="app-field-label">Provider</span>
+                  <select
+                    value={imapProvider}
+                    onChange={(e) => setImapProvider(e.target.value as "gmail" | "outlook" | "custom")}
+                    className="app-input w-full"
+                  >
+                    <option value="gmail">Gmail / Google Workspace</option>
+                    <option value="outlook">Outlook / Microsoft 365</option>
+                    <option value="custom">Custom (other provider)</option>
+                  </select>
+                  {IMAP_PRESETS[imapProvider].hint && (
+                    <span className="text-[11px] text-amber-600">{IMAP_PRESETS[imapProvider].hint}</span>
+                  )}
+                </label>
+                <label className="block space-y-1">
+                  <span className="app-field-label">Email address</span>
+                  <input
+                    value={imapEmail}
+                    onChange={(e) => setImapEmail(e.target.value)}
+                    className="app-input w-full"
+                    placeholder="app@bigwedgegolf.com"
+                    autoComplete="off"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="app-field-label">App password</span>
+                  <input
+                    type="password"
+                    value={imapPassword}
+                    onChange={(e) => setImapPassword(e.target.value)}
+                    className="app-input w-full font-mono text-xs"
+                    placeholder="app-specific password"
+                    autoComplete="new-password"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="app-field-label">From name (optional)</span>
+                  <input
+                    value={imapFromName}
+                    onChange={(e) => setImapFromName(e.target.value)}
+                    className="app-input w-full"
+                    placeholder="e.g. Big Wedge Golf Support"
+                  />
+                </label>
+                {imapProvider === "custom" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="block space-y-1">
+                      <span className="app-field-label">IMAP host</span>
+                      <input value={imapHostField} onChange={(e) => setImapHostField(e.target.value)} className="app-input w-full font-mono text-xs" placeholder="imap.example.com" />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="app-field-label">IMAP port</span>
+                      <input value={imapPortField} onChange={(e) => setImapPortField(e.target.value)} className="app-input w-full font-mono text-xs" placeholder="993" />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="app-field-label">SMTP host</span>
+                      <input value={smtpHostField} onChange={(e) => setSmtpHostField(e.target.value)} className="app-input w-full font-mono text-xs" placeholder="smtp.example.com" />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="app-field-label">SMTP port</span>
+                      <input value={smtpPortField} onChange={(e) => setSmtpPortField(e.target.value)} className="app-input w-full font-mono text-xs" placeholder="465" />
+                    </label>
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleTestImap()}
+                    disabled={imapTesting || !imapEmail.trim() || !imapPassword}
+                    className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                  >
+                    {imapTesting ? "Testing…" : "Test connection"}
+                  </button>
+                  {imapTest && (
+                    <span className="text-[11px]">
+                      <span className={imapTest.imap?.ok ? "text-emerald-600" : "text-red-500"}>
+                        IMAP {imapTest.imap?.ok ? "✓" : "✕"}
+                      </span>
+                      {" · "}
+                      <span className={imapTest.smtp?.ok ? "text-emerald-600" : "text-red-500"}>
+                        SMTP {imapTest.smtp?.ok ? "✓" : "✕"}
+                      </span>
+                    </span>
+                  )}
+                </div>
+                {imapTest && (!imapTest.imap?.ok || !imapTest.smtp?.ok) && (
+                  <p className="break-words text-[11px] text-red-500">
+                    {imapTest.imap?.error || imapTest.smtp?.error}
+                  </p>
+                )}
               </div>
             )}
 
@@ -4268,6 +4435,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
               if (conn.source === "webhook" && cfg.webhookToken) return `/api/support/webhook/${cfg.webhookToken.slice(0, 8)}…`;
               if (conn.source === "analytics" && cfg.adapter) return cfg.adapter;
               if (conn.source === "gmail" && cfg.intakeAddress) return cfg.intakeAddress;
+              if (conn.source === "imap" && cfg.username) return `${cfg.username}${cfg.imapHost ? ` · ${cfg.imapHost}` : ""}`;
               return null;
             })();
 
