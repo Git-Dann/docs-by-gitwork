@@ -38,15 +38,15 @@ export function StarterRecipesPanel() {
           </span>
           <span className="widget-header__status">{(recipes ?? []).length} TOTAL</span>
         </div>
-        <div className="flex items-center justify-between gap-3 px-5 py-4">
-          <p className="text-sm text-[var(--text-3)]">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+          <p className="min-w-0 text-sm text-[var(--text-3)]">
             Bundle existing starters into one named stack — a client kicking off a new build gets
             the whole recommended set in one click, not five separate lookups.
           </p>
           <button
             type="button"
             onClick={() => setEditing("new")}
-            className={buttonStyles({ variant: "primary", size: "sm" })}
+            className={cn(buttonStyles({ variant: "primary", size: "sm" }), "shrink-0")}
           >
             <PlusIcon className="h-4 w-4" />
             New recipe
@@ -73,11 +73,11 @@ export function StarterRecipesPanel() {
             <article key={recipe.id} className="widget-card group flex flex-col">
               <div className="flex-1 px-5 pt-5">
                 <div className="flex items-start justify-between gap-2">
-                  <h3 className="text-[15px] font-semibold text-[var(--text-1)]">{recipe.name}</h3>
+                  <h3 className="min-w-0 truncate text-[15px] font-semibold text-[var(--text-1)]">{recipe.name}</h3>
                   <button
                     type="button"
                     onClick={() => deleteRecipe(recipe.id)}
-                    className="rounded-[6px] p-1 text-[var(--text-4)] opacity-0 transition hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
+                    className="shrink-0 rounded-[6px] p-1 text-[var(--text-4)] opacity-0 transition hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
                     title="Delete recipe"
                   >
                     <TrashIcon className="h-3.5 w-3.5" />

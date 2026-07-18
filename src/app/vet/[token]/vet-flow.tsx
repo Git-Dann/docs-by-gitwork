@@ -156,7 +156,7 @@ export function VetFlow({ token }: { token: string }) {
         )}
 
         {step === "starter_fluency" && (
-          <BrandCard eyebrow="Step 3.5 · Starter task" title="Extend a real internal spec.">
+          <BrandCard eyebrow="Step 4 · Starter task" title="Extend a real internal spec.">
             {session.starterFixture ? (
               <StarterFluencyStep token={token} fixture={session.starterFixture} onDone={advance} onSkip={next} />
             ) : (
@@ -378,7 +378,7 @@ function VideoStep({ token, question, onDone, onSkip }: { token: string; questio
   };
 
   return (
-    <BrandCard eyebrow="Step 4 · Intro" title="A quick intro.">
+    <BrandCard eyebrow="Step 5 · Intro" title="A quick intro.">
       <p className="rounded-lg border-l-2 border-[#6B52FF] bg-[#EAE5DC] px-4 py-3 text-sm leading-relaxed text-[#46464C]">{question}</p>
       <div className="mt-4 flex items-center gap-3">
         {!recording ? (
@@ -492,7 +492,7 @@ function IdentityStep({ token, onDone, onSkip }: { token: string; onDone: () => 
   };
 
   return (
-    <BrandCard eyebrow="Step 5 · Identity" title="Verify your identity.">
+    <BrandCard eyebrow="Step 6 · Identity" title="Verify your identity.">
       <Lede>
         A quick identity check confirms the person assessed is the person placed. We never store your
         ID documents — only a pass/fail from the verification provider.

@@ -1012,7 +1012,7 @@ function AgentPanel({
       summary: scan.linkedStarterId
         ? "A starter is linked to this scan"
         : topStarterMatch
-          ? `Top pick: ${topStarterMatch.starter.name} (matches ${topStarterMatch.reasons.join(", ")})`
+          ? `Top pick: ${topStarterMatch.starter.name} (matches ${topStarterMatch.reasons.slice(0, 3).join(", ")})`
           : "Browse the Prompt→Production library, recommended for this project",
       actionLabel: scan.linkedStarterId ? "View starter" : "Browse starters",
       onAction: scan.linkedStarterId
