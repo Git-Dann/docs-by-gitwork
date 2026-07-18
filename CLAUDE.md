@@ -424,6 +424,43 @@ Core domains:
 - Runtime stats are already automatic: all scan-results UI derives pass/warn/fail, category
   cards, score and priority live from the persisted `scan.checks` — nothing to wire per check.
 
+**Starters catalog — prompt depth standard (mandatory)**
+- Every prompt/skill/kit committed to `CORE_BUILT_INS` (`src/server/starters-catalog.ts`) or
+  `PROMPT_STARTERS` (`src/data/prompt-starters.json`) must hit the depth bar Dan set in July 2026
+  by sharing his own hand-written "Proposal Builder" prompt as the baseline — a lightweight
+  "Anthropic best-practices" pass (light XML tagging, no real substance) is **not sufficient** and
+  has already been rejected once. A shallow `promptText` is a defect, not a stylistic choice.
+- **The 5-part structure every text/reasoning prompt's `promptText` must contain:**
+  1. `<role>` — a specific expert persona, not "a helpful assistant."
+  2. A **reference/domain-knowledge section** (tag name can vary — `<reference_data>`,
+     `<domain_knowledge>`, whatever fits) — a real, substantive framework, checklist, or table a
+     genuine expert would use (named frameworks, industry-standard checklists, real
+     numbers/ranges). Never vague paragraphs, never fabricated fake "our own data."
+  3. A **house_rules section** — 5-9 explicit, numbered, specific heuristics, each with a real
+     reason, not a generic virtue ("be helpful").
+  4. A **structured input template** — 5-8 labeled fill-in-the-blank fields, not one generic
+     bracket.
+  5. A **detailed output spec** — numbered deliverable sections (4-8), each described precisely,
+     with mode-switching guidance where relevant.
+- **Image-generation prompts get the medium-appropriate equivalent, not the business template
+  forced on top:** a tight role/framing line if useful; real camera/lens/lighting/composition
+  technique and actual platform parameters (Midjourney `--ar`/`--v`/`--style raw`/`--no`; Google
+  Imagen/Nano Banana's Shot-type→Subject→Setting→Lighting→Camera→Lens template; Ideogram/gpt-image
+  notes on text-rendering reliability) in place of `<reference_data>`/`<house_rules>`; the "input
+  template" is the actual structured shot-construction fields; the "output spec" is simply the
+  final ready-to-paste prompt plus a one-line platform note. Depth here means technical precision,
+  not sheer word count — don't pad an image prompt into an unusable wall of prose.
+- **Deliberately exempt:** the 10 `claude-design-2-0`-tagged entries (a sequential Daybreak-brand
+  tutorial) and any future entry that is genuinely one step in a fixed sequence, not a standalone
+  prompt — forcing the full structure onto a sequential-tutorial fragment breaks its intended
+  nature. Don't invent new exemptions casually; this one was a deliberate, discussed call.
+- Only `promptText` is in scope for a depth pass — `name`/`summary`/`description`/`type`/`tags`/
+  `whatYouGet`/`install`/`techStack`/`_buildRef` are a separate concern and shouldn't be touched
+  just because `promptText` is being deepened.
+- Precedent / reference material: PR #420 (July 2026) deep-rewrote all 33 `CORE_BUILT_INS` +
+  143 of 155 `PROMPT_STARTERS` to this bar in two phases — read a few of those entries as the
+  concrete standard before writing a new one from scratch.
+
 **Logos**
 - Marketing homepage (`src/app/page.tsx`): uses `/gitwork-logo-home-page.png`
 - App sidebar (`src/components/app-shell.tsx`): uses `/foundry-logo.png`
