@@ -323,7 +323,7 @@ function CareModal({
         className={cn(
           "app-dialog-panel relative z-10 flex w-full flex-col p-6",
           wide === "3xl" ? "max-w-3xl" : wide === "2xl" ? "max-w-2xl" : wide ? "max-w-xl" : "max-w-md",
-          fixedHeight && "h-[600px] max-h-[85vh]",
+          fixedHeight ? "h-[600px] max-h-[85vh]" : "max-h-[90vh]",
         )}
       >
         <div className="mb-5 flex shrink-0 items-center justify-between gap-4">
@@ -336,7 +336,11 @@ function CareModal({
             <XMarkIcon className="h-5 w-5" />
           </button>
         </div>
-        {fixedHeight ? <div className="flex min-h-0 flex-1 flex-col">{children}</div> : children}
+        {fixedHeight ? (
+          <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+        )}
       </div>
     </div>
   );
@@ -842,7 +846,7 @@ function AddConnectorModal({
   return (
     <CareModal title="Connect a channel" onClose={onClose} wide="2xl">
       <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-[200px_1fr] gap-6">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-[200px_1fr]">
 
           {/* ── Left: source picker ── */}
           <div className="space-y-1">
@@ -974,7 +978,7 @@ function AddConnectorModal({
                   />
                 </label>
                 {imapProvider === "custom" && (
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <label className="block space-y-1">
                       <span className="app-field-label">IMAP host</span>
                       <input value={imapHostField} onChange={(e) => setImapHostField(e.target.value)} className="app-input w-full font-mono text-xs" placeholder="imap.example.com" />
@@ -4527,7 +4531,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
                 </div>
 
                 {/* ── Card footer ── */}
-                <div className="flex items-center border-t border-[var(--border-2)] px-4 py-2.5 gap-2">
+                <div className="flex flex-wrap items-center border-t border-[var(--border-2)] px-4 py-2.5 gap-2">
                   {canManageSupport ? (
                     <button
                       type="button"

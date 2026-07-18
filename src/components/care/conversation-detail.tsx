@@ -73,18 +73,18 @@ export function ConversationDetail({
     <div className="flex h-full min-h-0 w-full flex-col">
       {/* Header */}
       <div className="border-b border-[var(--border-2)] px-5 py-4">
-        <div className="mb-2 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.6px] text-[var(--text-4)]">
+        <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] uppercase tracking-[0.6px] text-[var(--text-4)]">
           {onBack && (
             <button onClick={onBack} className="-ml-1 rounded-[6px] p-1 hover:bg-[var(--surface-1)] lg:hidden" title="Back to list">
               <ArrowLeftIcon className="h-3.5 w-3.5 text-[var(--text-3)]" />
             </button>
           )}
-          <SourceIcon source={conversation.source} className="h-3.5 w-3.5" />
-          {SOURCE_LABEL[conversation.source]}
-          <span>·</span>
-          <span>{conversation.customerLabel}</span>
-          <span>·</span>
-          <span>{formatAge(conversation.receivedAt)} ago</span>
+          <SourceIcon source={conversation.source} className="h-3.5 w-3.5 shrink-0" />
+          <span className="shrink-0">{SOURCE_LABEL[conversation.source]}</span>
+          <span className="shrink-0">·</span>
+          <span className="min-w-0 max-w-full truncate">{conversation.customerLabel}</span>
+          <span className="shrink-0">·</span>
+          <span className="shrink-0">{formatAge(conversation.receivedAt)} ago</span>
         </div>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h2 className="min-w-0 flex-1 text-lg font-semibold leading-snug text-[var(--text-1)]">{conversation.subject}</h2>
@@ -130,7 +130,7 @@ export function ConversationDetail({
               <select
                 value={conversation.status}
                 onChange={(e) => triage.mutate({ convId: conversation.id, data: { status: e.target.value as ConversationStatus } })}
-                className="app-select-compact w-full text-sm"
+                className={cn("app-select-compact w-full text-sm font-medium", STATUS_TONE[conversation.status])}
               >
                 {STATUSES.map((s) => (
                   <option key={s} value={s}>{STATUS_LABEL[s]}</option>
@@ -144,7 +144,7 @@ export function ConversationDetail({
               <select
                 value={conversation.priority}
                 onChange={(e) => triage.mutate({ convId: conversation.id, data: { priority: e.target.value as ConversationPriority } })}
-                className="app-select-compact w-full text-sm"
+                className={cn("app-select-compact w-full text-sm font-medium", PRIORITY_TONE[conversation.priority])}
               >
                 {PRIORITIES.map((p) => (
                   <option key={p} value={p}>{PRIORITY_LABEL[p]}</option>
