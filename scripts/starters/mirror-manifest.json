@@ -31,7 +31,8 @@
     { "slug": "site-snapshots", "repo": "Kappaemme-git/site-post-screenshots", "licence": "MIT" },
     { "slug": "complexity-pass", "repo": "Kappaemme-git/codex-complexity-optimizer", "licence": "MIT" },
     { "slug": "pressure-test", "repo": "Kappaemme-git/codex-startup-pressure-test-skill", "licence": "MIT" },
-    { "slug": "landing-polish", "repo": "Kappaemme-git/MengToFrontend", "licence": "none (Dan-owned repo, explicitly authorized) — repo has no root LICENSE file today; add one (e.g. MIT) before running the mirror script, since hasLicense() will otherwise skip it" }
+    { "slug": "landing-polish", "repo": "Kappaemme-git/MengToFrontend", "licence": "none (Dan-owned repo, explicitly authorized) — repo has no root LICENSE file today; add one (e.g. MIT) before running the mirror script, since hasLicense() will otherwise skip it" },
+    { "slug": "design-doctor", "repo": "git-dann/impeccable", "licence": "Apache-2.0 (upstream pbakaus/impeccable by Paul Bakaus — this is a fork, not original work by the Git-Dann account; mirrored under the Apache-2.0 grant, LICENSE + NOTICE retained per its terms)" }
   ],
   "excluded": [
     { "slug": "skills-library", "repo": "ComposioHQ/awesome-claude-skills", "licence": "Apache-2.0 (no root LICENSE file)", "reason": "Curated index of external links, not code; GitHub detects Apache but there's no LICENSE file to vendor. Low mirror value — keep link-only / curate our own." },
