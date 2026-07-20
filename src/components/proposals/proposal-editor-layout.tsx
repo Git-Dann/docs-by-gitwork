@@ -669,6 +669,27 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     );
   }
 
+  // Inline edits to a block's own heading + caption (which live on the section, not its `data`) so
+  // every block's title and caption text can be changed straight on the canvas — not just the
+  // handful of blocks whose body is inline-editable.
+  function handleSectionMetaChange(
+    sectionId: string,
+    meta: { title?: string; description?: string },
+  ) {
+    if (!draft) {
+      return;
+    }
+    updateDraft(
+      {
+        ...draft,
+        sections: draft.sections.map((section) =>
+          getSectionEntryId(section) === sectionId ? { ...section, ...meta } : section,
+        ),
+      },
+      { coalesce: true },
+    );
+  }
+
   function scrollToBlock(id: string) {
     if (typeof document !== "undefined") {
       document
@@ -1338,6 +1359,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                     editable
                     onSelectSection={openOptions}
                     onSectionChange={handleSectionDataChange}
+                    onSectionMetaChange={handleSectionMetaChange}
                     pageMode="paged"
                   />
                 </div>

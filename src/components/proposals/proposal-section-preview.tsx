@@ -12,6 +12,7 @@
 import type { ReactNode } from "react";
 import { PencilSquareIcon } from "@heroicons/react/24/outline";
 import { getSectionType } from "@/lib/sections/registry";
+import { InlineTextArea } from "@/lib/sections/inline-text";
 import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
 function Graphic({
@@ -43,6 +44,7 @@ export function ProposalSectionPreview({
   onSelectSection,
   editable,
   onChange,
+  onMetaChange,
 }: {
   section: ProposalSection;
   proposal: ProposalDocument;
@@ -55,6 +57,9 @@ export function ProposalSectionPreview({
   editable?: boolean;
   /** Editor-only: write this block's data back to the draft (for inline editing). */
   onChange?: (next: ProposalSection["data"]) => void;
+  /** Editor-only: write this block's own title/caption back to the draft. Available on EVERY
+   *  shell-rendered block so its heading + caption are editable inline, not just its body. */
+  onMetaChange?: (meta: { title?: string; description?: string }) => void;
 }) {
   if (!section.isVisible) {
     return null;
@@ -127,14 +132,38 @@ export function ProposalSectionPreview({
   return wrapSelectable(
     <section id={sectionId} className="proposal-block-avoid space-y-4">
       <header className="max-w-3xl space-y-1.5">
-        <h2 className="text-[24px] leading-[1.15] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]">
-          {section.title}
-        </h2>
-        {section.description ? (
-          <p className="font-[var(--font-mono),'JetBrains_Mono',monospace] text-[10px] font-semibold uppercase leading-5 tracking-[0.12em] text-[var(--doc-muted)]">
-            {section.description}
-          </p>
-        ) : null}
+        {editable && onMetaChange ? (
+          <>
+            {/* Title + caption are editable inline on EVERY block (they live on the section, not
+                its data) — so even blocks whose body isn't inline-editable can have their heading
+                and caption changed straight on the canvas. */}
+            <InlineTextArea
+              value={section.title}
+              onChange={(title) => onMetaChange({ title })}
+              placeholder="Section title"
+              ariaLabel="Section title"
+              className="text-[24px] leading-[1.15] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]"
+            />
+            <InlineTextArea
+              value={section.description ?? ""}
+              onChange={(description) => onMetaChange({ description })}
+              placeholder="Caption (optional)"
+              ariaLabel="Section caption"
+              className="font-[var(--font-mono),'JetBrains_Mono',monospace] text-[10px] font-semibold uppercase leading-5 tracking-[0.12em] text-[var(--doc-muted)]"
+            />
+          </>
+        ) : (
+          <>
+            <h2 className="text-[24px] leading-[1.15] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]">
+              {section.title}
+            </h2>
+            {section.description ? (
+              <p className="font-[var(--font-mono),'JetBrains_Mono',monospace] text-[10px] font-semibold uppercase leading-5 tracking-[0.12em] text-[var(--doc-muted)]">
+                {section.description}
+              </p>
+            ) : null}
+          </>
+        )}
       </header>
 
       {previewElement}
