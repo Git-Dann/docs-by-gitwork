@@ -2,6 +2,7 @@ import { apiOk, fromError } from "@/lib/api-response";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertSuperAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { seedBuiltInStarters } from "@/server/starters-catalog";
+import { seedStarterAdditions } from "@/server/starters-additions-seed";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,8 @@ export async function POST(request: Request) {
     assertSuperAdmin(await getEffectiveUserOrNull(request));
     const { workspace } = await ensureBaseRecords();
     const count = await seedBuiltInStarters(workspace.id);
-    return apiOk({ count });
+    const additionsCount = await seedStarterAdditions(workspace.id);
+    return apiOk({ count: count + additionsCount });
   } catch (error) {
     return fromError(error);
   }
