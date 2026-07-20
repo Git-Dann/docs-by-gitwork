@@ -14,6 +14,7 @@ export function ProposalPreview({
   onSelectSection,
   editable = false,
   onSectionChange,
+  onSectionMetaChange,
   pageMode = "flow",
 }: {
   proposal: ProposalDocument;
@@ -34,6 +35,8 @@ export function ProposalPreview({
   editable?: boolean;
   /** Editor-only: write a block's data back to the draft (inline editing). */
   onSectionChange?: (sectionId: string, next: ProposalSection["data"]) => void;
+  /** Editor-only: write a block's own title/caption back to the draft (inline heading editing). */
+  onSectionMetaChange?: (sectionId: string, meta: { title?: string; description?: string }) => void;
   /** "paged" renders real A4 page sheets via `<PagedDocument>` — genuine per-page containers, not
    *  a height estimate, so the builder shows exactly what sits on a page. Used everywhere now
    *  (editor canvas included) except the sign page, which stays a plain scroll. */
@@ -61,6 +64,7 @@ export function ProposalPreview({
         onSelectSection={onSelectSection}
         editable={editable}
         onSectionChange={onSectionChange}
+        onSectionMetaChange={onSectionMetaChange}
       />
     </article>
   ) : (
@@ -94,6 +98,11 @@ export function ProposalPreview({
               onChange={
                 onSectionChange
                   ? (next) => onSectionChange(section.id ?? section.key, next)
+                  : undefined
+              }
+              onMetaChange={
+                onSectionMetaChange
+                  ? (meta) => onSectionMetaChange(section.id ?? section.key, meta)
                   : undefined
               }
             />

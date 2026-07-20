@@ -19,6 +19,9 @@ export function CoverEditor({
   onChange,
   preparedBy,
   onPreparedByChange,
+  executiveSummary,
+  onExecutiveSummaryChange,
+  executiveSummaryLinkedToIntro,
   linkedClientLogoUrl,
   linkedClientName,
   linkedClientId,
@@ -28,6 +31,12 @@ export function CoverEditor({
   onChange: (value: CoverSectionData) => void;
   preparedBy: string;
   onPreparedByChange: (value: string) => void;
+  /** The lead paragraph rendered on the cover (sourced from the Introduction statement or the
+   *  document summary). Editable here so it isn't stranded as uneditable cover text. */
+  executiveSummary?: string;
+  onExecutiveSummaryChange?: (value: string) => void;
+  /** True when edits flow to the Introduction section's statement (so we can say so). */
+  executiveSummaryLinkedToIntro?: boolean;
   /** Logo of the linked Portal client, used as the client-lockup fallback when the override is blank. */
   linkedClientLogoUrl?: string;
   /** Name of the linked Portal client, for the inheritance hint. */
@@ -140,6 +149,23 @@ export function CoverEditor({
 
       {/* Document meta — stacked single column. */}
       <div className="space-y-4">
+        {onExecutiveSummaryChange ? (
+          <Field label="Executive summary">
+            <textarea
+              value={executiveSummary ?? ""}
+              onChange={(event) => onExecutiveSummaryChange(event.target.value)}
+              rows={4}
+              placeholder="The lead paragraph shown on the cover…"
+              className="app-input min-h-[96px] resize-y leading-6"
+            />
+            <span className="mt-1.5 block text-xs leading-5 text-[var(--text-4)]">
+              Shown as the cover&rsquo;s lead paragraph.
+              {executiveSummaryLinkedToIntro
+                ? " Shared with the Introduction section."
+                : null}
+            </span>
+          </Field>
+        ) : null}
         <Field label="Prepared by">
           <input
             value={preparedBy}

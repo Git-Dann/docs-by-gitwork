@@ -102,6 +102,7 @@ export function PagedDocument({
   onSelectSection,
   editable = false,
   onSectionChange,
+  onSectionMetaChange,
 }: {
   proposal: ProposalDocument;
   sections: ProposalSection[];
@@ -115,6 +116,8 @@ export function PagedDocument({
   editable?: boolean;
   /** Editor-only: write a block's data back to the draft (inline editing). */
   onSectionChange?: (sectionId: string, next: ProposalSection["data"]) => void;
+  /** Editor-only: write a block's own title/caption back to the draft (inline heading editing). */
+  onSectionMetaChange?: (sectionId: string, meta: { title?: string; description?: string }) => void;
 }) {
   // SSR / first-paint fallback: author-driven (cover + explicit breaks). Swapped for the measured
   // layout by the effect below once block heights are known.
@@ -231,6 +234,11 @@ export function PagedDocument({
               editable={editable}
               onChange={
                 onSectionChange ? (next) => onSectionChange(section.id ?? section.key, next) : undefined
+              }
+              onMetaChange={
+                onSectionMetaChange
+                  ? (meta) => onSectionMetaChange(section.id ?? section.key, meta)
+                  : undefined
               }
             />
           );

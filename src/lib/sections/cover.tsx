@@ -12,7 +12,7 @@ import { DocumentCover, DocumentVersionChip } from "@/components/document-cover"
 import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import { defineSection } from "@/lib/sections/types";
 import { approvalTrackApplies } from "@/lib/templates";
-import type { CoverSectionData, DocumentType } from "@/types/proposal";
+import type { CoverSectionData, DocumentType, ProposalSection } from "@/types/proposal";
 
 // Cover eyebrow label per doc type (`FOUNDRY // {LABEL}`). Mono caps. Kept here (not imported
 // from server/documents.ts) because that module pulls in Prisma and can't go client-side.
@@ -77,7 +77,46 @@ export const coverSection = defineSection<CoverSectionData>({
   hasOptions: true,
   // Cover opts out of the section shell — DocumentCover provides its own full-page layout.
   renderShell: false,
-  Editor: ({ data, onChange, proposal, onProposalChange }) => (
+  Editor: ({ data, onChange, proposal, onProposalChange }) => {
+    // The cover's executive summary is sourced from the Introduction section's statement, then
+    // the document-level summary (mirrors the Preview precedence below). It looked like static,
+    // uneditable cover text because it has no inline handle and wasn't in this panel — surface it
+    // here so it's editable from the cover. Edits write back to whichever source supplies it,
+    // defaulting to the Introduction statement when that block exists, else the document summary.
+    const introIndex = proposal.sections.findIndex((entry) => entry.key === "introduction");
+    const introData =
+      introIndex >= 0
+        ? (proposal.sections[introIndex].data as { statement?: string } | undefined)
+        : undefined;
+    const summaryTarget: "intro" | "doc" = introData?.statement?.trim()
+      ? "intro"
+      : proposal.summary?.trim()
+        ? "doc"
+        : introData
+          ? "intro"
+          : "doc";
+    const executiveSummary =
+      summaryTarget === "intro" ? (introData?.statement ?? "") : (proposal.summary ?? "");
+    const handleExecutiveSummaryChange = (next: string) => {
+      if (summaryTarget === "intro" && introIndex >= 0) {
+        const sections = proposal.sections.map((entry, index) =>
+          index === introIndex
+            ? {
+                ...entry,
+                data: {
+                  ...(entry.data as unknown as Record<string, unknown>),
+                  statement: next,
+                } as unknown as ProposalSection["data"],
+              }
+            : entry,
+        );
+        onProposalChange({ ...proposal, sections });
+      } else {
+        onProposalChange({ ...proposal, summary: next });
+      }
+    };
+
+    return (
     <CoverEditor
       value={data}
       onChange={(next) => onChange(next as CoverSectionData)}
@@ -88,6 +127,9 @@ export const coverSection = defineSection<CoverSectionData>({
           metadata: { ...proposal.metadata, owner },
         })
       }
+      executiveSummary={executiveSummary}
+      onExecutiveSummaryChange={handleExecutiveSummaryChange}
+      executiveSummaryLinkedToIntro={summaryTarget === "intro"}
       linkedClientLogoUrl={proposal.linkedClientLogoUrl ?? undefined}
       linkedClientName={proposal.clientName ?? proposal.metadata.client ?? undefined}
       linkedClientId={proposal.clientId ?? null}
@@ -102,7 +144,8 @@ export const coverSection = defineSection<CoverSectionData>({
         })
       }
     />
-  ),
+    );
+  },
   Preview: ({ data, proposal, section, editable, onChange }) => {
     // Preview is a regular component rendered by the section dispatcher, so hook ordering is
     // stable within each render of this preview function.
