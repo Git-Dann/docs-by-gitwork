@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { apiOk, fromError } from "@/lib/api-response";
+import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { listMessages, createMessage } from "@/server/support";
-import { sendReply } from "@/server/support-reply";
+import { sendReply, type ReplyResult } from "@/server/support-reply";
 
 export const dynamic = "force-dynamic";
 
@@ -25,16 +25,22 @@ export async function POST(
   try {
     const { clientId, convId } = await params;
     const body = await request.json() as { direction: string; authorLabel: string; body: string };
-    const message = await createMessage(convId, body as Parameters<typeof createMessage>[1]);
 
-    // Best-effort outbound send — never blocks the Care response
+    // Outbound replies are SENT and VERIFIED before the message is persisted. A real
+    // send failure (bad SMTP creds, API rejection, …) returns a 502 so the operator
+    // sees it — rather than the old fire-and-forget path that logged a "sent" message
+    // the customer never actually received. Inherently-manual sources (no automated
+    // send path) still fall through and get logged so the copy-to-send flow works.
+    let reply: ReplyResult | null = null;
     if (body.direction === "outbound") {
-      void sendReply(convId, clientId, body.body).catch((err) => {
-        console.error("[care:reply]", err);
-      });
+      reply = await sendReply(convId, clientId, body.body);
+      if (!reply.sent && !reply.manual) {
+        return apiError(reply.reason, 502);
+      }
     }
 
-    return apiOk({ message }, { status: 201 });
+    const message = await createMessage(convId, body as Parameters<typeof createMessage>[1]);
+    return apiOk({ message, reply }, { status: 201 });
   } catch (error) {
     return fromError(error);
   }
