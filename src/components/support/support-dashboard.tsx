@@ -2028,7 +2028,7 @@ function InboxView({ clientId }: { clientId: string }) {
                 const tags = activeConvo.tags ?? [];
                 const isPlayReview = source === "app_reviews" && tags.includes("store:play_store");
                 const isAppStoreReview = source === "app_reviews" && tags.includes("store:app_store");
-                const canSend = source === "discord" || source === "gmail" || isPlayReview;
+                const canSend = source === "discord" || source === "gmail" || source === "imap" || isPlayReview;
                 // Google Play caps developer replies at 350 chars.
                 const replyLimit = isPlayReview ? 350 : null;
                 const overLimit = replyLimit !== null && replyText.length > replyLimit;
