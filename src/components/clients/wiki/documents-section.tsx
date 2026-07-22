@@ -17,7 +17,9 @@ import {
   useCreateWikiLinkDoc,
   useUploadWikiFileDoc,
   useDeleteWikiDoc,
+  useAddDocToWiki,
 } from "@/hooks/use-wiki";
+import { useClientDetail } from "@/hooks/use-proposals";
 import type { WikiDocumentDTO } from "@/lib/api";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -185,9 +187,13 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
   const createLink = useCreateWikiLinkDoc(slug);
   const uploadFile = useUploadWikiFileDoc(slug);
   const remove = useDeleteWikiDoc(slug);
+  const addFoundry = useAddDocToWiki(slug);
+  // The client's Foundry docs, for the "Add Foundry doc" picker — reuses the cached client detail.
+  const clientDetail = useClientDetail(slug);
+  const candidateDocs = (clientDetail.data?.proposals ?? []).filter((doc) => !doc.inWiki);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const [mode, setMode] = useState<"link" | null>(null);
+  const [mode, setMode] = useState<"link" | "foundry" | null>(null);
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -241,6 +247,16 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
           <button
             type="button"
             onClick={() => {
+              setMode((m) => (m === "foundry" ? null : "foundry"));
+              setError(null);
+            }}
+            className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[12px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
+          >
+            <DocumentTextIcon className="h-3.5 w-3.5" /> Add Foundry doc
+          </button>
+          <button
+            type="button"
+            onClick={() => {
               setMode("link");
               setError(null);
             }}
@@ -265,6 +281,62 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
           Paste a link (Google Docs, a Foundry doc, anything) or upload a file. Clients see a clean,
           paginated list.
         </p>
+
+        {mode === "foundry" && (
+          <div className="space-y-2.5 rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[13px] font-medium text-[var(--text-1)]">
+                Add one of this client&rsquo;s Foundry documents
+              </p>
+              <button
+                type="button"
+                onClick={() => setMode(null)}
+                className="text-[12px] text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+              >
+                Close
+              </button>
+            </div>
+            <p className="text-[12px] text-[var(--text-4)]">
+              Adding shares the document so the client can open it, and lists it on this view-only page.
+            </p>
+            {clientDetail.isPending ? (
+              <p className="py-2 text-[13px] text-[var(--text-4)]">Loading documents…</p>
+            ) : candidateDocs.length === 0 ? (
+              <p className="py-2 text-[13px] text-[var(--text-4)]">
+                No more documents to add — this client&rsquo;s docs are already here.
+              </p>
+            ) : (
+              <ul className="max-h-64 space-y-1 overflow-auto">
+                {candidateDocs.map((doc) => (
+                  <li
+                    key={doc.id}
+                    className="flex items-center gap-3 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2"
+                  >
+                    <DocumentTextIcon className="h-4 w-4 shrink-0 text-[var(--text-4)]" />
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-1)]">
+                      {doc.title}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={addFoundry.isPending}
+                      onClick={async () => {
+                        setError(null);
+                        try {
+                          await addFoundry.mutateAsync(doc.id);
+                        } catch {
+                          setError("Couldn't add that document.");
+                        }
+                      }}
+                      className="shrink-0 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[12px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                    >
+                      Add
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {mode === "link" && (
           <div className="space-y-2.5 rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-1)] p-4">
