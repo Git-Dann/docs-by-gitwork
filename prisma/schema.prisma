@@ -607,6 +607,9 @@ model Document {
   versions          DocumentVersion[]
   presence          EditorPresence[]
   aiSession         DocumentAiSession?
+  /// Wiki Documents-section entries that point back at this doc (surfaced on the client's
+  /// wiki via the Portal "Add to wiki" action). Cascades so deleting the doc clears them.
+  wikiDocuments     WikiDocument[]     @relation("WikiDocumentSource")
 
   @@index([workspaceId, status])
   @@index([updatedAt])
@@ -1401,6 +1404,11 @@ model WikiDocument {
   id        String           @id @default(cuid())
   wikiId    String
   wiki      ClientWiki       @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  /// When set, this entry mirrors a Foundry Document (added from the Portal "Add to wiki"
+  /// action) rather than a hand-pasted link/file. Nullable + no @@unique to stay additive
+  /// under the guarded prisma db push; dedup is enforced in code. Cascades on doc delete.
+  documentId String?
+  document   Document?       @relation("WikiDocumentSource", fields: [documentId], references: [id], onDelete: Cascade)
   title     String
   kind      WikiDocumentKind @default(LINK)
   /// External URL (LINK) or the Foundry doc share URL (FOUNDRY). Null for FILE.
@@ -1416,6 +1424,7 @@ model WikiDocument {
   updatedAt DateTime         @updatedAt
 
   @@index([wikiId])
+  @@index([documentId])
   @@map("WikiDocument")
 }
 

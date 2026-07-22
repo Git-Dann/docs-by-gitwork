@@ -9,6 +9,7 @@
 
 import type { WikiDocumentKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { enableDocumentShare } from "@/server/documents";
 
 export interface WikiDocumentDTO {
   id: string;
@@ -192,6 +193,73 @@ export async function updateDocument(
     select: LIST_SELECT,
   });
   return toDTO(updated);
+}
+
+/**
+ * Add a Foundry Document to this client's wiki Documents section (the Portal "Add to wiki"
+ * action). The wiki entry links to the doc's public `/docs/[token]` page, so the doc is shared
+ * (token minted if needed) — that's the view-only surface the client opens. Idempotent: a doc
+ * already in this wiki is updated in place (deduped by `documentId`), never duplicated. Enabling
+ * a doc also flips the Documents section on so it shows.
+ *
+ * Only a document that belongs to this client resolves. A doc not yet FK-linked (matched to the
+ * client by name only in the Portal list) is linked here, since adding it is an explicit
+ * association. Returns null if the document doesn't exist / isn't this client's.
+ */
+export async function addDocumentToWiki(
+  clientId: string,
+  documentId: string,
+): Promise<WikiDocumentDTO | null> {
+  const doc = await prisma.document.findFirst({
+    where: { id: documentId, OR: [{ clientId }, { clientId: null }] },
+    select: { id: true, title: true, clientId: true },
+  });
+  if (!doc) return null;
+
+  if (doc.clientId !== clientId) {
+    await prisma.document.update({ where: { id: doc.id }, data: { clientId } });
+  }
+
+  // The wiki card opens the public share page; ensure the doc is shared (idempotent — keeps any
+  // existing token so previously-distributed links keep working).
+  const { url } = await enableDocumentShare(documentId);
+
+  const wikiId = await ensureWiki(clientId);
+  const existing = await prisma.wikiDocument.findFirst({
+    where: { wikiId, documentId },
+    select: { id: true },
+  });
+  const data = { title: doc.title, kind: "FOUNDRY" as const, url, documentId };
+  let saved;
+  if (existing) {
+    saved = await prisma.wikiDocument.update({
+      where: { id: existing.id },
+      data,
+      select: LIST_SELECT,
+    });
+  } else {
+    const max = await prisma.wikiDocument.aggregate({
+      where: { wikiId },
+      _max: { sortOrder: true },
+    });
+    saved = await prisma.wikiDocument.create({
+      data: { wikiId, ...data, sortOrder: (max._max.sortOrder ?? 0) + 1 },
+      select: LIST_SELECT,
+    });
+  }
+  await prisma.clientWiki.update({ where: { id: wikiId }, data: { documentsEnabled: true } });
+  return toDTO(saved);
+}
+
+/** Remove the wiki entry that mirrors a given Foundry Document (Portal "Remove from wiki"). */
+export async function removeDocumentFromWiki(
+  clientId: string,
+  documentId: string,
+): Promise<boolean> {
+  const res = await prisma.wikiDocument.deleteMany({
+    where: { documentId, wiki: { clientId } },
+  });
+  return res.count > 0;
 }
 
 export async function deleteDocument(clientId: string, docId: string): Promise<boolean> {
