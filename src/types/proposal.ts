@@ -411,6 +411,8 @@ export interface DataTableSectionData {
   rows: string[][];
   /** Optional caption rendered above the table. */
   caption?: string;
+  /** Show the column-heading row. Default true. When false the table renders body rows only. */
+  showHeader?: boolean;
 }
 
 export interface PricingTierItem {
@@ -490,6 +492,8 @@ export interface ComparisonTableSectionData {
   /** Heading for the other side (default "Status quo"). */
   themLabel: string;
   rows: ComparisonRow[];
+  /** Show the column-heading row. Default true. When false the table renders body rows only. */
+  showHeader?: boolean;
 }
 
 export interface VideoEmbedSectionData {
@@ -507,6 +511,8 @@ export interface CodeSnippetSectionData {
   /** Optional filename shown in the snippet header. */
   filename?: string;
   code: string;
+  /** Optional caption rendered below the snippet — supports inline markdown. */
+  caption?: string;
 }
 
 export interface ChecklistSectionData {

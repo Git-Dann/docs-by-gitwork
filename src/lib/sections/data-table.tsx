@@ -10,6 +10,7 @@ import { TrashIcon, PlusIcon, TableCellsIcon } from "@heroicons/react/24/outline
 import { SimpleForm, FormTextArea } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
 import { InlineAddButton, InlineRemoveButton, InlineTextArea } from "@/lib/sections/inline-text";
+import { renderInline } from "@/lib/markdown";
 import type { DataTableSectionData } from "@/types/proposal";
 
 export const dataTableSection = defineSection<DataTableSectionData>({
@@ -78,6 +79,16 @@ export const dataTableSection = defineSection<DataTableSectionData>({
           onChange={(caption) => onChange({ ...data, caption })}
           rows={2}
         />
+
+        <label className="inline-flex items-center gap-2 text-sm text-[var(--text-2)]">
+          <input
+            type="checkbox"
+            checked={data.showHeader !== false}
+            onChange={(e) => onChange({ ...data, showHeader: e.target.checked })}
+            className="app-checkbox"
+          />
+          Show heading row
+        </label>
 
         <div>
           <div className="mb-2 flex items-center justify-between">
@@ -202,8 +213,18 @@ export const dataTableSection = defineSection<DataTableSectionData>({
             ariaLabel="Table caption"
             className="text-sm leading-7 text-[var(--text-2)]"
           />
+          <label className="inline-flex items-center gap-2 text-xs text-[var(--text-3)]">
+            <input
+              type="checkbox"
+              checked={data.showHeader !== false}
+              onChange={(e) => onChange({ ...data, showHeader: e.target.checked })}
+              className="app-checkbox"
+            />
+            Show heading row
+          </label>
           <div className="overflow-x-auto rounded-[10px] border border-[var(--border-2)] bg-white">
             <table className="w-full border-collapse text-sm">
+              {data.showHeader !== false ? (
               <thead>
                 <tr>
                   {cols.map((col, i) => (
@@ -239,6 +260,7 @@ export const dataTableSection = defineSection<DataTableSectionData>({
                   </th>
                 </tr>
               </thead>
+              ) : null}
               <tbody>
                 {rows.map((row, ri) => (
                   <tr key={ri} className="group/row">
@@ -276,34 +298,43 @@ export const dataTableSection = defineSection<DataTableSectionData>({
         </p>
       );
     }
+    const showHeader = data.showHeader !== false;
     return (
       <div className="proposal-block-avoid">
         {data.caption ? (
-          <p className="mb-3 text-sm leading-7 text-[var(--text-2)]">{data.caption}</p>
+          <p className="mb-3 text-sm leading-7 text-[var(--text-2)]">
+            {renderInline(data.caption, "dt-cap")}
+          </p>
         ) : null}
         <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white">
           <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr>
-                {cols.map((col, i) => (
-                  <th
-                    key={i}
-                    className="border-b border-[var(--border-3)] bg-[var(--surface-canvas)] px-4 py-2.5 text-left font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]"
-                  >
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
+            {showHeader ? (
+              <thead>
+                <tr>
+                  {cols.map((col, i) => (
+                    <th
+                      key={i}
+                      className="border-b border-[var(--border-3)] bg-[var(--surface-canvas)] px-4 py-2.5 text-left font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]"
+                    >
+                      {renderInline(col, `dt-h${i}`)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+            ) : null}
             <tbody>
               {rows.map((row, rowIndex) => (
                 <tr key={rowIndex}>
                   {cols.map((_, colIndex) => (
                     <td
                       key={colIndex}
-                      className="border-t border-[var(--border-3)] px-4 py-3 text-[13px] leading-6 text-[var(--text-2)]"
+                      className={`px-4 py-3 text-[13px] leading-6 text-[var(--text-2)] ${
+                        rowIndex === 0 && !showHeader ? "" : "border-t border-[var(--border-3)]"
+                      }`}
                     >
-                      {row[colIndex] || <span className="text-[var(--text-4)]">—</span>}
+                      {row[colIndex]
+                        ? renderInline(row[colIndex], `dt-r${rowIndex}c${colIndex}`)
+                        : <span className="text-[var(--text-4)]">—</span>}
                     </td>
                   ))}
                 </tr>

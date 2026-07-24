@@ -116,6 +116,24 @@ export function MarkdownField({
     [applyEdit],
   );
 
+  // Wrap the current selection in a size marker (<sm>…</sm> / <lg>…</lg>). "base" (Normal) strips
+  // any surrounding size marker rather than adding one — one round-trip S → M → L stays clean.
+  const applySize = useCallback(
+    (preset: "sm" | "base" | "lg") => {
+      const ta = ref.current;
+      if (!ta) return;
+      const { selectionStart: s, selectionEnd: e, value: v } = ta;
+      if (s === e) return;
+      const sel = v.slice(s, e);
+      // Detect a wrapper the user is toggling off / replacing.
+      const wrapped = /^<(sm|lg)>([\s\S]*)<\/\1>$/.exec(sel);
+      const inner = wrapped ? wrapped[2] : sel;
+      const next = preset === "base" ? inner : `<${preset}>${inner}</${preset}>`;
+      applyEdit(v.slice(0, s) + next + v.slice(e), s, s + next.length);
+    },
+    [applyEdit],
+  );
+
   return (
     <label className="block space-y-1.5">
       {label ? <span className="text-sm font-medium text-[var(--text-2)]">{label}</span> : null}
@@ -209,6 +227,7 @@ export function MarkdownField({
         onItalic={() => wrap("*")}
         onCode={() => wrap("`")}
         onLink={link}
+        onSize={applySize}
       />
     </label>
   );

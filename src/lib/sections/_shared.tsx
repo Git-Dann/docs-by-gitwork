@@ -5,10 +5,13 @@
  */
 
 import type { ReactNode } from "react";
+import { renderInline } from "@/lib/markdown";
 
 export function SectionIntro({ intro }: { intro?: string }) {
   if (!intro?.trim()) return null;
-  return <p className="text-sm leading-7 text-[var(--text-2)]">{intro}</p>;
+  // Inline markdown: bold/italic/links/code inside intros work across every section that uses
+  // this shared primitive (exclusions, escalation, penalties, signatures, parties, term, …).
+  return <p className="text-sm leading-7 text-[var(--text-2)]">{renderInline(intro, "sec-intro")}</p>;
 }
 
 export function PrintTable({ children }: { children: ReactNode }) {

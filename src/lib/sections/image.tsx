@@ -4,6 +4,7 @@ import { PhotoIcon } from "@heroicons/react/24/outline";
 import { ImagePicker } from "@/components/ui/image-picker";
 import { defineSection } from "@/lib/sections/types";
 import { FormInput, SimpleForm } from "@/lib/sections/_shared";
+import { renderInline } from "@/lib/markdown";
 import type { ImageSectionData } from "@/types/proposal";
 
 const SIZE_LABEL: Record<ImageSectionData["size"], string> = {
@@ -103,7 +104,7 @@ export const imageSection = defineSection<ImageSectionData>({
         />
         {data.caption ? (
           <figcaption className="mt-2 text-center text-sm leading-6 text-[var(--text-3)]">
-            {data.caption}
+            {renderInline(data.caption, "img-cap")}
           </figcaption>
         ) : null}
       </figure>

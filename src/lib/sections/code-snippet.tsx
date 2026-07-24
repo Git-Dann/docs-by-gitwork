@@ -7,8 +7,9 @@
  */
 
 import { CodeBracketSquareIcon } from "@heroicons/react/24/outline";
-import { SimpleForm, FormInput } from "@/lib/sections/_shared";
+import { SimpleForm, FormInput, FormTextArea } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
+import { renderInline } from "@/lib/markdown";
 import type { CodeSnippetSectionData } from "@/types/proposal";
 
 export const codeSnippetSection = defineSection<CodeSnippetSectionData>({
@@ -51,6 +52,12 @@ export const codeSnippetSection = defineSection<CodeSnippetSectionData>({
           placeholder="// Paste code here…"
         />
       </label>
+      <FormTextArea
+        label="Caption (optional)"
+        value={data.caption ?? ""}
+        onChange={(caption) => onChange({ ...data, caption })}
+        rows={2}
+      />
     </SimpleForm>
   ),
   Preview: ({ data }) => {
@@ -78,6 +85,11 @@ export const codeSnippetSection = defineSection<CodeSnippetSectionData>({
         <pre className="overflow-x-auto px-4 py-3 font-mono text-[12px] leading-6 text-[var(--text-1)]">
           <code>{data.code}</code>
         </pre>
+        {data.caption ? (
+          <p className="border-t border-[var(--border-3)] bg-white px-4 py-2 text-[12px] leading-6 italic text-[var(--text-3)]">
+            {renderInline(data.caption, "code-cap")}
+          </p>
+        ) : null}
       </div>
     );
   },

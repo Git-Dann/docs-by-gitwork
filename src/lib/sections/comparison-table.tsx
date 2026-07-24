@@ -6,6 +6,7 @@
 import { PlusIcon, TrashIcon, Squares2X2Icon, CheckIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { SimpleForm, FormInput } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
+import { renderInline } from "@/lib/markdown";
 import type { ComparisonRow, ComparisonTableSectionData } from "@/types/proposal";
 
 function newRow(): ComparisonRow {
@@ -49,7 +50,15 @@ function CellEditor({
   );
 }
 
-function CellPreview({ value, positive }: { value: boolean | string; positive: boolean }) {
+function CellPreview({
+  value,
+  positive,
+  keyPrefix,
+}: {
+  value: boolean | string;
+  positive: boolean;
+  keyPrefix: string;
+}) {
   if (value === true) {
     return (
       <span className={positive ? "text-[var(--success-500)]" : "text-[var(--text-3)]"}>
@@ -64,7 +73,11 @@ function CellPreview({ value, positive }: { value: boolean | string; positive: b
       </span>
     );
   }
-  return <span className="text-sm text-[var(--text-2)]">{value || "—"}</span>;
+  return (
+    <span className="text-sm text-[var(--text-2)]">
+      {value ? renderInline(value, keyPrefix) : "—"}
+    </span>
+  );
 }
 
 export const comparisonTableSection = defineSection<ComparisonTableSectionData>({
@@ -104,6 +117,15 @@ export const comparisonTableSection = defineSection<ComparisonTableSectionData>(
             <FormInput label="Their column heading" value={data.themLabel} onChange={(themLabel) => onChange({ ...data, themLabel })} />
           </div>
         </div>
+        <label className="inline-flex items-center gap-2 text-sm text-[var(--text-2)]">
+          <input
+            type="checkbox"
+            checked={data.showHeader !== false}
+            onChange={(e) => onChange({ ...data, showHeader: e.target.checked })}
+            className="app-checkbox"
+          />
+          Show heading row
+        </label>
         <div className="space-y-2">
           {rows.map((row, i) => (
             <div key={i} className="@container rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
@@ -153,37 +175,49 @@ export const comparisonTableSection = defineSection<ComparisonTableSectionData>(
     if (rows.length === 0) {
       return <p className="text-sm italic text-[var(--text-4)]">No rows yet — add one in the editor.</p>;
     }
+    const showHeader = data.showHeader !== false;
     return (
       <div className="proposal-block-avoid overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white">
         <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr>
-              <th className="border-b border-[var(--border-3)] bg-[var(--surface-canvas)] px-4 py-2.5 text-left font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
-                Capability
-              </th>
-              <th className="border-b border-[var(--border-3)] bg-[var(--brand-200)]/40 px-4 py-2.5 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--brand-700)]">
-                {data.usLabel}
-              </th>
-              <th className="border-b border-[var(--border-3)] bg-[var(--surface-canvas)] px-4 py-2.5 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
-                {data.themLabel}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={i}>
-                <td className="border-t border-[var(--border-3)] px-4 py-3 text-[13px] leading-6">
-                  <p className="font-medium text-[var(--text-1)]">{row.label || "—"}</p>
-                  {row.detail ? <p className="mt-0.5 text-[11px] text-[var(--text-3)]">{row.detail}</p> : null}
-                </td>
-                <td className="border-t border-[var(--border-3)] bg-[var(--brand-200)]/15 px-4 py-3 text-center">
-                  <CellPreview value={row.us} positive />
-                </td>
-                <td className="border-t border-[var(--border-3)] px-4 py-3 text-center">
-                  <CellPreview value={row.them} positive={false} />
-                </td>
+          {showHeader ? (
+            <thead>
+              <tr>
+                <th className="border-b border-[var(--border-3)] bg-[var(--surface-canvas)] px-4 py-2.5 text-left font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+                  Capability
+                </th>
+                <th className="border-b border-[var(--border-3)] bg-[var(--brand-200)]/40 px-4 py-2.5 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--brand-700)]">
+                  {data.usLabel}
+                </th>
+                <th className="border-b border-[var(--border-3)] bg-[var(--surface-canvas)] px-4 py-2.5 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+                  {data.themLabel}
+                </th>
               </tr>
-            ))}
+            </thead>
+          ) : null}
+          <tbody>
+            {rows.map((row, i) => {
+              const border = i === 0 && !showHeader ? "" : "border-t border-[var(--border-3)]";
+              return (
+                <tr key={i}>
+                  <td className={`${border} px-4 py-3 text-[13px] leading-6`}>
+                    <p className="font-medium text-[var(--text-1)]">
+                      {row.label ? renderInline(row.label, `ct-l${i}`) : "—"}
+                    </p>
+                    {row.detail ? (
+                      <p className="mt-0.5 text-[11px] text-[var(--text-3)]">
+                        {renderInline(row.detail, `ct-d${i}`)}
+                      </p>
+                    ) : null}
+                  </td>
+                  <td className={`${border} bg-[var(--brand-200)]/15 px-4 py-3 text-center`}>
+                    <CellPreview value={row.us} positive keyPrefix={`ct-u${i}`} />
+                  </td>
+                  <td className={`${border} px-4 py-3 text-center`}>
+                    <CellPreview value={row.them} positive={false} keyPrefix={`ct-t${i}`} />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

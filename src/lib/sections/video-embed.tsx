@@ -6,6 +6,7 @@
 import { VideoCameraIcon } from "@heroicons/react/24/outline";
 import { SimpleForm, FormInput, FormTextArea } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
+import { renderInline } from "@/lib/markdown";
 import type { VideoEmbedSectionData } from "@/types/proposal";
 
 /** Resolve a paste-friendly URL to an embeddable src. Returns null for unrecognised hosts. */
@@ -125,7 +126,9 @@ export const videoEmbedSection = defineSection<VideoEmbedSectionData>({
           </a>
         )}
         {data.caption ? (
-          <figcaption className="text-[12px] italic text-[var(--text-3)]">{data.caption}</figcaption>
+          <figcaption className="text-[12px] italic text-[var(--text-3)]">
+            {renderInline(data.caption, "vid-cap")}
+          </figcaption>
         ) : null}
       </figure>
     );

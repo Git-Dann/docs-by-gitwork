@@ -167,7 +167,7 @@ function clamp(n: number, min: number, max: number): number {
 }
 
 const BAR_HEIGHT = 40;
-const BAR_WIDTH = 168;
+const BAR_WIDTH = 244;
 const VIEWPORT_GAP = 8;
 
 export function InlineFormatBar({
@@ -176,19 +176,24 @@ export function InlineFormatBar({
   onItalic,
   onLink,
   onCode,
+  onSize,
 }: {
   rect: SelectionRect | null;
   onBold: () => void;
   onItalic: () => void;
   onLink: () => void;
   onCode: () => void;
+  /** Optional — wrap the current selection in a size marker. Undefined = size UI hidden (used by
+   *  contexts that haven't wired the wrap helper yet). */
+  onSize?: (preset: "sm" | "base" | "lg") => void;
 }) {
   if (!rect || typeof document === "undefined") return null;
 
+  const width = onSize ? BAR_WIDTH : 168;
   const left = clamp(
-    rect.left + rect.width / 2 - BAR_WIDTH / 2,
+    rect.left + rect.width / 2 - width / 2,
     VIEWPORT_GAP,
-    Math.max(VIEWPORT_GAP, window.innerWidth - BAR_WIDTH - VIEWPORT_GAP),
+    Math.max(VIEWPORT_GAP, window.innerWidth - width - VIEWPORT_GAP),
   );
   const top = Math.max(rect.top - BAR_HEIGHT - 6, VIEWPORT_GAP);
 
@@ -200,7 +205,7 @@ export function InlineFormatBar({
       // the click handler ever runs.
       onMouseDown={(event) => event.preventDefault()}
       className="fixed z-[1000] flex items-center gap-0.5 rounded-[8px] border border-white/10 bg-[#1a1a1e] p-1 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
-      style={{ top, left, width: BAR_WIDTH }}
+      style={{ top, left, width }}
     >
       <BarButton label="Bold" onClick={onBold}>
         <span className="text-[13px] font-bold">B</span>
@@ -214,6 +219,20 @@ export function InlineFormatBar({
       <BarButton label="Link" onClick={onLink}>
         <LinkIcon className="h-3.5 w-3.5" />
       </BarButton>
+      {onSize ? (
+        <>
+          <span className="mx-0.5 h-4 w-px bg-white/15" />
+          <BarButton label="Small" onClick={() => onSize("sm")}>
+            <span className="font-mono text-[10px] font-semibold uppercase">S</span>
+          </BarButton>
+          <BarButton label="Normal" onClick={() => onSize("base")}>
+            <span className="font-mono text-[10px] font-semibold uppercase">M</span>
+          </BarButton>
+          <BarButton label="Large" onClick={() => onSize("lg")}>
+            <span className="font-mono text-[10px] font-semibold uppercase">L</span>
+          </BarButton>
+        </>
+      ) : null}
     </div>,
     document.body,
   );

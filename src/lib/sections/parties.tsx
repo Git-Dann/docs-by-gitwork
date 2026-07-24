@@ -9,6 +9,7 @@
 import { UserGroupIcon } from "@heroicons/react/24/outline";
 import { PartiesEditor } from "@/components/proposals/legal-editors";
 import { defineSection } from "@/lib/sections/types";
+import { renderInline } from "@/lib/markdown";
 import type { PartiesSectionData } from "@/types/proposal";
 
 const DEFAULT: PartiesSectionData = {
@@ -31,7 +32,9 @@ export const partiesSection = defineSection<PartiesSectionData>({
   Preview: ({ data }) => (
     <div className="space-y-4">
       {data.intro?.trim() ? (
-        <p className="text-sm leading-7 text-[var(--text-2)]">{data.intro}</p>
+        <p className="text-sm leading-7 text-[var(--text-2)]">
+          {renderInline(data.intro, "parties-intro")}
+        </p>
       ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
         {(data.parties ?? []).map((p) => (

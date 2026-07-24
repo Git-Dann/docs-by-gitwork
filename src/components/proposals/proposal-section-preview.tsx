@@ -128,17 +128,9 @@ export function ProposalSectionPreview({
 
   const sectionId = `section-${section.id ?? section.key}`;
   const sectionAssets = proposal.assets.filter((asset) => asset.placement === section.key);
-  // Per-section text scale. CSS `zoom` proportionally scales titles, body, tables, cards,
-  // even inline-editing controls — no per-section CSS edits needed. Puppeteer honours it in
-  // the PDF pipeline. `renderShell:false` blocks (cover) opt out via the earlier return.
-  const zoom = section.fontSize === "sm" ? 0.9 : section.fontSize === "lg" ? 1.15 : undefined;
 
   return wrapSelectable(
-    <section
-      id={sectionId}
-      className="proposal-block-avoid space-y-4"
-      style={zoom ? { zoom } : undefined}
-    >
+    <section id={sectionId} className="proposal-block-avoid space-y-4">
       <header className="max-w-3xl space-y-1.5">
         {editable && onMetaChange ? (
           <>

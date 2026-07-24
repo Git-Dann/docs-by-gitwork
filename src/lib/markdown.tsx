@@ -14,10 +14,16 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/format";
 
-// One pass matches the earliest inline marker; precedence: link → bold → italic → underscore-italic → code.
+// One pass matches the earliest inline marker; precedence:
+//   link → size wrapper → bold → italic → underscore-italic → code.
+// The size wrapper — `<sm>…</sm>` / `<lg>…</lg>` — is a custom XSS-safe extension used by the
+// selection-based font-size control. Never rendered via dangerouslySetInnerHTML; the renderer
+// explicitly maps the tag to a styled <span> and recursively parses the inner text so nested
+// formatting still works.
 // Exported so rich-inline-editor.tsx's canvas editor can parse/serialize with the exact same
 // rules as this renderer — one source of truth for what counts as Markdown here.
-export const INLINE_RE = /(\[[^\]]+\]\([^)\s]+\))|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(_[^_\n]+_)|(`[^`\n]+`)/;
+export const INLINE_RE =
+  /(\[[^\]]+\]\([^)\s]+\))|(<(?:sm|lg)>[^\n<]+<\/(?:sm|lg)>)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(_[^_\n]+_)|(`[^`\n]+`)/;
 
 /** Allow only safe URL schemes; bare domains become https; anything odd (javascript:, data:) is dropped. */
 export function safeUrl(raw: string): string | null {
@@ -58,6 +64,17 @@ export function renderInline(text: string, keyPrefix: string): ReactNode[] {
         ) : (
           lm?.[1] ?? token
         ),
+      );
+    } else if (token.startsWith("<sm>") || token.startsWith("<lg>")) {
+      // <sm>…</sm> / <lg>…</lg> — per-selection size wrapper. Inner text is recursively parsed
+      // so a user can bold/italic inside a sized run.
+      const tag = token.slice(1, 3);
+      const inner = token.slice(4, -5);
+      const sizeClass = tag === "sm" ? "text-[0.85em]" : "text-[1.2em]";
+      out.push(
+        <span key={key} className={sizeClass}>
+          {renderInline(inner, `${key}-in`)}
+        </span>,
       );
     } else if (token.startsWith("**")) {
       out.push(
