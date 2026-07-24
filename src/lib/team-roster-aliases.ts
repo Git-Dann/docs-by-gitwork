@@ -10,8 +10,9 @@
 //
 // Confirmed with Dan (June 2026). People deliberately NOT added (left unassigned
 // in imports): Abdul/Abdur Rehman, Muneeb, Waqas Ali, Gerry Carroll,
-// Nate Holland, Khizar Hayyat Khan, Mohammad Aashir. Role/duplicate accounts skipped.
+// Nate Holland, Khizar Hayyat Khan. Role/duplicate accounts skipped.
 // Nasir added July 2026 once his gitwork email was provisioned.
+// Mohammad Aashir added July 2026 — was on the missing-from-roll-up list.
 
 export type RosterKind = "dev" | "staff" | "admin";
 
@@ -53,6 +54,7 @@ export const TEAM_ROSTER: RosterEntry[] = [
   { name: "Zain Ali", email: "zain@gitwork.co.uk", kind: "dev", aliases: ["ZAIN ALI"] },
   { name: "Syed Arquam", email: "syedarquam@gitwork.co.uk", kind: "dev", aliases: ["Arquam"] },
   { name: "Nasir", email: "nasir@gitwork.co.uk", kind: "dev" },
+  { name: "Mohammad Aashir", email: "mohammadaashir@gitwork.co.uk", kind: "dev", aliases: ["Aashir", "Mohammad Ashir", "Muhammad Aashir"] },
 
   // ── Admin / staff ──
   { name: "Harry Brown", email: "harry@gitwork.co.uk", kind: "admin" },
