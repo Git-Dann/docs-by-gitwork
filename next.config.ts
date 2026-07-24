@@ -10,9 +10,16 @@ const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), 
 const nextConfig: NextConfig = {
   output: "standalone",
   env: {
-    NEXT_PUBLIC_APP_VERSION: pkg.version,
-    // ISO string captured at build. Rendered client-side in the viewer's local time.
-    NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
+    // In production this is stamped by CI (.github/workflows/deploy.yml → Dockerfile ARG) as
+    // "<pkg.version>.<gh-run-number>" so every push auto-bumps the patch segment without
+    // touching package.json. Local `next dev` falls back to plain pkg.version.
+    NEXT_PUBLIC_APP_VERSION: process.env.NEXT_PUBLIC_APP_VERSION ?? pkg.version,
+    // ISO string captured at build. In production this is stamped by the CI workflow
+    // (NEXT_PUBLIC_BUILD_TIME is set in .github/workflows/deploy.yml right before `next build`)
+    // so it reflects the exact deploy time, not just whatever the config file happened to
+    // evaluate. Local `next dev` falls back to the process start time. Rendered client-side
+    // in the viewer's local time.
+    NEXT_PUBLIC_BUILD_TIME: process.env.NEXT_PUBLIC_BUILD_TIME ?? new Date().toISOString(),
   },
   // @heroicons/react is a barrel (151 import sites). optimizePackageImports rewrites
   // `import { XIcon } from "@heroicons/react/24/outline"` to per-icon imports so each

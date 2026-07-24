@@ -23,6 +23,15 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATABASE_URL="postgresql://dummy:dummy@localhost/dummy"
 ENV DIRECT_URL="postgresql://dummy:dummy@localhost/dummy"
 
+# Deploy provenance for the client bundle — the sidebar footer + /context read these to show
+# "v{pkg}.{run} · {build-time}". Sourced from the GHA workflow's build metadata
+# (deploy.yml → BUILD_TIME, APP_VERSION). APP_VERSION auto-increments the patch segment via
+# github.run_number so every push shows a new number without editing package.json.
+ARG BUILD_TIME=""
+ARG APP_VERSION=""
+ENV NEXT_PUBLIC_BUILD_TIME=$BUILD_TIME
+ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
+
 RUN npm run build
 
 # ── runner ───────────────────────────────────────────────────────────────────

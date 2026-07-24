@@ -28,7 +28,14 @@ jobs:
 
       - name: Capture build metadata
         id: meta
-        run: echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+        # `time` is the deploy timestamp shown in the sidebar footer.
+        # `version` is <package.json version>.<github.run_number> — auto-increments per push
+        # so every deploy shows a new number without touching package.json (bump the semver
+        # in package.json only for real major/minor releases).
+        run: |
+          echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "version=${PKG_VERSION}.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -41,6 +48,7 @@ jobs:
           build-args: |
             COMMIT_SHA=${{ github.sha }}
             BUILD_TIME=${{ steps.meta.outputs.time }}
+            APP_VERSION=${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
