@@ -67,7 +67,28 @@ export function MarkdownField({
       const ta = ref.current;
       if (!ta) return;
       const { selectionStart: s, selectionEnd: e, value: v } = ta;
-      const sel = v.slice(s, e) || placeholderText;
+      const hasSelection = s !== e;
+      const sel = hasSelection ? v.slice(s, e) : placeholderText;
+
+      // Toggle-off: selection is already exactly wrapped in this marker → strip it.
+      // Also handles the case where the selection SITS INSIDE an existing wrapper
+      // (user selected the inner text without grabbing the markers) — detect and unwrap.
+      if (hasSelection && sel.startsWith(prefix) && sel.endsWith(suffix) && sel.length >= prefix.length + suffix.length) {
+        const inner = sel.slice(prefix.length, sel.length - suffix.length);
+        applyEdit(v.slice(0, s) + inner + v.slice(e), s, s + inner.length);
+        return;
+      }
+      const before = v.slice(Math.max(0, s - prefix.length), s);
+      const after = v.slice(e, e + suffix.length);
+      if (hasSelection && before === prefix && after === suffix) {
+        applyEdit(
+          v.slice(0, s - prefix.length) + sel + v.slice(e + suffix.length),
+          s - prefix.length,
+          s - prefix.length + sel.length,
+        );
+        return;
+      }
+
       applyEdit(
         v.slice(0, s) + prefix + sel + suffix + v.slice(e),
         s + prefix.length,

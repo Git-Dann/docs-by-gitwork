@@ -7,7 +7,7 @@ import { PlusIcon, TrashIcon, QuestionMarkCircleIcon } from "@heroicons/react/24
 import { SimpleForm, FormInput } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
 import { MarkdownField } from "@/components/proposals/markdown-field";
-import { Markdown } from "@/lib/markdown";
+import { Markdown, renderInline } from "@/lib/markdown";
 import { InlineAddButton, InlineRemoveButton, InlineTextArea } from "@/lib/sections/inline-text";
 import type { FaqItem, FaqSectionData } from "@/types/proposal";
 
@@ -160,7 +160,7 @@ export const faqSection = defineSection<FaqSectionData>({
             <details key={i} className="group">
               <summary className="flex cursor-pointer list-none items-baseline justify-between gap-3 px-5 py-3 [&::-webkit-details-marker]:hidden">
                 <span className="text-sm font-medium text-[var(--text-1)]">
-                  {item.question || "Untitled question"}
+                  {item.question ? renderInline(item.question, `faq-q${i}`) : "Untitled question"}
                 </span>
                 <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)] transition group-open:text-[var(--brand-700)]">
                   {String(i + 1).padStart(2, "0")}

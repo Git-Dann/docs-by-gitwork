@@ -13,6 +13,7 @@ import type { ReactNode } from "react";
 import { PencilSquareIcon } from "@heroicons/react/24/outline";
 import { getSectionType } from "@/lib/sections/registry";
 import { InlineTextArea } from "@/lib/sections/inline-text";
+import { renderInline } from "@/lib/markdown";
 import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
 function Graphic({
@@ -155,11 +156,11 @@ export function ProposalSectionPreview({
         ) : (
           <>
             <h2 className="text-[24px] leading-[1.15] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]">
-              {section.title}
+              {renderInline(section.title, `sec-title-${section.id ?? section.key}`)}
             </h2>
             {section.description ? (
               <p className="font-[var(--font-mono),'JetBrains_Mono',monospace] text-[10px] font-semibold uppercase leading-5 tracking-[0.12em] text-[var(--doc-muted)]">
-                {section.description}
+                {renderInline(section.description, `sec-desc-${section.id ?? section.key}`)}
               </p>
             ) : null}
           </>
