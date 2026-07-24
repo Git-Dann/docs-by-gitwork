@@ -2,7 +2,9 @@
 
 import { IdentificationIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
-import { FormInput, FormTextArea, SimpleForm } from "@/lib/sections/_shared";
+import { FormInput, SimpleForm } from "@/lib/sections/_shared";
+import { MarkdownField } from "@/components/proposals/markdown-field";
+import { Markdown } from "@/lib/markdown";
 import type { SignoffFooterSectionData } from "@/types/proposal";
 
 const DEFAULT: SignoffFooterSectionData = {
@@ -48,10 +50,11 @@ export const signoffFooterSection = defineSection<SignoffFooterSectionData>({
         value={data.contactDetails}
         onChange={(contactDetails) => onChange({ ...data, contactDetails })}
       />
-      <FormTextArea
+      <MarkdownField
         label="Footer note"
         value={data.footerNote}
         onChange={(footerNote) => onChange({ ...data, footerNote })}
+        rows={4}
       />
       <div className="@container">
         <div className="grid gap-4 @[26rem]:grid-cols-2">
@@ -101,7 +104,9 @@ export const signoffFooterSection = defineSection<SignoffFooterSectionData>({
         <p>Team: {data.team}</p>
         <p>Contact: {data.contactDetails}</p>
         {data.footerNote ? (
-          <p className="text-sm leading-7 text-[var(--text-3)]">{data.footerNote}</p>
+          <Markdown className="space-y-3 text-sm leading-7 text-[var(--text-3)]">
+            {data.footerNote}
+          </Markdown>
         ) : null}
       </div>
       <div className="space-y-3">

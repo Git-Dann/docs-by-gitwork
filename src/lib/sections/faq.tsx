@@ -4,8 +4,10 @@
  */
 
 import { PlusIcon, TrashIcon, QuestionMarkCircleIcon } from "@heroicons/react/24/outline";
-import { SimpleForm, FormInput, FormTextArea } from "@/lib/sections/_shared";
+import { SimpleForm, FormInput } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
+import { MarkdownField } from "@/components/proposals/markdown-field";
+import { Markdown } from "@/lib/markdown";
 import { InlineAddButton, InlineRemoveButton, InlineTextArea } from "@/lib/sections/inline-text";
 import type { FaqItem, FaqSectionData } from "@/types/proposal";
 
@@ -42,11 +44,11 @@ export const faqSection = defineSection<FaqSectionData>({
 
     return (
       <SimpleForm>
-        <FormTextArea
+        <MarkdownField
           label="Intro (optional)"
           value={data.intro ?? ""}
           onChange={(intro) => onChange({ ...data, intro })}
-          rows={2}
+          rows={3}
         />
         {items.map((item, i) => (
           <div key={i} className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
@@ -71,11 +73,11 @@ export const faqSection = defineSection<FaqSectionData>({
                 onChange={(question) => update(i, { question })}
                 placeholder="What does the engagement include?"
               />
-              <FormTextArea
+              <MarkdownField
                 label="Answer"
                 value={item.answer}
                 onChange={(answer) => update(i, { answer })}
-                rows={3}
+                rows={4}
               />
             </div>
           </div>
@@ -148,7 +150,11 @@ export const faqSection = defineSection<FaqSectionData>({
     }
     return (
       <div className="proposal-block-avoid space-y-3">
-        {data.intro ? <p className="text-sm leading-7 text-[var(--text-2)]">{data.intro}</p> : null}
+        {data.intro ? (
+          <Markdown className="space-y-3 text-sm leading-7 text-[var(--text-2)]">
+            {data.intro}
+          </Markdown>
+        ) : null}
         <div className="divide-y divide-[var(--border-3)] rounded-[10px] border border-[var(--border-2)] bg-white">
           {items.map((item, i) => (
             <details key={i} className="group">
@@ -161,7 +167,11 @@ export const faqSection = defineSection<FaqSectionData>({
                 </span>
               </summary>
               <div className="px-5 pb-4 pt-0 text-sm leading-7 text-[var(--text-2)]">
-                {item.answer || <span className="italic text-[var(--text-4)]">No answer yet.</span>}
+                {item.answer ? (
+                  <Markdown className="space-y-3">{item.answer}</Markdown>
+                ) : (
+                  <span className="italic text-[var(--text-4)]">No answer yet.</span>
+                )}
               </div>
             </details>
           ))}

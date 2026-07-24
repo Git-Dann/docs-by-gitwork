@@ -7,10 +7,11 @@
  */
 
 import { PlusIcon, TrashIcon, ChartBarIcon, CheckIcon, StarIcon } from "@heroicons/react/24/outline";
-import { SimpleForm, FormInput, FormTextArea } from "@/lib/sections/_shared";
+import { SimpleForm, FormInput } from "@/lib/sections/_shared";
+import { MarkdownField } from "@/components/proposals/markdown-field";
 import { defineSection } from "@/lib/sections/types";
 import type { PricingTierItem, PricingTiersSectionData } from "@/types/proposal";
-import { safeUrl } from "@/lib/markdown";
+import { Markdown, safeUrl } from "@/lib/markdown";
 
 function newTier(name: string): PricingTierItem {
   return { name, price: "", cadence: "/ month", tagline: "", features: [] };
@@ -76,11 +77,11 @@ export const pricingTiersSection = defineSection<PricingTiersSectionData>({
 
     return (
       <SimpleForm>
-        <FormTextArea
+        <MarkdownField
           label="Intro (optional)"
           value={data.intro ?? ""}
           onChange={(intro) => onChange({ ...data, intro })}
-          rows={2}
+          rows={3}
         />
 
         {tiers.map((tier, i) => (
@@ -180,7 +181,11 @@ export const pricingTiersSection = defineSection<PricingTiersSectionData>({
     }
     return (
       <div className="proposal-block-avoid space-y-4">
-        {data.intro ? <p className="text-sm leading-7 text-[var(--text-2)]">{data.intro}</p> : null}
+        {data.intro ? (
+          <Markdown className="space-y-3 text-sm leading-7 text-[var(--text-2)]">
+            {data.intro}
+          </Markdown>
+        ) : null}
         <div
           className="grid gap-3"
           style={{ gridTemplateColumns: `repeat(${tiers.length}, minmax(0, 1fr))` }}

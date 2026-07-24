@@ -4,9 +4,10 @@ import { PaperClipIcon } from "@heroicons/react/24/outline";
 import { AssetPicker } from "@/components/proposals/asset-picker";
 import { LinkManager } from "@/components/proposals/link-manager";
 import { defineSection } from "@/lib/sections/types";
-import { FormTextArea, SimpleForm } from "@/lib/sections/_shared";
+import { SimpleForm } from "@/lib/sections/_shared";
+import { MarkdownField } from "@/components/proposals/markdown-field";
 import type { SupportingLinksSectionData } from "@/types/proposal";
-import { safeUrl } from "@/lib/markdown";
+import { Markdown, safeUrl } from "@/lib/markdown";
 
 function formatLinkTypeLabel(value: string) {
   switch (value) {
@@ -41,10 +42,11 @@ export const supportingLinksAssetsSection = defineSection<SupportingLinksSection
   Editor: ({ data, onChange, proposal, onProposalChange }) => (
     <div className="space-y-3">
       <SimpleForm>
-        <FormTextArea
+        <MarkdownField
           label="Section notes"
           value={data.notes}
           onChange={(notes) => onChange({ ...data, notes })}
+          rows={4}
         />
       </SimpleForm>
       <LinkManager
@@ -60,7 +62,9 @@ export const supportingLinksAssetsSection = defineSection<SupportingLinksSection
   Preview: ({ data, proposal }) => (
     <div className="space-y-4">
       {data.notes ? (
-        <p className="max-w-4xl text-sm leading-7 text-[var(--text-2)]">{data.notes}</p>
+        <Markdown className="max-w-4xl space-y-3 text-sm leading-7 text-[var(--text-2)]">
+          {data.notes}
+        </Markdown>
       ) : null}
       <ul className="space-y-2">
         {proposal.links.map((link) => (
