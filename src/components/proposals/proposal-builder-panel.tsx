@@ -6,6 +6,7 @@ import { ProposalSectionEditor } from "@/components/proposals/proposal-section-e
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { apiFetch } from "@/lib/api";
+import { cn } from "@/lib/format";
 import { useCreateSnippet } from "@/hooks/use-snippets";
 import { usePermissions } from "@/hooks/use-permissions";
 import { SECTION_REGISTRY } from "@/lib/sections/registry";
@@ -211,6 +212,60 @@ export function ProposalBuilderPanel({
           ) : (
             <p className="text-sm text-[var(--text-3)]">Unable to load section editor.</p>
           )}
+
+          {/* Font-size picker — 3 presets that scale everything in the section
+              (titles, body, tables, cards) proportionally via CSS zoom. */}
+          {sectionIndex >= 0 ? (
+            <div className="border-t border-[var(--border-2)] pt-4">
+              <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
+                Text size
+              </span>
+              <div className="inline-flex items-center gap-0.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5">
+                {(
+                  [
+                    { key: "sm", label: "S", title: "Small" },
+                    { key: "base", label: "M", title: "Normal" },
+                    { key: "lg", label: "L", title: "Large" },
+                  ] as const
+                ).map((preset) => {
+                  const current = activeSection.fontSize ?? "base";
+                  const active = current === preset.key;
+                  return (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      title={preset.title}
+                      aria-pressed={active}
+                      onClick={() =>
+                        onProposalChange({
+                          ...proposal,
+                          sections: proposal.sections.map((entry, index) =>
+                            index === sectionIndex
+                              ? {
+                                  ...entry,
+                                  fontSize: preset.key === "base" ? undefined : preset.key,
+                                }
+                              : entry,
+                          ),
+                        })
+                      }
+                      className={cn(
+                        "inline-flex h-7 w-9 items-center justify-center rounded-[4px] font-mono text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors",
+                        active
+                          ? "bg-white text-[var(--text-1)] shadow-[var(--shadow-xs)]"
+                          : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+                      )}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-xs leading-5 text-[var(--text-4)]">
+                Scales everything in this section proportionally — body, headings, tables.
+              </p>
+            </div>
+          ) : null}
 
           {/* Speaker notes — presenter-only, surfaced in presentation mode's notes panel. Never
               rendered in the doc body, public share, or PDF. */}

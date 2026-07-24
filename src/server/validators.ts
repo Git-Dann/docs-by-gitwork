@@ -22,6 +22,8 @@ export const sectionSchema = z.object({
   data: z.record(z.string(), z.unknown()).or(z.array(z.unknown())),
   // Presenter-only notes (presentation mode). Optional; empty/whitespace allowed.
   speakerNotes: z.string().optional(),
+  // Per-section text scale (S / M / L). Applied as a CSS zoom on the section wrapper.
+  fontSize: z.enum(["sm", "base", "lg"]).optional(),
 });
 
 export const costLineItemSchema = z.object({

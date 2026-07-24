@@ -555,6 +555,10 @@ export type ProposalSectionData =
   | PrinciplesGridSectionData
   | CategoryChecklistSectionData;
 
+/** Per-section text-scale preset. Applied as a CSS zoom on the section wrapper so titles,
+ *  body, tables, cards etc. scale proportionally without editing each section's CSS. */
+export type SectionFontSize = "sm" | "base" | "lg";
+
 export interface ProposalSection {
   id?: string;
   key: SectionKey;
@@ -566,6 +570,8 @@ export interface ProposalSection {
   /** Presenter-only notes surfaced in presentation mode's notes panel. Never rendered in the
    *  doc body, public share, or PDF. */
   speakerNotes?: string;
+  /** Optional text-scale override for this section. Undefined = default ("base"). */
+  fontSize?: SectionFontSize;
 }
 
 export interface CostLineItemInput {

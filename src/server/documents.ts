@@ -206,6 +206,7 @@ export async function updateDocument(
           sortOrder: section.sortOrder ?? index,
           isVisible: section.isVisible,
           speakerNotes: section.speakerNotes ?? null,
+          fontSize: section.fontSize ?? null,
           data:
             !showCosts && section.key === "costing" && existingCosting
               ? (existingCosting.data as Prisma.InputJsonValue)

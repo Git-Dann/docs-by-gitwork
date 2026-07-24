@@ -1,7 +1,19 @@
 import type { NextConfig } from "next";
+import { readFileSync } from "node:fs";
+
+// Read version from package.json at build time. Baked into the client bundle via env below
+// so the sidebar footer can show "v1.0.0 · <build date>" to confirm a fresh deploy is live.
+const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as {
+  version: string;
+};
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  env: {
+    NEXT_PUBLIC_APP_VERSION: pkg.version,
+    // ISO string captured at build. Rendered client-side in the viewer's local time.
+    NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
+  },
   // @heroicons/react is a barrel (151 import sites). optimizePackageImports rewrites
   // `import { XIcon } from "@heroicons/react/24/outline"` to per-icon imports so each
   // chunk only ships the icons it uses, not the whole set. Pure build-time transform.

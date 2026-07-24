@@ -535,9 +535,44 @@ function ExpandedRail({
               collapsed={collapsed}
             />
           </div>
+          <AppVersion collapsed={collapsed} />
         </div>
       </div>
     </div>
+  );
+}
+
+function AppVersion({ collapsed }: { collapsed: boolean }) {
+  const version = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0";
+  const buildTime = process.env.NEXT_PUBLIC_BUILD_TIME;
+  // Format the build stamp in the viewer's local time so timezones read naturally.
+  // Guarded so a bad/missing env doesn't crash the sidebar.
+  const built = (() => {
+    if (!buildTime) return null;
+    const d = new Date(buildTime);
+    if (Number.isNaN(d.getTime())) return null;
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+  })();
+  if (collapsed) {
+    return (
+      <p
+        title={built ? `v${version} · ${built}` : `v${version}`}
+        className="mt-3 text-center font-mono text-[9px] uppercase tracking-[0.1em] text-[var(--text-4)]"
+      >
+        v{version}
+      </p>
+    );
+  }
+  return (
+    <p className="mt-3 border-t border-[var(--border-3)] pt-3 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]">
+      v{version}
+      {built ? <span className="ml-1.5 normal-case tracking-normal text-[var(--text-4)]">· {built}</span> : null}
+    </p>
   );
 }
 

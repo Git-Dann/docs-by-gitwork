@@ -109,6 +109,10 @@ function normalizeSections(sections: DocumentSection[]): ProposalSection[] {
     isVisible: section.isVisible,
     data: section.data as unknown as ProposalSection["data"],
     speakerNotes: section.speakerNotes ?? undefined,
+    fontSize:
+      section.fontSize === "sm" || section.fontSize === "base" || section.fontSize === "lg"
+        ? section.fontSize
+        : undefined,
   }));
 }
 

@@ -2115,6 +2115,10 @@ model DocumentSection {
   // Presenter-only notes shown in presentation mode's notes panel — never rendered in the
   // doc body, public share, or PDF. Optional, additive.
   speakerNotes String?
+  // Per-section text-scale preset ("sm" | "base" | "lg"). Renders via CSS zoom on the
+  // section wrapper so titles, body, tables, cards etc. all scale proportionally. Null
+  // = default ("base"). Additive.
+  fontSize     String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
