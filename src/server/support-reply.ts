@@ -15,8 +15,14 @@ import { sendDiscordMessage } from "./discord-sync";
 import { decryptScraperConfig } from "./support";
 
 export type ReplyResult =
+  // Delivered on an automated channel.
   | { sent: true; manual: false }
-  | { sent: false; manual: true; reason: string };
+  // Source has no automated send path — the reply is logged and the operator sends it
+  // out-of-band (App Store Connect, etc.). The UI shows a copy-to-clipboard fallback.
+  | { sent: false; manual: true; reason: string }
+  // We attempted a real send on a sendable channel and it FAILED — the caller must
+  // surface this rather than persist a message the customer never received.
+  | { sent: false; manual: false; reason: string };
 
 /** Sources the UI should offer a real Send button for. */
 export const SENDABLE_SOURCES = new Set(["discord", "gmail", "app_reviews", "imap"]);
@@ -34,7 +40,7 @@ export async function sendReply(
     select: { source: true, externalId: true, subject: true, customerLabel: true },
   });
   if (!conv?.externalId) {
-    return { sent: false, manual: true, reason: "No external ID on conversation" };
+    return { sent: false, manual: false, reason: "No external ID on conversation" };
   }
 
   switch (conv.source) {
@@ -59,7 +65,7 @@ async function imapReplyDispatch(
     select: { id: true },
   });
   if (!conn) {
-    return { sent: false, manual: true, reason: "No connected email (IMAP/SMTP) mailbox for this client" };
+    return { sent: false, manual: false, reason: "No connected email (IMAP/SMTP) mailbox for this client" };
   }
   try {
     const { buildSyncContext } = await import("./support-sync");
@@ -68,7 +74,7 @@ async function imapReplyDispatch(
     await sendImapReply(ctx, externalId, body);
     return { sent: true, manual: false };
   } catch (err) {
-    return { sent: false, manual: true, reason: `Email reply failed: ${err instanceof Error ? err.message : String(err)}` };
+    return { sent: false, manual: false, reason: `Email reply failed: ${err instanceof Error ? err.message : String(err)}` };
   }
 }
 
@@ -90,7 +96,7 @@ async function appReviewReply(
   }
 
   if (!externalId.startsWith("playstore:")) {
-    return { sent: false, manual: true, reason: "Unrecognised app-review id" };
+    return { sent: false, manual: false, reason: "Unrecognised app-review id" };
   }
 
   // externalId = "playstore:<packageName>:<reviewId>". Package names never contain a
@@ -98,7 +104,7 @@ async function appReviewReply(
   const rest = externalId.slice("playstore:".length);
   const firstColon = rest.indexOf(":");
   if (firstColon === -1) {
-    return { sent: false, manual: true, reason: "Malformed Play review id" };
+    return { sent: false, manual: false, reason: "Malformed Play review id" };
   }
   const packageName = rest.slice(0, firstColon);
   const reviewId = rest.slice(firstColon + 1);
@@ -107,7 +113,7 @@ async function appReviewReply(
   if (trimmed.length > PLAY_REPLY_MAX_CHARS) {
     return {
       sent: false,
-      manual: true,
+      manual: false,
       reason: `Google Play replies are limited to ${PLAY_REPLY_MAX_CHARS} characters (yours is ${trimmed.length}).`,
     };
   }
@@ -118,7 +124,7 @@ async function appReviewReply(
   });
   const cfg = decryptScraperConfig(conn?.scraperConfig as Record<string, unknown> | null) as { serviceAccountJson?: string } | null;
   if (!cfg?.serviceAccountJson) {
-    return { sent: false, manual: true, reason: "Play Store service account not configured on the connector" };
+    return { sent: false, manual: false, reason: "Play Store service account not configured on the connector" };
   }
 
   try {
@@ -142,7 +148,7 @@ async function appReviewReply(
     return { sent: true, manual: false };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { sent: false, manual: true, reason: `Play reply failed: ${msg}` };
+    return { sent: false, manual: false, reason: `Play reply failed: ${msg}` };
   }
 }
 
@@ -159,10 +165,14 @@ async function discordReply(
   });
   const cfg = decryptScraperConfig(conn?.scraperConfig as Record<string, unknown> | null) as { botToken?: string } | null;
   if (!cfg?.botToken) {
-    return { sent: false, manual: true, reason: "Discord bot token not configured" };
+    return { sent: false, manual: false, reason: "Discord bot token not configured" };
   }
-  await sendDiscordMessage(channelId, cfg.botToken, body);
-  return { sent: true, manual: false };
+  try {
+    await sendDiscordMessage(channelId, cfg.botToken, body);
+    return { sent: true, manual: false };
+  } catch (err) {
+    return { sent: false, manual: false, reason: `Discord reply failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
 }
 
 // ─── Gmail ───────────────────────────────────────────────────────────────────
@@ -185,7 +195,7 @@ async function gmailReply(
   });
   const ws = supportClient?.workspace;
   if (!ws?.googleServiceAccountJson) {
-    return { sent: false, manual: true, reason: "Gmail service account not configured on workspace" };
+    return { sent: false, manual: false, reason: "Gmail service account not configured on workspace" };
   }
 
   // Check GMAIL connection for per-connection impersonation override
@@ -201,7 +211,7 @@ async function gmailReply(
     null;
 
   if (!fromEmail) {
-    return { sent: false, manual: true, reason: "No Gmail inbox configured (set 'Inbox to read' on the connector)" };
+    return { sent: false, manual: false, reason: "No Gmail inbox configured (set 'Inbox to read' on the connector)" };
   }
 
   // customerLabel for Gmail is "Name <email>" or just "email" from the From header
@@ -239,6 +249,6 @@ async function gmailReply(
     return { sent: true, manual: false };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { sent: false, manual: true, reason: `Gmail send failed: ${msg}` };
+    return { sent: false, manual: false, reason: `Gmail send failed: ${msg}` };
   }
 }

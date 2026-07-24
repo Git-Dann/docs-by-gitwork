@@ -2028,6 +2028,8 @@ function InboxView({ clientId }: { clientId: string }) {
                 const tags = activeConvo.tags ?? [];
                 const isPlayReview = source === "app_reviews" && tags.includes("store:play_store");
                 const isAppStoreReview = source === "app_reviews" && tags.includes("store:app_store");
+                // Channels Care can send through directly — mirror of SENDABLE_SOURCES in
+                // support-reply.ts (app_reviews is send-capable only for Play, not App Store).
                 const canSend = source === "discord" || source === "gmail" || source === "imap" || isPlayReview;
                 // Google Play caps developer replies at 350 chars.
                 const replyLimit = isPlayReview ? 350 : null;

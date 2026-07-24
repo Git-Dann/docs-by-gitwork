@@ -39,6 +39,7 @@ import { LogoImagePicker } from "@/components/ui/logo-image-picker";
 import { CountrySelect, PhoneInput, WebsiteInput } from "@/components/ui/contact-fields";
 import { ClientDesignFormModal } from "@/components/clients/client-design-form";
 import { ClientDocumentLinks } from "@/components/clients/client-document-links";
+import { ClientDocActionsModal } from "@/components/clients/client-doc-actions-modal";
 import { ClientDriveArchiveButton } from "@/components/clients/client-drive-archive-button";
 import { ClientPlatformFormModal } from "@/components/clients/client-platform-form";
 import { StatusBadge } from "@/components/status-badge";
@@ -313,6 +314,9 @@ export function ClientDetail({ slug }: { slug: string }) {
   }>({ open: false, design: null });
   const [designError, setDesignError] = useState<string | null>(null);
   const [deletingDesignId, setDeletingDesignId] = useState<string | null>(null);
+
+  // Which doc's actions popup is open (by id, so it reflects live inWiki/share state on refetch).
+  const [docActionsId, setDocActionsId] = useState<string | null>(null);
 
   const updateClientMutation = useUpdateClient(slug);
   const productTeamMutation = useUpdateClientProductTeam(slug);
@@ -1112,7 +1116,21 @@ export function ClientDetail({ slug }: { slug: string }) {
                   proposals.map((proposal) => (
                     <tr key={proposal.id}>
                       <td>
-                        <p className="font-medium text-[var(--text-1)]">{proposal.title}</p>
+                        <button
+                          type="button"
+                          onClick={() => setDocActionsId(proposal.id)}
+                          className="flex items-center gap-1.5 text-left font-medium text-[var(--text-1)] transition hover:text-[var(--brand-700)]"
+                        >
+                          {proposal.title}
+                          {proposal.inWiki ? (
+                            <span
+                              title="On the client's wiki"
+                              className="inline-flex items-center rounded-[5px] bg-[var(--surface-brand)] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)]"
+                            >
+                              Wiki
+                            </span>
+                          ) : null}
+                        </button>
                       </td>
                       <td>
                         <StatusBadge status={proposal.status} />
@@ -1121,12 +1139,13 @@ export function ClientDetail({ slug }: { slug: string }) {
                         <span className="widget-timestamp">{formatDate(proposal.updatedAt)}</span>
                       </td>
                       <td>
-                        <Link
-                          href={`/app/docs/${proposal.id}`}
+                        <button
+                          type="button"
+                          onClick={() => setDocActionsId(proposal.id)}
                           className={buttonStyles({ variant: "secondary", size: "xs" })}
                         >
                           Open
-                        </Link>
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -1143,6 +1162,13 @@ export function ClientDetail({ slug }: { slug: string }) {
           </div>
           <ClientDocumentLinks slug={slug} links={documentLinks} canManage={canManageClients} />
         </section>
+
+        <ClientDocActionsModal
+          slug={slug}
+          proposal={proposals.find((p) => p.id === docActionsId) ?? null}
+          canManage={canManageClients}
+          onClose={() => setDocActionsId(null)}
+        />
 
 
         {/* 15 // PULSE SCANS */}

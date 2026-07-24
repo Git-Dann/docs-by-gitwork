@@ -25,6 +25,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/proposals/*/pdf": ["./node_modules/@sparticuz/chromium/**/*"],
     "/api/pulse/scans/*/pdf": ["./node_modules/@sparticuz/chromium/**/*"],
+    "/api/docs/*/pdf": ["./node_modules/@sparticuz/chromium/**/*"],
   },
   images: {
     // Serve next/image output as AVIF/WebP where the browser supports it — far

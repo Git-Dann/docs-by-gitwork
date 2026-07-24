@@ -1355,6 +1355,21 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
     updatedAt: p.updatedAt.toISOString(),
   }));
 
+  // Which of this client's docs are already mirrored into their wiki Documents section — powers
+  // the doc-actions popup's Add/Remove-from-wiki toggle. Only real (WorkspaceClient-backed) clients
+  // have a wiki; a legacy name-only client has none, so the set stays empty.
+  const wikiDocIds = new Set<string>();
+  if (manualRecord && matchingProposals.length > 0) {
+    const rows = await prisma.wikiDocument.findMany({
+      where: {
+        wiki: { clientId: manualRecord.id },
+        documentId: { in: matchingProposals.map((proposal) => proposal.id) },
+      },
+      select: { documentId: true },
+    });
+    for (const row of rows) if (row.documentId) wikiDocIds.add(row.documentId);
+  }
+
   // CRM activity log (leads) — most-recent first, author names resolved in one batch.
   const touchpoints = manualRecord
     ? await serializeTouchpoints(
@@ -1392,7 +1407,14 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
     documentLinks: (documentLinks as Parameters<typeof serializeClientDocumentLink>[0][]).map(
       serializeClientDocumentLink,
     ),
-    proposals: matchingProposals.map((proposal) => serializeProposalListItem(proposal)),
+    proposals: matchingProposals.map((proposal) => ({
+      ...serializeProposalListItem(proposal),
+      // Share + wiki state for the doc-actions popup (View share page / Add to wiki). These
+      // scalars are present on the include-based row even though the list serializer omits them.
+      isShared: proposal.isShared,
+      shareToken: proposal.shareToken,
+      inWiki: wikiDocIds.has(proposal.id),
+    })),
     proofDocuments: proofDocuments.map((document) => serializeProofDocument(document)),
     pulseScans: pulseScans.map((scan) => ({
       id: scan.id,

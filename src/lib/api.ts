@@ -3735,6 +3735,27 @@ export async function deleteWikiDocApi(slug: string, id: string): Promise<void> 
   await apiFetch(`/api/clients/${slug}/wiki/documents/${id}`, { method: "DELETE" });
 }
 
+/** Portal "Add to wiki" — mirror a Foundry document into the client's wiki Documents section. */
+export async function addDocToWikiApi(slug: string, documentId: string): Promise<WikiDocumentDTO> {
+  return apiFetch<WikiDocumentDTO>(`/api/clients/${slug}/wiki/documents/from-doc`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ documentId }),
+  });
+}
+
+/** Portal "Remove from wiki" — drop the mirrored wiki entry for a Foundry document. */
+export async function removeDocFromWikiApi(
+  slug: string,
+  documentId: string,
+): Promise<{ removed: boolean }> {
+  return apiFetch<{ removed: boolean }>(`/api/clients/${slug}/wiki/documents/from-doc`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ documentId }),
+  });
+}
+
 export async function setWikiDocumentsEnabledApi(
   slug: string,
   enabled: boolean,

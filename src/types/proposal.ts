@@ -715,4 +715,10 @@ export interface ProposalListItem {
   isFavorite?: boolean;
   /** Count of visible blocks, for the card meta readout. */
   sectionCount?: number;
+  /** Sharing state — set on the Portal client-detail list (powers the doc-actions popup's
+   *  "View share page" + "Add to wiki"). Undefined on the generic Docs list. */
+  isShared?: boolean;
+  shareToken?: string | null;
+  /** Whether this doc is currently mirrored into the client's wiki Documents section. */
+  inWiki?: boolean;
 }

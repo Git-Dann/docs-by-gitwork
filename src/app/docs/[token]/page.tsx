@@ -18,6 +18,7 @@ import { ProposalPreview } from "@/components/proposals/proposal-preview";
 import { DocsTracker } from "./view-beacon";
 import { DocsAcceptBar } from "./accept-bar";
 import { PublicComments } from "./public-comments";
+import { DownloadPdfButton } from "./download-pdf-button";
 
 export const dynamic = "force-dynamic";
 
@@ -107,6 +108,10 @@ export default async function PublicDocumentPage({ params, searchParams }: PageP
   return (
     <main className="min-h-screen bg-[var(--surface-canvas)]">
       <DocsTracker token={token} />
+      {/* Let the client download the document as a PDF straight from the share link (fixed,
+          print-hidden button top-right). */}
+      <DownloadPdfButton token={token} filename={record.documentNumber ?? record.title} />
+
       {/*
        * The cover (with Foundry logo, doc number, type label, dated) now comes from
        * <DocumentCover/> inside the proposal sections — so we don't need a separate header

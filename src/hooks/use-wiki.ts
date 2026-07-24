@@ -48,6 +48,8 @@ import {
   updateWikiDocApi,
   deleteWikiDocApi,
   setWikiDocumentsEnabledApi,
+  addDocToWikiApi,
+  removeDocFromWikiApi,
   createWikiIntakeItem,
   createPublicWikiIntakeItem,
   updateWikiIntakeItemApi,
@@ -65,6 +67,30 @@ export function useClientWiki(slug: string) {
     enabled: Boolean(slug),
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
+  });
+}
+
+/** Portal "Add to wiki" — mirrors a Foundry doc into the client's wiki. Refreshes the client
+ *  detail (so the doc's inWiki flag flips) and the wiki itself. */
+export function useAddDocToWiki(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (documentId: string) => addDocToWikiApi(slug, documentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client", slug] });
+      queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
+  });
+}
+
+export function useRemoveDocFromWiki(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (documentId: string) => removeDocFromWikiApi(slug, documentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client", slug] });
+      queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
   });
 }
 
