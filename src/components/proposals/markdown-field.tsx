@@ -8,7 +8,7 @@
 
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LinkIcon, ListBulletIcon, NumberedListIcon } from "@heroicons/react/24/outline";
 import { MERGE_VARIABLES } from "@/lib/merge-variables";
 import { InlineFormatBar, useTextareaSelectionRect } from "@/lib/sections/inline-format-toolbar";
@@ -33,16 +33,34 @@ export function MarkdownField({
   const ref = useRef<HTMLTextAreaElement>(null);
   const [varsOpen, setVarsOpen] = useState(false);
   const selectionRect = useTextareaSelectionRect(ref, true);
+  const focused = useRef(false);
 
-  // Re-apply a selection after React commits the controlled value (which otherwise resets caret).
-  const restoreSelection = useCallback((start: number, end: number) => {
-    requestAnimationFrame(() => {
+  // External value → DOM sync, but NEVER while the operator has the field focused — that
+  // would clobber their caret position mid-edit (e.g. on an autosave-triggered refetch or
+  // when the parent state pipeline momentarily re-commits a stale value). Same guard the
+  // contentEditable RichInlineEditor uses for the same reason. The textarea below uses
+  // defaultValue (uncontrolled) so React never touches its .value while you type; this
+  // effect handles the external-update case.
+  useEffect(() => {
+    const ta = ref.current;
+    if (!ta || focused.current) return;
+    if (ta.value !== value) ta.value = value;
+  }, [value]);
+
+  // Push a toolbar-computed edit into the uncontrolled textarea + report to the parent,
+  // then place the caret. Written as one atomic op so the DOM value and the state stay in
+  // sync (the useEffect above skips syncing while focused).
+  const applyEdit = useCallback(
+    (nextValue: string, selectionStart: number, selectionEnd: number) => {
       const ta = ref.current;
       if (!ta) return;
+      ta.value = nextValue;
       ta.focus();
-      ta.setSelectionRange(start, end);
-    });
-  }, []);
+      ta.setSelectionRange(selectionStart, selectionEnd);
+      onChange(nextValue);
+    },
+    [onChange],
+  );
 
   const wrap = useCallback(
     (prefix: string, suffix = prefix, placeholderText = "text") => {
@@ -50,10 +68,13 @@ export function MarkdownField({
       if (!ta) return;
       const { selectionStart: s, selectionEnd: e, value: v } = ta;
       const sel = v.slice(s, e) || placeholderText;
-      onChange(v.slice(0, s) + prefix + sel + suffix + v.slice(e));
-      restoreSelection(s + prefix.length, s + prefix.length + sel.length);
+      applyEdit(
+        v.slice(0, s) + prefix + sel + suffix + v.slice(e),
+        s + prefix.length,
+        s + prefix.length + sel.length,
+      );
     },
-    [onChange, restoreSelection],
+    [applyEdit],
   );
 
   const linePrefix = useCallback(
@@ -67,10 +88,9 @@ export function MarkdownField({
         .split("\n")
         .map((l) => (l.startsWith(prefix) ? l : `${prefix}${l}`))
         .join("\n");
-      onChange(v.slice(0, lineStart) + prefixed + v.slice(e));
-      restoreSelection(lineStart, lineStart + prefixed.length);
+      applyEdit(v.slice(0, lineStart) + prefixed + v.slice(e), lineStart, lineStart + prefixed.length);
     },
-    [onChange, restoreSelection],
+    [applyEdit],
   );
 
   const link = useCallback(() => {
@@ -79,11 +99,10 @@ export function MarkdownField({
     const { selectionStart: s, selectionEnd: e, value: v } = ta;
     const sel = v.slice(s, e) || "link text";
     const insert = `[${sel}](https://)`;
-    onChange(v.slice(0, s) + insert + v.slice(e));
     // Select the "https://" so the user can immediately type the URL.
     const urlStart = s + sel.length + 3;
-    restoreSelection(urlStart, urlStart + 8);
-  }, [onChange, restoreSelection]);
+    applyEdit(v.slice(0, s) + insert + v.slice(e), urlStart, urlStart + 8);
+  }, [applyEdit]);
 
   const insertToken = useCallback(
     (token: string) => {
@@ -91,11 +110,10 @@ export function MarkdownField({
       if (!ta) return;
       const { selectionStart: s, selectionEnd: e, value: v } = ta;
       const insert = `{{${token}}}`;
-      onChange(v.slice(0, s) + insert + v.slice(e));
-      restoreSelection(s + insert.length, s + insert.length);
+      applyEdit(v.slice(0, s) + insert + v.slice(e), s + insert.length, s + insert.length);
       setVarsOpen(false);
     },
-    [onChange, restoreSelection],
+    [applyEdit],
   );
 
   return (
@@ -157,8 +175,14 @@ export function MarkdownField({
         </div>
         <textarea
           ref={ref}
-          value={value}
+          defaultValue={value}
           placeholder={placeholder}
+          onFocus={() => {
+            focused.current = true;
+          }}
+          onBlur={() => {
+            focused.current = false;
+          }}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
             if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
