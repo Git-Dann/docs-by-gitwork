@@ -18,7 +18,7 @@
 //
 // Exits non-zero on the first failing group, so it works as a gate.
 
-import { existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium } from 'playwright-core'
@@ -41,6 +41,22 @@ function findChromium() {
 
 const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] })
 
+/**
+ * A browser context that behaves like Foundry is serving the shell: /api/account
+ * answers, because that is the environment Deck is built for (middleware gates
+ * /deck behind the same session as /app, so a real user always has it). Without
+ * this the harness generates its own 404 and then reports it as a defect.
+ * Group 06 deliberately opens a SAVED deck outside this helper, to prove the
+ * file:// case makes no requests at all.
+ */
+const FOUNDRY_USER = { id: 'u_test', name: 'Test Person', email: 'test@gitwork.co.uk', role: 'ADMIN' }
+async function newCtx(opts = {}) {
+  const ctx = await browser.newContext(opts)
+  await ctx.route('**/api/account', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FOUNDRY_USER) }))
+  return ctx
+}
+
 async function openShell(ctx, url = target) {
   const page = await ctx.newPage()
   const errors = []
@@ -56,7 +72,7 @@ async function openShell(ctx, url = target) {
 // ── 1. controls ─────────────────────────────────────────────────────────────
 console.log('\n01 // CONTROLS')
 {
-  const ctx = await browser.newContext({ viewport: { width: 1600, height: 1000 } })
+  const ctx = await newCtx({ viewport: { width: 1600, height: 1000 } })
   const { page, errors } = await openShell(ctx)
   const esc = async () => { await page.keyboard.press('Escape'); await page.waitForTimeout(150) }
   const check = async (name, fn) => {
@@ -160,9 +176,27 @@ console.log('\n01 // CONTROLS')
 // ── 2. no upstream accent leaks ─────────────────────────────────────────────
 console.log('\n02 // BRAND ACCENTS')
 {
-  const CORAL = /255,\s*158,\s*138|255,\s*178,\s*155|237,\s*130,\s*102|247,\s*166,\s*0/
+  // Every non-token colour upstream paints its chrome with, in rgb() form as the
+  // browser reports it. Enumerated from styles.css rather than collected one
+  // screenshot at a time — coral/amber was only ever half of it: the share status
+  // was goldenrod, the live dots sea-green + brass, the errors brick.
+  const CORAL = [
+    '255,\\s*158,\\s*138',  // #FF9E8A wordmark coral
+    '255,\\s*178,\\s*155',  // #FFB29B button gradient
+    '237,\\s*130,\\s*102',  // #ED8266 button gradient
+    '247,\\s*166,\\s*0',    // #F7A600 amber accent
+    '240,\\s*123,\\s*84',   // #F07B54 about hover
+    '184,\\s*134,\\s*11',   // #B8860B share status goldenrod
+    '46,\\s*139,\\s*87',    // #2E8B57 share status sea green
+    '217,\\s*161,\\s*59',   // #D9A13B connecting dot
+    '52,\\s*168,\\s*102',   // #34A866 live dot
+    '201,\\s*48,\\s*44',    // #C9302C invalid
+    '192,\\s*57,\\s*43',    // #C0392B morph warning
+    '160,\\s*50,\\s*60',    // #A0323C kick
+    '194,\\s*90,\\s*67',    // #C25A43 version-row action
+  ].join('|')
   for (const brand of ['foundry', 'gitwork']) {
-    const ctx = await browser.newContext({ viewport: { width: 1600, height: 1000 } })
+    const ctx = await newCtx({ viewport: { width: 1600, height: 1000 } })
     const { page } = await openShell(ctx, `${target}?brand=${brand}`)
     const leaks = await page.evaluate((src) => {
       const re = new RegExp(src)
@@ -174,10 +208,10 @@ console.log('\n02 // BRAND ACCENTS')
         }
       })
       return [...new Set(bad)]
-    }, CORAL.source)
+    }, CORAL)
     const runner = await page.$eval('.ed-present-pill', (e) => getComputedStyle(e, '::after').backgroundImage).catch(() => '')
-    if (leaks.length) note('accents', `${brand}: upstream coral/amber on ${leaks.slice(0, 6).join(', ')}`)
-    else if (CORAL.test(runner)) note('accents', `${brand}: slideshow runner still coral`)
+    if (leaks.length) note('accents', `${brand}: upstream palette on ${leaks.slice(0, 6).join(', ')}`)
+    else if (new RegExp(CORAL).test(runner)) note('accents', `${brand}: slideshow runner still coral`)
     else pass(`${brand}: no upstream accent left in the chrome`)
     // present mode must follow the DECK's accent, not amber
     await page.click('.ed-pill-main'); await page.waitForTimeout(1500)
@@ -197,7 +231,7 @@ console.log('\n03 // RESPONSIVE')
 {
   // The playbook's bands: phone < 640, tablet 640-1023, desktop >= 1024.
   for (const [name, width, height] of [['390', 390, 844], ['768', 768, 1024], ['1023', 1023, 768], ['1280', 1280, 800], ['1600', 1600, 1000]]) {
-    const ctx = await browser.newContext({ viewport: { width, height }, isMobile: width < 900, hasTouch: width < 900 })
+    const ctx = await newCtx({ viewport: { width, height }, isMobile: width < 900, hasTouch: width < 900 })
     const { page, errors } = await openShell(ctx)
     const m = await page.evaluate(() => {
       const doc = document.documentElement
@@ -232,7 +266,7 @@ console.log('\n03 // RESPONSIVE')
 // ── 4. save → reopen round trip ─────────────────────────────────────────────
 console.log('\n04 // SAVED DECKS')
 {
-  const ctx = await browser.newContext({ viewport: { width: 1600, height: 1000 } })
+  const ctx = await newCtx({ viewport: { width: 1600, height: 1000 } })
   const { page } = await openShell(ctx)
   await page.click('.fd-brandswitch button:nth-child(2)') // author it as Gitwork
   await page.waitForTimeout(400)
@@ -246,7 +280,7 @@ console.log('\n04 // SAVED DECKS')
   // its runtime from a blob URL and needs a real document origin.)
   const tmp = join(tmpdir(), `deck-verify-${process.pid}.bento.html`)
   writeFileSync(tmp, saved)
-  const ctx2 = await browser.newContext({ viewport: { width: 1400, height: 900 } })
+  const ctx2 = await newCtx({ viewport: { width: 1400, height: 900 } })
   await ctx2.addInitScript(() => { try { localStorage.setItem('foundry.deck.brand', 'foundry') } catch {} })
   const page2 = await ctx2.newPage()
   const errs = []
@@ -293,7 +327,7 @@ console.log('\n05 // NOTHING HIDDEN')
   for (const [w, h] of [[1600, 1000], [1280, 620], [768, 1024], [390, 844]]) {
     let bad = 0
     for (const [state, drive] of Object.entries(STATES)) {
-      const ctx = await browser.newContext({ viewport: { width: w, height: h }, isMobile: w < 900, hasTouch: w < 900 })
+      const ctx = await newCtx({ viewport: { width: w, height: h }, isMobile: w < 900, hasTouch: w < 900 })
       const { page } = await openShell(ctx)
       try { await drive(page) } catch { /* control absent at this width — audit what is there */ }
       await page.waitForTimeout(300)
@@ -305,6 +339,51 @@ console.log('\n05 // NOTHING HIDDEN')
     }
     if (!bad) pass(`${w}px — nothing hidden in any of the ${Object.keys(STATES).length} states`)
   }
+}
+
+// ── 6. identity: the signed-in Foundry user, and no callouts from a file ────
+console.log('\n06 // IDENTITY')
+{
+  // (a) served by Foundry → the People list names the signed-in user
+  const ctx = await newCtx({ viewport: { width: 1600, height: 1000 } })
+  const { page } = await openShell(ctx)
+  const seeded = await page.evaluate(() => localStorage.getItem('bento-author'))
+  if (target.startsWith('http')) {
+    if (seeded !== 'Test Person') note('identity', `display name not seeded from /api/account (got ${seeded})`)
+    else pass('signed-in Foundry user seeds the display name')
+    await page.click('.ed-btn-share, button[title*="Share"]').catch(() => {})
+    await page.waitForTimeout(600)
+    const who = await page.$eval('.ed-share-me .who', (e) => ({
+      text: e.textContent, cut: e.scrollWidth > e.clientWidth + 1,
+    })).catch(() => null)
+    if (!who) pass('share panel has no People row yet (no collab session) — nothing to check')
+    else if (!who.text.includes('Test Person')) note('identity', `People row reads "${who.text}"`)
+    else if (who.cut) note('identity', `People row truncates the name: "${who.text}"`)
+    else pass(`People row names the user, untruncated ("${who.text.trim()}")`)
+  } else {
+    pass('file:// target — skipping the served-by-Foundry half')
+  }
+  await ctx.close()
+
+  // (b) a SAVED deck must never call home. This is the format's contract: zero
+  //     external requests, so a deck still opens in five years, offline.
+  const ctx2 = await browser.newContext({ viewport: { width: 1400, height: 900 } })
+  const calls = []
+  await ctx2.route('**/*', (route) => {
+    const url = route.request().url()
+    if (!url.startsWith('file:')) calls.push(url)
+    return route.continue()
+  })
+  const page2 = await ctx2.newPage()
+  const tmp2 = join(tmpdir(), `deck-identity-${process.pid}.deck.html`)
+  writeFileSync(tmp2, readFileSync(new URL('../../../public/deck/index.html', import.meta.url), 'utf8'))
+  await page2.goto(`file://${tmp2}`)
+  await page2.waitForSelector('.ed-root', { timeout: 20000 })
+  await page2.waitForTimeout(2500)
+  if (calls.length) note('identity', `a saved deck made ${calls.length} external request(s): ${calls.slice(0, 3).join(', ')}`)
+  else pass('a saved deck makes zero external requests')
+  await ctx2.close()
+  rmSync(tmp2, { force: true })
 }
 
 await browser.close()

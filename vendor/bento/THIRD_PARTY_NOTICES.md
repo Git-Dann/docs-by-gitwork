@@ -35,10 +35,14 @@ comment near the top of every built shell and every saved Bento document.
 - Copyright 2020 The Fraunces Project Authors
 - Project: https://github.com/undercasetype/Fraunces
 
-### Instrument Sans
+### Instrument Sans — NOT shipped in the Foundry build
 - License: SIL Open Font License 1.1
 - Copyright 2022 The Instrument Sans Project Authors
 - Project: https://github.com/Instrument/instrument-sans
+- Note: embedded only for upstream's starter deck, which the Foundry shell does not
+  reference (see `slides/src/main.ts`), so rollup drops it — confirmed against the
+  uncompressed bundle. Listed because the source tree still carries it and a
+  re-sync could bring it back.
 
 ## Brand faces added by Foundry (embedded in the shell — `slides/src/foundry/fontdata.ts`)
 

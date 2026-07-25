@@ -141,9 +141,25 @@ export const AUDIT = () => {
     const r = el.getBoundingClientRect()
     const ownText = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())
 
-    // COLLAPSED — carries its own text but has no box to show it in
+    // COLLAPSED — carries its own text but has no box to show it in. Not when it
+    // sits inside a CLOSED disclosure though: a collapsed side rail legitimately
+    // squeezes its contents to zero, and reporting each label inside one buries
+    // the real findings (a phone-collapsed props rail is ~20 of them).
     if (ownText && (r.width < 1 || r.height < 1)) {
-      out.push({ kind: 'COLLAPSED', el: label(el), detail: `${Math.round(r.width)}x${Math.round(r.height)}` })
+      let drawer = el.parentElement, insideClosed = false
+      while (drawer && drawer !== document.body) {
+        const ds = getComputedStyle(drawer)
+        if (ds.overflowX !== 'visible' || ds.overflowY !== 'visible') {
+          if (isClosedDisclosure(drawer, Math.min(drawer.clientWidth || 0, drawer.clientHeight || 0))) {
+            insideClosed = true
+            break
+          }
+        }
+        drawer = drawer.parentElement
+      }
+      if (!insideClosed) {
+        out.push({ kind: 'COLLAPSED', el: label(el), detail: `${Math.round(r.width)}x${Math.round(r.height)}` })
+      }
       continue
     }
     if (r.width < 1 || r.height < 1) continue

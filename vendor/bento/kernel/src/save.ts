@@ -179,7 +179,10 @@ export async function serializeAuto(doc: KernelDoc): Promise<string> {
 
 export function suggestedFileName(doc: KernelDoc, suffix = ''): string {
   const base = doc.title.replace(/[^\w\d-]+/g, '_').replace(/^_+|_+$/g, '') || 'Untitled'
-  return `${base}${suffix ? `-${suffix}` : ''}.bento.html`
+  // FOUNDRY: saved decks are named `<title>.deck.html`. The FORMAT is unchanged —
+  // identity lives in the embedded <script type="application/bento+json"> block,
+  // not the extension — so these still open in any Bento shell and vice versa.
+  return `${base}${suffix ? `-${suffix}` : ''}.deck.html`
 }
 
 // --- writing to disk --------------------------------------------------------
