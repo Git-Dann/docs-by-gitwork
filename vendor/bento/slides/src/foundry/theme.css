@@ -1,0 +1,398 @@
+/* Foundry addition (not upstream bento).
+ *
+ * The DESIGN.md skin over bento's editor chrome. Imported AFTER styles.css, so
+ * same-specificity rules win — upstream stays untouched and re-syncable.
+ *
+ * Upstream already drives its whole chrome from a handful of custom properties
+ * (--ink / --chrome / --line / --accent / --radius), so most of the re-skin is
+ * a token swap. What's left is the house grammar that tokens can't express:
+ *   · the mono `NN // SECTION` widget header (THE Foundry signature) — done with
+ *     a CSS counter on the props rail, so it stays correct as sections change
+ *   · instrument geometry — 6px controls, 10px cards, and NO pills
+ *     (DESIGN.md reserves full radius for status dots)
+ *   · the Inter / DM Serif Display / JetBrains Mono triple, each in its own lane
+ *   · Gitwork Blue on every interactive + active state, replacing bento's amber
+ *
+ * Both brands live here: `:root` is Foundry, `:root[data-brand='gitwork']`
+ * re-derives the same rules for the agency brand guide (navy/cream/purple,
+ * Fraunces display, labels in Inter caps rather than mono — per DESIGN.md's
+ * per-document Gitwork theme). @font-face rules are injected at boot from
+ * foundry/fontdata.ts, so a saved deck still makes zero external requests.
+ */
+
+/* ─── tokens ─────────────────────────────────────────────────────────────── */
+
+:root {
+  /* upstream chrome vars, remapped to Foundry (globals.css / DESIGN.md) */
+  --ink: #0f172a;         /* text-1  */
+  --ink-2: #1e293b;       /* text-2  */
+  --chrome: #fafaf9;      /* canvas — warm off-white, never pure white */
+  --chrome-2: #f5f5f4;    /* surface-1 */
+  --line: rgba(0, 0, 0, 0.08);     /* hairline */
+  --muted: #64748b;       /* text-4 */
+  --accent: #1d4ed8;      /* Gitwork Blue — the single dominant brand colour */
+  --accent-ink: #1e3a8a;  /* blue-deep, for pressed/emphasis */
+  --blue: #1d4ed8;
+  --radius: 10px;         /* cards / panels */
+
+  /* Foundry-only additions */
+  --fd-surface: #ffffff;            /* raised card face */
+  --fd-line-strong: rgba(0, 0, 0, 0.14);
+  --fd-brand-soft: #eff6ff;
+  --fd-brand-strong: #dbeafe;
+  --fd-focus-ring: rgba(29, 78, 216, 0.16);
+  --fd-control: 6px;                /* buttons, inputs, chips */
+  --fd-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --fd-display: 'DM Serif Display', 'Times New Roman', Georgia, serif;
+  --fd-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  /* data labels + widget headers. Gitwork's brand guide sets labels in Inter
+     caps instead of mono, so this is a token rather than a hard-coded family. */
+  --fd-label: var(--fd-mono);
+  --fd-label-tracking: 0.12em;
+  --fd-mark-ink: #ffffff;
+}
+
+:root[data-brand='gitwork'] {
+  --ink: #0c0c18;         /* Gitwork navy */
+  --ink-2: #2a2a38;
+  --chrome: #f2ede4;      /* Gitwork cream */
+  --chrome-2: #e9e2d6;
+  --line: rgba(12, 12, 24, 0.12);
+  --muted: #68686b;
+  --accent: #6b52ff;      /* Gitwork purple */
+  --accent-ink: #3b2ecc;
+  --blue: #6b52ff;
+
+  --fd-surface: #fbf9f5;
+  --fd-line-strong: rgba(12, 12, 24, 0.2);
+  --fd-brand-soft: #efecff;
+  --fd-brand-strong: #ddd7ff;
+  --fd-focus-ring: rgba(107, 82, 255, 0.18);
+  --fd-display: 'Fraunces', 'DM Serif Display', Georgia, serif;
+  --fd-label: var(--fd-sans);
+  --fd-label-tracking: 0.14em;
+}
+
+/* ─── type ───────────────────────────────────────────────────────────────── */
+
+html,
+body {
+  font-family: var(--fd-sans);
+  background: var(--chrome);
+}
+
+/* Panels and rails sit on the raised face; the canvas keeps the warm canvas. */
+.ed-topbar,
+.ed-sidebar,
+.ed-props,
+.ed-menu,
+.ed-setbar,
+.ed-zoombar {
+  background: var(--fd-surface);
+}
+
+/* ─── the wordmark lockup ────────────────────────────────────────────────── */
+
+.ed-logo {
+  gap: 9px;
+}
+.fd-word {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--fd-display);
+  font-weight: 400;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.fd-word-tag {
+  font-family: var(--fd-label);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--fd-label-tracking);
+  text-transform: uppercase;
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+/* the Gitwork round "G." mark — cream disc, navy Fraunces G, purple period */
+.fd-gmark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  background: #f2ede4;
+  border: 1px solid rgba(12, 12, 24, 0.1);
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  color: #0c0c18;
+}
+.fd-gmark i {
+  font-style: normal;
+  color: #6b52ff;
+}
+
+/* ─── brand switch (Foundry · Gitwork) ───────────────────────────────────── */
+
+.fd-brandswitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--fd-control);
+  background: var(--chrome);
+}
+.fd-brandswitch button {
+  font: inherit;
+  font-family: var(--fd-label);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: var(--fd-label-tracking);
+  text-transform: uppercase;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 3px 7px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fd-brandswitch button:hover {
+  color: var(--ink-2);
+}
+.fd-brandswitch button[aria-pressed='true'] {
+  background: var(--fd-brand-soft);
+  border-color: var(--fd-brand-strong);
+  color: var(--accent-ink);
+}
+
+/* The switch is one more item in an already busy topbar, and its two words ARE
+ * the control — shrinking them to initials would be worse than not showing it. So
+ * it sheds on the same ladder upstream uses (button labels at 1200px, wordmark at
+ * 760px). 1560px is measured, not guessed: below it the flex row starts eating the
+ * deck-title field (220px → 118px at 1440), and the title matters more than a
+ * control you touch once. `?brand=gitwork` still forces either brand at any size. */
+@media (max-width: 1559px) {
+  .fd-brandswitch {
+    display: none;
+  }
+}
+
+/* ─── widget headers — `NN // SECTION`, the brand signature ──────────────── */
+
+/* Every props-rail section is numbered sequentially for the current view, so it
+   stays right as the rail re-renders per selection. The collapsible caret moves
+   to ::after to free ::before for the counter. */
+.ed-props {
+  counter-reset: fd-sec;
+}
+/* Full-bleed 36px header strip inside the 14px-padded rail (DESIGN.md
+   widget-header). Bled with negative margins rather than by moving the rail's
+   padding, so loose rows above the first section keep their inset. */
+.ed-props .ed-section {
+  font-family: var(--fd-label);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--fd-label-tracking);
+  color: var(--muted);
+  margin: 14px -14px 10px;
+  padding: 0 14px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--chrome);
+}
+.ed-props .ed-section:first-child {
+  border-top: 0;
+  margin-top: -14px;
+}
+.ed-props .ed-section::before {
+  counter-increment: fd-sec;
+  content: counter(fd-sec, decimal-leading-zero) ' // ';
+  color: var(--accent);
+  letter-spacing: var(--fd-label-tracking);
+  /* Collapsible headers also carry upstream's caret on ::before (an absolutely
+     positioned CSS triangle). We win the `content` declaration but inherit the
+     rest, so the triangle geometry is explicitly unwound here — otherwise the
+     number renders as an absolute box with a border-triangle stuck to it. */
+  position: static;
+  flex: none;
+  white-space: nowrap;
+  width: auto;
+  height: auto;
+  border: 0;
+  transform: none;
+  opacity: 1;
+}
+.ed-props .ed-section.closed::before {
+  transform: none;
+}
+.ed-props .ed-section {
+  flex-wrap: nowrap;
+}
+/* caret → ::after (::before now carries the section number) */
+.ed-props .ed-sec-toggle {
+  padding-left: 14px;
+}
+.ed-props .ed-sec-toggle::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transform: translateY(-50%) rotate(90deg);
+  transition: transform 0.12s ease;
+  opacity: 0.55;
+}
+.ed-props .ed-sec-toggle.closed::after {
+  transform: translateY(-50%);
+}
+
+/* rows: the value side of every row is a readout → mono (DESIGN.md data-label) */
+.ed-props .ed-row {
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.ed-row input[type='number'],
+.ed-row input[type='text'],
+.ed-row select,
+.ed-stepper-val,
+.ed-zoomlabel,
+.ed-thumb-num {
+  font-family: var(--fd-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── controls — 6px, hairlines, brand focus ring, no pills ──────────────── */
+
+.ed-btn,
+.ed-btn-block,
+.ed-btn-icon {
+  border-radius: var(--fd-control);
+  font-size: 13px;
+}
+.ed-btn-primary {
+  /* DESIGN.md button-primary: Gitwork Blue, white ink, 6px */
+  background: var(--accent);
+  color: #fff;
+}
+.ed-btn-primary:hover {
+  background: var(--accent-ink);
+}
+.ed-btn-primary:active {
+  background: var(--accent-ink);
+}
+
+.ed-row input[type='number'],
+.ed-row input[type='text'],
+.ed-row select,
+.ed-row input[type='color'],
+.ed-title,
+.ed-notes,
+.ed-chart-json,
+.ed-about-json {
+  border-radius: var(--fd-control);
+  border-color: var(--fd-line-strong);
+}
+.ed-row input:focus,
+.ed-row select:focus,
+.ed-notes:focus,
+.ed-title:focus {
+  border-color: var(--accent);
+  outline: 3px solid var(--fd-focus-ring);
+  outline-offset: 0;
+}
+
+/* de-pill the chrome. Full radius is reserved for status dots and avatars. */
+.ed-setbar,
+.ed-zoombar,
+.ed-present-pill,
+.ed-toast,
+.ed-comment-chip,
+.ed-reader-banner {
+  border-radius: var(--radius);
+}
+.ed-setchip,
+.ed-zoombtn,
+.ed-dialog-actions button,
+.ed-pwcard button,
+.ed-playercard button,
+.ed-share-btn {
+  border-radius: var(--fd-control);
+}
+.ed-pill-main {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+.ed-pill-caret {
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.ed-setchip.active {
+  background: var(--accent);
+  color: #fff;
+}
+/* mono caps for the chip-bar label — it names a set, like a widget header */
+.ed-setbar-label,
+.ed-help-sec h3,
+.ed-share-label {
+  font-family: var(--fd-label);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--fd-label-tracking);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* cards, menus and dialogs → 10px, hairline, DESIGN.md elevation-2 */
+.ed-menu,
+.ed-about,
+.ed-help-box,
+.ed-share-pop,
+.ed-comment-pop,
+.ed-layoutpick,
+.ed-version-box {
+  border-radius: var(--radius);
+  border-color: var(--line);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+.ed-thumb {
+  border-radius: 8px;
+}
+.ed-thumb.active {
+  border-color: var(--accent);
+}
+
+/* the unsaved dot + update chip pick up the brand instead of bento amber */
+.ed-dirty.on {
+  background: var(--accent);
+}
+.ed-btn-update {
+  background: var(--fd-brand-soft);
+  border-color: var(--fd-brand-strong);
+  color: var(--accent-ink);
+}
+.ed-reader-dot {
+  background: var(--accent);
+}
+.ed-help-more a {
+  color: var(--accent);
+}
+
+/* editorial figures: the About dialog's version number is a stat, not a label */
+.ed-about-h {
+  font-family: var(--fd-display);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}

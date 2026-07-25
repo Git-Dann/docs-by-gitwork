@@ -1192,3 +1192,87 @@ agent **calls out its own blind spots** (missing due dates/timelines) as info ra
   Settings → Foreman → Dry run, Run now (check the digest lands on the Desk + ALERTS), hit
   `GET /api/cron/foreman` with `CRON_SECRET`. **Deferred:** per-developer digests (management-only for
   now), configurable notification recipients, a "why not flagged" explain view.
+
+## 30. Recent Changes (July 2026) — Deck (the slide editor, forked from bento/slides)
+
+**Deck** is Foundry's own slide editor, opened in its own window from a small link on HQ and the
+Docs toolbar. It is a **fork of the MIT [`nyblnet/bento`](https://github.com/nyblnet/bento)
+slides app** (vendored at commit `f871720`, *Release v1.0.9*), wrapped in `DESIGN.md` and given
+the Foundry · Gitwork brand switch. **No Foundry data touches it** — it's a local editor.
+
+- **Why a separate window, not a Docs route.** A Bento file *is* the app: the built HTML carries
+  the runtime **and** the document in one file, and ⌘S rewrites that file in place (no server, no
+  DB row, no export step). There's nothing to render inside the `/app` shell, so Deck is a
+  standalone shell served from `public/deck/index.html`, linked with `target="_blank"`. This is
+  distinct from **Presentation Mode** (§17 / DESIGN.md), which presents an existing *document*.
+- **Vendored source — `vendor/bento/`** (`slides/` + the `kernel/` it imports + one build script;
+  upstream's site/server/spaces/plugins are not vendored). `vendor/bento/README.md` is the
+  provenance + re-sync runbook. **All Foundry code is additive in `slides/src/foundry/`**
+  (`brand.ts` · `theme.css` · `boot.ts` · `starter.ts` · generated `fontdata.ts`); every edit
+  inside an upstream file is a marked one-liner — `grep -rn "FOUNDRY:" vendor/bento/slides`.
+  `vendor/**` is excluded from the root `tsconfig`/`eslint` (it has upstream's own toolchain) and
+  `vendor/**/node_modules` is gitignored.
+- **Build + serve.** `npm run deck:install` once, then **`npm run deck:build`** → a single-file
+  Vite build (compressed self-extracting shell, ~725KB) written straight to
+  **`public/deck/index.html`, which IS committed**. Next serves it from `public/`, so shipping
+  Deck needed **no Docker, CI or schema change**. ⚠️ Change anything under `vendor/bento` → run
+  `deck:build` and commit the rebuilt shell in the same commit, or prod keeps the old one.
+  `npm run deck:dev` gives the vite dev server on :5173.
+- **Routing + auth.** `next.config.ts` rewrites `/deck` → `/deck/index.html` (a static shell isn't
+  a Next route, so bare `/deck` would 404) and now pins **`outputFileTracingRoot`** to the repo dir
+  — the vendored app brings a second `package-lock.json`, and with more than one lockfile Next only
+  *infers* the workspace root, which would change what a `standalone` build traces in. `src/middleware.ts` gates `/deck**` **exactly like an
+  `/app` page** (NextAuth session + `SESSION_VERSION`), via `isDeckPath()` folded into the same
+  clause — **no module gate**, since Deck holds no workspace data, so any signed-in member can
+  open one. Verified: unauthenticated `/deck` → 307 `/login?callbackUrl=/deck`.
+- **Entry points (deliberately quiet while it's in testing).** A mono `· DECK ↗` text link in the
+  HQ context strip (`app-overview.tsx` → `DeckLink`) and a `Deck` secondary button beside
+  Analytics on the Docs list toolbar (`proposal-list.tsx`). No sidebar item, no bento tile.
+- **Brand — Foundry · Gitwork** (`slides/src/foundry/brand.ts`, the single place product identity
+  lives; renaming the product is one line). Precedence: `?brand=` → **the deck's own theme** → the
+  remembered choice → Foundry. A segmented control in the topbar flips it **live with no reload**
+  (nothing unsaved is ever lost): it re-skins the chrome, re-declares the kernel app identity
+  (window-title suffix + save-picker label — `applyBrand()` re-calls `configureApp()`, which is why
+  upstream's call site moved out of `main.ts`), re-renders the wordmark, and **re-themes the deck
+  while it's still on brand defaults** — paper/ink/accent + an untouched chart palette move,
+  hand-picked colours don't; one `store.commit`, so ⌘Z undoes it. It repaints, it does **not**
+  rewrite text baked into a deck (a footer wordmark stays as typed). The control needs room, so it
+  only renders **≥1560px** (measured: below that the flex topbar squeezes the deck-title field
+  220px→118px) — `?brand=gitwork` still forces either brand at any size.
+- **A saved deck brings its brand with it** — `adoptDeckBrand()` on boot: a document whose theme
+  exactly matches a brand's is opened in that brand's chrome, so a Gitwork deck sent to someone
+  opens in Gitwork whatever their own last choice was. **Not** via `<html data-brand>` — the save
+  snapshot is cloned at boot (`capturePristine`), so that attribute always carries the brand the
+  window OPENED in, never the one the deck was saved in (tried it; it silently did the wrong thing).
+- **Design skin** — `slides/src/foundry/theme.css`, imported after upstream's `styles.css`. Token
+  swap + the house grammar upstream can't express: the mono **`NN // SECTION` widget header** on
+  the props rail (a **CSS counter**, so numbering stays sequential as the rail re-renders),
+  de-pilled chrome (upstream ships `999px` on the zoom bar, chip bar, present pill, toasts), 6px
+  controls / 10px cards, brand focus rings, and Gitwork Blue on every interactive state. See the
+  new **DESIGN.md § "Deck"** for the full spec incl. the per-brand token table.
+- **Typography is embedded, not linked** — Inter · JetBrains Mono · DM Serif Display latin woff2
+  base64 in `foundry/fontdata.ts` (generated by `vendor/bento/scripts/refresh-brand-fonts.mjs`,
+  `npm run fonts:refresh`), following upstream's own `fontdata.ts` precedent: a Bento file must
+  make **zero external requests**, so a saved deck keeps its typography offline. All three are
+  OFL-1.1 and are recorded in `THIRD_PARTY_NOTICES.md` (MIT/OFL notices must keep travelling with
+  the shell — the `NOTICE` block in `index.html` is carried into every saved deck; don't strip it).
+- **Starter deck** — `foundry/starter.ts`: five on-brand slides (mono eyebrow + accent rule, serif
+  headline, stat tiles, a live chart, morph transitions, speaker notes) that wear the active brand.
+  Upstream's own product tour is untouched and still reachable at `/deck?demo=bento`.
+- **Upstream update checks are off** — the launch check would hit `bento.page` for a manifest
+  signed with a key we deliberately don't hold. `silenceUpstreamUpdateChecks()` sets it off once
+  (so anyone re-enabling it in the About dialog keeps their choice); `manifestUrl` points at
+  `/deck/manifest.json`, which is not published — this shell updates when Foundry redeploys.
+- **Verified:** vendored `tsc -b` clean; root `tsc --noEmit` + `eslint` clean; `npm test` 135
+  passing; `next build` clean; headless-Chromium smoke tests of the built shell — both brands boot
+  with no console errors, all four faces load, the brand switch re-skins + re-themes + undoes,
+  present mode runs, a saved deck round-trips and reopens in its own brand, the topbar holds at
+  1600/1440/1366/1280, and `/deck` gates to `/login` unauthenticated. Two bugs were caught this way
+  rather than shipped: `injectBrandFonts()` ran *before* `capturePristine()` (would have baked
+  ~190KB of duplicate font CSS into every saved deck), and the first cut of "a saved deck remembers
+  its brand" read `<html data-brand>`, which is frozen at boot.
+- **Deferred / notes:** nothing links a saved `.bento.html` back to a Foundry document or client
+  yet (decks live as files — Drive/Docs attachment is the obvious next step); no PDF/thumbnail
+  capture into Docs; no `manifest.json`, so in-app "update" is a redeploy; collaboration (bento's
+  CRDT + relay) is untouched and unused; and the product name is one constant in `brand.ts` if
+  "Deck" isn't the final call.

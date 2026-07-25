@@ -14,6 +14,7 @@ import {
   MagnifyingGlassIcon,
   PencilSquareIcon,
   PlusIcon,
+  PresentationChartLineIcon,
   RectangleStackIcon,
   SparklesIcon,
   Squares2X2Icon,
@@ -505,6 +506,19 @@ export function ProposalList() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Deck — the slide editor (vendor/bento, served at /deck). Its own
+                window, not a Docs route: it's a standalone single-file editor
+                that takes over the page and saves to a file, not the database. */}
+            <a
+              href="/deck"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Deck — build a slide deck in a new window (beta)"
+              className={buttonStyles({ variant: "secondary", size: "md" })}
+            >
+              <PresentationChartLineIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">Deck</span>
+            </a>
             {/* Cross-doc analytics is proposal/win-rate insight — admin-level, hidden from devs. */}
             {canViewAdminDocTypes ? (
               <Link

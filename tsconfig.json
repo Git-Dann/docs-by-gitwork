@@ -38,6 +38,7 @@
   "exclude": [
     "node_modules",
     "toolcraft-app",
+    "vendor",
     "**/* 2.ts",
     "**/* 2.tsx",
     "**/* 2.mts"

@@ -183,6 +183,7 @@ export function AppOverview() {
         <span style={{ fontFamily: "var(--font-mono)" }}>{longDate}</span>
         {firstName ? <span>· {greetingPart()}, {firstName}</span> : null}
         {hasBackstage ? <WhoIsOffToday /> : null}
+        <DeckLink />
       </div>
 
       {/* Today band — "On your desk" (personal to-do, auto-hides when empty)
@@ -215,6 +216,27 @@ export function AppOverview() {
 
       {canSeeTasks && canSeeSignoff && canManageClientRecords ? <AgenticWorkflowCard /> : null}
     </div>
+  );
+}
+
+/**
+ * "· DECK ↗" — a quiet way in to Deck, the slide editor (vendor/bento, served at
+ * /deck). Deliberately a text link in the context strip rather than a bento tile:
+ * it's in testing, and it opens its own window because the editor takes over the
+ * whole page and saves to a file rather than the database.
+ */
+function DeckLink() {
+  return (
+    <a
+      href="/deck"
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Deck — build a slide deck in a new window (beta)"
+      className="font-medium uppercase tracking-[0.12em] text-[var(--text-4)] transition hover:text-[var(--brand-700)]"
+      style={{ fontFamily: "var(--font-mono)", fontSize: "10px" }}
+    >
+      · Deck ↗
+    </a>
   );
 }
 

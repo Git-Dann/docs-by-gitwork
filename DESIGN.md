@@ -661,6 +661,61 @@ backend view numbers its own `01`–`05`.)
 - All colours resolve through `--text-*` / `--surface-*` / `--border-*` / `--brand-*` / semantic
   tokens, so the console is correct in both light and navy dark mode.
 
+## Deck (the slide editor at `/deck`)
+
+**Deck** is Foundry's standalone slide editor — a fork of the MIT `bento/slides` app
+vendored at `vendor/bento` and served as a single static shell from `public/deck/index.html`
+(see `CLAUDE.md` §30). It is the platform's only **third-party-derived UI**, so the rule is
+simple: it wears the same design system as everything else, and the skin lives in exactly one
+file — `vendor/bento/slides/src/foundry/theme.css`. Never restyle the vendored chrome inline.
+
+**It opens in its own window, and that is deliberate.** A Deck file *is* the app: the built
+HTML carries the runtime and the document together, and ⌘S rewrites that file in place. There
+is no document row to render inside the `/app` shell, so Deck is never framed by the sidebar —
+it is reached by a small mono `· DECK ↗` link in the HQ context strip and a `Deck` secondary
+button on the Docs list toolbar, both `target="_blank"`.
+
+**Two brands, one shell** — the same Foundry/Gitwork pairing as the per-document doc theme
+above, switched from a compact segmented control in the topbar (mono caps, 6px, brand-soft
+active fill). `:root` is Foundry; `:root[data-brand='gitwork']` re-derives every token:
+
+| | Foundry | Gitwork |
+|---|---|---|
+| Paper / chrome | `{colors.canvas}` `#FAFAF9` | cream `#F2EDE4` |
+| Ink | `{colors.ink}` `#0F172A` | navy `#0C0C18` |
+| Accent | Gitwork Blue `{colors.primary}` | purple `#6B52FF` |
+| Display | DM Serif Display | Fraunces |
+| Labels | JetBrains Mono caps | Inter caps (per the brand guide) |
+| Mark | tile triptych in blue tones | the round "G." disc |
+
+Switching re-skins the editor **and** re-themes the deck while the deck is still on brand
+defaults (paper, ink, accent and the chart palette move; anything hand-picked is left alone).
+One `store.commit`, so ⌘Z undoes it. It repaints — it never rewrites text baked into a deck. A
+**saved** deck opens in the brand its theme matches, so a Gitwork deck reads as Gitwork for whoever
+was sent it. The control only renders at **≥1560px** (below that it would squeeze the deck-title
+field); `?brand=gitwork` forces a brand at any size.
+
+**What the skin enforces** (upstream's chrome is otherwise generic light-grey SaaS):
+- **`NN // SECTION` widget headers** — every properties-rail section is a 36px hairline-bordered
+  strip with a mono `{typography.widget-header}` label and its number in the accent, produced by
+  a **CSS counter** on the rail so it stays sequential as sections change with the selection.
+  This is the brand signature; it is not optional, even here.
+- **No pills.** Upstream ships `999px` on its zoom bar, chip bar, present pill, toasts and
+  dialog buttons; the skin returns them to `{rounded.md}` / `{rounded.lg}`. Full radius stays
+  reserved for status dots and collaborator avatars.
+- **Instrument geometry + hairlines** — 6px controls, 10px cards/menus, `{colors.hairline}`
+  borders, Elevation-2 only on menus and dialogs.
+- **The type triple, each in its lane** — Inter for UI, DM Serif Display for the wordmark and
+  large figures, JetBrains Mono for every readout (numeric inputs, zoom, slide numbers,
+  timestamps). All three are **embedded as base64 woff2** in the shell, because a Deck file must
+  make zero external requests — a saved deck keeps its typography offline.
+- **Gitwork Blue on every interactive + active state**, replacing upstream's amber accent
+  (including the dirty-save dot and the active slide thumbnail).
+
+**Deck-native slides follow the document grammar** — the starter deck is built from the same
+parts as the rest of the platform: a mono eyebrow over a short accent rule, a serif headline,
+and stat tiles (DM Serif figure over a mono caps label, one accent-filled).
+
 ## Do's and Don'ts
 
 ### Do
