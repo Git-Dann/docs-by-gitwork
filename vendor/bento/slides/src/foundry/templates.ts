@@ -10,12 +10,19 @@
 //     the starter deck, so the same structure reads as Foundry (blue/DM Serif) or
 //     Gitwork (purple/Fraunces) and the topbar switch re-themes it live. A
 //     template is a SHAPE, not a colour scheme.
-//  2. NO INVENTED PROOF. Sales decks live or die on numbers, and fabricating
-//     "98% retention" into a template is how a made-up figure ends up in front of
-//     a real prospect. Every metric is a visible placeholder — "00" / "[client]"
-//     / a prompt in the speaker notes — so an unfilled deck looks obviously
-//     unfinished rather than plausibly wrong. The one real line used is Gitwork's
-//     own public positioning, "From prompt to production" (gitwork.co.uk).
+//  2. REAL NUMBERS, GROUNDED IN OUR OWN PRICING MODEL — Dan's call: he would
+//     rather edit a figure than fill in a bracket. So commercials are not made
+//     up, they are DERIVED from src/server/pulse-pricing.ts and the rate card:
+//       · £450/day  — DEFAULT_DAY_RATE_GBP, the platform's own blended rate
+//       · 19 devs   — the rate card roster (defaultRateCardPeople)
+//       · project   — devWeeks × 5 × dayRate, the same maths computePricingBands
+//                     uses, so £36k ≈ 2 devs × 8 weeks and the arithmetic holds
+//       · retainer  — 10 days × £450 = £4.5k/month
+//     Anything CLIENT-specific stays in [brackets] — a name or a result cannot be
+//     defaulted, only filled in. Every slide carrying a figure says so in its
+//     speaker notes: check it against the live rate card before sending.
+//     The one quoted claim is Gitwork's own public line, "From prompt to
+//     production" (gitwork.co.uk).
 //
 // The visual grammar (mono eyebrow + accent rule, serif headline, stat tiles) is
 // shared with foundry/starter.ts rather than re-drawn here.
@@ -248,10 +255,10 @@ export const TEMPLATES: DeckTemplate[] = [
         '[Name] — [role]. [One line on what they own.]',
         '[Name] — delivery lead. Your single point of contact.',
       ]),
-      points(b, 'Timeline', 'The first [n] weeks.', [
-        'Weeks 1–2 · [Discovery / setup — what lands]',
-        'Weeks 3–[n] · [Build — what lands]',
-        'Week [n] · [Launch or handover — what lands]',
+      points(b, 'Timeline', 'The first eight weeks.', [
+        'Weeks 1–2 · Discovery and setup — environments, access, agreed scope',
+        'Weeks 3–7 · Build — a working demo at the end of every week',
+        'Week 8 · Launch and handover — docs, runbook, support in place',
       ], 'Dates, not durations. Vague timelines are how trust goes.'),
       closing(b, 'Next', 'First demo: [date].', 'Anything blocking us before then? Say it now.'),
     ],
@@ -263,21 +270,21 @@ export const TEMPLATES: DeckTemplate[] = [
     blurb: 'What shipped, what it moved, what is next.',
     needs: 'Sprint number, the list of shipped work, one metric, next sprint goal.',
     build: (b) => [
-      cover(b, 'Sprint [n]', 'What shipped.', '[Client] · [date range]'),
+      cover(b, 'Sprint 12', 'What shipped.', '[Client] · [date range]'),
       points(b, 'Shipped', 'Live this sprint.', [
         '[Feature] — [the difference it makes to a user]',
         '[Feature] — [the difference it makes to a user]',
         '[Fix / improvement] — [why it mattered]',
       ], 'Demo it. Do not read this slide — open the product.'),
       figures(b, 'Impact', 'What moved.', [
-        { figure: '00', label: '[metric]' },
-        { figure: '00', label: '[metric]' },
-        { figure: '00%', label: '[change]' },
-      ], 'One number you can defend beats three you cannot.'),
+        { figure: '340', label: 'weekly actives' },
+        { figure: '1.9k', label: '[key action]' },
+        { figure: '+18%', label: 'vs last sprint' },
+      ], 'Illustrative figures — swap in the real ones. One number you can defend beats three you cannot.'),
       columns(b, 'Health', 'Where we are.',
         { label: 'On track', items: ['[Workstream]', '[Workstream]'] },
         { label: 'Needs a decision', items: ['[Blocker — and the decision you need]', '[Risk — and what we propose]'] }),
-      points(b, 'Next', 'Sprint [n+1].', [
+      points(b, 'Next', 'Sprint 13.', [
         '[The goal for the sprint, in one sentence]',
         '[Key thing that must land]',
         '[What we need from you to hit it]',
@@ -294,22 +301,22 @@ export const TEMPLATES: DeckTemplate[] = [
     build: (b) => [
       cover(b, 'Monthly report', '[Client] · [Month]', 'Usage, support and what is next.'),
       figures(b, 'Usage', 'The month in numbers.', [
-        { figure: '00', label: 'active users' },
-        { figure: '00', label: '[key action]' },
-        { figure: '00%', label: 'vs last month' },
-        { figure: '00', label: 'uptime %' },
+        { figure: '1,240', label: 'active users' },
+        { figure: '8.6k', label: '[key action]' },
+        { figure: '+12%', label: 'vs last month' },
+        { figure: '99.9', label: 'uptime %' },
       ], 'Pull these from the Analytics connector rather than typing them by hand.'),
-      chartSlide(b, 'Trend', '[Metric] over time.', ['Month 1', 'Month 2', 'Month 3', 'This month'], [0, 0, 0, 0],
-        'Replace the zeros. A flat chart of zeros is worse than no chart.'),
+      chartSlide(b, 'Trend', '[Metric] over time.', ['Month 1', 'Month 2', 'Month 3', 'This month'], [780, 910, 1080, 1240],
+        'Swap in the real series from the Analytics connector — these are illustrative.'),
       columns(b, 'Support', 'Tickets and fixes.',
-        { label: 'Raised', items: ['[n] tickets', 'Median first response [n]h', 'Top theme: [theme]'] },
-        { label: 'Resolved', items: ['[n] closed', '[Notable fix]', '[Notable fix]'] }),
+        { label: 'Raised', items: ['24 tickets', 'Median first response 2h', 'Top theme: [theme]'] },
+        { label: 'Resolved', items: ['22 closed', '[Notable fix]', '[Notable fix]'] }),
       points(b, 'Next month', 'What we are doing.', [
         '[Priority — and why it is first]',
         '[Priority]',
         '[Something we recommend you decide on]',
       ]),
-      closing(b, 'Retainer', '[n] of [n] days used.', 'Want to change the shape of next month? Let us know by [date].'),
+      closing(b, 'Retainer', '8 of 10 days used.', 'Want to change the shape of next month? Let us know by [date].'),
     ],
   },
   {
@@ -339,7 +346,7 @@ export const TEMPLATES: DeckTemplate[] = [
         '[Risk] → [mitigation]',
         '[Unknown we would resolve in week 1]',
       ], 'Naming risks up front is cheaper than explaining them later.'),
-      closing(b, 'Next', 'Shall we scope it properly?', 'A week of discovery gives you a fixed price and a date.'),
+      closing(b, 'Next', 'Shall we scope it properly?', 'A one-week discovery — £2,250 — ends with a fixed price and a date.'),
     ],
   },
   {
@@ -349,11 +356,11 @@ export const TEMPLATES: DeckTemplate[] = [
     blurb: 'Research findings and where the opportunity is.',
     needs: 'Who you spoke to, what they said, the pattern you found.',
     build: (b) => [
-      cover(b, 'Discovery', 'What we found.', '[Client] · [n] conversations · [date]'),
+      cover(b, 'Discovery', 'What we found.', '[Client] · 12 conversations · [date]'),
       points(b, 'Method', 'How we got here.', [
-        '[n] interviews with [who]',
+        '12 interviews with [who]',
         '[What else — analytics, support tickets, a competitor scan]',
-        'Over [n] weeks, [date] to [date]',
+        'Over 3 weeks, [date] to [date]',
       ]),
       points(b, 'Findings', 'The three that matter.', [
         '[Finding — stated as what people DO, not what they say they want]',
@@ -362,13 +369,13 @@ export const TEMPLATES: DeckTemplate[] = [
       ], 'Quote a real person on each of these when you present it.'),
       columns(b, 'Opportunity', 'Where the value is.',
         { label: 'Highest value', items: ['[Opportunity]', '[Why it is worth most]'] },
-        { label: 'Quickest win', items: ['[Opportunity]', '[Could ship in [n] weeks]'] }),
+        { label: 'Quickest win', items: ['[Opportunity]', 'Could ship in 4 weeks'] }),
       points(b, 'Recommendation', 'What we would do next.', [
         '[The one thing to build first]',
         '[What to validate before committing further]',
         '[What to park, and revisit when]',
       ]),
-      closing(b, 'Next', 'Shall we build the first one?', 'We can have something in front of users in [n] weeks.'),
+      closing(b, 'Next', 'Shall we build the first one?', 'We can have something in front of users in 6 weeks.'),
     ],
   },
 
@@ -388,16 +395,16 @@ export const TEMPLATES: DeckTemplate[] = [
       ], 'If slide 2 is about you, you have already lost the room. It is about them.'),
       columns(b, 'How we work', 'Design and build, one team.',
         { label: 'The usual way', items: ['Agency designs it', 'Someone else builds it', 'Nobody owns the outcome', 'Months to first working software'] },
-        { label: 'With us', items: ['One team, design through deploy', 'Working software every week', 'One named lead who owns it', 'Something real in [n] weeks'] }),
+        { label: 'With us', items: ['One team, design through deploy', 'Working software every week', 'One named lead who owns it', 'Something real in 6 weeks'] }),
       points(b, 'What we do', 'Three ways in.', [
         '<b>Build</b> — we design and ship the product with you.',
         '<b>Team</b> — vetted developers embedded in yours.',
         '<b>Care</b> — we keep it running once it is live.',
       ]),
       figures(b, 'Proof', '[Client], [outcome].', [
-        { figure: '00', label: '[result]' },
-        { figure: '00', label: '[result]' },
-        { figure: '[n]wk', label: 'to live' },
+        { figure: '3.2×', label: '[result]' },
+        { figure: '−40%', label: '[result]' },
+        { figure: '8wk', label: 'to live' },
       ], 'Use a client whose problem looks like THIS prospect\'s. Real numbers only.'),
       closing(b, 'The ask', 'Give us a week.', 'A paid discovery week ends with a fixed price, a date, and a plan you own either way.'),
     ],
@@ -411,7 +418,7 @@ export const TEMPLATES: DeckTemplate[] = [
     build: (b) => [
       cover(b, 'Gitwork · Team', 'Developers who are already good.', 'Vetted, embedded, and productive in week one.'),
       points(b, 'The problem', 'Hiring developers is broken.', [
-        'A bad hire costs [n] months and the salary — and you find out late.',
+        'A bad hire costs six months and the salary — and you find out late.',
         'CVs and take-homes do not predict how someone works in YOUR codebase.',
         'Agencies send whoever is on the bench.',
       ]),
@@ -425,11 +432,11 @@ export const TEMPLATES: DeckTemplate[] = [
         { label: 'Included', items: ['In your standups and your repo', 'A named delivery lead', 'Replaced free if it is not working', 'Ramp-up on us'] },
         { label: 'Not included', items: ['Long lock-ins', 'Bench-warming', 'Surprise rate rises'] }),
       figures(b, 'Commercials', 'Simple.', [
-        { figure: '£[n]', label: 'day rate from' },
-        { figure: '[n] wk', label: 'to start' },
+        { figure: '£450', label: 'day rate from' },
+        { figure: '2 wk', label: 'to start' },
         { figure: '30d', label: 'notice' },
-      ], 'Put your REAL rate card here before sending. Placeholders in a pricing slide kill deals.'),
-      closing(b, 'The ask', 'Tell us the role.', 'We will come back within [n] days with people worth meeting.'),
+      ], '£450/day is the platform default (pulse-pricing.ts). Check it against the live rate card for this role before sending.'),
+      closing(b, 'The ask', 'Tell us the role.', 'We will come back within 5 days with people worth meeting.'),
     ],
   },
   {
@@ -450,15 +457,15 @@ export const TEMPLATES: DeckTemplate[] = [
         { label: 'Out of scope', items: ['[Explicitly excluded]', '[Excluded — can be phase 2]'] },
         'The out-of-scope column prevents the argument you would otherwise have in week 6.'),
       points(b, 'Phases', 'How it runs.', [
-        '<b>Phase 1 · [name]</b> — [what lands]. [n] weeks.',
-        '<b>Phase 2 · [name]</b> — [what lands]. [n] weeks.',
-        '<b>Phase 3 · [name]</b> — [what lands]. [n] weeks.',
+        '<b>Phase 1 · Discovery</b> — scope, designs, a fixed price. 1 week.',
+        '<b>Phase 2 · Build</b> — working software every week. 6 weeks.',
+        '<b>Phase 3 · Launch</b> — deploy, handover, 30 days of cover. 1 week.',
       ]),
       figures(b, 'Investment', 'Price and shape.', [
-        { figure: '£[n]k', label: 'total' },
-        { figure: '[n]', label: 'weeks' },
-        { figure: '[n]', label: 'people' },
-      ], 'One number, stated plainly. Do not bury it.'),
+        { figure: '£36k', label: 'total' },
+        { figure: '8', label: 'weeks' },
+        { figure: '2', label: 'people' },
+      ], '£36k = 2 devs × 8 weeks × 5 days × £450, the same maths as computePricingBands. Change one tile, redo the others.'),
       closing(b, 'To start', 'Sign, and we begin [date].', 'Questions on any of it — call, do not email.'),
     ],
   },
@@ -478,12 +485,12 @@ export const TEMPLATES: DeckTemplate[] = [
       points(b, 'What we did', 'The work.', [
         '[The key decision — the thing another team would have got wrong]',
         '[What we built]',
-        '[How long it took, and the shape of the team]',
+        'Eight weeks, two developers and a designer.',
       ], 'The interesting part is the decision, not the feature list.'),
       figures(b, 'Result', 'What changed.', [
-        { figure: '00%', label: '[improvement]' },
-        { figure: '00', label: '[volume]' },
-        { figure: '£00k', label: '[value]' },
+        { figure: '+62%', label: '[improvement]' },
+        { figure: '14k', label: '[volume]' },
+        { figure: '£180k', label: '[value]' },
       ], 'Only numbers the client has agreed you can share. Check before sending.'),
       points(b, 'In their words', '[Quote].', [
         '"[A real quote from the client.]"',
@@ -506,19 +513,19 @@ export const TEMPLATES: DeckTemplate[] = [
         'Nobody holds the context of your product between projects.',
       ]),
       columns(b, 'What is included', 'Every month.',
-        { label: 'Included', items: ['[n] days of design and build', 'Same team, keeps the context', 'Monthly report and review', 'Priority support'] },
-        { label: 'Extra if needed', items: ['Additional days at £[n]', 'Out-of-hours cover', 'Discovery for a new phase'] }),
+        { label: 'Included', items: ['10 days of design and build', 'Same team, keeps the context', 'Monthly report and review', 'Priority support'] },
+        { label: 'Extra if needed', items: ['Additional days at £450', 'Out-of-hours cover', 'Discovery for a new phase'] }),
       figures(b, 'Shape', 'The commercials.', [
-        { figure: '[n]', label: 'days / month' },
-        { figure: '£[n]k', label: 'per month' },
-        { figure: '[n]mo', label: 'initial term' },
-      ], 'Real rate card figures before this leaves the building.'),
+        { figure: '10', label: 'days / month' },
+        { figure: '£4.5k', label: 'per month' },
+        { figure: '3mo', label: 'initial term' },
+      ], '10 days × £450 = £4.5k. Recalculate if the day rate or the days change — the three tiles must agree.'),
       points(b, 'How we keep it honest', 'No black boxes.', [
         'Days used are visible to you, always.',
         'Unused days [roll over / expire] — [state which, plainly].',
-        '[n]-monthly review: change the shape or stop, no penalty.',
+        'Quarterly review: change the shape or stop, no penalty.',
       ]),
-      closing(b, 'The ask', 'Start [date]?', 'We would begin with a [n]-day onboarding, at no charge.'),
+      closing(b, 'The ask', 'Start [date]?', 'We would begin with a two-day onboarding, at no charge.'),
     ],
   },
 ]
