@@ -194,6 +194,11 @@ function isOgAssetPath(pathname: string): boolean {
   return /\/(opengraph|twitter)-image(\b|\/|$)/.test(pathname);
 }
 
+/** The Deck shell (public/deck/index.html, reached at /deck). */
+function isDeckPath(pathname: string): boolean {
+  return pathname === "/deck" || pathname.startsWith("/deck/");
+}
+
 function hasModuleAccess(pathname: string, permissions: string[]): boolean {
   for (const { prefix, module } of MODULE_PATHS) {
     if (pathname.startsWith(prefix)) {
@@ -246,9 +251,17 @@ export default auth(async (req) => {
   // Anchor on the segment boundary so sibling public routes like /apply are NOT
   // treated as app pages (`"/apply".startsWith("/app")` is true — the bug this
   // guards against). Gate exactly `/app` and any `/app/**`.
-  if (pathname === "/app" || pathname.startsWith("/app/")) {
+  //
+  // `/deck` rides along: it's the static Deck shell served from public/deck (see
+  // next.config.ts rewrites), an internal tool, so it needs a session exactly
+  // like an app page. It has no module gate — Deck holds no Foundry data, it's a
+  // local editor, so any signed-in member can open one.
+  const isAppPage = pathname === "/app" || pathname.startsWith("/app/");
+  if (isAppPage || isDeckPath(pathname)) {
     const userAgent = req.headers.get("user-agent");
-    if (isOgAssetPath(pathname) || isUnfurlBot(userAgent)) {
+    // The unfurl/OG bypass exists so an /app entity page can render its card —
+    // Deck has no metadata worth unfurling, so it never skips the session check.
+    if (isAppPage && (isOgAssetPath(pathname) || isUnfurlBot(userAgent))) {
       return NextResponse.next();
     }
     if (!req.auth) {

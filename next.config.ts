@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
 
 // Read version from package.json at build time. Baked into the client bundle via env below
 // so the sidebar footer can show "v1.0.0 · <build date>" to confirm a fresh deploy is live.
@@ -9,6 +11,11 @@ const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), 
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Pin the workspace root. The vendored Deck app (vendor/bento/slides) has its own
+  // package-lock.json, and with more than one lockfile in the tree Next only *infers*
+  // the root — a wrong guess would change what a standalone build traces in. This is
+  // the same directory it infers today, stated explicitly so it can't drift.
+  outputFileTracingRoot: dirname(fileURLToPath(import.meta.url)),
   env: {
     // In production this is stamped by CI (.github/workflows/deploy.yml → Dockerfile ARG) as
     // "<pkg.version>.<gh-run-number>" so every push auto-bumps the patch segment without
@@ -57,6 +64,14 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  async rewrites() {
+    return [
+      // Deck (the slide editor — vendor/bento, built to public/deck/index.html)
+      // is a single static shell, not a Next route, so /deck alone would 404.
+      // Auth is middleware's job (it gates /deck** like an /app page).
+      { source: "/deck", destination: "/deck/index.html" },
+    ];
+  },
   async headers() {
     // Baseline security headers applied to every route EXCEPT /embed/* (the public
     // Pulse widget is intentionally frameable — handled separately below). The
@@ -79,6 +94,16 @@ const nextConfig: NextConfig = {
         // Everything except /embed/*.
         source: "/((?!embed/).*)",
         headers: securityHeaders,
+      },
+      {
+        // Deck's shell is a 700KB static file that only changes on deploy, and Next
+        // serves public/ with `max-age=0` — so every open paid a revalidation round
+        // trip. A minute of freshness makes reopening instant while still picking up
+        // a deploy on the next open; `must-revalidate` keeps it from going stale
+        // beyond that. Cache-Control ONLY — /deck already matches the catch-all
+        // above, so re-listing the security headers here would send each twice.
+        source: "/deck/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=60, must-revalidate" }],
       },
       {
         // The public Pulse scanner is a lead-gen widget for the gitwork.co.uk marketing

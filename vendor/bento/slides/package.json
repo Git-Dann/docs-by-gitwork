@@ -1,0 +1,29 @@
+{
+  "name": "bento-slides",
+  "private": true,
+  "version": "1.0.9",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:single": "tsc -b && SINGLEFILE=1 vite build --outDir dist-single && mv dist-single/index.html dist-single/Bento_Slides.bento.html && node ../scripts/postbuild-compress.mjs dist-single/Bento_Slides.bento.html",
+    "preview": "vite preview",
+    "//foundry": "Builds the shell Foundry serves at /deck. Same single-file build as build:single (the file IS the app AND the document) — it just lands in the Next app's public/ dir instead of dist-single/. Run it from the repo root with `npm run deck:build`.",
+    "build:foundry": "tsc -b && SINGLEFILE=1 vite build --outDir ../../../public/deck --emptyOutDir && node ../scripts/postbuild-compress.mjs ../../../public/deck/index.html",
+    "fonts:refresh": "node ../scripts/refresh-brand-fonts.mjs"
+  },
+  "dependencies": {
+    "moveable": "^0.53.0",
+    "reveal.js": "^5.2.1",
+    "selecto": "^1.26.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "@types/reveal.js": "^5.2.1",
+    "qrcode": "^1.5.4",
+    "typescript": "~5.8.3",
+    "vite": "^7.1.1",
+    "vite-plugin-singlefile": "^2.3.3"
+  }
+}

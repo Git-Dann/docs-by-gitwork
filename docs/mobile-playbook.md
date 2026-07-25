@@ -74,8 +74,56 @@ Grep every usage before editing any of these; a change here is never local:
        environment** exists, hand the user a precise, minimal capture list — the exact page,
        the 2–3 viewports, and the specific elements to check — never "please check everything."
        Once staging is available, drive Playwright against it for gated pages too.
-5. **Report the blast radius, not just the fix**: what changed, every place that shares the code
+5. **Run the clipping audit** (below) on whatever you can reach. "It looked right in the
+   screenshot" is how cut-off UI keeps shipping — the audit checks the whole DOM, in states a
+   screenshot never covers.
+6. **Report the blast radius, not just the fix**: what changed, every place that shares the code
    and why it's safe, desktop-regression status, and the verification actually run (with output).
+
+---
+
+## 3a. The clipping audit — `npm run audit:clipping <url>`
+
+`scripts/audit-clipping.mjs` exists because "I opened the UI and it was cut off" kept being found
+by hand. It drives a page in headless Chromium at four viewports and walks every rendered element
+for the five ways content goes missing without anyone noticing in review:
+
+| | |
+|---|---|
+| `CLIPPED` | an ancestor's overflow cuts it off **and that ancestor cannot scroll** to reveal it |
+| `OFFSCREEN` | a fixed/sticky panel rendering outside the viewport, unreachable by scrolling |
+| `COLLAPSED` | it has text but zero height/width — a container that closed up |
+| `TRUNCATED` | text ellipsed/cut with no `title` **and** no scroll, so the value is unreadable anywhere |
+| `PAGE-X` | the page scrolls sideways — **and it names the element responsible** |
+
+```bash
+npm i --no-save playwright-core          # not a repo dep; Chromium is preinstalled
+npm run audit:clipping -- --self-test    # proves the detector still fires (do this first)
+npm run audit:clipping http://localhost:3000/api-docs
+npm run audit:clipping http://localhost:3000/ --viewports=390x844,1280x620
+```
+
+**It is deliberately quiet** about content that is *meant* to be out of view: `display:none`,
+`visibility:hidden`, `opacity:0`, `aria-hidden`, sr-only nodes, closed disclosures (`aria-expanded`,
+`<details>`, a `collapsed`/`closed` class, a zero-size rail), SVG internals, fixed-canvas artboards
+(a slide crops what hangs off it by design), and **anything a scrollable ancestor can bring into
+view** — scrollable-but-clipped is normal UI, not a defect. Each of those exclusions is a heuristic,
+so a suspiciously clean report deserves one look at the panel in question.
+
+Two rules learned the hard way, both encoded in the script:
+
+- **`overflow:hidden` is not scrollable.** The browser still reports `scrollWidth`/`scrollHeight`
+  past the box, so testing those alone excuses the single most common way UI disappears. Only
+  `auto`/`scroll` means a person can reach it.
+- **`innerWidth` lies on mobile.** When content forces a page wider than the device, mobile
+  browsers widen `innerWidth` to fit it — so it reports nothing past the edge while the user is
+  scrolling sideways. Measure against `documentElement.clientWidth`.
+
+**Run it before claiming a responsive fix is verified.** For Deck (`/deck`) it is already wired into
+`npm run deck:verify`, which drives eight editor states (dialogs, popovers, a full props rail,
+present mode) at four viewports — 1280×620 is in the list on purpose, because a short laptop
+viewport is where dialogs run off the bottom with nothing to scroll. `/app` pages stay unreachable
+until there's a staging environment; point the script at them the day there is one.
 
 ## 4. Standing rules
 

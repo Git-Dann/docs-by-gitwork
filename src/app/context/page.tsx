@@ -33,7 +33,11 @@ export default function ContextPage() {
       {/* ── MODULE MAP ───────────────────────────────────────────────── */}
       <section style={{ marginBottom: 40 }}>
         <h2 style={{ fontSize: 18, fontWeight: 600, borderBottom: "1px solid #e5e5e5", paddingBottom: 6, marginBottom: 16 }}>Module Map</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+        {/* Tables don't reflow, they scroll (mobile playbook §2). Without this
+            wrapper the four columns force ~455px and the whole PAGE scrolls
+            sideways on a phone — found by scripts/audit-clipping.mjs. */}
+        <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, minWidth: 520 }}>
           <thead>
             <tr style={{ background: "#f5f5f5" }}>
               <th style={{ textAlign: "left", padding: "6px 10px", border: "1px solid #e5e5e5" }}>Module</th>
@@ -51,6 +55,7 @@ export default function ContextPage() {
               ["Clients", "/app/clients", "Client management and profile pages", "Live"],
               ["Pulse", "/app/pulse", "AI project validation — 150+ checks, gap analysis, fix agent; includes an optional Study research tool (multi-agent interviews) at /app/study", "Live"],
               ["Care / Support", "/app/support", "Client support ops — conversations, tickets, workflow rules", "Live"],
+              ["Deck", "/deck", "Slide editor — a fork of the MIT bento/slides app (vendor/bento), served as a single static shell and opened in its own window from HQ + the Docs toolbar. Signed-in members only; holds no workspace data", "Beta"],
               ["Pulse Overview", "/pulse-overview", "Public-facing standalone Pulse product page (not in app nav)", "Live"],
               ["Rate Card", "(settings)", "People rates used in proposal costing", "Live"],
               ["API Docs", "/api-docs", "REST API reference page", "Live"],
@@ -64,6 +69,7 @@ export default function ContextPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </section>
 
       {/* ── TECH STACK ───────────────────────────────────────────────── */}

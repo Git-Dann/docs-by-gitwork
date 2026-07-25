@@ -1192,3 +1192,164 @@ agent **calls out its own blind spots** (missing due dates/timelines) as info ra
   Settings → Foreman → Dry run, Run now (check the digest lands on the Desk + ALERTS), hit
   `GET /api/cron/foreman` with `CRON_SECRET`. **Deferred:** per-developer digests (management-only for
   now), configurable notification recipients, a "why not flagged" explain view.
+
+## 30. Recent Changes (July 2026) — Deck (the slide editor, forked from bento/slides)
+
+**Deck** is Foundry's own slide editor, opened in its own window from a small link on HQ and the
+Docs toolbar. It is a **fork of the MIT [`nyblnet/bento`](https://github.com/nyblnet/bento)
+slides app** (vendored at commit `f871720`, *Release v1.0.9*), wrapped in `DESIGN.md` and given
+the Foundry · Gitwork brand switch. **No Foundry data touches it** — it's a local editor.
+
+- **Why a separate window, not a Docs route.** A Bento file *is* the app: the built HTML carries
+  the runtime **and** the document in one file, and ⌘S rewrites that file in place (no server, no
+  DB row, no export step). There's nothing to render inside the `/app` shell, so Deck is a
+  standalone shell served from `public/deck/index.html`, linked with `target="_blank"`. This is
+  distinct from **Presentation Mode** (§17 / DESIGN.md), which presents an existing *document*.
+- **Vendored source — `vendor/bento/`** (`slides/` + the `kernel/` it imports + one build script;
+  upstream's site/server/spaces/plugins are not vendored). `vendor/bento/README.md` is the
+  provenance + re-sync runbook. **All Foundry code is additive in `slides/src/foundry/`**
+  (`brand.ts` · `theme.css` · `boot.ts` · `starter.ts` · generated `fontdata.ts`); every edit
+  inside an upstream file is a marked one-liner — `grep -rn "FOUNDRY:" vendor/bento/slides`.
+  `vendor/**` is excluded from the root `tsconfig`/`eslint` (it has upstream's own toolchain) and
+  `vendor/**/node_modules` is gitignored.
+- **Build + serve.** `npm run deck:install` once, then **`npm run deck:build`** → a single-file
+  Vite build (compressed self-extracting shell, ~725KB) written straight to
+  **`public/deck/index.html`, which IS committed**. Next serves it from `public/`, so shipping
+  Deck needed **no Docker, CI or schema change**. ⚠️ Change anything under `vendor/bento` → run
+  `deck:build` and commit the rebuilt shell in the same commit, or prod keeps the old one.
+  `npm run deck:dev` gives the vite dev server on :5173.
+- **Routing + auth.** `next.config.ts` rewrites `/deck` → `/deck/index.html` (a static shell isn't
+  a Next route, so bare `/deck` would 404) and now pins **`outputFileTracingRoot`** to the repo dir
+  — the vendored app brings a second `package-lock.json`, and with more than one lockfile Next only
+  *infers* the workspace root, which would change what a `standalone` build traces in. `src/middleware.ts` gates `/deck**` **exactly like an
+  `/app` page** (NextAuth session + `SESSION_VERSION`), via `isDeckPath()` folded into the same
+  clause — **no module gate**, since Deck holds no workspace data, so any signed-in member can
+  open one. Verified: unauthenticated `/deck` → 307 `/login?callbackUrl=/deck`.
+- **Entry points (deliberately quiet while it's in testing).** A mono `· DECK ↗` text link in the
+  HQ context strip (`app-overview.tsx` → `DeckLink`) and a `Deck` secondary button beside
+  Analytics on the Docs list toolbar (`proposal-list.tsx`). No sidebar item, no bento tile.
+- **Brand — Foundry · Gitwork** (`slides/src/foundry/brand.ts`, the single place product identity
+  lives; renaming the product is one line). Precedence: `?brand=` → **the deck's own theme** → the
+  remembered choice → Foundry. A segmented control in the topbar flips it **live with no reload**
+  (nothing unsaved is ever lost): it re-skins the chrome, re-declares the kernel app identity
+  (window-title suffix + save-picker label — `applyBrand()` re-calls `configureApp()`, which is why
+  upstream's call site moved out of `main.ts`), re-renders the wordmark, and **re-themes the deck
+  while it's still on brand defaults** — paper/ink/accent + an untouched chart palette move,
+  hand-picked colours don't; one `store.commit`, so ⌘Z undoes it. It repaints, it does **not**
+  rewrite text baked into a deck (a footer wordmark stays as typed). The control needs room, so it
+  only renders **≥1560px** (measured: below that the flex topbar squeezes the deck-title field
+  220px→118px) — `?brand=gitwork` still forces either brand at any size.
+- **A saved deck brings its brand with it** — `adoptDeckBrand()` on boot: a document whose theme
+  exactly matches a brand's is opened in that brand's chrome, so a Gitwork deck sent to someone
+  opens in Gitwork whatever their own last choice was. **Not** via `<html data-brand>` — the save
+  snapshot is cloned at boot (`capturePristine`), so that attribute always carries the brand the
+  window OPENED in, never the one the deck was saved in (tried it; it silently did the wrong thing).
+- **Design skin** — `slides/src/foundry/theme.css`, imported after upstream's `styles.css`. Token
+  swap + the house grammar upstream can't express: the mono **`NN // SECTION` widget header** on
+  the props rail (a **CSS counter**, so numbering stays sequential as the rail re-renders),
+  de-pilled chrome (upstream ships `999px` on the zoom bar, chip bar, present pill, toasts), 6px
+  controls / 10px cards, brand focus rings, and Gitwork Blue on every interactive state. See the
+  new **DESIGN.md § "Deck"** for the full spec incl. the per-brand token table.
+- **Typography is embedded, not linked** — Inter · JetBrains Mono · DM Serif Display latin woff2
+  base64 in `foundry/fontdata.ts` (generated by `vendor/bento/scripts/refresh-brand-fonts.mjs`,
+  `npm run fonts:refresh`), following upstream's own `fontdata.ts` precedent: a Bento file must
+  make **zero external requests**, so a saved deck keeps its typography offline. All three are
+  OFL-1.1 and are recorded in `THIRD_PARTY_NOTICES.md` (MIT/OFL notices must keep travelling with
+  the shell — the `NOTICE` block in `index.html` is carried into every saved deck; don't strip it).
+- **Starter deck** — `foundry/starter.ts`: five on-brand slides (mono eyebrow + accent rule, serif
+  headline, stat tiles, a live chart, morph transitions, speaker notes) that wear the active brand.
+  Upstream's own product tour is untouched and still reachable at `/deck?demo=bento`.
+- **Upstream update checks are off** — the launch check would hit `bento.page` for a manifest
+  signed with a key we deliberately don't hold. `silenceUpstreamUpdateChecks()` sets it off once
+  (so anyone re-enabling it in the About dialog keeps their choice); `manifestUrl` points at
+  `/deck/manifest.json`, which is not published — this shell updates when Foundry redeploys.
+- **Optimised (second pass).** The shell went **726KB → 504KB (−31%)**, and with it every saved
+  deck (837KB → 620KB), because a Bento file carries the app:
+  - **English only** (`src/i18n.ts`) — the 7 translation catalogs were **171KB, 25% of the shell**.
+    The single-file build forbids lazy-loading (zero external requests is the format's contract), so
+    it's all-or-nothing; Dan chose English-only. The catalogs stay in the tree, just unreferenced so
+    rollup drops them, and `languageDropdown()` hides the globe while there's one locale — restoring
+    all 8 is putting the imports back.
+  - **Upstream's demo deck dropped from the shipped shell** (−52KB: a 1000-line tutorial + an
+    embedded Instrument Sans face) — it only ever served a developer comparison. `starterdeck.ts`
+    stays in the tree; swap the `foundryStarterDoc()` call to `starterDoc()` under `deck:dev` to see it.
+  - **Boot: 2.2s → ~0.55s on repeat opens.** The brand-moment splash held *every* open to 1250ms +
+    a 550ms fade while the editor was interactive at ~350ms. It now plays in full **once per browser**
+    (upstream's own slideshow-hint idiom) and afterwards clears as soon as the editor is up, on a
+    180ms fade (`#bento-splash.fd-quick`). First open is unchanged.
+  - **`Cache-Control: public, max-age=60, must-revalidate`** on `/deck/:path*` — Next serves `public/`
+    at `max-age=0`, so every open paid a revalidation round trip for a file that only changes on
+    deploy. Cache-Control only; `/deck` already matches the catch-all security-header rule, and
+    re-listing those would send each header twice.
+  - **`.dockerignore` now excludes `**/node_modules`** — the bare `node_modules` entry only matched
+    the top level, so the vendored app's own ~80MB install was going into the build context.
+  - Not done: gzip on the wire (**726KB → 547KB**, and 504KB → ~390KB now) is an **nginx** setting on
+    the VPS, outside this repo. Worth turning on for `text/html`.
+- **Every upstream accent swept out of the chrome.** Upstream drives most of its UI from `--accent`,
+  but hard-codes its coral/amber in places the token swap couldn't reach — so re-pointing the token
+  left them bento-coloured. Now brand-correct: the About primary, the update chip (needs
+  `!important` to beat upstream's), the player + unlock buttons, the live-reader dot **and its pulse
+  keyframe** (re-declared), the recovery banner, `accent-color` on checkboxes, the Slideshow
+  first-run "runner" comet, **present mode** (reveal's `--r-link/selection/progress-color` + the
+  click-target outline now follow `--bento-accent`, i.e. the DECK's accent — so a Gitwork deck
+  presents in purple), and the **speaker view** (its own popup window, painted with a copy of these
+  styles, so it gets `--fd-speaker-accent` — a mid blue/violet, because `#1D4ED8` on near-black is
+  why upstream reached for amber).
+- **Responsive (per `docs/mobile-playbook.md`).** Upstream's topbar is one nowrap flex row of ~38
+  controls, so below the desktop split it overflowed and took the page with it — **+292px of
+  horizontal page scroll at 390px, +19px at 768px, in upstream's own build too**; our wider lockup
+  made 768 worse (+33px). Fixed by **wrapping** below 1024px, not scrolling or clipping:
+  `overflow-x:auto` on the bar would make it a scroll container and clip the dropdown menus that
+  live inside it, and `overflow:hidden` would just hide controls. Our lockup also yields first — the
+  `DECK` tag hides ≤1359px, handing ~40px back to the deck-title field on a 1280 laptop (upstream
+  squeezes it to 100px there; ours is 179px). Verified clean at **390 · 430 · 768 · 1023 · 1024 ·
+  1280 · 1440 · 1600**: no page H-scroll, no clipped control, canvas + Slideshow reachable at every
+  width, and the `NN // SECTION` strip stays a 36px full-bleed band.
+- **Clipping audit — `scripts/audit-clipping.mjs` (`npm run audit:clipping <url>`).** Dan's standing
+  complaint was UI that's present but cut off, found by hand. This walks every rendered element at
+  four viewports for the five ways content goes missing: `CLIPPED` (an ancestor's overflow cuts it
+  and that ancestor **cannot scroll**), `OFFSCREEN` (fixed panel past the viewport), `COLLAPSED`
+  (text in a zero-size box), `TRUNCATED` (ellipsed with no `title` **and** no scroll), `PAGE-X`
+  (sideways page scroll — **and it names the offending element**). `--self-test` renders deliberately
+  broken markup and asserts every kind still fires plus that three lookalikes stay quiet — run that
+  before trusting a clean report. Full contract in **`docs/mobile-playbook.md` §3a**, which is now
+  step 5 of the standard responsive process. Two rules it encodes, both learned here:
+  **`overflow:hidden` is not scrollable** (the browser reports `scrollWidth` past the box either way,
+  so testing that alone excuses the commonest way UI vanishes) and **`innerWidth` lies on mobile**
+  (browsers widen it to fit overflowing content, so it claims nothing is past the edge while the user
+  scrolls sideways — measure `documentElement.clientWidth`).
+  - **Deck: clean across 8 editor states × 4 viewports** (dialogs, popovers, full props rail, present
+    mode; 1280×620 included because a short laptop viewport is where dialogs run off the bottom).
+    Wired into `npm run deck:verify` as group 05.
+  - **Two pre-existing app defects found and fixed** (both public pages, neither caused by Deck):
+    `/api-docs` endpoint rows clipped the path and hid the **"Auth required" badge entirely** on a
+    phone — up to 185px unreachable, because the header was a nowrap flex row inside a card with
+    `overflow:hidden` and the path couldn't shrink (`min-width:auto` is the flex default). Fixed with
+    `flex-wrap` + `min-width:0` + `overflow-wrap:anywhere`, and `.endpoint-body` now scrolls so param
+    tables aren't cropped. `/context`'s module-map table forced the page **90px wider than a phone**
+    (playbook §2: tables scroll, they don't reflow) — now in an `overflow-x:auto` wrapper; the Deck
+    row I added in this PR is the longest one, so I'd made it worse.
+  - Verified clean afterwards: `/api-docs`, `/context`, `/pulse-overview`, `/login`, `/embed/pulse`
+    at 390 · 768 · 1280×620 · 1440. **`/app` pages remain unreachable** (auth-gated, no staging) —
+    point the script at them the day staging exists.
+- **`vendor/bento/scripts/verify-shell.mjs`** — the regression gate for a vendored fork whose skin
+  works by *overriding* upstream: it drives the built shell in headless Chromium and checks every
+  control, both brands for accent leaks (incl. present mode), the five responsive bands, and a
+  save → reopen-from-disk round trip. Needs `npm i --no-save playwright-core` (not a repo dep, and
+  not in CI — no browser there). **Run it after every upstream re-sync and after any `theme.css`
+  change.** Two things it already caught: "New slide" is a *layout picker*, not an insert button
+  (an earlier assertion was simply wrong about the contract), and `setContent()` can't boot a saved
+  deck (the shell needs a real document origin for its blob-URL runtime).
+- **Verified:** vendored `tsc -b` clean; root `tsc --noEmit` + `eslint` clean; `npm test` 135
+  passing; `next build` clean; `verify-shell.mjs` fully green; headless-Chromium smoke tests of the built shell — both brands boot
+  with no console errors, all four faces load, the brand switch re-skins + re-themes + undoes,
+  present mode runs, a saved deck round-trips and reopens in its own brand, the topbar holds at
+  1600/1440/1366/1280, and `/deck` gates to `/login` unauthenticated. Two bugs were caught this way
+  rather than shipped: `injectBrandFonts()` ran *before* `capturePristine()` (would have baked
+  ~190KB of duplicate font CSS into every saved deck), and the first cut of "a saved deck remembers
+  its brand" read `<html data-brand>`, which is frozen at boot.
+- **Deferred / notes:** nothing links a saved `.bento.html` back to a Foundry document or client
+  yet (decks live as files — Drive/Docs attachment is the obvious next step); no PDF/thumbnail
+  capture into Docs; no `manifest.json`, so in-app "update" is a redeploy; collaboration (bento's
+  CRDT + relay) is untouched and unused; and the product name is one constant in `brand.ts` if
+  "Deck" isn't the final call.

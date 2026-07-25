@@ -2,6 +2,12 @@
 
 # dependencies
 /node_modules
+# vendored apps build with their own deps (see vendor/bento/README.md). The
+# BUILT shell is committed (public/deck/index.html) — the deps never are.
+vendor/**/node_modules
+vendor/**/dist
+vendor/**/dist-single
+vendor/**/*.tsbuildinfo
 /.pnp
 .pnp.*
 .yarn/*

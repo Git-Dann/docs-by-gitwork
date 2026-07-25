@@ -1,6 +1,16 @@
 .git
 .github
 node_modules
+# Nested deps too — `node_modules` alone only matches the top level, so the
+# vendored Deck app's own install (vendor/bento/slides/node_modules, ~80MB) was
+# being shipped into the build context. The image installs deps in its own
+# `deps` stage; nothing here is ever needed from the context.
+**/node_modules
+# Deck build intermediates. The shell that IS served is public/deck/index.html
+# (committed) — these are the throwaway steps that produce it.
+vendor/**/dist
+vendor/**/dist-single
+**/*.tsbuildinfo
 .next
 .env
 .env.*
