@@ -4218,7 +4218,7 @@ function EditConnectorModal({
 
 // ─── connectors view ─────────────────────────────────────────────────────────
 
-function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug: string }) {
+export function ConnectorsView({ clientId, clientSlug, showAgentLogs = true }: { clientId: string; clientSlug: string; showAgentLogs?: boolean }) {
   const { canManageSupport } = usePermissions();
   const { data, isLoading } = useSupportConnections(clientId);
   // Memoise so the effect below doesn't reset its setInterval timer on every render when data is
@@ -4635,7 +4635,7 @@ function ConnectorsView({ clientId, clientSlug }: { clientId: string; clientSlug
         </button>
       ) : null}
 
-      {agentLogs.length > 0 && (
+      {showAgentLogs && agentLogs.length > 0 && (
         <div className="app-card overflow-hidden p-0">
           <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
             <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">

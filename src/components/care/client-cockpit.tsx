@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useDeferredValue } from "react";
-import { ArrowPathIcon, ArrowLeftIcon, BoltIcon, Cog8ToothIcon, DocumentChartBarIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, ArrowLeftIcon, Cog8ToothIcon, DocumentChartBarIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import type { Conversation, SupportClient } from "@/types/support";
 import {
@@ -23,6 +23,7 @@ import {
   formatAge,
 } from "./care-constants";
 import { ConversationDetail } from "./conversation-detail";
+import { ConnectorsView } from "@/components/support/support-dashboard";
 
 function ConversationRow({
   conv,
@@ -80,6 +81,41 @@ function ConversationRow({
   );
 }
 
+/**
+ * In-cockpit channels & settings hub. Replaces the old jump-out to
+ * /app/support?panel=connectors|settings — you stay inside Care. Scope is
+ * deliberately just the connected channels + their auto-fetch schedule
+ * (ConnectorsView); workflow rules / AI agents / portal-link were dropped as
+ * unused per the redesign. Agent-activity logs are hidden here too.
+ */
+function CareSettingsPanel({ client, onClose }: { client: SupportClient; onClose: () => void }) {
+  return (
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
+      <div className="flex shrink-0 items-center gap-3 border-b border-[var(--border-2)] px-5 py-4">
+        <button onClick={onClose} className="-ml-1 rounded-[6px] p-1 hover:bg-[var(--surface-1)]" title="Back to inbox">
+          <ArrowLeftIcon className="h-4 w-4 text-[var(--text-3)]" />
+        </button>
+        <div className="min-w-0">
+          <div className="font-mono text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]">Channels &amp; settings</div>
+          <h2 className="text-lg font-semibold leading-snug text-[var(--text-1)]">Connected channels</h2>
+        </div>
+        <button
+          onClick={onClose}
+          className="ml-auto rounded-[6px] p-1.5 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
+          title="Close"
+        >
+          <XMarkIcon className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+        <div className="mx-auto max-w-3xl">
+          <ConnectorsView clientId={client.id} clientSlug={client.slug ?? ""} showAgentLogs={false} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ClientCockpit({
   client,
   currentUserId,
@@ -102,6 +138,8 @@ export function ClientCockpit({
   const deferredSearch = useDeferredValue(search);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selection, setSelection] = useState<Set<string>>(new Set());
+  // In-place channel/settings hub — opens inside the cockpit instead of jumping to /app/support.
+  const [showSettings, setShowSettings] = useState(false);
 
   const conversations = useMemo(() => convsQ.data?.conversations ?? [], [convsQ.data]);
   const members = useMemo(() => membersQ.data?.members ?? [], [membersQ.data]);
@@ -192,26 +230,25 @@ export function ClientCockpit({
           )}
           {canManageSupport && (
             <div className="grid grid-cols-1 gap-1">
+              <button
+                type="button"
+                onClick={() => { setSelectedId(null); setShowSettings(true); }}
+                className={cn(
+                  "flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-xs font-medium transition",
+                  showSettings
+                    ? "bg-[var(--brand-50)] text-[var(--brand-700)]"
+                    : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+                )}
+              >
+                <Cog8ToothIcon className={cn("h-4 w-4", showSettings ? "text-[var(--brand-700)]" : "text-[var(--text-4)]")} />
+                Channels &amp; settings
+              </button>
               <a
                 href={`/app/support?client=${client.id}&tab=reports`}
                 className="flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
               >
                 <DocumentChartBarIcon className="h-4 w-4 text-[var(--text-4)]" />
                 Reports
-              </a>
-              <a
-                href={`/app/support?client=${client.id}&panel=connectors`}
-                className="flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-              >
-                <BoltIcon className="h-4 w-4 text-[var(--text-4)]" />
-                Connectors
-              </a>
-              <a
-                href={`/app/support?client=${client.id}&panel=settings`}
-                className="flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-              >
-                <Cog8ToothIcon className="h-4 w-4 text-[var(--text-4)]" />
-                Settings
               </a>
             </div>
           )}
@@ -224,7 +261,7 @@ export function ClientCockpit({
       <section
         className={cn(
           "min-h-0 w-full flex-col border-r border-[var(--border-2)] xl:flex xl:w-80 xl:shrink-0",
-          selected ? "hidden xl:flex" : "flex",
+          selected || showSettings ? "hidden xl:flex" : "flex",
         )}
       >
         {/* List-header toolbar — the views rail is hidden < xl, so surface its controls here. */}
@@ -286,7 +323,7 @@ export function ClientCockpit({
               active={c.id === selectedId}
               selected={selection.has(c.id)}
               selectable={canManageSupport}
-              onOpen={() => setSelectedId(c.id)}
+              onOpen={() => { setShowSettings(false); setSelectedId(c.id); }}
               onToggleSelect={() => toggleSelect(c.id)}
               assigneeName={c.assigneeId ? memberName.get(c.assigneeId) : undefined}
             />
@@ -325,10 +362,12 @@ export function ClientCockpit({
         )}
       </section>
 
-      {/* RIGHT — detail. Full-viewport below xl (only when a conversation is open);
-          the flex-1 pane beside the list at xl+. */}
-      <section className={cn("min-w-0 flex-1", selected ? "flex" : "hidden xl:flex")}>
-        {selected ? (
+      {/* RIGHT — detail. Full-viewport below xl (only when a conversation or the
+          settings hub is open); the flex-1 pane beside the list at xl+. */}
+      <section className={cn("min-w-0 flex-1", selected || showSettings ? "flex" : "hidden xl:flex")}>
+        {showSettings ? (
+          <CareSettingsPanel client={client} onClose={() => setShowSettings(false)} />
+        ) : selected ? (
           <ConversationDetail
             key={selected.id}
             clientId={client.id}
