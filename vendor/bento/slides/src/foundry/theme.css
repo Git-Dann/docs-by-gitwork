@@ -349,10 +349,35 @@ body {
 .ed-share-btn {
   border-radius: var(--fd-control);
 }
-.ed-pill-main {
+/* JOINED CONTROLS — and a specificity trap worth understanding before editing.
+ *
+ * A split control is two elements that must read as one: the left half rounds
+ * only on its left, the right half only on its right. Upstream writes those
+ * partial radii with DESCENDANT selectors — `.ed-present-pill .ed-pill-main`
+ * (0,2,0) and `.ed-split-caret` (0,1,0) — and our de-pilling rule is a bare
+ * `.ed-btn` (0,1,0) further down this file. So:
+ *
+ *   · `.ed-split-caret` (0,1,0) LOST to `.ed-btn` and got 6px on all four
+ *     corners, while its Save half kept `8px 0 0 8px`. Mismatched corners at the
+ *     seam is what reads as the right edge being cropped — Dan spotted it.
+ *   · `.ed-pill-main` (0,1,0) written here LOST to upstream's (0,2,0), so the
+ *     present pill was still a literal 999px pill. DESIGN.md's "no pills" claim
+ *     was simply untrue for the one control actually named in it.
+ *
+ * Both are fixed by matching upstream's specificity and relying on source order.
+ * If you add a joined control, give it (0,2,0) here and check it with the
+ * pill/seam assertions in verify-shell.mjs — a radius bug is invisible to every
+ * other check we have. */
+.ed-split > .ed-btn:first-child {
+  border-radius: var(--fd-control) 0 0 var(--fd-control);
+}
+.ed-split .ed-split-caret {
+  border-radius: 0 var(--fd-control) var(--fd-control) 0;
+}
+.ed-present-pill .ed-pill-main {
   border-radius: var(--radius) 0 0 var(--radius);
 }
-.ed-pill-caret {
+.ed-present-pill .ed-pill-caret {
   border-radius: 0 var(--radius) var(--radius) 0;
 }
 .ed-setchip.active {
@@ -1132,4 +1157,62 @@ input.ed-toggle {
 :root[data-theme='dark'] .ed-btn:hover {
   background: var(--chrome-2);
   color: var(--ink);
+}
+
+/* ─── template picker (reuses .fd-dlg — see foundry/template-picker.ts) ───── */
+
+/* A group heading inside the dialog's list rail: delivery decks vs sales decks
+   are different jobs, and the label is the fastest way into the right half. */
+.fd-dlg-navgroup {
+  padding: 12px 10px 6px;
+  font-family: var(--fd-label);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--fd-label-tracking);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.fd-dlg-navgroup:first-child {
+  padding-top: 4px;
+}
+/* the template's slide outline — mono index + slide name, one per row */
+.fd-dlg-outline {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.fd-dlg-outline-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 12px;
+  font-size: 13px;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--line);
+}
+.fd-dlg-outline-row:last-child {
+  border-bottom: none;
+}
+.fd-dlg-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 16px;
+  padding: 9px 16px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  background: var(--accent);
+  border: 1px solid transparent;
+  border-radius: var(--fd-control);
+  cursor: pointer;
+}
+.fd-dlg-cta:hover {
+  background: var(--accent-ink);
+}
+.fd-dlg-cta:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--fd-focus-ring);
 }

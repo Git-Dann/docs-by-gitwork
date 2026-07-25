@@ -309,6 +309,61 @@ console.log('\n02 // BRAND ACCENTS')
   }
 }
 
+// ── 2b. geometry: no pills, and split controls meet cleanly ─────────────────
+console.log('\n02b // INSTRUMENT GEOMETRY')
+{
+  // DESIGN.md reserves full radius for status dots; every control is 6px and
+  // every card 10px. Upstream ships 999px in several places and writes its split
+  // radii with selectors that out-specify our de-pilling rule, so "no pills" is
+  // NOT something the token swap gets for free — it has to be measured. Nothing
+  // else in this harness looks at border-radius, which is how the present pill
+  // stayed a literal pill while DESIGN.md claimed otherwise.
+  const ctx = await newCtx({ viewport: { width: 1600, height: 1000 } })
+  const { page } = await openShell(ctx)
+  const geo = await page.evaluate(() => {
+    const px = (v) => parseFloat(v) || 0
+    const pills = []
+    document.querySelectorAll('.ed-root button, .ed-root .ed-btn, .ed-toast, .ed-zoombar, .ed-setbar').forEach((e) => {
+      const r = e.getBoundingClientRect()
+      if (r.width < 4 || r.height < 4) return
+      const c = getComputedStyle(e)
+      // a status dot is legitimately round: small AND square-ish
+      const dot = r.width <= 14 && Math.abs(r.width - r.height) <= 2
+      if (dot) return
+      const max = Math.max(...['TopLeft', 'TopRight', 'BottomRight', 'BottomLeft'].map((k) => px(c[`border${k}Radius`])))
+      if (max >= 100) pills.push(`${(e.className || e.tagName).toString().split(' ')[0]} (${max}px)`)
+    })
+    // split seams: the two halves must round on opposite outer corners only
+    const seams = []
+    for (const [name, left, right] of [
+      ['save', '.ed-split > .ed-btn', '.ed-split-caret'],
+      ['present', '.ed-pill-main', '.ed-pill-caret'],
+    ]) {
+      const a = document.querySelector(left)
+      const b = document.querySelector(right)
+      if (!a || !b) { seams.push(`${name}: missing half`); continue }
+      const ca = getComputedStyle(a)
+      const cb = getComputedStyle(b)
+      if (px(ca.borderTopRightRadius) || px(ca.borderBottomRightRadius))
+        seams.push(`${name}: left half is rounded on the SEAM side (${ca.borderRadius})`)
+      if (px(cb.borderTopLeftRadius) || px(cb.borderBottomLeftRadius))
+        seams.push(`${name}: right half is rounded on the SEAM side (${cb.borderRadius})`)
+      if (px(ca.borderTopLeftRadius) !== px(cb.borderTopRightRadius))
+        seams.push(`${name}: halves disagree — outer radii ${px(ca.borderTopLeftRadius)} vs ${px(cb.borderTopRightRadius)}`)
+      const ra = a.getBoundingClientRect()
+      const rb = b.getBoundingClientRect()
+      if (Math.abs(rb.x - ra.right) > 1) seams.push(`${name}: ${(rb.x - ra.right).toFixed(1)}px gap at the seam`)
+      if (Math.abs(ra.height - rb.height) > 1) seams.push(`${name}: halves differ in height`)
+    }
+    return { pills: [...new Set(pills)], seams }
+  })
+  if (geo.pills.length) note('geometry', `pill radii in the chrome: ${geo.pills.slice(0, 6).join(', ')}`)
+  else pass('no pill radii in the chrome (status dots excepted)')
+  if (geo.seams.length) for (const s of geo.seams) note('geometry', s)
+  else pass('split controls meet cleanly — matched outer radii, square seam, no gap')
+  await ctx.close()
+}
+
 // ── 3. responsive ───────────────────────────────────────────────────────────
 console.log('\n03 // RESPONSIVE')
 {

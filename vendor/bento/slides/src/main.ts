@@ -14,6 +14,7 @@ import { adoptDeckBrand, initialBrand, injectBrandFonts, silenceUpstreamUpdateCh
 import { foundryStarterDoc } from './foundry/starter'
 import { loadFoundryUser } from './foundry/identity'
 import { applyThemeMode, watchThemeMode } from './foundry/theme-mode'
+import { templateDoc, templateParam } from './foundry/templates'
 import {
   capturePristine, readEmbeddedDoc, serializeFile, serializeAuto, downloadFile,
   suggestedFileName, parseEnvelope, decryptEnvelope, setEncryptionPassword,
@@ -78,7 +79,15 @@ if (envelope) {
   // only a developer comparison. The file stays in the tree (unreferenced, so
   // rollup drops it); to see it, swap this call for `starterDoc()` under
   // `npm run deck:dev`.
-  bootWith((embedded && parseDoc(embedded)) || foundryStarterDoc(FD_BRAND))
+  // FOUNDRY: `?template=<slug>` opens one of the ten starting decks
+  // (foundry/templates.ts) instead of the starter — how the platform deep-links
+  // "new pitch deck". Only applies to an EMPTY shell: a saved deck always wins,
+  // or a stray link would replace someone's work.
+  const tpl = templateParam()
+  bootWith(
+    (embedded && parseDoc(embedded)) ||
+      (tpl ? templateDoc(tpl, FD_BRAND) : foundryStarterDoc(FD_BRAND)),
+  )
 }
 
 /** Encrypted file: ask for the password (looping on failure), then boot. */

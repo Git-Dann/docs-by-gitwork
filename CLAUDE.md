@@ -1459,6 +1459,42 @@ upstream's *product* (as opposed to its engine) and finishes wiring Deck to the 
   in a saved file", the Replace-from-JSON regression, and a new **07 // DARK MODE** group checking
   both modes, ≥4.5:1 topbar contrast, that the artboard does *not* follow, and that a `storage`
   event from another tab reaches the window.
+### Deck — pass 4 (July 2026): templates, and two radius bugs the audit couldn't see
+
+- **Ten templates** — `slides/src/foundry/templates.ts`. Five **Foundry / delivery** (kickoff,
+  sprint review, monthly client report, technical approach, discovery readout) and five
+  **Gitwork / sales** (new-business pitch, developer talent, build proposal, case study, retainer).
+  Each is a `(Brand) => Slide[]`, so the same structure wears Foundry blue/DM Serif or Gitwork
+  purple/Fraunces and the topbar switch re-themes it live. Built from a small slide vocabulary
+  (`cover` · `points` · `figures` · `columns` · `chartSlide` · `closing`) over the starter deck's
+  own helpers — `chrome`/`heading`/`statTile` are now exported from `starter.ts` rather than
+  re-drawn. **No invented proof:** every metric is a visible placeholder (`00`, `[client]`, `£[n]k`)
+  with a prompt in the speaker notes, so an unfilled sales deck looks obviously unfinished rather
+  than plausibly wrong. The only real claim used is Gitwork's own public line, *"From prompt to
+  production"*.
+- **Picker** — `foundry/template-picker.ts`, reusing the `.fd-dlg` shape wholesale, because
+  DESIGN.md names this exact case ("reach for this shape before inventing a new layout for any
+  pick-one-of-a-list-and-inspect popup"). Save ▾ → **New from template…**; list grouped
+  Delivery/Sales, right pane shows the blurb, slide count, full outline and a "Have ready:" line.
+  Applying goes through `store.replaceDoc`, so it is **⌘Z-undoable**. Also deep-linkable:
+  **`/deck?template=<slug>`** (empty shell only — a saved deck always wins, so a stray link can
+  never replace someone's work; an unknown slug falls back to the starter).
+- **Two radius bugs, both from a CSS specificity trap, neither visible to any existing check.**
+  Our de-pilling rule is a bare `.ed-btn { border-radius: 6px }` (0,1,0) that loads *after*
+  upstream. Upstream writes its **partial** (split-control) radii at (0,1,0) and (0,2,0):
+  - `.ed-split-caret` (0,1,0) **lost** → the Save caret got 6px on all four corners while its Save
+    half kept `8px 0 0 8px`. Mismatched corners at the seam is what reads as the button's right
+    edge being cropped — **Dan spotted this from a screenshot; the clipping audit cannot see it**,
+    because nothing is actually clipped.
+  - `.ed-pill-main` / `.ed-pill-caret` written in `theme.css` at (0,1,0) **lost** to upstream's
+    `.ed-present-pill .ed-pill-main` (0,2,0) — so **the present pill was still a literal 999px
+    pill**, and DESIGN.md's "no pills … present pill" claim was simply untrue for the one control
+    it named. Both now written at (0,2,0). Measured after: `6px 0 0 6px` / `0 6px 6px 0` and
+    `10px 0 0 10px` / `0 10px 10px 0`.
+  - **New gate `02b // INSTRUMENT GEOMETRY`**: fails on any chrome control with a radius ≥100px
+    (status dots excepted by size), and on split halves that are rounded on the seam side,
+    disagree on their outer radius, differ in height, or leave a gap. Radius is invisible to the
+    clipping audit and to every behavioural check — it needed its own assertion.
 - **Deferred / notes:** nothing links a saved `.deck.html` back to a Foundry document or client
   yet (decks live as files — Drive/Docs attachment is the obvious next step); no PDF/thumbnail
   capture into Docs; no `manifest.json`, so in-app "update" is a redeploy; collaboration (bento's
