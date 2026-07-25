@@ -111,7 +111,18 @@ export async function loadFoundryUser(): Promise<FoundryUser | null> {
       headers: { accept: 'application/json' },
     })
     if (!res.ok) return foundryUser() // 401 when the session lapsed — keep the cache
-    const data = (await res.json()) as { name?: string; email?: string; role?: string }
+    // GET /api/account answers `{ account: { id, email, name, role, … } }` — the
+    // user is NESTED. Read the real contract from src/app/api/account/route.ts,
+    // not from memory: the first cut of this read `data.name`, which is undefined,
+    // so the name would have silently stayed "Guest" in production while a mocked
+    // test passed. The flat fallback is belt-and-braces if that route ever changes.
+    const body = (await res.json()) as {
+      account?: { name?: string; email?: string; role?: string }
+      name?: string
+      email?: string
+      role?: string
+    }
+    const data = body?.account ?? body
     const name = (data?.name ?? '').trim()
     if (!name) return foundryUser()
     const user: FoundryUser = { name, email: (data.email ?? '').trim(), role: data.role }

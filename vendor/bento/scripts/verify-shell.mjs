@@ -49,7 +49,12 @@ const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-san
  * Group 06 deliberately opens a SAVED deck outside this helper, to prove the
  * file:// case makes no requests at all.
  */
-const FOUNDRY_USER = { id: 'u_test', name: 'Test Person', email: 'test@gitwork.co.uk', role: 'ADMIN' }
+// The REAL shape of GET /api/account (src/app/api/account/route.ts): the user is
+// nested under `account`. Mocking a flat object here is what let a broken read
+// pass — if that route changes, change this and watch group 06 fail honestly.
+const FOUNDRY_USER = {
+  account: { id: 'u_test', name: 'Test Person', email: 'test@gitwork.co.uk', role: 'ADMIN', permissions: [] },
+}
 async function newCtx(opts = {}) {
   const ctx = await browser.newContext(opts)
   await ctx.route('**/api/account', (r) =>
