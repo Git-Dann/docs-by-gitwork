@@ -146,8 +146,10 @@ export function ClientCockpit({
 
   return (
     <div className="flex h-full min-h-0">
-      {/* LEFT — saved views (rail on lg+; below that it collapses into the list header) */}
-      <aside className="hidden w-52 shrink-0 flex-col border-r border-[var(--border-2)] lg:flex">
+      {/* LEFT — saved views. Only a rail on wide desktops (xl+); below that it would
+          crush the thread/detail into a sliver, so it collapses into the list-header
+          dropdown instead (the 1024–1279 tablet band was the broken case). */}
+      <aside className="hidden w-52 shrink-0 flex-col border-r border-[var(--border-2)] xl:flex">
         <div className="flex items-center gap-2 border-b border-[var(--border-2)] px-3 py-3">
           <button onClick={onBack} className="rounded-[6px] p-1 hover:bg-[var(--surface-1)]" title="All clients">
             <ArrowLeftIcon className="h-4 w-4 text-[var(--text-3)]" />
@@ -213,16 +215,17 @@ export function ClientCockpit({
         </div>
       </aside>
 
-      {/* MIDDLE — conversation list. Full-width on small screens; fixed rail on lg+.
-          Hidden on small screens while a conversation is open (single-pane master-detail). */}
+      {/* MIDDLE — conversation list. Full-width until xl; a fixed rail beside the detail
+          at xl+. Hidden while a conversation is open below xl (single-pane master-detail),
+          so the detail gets the whole viewport on tablets. */}
       <section
         className={cn(
-          "min-h-0 w-full flex-col border-r border-[var(--border-2)] lg:flex lg:w-80 lg:shrink-0 xl:w-96",
-          selected ? "hidden lg:flex" : "flex",
+          "min-h-0 w-full flex-col border-r border-[var(--border-2)] xl:flex xl:w-80 xl:shrink-0",
+          selected ? "hidden xl:flex" : "flex",
         )}
       >
-        {/* Mobile toolbar — the views rail is hidden < lg, so surface its controls here. */}
-        <div className="flex items-center gap-2 border-b border-[var(--border-2)] px-3 py-2 lg:hidden">
+        {/* List-header toolbar — the views rail is hidden < xl, so surface its controls here. */}
+        <div className="flex items-center gap-2 border-b border-[var(--border-2)] px-3 py-2 xl:hidden">
           <button onClick={onBack} className="rounded-[6px] p-1 hover:bg-[var(--surface-1)]" title="All clients">
             <ArrowLeftIcon className="h-4 w-4 text-[var(--text-3)]" />
           </button>
@@ -319,9 +322,9 @@ export function ClientCockpit({
         )}
       </section>
 
-      {/* RIGHT — detail. Full-screen on small screens (only when a conversation is open);
-          always present on lg+. */}
-      <section className={cn("min-w-0 flex-1", selected ? "flex" : "hidden lg:flex")}>
+      {/* RIGHT — detail. Full-viewport below xl (only when a conversation is open);
+          the flex-1 pane beside the list at xl+. */}
+      <section className={cn("min-w-0 flex-1", selected ? "flex" : "hidden xl:flex")}>
         {selected ? (
           <ConversationDetail
             key={selected.id}
