@@ -13,6 +13,7 @@ import { appConfig } from '../../kernel/src/app.ts'
 import { adoptDeckBrand, initialBrand, injectBrandFonts, silenceUpstreamUpdateChecks } from './foundry/boot'
 import { foundryStarterDoc } from './foundry/starter'
 import { loadFoundryUser } from './foundry/identity'
+import { applyThemeMode, watchThemeMode } from './foundry/theme-mode'
 import {
   capturePristine, readEmbeddedDoc, serializeFile, serializeAuto, downloadFile,
   suggestedFileName, parseEnvelope, decryptEnvelope, setEncryptionPassword,
@@ -48,6 +49,20 @@ capturePristine()
 // into every saved deck for nothing. The clone happening first is exactly why
 // this is safe to inject late.
 injectBrandFonts()
+
+// FOUNDRY: light/dark follows the platform's own setting (the same localStorage
+// key the app's ThemeProvider writes) and keeps following it — flip the toggle in
+// a Foundry tab and this window moves with it. Chrome only; the artboard keeps the
+// deck's paper. A localStorage read, never a network one, so a saved deck honours
+// it offline too.
+//
+// ALSO after the pristine capture, for the same reason `<html data-brand>` can't
+// be trusted: capturePristine() clones the whole document, ATTRIBUTES INCLUDED, so
+// setting data-theme first would bake the author's light/dark choice into every
+// saved deck. Nothing visible would break (the recipient's own boot overwrites it),
+// but a deck would ship with a stranger's UI preference frozen in its markup.
+applyThemeMode()
+watchThemeMode()
 
 // --- boot gates: password-encrypted files, read-only player files -----------
 

@@ -55,7 +55,7 @@ export default function ContextPage() {
               ["Clients", "/app/clients", "Client management and profile pages", "Live"],
               ["Pulse", "/app/pulse", "AI project validation — 150+ checks, gap analysis, fix agent; includes an optional Study research tool (multi-agent interviews) at /app/study", "Live"],
               ["Care / Support", "/app/support", "Client support ops — conversations, tickets, workflow rules", "Live"],
-              ["Deck", "/deck", "Slide editor — a fork of the MIT bento/slides app (vendor/bento), served as a single static shell and opened in its own window from HQ + the Docs toolbar. Signed-in members only; holds no workspace data", "Beta"],
+              ["Deck", "/deck", "Foundry's slide editor — a deck is one self-contained file: edit it, present it, send it. Served as a single static shell (vendor/bento) and opened in its own window from HQ + the Docs toolbar. Follows the platform's light/dark setting. Signed-in members only; holds no workspace data", "Beta"],
               ["Pulse Overview", "/pulse-overview", "Public-facing standalone Pulse product page (not in app nav)", "Live"],
               ["Rate Card", "(settings)", "People rates used in proposal costing", "Live"],
               ["API Docs", "/api-docs", "REST API reference page", "Live"],

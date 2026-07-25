@@ -5,13 +5,14 @@
 
 import type { Store } from '../store'
 import {
-  FORMAT_VERSION,
   MEDIA_EMBED_BUDGET,
   applyChartPalette, applyLayout, builtinLayouts, defaultChart, defaultImage, defaultMedia, defaultShape, defaultTable, defaultText,
   instantiateLayout, isLightBg, layoutElementIds, newDocId, readableInk, syncLinkedChart, uid,
   type ChartElement, type ShapeKind, type Slide, type SlideElement, type TableElement,
 } from '../model'
-import { APP_VERSION, applyUpdate, applyUpdateInPlace, autoCheckEnabled, canUpdateInPlace, checkForUpdates, offlineEnabled, setAutoCheck, setOffline } from '../update'
+// FOUNDRY: the update-check surface (applyUpdate / canUpdateInPlace / autoCheck…)
+// is no longer wired up — see the note in build(). Only offline mode remains.
+import { offlineEnabled, setOffline } from '../update'
 import { CHART_PRESETS } from '../charts'
 import { renderSlide, renderThumbnail } from '../render'
 import { SlideCanvas } from './canvas'
@@ -25,10 +26,11 @@ import { borderPoint, boxCenter, lineEndpoints, setLineEndpoints, sideMidpoint }
 import { ICONS } from '../icons'
 import { t, setLocale, locale, LOCALE_CHOICES } from '../i18n'
 import { appConfig } from '../../../kernel/src/app.ts'
-// FOUNDRY: brand identity for the topbar (wordmark + Foundry·Gitwork switch)
-// and WHO is signed in (foundry/identity.ts) — upstream has no accounts.
-import { activeBrand, mountBrandSwitch } from '../foundry/boot'
-import { authorName, foundryUser, nameIsFromFoundry } from '../foundry/identity'
+// FOUNDRY: brand identity for the topbar (back-to-Foundry slot + Foundry·Gitwork
+// switch), WHO is signed in (upstream has no accounts), and our own About dialog.
+import { mountBrandSwitch, mountHomeSlot } from '../foundry/boot'
+import { authorName, foundryUser, nameIsFromFoundry, servedByFoundry } from '../foundry/identity'
+import { SETTINGS_ICON, openFoundryAbout } from '../foundry/about'
 import { disconnectOnline, joinFromDoc, mintCollab, mintInvite, onlineTransport, rotateKeys, sharingOn, startSharing, stopSharing } from '../sync/online'
 
 const i18nT = t
@@ -53,13 +55,10 @@ export class Editor {
   private dirtyDot!: HTMLElement
   private thumbTimer = 0
   private presenting = false
-  private updatesB!: HTMLElement
   private avatarsBox!: HTMLElement
   private shareB!: HTMLElement
   private shareWrap!: HTMLElement
   private session: import('../sync/session').SyncSession | null = null
-  private updateFound: string | null = null
-  private lastAutoCheck: import('../update').UpdateCheck | null = null
   /** side panel widths (px) — user-resizable, persisted per browser */
   private panelW = { left: 188, right: 236 }
 
@@ -197,14 +196,11 @@ export class Editor {
 
     // topbar
     const bar = div('ed-topbar')
-    const logo = div('ed-logo')
-    // FOUNDRY: the lockup comes from the brand registry (foundry/brand.ts) so
-    // Foundry and Gitwork share one topbar.
-    logo.innerHTML = activeBrand().wordmark
-    // FOUNDRY: our product name in the tooltip, not upstream's.
-    logo.title = t('About {product} — version, licences', { product: activeBrand().appName })
-    logo.style.cursor = 'pointer'
-    logo.addEventListener('click', () => this.openAbout())
+    // FOUNDRY: this slot is the way back to the platform (`← Foundry`), not a
+    // logo that opens About — Deck is a Foundry window, and getting out of it is
+    // what you want from the top-left corner. A saved deck has nowhere to go back
+    // to, so it shows the brand lockup instead. See foundry/boot.ts.
+    const logo = mountHomeSlot(servedByFoundry())
     const title = document.createElement('input')
     title.className = 'ed-title'
     title.title = t('Deck title — shown in the tab, on {{title}} fields, and as the suggested file name')
@@ -242,36 +238,28 @@ export class Editor {
     insert.appendChild(commentB)
 
     const actions = div('ed-group ed-group-right')
-    // the update chip sits beside the wordmark and exists ONLY when an
-    // update is available (manual checks live in the About dialog)
-    this.updatesB = btn(ICONS.sync, '', () => this.openAbout(true), t('Check for updates'))
-    this.updatesB.style.display = 'none'
-    setTimeout(async () => {
-      if (!autoCheckEnabled() || offlineEnabled()) return
-      const r = await checkForUpdates()
-      this.lastAutoCheck = r
-      if (r.status === 'update') {
-        this.updateFound = r.release.version
-        this.updatesB.style.display = ''
-        this.updatesB.classList.add('ed-btn-update')
-        this.updatesB.innerHTML = `${ICONS.sync}<span>v${r.release.version}</span>`
-        this.updatesB.title = t('Version {v} is available — click to update', { v: r.release.version })
-        this.toast(t('Update available: v{v} — click the peach button to update', { v: r.release.version }))
-      } else if (r.status === 'current') {
-        this.toast(t('Up to date — v{v}', { v: APP_VERSION }))
-      }
-    }, 1500)
+    // FOUNDRY: the launch update-check and its chip are GONE. Deck ships with
+    // Foundry and updates when Foundry redeploys — we publish no release manifest
+    // (upstream signs theirs with a key we deliberately don't hold), so the check
+    // could only ever fail, and the chip it fed could only ever be dead. It used
+    // to be hidden with CSS; removing the call also removes a pointless fetch at
+    // every boot. `bento` version-checking stays in ../update for a re-sync.
     const undoB = btn(ICONS.undo, '', () => this.store.undo(), t('Undo (⌘Z)'))
     const redoB = btn(ICONS.redo, '', () => this.store.redo(), t('Redo (⇧⌘Z)'))
     const saveB = btn(ICONS.save, t('Save'), () => this.save(false), t('Save — rewrite this file in place (⌘S)'))
     saveB.appendChild(this.dirtyDot) // the amber unsaved-changes dot lives ON Save
     const pdfB = btn(ICONS.pdf, '', () => this.exportPdf(), t('Export PDF (print)'))
-    const helpB = btn('<b class="ed-help-q">?</b>', '', () => this.openHelp(), t('Shortcuts & tips (?)'))
-    helpB.classList.add('ed-btn-help')
+    // FOUNDRY: no `?` / "Shortcuts & tips" button. Removed by decision — a help
+    // overlay whose top entry is "? — this help" is upstream's shape, not ours, and
+    // most of what it listed (⌘S, ⌘Z, C, F5, Esc) is already on the tooltip of the
+    // control it belongs to. Note the handful that now aren't documented anywhere
+    // in the UI — ⌘D duplicate, ⌘G / ⌘⇧G group·ungroup, M reduce-motion — they
+    // still WORK; if they should be discoverable, put them in those tooltips
+    // rather than bringing the overlay back.
     this.avatarsBox = div('ed-avatars')
-    // Intuitive grouping: LEFT = the document (identity · title · save-state ·
+    // Intuitive grouping: LEFT = the way back · the document (title · save-state ·
     // undo/redo history) · CENTRE = insert tools · RIGHT = output & sharing
-    // (print · collaborators · Live · Save · more) with help pinned to the corner.
+    // (print · collaborators · Live · Save · more).
     const history = div('ed-group ed-group-history')
     history.append(undoB, redoB)
     const saveGroup = div('ed-split')
@@ -280,9 +268,9 @@ export class Editor {
     // hand over is what carries the branding.
     actions.append(
       mountBrandSwitch(this.store),
-      pdfB, this.avatarsBox, this.shareDropdown(), saveGroup, this.languageDropdown(), helpB,
+      pdfB, this.avatarsBox, this.shareDropdown(), saveGroup, this.languageDropdown(),
     )
-    bar.append(logo, this.updatesB, title, history, insert, actions)
+    bar.append(logo, title, history, insert, actions)
 
     // main area
     const main = div('ed-main')
@@ -518,6 +506,14 @@ export class Editor {
       item(ICONS.code, t('Replace from JSON…'),
         t('Paste edited document JSON to replace this deck’s content — ⌘Z undoes.'),
         () => this.openReplaceJson())
+      // FOUNDRY: About lives here now. The topbar's first slot became the way back
+      // to Foundry, and this menu is already where the document-level things are
+      // (history, JSON round-trip) — which is exactly what About holds: the deck's
+      // merge-field properties, the network switch, and which build you're on.
+      menu.appendChild(div('ed-menu-sep'))
+      item(SETTINGS_ICON, t('Deck settings & about…'),
+        t('Document properties (author, company, subject — they fill {{merge}} fields), offline mode, and this build’s version.'),
+        () => this.openAbout())
     }
     wrap.append(trigger, menu)
     document.addEventListener('pointerdown', (ev) => {
@@ -627,11 +623,17 @@ export class Editor {
     const cancelB = document.createElement('button')
     cancelB.className = 'ed-btn'
     cancelB.textContent = t('Cancel')
-    cancelB.addEventListener('click', () => overlay.remove())
+    cancelB.addEventListener('click', () => close())
     row.append(applyB, cancelB)
     box.append(h, ta, row)
     overlay.appendChild(box)
-    overlay.addEventListener('click', (ev) => { if (ev.target === overlay) overlay.remove() })
+    // FOUNDRY: Escape closes this, like every other dialog in the app. Upstream
+    // wired only a backdrop click here, so the one modal you land in with the
+    // keyboard (a textarea) was the one you couldn't leave with the keyboard.
+    const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey, true) }
+    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') { ev.stopPropagation(); close() } }
+    overlay.addEventListener('click', (ev) => { if (ev.target === overlay) close() })
+    document.addEventListener('keydown', onKey, true)
     document.body.appendChild(overlay)
     ta.focus()
   }
@@ -1682,89 +1684,10 @@ export class Editor {
     document.body.appendChild(overlay)
   }
 
-  /** Shortcuts + tips overlay (press ? or the topbar help button). */
-  private openHelp() {
-    document.querySelector('.ed-about-overlay')?.remove()
-    const overlay = div('ed-about-overlay')
-    const box = div('ed-about ed-help-box')
-    const h = document.createElement('h2')
-    h.textContent = t('Shortcuts & tips')
-    box.appendChild(h)
-    // Two explicit columns, placed by hand for balance + theme: LEFT = general
-    // shortcuts & tips, RIGHT = the line/curve/path pointer-editing features.
-    // (Auto column-count balanced poorly with these chunky, unsplittable sections.)
-    const cols = div('ed-help-cols')
-    box.appendChild(cols)
-    const colL = div('ed-help-col')
-    const colR = div('ed-help-col')
-    cols.append(colL, colR)
-    const mod = navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'
-    const section = (col: HTMLElement, title: string, rows: Array<[string, string]>) => {
-      const sec = div('ed-help-sec')
-      const st = document.createElement('h3'); st.textContent = title; sec.appendChild(st)
-      for (const [k, d] of rows) {
-        const r = div('ed-help-row')
-        r.innerHTML = `<kbd></kbd><span></span>`
-        r.querySelector('kbd')!.textContent = k
-        r.querySelector('span')!.textContent = d
-        sec.appendChild(r)
-      }
-      col.appendChild(sec)
-    }
-    section(colL, t('Editing'), [
-      [`${mod}S`, t('Save')],
-      [`${mod}Z · ${mod}⇧Z`, t('Undo · redo')],
-      [`${mod}C · ${mod}V`, t('Copy · paste — elements, or the whole slide when nothing is selected')],
-      [`${mod}D`, t('Duplicate selection')],
-      [`${mod}G · ${mod}⇧G`, t('Group · ungroup')],
-      ['C', t('Comment mode')],
-      ['?', t('This help')],
-    ])
-    section(colR, t('Lines & curves'), [
-      [t('Shape ▾'), t('Draw a line, curved line or connector — then drag on the canvas')],
-      [t('Drag a point'), t('Move an endpoint or anchor; drag the body to move the whole line')],
-      [t('Click a point'), t('Reveal its bézier handles for a precise curve')],
-      [`${t('Alt')}-${t('drag')}`, t('Break a smooth point into a sharp corner')],
-      [t('Double-click'), t('Add a point on the line; double-click a point to remove it')],
-    ])
-    section(colR, t('Motion paths'), [
-      [t('Presenting ▸ Loop'), t('Give an element a motion-path loop, then Edit path on canvas')],
-      [t('Drag points'), t('Shape the trajectory — the first point is the element’s rest spot')],
-      [t('Click a point'), t('Reveal bézier handles; Alt-drag one for a sharp corner')],
-      [t('Double-click'), t('Add a point on the path; double-click a point to remove it')],
-      [t('Scroll a point'), t('Set how fast the element moves through that point')],
-    ])
-    section(colL, t('Presenting'), [
-      ['F5', t('Present')],
-      ['F', t('Toggle fullscreen while presenting')],
-      ['S', t('Speaker view — notes on a second screen if you have one')],
-      ['M', t('Reduce motion — pause animations (also honours your OS setting)')],
-      ['← · →', t('Previous · next slide')],
-      ['Esc', t('End the show')],
-    ])
-    const tips = div('ed-help-sec')
-    const tt = document.createElement('h3'); tt.textContent = t('Good to know'); tips.appendChild(tt)
-    const ul = document.createElement('ul'); ul.className = 'ed-help-tips'
-    for (const tip of [
-      t('Paste an image or text straight onto the canvas with ⌘V.'),
-      t('Copy a slide (⌘C with nothing selected) and paste it into another deck.'),
-      t('Make a chart from a table and it stays linked — edit the table, the chart updates.'),
-      t('Your work auto-saves; restore earlier versions from About → Version history.'),
-    ]) { const li = document.createElement('li'); li.textContent = tip; ul.appendChild(li) }
-    tips.appendChild(ul); colL.appendChild(tips)
-    // FOUNDRY: upstream's footer linked out to bento.page/help — another product's
-    // support site, inside our tool. Replaced with the one thing that actually
-    // needs saying about this editor, and no external navigation.
-    const more = div('ed-help-more')
-    more.textContent = t('A deck is a single file — ⌘S rewrites it in place, and sending that file IS the hand-off.')
-    box.appendChild(more)
-    overlay.appendChild(box)
-    const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey, true) }
-    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') { ev.stopPropagation(); close() } }
-    overlay.addEventListener('click', (ev) => { if (ev.target === overlay) close() })
-    document.addEventListener('keydown', onKey, true)
-    document.body.appendChild(overlay)
-  }
+  // FOUNDRY: the "Shortcuts & tips" overlay was REMOVED, not hidden. It was
+  // upstream's shape — a help surface that mostly documented itself — and every
+  // shortcut it listed already lives on the tooltip of the control it belongs to.
+  // The `?` key is unbound and the topbar `?` button is gone with it.
 
   private savedTimer = 0
   private flashSaved() {
@@ -1838,11 +1761,8 @@ export class Editor {
       }
       if (inField) return
 
-      if (!mod && (ev.key === '?' || (ev.key === '/' && ev.shiftKey))) {
-        ev.preventDefault()
-        this.openHelp()
-        return
-      }
+      // FOUNDRY: `?` no longer opens a shortcuts overlay — that whole surface was
+      // removed. The key is left unbound rather than repointed at something else.
       if (!mod && ev.key.toLowerCase() === 'c') {
         ev.preventDefault()
         this.canvas.toggleCommentMode()
@@ -1952,222 +1872,38 @@ export class Editor {
 
   // --- toast ------------------------------------------------------------------
 
-  // --- about & updates ------------------------------------------------------
+  // --- about ------------------------------------------------------------------
 
-  /** About dialog: version, user-initiated update check, licenses. */
-  private openAbout(runCheck = false) {
-    document.querySelector('.ed-about-overlay')?.remove()
-    const overlay = div('ed-about-overlay')
-    const box = div('ed-about')
-
-    const head = div('ed-about-head')
-    // FOUNDRY: our identity, not upstream's. The lockup is the brand's (no link —
-    // this is an internal tool, there is nowhere to "visit").
-    const brand = activeBrand()
-    head.innerHTML =
-      `<span class="ed-about-logo fd-about-logo">${brand.wordmark}` +
-      `<span class="fd-about-ver">${t('Deck build')} v${APP_VERSION} · ${t('format')} v${FORMAT_VERSION}</span></span>`
-    box.appendChild(head)
-
-    // FOUNDRY: upstream's promo block (templates / gallery / ⭐ on GitHub) is
-    // replaced by the credit we actually owe. bento/slides is MIT and this is a
-    // fork of it — saying so plainly is both honest and the licence's point. No
-    // product marketing for another tool inside our own.
-    const promo = div('ed-about-promo')
-    promo.innerHTML = t(
-      '{product} is Foundry\u2019s slide editor — a deck is one file: edit it, present it, send it. Built on {bento} (MIT).',
-      {
-        product: `<b>${brand.appName}</b>`,
-        bento: '<a href="https://github.com/nyblnet/bento" target="_blank" rel="noopener">bento/slides</a>',
+  /**
+   * FOUNDRY: About is now THE standard Foundry fixed-height two-column popup
+   * (DESIGN.md § "Grid & Container"), built in foundry/about.ts — sections on the
+   * left, the panel on the right, 460px tall whichever you pick.
+   *
+   * Upstream's version of this dialog was a single scrolling column that also
+   * carried the whole update-check UI. That UI is gone: we publish no release
+   * manifest, so "Check for updates" could only ever fail. What is left is what
+   * people come here for — the document's merge-field properties and the network
+   * switch — plus what the app is and which build you are on.
+   */
+  private openAbout() {
+    openFoundryAbout({
+      store: this.store,
+      offlineEnabled,
+      setOffline: (next) => {
+        setOffline(next)
+        if (next) {
+          if (this.session) disconnectOnline(this.session)
+        } else {
+          this.tryJoin() // re-enabling network re-connects only if share-eligible
+        }
+        this.wireOnlineStatus()
+        this.toast(
+          next
+            ? t('Offline mode on — nothing leaves this computer')
+            : t('Offline mode off — online features re-enabled'),
+        )
       },
-    )
-    box.appendChild(promo)
-
-    const status = div('ed-about-status')
-    status.textContent =
-      this.lastAutoCheck?.status === 'current'
-        ? t("Checked automatically at launch — you're on the latest version (v{v}).", { v: APP_VERSION })
-        : this.lastAutoCheck?.status === 'error'
-          ? t("Launch check couldn't reach the release server ({m}). Check manually below.", { m: this.lastAutoCheck.message })
-          : t('This file carries its own app — it works offline, forever, as is.')
-
-    const row = div('ed-about-row')
-    const checkB = document.createElement('button')
-    checkB.className = 'ed-btn'
-    checkB.textContent = t('Check for updates')
-    checkB.addEventListener('click', async () => {
-      checkB.disabled = true
-      status.textContent = t('Checking…')
-      const result = await checkForUpdates()
-      checkB.disabled = false
-      if (result.status === 'current') {
-        status.textContent = t("You're on the latest version (v{v}).", { v: result.version })
-      } else if (result.status === 'error') {
-        status.textContent = t("Couldn't check: {m}", { m: result.message })
-      } else {
-        const { release } = result
-        status.textContent = ''
-        const line = div('ed-about-new')
-        line.textContent = t('Version {v} is available.', { v: release.version })
-        status.appendChild(line)
-        if (release.notes) {
-          const notes = div('ed-about-notes')
-          notes.textContent = release.notes
-          status.appendChild(notes)
-        }
-        const fail = (err: any) => { status.textContent = t('Update failed: {m}', { m: String(err?.message ?? err) }) }
-        const done = () => {
-          status.textContent = ''
-          const ok = div('ed-about-new')
-          ok.textContent = t('Updated to v{v} on disk.', { v: release.version })
-          status.appendChild(ok)
-          const note = div('ed-about-notes')
-          note.textContent = canUpdateInPlace()
-            ? t('This window is still running v{v} — reload to finish. A v{v} backup was downloaded.', { v: APP_VERSION })
-            : t("This window is still running v{v}. If you overwrote the file that's open here, reload; otherwise open the file you saved.", { v: APP_VERSION })
-          status.appendChild(note)
-          const reloadB = document.createElement('button')
-          reloadB.className = 'ed-btn ed-btn-primary'
-          reloadB.textContent = t('Reload into new version')
-          reloadB.addEventListener('click', () => {
-            this.store.setDirty(false) // disk already holds this exact document
-            location.reload()
-          })
-          status.appendChild(reloadB)
-        }
-
-        const inPlaceB = document.createElement('button')
-        inPlaceB.className = 'ed-btn ed-btn-primary'
-        inPlaceB.textContent = canUpdateInPlace() ? t('Update this file') : t('Update this file…')
-        inPlaceB.title = canUpdateInPlace()
-          ? t('Downloads a backup of the current version, then rewrites this file on disk as the new version — document untouched.')
-          : t('Verifies and builds the new version with this document inside, then asks where to save it — pick the file you have open to update it.')
-        inPlaceB.addEventListener('click', async () => {
-          inPlaceB.disabled = true
-          inPlaceB.textContent = t('Verifying…')
-          try {
-            this.session?.stampInto(this.store.doc)
-            const written = await applyUpdateInPlace(release, this.store.doc)
-            if (written) done()
-            else { inPlaceB.disabled = false; inPlaceB.textContent = t('Update this file…') }
-          } catch (err: any) { fail(err) }
-        })
-        status.appendChild(inPlaceB)
-
-        const getB = document.createElement('button')
-        getB.className = 'ed-btn'
-        getB.textContent = t('Download updated copy')
-        getB.title = t('Downloads the new version with this document inside. The file you have now is not touched.')
-        getB.addEventListener('click', async () => {
-          getB.disabled = true
-          getB.textContent = t('Verifying…')
-          try {
-            this.session?.stampInto(this.store.doc)
-            await applyUpdate(release, this.store.doc)
-            getB.textContent = t('Downloaded ✓')
-            const note = div('ed-about-notes')
-            note.textContent = t('This window keeps running v{v} until you open the downloaded file.', { v: APP_VERSION })
-            status.appendChild(note)
-          } catch (err: any) { fail(err) }
-        })
-        status.appendChild(getB)
-      }
     })
-    row.appendChild(checkB)
-    box.append(row, status)
-
-    const autoRow = document.createElement('label')
-    autoRow.className = 'ed-about-auto'
-    const autoCb = document.createElement('input')
-    autoCb.type = 'checkbox'
-    autoCb.checked = autoCheckEnabled()
-    autoCb.addEventListener('change', () => setAutoCheck(autoCb.checked))
-    autoRow.append(autoCb, document.createTextNode(' ' + t('Check for updates automatically at launch')))
-    box.appendChild(autoRow)
-
-    // the hard no-network switch: blocks update checks AND online
-    // collaboration for this browser. Same-machine tab sync is not
-    // networking and stays on.
-    const offRow = document.createElement('label')
-    offRow.className = 'ed-about-auto'
-    const offCb = document.createElement('input')
-    offCb.type = 'checkbox'
-    offCb.checked = offlineEnabled()
-    offCb.addEventListener('change', () => {
-      setOffline(offCb.checked)
-      if (offCb.checked) {
-        if (this.session) disconnectOnline(this.session)
-      } else {
-        this.tryJoin() // re-enabling network re-connects only if share-eligible
-      }
-      this.wireOnlineStatus()
-      this.toast(
-        offCb.checked
-          ? t('Offline mode on — nothing leaves this computer')
-          : t('Offline mode off — online features re-enabled'),
-      )
-    })
-    offRow.append(offCb, document.createTextNode(' ' + t('Offline mode — block all network features (updates, online collaboration)')))
-    box.appendChild(offRow)
-
-    // Document properties → fillable {{author}} {{company}} {{subject}} {{event}} fields
-    const metaWrap = div('ed-about-row ed-about-meta-wrap')
-    const metaTitle = document.createElement('div')
-    metaTitle.className = 'ed-about-h'
-    metaTitle.textContent = t('Document properties')
-    metaWrap.appendChild(metaTitle)
-    const metaHint = document.createElement('p')
-    metaHint.className = 'ed-hint'
-    metaHint.innerHTML = t('Type <b>{{author}}</b>, <b>{{company}}</b>, <b>{{subject}}</b> or <b>{{event}}</b> in any text box and it fills in from here — everywhere at once. Handy for title slides and footers.')
-    metaWrap.appendChild(metaHint)
-    const ensureMeta = () => (this.store.doc.meta ??= {})
-    const metaField = (label: string, get: () => string, set: (v: string) => void) => {
-      const row = div('ed-about-meta')
-      const l = document.createElement('label')
-      l.textContent = label
-      const inp = document.createElement('input')
-      inp.type = 'text'
-      inp.value = get()
-      inp.addEventListener('change', () => this.store.commit(() => set(inp.value.trim())))
-      row.append(l, inp)
-      metaWrap.appendChild(row)
-    }
-    metaField(t('Title'), () => this.store.doc.title, (v) => { this.store.doc.title = v || 'Untitled' })
-    metaField(t('Author'), () => this.store.doc.meta?.author ?? '', (v) => { ensureMeta().author = v })
-    metaField(t('Company'), () => this.store.doc.meta?.company ?? '', (v) => { ensureMeta().company = v })
-    metaField(t('Subject'), () => this.store.doc.meta?.subject ?? '', (v) => { ensureMeta().subject = v })
-    metaField(t('Event'), () => this.store.doc.meta?.event ?? '', (v) => { ensureMeta().event = v })
-    metaField(t('Keywords'), () => this.store.doc.meta?.keywords ?? '', (v) => { ensureMeta().keywords = v })
-    box.appendChild(metaWrap)
-
-    const fine = div('ed-about-fine')
-    fine.innerHTML =
-      // FOUNDRY: both of these were untrue for our shell. Update checks are OFF
-      // (we don't publish a manifest — Deck updates when Foundry redeploys), and
-      // the embedded faces are ours: Instrument Sans went with upstream's demo
-      // deck, Inter / JetBrains Mono / DM Serif Display came in with the skin.
-      // Verified against the uncompressed bundle, not assumed.
-      `${t('Update checks are off — this shell updates when Foundry redeploys. Nothing here phones home: no ids, no telemetry.')}<br>` +
-      t('Includes reveal.js, Moveable, Selecto (MIT) · Inter, JetBrains Mono, DM Serif Display + Fraunces typefaces (OFL-1.1) — full notices travel in this file’s source.')
-    box.appendChild(fine)
-
-    overlay.appendChild(box)
-    const close = () => {
-      overlay.remove()
-      document.removeEventListener('keydown', onKey, true)
-    }
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape') {
-        ev.stopPropagation()
-        close()
-      }
-    }
-    overlay.addEventListener('click', (ev) => {
-      if (ev.target === overlay) close()
-    })
-    document.addEventListener('keydown', onKey, true)
-    document.body.appendChild(overlay)
-    if (runCheck || this.updateFound) checkB.click()
   }
 
   toast(message: string) {

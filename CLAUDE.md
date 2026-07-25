@@ -1387,7 +1387,57 @@ the Foundry · Gitwork brand switch. **No Foundry data touches it** — it's a l
   "this looks wrong"; the detector is for "this is unreachable".
 - **`DECK` tag dropped from the wordmark** — the lockup is the mark + `Foundry` (or the "G." +
   `Gitwork`). The window title already names the app.
-- **Deferred / notes:** nothing links a saved `.bento.html` back to a Foundry document or client
+
+### Deck — pass 3 (July 2026): it's a Foundry product, not a re-skinned fork
+
+Dan's charge was that the previous passes still read as a wrapper. This one removes the last of
+upstream's *product* (as opposed to its engine) and finishes wiring Deck to the platform.
+
+- **Dark mode — Deck follows Foundry's own setting.** Upstream has one fixed light palette.
+  `slides/src/foundry/theme-mode.ts` reads the SAME `localStorage` key the platform's
+  `ThemeProvider` writes (**`gitwork.theme.v1`**, `system|light|dark`) and stamps the same
+  `<html data-theme>`; it keeps listening on `storage` + `prefers-color-scheme`, so flipping the
+  toggle in a Foundry tab moves the Deck window live. Dark tokens are a second block in
+  `theme.css` (`:root[data-theme='dark']` + a Gitwork variant), taken from `globals.css`. **Two
+  boundaries**: only the CHROME flips — the **artboard keeps the deck's own paper**, because that's
+  the document (a dark editor around a light page, like every design tool); and it's a storage
+  read, never a network one, so a **saved deck honours it offline** without touching the
+  zero-external-requests contract. Accent lifts to `#6BA0FF` / `#A99BFF` on dark — `#1D4ED8` on
+  near-black fails contrast. Elevation on dark is tone, not shadow.
+- **The MIT credit is out of the UI, by Dan's explicit consent — the licence still travels.** The
+  About line used to read "Built on bento/slides (MIT)". MIT requires the notice be retained in
+  copies; it does **not** require a visible in-app credit. The `NOTICE` block at the top of
+  `index.html` is carried verbatim into the built shell **and into every saved deck** (verified,
+  and now asserted by `verify-shell.mjs`), and the repo keeps `LICENSE` +
+  `THIRD_PARTY_NOTICES.md`. **Do not strip the NOTICE block, and do not re-add a credit paragraph
+  to the dialog** — that combination is the whole basis for this being compliant.
+- **The `?` button and the "Shortcuts & tips" overlay are gone** — removed at the source
+  (`openHelp` deleted, the `?` key left unbound), not hidden. Every shortcut it listed is already
+  on the tooltip of the control it belongs to.
+- **The topbar's first slot is now `← Foundry`** (`mountHomeSlot`, `foundry/boot.ts`) linking to
+  `/app` — a window with no sidebar needs an exit more than a wordmark. It says *Foundry* under
+  both brands (the destination is the platform). A **saved deck** shows the inert lockup instead:
+  same `servedByFoundry()` test as identity, so a file on someone's disk never renders a dead link.
+- **About is now THE standard Foundry popup** — `foundry/about.ts`, built to DESIGN.md's
+  "fixed-height two-column popup" and matched against the React reference
+  (`starter-versions-modal.tsx`): 768px, 36px widget-header, a body that is **always 460px**,
+  `minmax(0,300px)/minmax(0,1fr)`, hairline divider, pick-left/read-right, focus trap + Escape.
+  Three sections — **About** (what Deck is, build/format), **Document** (the `{{author}}` merge
+  fields), **Privacy** (offline mode). Reached from **Save ▾ → Deck settings & about…** now the
+  logo is a back link. Collapses to one column below 720px.
+- **The launch update-check is deleted, not hidden** — we publish no manifest, so it could only
+  fail; removing the call also drops a pointless fetch at every boot.
+- **Bug found and fixed:** the CSS that hid the update UI was `.ed-about-row:has(> button)
+  { display:none }` — too broad. **"Replace from JSON…" builds its Apply/Cancel row with the same
+  class, so that dialog shipped with no visible buttons.** The rule is gone (the update UI is
+  removed at source instead) and `verify-shell.mjs` now asserts those buttons are visible.
+- **`verify-shell.mjs` grew groups for all of it** — help-is-gone, the back link (and that a saved
+  deck does *not* render one), the About dialog's exact 768/460/2-col geometry + that it doesn't
+  resize between sections, "no MIT/bento string anywhere in the chrome **but** the NOTICE is still
+  in a saved file", the Replace-from-JSON regression, and a new **07 // DARK MODE** group checking
+  both modes, ≥4.5:1 topbar contrast, that the artboard does *not* follow, and that a `storage`
+  event from another tab reaches the window.
+- **Deferred / notes:** nothing links a saved `.deck.html` back to a Foundry document or client
   yet (decks live as files — Drive/Docs attachment is the obvious next step); no PDF/thumbnail
   capture into Docs; no `manifest.json`, so in-app "update" is a redeploy; collaboration (bento's
   CRDT + relay) is untouched and unused; and the product name is one constant in `brand.ts` if

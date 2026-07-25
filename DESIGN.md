@@ -675,6 +675,13 @@ is no document row to render inside the `/app` shell, so Deck is never framed by
 it is reached by a small mono `· DECK ↗` link in the HQ context strip and a `Deck` secondary
 button on the Docs list toolbar, both `target="_blank"`.
 
+**Because it has no sidebar, the topbar's first slot is the way back** — `← Foundry`, linking to
+`/app`, mono caps label, arrow nudging left on hover. Not a logo, and not an About trigger: a
+window with no chrome around it needs an exit more than it needs a wordmark, and the window title
+already names the app. It says *Foundry* under both brands, because the destination is the
+platform, not the brand being worn. A **saved** deck — a file on someone's disk, possibly outside
+Gitwork — has nowhere to go back to, so it shows the inert brand lockup there instead.
+
 **Two brands, one shell** — the same Foundry/Gitwork pairing as the per-document doc theme
 above, switched from a compact segmented control in the topbar (mono caps, 6px, brand-soft
 active fill). `:root` is Foundry; `:root[data-brand='gitwork']` re-derives every token:
@@ -711,6 +718,25 @@ field); `?brand=gitwork` forces a brand at any size.
   make zero external requests — a saved deck keeps its typography offline.
 - **Gitwork Blue on every interactive + active state**, replacing upstream's amber accent
   (including the dirty-save dot and the active slide thumbnail).
+- **Dialogs are the platform's dialogs.** Deck's own About/settings popup is the standard
+  fixed-height two-column popup specified under *Grid & Container* — 768px, a 36px widget-header
+  strip, a body that is always 460px, `minmax(0,300px) / minmax(0,1fr)` either side of a hairline,
+  pick-left/read-right. It is hand-built in `foundry/about.ts` because Deck is vanilla TS, but the
+  geometry and tokens are the same ones `<Modal>` produces, so it reads as one system. Below 720px
+  it collapses to a single column with the nav as a scrolling strip — a 460px box plus a wrapped
+  nav is taller than a phone, and a dialog you can't reach the bottom of is the exact failure the
+  clipping audit exists to prevent.
+
+**Dark mode is the platform's, not Deck's own.** Upstream has one fixed light palette; Foundry
+stores `system | light | dark` in `localStorage` (`gitwork.theme.v1`) and paints `<html data-theme>`.
+Deck is served same-origin from `/deck`, so `foundry/theme-mode.ts` reads that same key, stamps the
+same attribute, and keeps listening — flip the toggle in a Foundry tab and the Deck window follows
+live. Two boundaries hold: only the **chrome** flips (topbar, rails, dialogs, the workspace behind
+the slide), because the **artboard is the document** and keeps the deck's own paper — a dark editor
+around a light page, as in every design tool; and it is a storage read, never a network one, so a
+saved deck honours it offline without breaking the zero-requests contract. On dark, elevation is
+tone rather than shadow, and the accent lifts to `#6BA0FF` (Foundry) / `#A99BFF` (Gitwork) because
+`{colors.primary}` on a near-black surface fails contrast.
 
 **Deck-native slides follow the document grammar** — the starter deck is built from the same
 parts as the rest of the platform: a mono eyebrow over a short accent rule, a serif headline,
