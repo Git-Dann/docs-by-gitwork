@@ -30,6 +30,7 @@ const TYPE_PREFIX: Record<DocumentType, string> = {
   HANDOVER: "HAND",
   REPORT: "RPT",
   BRIEF: "BRIEF",
+  DECK: "DECK",
   OTHER: "DOC",
 };
 

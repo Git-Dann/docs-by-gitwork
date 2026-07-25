@@ -32,6 +32,7 @@ const TYPE_PREFIX: Record<DocumentType, string> = {
   HANDOVER: "HAND",
   REPORT: "RPT",
   BRIEF: "BRIEF",
+  DECK: "DECK",
   OTHER: "DOC",
 };
 
@@ -47,6 +48,7 @@ export const DOCUMENT_TYPE_LABEL: Record<DocumentType, string> = {
   HANDOVER: "Handover",
   REPORT: "Status Report",
   BRIEF: "Brief",
+  DECK: "Deck",
   OTHER: "Document",
 };
 
@@ -62,6 +64,7 @@ export const DOCUMENT_TYPE_SHORT: Record<DocumentType, string> = {
   HANDOVER: "HANDOVER",
   REPORT: "STATUS REPORT",
   BRIEF: "BRIEF",
+  DECK: "DECK",
   OTHER: "DOCUMENT",
 };
 

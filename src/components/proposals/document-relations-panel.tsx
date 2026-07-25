@@ -37,6 +37,7 @@ const DOC_TYPE_BADGE: Record<RelationDocument["documentType"], string> = {
   HANDOVER: "HAND",
   REPORT: "RPT",
   BRIEF: "BRIEF",
+  DECK: "DECK",
   OTHER: "DOC",
 };
 

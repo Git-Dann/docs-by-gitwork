@@ -221,6 +221,12 @@ export async function POST(request: NextRequest) {
           ...DEFAULT_PROPOSAL_METADATA,
           client: body.clientName ?? DEFAULT_PROPOSAL_METADATA.client,
           owner: user.name ?? DEFAULT_PROPOSAL_METADATA.owner,
+          // DECK only: the starting deck's slug. Deck reads this on first open,
+          // builds the slides and saves them to Document.deckDoc — so the choice
+          // made here survives even though no slides exist yet.
+          ...(documentType === "DECK" && body.deckTemplate
+            ? { deckTemplate: body.deckTemplate }
+            : {}),
         },
         sections: { create: sectionsCreate },
         costLineItems: isProposal ? { create: getDefaultCostsPayload() } : undefined,

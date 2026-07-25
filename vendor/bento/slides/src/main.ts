@@ -14,7 +14,8 @@ import { adoptDeckBrand, initialBrand, injectBrandFonts, silenceUpstreamUpdateCh
 import { foundryStarterDoc } from './foundry/starter'
 import { loadFoundryUser } from './foundry/identity'
 import { applyThemeMode, watchThemeMode } from './foundry/theme-mode'
-import { templateDoc, templateParam } from './foundry/templates'
+import { templateBySlug, templateDoc, templateParam } from './foundry/templates'
+import { foundryDocId, loadFoundryDeck, saveFoundryDeck } from './foundry/foundry-doc'
 import {
   capturePristine, readEmbeddedDoc, serializeFile, serializeAuto, downloadFile,
   suggestedFileName, parseEnvelope, decryptEnvelope, setEncryptionPassword,
@@ -79,15 +80,58 @@ if (envelope) {
   // only a developer comparison. The file stays in the tree (unreferenced, so
   // rollup drops it); to see it, swap this call for `starterDoc()` under
   // `npm run deck:dev`.
-  // FOUNDRY: `?template=<slug>` opens one of the ten starting decks
-  // (foundry/templates.ts) instead of the starter — how the platform deep-links
-  // "new pitch deck". Only applies to an EMPTY shell: a saved deck always wins,
-  // or a stray link would replace someone's work.
-  const tpl = templateParam()
-  bootWith(
-    (embedded && parseDoc(embedded)) ||
-      (tpl ? templateDoc(tpl, FD_BRAND) : foundryStarterDoc(FD_BRAND)),
-  )
+  // FOUNDRY: an EMBEDDED document always wins — a saved deck opened from disk
+  // must never be replaced by a query string it happens to carry.
+  const saved = embedded && parseDoc(embedded)
+  if (saved) {
+    bootWith(saved)
+  } else if (foundryDocId()) {
+    // `?doc=<id>` — this window is editing a Foundry Document. Slides come from
+    // the API; ⌘S saves back (foundry/foundry-doc.ts).
+    void bootFromFoundry(foundryDocId()!)
+  } else {
+    // `?template=<slug>` opens one of the ten starting decks, else the starter.
+    const tpl = templateParam()
+    bootWith(tpl ? templateDoc(tpl, FD_BRAND) : foundryStarterDoc(FD_BRAND))
+  }
+}
+
+/**
+ * FOUNDRY: boot a deck that lives as a Foundry Document. A deck with no slides
+ * yet is materialised from the template chosen at creation and saved back
+ * immediately, so the very first ⌘S is not the thing that gives it content.
+ */
+async function bootFromFoundry(id: string) {
+  try {
+    const { doc, ref } = await loadFoundryDeck(id)
+    if (doc) {
+      const parsed = parseDoc(typeof doc === 'string' ? doc : JSON.stringify(doc))
+      if (parsed) {
+        bootWith(parsed)
+        return
+      }
+      // Stored but unreadable is a real problem — say so rather than silently
+      // handing back a blank deck that the next save would overwrite it with.
+      throw new Error('the stored slides could not be read')
+    }
+    const tpl = templateBySlug(ref.template ?? '')
+    const fresh = tpl ? templateDoc(tpl, FD_BRAND) : foundryStarterDoc(FD_BRAND)
+    fresh.title = ref.title
+    bootWith(fresh)
+    void saveFoundryDeck(id, fresh, fresh.title).catch(() => {
+      /* first-save failure is not fatal — ⌘S retries and reports properly */
+    })
+  } catch (err) {
+    document.getElementById('deck-splash')?.remove()
+    const card = document.createElement('div')
+    card.className = 'ed-player'
+    card.innerHTML =
+      `<div class="ed-playercard"><h1>${t('This deck could not be opened')}</h1>` +
+      `<p>${String((err as Error)?.message ?? err).replace(/</g, '&lt;')}</p>` +
+      `<button class="ed-playgo">${t('Back to Foundry')}</button></div>`
+    document.body.appendChild(card)
+    card.querySelector('.ed-playgo')!.addEventListener('click', () => { location.href = '/app/docs' })
+  }
 }
 
 /** Encrypted file: ask for the password (looping on failure), then boot. */

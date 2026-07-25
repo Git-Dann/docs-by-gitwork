@@ -18,6 +18,7 @@ import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/format";
 import { usePermissions } from "@/hooks/use-permissions";
 import { allowedDocTypes } from "@/lib/templates";
+import { DECK_TEMPLATES } from "@/lib/deck-templates";
 import type { DocumentType } from "@/types/proposal";
 
 interface TemplateRecord {
@@ -34,7 +35,18 @@ interface TemplateRecord {
 
 interface TemplateGalleryProps {
   selectedTemplateId: string | null;
-  onPick: (template: { id: string; documentType: DocumentType }) => void;
+  /**
+   * `id` is the DocumentTemplate id, or null for DECK — decks have no template
+   * row, so the choice travels as `deckTemplate` (a slug from
+   * src/lib/deck-templates.ts) instead.
+   */
+  onPick: (template: {
+    id: string | null;
+    documentType: DocumentType;
+    deckTemplate?: string | null;
+  }) => void;
+  /** The currently-chosen deck slug, so the row can show as selected. */
+  selectedDeckTemplate?: string | null;
   /** Optional doc-type filter; "ALL" shows every template. Defaults to "PROPOSAL". */
   initialFilter?: DocumentType | "ALL";
 }
@@ -56,6 +68,7 @@ const CHIP_ORDER: Array<DocumentType | "ALL"> = [
   "NDA",
   "CO",
   "DSA",
+  "DECK",
   "ALL",
 ];
 
@@ -64,6 +77,7 @@ const CHIP_LABEL: Record<DocumentType | "ALL", string> = {
   HANDOVER: "Handover",
   REPORT: "Report",
   BRIEF: "Brief",
+  DECK: "Deck",
   OTHER: "Blank",
   SLA: "SLA",
   SOW: "SOW",
@@ -77,6 +91,7 @@ const CHIP_LABEL: Record<DocumentType | "ALL", string> = {
 export function TemplateGallery({
   selectedTemplateId,
   onPick,
+  selectedDeckTemplate,
   initialFilter = "PROPOSAL",
 }: TemplateGalleryProps) {
   const [templates, setTemplates] = useState<TemplateRecord[]>([]);
@@ -118,8 +133,11 @@ export function TemplateGallery({
   // Only show chips for types that actually have a (role-allowed) template seeded — keeps the strip
   // honest as the workspace grows/shrinks, and never offers an admin type to a developer.
   const availableTypes = new Set(visibleTemplates.map((t) => t.documentType));
+  // DECK is always offered. Its templates are not DocumentTemplate rows — they
+  // live in the Deck app and are catalogued in src/lib/deck-templates.ts — so the
+  // "only show chips with a seeded template" rule would hide it forever.
   const visibleChips = CHIP_ORDER.filter(
-    (chip) => chip === "ALL" || availableTypes.has(chip as DocumentType),
+    (chip) => chip === "ALL" || chip === "DECK" || availableTypes.has(chip as DocumentType),
   );
 
   // Clicking a type chip filters the gallery AND selects that type's template — so the create
@@ -130,6 +148,11 @@ export function TemplateGallery({
   function handleChipClick(chip: DocumentType | "ALL") {
     setFilter(chip);
     if (chip === "ALL") return;
+    if (chip === "DECK") {
+      // No DocumentTemplate to pick — the deck rows below carry the choice.
+      onPick({ id: null, documentType: "DECK" });
+      return;
+    }
     const forType = templates.filter(
       (t) => allowedTypeSet.has(t.documentType) && t.documentType === chip,
     );
@@ -154,7 +177,9 @@ export function TemplateGallery({
       {/* Dense list rows — one template per row so the operator can scan many at a glance and
           the modal doesn't get drowned in big cards. Padding lives here, not on the parent
           scroll container, so the sticky chip strip above stays flush. */}
-      {loading ? (
+      {effectiveFilter === "DECK" ? (
+        <DeckTemplateRows selectedSlug={selectedDeckTemplate ?? null} onPick={onPick} />
+      ) : loading ? (
         <p className="px-3 py-3 text-sm text-[var(--text-3)]">Loading templates…</p>
       ) : filtered.length === 0 ? (
         <p className="px-3 py-3 text-sm text-[var(--text-3)]">No templates yet for this type.</p>
@@ -243,5 +268,76 @@ function FilterChip({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * The deck catalogue, rendered in the same row shape as the DocumentTemplate
+ * rows above so the gallery reads as one list whichever chip is active. Grouped
+ * Delivery / Sales — the two are different jobs and the split is the fastest way
+ * into the right half.
+ */
+function DeckTemplateRows({
+  selectedSlug,
+  onPick,
+}: {
+  selectedSlug: string | null;
+  onPick: TemplateGalleryProps["onPick"];
+}) {
+  const groups: Array<{ label: string; house: "foundry" | "gitwork" }> = [
+    { label: "Delivery", house: "foundry" },
+    { label: "Sales", house: "gitwork" },
+  ];
+  return (
+    <div className="p-3">
+      {groups.map((group) => {
+        const rows = DECK_TEMPLATES.filter((t) => t.house === group.house);
+        if (rows.length === 0) return null;
+        return (
+          <div key={group.house} className="mb-3 last:mb-0">
+            <p className="px-1 pb-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+              {group.label}
+            </p>
+            <ul className="space-y-1.5">
+              {rows.map((tpl) => {
+                const selected = tpl.slug === selectedSlug;
+                return (
+                  <li key={tpl.slug}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onPick({ id: null, documentType: "DECK", deckTemplate: tpl.slug })
+                      }
+                      className={cn(
+                        "group relative flex w-full items-start gap-3 rounded-[8px] border bg-white px-3 py-2.5 text-left transition",
+                        selected
+                          ? "border-[var(--brand-600)] ring-2 ring-[var(--brand-600)]/20"
+                          : "border-[var(--border-2)] hover:border-[var(--border-1)] hover:shadow-[var(--shadow-xs)]",
+                      )}
+                    >
+                      <span className="mt-0.5 inline-flex h-5 min-w-[52px] shrink-0 items-center justify-center rounded-[4px] bg-[var(--brand-200)] px-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)]">
+                        DECK
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline gap-2">
+                          <p className="truncate text-sm font-medium text-[var(--text-1)]">{tpl.name}</p>
+                          <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                            {tpl.house === "gitwork" ? "GITWORK" : "FOUNDRY"}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-[12px] leading-snug text-[var(--text-3)]">{tpl.blurb}</p>
+                        <p className="mt-1 font-mono text-[10px] text-[var(--text-4)]">
+                          {tpl.slides} slides
+                        </p>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
   );
 }

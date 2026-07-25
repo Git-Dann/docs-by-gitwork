@@ -18,6 +18,7 @@ import {
   type SectionBlueprint,
 } from "@/lib/default-template";
 import { briefSectionBlueprints } from "@/lib/templates/brief";
+import { deckSectionBlueprints } from "@/lib/templates/deck";
 import { coSectionBlueprints } from "@/lib/templates/co";
 import { dsaSectionBlueprints } from "@/lib/templates/dsa";
 import { handoverSectionBlueprints } from "@/lib/templates/handover";
@@ -39,6 +40,7 @@ export const TEMPLATES_BY_TYPE: Record<DocumentType, SectionBlueprint[]> = {
   HANDOVER: handoverSectionBlueprints,
   REPORT: reportSectionBlueprints,
   BRIEF: briefSectionBlueprints,
+  DECK: deckSectionBlueprints,
   OTHER: otherSectionBlueprints,
 };
 
@@ -66,6 +68,8 @@ export const DOC_TYPE_CONFIG: Record<DocumentType, { usesApprovalTrack: boolean;
   HANDOVER: { usesApprovalTrack: false, adminOnly: false },
   REPORT: { usesApprovalTrack: false, adminOnly: false },
   BRIEF: { usesApprovalTrack: false, adminOnly: false },
+  // A deck has no sections and no sign-off track — its content is the slides.
+  DECK: { usesApprovalTrack: false, adminOnly: false },
   OTHER: { usesApprovalTrack: false, adminOnly: false },
 };
 
@@ -112,6 +116,7 @@ export const TEMPLATE_SLUG_BY_TYPE: Record<DocumentType, string> = {
   HANDOVER: "default-handover",
   REPORT: "default-report",
   BRIEF: "default-brief",
+  DECK: "default-deck",
   OTHER: "default-other",
 };
 
@@ -126,6 +131,7 @@ export const TEMPLATE_NAME_BY_TYPE: Record<DocumentType, string> = {
   HANDOVER: "Handover — default",
   REPORT: "Status report — default",
   BRIEF: "Brief / meeting notes — default",
+  DECK: "Deck — slides",
   OTHER: "Blank document",
 };
 
@@ -142,5 +148,6 @@ export const TEMPLATE_DESCRIPTION_BY_TYPE: Record<DocumentType, string> = {
   HANDOVER: "A project handover — access, architecture and everything the next team needs.",
   REPORT: "A recurring status report — progress, metrics and what's next.",
   BRIEF: "A short brief or meeting notes — context, decisions and next steps.",
+  DECK: "A slide deck, authored in Deck. Pick a starting template when you create it.",
   OTHER: "A blank document — a clean page with just the essentials.",
 };

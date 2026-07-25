@@ -14,7 +14,6 @@ import {
   MagnifyingGlassIcon,
   PencilSquareIcon,
   PlusIcon,
-  PresentationChartLineIcon,
   RectangleStackIcon,
   SparklesIcon,
   Squares2X2Icon,
@@ -44,6 +43,23 @@ import {
 import type { ProposalListItem } from "@/types/proposal";
 import { usePermissions } from "@/hooks/use-permissions";
 import { allowedDocTypes } from "@/lib/templates";
+import { deckHref, deckTemplateBySlug } from "@/lib/deck-templates";
+
+/**
+ * Where a document opens. Everything goes to the Docs editor except a DECK,
+ * which has no sections to render there — it opens in the Deck window, which is
+ * the thing that can actually edit slides. `target="_blank"` is applied at each
+ * call site via `docLinkTarget`.
+ */
+function docHref(doc: { id: string; documentType?: string | null }): string {
+  return doc.documentType === "DECK" ? deckHref(doc.id) : `/app/docs/${doc.id}`;
+}
+/** Decks open in their own window; everything else navigates in place. */
+function docLinkTarget(doc: { documentType?: string | null }) {
+  return doc.documentType === "DECK"
+    ? { target: "_blank" as const, rel: "noopener" }
+    : {};
+}
 import { StatusBadge } from "@/components/status-badge";
 import { TemplateGallery } from "@/components/proposals/template-gallery";
 import type { DocumentType } from "@/types/proposal";
@@ -79,6 +95,7 @@ const LABEL_BY_TYPE: Record<DocumentType, string> = {
   HANDOVER: "Handover",
   REPORT: "Status Report",
   BRIEF: "Brief",
+  DECK: "Deck",
   OTHER: "Document",
 };
 const DEFAULT_TITLE_BY_TYPE: Record<DocumentType, string> = {
@@ -92,6 +109,7 @@ const DEFAULT_TITLE_BY_TYPE: Record<DocumentType, string> = {
   HANDOVER: "Project Handover",
   REPORT: "Status Report",
   BRIEF: "Untitled Brief",
+  DECK: "Untitled Deck",
   OTHER: "Untitled Document",
 };
 const PLACEHOLDER_BY_TYPE: Record<DocumentType, string> = {
@@ -105,6 +123,7 @@ const PLACEHOLDER_BY_TYPE: Record<DocumentType, string> = {
   HANDOVER: "Acme — Project Handover",
   REPORT: "Acme — June Status Report",
   BRIEF: "Acme — Kickoff Brief",
+  DECK: "Acme — Pitch Deck",
   OTHER: "Acme — Briefing Note",
 };
 
@@ -118,6 +137,9 @@ export function ProposalList() {
   const searchParams = useSearchParams();
   const clientFilter = searchParams.get("client")?.trim() ?? "";
   const openCreate = searchParams.get("new") === "1";
+  // `?type=DECK` — deep-link straight to one type's rail selection. Used by the
+  // HQ "· Decks" link; any DocumentType works.
+  const typeParam = searchParams.get("type")?.trim().toUpperCase() ?? "";
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<(typeof statusOptions)[number]>("ALL");
   const [sort, setSort] = useState<(typeof sortOptions)[number]["value"]>("updatedAt:desc");
@@ -131,6 +153,9 @@ export function ProposalList() {
     clientId: undefined as string | undefined,
     documentType: "PROPOSAL" as DocumentType,
     templateId: null as string | null,
+    // DECK only — the starting deck to materialise, by slug. Stored on the new
+    // document's metadata; Deck builds the slides on first open.
+    deckTemplate: null as string | null,
   });
 
   useEffect(() => {
@@ -171,7 +196,9 @@ export function ProposalList() {
   // `archived` shows only archived. Drives the card grid, table, and grouped views alike.
   const [scope, setScope] = useState<"all" | "favorites" | "archived">("all");
   // Doc-type filter (rail's TYPE list). Scopes the visible set to one document type.
-  const [docTypeFilter, setDocTypeFilter] = useState<DocumentType | "ALL">("ALL");
+  const [docTypeFilter, setDocTypeFilter] = useState<DocumentType | "ALL">(
+    typeParam && typeParam !== "ALL" ? (typeParam as DocumentType) : "ALL",
+  );
 
   // Partition the full fetched set once: archived vs live, and favourites within live. The rail
   // counts read straight off these so they never lie when a filter is applied.
@@ -289,23 +316,47 @@ export function ProposalList() {
   }, [page, totalPages]);
 
   async function handleCreate() {
+    const isDeck = form.documentType === "DECK";
     const created = await createMutation.mutateAsync({
       title: form.title || DEFAULT_TITLE_BY_TYPE[form.documentType],
       clientName: form.clientName || undefined,
       clientId: form.clientId,
       documentType: form.documentType,
       templateId: form.templateId ?? undefined,
+      // The chosen deck rides along as metadata; the Deck app materialises it.
+      deckTemplate: isDeck ? form.deckTemplate ?? undefined : undefined,
     });
 
     setShowCreate(false);
-    setForm({ title: "", clientName: "", clientId: undefined, documentType: "PROPOSAL", templateId: null });
+    setForm({
+      title: "",
+      clientName: "",
+      clientId: undefined,
+      documentType: "PROPOSAL",
+      templateId: null,
+      deckTemplate: null,
+    });
 
+    // A deck is edited in the Deck window, not the Docs editor — open it there
+    // and leave the library where it was, so closing the tab lands you back on
+    // the list rather than on an editor that cannot render slides.
+    if (isDeck) {
+      window.open(deckHref(created.proposal.id), "_blank", "noopener");
+      return;
+    }
     router.push(`/app/docs/${created.proposal.id}`);
   }
 
   function closeCreate() {
     setShowCreate(false);
-    setForm({ title: "", clientName: "", clientId: undefined, documentType: "PROPOSAL", templateId: null });
+    setForm({
+      title: "",
+      clientName: "",
+      clientId: undefined,
+      documentType: "PROPOSAL",
+      templateId: null,
+      deckTemplate: null,
+    });
   }
 
   const totalCount = proposals.length;
@@ -506,19 +557,12 @@ export function ProposalList() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Deck — the slide editor (vendor/bento, served at /deck). Its own
-                window, not a Docs route: it's a standalone single-file editor
-                that takes over the page and saves to a file, not the database. */}
-            <a
-              href="/deck"
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Deck — build a slide deck in a new window (beta)"
-              className={buttonStyles({ variant: "secondary", size: "md" })}
-            >
-              <PresentationChartLineIcon className="h-4 w-4" />
-              <span className="hidden sm:inline">Deck</span>
-            </a>
+            {/* No standalone "Deck" button any more. It opened a scratch deck that
+                saved to a FILE, so anything made with it never appeared in this
+                library — the exact complaint that turned decks into documents.
+                Decks are created through "+ New" (Deck chip) like every other doc,
+                and open from their own card. `/deck` with no ?doc= still works for
+                a throwaway, it just isn't advertised here. */}
             {/* Cross-doc analytics is proposal/win-rate insight — admin-level, hidden from devs. */}
             {canViewAdminDocTypes ? (
               <Link
@@ -537,7 +581,7 @@ export function ProposalList() {
                 onClick={() => setShowCreate(true)}
                 leadingIcon={<PlusIcon className="h-4 w-4" />}
               >
-                New document
+                New
               </Button>
             ) : null}
           </div>
@@ -667,7 +711,7 @@ export function ProposalList() {
                             </span>
                           ) : null}
                           <Link
-                            href={`/app/docs/${proposal.id}`}
+                            href={docHref(proposal)} {...docLinkTarget(proposal)}
                             className="font-medium text-[var(--text-1)] transition hover:text-[var(--brand-700)]"
                           >
                             {proposal.title}
@@ -700,7 +744,7 @@ export function ProposalList() {
                       <td>
                         <div className="flex items-center justify-end gap-1">
                           <Link
-                            href={`/app/docs/${proposal.id}`}
+                            href={docHref(proposal)} {...docLinkTarget(proposal)}
                             className={buttonStyles({
                               variant: "utility",
                               size: "icon-md",
@@ -762,7 +806,7 @@ export function ProposalList() {
                       <div className="mx-auto max-w-md space-y-3">
                         <DocumentPlusIcon className="mx-auto h-8 w-8 text-[var(--text-4)]" />
                         <p className="text-[var(--text-2)]">
-                          No documents yet &mdash; click <strong>New document</strong> above to spin
+                          No documents yet &mdash; click <strong>New</strong> above to spin
                           one up from a template.
                         </p>
                       </div>
@@ -982,12 +1026,20 @@ export function ProposalList() {
                       Template
                     </p>
                     <p className="mt-1 text-sm font-medium text-[var(--text-1)]">
-                      {form.templateId ? LABEL_BY_TYPE[form.documentType] : "Pick a template →"}
+                      {form.documentType === "DECK"
+                        ? deckTemplateBySlug(form.deckTemplate)?.name ?? "Pick a deck →"
+                        : form.templateId
+                          ? LABEL_BY_TYPE[form.documentType]
+                          : "Pick a template →"}
                     </p>
                     <p className="mt-0.5 text-[11px] text-[var(--text-3)]">
-                      {form.templateId
-                        ? "Selected — Gitwork defaults pre-filled."
-                        : "Browse the gallery on the right."}
+                      {form.documentType === "DECK"
+                        ? form.deckTemplate
+                          ? "Opens in Deck — slides are created on first open."
+                          : "Choose one of the ten decks on the right."
+                        : form.templateId
+                          ? "Selected — Gitwork defaults pre-filled."
+                          : "Browse the gallery on the right."}
                     </p>
                   </div>
                 </div>
@@ -1004,8 +1056,19 @@ export function ProposalList() {
                   <div className="min-h-0 flex-1 overflow-y-auto">
                     <TemplateGallery
                       selectedTemplateId={form.templateId}
-                      onPick={({ id, documentType }) =>
-                        setForm((previous) => ({ ...previous, templateId: id, documentType }))
+                      selectedDeckTemplate={form.deckTemplate}
+                      onPick={({ id, documentType, deckTemplate }) =>
+                        setForm((previous) => ({
+                          ...previous,
+                          templateId: id,
+                          documentType,
+                          // Keep the slug only while DECK is the chosen type, so
+                          // switching to a normal doc can't smuggle one through.
+                          deckTemplate:
+                            documentType === "DECK"
+                              ? deckTemplate ?? previous.deckTemplate
+                              : null,
+                        }))
                       }
                     />
                   </div>
@@ -1159,7 +1222,7 @@ function GroupedList({
                       aria-label={`Select ${doc.title}`}
                     />
                     <Link
-                      href={`/app/docs/${doc.id}`}
+                      href={docHref(doc)} {...docLinkTarget(doc)}
                       className="flex-1 truncate font-medium text-[var(--text-1)] transition hover:text-[var(--brand-700)]"
                     >
                       {doc.title}
@@ -1247,6 +1310,7 @@ const RAIL_TYPE_LABEL: Record<DocumentType, string> = {
   HANDOVER: "Handovers",
   REPORT: "Status Reports",
   BRIEF: "Briefs",
+  DECK: "Decks",
   OTHER: "Blank Docs",
 };
 
@@ -1421,7 +1485,7 @@ function DocCardGrid({
                 onClick={onCreate}
                 leadingIcon={<PlusIcon className="h-4 w-4" />}
               >
-                New document
+                New
               </Button>
             ) : null}
           </div>
@@ -1516,7 +1580,7 @@ function DocCard({
     <article className="group/card flex flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white transition hover:border-[var(--border-1)] hover:shadow-[var(--shadow-sm)]">
       {/* Generated cover — type eyebrow + serif title + client, clickable to open the editor. */}
       <div className="relative">
-        <Link href={`/app/docs/${proposal.id}`} className="block">
+        <Link href={docHref(proposal)} {...docLinkTarget(proposal)} className="block">
           <div
             className="flex min-h-[136px] flex-col justify-between p-4"
             style={{ backgroundImage: `linear-gradient(135deg, ${palette.from}, ${palette.to})` }}
@@ -1570,7 +1634,7 @@ function DocCard({
         <StatusBadge status={proposal.status} />
         <div className="flex items-center gap-0.5 opacity-0 transition group-hover/card:opacity-100 focus-within:opacity-100">
           <Link
-            href={`/app/docs/${proposal.id}`}
+            href={docHref(proposal)} {...docLinkTarget(proposal)}
             className={buttonStyles({ variant: "utility", size: "icon-sm", className: "text-[var(--text-3)]" })}
             aria-label="Edit"
             title="Edit"

@@ -550,8 +550,11 @@ export const proposalCreateSchema = z.object({
   // Document type for the new record. Defaults to PROPOSAL at the API layer if omitted, so
   // existing callers (legacy "New document" flow that didn't know about types) still work.
   documentType: z
-    .enum(["PROPOSAL", "SLA", "SOW", "MSA", "NDA", "CO", "DSA", "HANDOVER", "REPORT", "BRIEF", "OTHER"])
+    .enum(["PROPOSAL", "SLA", "SOW", "MSA", "NDA", "CO", "DSA", "HANDOVER", "REPORT", "BRIEF", "DECK", "OTHER"])
     .optional(),
+  // DECK only — the starting deck's slug (src/lib/deck-templates.ts). Recorded on
+  // metadata.deckTemplate; the Deck app materialises the slides on first open.
+  deckTemplate: z.string().trim().max(64).optional(),
 });
 
 export const supportClientCreateSchema = z.object({
