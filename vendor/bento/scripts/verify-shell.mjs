@@ -574,6 +574,21 @@ console.log('\n08 // NO UPSTREAM NAME')
     }
   }
 
+  // The compressor rebuilds the outer shell by REGEX against the vite output, so
+  // renaming an id in index.html can make a piece silently vanish from the build.
+  // That is not hypothetical: renaming `bento-splash` → `deck-splash` dropped the
+  // boot splash out of the artefact, and nothing said a word. Assert the pieces
+  // that only exist in the built file.
+  for (const [what, needle] of [
+    ['boot splash markup', '<div id="deck-splash"'],
+    ['splash wordmark', 'class="bs-word"'],
+    ['document block', 'id="deck-doc"'],
+    ['compressed runtime', 'id="deck-rt"'],
+  ]) {
+    if (!shell.includes(needle)) note('identity', `the build dropped the ${what} (${needle})`)
+    else pass(`the build kept the ${what}`)
+  }
+
   // The favicon must be the PLATFORM's, not a mark invented here or upstream's
   // tile. Compare against src/app/icon.svg — the same disc Foundry's own tabs use.
   const appIcon = readFileSync(new URL('../../../src/app/icon.svg', import.meta.url), 'utf8')
