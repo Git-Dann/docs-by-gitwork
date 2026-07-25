@@ -656,6 +656,66 @@ console.log('\n08 // NO UPSTREAM NAME')
   else pass(`the favicon is the platform's own disc (${fill})`)
 }
 
+// ── 9. document mode: a deck that lives in Docs ─────────────────────────────
+console.log('\n09 // FOUNDRY DOCUMENT MODE')
+{
+  // `/deck?doc=<id>` makes Deck part of Docs: slides load from the API and ⌘S
+  // saves back, so the library card can never go stale behind an open window.
+  // The failure that matters is silent — saving to a FILE when it should have
+  // gone to Foundry looks identical on screen until the card is out of date.
+  if (!target.startsWith('http')) {
+    pass('file:// target — document mode needs a served shell, skipping')
+  } else {
+    const ctx = await newCtx({ viewport: { width: 1500, height: 950 } })
+    let stored = null
+    let puts = 0
+    await ctx.route('**/api/documents/*/deck', async (route) => {
+      const req = route.request()
+      if (req.method() === 'GET') {
+        return route.fulfill({
+          status: 200, contentType: 'application/json',
+          body: JSON.stringify({ data: { deck: { doc: stored, title: 'Harness Deck', template: 'gw-pitch' } } }),
+        })
+      }
+      if (req.method() === 'PUT') {
+        puts += 1
+        stored = JSON.parse(req.postData() || '{}').doc
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { deck: {} } }) })
+      }
+      return route.continue()
+    })
+
+    const { page, errors } = await openShell(ctx, `${target}?doc=doc_harness`)
+    const first = await page.evaluate(() => ({
+      title: window.deck.doc.title, slides: window.deck.doc.slides.length,
+    }))
+    if (first.slides < 2) note('docmode', `first open produced ${first.slides} slide(s) — the template did not materialise`)
+    else if (first.title !== 'Harness Deck') note('docmode', `first open titled "${first.title}", expected the document's title`)
+    else if (puts < 1) note('docmode', 'a brand-new deck was not saved back — its slides would exist only in the tab')
+    else pass(`first open builds the template and saves it (${first.slides} slides)`)
+
+    // ⌘S must reach Foundry, not the filesystem.
+    await page.evaluate(() => { window.deck.doc.title = 'Renamed' })
+    const before = puts
+    await page.keyboard.press('Control+s')
+    await page.waitForTimeout(1200)
+    if (puts <= before) note('docmode', '⌘S did not save to Foundry — a deck in Docs must not save to a file')
+    else pass('⌘S saves to Foundry')
+
+    // …and reopening must restore the STORED slides, not rebuild the template.
+    const page2 = await ctx.newPage()
+    await page2.goto(`${target}?doc=doc_harness`)
+    await page2.waitForSelector('.ed-root', { timeout: 20000 })
+    await page2.waitForTimeout(2200)
+    const again = await page2.evaluate(() => window.deck.doc.title)
+    if (again !== 'Renamed') note('docmode', `reopen showed "${again}" — stored slides were not used`)
+    else pass('reopening restores the stored deck, not a fresh template')
+
+    if (errors.length) note('docmode', `page errors: ${errors.slice(0, 2).join(' | ')}`)
+    await ctx.close()
+  }
+}
+
 await browser.close()
 
 console.log('')

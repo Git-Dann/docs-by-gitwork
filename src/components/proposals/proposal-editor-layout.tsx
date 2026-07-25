@@ -1708,6 +1708,7 @@ const DOC_TYPE_NOUN: Record<DocumentType, string> = {
   HANDOVER: "HANDOVER",
   REPORT: "REPORT",
   BRIEF: "BRIEF",
+  DECK: "DECK",
   OTHER: "DOCUMENT",
 };
 

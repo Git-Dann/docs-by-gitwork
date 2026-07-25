@@ -32,6 +32,7 @@ import { mountBrandSwitch, mountHomeSlot } from '../foundry/boot'
 import { authorName, foundryUser, nameIsFromFoundry, servedByFoundry } from '../foundry/identity'
 import { SETTINGS_ICON, openFoundryAbout } from '../foundry/about'
 import { openTemplatePicker } from '../foundry/template-picker'
+import { foundryDocId, saveFoundryDeck } from '../foundry/foundry-doc'
 import { disconnectOnline, joinFromDoc, mintCollab, mintInvite, onlineTransport, rotateKeys, sharingOn, startSharing, stopSharing } from '../sync/online'
 
 const i18nT = t
@@ -1708,6 +1709,29 @@ export class Editor {
     // shared docs persist their CRDT state so the saved copy can rejoin
     // as a true fork later (offline edits merge both ways)
     this.session?.stampInto(this.store.doc)
+
+    // FOUNDRY: a deck opened from Docs (`?doc=<id>`) saves to FOUNDRY, not to a
+    // file — it is a Document row, and the library card must not go stale behind
+    // an open window. `forcePicker` (Save as…) still writes a standalone file, so
+    // "Save a copy" keeps working and a deck can always be taken offline.
+    const docId = foundryDocId()
+    if (docId && !forcePicker) {
+      try {
+        await saveFoundryDeck(docId, this.store.doc, this.store.doc.title)
+        this.store.setDirty(false)
+        if (!isEncryptionActive()) {
+          void putRecovery(this.store.doc)
+          void addVersion(this.store.doc)
+          this.lastVersionAt = Date.now()
+        }
+        this.toast(t('Saved to Foundry'))
+      } catch (err) {
+        console.error(err)
+        this.toast(t('Save failed — {reason}', { reason: String((err as Error)?.message ?? err) }))
+      }
+      return
+    }
+
     try {
       const result = await saveFile(this.store.doc, forcePicker)
       if (result === 'cancelled') return

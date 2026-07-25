@@ -20,6 +20,7 @@ export type DocumentType =
   | "HANDOVER"
   | "REPORT"
   | "BRIEF"
+  | "DECK"
   | "OTHER";
 
 export type SectionKey =

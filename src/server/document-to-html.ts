@@ -380,6 +380,7 @@ const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   HANDOVER: "Handover",
   REPORT: "Report",
   BRIEF: "Brief",
+  DECK: "Deck",
   OTHER: "Document",
 };
 

@@ -231,6 +231,8 @@ export async function createProposal(input: {
   templateId?: string;
   /** Defaults to PROPOSAL server-side if omitted. */
   documentType?: DocumentType;
+  /** DECK only — the starting deck's slug, stored on metadata.deckTemplate. */
+  deckTemplate?: string;
 }): Promise<{ proposal: ProposalDocument }> {
   return apiFetch<{ proposal: ProposalDocument }>("/api/proposals", {
     method: "POST",

@@ -19,6 +19,7 @@ enum DocumentType {
   HANDOVER // End-of-project handover — lightweight, client-facing wrap-up
   REPORT // Status report / recurring progress update
   BRIEF // Meeting notes / short brief — context, decisions, actions
+  DECK // Slide deck, authored in Deck (/deck) — content lives in Document.deckDoc
   OTHER // Blank / freeform document
 }
 
@@ -561,6 +562,15 @@ model Document {
   expiresAt         DateTime?
   metadata          Json?
   exportSettings    Json?
+  // ── Deck (documentType DECK) ────────────────────────────────────────
+  // The slide document as JSON — the same shape Deck's own model.ts defines, and
+  // what a saved .deck.html carries inline. Foundry is the source of truth for a
+  // deck created here; the standalone file is an export ("Save a copy"), not the
+  // store. Null until first open: the create flow records the chosen template on
+  // `metadata.deckTemplate` and Deck materialises it on first boot. Additive.
+  // ~17KB for a 6-slide deck without images; embedded images make it much larger,
+  // so move this to object storage if decks routinely carry photography.
+  deckDoc           Json?
   // ── Sharing (Sprint 1) ──────────────────────────────────────────────
   shareToken        String?            @unique // Random URL-safe token for /docs/[token]
   isShared          Boolean            @default(false)

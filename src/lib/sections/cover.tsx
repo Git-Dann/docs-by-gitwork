@@ -27,6 +27,7 @@ const DOC_TYPE_EYEBROW: Record<DocumentType, string> = {
   HANDOVER: "HANDOVER",
   REPORT: "STATUS REPORT",
   BRIEF: "BRIEF",
+  DECK: "DECK",
   OTHER: "DOCUMENT",
 };
 
