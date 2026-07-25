@@ -9,22 +9,24 @@
 import type { Store } from '../store'
 import { uid, type Comment } from '../model'
 import { t } from '../i18n'
+// FOUNDRY: who is signed in to Foundry.
+import { authorName } from '../foundry/identity'
 
-/** The commenter's name, remembered per browser (localStorage, never sent
- *  anywhere); asked for on first use. */
+/** The commenter's name. FOUNDRY: a signed-in Foundry user is never prompted —
+ *  we already know who they are (foundry/identity.ts). Upstream's prompt remains
+ *  the fallback for a saved deck opened outside Foundry. */
 export function commentAuthor(): string | null {
-  let name = localStorage.getItem('bento-author')
-  if (!name) {
-    name = window.prompt(t('Your name (shown on comments):'))?.trim() || ''
-    if (!name) return null
-    localStorage.setItem('bento-author', name)
-  }
+  const known = authorName('')
+  if (known) return known
+  const name = window.prompt(t('Your name (shown on comments):'))?.trim() || ''
+  if (!name) return null
+  localStorage.setItem('bento-author', name)
   return name
 }
 
 /** Re-ask for the name; existing threads keep their original author. */
 export function changeCommentAuthor(): string | null {
-  const next = window.prompt(t('Your name (shown on new comments):'), localStorage.getItem('bento-author') ?? '')?.trim()
+  const next = window.prompt(t('Your name (shown on new comments):'), authorName(''))?.trim()
   if (!next) return null
   localStorage.setItem('bento-author', next)
   return next

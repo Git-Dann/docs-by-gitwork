@@ -12,6 +12,7 @@ import { appConfig } from '../../kernel/src/app.ts'
 // FOUNDRY: brand identity (Foundry · Gitwork) + our own starter deck.
 import { adoptDeckBrand, initialBrand, injectBrandFonts, silenceUpstreamUpdateChecks } from './foundry/boot'
 import { foundryStarterDoc } from './foundry/starter'
+import { loadFoundryUser } from './foundry/identity'
 import {
   capturePristine, readEmbeddedDoc, serializeFile, serializeAuto, downloadFile,
   suggestedFileName, parseEnvelope, decryptEnvelope, setEncryptionPassword,
@@ -34,6 +35,11 @@ import { onlineTransport, startSharing, stopSharing } from './sync/online'
 // also what satisfies "configureApp() before any kernel module is used".
 const FD_BRAND = initialBrand()
 silenceUpstreamUpdateChecks()
+
+// FOUNDRY: ask Foundry who is signed in, so the share panel / People list / comments
+// say their name instead of "Guest". Fire-and-forget — the editor never waits on it,
+// a cached name is used immediately, and a SAVED deck (file://) never calls out at all.
+void loadFoundryUser()
 
 capturePristine()
 

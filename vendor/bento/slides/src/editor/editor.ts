@@ -25,8 +25,10 @@ import { borderPoint, boxCenter, lineEndpoints, setLineEndpoints, sideMidpoint }
 import { ICONS } from '../icons'
 import { t, setLocale, locale, LOCALE_CHOICES } from '../i18n'
 import { appConfig } from '../../../kernel/src/app.ts'
-// FOUNDRY: brand identity for the topbar (wordmark + Foundry·Gitwork switch).
+// FOUNDRY: brand identity for the topbar (wordmark + Foundry·Gitwork switch)
+// and WHO is signed in (foundry/identity.ts) — upstream has no accounts.
 import { activeBrand, mountBrandSwitch } from '../foundry/boot'
+import { authorName, foundryUser, nameIsFromFoundry } from '../foundry/identity'
 import { disconnectOnline, joinFromDoc, mintCollab, mintInvite, onlineTransport, rotateKeys, sharingOn, startSharing, stopSharing } from '../sync/online'
 
 const i18nT = t
@@ -199,7 +201,8 @@ export class Editor {
     // FOUNDRY: the lockup comes from the brand registry (foundry/brand.ts) so
     // Foundry and Gitwork share one topbar.
     logo.innerHTML = activeBrand().wordmark
-    logo.title = t('About bento/slides — version, updates, licenses')
+    // FOUNDRY: our product name in the tooltip, not upstream's.
+    logo.title = t('About {product} — version, licences', { product: activeBrand().appName })
     logo.style.cursor = 'pointer'
     logo.addEventListener('click', () => this.openAbout())
     const title = document.createElement('input')
@@ -758,11 +761,13 @@ export class Editor {
     nameRow.title = t('Shown next to your cursor and in the People list — stored only in this browser.')
     const nameInput = document.createElement('input')
     nameInput.type = 'text'
+    // FOUNDRY: the signed-in Foundry user, not "Guest". Shown as the value (not a
+    // placeholder) so the People list and their cursor agree with what's typed
+    // here, and editable if they want to be someone else on this deck.
     nameInput.placeholder = t('Guest')
-    try {
-      nameInput.value = localStorage.getItem('bento-author') ?? ''
-    } catch {
-      /* storage unavailable */
+    nameInput.value = authorName('')
+    if (nameIsFromFoundry()) {
+      nameRow.title = t('From your Foundry account. Change it here if you want a different name on this deck.')
     }
     nameInput.addEventListener('change', () => {
       try {
@@ -805,9 +810,10 @@ export class Editor {
         const me = div('ed-share-peer ed-share-me')
         const who = document.createElement('span')
         who.className = 'who'
-        let myName = t('Guest')
-        try { myName = localStorage.getItem('bento-author') || myName } catch { /* ok */ }
+        // FOUNDRY: the signed-in Foundry user owns this deck — name them.
+        const myName = authorName(t('Guest'))
         who.textContent = `${myName} (${t('you')})`
+        who.title = foundryUser()?.email ? `${myName} · ${foundryUser()!.email}` : myName
         const where = document.createElement('span')
         where.className = 'where'
         where.textContent = [roleLabel(myRole), fp(myPub)].filter(Boolean).join(' · ')
@@ -1741,18 +1747,16 @@ export class Editor {
     const ul = document.createElement('ul'); ul.className = 'ed-help-tips'
     for (const tip of [
       t('Paste an image or text straight onto the canvas with ⌘V.'),
-      t('Copy a slide (⌘C with nothing selected) and paste it into another Bento deck.'),
+      t('Copy a slide (⌘C with nothing selected) and paste it into another deck.'),
       t('Make a chart from a table and it stays linked — edit the table, the chart updates.'),
       t('Your work auto-saves; restore earlier versions from About → Version history.'),
     ]) { const li = document.createElement('li'); li.textContent = tip; ul.appendChild(li) }
     tips.appendChild(ul); colL.appendChild(tips)
+    // FOUNDRY: upstream's footer linked out to bento.page/help — another product's
+    // support site, inside our tool. Replaced with the one thing that actually
+    // needs saying about this editor, and no external navigation.
     const more = div('ed-help-more')
-    const link = document.createElement('a')
-    link.href = 'https://bento.page/help'
-    link.target = '_blank'
-    link.rel = 'noopener'
-    link.textContent = t('Full guide at bento.page/help →')
-    more.appendChild(link)
+    more.textContent = t('A deck is a single file — ⌘S rewrites it in place, and sending that file IS the hand-off.')
     box.appendChild(more)
     overlay.appendChild(box)
     const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey, true) }
@@ -1957,26 +1961,24 @@ export class Editor {
     const box = div('ed-about')
 
     const head = div('ed-about-head')
-    // The logo/wordmark links home (new tab) — a gentle route back to the site.
+    // FOUNDRY: our identity, not upstream's. The lockup is the brand's (no link —
+    // this is an internal tool, there is nowhere to "visit").
+    const brand = activeBrand()
     head.innerHTML =
-      `<a class="ed-about-logo" href="https://bento.page" target="_blank" rel="noopener">` +
-      `<svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">` +
-      `<rect width="32" height="32" rx="7" fill="#16273E"/>` +
-      `<rect x="5" y="5" width="7" height="22" rx="2.5" fill="#5E7699"/>` +
-      `<rect x="14" y="5" width="13" height="10" rx="2.5" fill="#FF9E8A"/>` +
-      `<rect x="14" y="17" width="13" height="10" rx="2.5" fill="#F0EBE0"/>` +
-      `</svg><div><b>bento<span style="color:#FF9E8A">/</span>slides</b><span>v${APP_VERSION} · format v${FORMAT_VERSION}</span></div>` +
-      `</a>`
-    head.querySelector('a')?.setAttribute('title', t('Visit bento.page (opens in a new tab)'))
+      `<span class="ed-about-logo fd-about-logo">${brand.wordmark}` +
+      `<span class="fd-about-ver">${t('Deck build')} v${APP_VERSION} · ${t('format')} v${FORMAT_VERSION}</span></span>`
     box.appendChild(head)
 
-    // Engagement nudge back to the site (templates / gallery / agent guide).
+    // FOUNDRY: upstream's promo block (templates / gallery / ⭐ on GitHub) is
+    // replaced by the credit we actually owe. bento/slides is MIT and this is a
+    // fork of it — saying so plainly is both honest and the licence's point. No
+    // product marketing for another tool inside our own.
     const promo = div('ed-about-promo')
     promo.innerHTML = t(
-      'New to Bento? Find templates, the gallery and the AI editing guide at {home} — or ⭐ it on {gh}.',
+      '{product} is Foundry\u2019s slide editor — a deck is one file: edit it, present it, send it. Built on {bento} (MIT).',
       {
-        home: '<a href="https://bento.page" target="_blank" rel="noopener">bento.page</a>',
-        gh: '<a href="https://github.com/nyblnet/bento" target="_blank" rel="noopener">GitHub</a>',
+        product: `<b>${brand.appName}</b>`,
+        bento: '<a href="https://github.com/nyblnet/bento" target="_blank" rel="noopener">bento/slides</a>',
       },
     )
     box.appendChild(promo)
@@ -2140,8 +2142,13 @@ export class Editor {
 
     const fine = div('ed-about-fine')
     fine.innerHTML =
-      `${t('Checks contact the release server and send nothing about you or this document — no ids, no telemetry.')}<br>` +
-      t('Includes reveal.js, Moveable, Selecto (MIT) · Fraunces + Instrument Sans typefaces (OFL-1.1) — full notices travel in this file’s source.')
+      // FOUNDRY: both of these were untrue for our shell. Update checks are OFF
+      // (we don't publish a manifest — Deck updates when Foundry redeploys), and
+      // the embedded faces are ours: Instrument Sans went with upstream's demo
+      // deck, Inter / JetBrains Mono / DM Serif Display came in with the skin.
+      // Verified against the uncompressed bundle, not assumed.
+      `${t('Update checks are off — this shell updates when Foundry redeploys. Nothing here phones home: no ids, no telemetry.')}<br>` +
+      t('Includes reveal.js, Moveable, Selecto (MIT) · Inter, JetBrains Mono, DM Serif Display + Fraunces typefaces (OFL-1.1) — full notices travel in this file’s source.')
     box.appendChild(fine)
 
     overlay.appendChild(box)

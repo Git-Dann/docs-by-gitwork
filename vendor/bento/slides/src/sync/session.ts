@@ -18,6 +18,8 @@
 // the same store events the editor already listens to. Zero editor rewrites.
 
 import type { Store } from '../store'
+// FOUNDRY: who is signed in to Foundry (foundry/identity.ts).
+import { authorName } from '../foundry/identity'
 import type { BentoDoc, Slide } from '../model'
 import { uid } from '../model'
 import { SyncState, SYNC_V, type Op } from './crdt'
@@ -413,12 +415,9 @@ export class SyncSession {
   // --- presence -------------------------------------------------------------
 
   private presence(): PresenceInfo {
-    let name = 'Guest'
-    try {
-      name = localStorage.getItem('bento-author') || 'Guest'
-    } catch {
-      /* storage unavailable */
-    }
+    // FOUNDRY: one source for "who am I" — the signed-in Foundry user, else a
+    // name typed into the share panel, else upstream's placeholder.
+    const name = authorName('Guest')
     // key-bound identity (v2): which key this copy signs with + its capability.
     // The device key is minted by the transport on first connect; until then a
     // member's pub is simply absent from presence (it fills in on reconnect).

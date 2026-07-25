@@ -48,9 +48,10 @@ const FOUNDRY_MARK =
  *  `GitworkMark` exactly and never depends on SVG font resolution. */
 const GITWORK_MARK = `<span class="fd-gmark" aria-hidden="true">G<i>.</i></span>`
 
-/** mark + "House" + a mono/caps product tag. */
-function lockup(mark: string, house: string, product: string): string {
-  return `${mark}<b class="fd-word">${house}<span class="fd-word-tag">${product}</span></b>`
+/** mark + house name. Just the two: the product tag that used to sit here read as
+ *  clutter beside the mark, and the window title already says which app this is. */
+function lockup(mark: string, house: string): string {
+  return `${mark}<b class="fd-word">${house}</b>`
 }
 
 export const BRANDS: Record<BrandId, Brand> = {
@@ -59,7 +60,7 @@ export const BRANDS: Record<BrandId, Brand> = {
     product: 'Deck',
     appName: 'Foundry Deck',
     appId: 'foundry-deck',
-    wordmark: lockup(FOUNDRY_MARK, 'Foundry', 'Deck'),
+    wordmark: lockup(FOUNDRY_MARK, 'Foundry'),
     deck: {
       // Warm off-white, never pure white (DESIGN.md: don't use #FFFFFF as canvas).
       background: '#FAFAF9',
@@ -75,7 +76,7 @@ export const BRANDS: Record<BrandId, Brand> = {
     product: 'Deck',
     appName: 'Gitwork Deck',
     appId: 'gitwork-deck',
-    wordmark: lockup(GITWORK_MARK, 'Gitwork', 'Deck'),
+    wordmark: lockup(GITWORK_MARK, 'Gitwork'),
     deck: {
       background: '#F2EDE4',
       color: '#0C0C18',

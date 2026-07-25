@@ -1348,6 +1348,45 @@ the Foundry · Gitwork brand switch. **No Foundry data touches it** — it's a l
   rather than shipped: `injectBrandFonts()` ran *before* `capturePristine()` (would have baked
   ~190KB of duplicate font CSS into every saved deck), and the first cut of "a saved deck remembers
   its brand" read `<html data-brand>`, which is frozen at boot.
+- **It knows who you are (July 2026 follow-up).** Upstream has no accounts — your name is whatever
+  you type into the share panel, defaulting to **"Guest"**, which is what the People list showed.
+  `slides/src/foundry/identity.ts` asks Foundry: one `GET /api/account` (the same session that gated
+  `/deck`), cached, seeding upstream's own `bento-author` key so the share panel, **presence** and
+  **comments** all name the signed-in user with no further patching — and comments stop prompting
+  for a name. Two hard rules in the code: it **only calls out when served from the `/deck` path on
+  http(s)** (a saved deck, or one someone re-hosted, makes **zero requests** — the format's contract,
+  and now a checked one), and it **never overwrites a name you typed** (it only replaces a value it
+  seeded itself).
+- **De-wrappered (same pass).** Things that still said bento to the user: the About dialog carried
+  upstream's product promo ("New to Bento? Find templates, the gallery…") and linked to bento.page;
+  Help linked out to **bento.page/help**; the logo tooltip said "About bento/slides"; a tip said
+  "another Bento deck"; saves were named `.bento.html`. Now: About states what Deck is and credits
+  **bento/slides (MIT)** with a link to the repo — the credit we owe, not marketing for another
+  product; Help ends on the one thing worth saying about the format; saves are `<title>.deck.html`
+  (the FORMAT is unchanged — identity is the embedded JSON block, not the extension). The dead
+  update UI ("Check for updates", launch-check toggle) is hidden: we publish no manifest, so it could
+  only fail. **Offline mode stays** — it still governs collaboration. The About footer's claims were
+  corrected to match reality (checks off; the embedded faces are Inter/JetBrains Mono/DM Serif
+  Display + Fraunces — Instrument Sans left with upstream's demo deck, confirmed against the
+  uncompressed bundle, and `THIRD_PARTY_NOTICES.md` says so).
+- **The palette sweep, done properly.** The first pass chased the coral/amber hexes I'd seen. This
+  one **enumerated every hardcoded colour in `styles.css`** (60 of them) and mapped the visible
+  chrome: share status (goldenrod → `{colors.warning}`), live dots (brass/sea-green → warning/
+  success), every error red → `{colors.danger}`, upstream's cool blue-grey scale → the Foundry
+  slate scale, and the whole **speaker view** dark palette → the sanctioned navy set. `verify-shell.mjs`
+  group 02 now greps for **all thirteen** of upstream's literals, not four.
+- **Two layout defects Dan hit that the audit could not see.** A native `<select>` renders its
+  chevron *inside* the box: at upstream's 110px the value ran underneath it ("Widescreen 1⌄"). Fixed
+  with `appearance:none` + our own inset chevron, and — per DESIGN.md's rail rule ("fields are never
+  crammed horizontally") — rows holding a select or text input now **stack**, label above a
+  full-width control, while numeric pairs and colour swatches stay inline. The share panel's People
+  row laid name + role + key fingerprint on one nowrap line, ellipsing the *name* ("Guest (y…") while
+  showing 14 characters of key; it now stacks the person over a mono role/fingerprint readout.
+  **Neither was caught by `audit-clipping.mjs`** — it treats `<select>` and `title`-bearing text as
+  recoverable, which is right in general and blind here. Screenshots still beat a detector for
+  "this looks wrong"; the detector is for "this is unreachable".
+- **`DECK` tag dropped from the wordmark** — the lockup is the mark + `Foundry` (or the "G." +
+  `Gitwork`). The window title already names the app.
 - **Deferred / notes:** nothing links a saved `.bento.html` back to a Foundry document or client
   yet (decks live as files — Drive/Docs attachment is the obvious next step); no PDF/thumbnail
   capture into Docs; no `manifest.json`, so in-app "update" is a redeploy; collaboration (bento's
