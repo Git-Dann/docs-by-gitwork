@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import PulseWidget from "@/components/dashboard/pulse-widget";
@@ -226,17 +228,18 @@ export function AppOverview() {
  * whole page and saves to a file rather than the database.
  */
 function DeckLink() {
+  // Decks are documents now, so this goes to Docs rather than opening a scratch
+  // deck in a new window — one that saved to a file and never showed up in the
+  // library. Same destination as every other document type.
   return (
-    <a
-      href="/deck"
-      target="_blank"
-      rel="noopener noreferrer"
-      title="Deck — build a slide deck in a new window (beta)"
+    <Link
+      href="/app/docs?type=DECK"
+      title="Decks — slide decks live in Docs"
       className="font-medium uppercase tracking-[0.12em] text-[var(--text-4)] transition hover:text-[var(--brand-700)]"
       style={{ fontFamily: "var(--font-mono)", fontSize: "10px" }}
     >
-      · Deck ↗
-    </a>
+      · Decks
+    </Link>
   );
 }
 

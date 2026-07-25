@@ -99,6 +99,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
         version: existing.version,
         expiresAt: existing.expiresAt,
         metadata: (existing.metadata as unknown as Prisma.InputJsonValue | null) ?? Prisma.JsonNull,
+        // A DECK's content is its slides, not its sections — without this the copy
+        // arrives empty and, because metadata.deckTemplate came along, the Deck app
+        // would helpfully rebuild it FROM THE TEMPLATE on first open. "Duplicate"
+        // would silently hand back a blank starter instead of a copy of the work.
+        deckDoc: (existing.deckDoc as unknown as Prisma.InputJsonValue | null) ?? Prisma.JsonNull,
         exportSettings:
           (existing.exportSettings as unknown as Prisma.InputJsonValue | null) ?? Prisma.JsonNull,
         sections: {

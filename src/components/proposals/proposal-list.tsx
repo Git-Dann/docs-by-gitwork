@@ -14,7 +14,6 @@ import {
   MagnifyingGlassIcon,
   PencilSquareIcon,
   PlusIcon,
-  PresentationChartLineIcon,
   RectangleStackIcon,
   SparklesIcon,
   Squares2X2Icon,
@@ -138,6 +137,9 @@ export function ProposalList() {
   const searchParams = useSearchParams();
   const clientFilter = searchParams.get("client")?.trim() ?? "";
   const openCreate = searchParams.get("new") === "1";
+  // `?type=DECK` — deep-link straight to one type's rail selection. Used by the
+  // HQ "· Decks" link; any DocumentType works.
+  const typeParam = searchParams.get("type")?.trim().toUpperCase() ?? "";
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<(typeof statusOptions)[number]>("ALL");
   const [sort, setSort] = useState<(typeof sortOptions)[number]["value"]>("updatedAt:desc");
@@ -194,7 +196,9 @@ export function ProposalList() {
   // `archived` shows only archived. Drives the card grid, table, and grouped views alike.
   const [scope, setScope] = useState<"all" | "favorites" | "archived">("all");
   // Doc-type filter (rail's TYPE list). Scopes the visible set to one document type.
-  const [docTypeFilter, setDocTypeFilter] = useState<DocumentType | "ALL">("ALL");
+  const [docTypeFilter, setDocTypeFilter] = useState<DocumentType | "ALL">(
+    typeParam && typeParam !== "ALL" ? (typeParam as DocumentType) : "ALL",
+  );
 
   // Partition the full fetched set once: archived vs live, and favourites within live. The rail
   // counts read straight off these so they never lie when a filter is applied.
@@ -553,19 +557,12 @@ export function ProposalList() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Deck — the slide editor (vendor/bento, served at /deck). Its own
-                window, not a Docs route: it's a standalone single-file editor
-                that takes over the page and saves to a file, not the database. */}
-            <a
-              href="/deck"
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Deck — build a slide deck in a new window (beta)"
-              className={buttonStyles({ variant: "secondary", size: "md" })}
-            >
-              <PresentationChartLineIcon className="h-4 w-4" />
-              <span className="hidden sm:inline">Deck</span>
-            </a>
+            {/* No standalone "Deck" button any more. It opened a scratch deck that
+                saved to a FILE, so anything made with it never appeared in this
+                library — the exact complaint that turned decks into documents.
+                Decks are created through "+ New" (Deck chip) like every other doc,
+                and open from their own card. `/deck` with no ?doc= still works for
+                a throwaway, it just isn't advertised here. */}
             {/* Cross-doc analytics is proposal/win-rate insight — admin-level, hidden from devs. */}
             {canViewAdminDocTypes ? (
               <Link
