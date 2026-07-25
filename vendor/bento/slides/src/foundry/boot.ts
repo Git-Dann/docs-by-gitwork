@@ -22,6 +22,7 @@ import { FRAUNCES_900 } from '../fontdata'
 import { DM_SERIF_DISPLAY_400, INTER_VAR, JETBRAINS_MONO_VAR } from './fontdata'
 import {
   DEFAULT_BRAND,
+  FAVICON,
   brand,
   brandFromDeckTheme,
   brandParamOverride,
@@ -70,9 +71,22 @@ export function activeBrand(): Brand {
  * re-declares the app identity, so `appConfig().appName` (window-title suffix,
  * save-picker label) never lags behind the brand on screen.
  */
+/**
+ * Point the tab icon at the active brand's mark. The shell ships with Foundry's
+ * disc in <link rel=icon> so the tab is right before any JS runs; this only has
+ * work to do when the brand is Gitwork, or when it's switched live.
+ */
+function applyFavicon(id: BrandId): void {
+  const link =
+    document.querySelector<HTMLLinkElement>('link[rel="icon"]') ??
+    document.head.appendChild(Object.assign(document.createElement('link'), { rel: 'icon' }))
+  link.href = FAVICON[id]
+}
+
 export function applyBrand(id: BrandId): Brand {
   active = brand(id)
   document.documentElement.dataset.brand = id
+  applyFavicon(id)
   configureApp({
     appId: active.appId,
     appName: active.appName,
@@ -101,9 +115,40 @@ export function adoptDeckBrand(doc: BentoDoc): Brand {
 }
 
 /**
+ * The topbar's first slot. Deck opens in its own window from Foundry, so the
+ * useful thing there is the way BACK — `← Foundry`, not a logo that reopens a
+ * dialog. (Upstream put its wordmark here and hung About off it; About now lives
+ * in the Save ▾ menu with the other document-level things.)
+ *
+ * A saved deck has nowhere to go back TO — it's a file on someone's disk, quite
+ * possibly someone outside Gitwork — so it shows the brand lockup instead, inert.
+ * Same test as identity.ts: served from /deck over http(s), or not.
+ */
+export function mountHomeSlot(servedByFoundry: boolean): HTMLElement {
+  if (!servedByFoundry) {
+    const mark = document.createElement('div')
+    mark.className = 'ed-logo fd-home-mark'
+    mark.innerHTML = active.wordmark
+    return mark
+  }
+  const link = document.createElement('a')
+  link.className = 'ed-logo fd-home'
+  link.href = '/app'
+  // The destination is the platform, under either brand — you are going back to
+  // Foundry, not to "Gitwork". So this label is deliberately not brand-derived.
+  link.innerHTML =
+    `<svg class="fd-home-arrow" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">` +
+    `<path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.75" ` +
+    `stroke-linecap="round" stroke-linejoin="round"/></svg>` +
+    `<span class="fd-home-label">Foundry</span>`
+  link.title = 'Back to Foundry'
+  return link
+}
+
+/**
  * Upstream checks bento.page for signed releases at launch. Our shell ships with
  * Foundry, so the check is off by default — but only ONCE, so anyone who
- * deliberately turns it back on in the About dialog keeps their choice.
+ * deliberately turns it back on keeps their choice.
  */
 export function silenceUpstreamUpdateChecks(): void {
   try {
@@ -221,8 +266,11 @@ function brandSwitch(current: () => Brand, onChange: (next: Brand) => void): HTM
 function switchBrand(store: Store, from: Brand, next: Brand): void {
   applyBrand(next.id)
   rememberBrandId(next.id)
-  const logo = document.querySelector('.ed-logo')
-  if (logo) logo.innerHTML = next.wordmark
+  // Only the inert lockup (a saved deck) carries a wordmark to repaint — the
+  // served-by-Foundry slot is a back link, which says "Foundry" under both brands
+  // because that's where it goes.
+  const mark = document.querySelector('.fd-home-mark')
+  if (mark) mark.innerHTML = next.wordmark
   document.title = `${store.doc.title} — ${next.appName}`
   retheme(store, from, next)
 }

@@ -4,13 +4,13 @@
 // Self-extracting shell: compress the built runtime so the file on disk is
 // ~half the size, with zero feature loss.
 //
-//   node scripts/postbuild-compress.mjs slides/dist-single/Bento_Slides.bento.html
+//   node scripts/postbuild-compress.mjs public/deck/index.html
 //
 // Takes the vite single-file build, extracts the big inline module script and
 // stylesheet, deflates them (raw) into base64 payload blocks, and restructures
 // the document into the canonical byte order:
 //
-//   head chrome → NOTICE → tooling comment → #bento-doc (PLAINTEXT, always)
+//   head chrome → NOTICE → tooling comment → #deck-doc (PLAINTEXT, always)
 //   → splash (paints while the payload parses) → payloads + 1KB loader last
 //
 // The loader inflates via the native DecompressionStream and boots the module
@@ -18,7 +18,7 @@
 // a plain-HTML message instead of a blank page.
 //
 // COMPATIBILITY CONTRACT (老 updaters are frozen code — we conform to them):
-//   - #bento-doc stays plaintext with the same id.
+//   - #deck-doc stays plaintext with the same id.
 //   - The whole file survives DOMParser → splice → outerHTML round-trips.
 //   - No literal "</script>" anywhere (base64 alphabet can't produce one;
 //     the loader is checked below).
@@ -39,11 +39,14 @@ const flag = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`)
   return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback
 }
-const generator = flag('generator', 'bento-slides')
-const titleFallback = flag('title', 'bento/slides')
+// FOUNDRY: this wrapper is the OUTER shell — its own <head>, loader and agent
+// comment. It is written here, NOT in index.html, which is why renaming things
+// in the source left upstream's name in the shipped artefact.
+const generator = flag('generator', 'Foundry Deck')
+const titleFallback = flag('title', 'Foundry Deck')
 
 const html = readFileSync(path, 'utf8')
-if (html.includes('id="bento-rt"')) {
+if (html.includes('id="deck-rt"')) {
   console.log('already compressed — skipping')
   process.exit(0)
 }
@@ -68,11 +71,15 @@ const cssB64 = b64(css)
 
 // --- other parts ------------------------------------------------------------
 const notice = html.match(/<!--\s*NOTICE[\s\S]*?-->/)?.[0] ?? ''
-const docBlock = html.match(/<script type="application\/bento\+json" id="bento-doc">[\s\S]*?<\/script>/)?.[0]
-if (!docBlock) throw new Error('#bento-doc not found')
+const docBlock = html.match(/<script type="application\/(?:foundry-deck|bento)\+json" id="(?:deck|bento)-doc">[\s\S]*?<\/script>/)?.[0]
+if (!docBlock) throw new Error('#deck-doc not found')
 const favicon = html.match(/<link rel="icon"[^>]*\/?>/)?.[0] ?? ''
 const title = html.match(/<title>[\s\S]*?<\/title>/)?.[0] ?? `<title>${titleFallback}</title>`
-const splashDiv = html.match(/<div id="bento-splash"[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? ''
+// FOUNDRY: `?? ''` here is how the boot splash silently disappeared from a build
+// when the id was renamed — the wrapper just emitted nothing and said nothing.
+// Our shell always has a splash, so a miss is a broken build, not a default.
+const splashDiv = html.match(/<div id="(?:deck|bento)-splash"[\s\S]*?<\/div>\s*<\/div>/)?.[0]
+if (!splashDiv) throw new Error('#deck-splash not found — the boot splash would be dropped')
 const splashCss = (() => {
   const bodyPart = html.slice(html.indexOf('<body'))
   const m = bodyPart.match(/<style[^>]*>([\s\S]*?)<\/style>/)
@@ -83,20 +90,21 @@ const SLIDES_TOOLING = `<!--
   ════════════════════════════════════════════════════════════════════════
   AI AGENTS / TOOLING — READ THIS BEFORE EDITING THIS DECK
   ════════════════════════════════════════════════════════════════════════
-  Full authoring guide (schema + copy-paste snippets): https://bento.page/agents.md
+  This file is a Foundry Deck — one self-contained deck: the app and the
+  document in a single HTML file.
 
   THE MECHANICS
-  · The document is the ONE script block of type "application/bento+json",
-    id "bento-doc", below — plain readable JSON. Edit THAT block in place;
+  · The document is the ONE script block of type "application/foundry-deck+json",
+    id "deck-doc", below — plain readable JSON. Edit THAT block in place;
     never regenerate the whole file. Escape every "<" in the JSON as \\u003c.
-  · The base64 blocks near the end are the DEFLATE-compressed app runtime
-    (open source, https://bento.page) — no user content, leave them alone.
-  · In a running file, window.bento exposes { doc, serialize(), loadDoc(json),
-    comments(), updates, i18n }. In the app UI: About → Copy / Replace JSON.
+  · The base64 blocks near the end are the DEFLATE-compressed app runtime —
+    no user content, leave them alone.
+  · In a running file, window.deck exposes { doc, serialize(), loadDoc(json),
+    comments(), updates, i18n }. In the app UI: Save ▾ → Copy / Replace JSON.
 
   MAKE A GREAT DECK, NOT JUST A CORRECT ONE
-  Bento's whole point is motion + interactivity. A wall of text slides wastes
-  it. When the source material contains ↓, reach for the feature:
+  The whole point of this format is motion + interactivity. A wall of text
+  slides wastes it. When the source material contains ↓, reach for the feature:
   · numbers to compare visually (trend, magnitude, share)  →  a CHART
       element (preset bar|line|pie|scatter). Never list data as bullet text.
   · a comparison / spec / pricing / feature grid  →  a TABLE element
@@ -104,7 +112,7 @@ const SLIDES_TOOLING = `<!--
   · consecutive slides about the SAME thing changing (before/after, process
     steps, a metric across stages)  →  give the shared elements the SAME id
     on both slides and set the later slide's transition to "morph". This is
-    Bento's signature move — use it liberally; it is almost always missed.
+    the format's signature move — use it liberally; it is almost always missed.
   · a point to drill into (a definition, "click to see how")  →  a STATE
     slide (stateOf: "<parent-id>" + an element link: "<state-id>").
   · a hero / full-slide image  →  full-bleed image (0,0,1280,720) + a scrim
@@ -128,23 +136,23 @@ const SLIDES_TOOLING = `<!--
   ════════════════════════════════════════════════════════════════════════
 -->`
 
-// Every Bento app must point agents at the document block and the scripting
-// API (docs/PLATFORM.md §7). Apps beyond slides get this short form until
-// they have authoring guidance of their own worth shipping in every file.
+// Every app on this kernel must point agents at the document block and the
+// scripting API. Apps beyond the deck editor get this short form until they have
+// authoring guidance of their own worth shipping in every file.
 const GENERIC_TOOLING = `<!--
   ════════════════════════════════════════════════════════════════════════
   AI AGENTS / TOOLING — READ THIS BEFORE EDITING THIS FILE
   ════════════════════════════════════════════════════════════════════════
-  · The document is the ONE script block of type "application/bento+json",
-    id "bento-doc", below — plain readable JSON. Edit THAT block in place;
+  · The document is the ONE script block of type "application/foundry-deck+json",
+    id "deck-doc", below — plain readable JSON. Edit THAT block in place;
     never regenerate the whole file. Escape every "<" in the JSON as \\u003c.
-  · The base64 blocks near the end are the DEFLATE-compressed app runtime
-    (open source, https://bento.page) — no user content, leave them alone.
-  · In a running file, window.bento exposes { doc, serialize(), loadDoc(json) }.
+  · The base64 blocks near the end are the DEFLATE-compressed app runtime —
+    no user content, leave them alone.
+  · In a running file, window.deck exposes { doc, serialize(), loadDoc(json) }.
   ════════════════════════════════════════════════════════════════════════
 -->`
 
-const TOOLING_COMMENT = generator === 'bento-slides' ? SLIDES_TOOLING : GENERIC_TOOLING
+const TOOLING_COMMENT = generator === 'Foundry Deck' ? SLIDES_TOOLING : GENERIC_TOOLING
 
 // --- loader (plain script, runs at end of body; no "</script>" literal) -----
 const loader = `
@@ -154,7 +162,7 @@ const loader = `
     d.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0D1B2E;color:#F2F0EA;font:16px/1.6 sans-serif;text-align:center;padding:40px;z-index:99999'
     d.innerHTML = msg
     document.body.appendChild(d)
-    var s = document.getElementById('bento-splash'); if (s) s.remove()
+    var s = document.getElementById('deck-splash'); if (s) s.remove()
   }
   if (typeof DecompressionStream === 'undefined') {
     fail('This file needs a browser from 2023 or later (Chrome 80+, Edge, Firefox 113+, Safari 16.4+).<br>The document itself is intact \\u2014 open this file in a newer browser.')
@@ -168,11 +176,11 @@ const loader = `
     return await new Response(stream).text()
   }
   try {
-    var css = await inflate('bento-rt-css')
+    var css = await inflate('deck-rt-css')
     var st = document.createElement('style')
     st.textContent = css
     document.head.appendChild(st)
-    var js = await inflate('bento-rt')
+    var js = await inflate('deck-rt')
     var url = URL.createObjectURL(new Blob([js], { type: 'text/javascript' }))
     await import(url)
   } catch (e) {
@@ -200,8 +208,8 @@ const out = `<!DOCTYPE html>
   <body>
     ${splashDiv}
     <div id="app"></div>
-    <script id="bento-rt-css" type="bento/deflate-b64">${cssB64}</script>
-    <script id="bento-rt" type="bento/deflate-b64">${jsB64}</script>
+    <script id="deck-rt-css" type="deck/deflate-b64">${cssB64}</script>
+    <script id="deck-rt" type="deck/deflate-b64">${jsB64}</script>
     <script>${loader}</script>
   </body>
 </html>

@@ -49,7 +49,6 @@
      caps instead of mono, so this is a token rather than a hard-coded family. */
   --fd-label: var(--fd-mono);
   --fd-label-tracking: 0.12em;
-  --fd-mark-ink: #ffffff;
   /* Speaker view is a dark surface in its OWN popup window, painted with a copy
      of these styles — so it never carries [data-brand] and always resolves the
      :root value. A mid blue reads on near-black where --accent (#1D4ED8) would
@@ -103,8 +102,11 @@ body {
   background: var(--fd-surface);
 }
 
-/* ─── the wordmark lockup ────────────────────────────────────────────────── */
+/* ─── the wordmark ───────────────────────────────────────────────────────── */
 
+/* Words only — the ONLY logo in this app is the favicon (see foundry/brand.ts).
+   Upstream's mark sat here; it was bento's, and a mark in the chrome is a mark
+   that can look like someone else's product. */
 .ed-logo {
   gap: 9px;
 }
@@ -117,27 +119,6 @@ body {
   font-size: 17px;
   letter-spacing: -0.01em;
   color: var(--ink);
-}
-/* the Gitwork round "G." mark — cream disc, navy Fraunces G, purple period */
-.fd-gmark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  flex: none;
-  border-radius: 50%;
-  background: #f2ede4;
-  border: 1px solid rgba(12, 12, 24, 0.1);
-  font-family: 'Fraunces', Georgia, serif;
-  font-size: 12px;
-  font-weight: 900;
-  line-height: 1;
-  color: #0c0c18;
-}
-.fd-gmark i {
-  font-style: normal;
-  color: #6b52ff;
 }
 
 /* ─── brand switch (Foundry · Gitwork) ───────────────────────────────────── */
@@ -190,7 +171,7 @@ body {
 /* Repeat opens skip the brand moment (main.ts) and fade fast — the inline splash
  * CSS in index.html sets `transition: opacity .5s`, and an id+class selector here
  * beats it. First open is untouched. */
-#bento-splash.fd-quick {
+#deck-splash.fd-quick {
   transition-duration: 0.18s;
 }
 
@@ -380,7 +361,6 @@ body {
 }
 /* mono caps for the chip-bar label — it names a set, like a widget header */
 .ed-setbar-label,
-.ed-help-sec h3,
 .ed-share-label {
   font-family: var(--fd-label);
   font-size: 10px;
@@ -393,7 +373,7 @@ body {
 /* cards, menus and dialogs → 10px, hairline, DESIGN.md elevation-2 */
 .ed-menu,
 .ed-about,
-.ed-help-box,
+.fd-dlg,
 .ed-share-pop,
 .ed-comment-pop,
 .ed-layoutpick,
@@ -421,9 +401,6 @@ body {
 .ed-reader-dot {
   background: var(--accent);
 }
-.ed-help-more a {
-  color: var(--accent);
-}
 
 /* editorial figures: the About dialog's version number is a stat, not a label */
 .ed-about-h {
@@ -432,19 +409,15 @@ body {
   letter-spacing: -0.01em;
 }
 
-/* ─── the update UI has nothing to check ─────────────────────────────────── */
+/* ─── the update UI is GONE, not hidden ──────────────────────────────────── */
 
-/* Deck updates when Foundry redeploys — we deliberately publish no release
- * manifest (upstream signs theirs with a key we don't hold). So the manual
- * "Check for updates" button and the launch-check toggle can only ever fail or
- * do nothing; hiding them beats showing a control that lies. The About text says
- * as much, and "Offline mode" STAYS — it still governs online collaboration.
- * Hidden in CSS rather than deleted so a re-sync doesn't conflict, and so
- * restoring the feature is removing this block. */
-.ed-about-row:has(> button),
-.ed-about-auto:first-of-type {
-  display: none;
-}
+/* Deck updates when Foundry redeploys — we publish no release manifest, so
+ * "Check for updates" could only ever fail. It used to be hidden here with
+ * `.ed-about-row:has(> button) { display: none }`, which was too broad and a real
+ * bug: "Replace from JSON…" builds its Apply/Cancel row with the same class, so
+ * that dialog shipped with NO visible buttons. The update UI is now removed at
+ * the source (About is our own dialog — foundry/about.ts), so the rule is gone
+ * and Replace-from-JSON has its buttons back. Don't re-add a `:has()` hide here. */
 
 /* ─── native selects: the chevron must never sit on the text ─────────────── */
 
@@ -594,20 +567,8 @@ dialog.ed-pwdialog .ed-pwerr {
 .ed-share-note,
 .ed-share-peer .where,
 .ed-series-rm,
-.ed-help-sec h3,
 dialog.ed-pwdialog p {
   color: var(--muted);
-}
-.ed-help-box,
-.ed-help-row,
-.ed-help-tips {
-  color: var(--ink-2);
-}
-.ed-help-row kbd {
-  background: var(--chrome-2);
-  border-color: var(--line);
-  color: var(--ink);
-  font-family: var(--fd-mono);
 }
 .ed-panel-toggle:hover {
   border-color: var(--fd-line-strong);
@@ -653,8 +614,8 @@ dialog.ed-pwdialog p {
 
 /* present-mode transient chrome sits on the deck, not the app — keep it neutral
    but on our ink rather than bento's warm cream */
-.bento-present-toast,
-.bento-present-grant {
+.deck-present-toast,
+.deck-present-grant {
   background: rgba(15, 23, 42, 0.92);
   color: #f8fafc;
 }
@@ -668,7 +629,7 @@ dialog.ed-pwdialog p {
  * banner, checkbox accent-color, the Slideshow first-run "runner", and — most
  * visibly — PRESENT MODE and the SPEAKER VIEW. DESIGN.md allows no accent outside
  * the blue family, so each is re-pointed here. Present mode and speaker view
- * follow `--bento-accent` (present.ts sets it from the DECK's theme accent), so a
+ * follow `--deck-accent` (present.ts sets it from the DECK's theme accent), so a
  * Gitwork deck presents in purple and a Foundry deck in blue, instead of amber. */
 
 .ed-btn-update {
@@ -738,14 +699,14 @@ input.ed-toggle {
 }
 
 /* present mode — reveal's own vars, plus the click-target hover outline */
-.bento-present-overlay {
-  --r-link-color: var(--bento-accent, var(--accent));
-  --r-link-color-hover: var(--bento-accent, var(--accent));
-  --r-selection-background-color: var(--bento-accent, var(--accent));
-  --r-progress-color: var(--bento-accent, var(--accent));
+.deck-present-overlay {
+  --r-link-color: var(--deck-accent, var(--accent));
+  --r-link-color-hover: var(--deck-accent, var(--accent));
+  --r-selection-background-color: var(--deck-accent, var(--accent));
+  --r-progress-color: var(--deck-accent, var(--accent));
 }
-.bento-present-overlay .bento-el[data-link]:hover {
-  outline-color: var(--bento-accent, var(--accent));
+.deck-present-overlay .deck-el[data-link]:hover {
+  outline-color: var(--deck-accent, var(--accent));
 }
 
 /* speaker view — a separate window that is painted with a copy of these styles
@@ -764,4 +725,411 @@ input.ed-toggle {
 .sv-thumb.current .sv-thumb-n {
   background: var(--fd-speaker-accent);
   color: #0f172a;
+}
+
+/* ─── the topbar's first slot: back to Foundry ───────────────────────────── */
+
+/* Deck opens in its own window, so the top-left corner's job is getting OUT of
+ * it. `← Foundry` under both brands — the destination is the platform, not the
+ * brand you happen to be wearing. A saved deck has nowhere to go back to and
+ * shows the inert lockup (.fd-home-mark) instead; see foundry/boot.ts. */
+.fd-home {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px 4px 6px;
+  margin-right: 2px;
+  border: 1px solid transparent;
+  border-radius: var(--fd-control);
+  color: var(--ink-2);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.fd-home:hover {
+  background: var(--fd-brand-soft);
+  border-color: var(--fd-brand-strong);
+  color: var(--accent-ink);
+}
+.fd-home:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--fd-focus-ring);
+}
+.fd-home-arrow {
+  flex: none;
+  /* nudges left on hover — the affordance IS the direction */
+  transition: transform 0.12s ease;
+}
+.fd-home:hover .fd-home-arrow {
+  transform: translateX(-2px);
+}
+.fd-home-label {
+  font-family: var(--fd-label);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--fd-label-tracking);
+  text-transform: uppercase;
+}
+/* Same ladder as everything else in the bar: below the laptop split the label
+   goes and the arrow alone carries it (the tooltip still says where it leads). */
+@media (max-width: 1023px) {
+  .fd-home-label {
+    display: none;
+  }
+  .fd-home {
+    padding: 4px 6px;
+  }
+}
+
+/* ─── the standard Foundry dialog: fixed height, two columns ─────────────── */
+
+/* DESIGN.md § "Grid & Container" — the house popup shape, matched to the React
+ * reference (src/components/starters/starter-versions-modal.tsx): max-w-3xl,
+ * a 36px widget-header strip, a body that is ALWAYS 460px (never content-driven,
+ * so it doesn't resize as you move between sections), split 300px / 1fr with a
+ * hairline between and each column scrolling on its own. */
+.fd-dlg-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.32);
+  backdrop-filter: blur(2px);
+}
+.fd-dlg {
+  width: 100%;
+  max-width: 768px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--fd-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  /* elevation 3 — a full overlay, per the DESIGN.md table */
+  box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.1);
+  outline: none;
+}
+.fd-dlg-head {
+  flex: none;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid var(--line);
+}
+.fd-dlg-head-label {
+  font-family: var(--fd-label);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--fd-label-tracking);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.fd-dlg-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--fd-control);
+  cursor: pointer;
+}
+.fd-dlg-close:hover {
+  color: var(--ink);
+  background: var(--chrome-2);
+}
+.fd-dlg-close:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--fd-focus-ring);
+}
+.fd-dlg-body {
+  display: grid;
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+  height: 460px;
+}
+.fd-dlg-nav {
+  overflow-y: auto;
+  padding: 8px;
+  border-right: 1px solid var(--line);
+  background: var(--chrome);
+}
+.fd-dlg-navrow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--ink-2);
+  font: inherit;
+}
+.fd-dlg-navrow:hover {
+  background: var(--chrome-2);
+}
+.fd-dlg-navrow.on {
+  background: var(--fd-brand-soft);
+  border-color: var(--fd-brand-strong);
+  color: var(--accent-ink);
+}
+.fd-dlg-navrow:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--fd-focus-ring);
+}
+/* the mono index — the house `NN` grammar, here as the row's ordinal */
+.fd-dlg-navidx {
+  flex: none;
+  font-family: var(--fd-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.fd-dlg-navrow.on .fd-dlg-navidx {
+  color: var(--accent);
+}
+.fd-dlg-navlabel {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.fd-dlg-view {
+  overflow-y: auto;
+  padding: 18px;
+}
+.fd-dlg-eyebrow {
+  display: block;
+  font-family: var(--fd-label);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--fd-label-tracking);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.fd-dlg-title {
+  margin: 4px 0 12px;
+  font-family: var(--fd-display);
+  font-weight: 400;
+  font-size: 24px;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.fd-dlg-lede {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.fd-dlg-fine {
+  margin: 14px 0 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.fd-dlg-datagrid {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.fd-dlg-data {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--fd-surface);
+}
+.fd-dlg-data-label {
+  font-family: var(--fd-label);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--fd-label-tracking);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.fd-dlg-data-value {
+  font-family: var(--fd-mono);
+  font-size: 12px;
+  color: var(--ink);
+}
+/* stacked label-over-input — the rail rule: fields are never crammed sideways */
+.fd-dlg-field {
+  display: block;
+  margin-bottom: 10px;
+}
+.fd-dlg-field-label {
+  display: block;
+  margin-bottom: 4px;
+  font-family: var(--fd-label);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--fd-label-tracking);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.fd-dlg-field input {
+  width: 100%;
+  padding: 6px 9px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--fd-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--fd-control);
+}
+.fd-dlg-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--fd-focus-ring);
+}
+.fd-dlg-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.fd-dlg-toggle input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+/* Below the laptop split the two columns become one: the nav rides on top as a
+ * horizontal strip. The body stops being fixed-height there — on a phone a
+ * 460px box plus a wrapped nav is taller than the viewport, and a dialog you
+ * cannot see the bottom of is exactly the failure this pass is about. */
+@media (max-width: 719px) {
+  .fd-dlg-body {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    max-height: calc(100dvh - 96px);
+    overflow-y: auto;
+  }
+  .fd-dlg-nav {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+  .fd-dlg-navrow {
+    width: auto;
+    white-space: nowrap;
+  }
+  .fd-dlg-navidx {
+    display: none;
+  }
+}
+
+/* ─── dark mode: Deck follows Foundry's own light/dark setting ───────────── */
+
+/* The platform stores `system | light | dark` and paints <html data-theme>;
+ * foundry/theme-mode.ts reads the SAME localStorage key and stamps the same
+ * attribute here, so flipping the toggle in the app moves this window too.
+ *
+ * Only the CHROME flips. The artboard keeps the deck's own paper — that is the
+ * document, not the UI — which is why nothing below touches .ed-canvas / slide
+ * backgrounds. Values are Foundry's dark tokens from src/app/globals.css. */
+:root[data-theme='dark'] {
+  --ink: #f5f5f6;         /* text-1 */
+  --ink-2: #e3e3e5;       /* text-2 */
+  --chrome: #0b0b0c;      /* surface-canvas */
+  --chrome-2: #28282b;    /* surface-2 */
+  --line: rgba(255, 255, 255, 0.11);
+  --muted: #909096;       /* text-4 */
+  --accent: #6ba0ff;      /* brand lightened for contrast on dark */
+  --accent-ink: #a8c8ff;
+  --blue: #6ba0ff;
+
+  --fd-surface: #161617;  /* surface-0 — the raised card face */
+  --fd-line-strong: rgba(255, 255, 255, 0.18);
+  --fd-brand-soft: #16213a;
+  --fd-brand-strong: #1e2c4a;
+  --fd-focus-ring: rgba(107, 160, 255, 0.4);
+  --fd-success: #3dd68c;
+  --fd-warning: #f0b429;
+  --fd-danger: #f87171;
+  --fd-danger-soft: rgba(248, 113, 113, 0.15);
+}
+
+/* Gitwork on dark: the brand's purple lifted off the navy the same way. Cream
+   is a paper colour and has no dark equivalent — the surfaces go neutral, and
+   the purple carries the brand. */
+:root[data-theme='dark'][data-brand='gitwork'] {
+  --accent: #a99bff;
+  --accent-ink: #ddd7ff;
+  --blue: #a99bff;
+  --fd-brand-soft: #201d3a;
+  --fd-brand-strong: #2e2856;
+  --fd-focus-ring: rgba(169, 155, 255, 0.4);
+}
+
+/* Elevation on dark is tone, not shadow (DESIGN.md) — drop the light-mode
+   shadows so panels don't sit in a grey smudge. */
+:root[data-theme='dark'] .ed-menu,
+:root[data-theme='dark'] .ed-about,
+:root[data-theme='dark'] .fd-dlg,
+:root[data-theme='dark'] .ed-share-pop,
+:root[data-theme='dark'] .ed-comment-pop,
+:root[data-theme='dark'] .ed-layoutpick,
+:root[data-theme='dark'] .ed-version-box {
+  box-shadow: 0 12px 24px -6px rgba(0, 0, 0, 0.7);
+}
+:root[data-theme='dark'] .fd-dlg-backdrop {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+/* The workspace BEHIND the slide goes dark (the slide keeps its own paper) —
+   same as every design tool, and it stops a bright surround fighting the deck.
+   The dot grid stays, but its dot is hardcoded #D5DBE4 upstream, which on a
+   near-black canvas is a bright speckle — so the whole background shorthand is
+   re-declared with a dim dot rather than dropping the texture. */
+:root[data-theme='dark'] .ed-canvas-wrap {
+  background:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.09) 1px, transparent 0) 0 0 / 22px 22px,
+    var(--chrome);
+}
+
+/* Upstream hardcodes white on a handful of chrome surfaces that our token swap
+   doesn't reach, and they'd stay white in dark mode. Enumerated, not guessed:
+   `grep -n '#fff\|white' styles.css` and kept to what is actually visible. */
+:root[data-theme='dark'] .ed-title,
+:root[data-theme='dark'] .ed-props input[type='text'],
+:root[data-theme='dark'] .ed-props input[type='number'],
+:root[data-theme='dark'] .ed-props select,
+:root[data-theme='dark'] .ed-props textarea,
+:root[data-theme='dark'] .ed-about-json {
+  background: var(--fd-surface);
+  color: var(--ink);
+  border-color: var(--line);
+}
+/* the Gitwork disc stays cream — it's the MARK, not a surface */
+:root[data-theme='dark'] .ed-btn {
+  color: var(--ink-2);
+}
+:root[data-theme='dark'] .ed-btn:hover {
+  background: var(--chrome-2);
+  color: var(--ink);
 }

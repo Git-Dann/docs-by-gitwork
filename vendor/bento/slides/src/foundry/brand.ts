@@ -22,7 +22,7 @@ export interface Brand {
   appName: string
   /** Manifest `app` id the kernel checks a release against. */
   appId: string
-  /** Topbar lockup: mark + wordmark, as HTML (styled by theme.css). */
+  /** The app name as HTML — words only, no mark (styled by theme.css). */
   wordmark: string
   /** Theme a brand-new deck is born with (existing decks keep their own). */
   deck: BentoDoc['theme']
@@ -32,26 +32,35 @@ export interface Brand {
  *  saved — the .bento.html file carries the @font-face with it. */
 const INTER_STACK = `'Inter', ${FONT_STACK}`
 
-/** Upstream's bento mark, repainted in Gitwork Blue. The tile triptych is kept
- *  deliberately — it reads as a bento grid, which is also Foundry's own
- *  dashboard signature (DESIGN.md), so the heritage and the house style agree. */
-const FOUNDRY_MARK =
-  `<svg class="ed-logo-mark fd-mark" viewBox="0 0 32 32" width="20" height="20" aria-hidden="true">` +
-  `<rect width="32" height="32" rx="7" fill="#0F172A"/>` +
-  `<rect x="5" y="5" width="7" height="22" rx="2.5" fill="#3B82F6"/>` +
-  `<rect x="14" y="5" width="13" height="10" rx="2.5" fill="#1D4ED8"/>` +
-  `<rect x="14" y="17" width="13" height="10" rx="2.5" fill="#DBEAFE"/>` +
-  `</svg>`
+/**
+ * THE ONLY LOGO IN THIS APP IS THE FAVICON. Everywhere else the identity is the
+ * words — "Foundry Deck". That is a product decision, not an oversight:
+ *
+ *   · upstream's tile triptych was bento's mark repainted in our blue, and it
+ *     is the most recognisable thing about the app this is forked from;
+ *   · and a mark repeated in the topbar, the About dialog and the splash is
+ *     three chances to look like someone else's product for no gain.
+ *
+ * Don't add a mark back into the chrome. If a logo is ever wanted, it belongs in
+ * `src/app/icon.svg` (the platform's own disc) and comes through the favicon.
+ */
+export const FAVICON: Record<BrandId, string> = {
+  foundry:
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E" +
+    "%3Ccircle cx='16' cy='16' r='16' fill='%234F46E5'/%3E%3C/svg%3E",
+  // The Gitwork "G." disc — cream ground, navy G, purple period, matching the
+  // lockup below and the platform's own GitworkMark.
+  gitwork:
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E" +
+    "%3Ccircle cx='16' cy='16' r='16' fill='%23F2EDE4'/%3E" +
+    "%3Ctext x='15' y='23' font-family='Georgia,serif' font-size='21' font-weight='700' " +
+    "text-anchor='middle' fill='%230C0C18'%3EG%3C/text%3E" +
+    "%3Ccircle cx='25' cy='21' r='2.4' fill='%236B52FF'/%3E%3C/svg%3E",
+}
 
-/** The Gitwork round "G." mark — cream disc, navy Fraunces G, purple period.
- *  Built from spans (not svg <text>) so it matches the platform's React
- *  `GitworkMark` exactly and never depends on SVG font resolution. */
-const GITWORK_MARK = `<span class="fd-gmark" aria-hidden="true">G<i>.</i></span>`
-
-/** mark + house name. Just the two: the product tag that used to sit here read as
- *  clutter beside the mark, and the window title already says which app this is. */
-function lockup(mark: string, house: string): string {
-  return `${mark}<b class="fd-word">${house}</b>`
+/** The identity, as words. No mark — see the note above. */
+function lockup(appName: string): string {
+  return `<b class="fd-word">${appName}</b>`
 }
 
 export const BRANDS: Record<BrandId, Brand> = {
@@ -60,7 +69,7 @@ export const BRANDS: Record<BrandId, Brand> = {
     product: 'Deck',
     appName: 'Foundry Deck',
     appId: 'foundry-deck',
-    wordmark: lockup(FOUNDRY_MARK, 'Foundry'),
+    wordmark: lockup('Foundry Deck'),
     deck: {
       // Warm off-white, never pure white (DESIGN.md: don't use #FFFFFF as canvas).
       background: '#FAFAF9',
@@ -76,7 +85,7 @@ export const BRANDS: Record<BrandId, Brand> = {
     product: 'Deck',
     appName: 'Gitwork Deck',
     appId: 'gitwork-deck',
-    wordmark: lockup(GITWORK_MARK, 'Gitwork'),
+    wordmark: lockup('Gitwork Deck'),
     deck: {
       background: '#F2EDE4',
       color: '#0C0C18',

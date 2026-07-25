@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Bento authors
-// The bento/slides document model. This JSON is what lives inside the
-// <script type="application/bento+json"> block of a .bento.html file.
+// The Foundry Deck document model. This JSON is what lives inside the
+// <script type="application/foundry-deck+json"> block of a .deck.html file.
 
-export const FORMAT = 'bento/slides'
+// FOUNDRY: written into every saved deck, so it is visible to anyone who opens
+// one in a text editor — it says which product made the file. LEGACY_FORMAT is
+// accepted on READ so decks written before the rename still open; the next save
+// rewrites them with FORMAT.
+export const FORMAT = 'foundry/deck'
+export const LEGACY_FORMAT = 'bento/slides'
 export const FORMAT_VERSION = 1
 
 export type TransitionKind = 'none' | 'fade' | 'slide' | 'zoom' | 'morph'
@@ -350,7 +355,7 @@ export interface Slide {
 }
 
 export interface BentoDoc {
-  format: typeof FORMAT
+  format: typeof FORMAT | typeof LEGACY_FORMAT
   version: number
   /**
    * Stable per-document identity (uuid), minted at creation and preserved
@@ -404,7 +409,7 @@ export interface BentoDoc {
    */
   layouts?: Slide[]
   /**
-   * Live-collaboration credentials (bento-sync), minted AT CREATION so any
+   * Live-collaboration credentials (deck-sync), minted AT CREATION so any
    * copy of the file can join once sharing is turned on ("send the file
    * first, share later" just works). `room` is the relay WebSocket URL
    * (random id — never derived from docId), `key` the base64url AES-GCM
@@ -898,10 +903,11 @@ export function newDoc(): BentoDoc {
 export function parseDoc(json: string): BentoDoc | null {
   try {
     const doc = JSON.parse(json)
-    if (doc && doc.format === FORMAT && Array.isArray(doc.slides) && doc.slides.length > 0) {
+    if (doc && (doc.format === FORMAT || doc.format === LEGACY_FORMAT) && Array.isArray(doc.slides) && doc.slides.length > 0) {
       // Documents from before docId existed get one minted here; it persists
       // on the next save and stays stable from then on.
       if (typeof doc.docId !== 'string' || !doc.docId) doc.docId = newDocId()
+      doc.format = FORMAT // migrate a legacy file forward on first open
       if (doc.template) {
         // template instantiation: this open IS a new document
         delete doc.template

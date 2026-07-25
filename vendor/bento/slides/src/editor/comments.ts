@@ -20,7 +20,7 @@ export function commentAuthor(): string | null {
   if (known) return known
   const name = window.prompt(t('Your name (shown on comments):'))?.trim() || ''
   if (!name) return null
-  localStorage.setItem('bento-author', name)
+  localStorage.setItem('deck-author', name)
   return name
 }
 
@@ -28,7 +28,7 @@ export function commentAuthor(): string | null {
 export function changeCommentAuthor(): string | null {
   const next = window.prompt(t('Your name (shown on new comments):'), authorName(''))?.trim()
   if (!next) return null
-  localStorage.setItem('bento-author', next)
+  localStorage.setItem('deck-author', next)
   return next
 }
 
@@ -126,7 +126,7 @@ export class CommentsUI {
       : typeof c.x === 'number' ? t('Comment · point ({x}, {y})', { x: c.x!, y: c.y! }) : t('Comment · slide')
     const me = document.createElement('button')
     me.className = 'ed-comment-me'
-    me.textContent = t('you: {name} ✎', { name: localStorage.getItem('bento-author') ?? '—' })
+    me.textContent = t('you: {name} ✎', { name: localStorage.getItem('deck-author') ?? '—' })
     me.title = t('Change the name used for your new comments and replies')
     me.addEventListener('click', () => {
       const next = changeCommentAuthor()

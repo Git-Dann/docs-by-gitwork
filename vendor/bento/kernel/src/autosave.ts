@@ -17,7 +17,7 @@
 
 import type { KernelDoc } from './doc.ts'
 
-const DB_NAME = 'bento-autosave'
+const DB_NAME = 'deck-autosave'
 const DB_VERSION = 1
 const RECOVERY = 'recovery'
 const VERSIONS = 'versions'

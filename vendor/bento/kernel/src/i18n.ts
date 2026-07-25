@@ -47,7 +47,7 @@ const pseudo = (s: string): string =>
   '⟧'
 
 function resolve(): string {
-  const saved = localStorage.getItem('bento-lang')
+  const saved = localStorage.getItem('deck-lang')
   if (saved) return saved
   const nav = navigator.language || 'en'
   if (CATALOGS[nav]) return nav
@@ -67,8 +67,8 @@ export const locale = (): string => activeLocale()
 
 /** Persist the override and switch. Callers re-render their own UI. */
 export function setLocale(code: string): void {
-  if (code === 'en') localStorage.removeItem('bento-lang')
-  else localStorage.setItem('bento-lang', code)
+  if (code === 'en') localStorage.removeItem('deck-lang')
+  else localStorage.setItem('deck-lang', code)
   current = code
 }
 
@@ -82,6 +82,6 @@ export function t(en: string, vars?: Record<string, string | number>): string {
   return out
 }
 
-// dev convenience: window.bento.i18n exposes locale switching for testing;
+// dev convenience: window.deck.i18n exposes locale switching for testing;
 // the pseudo locale is reachable by setLocale('x-pseudo') in any build.
 export const i18nApi = { t, locale, setLocale, choices: localeChoices }

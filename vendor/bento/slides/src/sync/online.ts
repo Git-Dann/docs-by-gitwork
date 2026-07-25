@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Bento authors
-// bento-sync online transport — E2EE WebSocket to the blind relay
+// deck-sync online transport — E2EE WebSocket to the blind relay
 // (server/sync-worker). Every session frame is AES-GCM encrypted with the
 // room key from doc.collab.key; the relay sees ciphertext, fan-out routing,
 // and nothing else. Auth is possession-proof: ?tok= is a hash of the key.
@@ -84,7 +84,7 @@ export async function mintInvite(ownerPrivB64: string, role: 'writer' | 'comment
 /** This device's member identity for a doc — minted once, kept in localStorage,
  *  NEVER in the file (the file travels; a device key must not). */
 export async function deviceIdentity(docId: string): Promise<{ pub: string; priv: string }> {
-  const k = `bento-member-${docId}`
+  const k = `deck-member-${docId}`
   try {
     const saved = localStorage.getItem(k)
     if (saved) return JSON.parse(saved)
@@ -142,7 +142,7 @@ export async function mintCollab(): Promise<CollabCreds> {
 /** dev override for the relay host (e.g. ws://localhost:8787) */
 export function syncHost(): string {
   try {
-    return localStorage.getItem('bento-sync-url') || DEFAULT_SYNC_HOST
+    return localStorage.getItem('deck-sync-url') || DEFAULT_SYNC_HOST
   } catch {
     return DEFAULT_SYNC_HOST
   }
@@ -377,12 +377,12 @@ export class OnlineTransport implements Transport {
     if (env.code !== 'too-large' && env.code !== 'storage-failed' && env.code !== 'room-full') {
       // a code from a newer relay: no recovery we can invent is better than
       // leaving the op in the log, where `need` will retry it honestly
-      console.warn('[bento-sync] relay refused a frame:', env.code)
+      console.warn('[deck-sync] relay refused a frame:', env.code)
       return
     }
     const culprit = this.matchRefused(env)
     if (culprit) this.awaitingAck = this.awaitingAck.filter((o) => o !== culprit)
-    console.warn(`[bento-sync] relay refused a frame (${env.code})`, env)
+    console.warn(`[deck-sync] relay refused a frame (${env.code})`, env)
     this.hooks.onRefused?.(env.code, culprit?.ops ?? null)
   }
 
@@ -469,7 +469,7 @@ export class OnlineTransport implements Transport {
     // refuses our reconnects anyway — don't retry into a wall of 403s)
     if (env.ctl === 'revoked') {
       if (env.p && env.p === this.myPub) {
-        console.info('[bento-sync] this copy’s access was revoked by the owner')
+        console.info('[deck-sync] this copy’s access was revoked by the owner')
         this.close()
       }
       return

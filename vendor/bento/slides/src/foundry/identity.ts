@@ -12,10 +12,11 @@
 //     re-hosted anywhere else must make ZERO external requests — that is the
 //     format's contract and the reason a deck still works offline in five years.
 //     We only call Foundry when the shell is being served BY Foundry, same-origin.
-//  2. Never overwrite a name the person chose. We seed upstream's own
-//     `bento-author` key so presence, comments and the share panel all pick the
-//     name up with no further patching, but if they rename themselves we leave it
-//     alone for good (we only replace a value we ourselves seeded).
+//  2. Never overwrite a name the person chose. We seed the ONE display-name key
+//     the rest of the app already reads (`deck-author` — upstream called it
+//     `bento-author`), so presence, comments and the share panel all pick the name
+//     up with no further patching; but if they rename themselves we leave it alone
+//     for good (we only ever replace a value we seeded ourselves).
 
 export interface FoundryUser {
   name: string
@@ -25,8 +26,8 @@ export interface FoundryUser {
 
 const CACHE_KEY = 'foundry.deck.user'
 const SEEDED_KEY = 'foundry.deck.identity-seeded'
-/** upstream's own display-name key — shared with presence + comments */
-const AUTHOR_KEY = 'bento-author'
+/** the app's display-name key — shared with presence + comments */
+const AUTHOR_KEY = 'deck-author'
 
 let current: FoundryUser | null = null
 

@@ -12,7 +12,7 @@
 // FOUNDRY: English only.
 //
 // The seven translation catalogs are ~171KB of the shipped shell — 25% of it —
-// and because a Bento file IS the app, every deck we hand a client would carry
+// and because a deck file IS the app, every deck we hand a client would carry
 // them too. The single-file build forbids lazy-loading (zero external requests is
 // the format's contract), so it is all-or-nothing, and an internal English-
 // speaking team gets nothing for the 171KB. English is the source language, so

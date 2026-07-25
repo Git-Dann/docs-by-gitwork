@@ -92,10 +92,10 @@ console.log('\n01 // CONTROLS')
 
   for (const label of ['Text', 'Table', 'Chart']) {
     await check(`insert ${label}`, async () => {
-      const n0 = await page.evaluate(() => window.bento.doc.slides[0].elements.length)
+      const n0 = await page.evaluate(() => window.deck.doc.slides[0].elements.length)
       await page.click(`.ed-insert button:has-text("${label}")`)
       await page.waitForTimeout(250)
-      const n1 = await page.evaluate(() => window.bento.doc.slides[0].elements.length)
+      const n1 = await page.evaluate(() => window.deck.doc.slides[0].elements.length)
       if (n1 <= n0) throw new Error(`no element added (${n0}→${n1})`)
       await page.keyboard.press('Control+z')
     })
@@ -109,7 +109,7 @@ console.log('\n01 // CONTROLS')
     const read = () => page.evaluate(() => ({
       brand: document.documentElement.dataset.brand,
       accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
-      deck: window.bento.doc.theme.accent,
+      deck: window.deck.doc.theme.accent,
       title: document.title,
     }))
     const a = await read()
@@ -122,40 +122,113 @@ console.log('\n01 // CONTROLS')
     if (b.title === a.title) throw new Error('window title suffix not re-declared')
     await page.keyboard.press('Control+z') // the re-theme must be undoable
     await page.waitForTimeout(250)
-    if ((await page.evaluate(() => window.bento.doc.theme.accent)) !== a.deck) throw new Error('re-theme not undoable')
+    if ((await page.evaluate(() => window.deck.doc.theme.accent)) !== a.deck) throw new Error('re-theme not undoable')
     await page.click('.fd-brandswitch button:nth-child(1)')
   })
-  await check('help dialog', async () => {
-    await page.click('.ed-btn-help'); await page.waitForTimeout(400)
-    if (!(await page.$('.ed-help-box'))) throw new Error('no help box')
-    await esc()
+  await check('help surface is gone (button AND the ? key)', async () => {
+    if (await page.$('.ed-btn-help')) throw new Error('the ? button is still in the topbar')
+    await page.keyboard.press('Shift+Slash'); await page.waitForTimeout(350)
+    if (await page.$('.ed-help-box')) throw new Error('? still opens a shortcuts overlay')
   })
-  await check('about dialog (wordmark)', async () => {
-    await page.click('.ed-logo'); await page.waitForTimeout(500)
-    if (!(await page.$('.ed-about'))) throw new Error('no about dialog')
+  await check('topbar slot is a back link to Foundry', async () => {
+    const slot = await page.$('.ed-logo')
+    if (!slot) throw new Error('no topbar slot')
+    const info = await slot.evaluate((e) => ({
+      tag: e.tagName, href: e.getAttribute('href'), text: (e.textContent || '').trim(), arrow: !!e.querySelector('.fd-home-arrow'),
+    }))
+    // file:// is a saved deck — it must show the inert lockup, NOT a dead link.
+    if (target.startsWith('http')) {
+      if (info.tag !== 'A' || info.href !== '/app') throw new Error(`served by Foundry but slot is <${info.tag} href=${info.href}>`)
+      if (!info.arrow) throw new Error('back link has no arrow')
+      if (!/Foundry/.test(info.text)) throw new Error(`back link reads "${info.text}"`)
+    } else if (info.tag === 'A') {
+      throw new Error('a saved deck must not render a back-to-Foundry link')
+    }
+  })
+  await check('about opens from Save ▾ as the standard 2-col dialog', async () => {
+    await page.click('.ed-split .ed-split-caret'); await page.waitForTimeout(350)
+    await page.click('.ed-save-menu button:has-text("Deck settings")'); await page.waitForTimeout(450)
+    const dlg = await page.$('.fd-dlg')
+    if (!dlg) throw new Error('no Foundry dialog')
+    // The shape DESIGN.md specifies: 768px wide, a FIXED 460px body, two columns.
+    const shape = await page.evaluate(() => {
+      const d = document.querySelector('.fd-dlg')
+      const b = document.querySelector('.fd-dlg-body')
+      return {
+        w: Math.round(d.getBoundingClientRect().width),
+        h: Math.round(b.getBoundingClientRect().height),
+        cols: getComputedStyle(b).gridTemplateColumns.split(' ').length,
+        rows: document.querySelectorAll('.fd-dlg-navrow').length,
+      }
+    })
+    if (shape.w !== 768) throw new Error(`dialog is ${shape.w}px, expected max-w-3xl (768)`)
+    if (shape.h !== 460) throw new Error(`body is ${shape.h}px, expected a fixed 460`)
+    if (shape.cols !== 2) throw new Error(`body has ${shape.cols} column(s), expected 2`)
+    if (shape.rows < 2) throw new Error('nav rail has nothing to pick')
+    // …and the body must NOT resize as you move between sections.
+    await page.click('.fd-dlg-navrow:nth-child(2)'); await page.waitForTimeout(250)
+    const h2 = await page.$eval('.fd-dlg-body', (e) => Math.round(e.getBoundingClientRect().height))
+    if (h2 !== 460) throw new Error(`body jumped to ${h2}px when switching section`)
     await esc()
+    if (await page.$('.fd-dlg')) throw new Error('Escape did not close it')
+  })
+  await check('no MIT / bento credit anywhere in the chrome', async () => {
+    await page.click('.ed-split .ed-split-caret'); await page.waitForTimeout(300)
+    await page.click('.ed-save-menu button:has-text("Deck settings")'); await page.waitForTimeout(400)
+    const text = await page.$eval('.fd-dlg', (e) => e.textContent || '')
+    if (/\bMIT\b|bento/i.test(text)) throw new Error(`credit text still shown: ${text.match(/.{0,40}(MIT|bento).{0,40}/i)?.[0]}`)
+    await esc()
+    // …but the licence itself MUST still travel in the file. That is the deal:
+    // the notice lives in the source, not the UI. If this ever fails we are
+    // shipping MIT code with no notice at all, which is not what was asked for.
+    const html = await page.evaluate(() => window.deck.serialize())
+    if (!/Permission is hereby granted/.test(html)) throw new Error('the NOTICE block is missing from a saved deck')
+  })
+  await check('replace-from-JSON has visible buttons', async () => {
+    // Regression: a `.ed-about-row:has(> button)` hide (added to bury the update
+    // UI) also hid this dialog's Apply/Cancel — it shipped with no buttons.
+    await page.click('.ed-split .ed-split-caret'); await page.waitForTimeout(300)
+    await page.click('.ed-save-menu button:has-text("Replace from JSON")'); await page.waitForTimeout(400)
+    const visible = await page.$$eval('.ed-about-row button', (bs) =>
+      bs.filter((b) => b.getBoundingClientRect().width > 0).length)
+    if (visible < 2) throw new Error(`${visible} visible button(s) in Replace from JSON`)
+    // …and Escape must close it. Upstream wired only a backdrop click, so the one
+    // dialog you land in with the keyboard was the one you couldn't leave with it —
+    // which is also how this left a modal over the page and broke the next check.
+    await esc()
+    if (await page.$('.ed-about-overlay')) throw new Error('Escape does not close Replace from JSON')
   })
   await check('new slide → layout picker → insert', async () => {
-    const n0 = await page.evaluate(() => window.bento.doc.slides.length)
+    const n0 = await page.evaluate(() => window.deck.doc.slides.length)
     await page.click('.ed-add-slide'); await page.waitForTimeout(350)
     const items = await page.$$('.ed-layoutpick-item')
     if (!items.length) throw new Error('layout picker empty (it is a PICKER, not an insert button)')
     await items[0].click(); await page.waitForTimeout(400)
-    if ((await page.evaluate(() => window.bento.doc.slides.length)) !== n0 + 1) throw new Error('layout did not insert')
+    if ((await page.evaluate(() => window.deck.doc.slides.length)) !== n0 + 1) throw new Error('layout did not insert')
     await page.keyboard.press('Control+z')
   })
   await check('slideshow starts + Escape exits', async () => {
     await page.click('.ed-pill-main'); await page.waitForTimeout(1600)
-    if (!(await page.$('.bento-present-overlay'))) throw new Error('no present overlay')
+    if (!(await page.$('.deck-present-overlay'))) throw new Error('no present overlay')
     await page.keyboard.press('Escape'); await page.waitForTimeout(700)
-    if (await page.$('.bento-present-overlay')) throw new Error('overlay did not close')
+    if (await page.$('.deck-present-overlay')) throw new Error('overlay did not close')
   })
   await check('props rail sections collapse + carry the NN // counter', async () => {
-    await page.click('.ed-stage .bento-el', { position: { x: 10, y: 10 } }).catch(() => {})
+    await page.click('.ed-stage .deck-el', { position: { x: 10, y: 10 } }).catch(() => {})
     await page.waitForTimeout(300)
-    const secs = await page.$$('.ed-props .ed-section')
-    if (!secs.length) throw new Error('no props sections')
-    for (const s of secs) { await s.click(); await page.waitForTimeout(50); await s.click() }
+    const count = (await page.$$('.ed-props .ed-section')).length
+    if (!count) throw new Error('no props sections')
+    // Re-query per index rather than holding handles: toggling a section
+    // re-renders the rail, which detaches any handle captured before the click.
+    for (let i = 0; i < count; i++) {
+      const sel = `.ed-props .ed-section:nth-of-type(${i + 1})`
+      for (const _ of [0, 1]) {
+        const s = await page.$(sel)
+        if (!s) break
+        await s.click({ timeout: 5000 }).catch(() => {})
+        await page.waitForTimeout(60)
+      }
+    }
     const bad = await page.evaluate(() => {
       const out = []
       document.querySelectorAll('.ed-props .ed-section').forEach((el, i) => {
@@ -169,10 +242,15 @@ console.log('\n01 // CONTROLS')
     if (bad.length) throw new Error(bad.join('; '))
   })
   await check('serialize produces a whole file', async () => {
-    const html = await page.evaluate(() => window.bento.serialize())
+    const html = await page.evaluate(() => window.deck.serialize())
     if (!html.startsWith('<!DOCTYPE html>')) throw new Error('not a document')
     if (html.length < 300_000) throw new Error(`suspiciously small: ${html.length}`)
     if (html.includes('fd-brand-fonts')) throw new Error('injected @font-face got captured into the save (inject AFTER capturePristine)')
+    // capturePristine() clones the document ATTRIBUTES AND ALL, so anything
+    // stamped on <html> before it is frozen into every saved deck. data-theme is
+    // the author's own light/dark preference and has no business travelling.
+    const htmlTag = html.slice(0, html.indexOf('>', html.indexOf('<html')) + 1)
+    if (/data-theme/.test(htmlTag)) throw new Error(`the author's theme got baked into the save: ${htmlTag}`)
   })
   if (errors.length) note('controls', `page errors: ${errors.join(' | ')}`)
   await ctx.close()
@@ -221,10 +299,10 @@ console.log('\n02 // BRAND ACCENTS')
     // present mode must follow the DECK's accent, not amber
     await page.click('.ed-pill-main'); await page.waitForTimeout(1500)
     const rev = await page.evaluate(() => {
-      const o = document.querySelector('.bento-present-overlay')
+      const o = document.querySelector('.deck-present-overlay')
       return o ? getComputedStyle(o).getPropertyValue('--r-link-color').trim() : ''
     })
-    const deck = await page.evaluate(() => window.bento.doc.theme.accent)
+    const deck = await page.evaluate(() => window.deck.doc.theme.accent)
     if (rev.toUpperCase() !== deck.toUpperCase()) note('accents', `${brand}: present mode link colour ${rev} ≠ deck accent ${deck}`)
     else pass(`${brand}: present mode follows the deck accent (${deck})`)
     await ctx.close()
@@ -275,7 +353,7 @@ console.log('\n04 // SAVED DECKS')
   const { page } = await openShell(ctx)
   await page.click('.fd-brandswitch button:nth-child(2)') // author it as Gitwork
   await page.waitForTimeout(400)
-  const saved = await page.evaluate(() => window.bento.serialize())
+  const saved = await page.evaluate(() => window.deck.serialize())
   await ctx.close()
   console.log(`       saved deck: ${(saved.length / 1024).toFixed(0)}KB`)
 
@@ -295,7 +373,7 @@ console.log('\n04 // SAVED DECKS')
   await page2.waitForTimeout(2200)
   const reopened = await page2.evaluate(() => ({
     brand: document.documentElement.dataset.brand,
-    slides: window.bento.doc.slides.length,
+    slides: window.deck.doc.slides.length,
     title: document.title,
   }))
   if (reopened.brand !== 'gitwork') note('saved', `reopened as ${reopened.brand}, expected gitwork (adoptDeckBrand)`)
@@ -313,19 +391,26 @@ console.log('\n05 // NOTHING HIDDEN')
   const STATES = {
     idle: async () => {},
     'element selected': async (p) => {
-      await p.click('.ed-stage .bento-el', { position: { x: 8, y: 8 } }).catch(() => {})
+      await p.click('.ed-stage .deck-el', { position: { x: 8, y: 8 }, timeout: 4000 }).catch(() => {})
       await p.waitForTimeout(400)
     },
     'props sections all open': async (p) => {
-      await p.click('.ed-stage .bento-el', { position: { x: 8, y: 8 } }).catch(() => {})
+      await p.click('.ed-stage .deck-el', { position: { x: 8, y: 8 }, timeout: 4000 }).catch(() => {})
       await p.waitForTimeout(400)
-      for (const sec of await p.$$('.ed-props .ed-section.closed')) { await sec.click(); await p.waitForTimeout(50) }
+      for (const sec of await p.$$('.ed-props .ed-section.closed')) { await sec.click({ timeout: 4000 }).catch(() => {}); await p.waitForTimeout(50) }
     },
-    'help dialog': async (p) => { await p.click('.ed-btn-help'); await p.waitForTimeout(500) },
-    'about dialog': async (p) => { await p.click('.ed-logo'); await p.waitForTimeout(700) },
-    'layout picker': async (p) => { await p.click('.ed-add-slide'); await p.waitForTimeout(500) },
-    'save menu': async (p) => { await p.click('.ed-split .ed-split-caret'); await p.waitForTimeout(400) },
-    'present mode': async (p) => { await p.click('.ed-pill-main'); await p.waitForTimeout(2000) },
+    'about dialog': async (p) => {
+      await p.click('.ed-split .ed-split-caret', { timeout: 4000 }); await p.waitForTimeout(350)
+      await p.click('.ed-save-menu button:has-text("Deck settings")', { timeout: 4000 }); await p.waitForTimeout(600)
+    },
+    'about dialog · document tab': async (p) => {
+      await p.click('.ed-split .ed-split-caret', { timeout: 4000 }); await p.waitForTimeout(350)
+      await p.click('.ed-save-menu button:has-text("Deck settings")', { timeout: 4000 }); await p.waitForTimeout(600)
+      await p.click('.fd-dlg-navrow:nth-child(2)', { timeout: 4000 }); await p.waitForTimeout(300)
+    },
+    'layout picker': async (p) => { await p.click('.ed-add-slide', { timeout: 4000 }); await p.waitForTimeout(500) },
+    'save menu': async (p) => { await p.click('.ed-split .ed-split-caret', { timeout: 4000 }); await p.waitForTimeout(400) },
+    'present mode': async (p) => { await p.click('.ed-pill-main', { timeout: 4000 }); await p.waitForTimeout(2000) },
   }
   // 1280x620 is in the list on purpose: a short laptop viewport is where dialogs
   // run off the bottom with nothing to scroll.
@@ -334,7 +419,10 @@ console.log('\n05 // NOTHING HIDDEN')
     for (const [state, drive] of Object.entries(STATES)) {
       const ctx = await newCtx({ viewport: { width: w, height: h }, isMobile: w < 900, hasTouch: w < 900 })
       const { page } = await openShell(ctx)
-      try { await drive(page) } catch { /* control absent at this width — audit what is there */ }
+      // A control that doesn't exist at this width is fine — audit whatever IS on
+      // screen. But let it fail FAST: the default 30s actionability timeout, times
+      // two dialog states times four viewports, is four minutes of pure waiting.
+      try { await drive(page) } catch { /* not reachable here — audit what is */ }
       await page.waitForTimeout(300)
       for (const f of await page.evaluate(AUDIT)) {
         bad++
@@ -352,7 +440,7 @@ console.log('\n06 // IDENTITY')
   // (a) served by Foundry → the People list names the signed-in user
   const ctx = await newCtx({ viewport: { width: 1600, height: 1000 } })
   const { page } = await openShell(ctx)
-  const seeded = await page.evaluate(() => localStorage.getItem('bento-author'))
+  const seeded = await page.evaluate(() => localStorage.getItem('deck-author'))
   if (target.startsWith('http')) {
     if (seeded !== 'Test Person') note('identity', `display name not seeded from /api/account (got ${seeded})`)
     else pass('signed-in Foundry user seeds the display name')
@@ -389,6 +477,128 @@ console.log('\n06 // IDENTITY')
   else pass('a saved deck makes zero external requests')
   await ctx2.close()
   rmSync(tmp2, { force: true })
+}
+
+// ── 7. dark mode follows the platform ───────────────────────────────────────
+console.log('\n07 // DARK MODE')
+{
+  const parse = (rgb) => (rgb.match(/\d+/g) ?? []).slice(0, 3).map(Number)
+  const luma = (rgb) => { const [r, g, b] = parse(rgb); return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 }
+  const contrast = (a, b) => {
+    const L = (rgb) => {
+      const [r, g, bl] = parse(rgb).map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4 })
+      return 0.2126 * r + 0.7152 * g + 0.0722 * bl
+    }
+    const [x, y] = [L(a), L(b)].sort((p, q) => q - p)
+    return (x + 0.05) / (y + 0.05)
+  }
+
+  for (const mode of ['light', 'dark']) {
+    const ctx = await newCtx({ viewport: { width: 1600, height: 1000 } })
+    // Exactly how Foundry stores it — if the platform's key or values change,
+    // this fails rather than silently theming nothing.
+    await ctx.addInitScript((m) => { try { localStorage.setItem('gitwork.theme.v1', m) } catch {} }, mode)
+    const { page, errors } = await openShell(ctx)
+    const seen = await page.evaluate(() => document.documentElement.dataset.theme)
+    if (seen !== mode) { note('dark', `stored "${mode}" but <html data-theme> is "${seen}"`); await ctx.close(); continue }
+
+    const m = await page.evaluate(() => {
+      const cs = (sel) => { const e = document.querySelector(sel); return e ? getComputedStyle(e) : null }
+      return {
+        bar: cs('.ed-topbar')?.backgroundColor,
+        barInk: cs('.ed-topbar')?.color,
+        rail: cs('.ed-props')?.backgroundColor,
+        slide: cs('.ed-stage')?.backgroundColor ?? cs('.bento-slide')?.backgroundColor,
+        deckPaper: window.deck.doc.theme.background,
+      }
+    })
+    const barDark = luma(m.bar) < 0.35
+    if (mode === 'dark' && !barDark) note('dark', `topbar stayed light in dark mode (${m.bar})`)
+    else if (mode === 'light' && barDark) note('dark', `topbar went dark in light mode (${m.bar})`)
+    else pass(`${mode}: chrome surfaces follow the platform setting`)
+
+    // Legibility is the whole point — a token block that half-applies is worse
+    // than none, because the text goes invisible rather than merely off-brand.
+    const ratio = contrast(m.bar, m.barInk)
+    if (ratio < 4.5) note('dark', `${mode}: topbar text contrast ${ratio.toFixed(1)}:1 (want ≥ 4.5)`)
+    else pass(`${mode}: topbar text contrast ${ratio.toFixed(1)}:1`)
+
+    // …and the ARTBOARD must not follow. It's the document, not the UI.
+    if (m.deckPaper.toUpperCase() !== '#FAFAF9') note('dark', `${mode}: deck paper changed to ${m.deckPaper} — the artboard must keep the deck's own theme`)
+    else pass(`${mode}: the artboard keeps the deck's paper (${m.deckPaper})`)
+
+    if (errors.length) note('dark', `${mode}: page errors ${errors.join(' | ')}`)
+    await ctx.close()
+  }
+
+  // A live flip in another Foundry tab must move this window — that's a `storage`
+  // event, which is the only way two tabs on one origin hear each other here.
+  const ctx = await newCtx({ viewport: { width: 1400, height: 900 } })
+  await ctx.addInitScript(() => { try { localStorage.setItem('gitwork.theme.v1', 'light') } catch {} })
+  const { page } = await openShell(ctx)
+  await page.evaluate(() => {
+    localStorage.setItem('gitwork.theme.v1', 'dark')
+    dispatchEvent(new StorageEvent('storage', { key: 'gitwork.theme.v1', newValue: 'dark' }))
+  })
+  await page.waitForTimeout(300)
+  const after = await page.evaluate(() => document.documentElement.dataset.theme)
+  if (after !== 'dark') note('dark', `a theme change in another tab did not reach Deck (still ${after})`)
+  else pass('follows a live theme change from another Foundry tab')
+  await ctx.close()
+}
+
+// ── 8. the shipped shell carries no upstream identity ───────────────────────
+console.log('\n08 // NO UPSTREAM NAME')
+{
+  // Dan's rule: the Bento name and icon appear NOWHERE. The one exception is the
+  // MIT notice — the licence requires the copyright line be retained in copies,
+  // and the copyright holder is literally "The Bento authors". So: strip the
+  // NOTICE block, then assert the rest of the file is clean. Checking the BUILT
+  // shell (not the source) is the point — this is the byte-for-byte artefact that
+  // ships and that every saved deck carries.
+  const shellPath = new URL('../../../public/deck/index.html', import.meta.url)
+  const shell = readFileSync(shellPath, 'utf8')
+
+  const notice = shell.match(/<!--\s*\n\s*NOTICE[\s\S]*?-->/)
+  if (!notice) {
+    note('identity', 'the MIT NOTICE block is MISSING from the shell — that is a licence breach, put it back')
+  } else {
+    pass('the MIT NOTICE block is present (required — do not remove)')
+    const body = shell.replace(notice[0], '')
+    const hits = [...body.matchAll(/[Bb]ento/g)]
+    if (hits.length) {
+      const sample = body.slice(Math.max(0, hits[0].index - 60), hits[0].index + 60).replace(/\s+/g, ' ')
+      note('identity', `${hits.length} "bento" occurrence(s) outside the NOTICE, e.g. …${sample}…`)
+    } else {
+      pass('no "bento" anywhere in the shipped shell outside the NOTICE')
+    }
+  }
+
+  // The compressor rebuilds the outer shell by REGEX against the vite output, so
+  // renaming an id in index.html can make a piece silently vanish from the build.
+  // That is not hypothetical: renaming `bento-splash` → `deck-splash` dropped the
+  // boot splash out of the artefact, and nothing said a word. Assert the pieces
+  // that only exist in the built file.
+  for (const [what, needle] of [
+    ['boot splash markup', '<div id="deck-splash"'],
+    ['splash wordmark', 'class="bs-word"'],
+    ['document block', 'id="deck-doc"'],
+    ['compressed runtime', 'id="deck-rt"'],
+  ]) {
+    if (!shell.includes(needle)) note('identity', `the build dropped the ${what} (${needle})`)
+    else pass(`the build kept the ${what}`)
+  }
+
+  // The favicon must be the PLATFORM's, not a mark invented here or upstream's
+  // tile. Compare against src/app/icon.svg — the same disc Foundry's own tabs use.
+  const appIcon = readFileSync(new URL('../../../src/app/icon.svg', import.meta.url), 'utf8')
+  const fill = appIcon.match(/fill="(#[0-9A-Fa-f]{6})"/)?.[1] ?? ''
+  const iconTag = shell.match(/<link rel="icon"[^>]*>/)?.[0] ?? ''
+  if (!iconTag) note('identity', 'the shell has no <link rel="icon">')
+  else if (!fill || !iconTag.toLowerCase().includes(fill.replace('#', '%23').toLowerCase()))
+    note('identity', `the favicon is not the platform disc (${fill}): ${iconTag.slice(0, 120)}`)
+  else if (/rect/i.test(iconTag)) note('identity', 'the favicon still contains a tile/rect — that was upstream\'s mark')
+  else pass(`the favicon is the platform's own disc (${fill})`)
 }
 
 await browser.close()

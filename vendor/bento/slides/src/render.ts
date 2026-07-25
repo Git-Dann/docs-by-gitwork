@@ -167,7 +167,7 @@ export function cssLinearGradient(g: NonNullable<ShapeElement['fillGradient']>):
 
 /** Materialize a GradientFill as a <defs> gradient; returns its url() ref. */
 function gradientRef(svg: SVGSVGElement, g: NonNullable<ShapeElement['fillGradient']>): string {
-  const id = `bento-grad-${gradSeq++}`
+  const id = `deck-grad-${gradSeq++}`
   const defs = document.createElementNS(SVG_NS, 'defs')
   const lin = document.createElementNS(SVG_NS, 'linearGradient')
   lin.setAttribute('id', id)
@@ -201,7 +201,7 @@ let markSeq = 0
 /** A line-tip marker in <defs>; sized in strokeWidth units, colored like the line. */
 function markerRef(svg: SVGSVGElement, kind: NonNullable<ShapeElement['lineStart']>, color: string, start: boolean): string | null {
   if (kind === 'none') return null
-  const id = `bento-mark-${markSeq++}`
+  const id = `deck-mark-${markSeq++}`
   const marker = document.createElementNS(SVG_NS, 'marker')
   marker.setAttribute('id', id)
   marker.setAttribute('viewBox', '0 0 8 8')
@@ -386,7 +386,7 @@ export function renderTableHtml(el: TableElement, doc: BentoDoc): string {
             `<td data-r="${r}" data-c="${c}" style="${border}padding:${st.cellPadY}px ${st.cellPadX}px;` +
             `text-align:${align};vertical-align:middle;color:${color};background:${bg};` +
             `font-weight:${weight};overflow:hidden;word-break:break-word;">` +
-            `<div class="bento-cell-inner">${sanitizeHtml(cell.html || '') || '<br>'}</div></td>`
+            `<div class="deck-cell-inner">${sanitizeHtml(cell.html || '') || '<br>'}</div></td>`
           )
         })
         .join('')
@@ -395,8 +395,8 @@ export function renderTableHtml(el: TableElement, doc: BentoDoc): string {
     .join('')
   const radius = st.radius ? `border-radius:${st.radius}px;overflow:hidden;` : ''
   return (
-    `<div class="bento-table-wrap" style="width:100%;height:100%;${radius}">` +
-    `<table class="bento-table" style="width:100%;height:100%;border-collapse:collapse;` +
+    `<div class="deck-table-wrap" style="width:100%;height:100%;${radius}">` +
+    `<table class="deck-table" style="width:100%;height:100%;border-collapse:collapse;` +
     `table-layout:fixed;font-family:${font};font-size:${st.fontSize}px;line-height:1.3;">` +
     `<colgroup>${cols}</colgroup>${rowsHtml}</table></div>`
   )
@@ -410,7 +410,7 @@ export function renderTableHtml(el: TableElement, doc: BentoDoc): string {
  */
 export function renderElement(el: SlideElement, doc: BentoDoc, opts: RenderOpts = {}): HTMLElement {
   const node = document.createElement('div')
-  node.className = `bento-el bento-el-${el.type}`
+  node.className = `deck-el deck-el-${el.type}`
   node.dataset.elId = el.id
   node.dataset.flipId = el.morphId || el.id
   if (el.link) node.dataset.link = el.link
@@ -424,7 +424,7 @@ export function renderElement(el: SlideElement, doc: BentoDoc, opts: RenderOpts 
       node.style.flexDirection = 'column'
       node.style.justifyContent = VALIGN[el.valign]
       const inner = document.createElement('div')
-      inner.className = 'bento-text-inner'
+      inner.className = 'deck-text-inner'
       inner.style.fontSize = `${el.fontSize}px`
       inner.style.fontFamily = el.fontFamily || doc.theme.fontFamily
       inner.style.fontWeight = String(el.fontWeight)
@@ -584,7 +584,7 @@ export function renderElement(el: SlideElement, doc: BentoDoc, opts: RenderOpts 
 /** Render a full slide surface (background + elements) at model coordinates. */
 export function renderSlide(slide: Slide, doc: BentoDoc, opts: RenderOpts = {}): HTMLElement {
   const surface = document.createElement('div')
-  surface.className = 'bento-slide'
+  surface.className = 'deck-slide'
   surface.dataset.slideId = slide.id
   surface.style.width = `${doc.size.width}px`
   surface.style.height = `${doc.size.height}px`
@@ -598,7 +598,7 @@ export function renderSlide(slide: Slide, doc: BentoDoc, opts: RenderOpts = {}):
 export function renderThumbnail(slide: Slide, doc: BentoDoc, width: number): HTMLElement {
   const scale = width / doc.size.width
   const box = document.createElement('div')
-  box.className = 'bento-thumb-surface'
+  box.className = 'deck-thumb-surface'
   box.style.width = `${width}px`
   box.style.height = `${doc.size.height * scale}px`
   const inner = renderSlide(slide, doc, { svgAsImage: true })

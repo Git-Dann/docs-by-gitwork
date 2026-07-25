@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Bento authors
-// bento-sync session — the bridge between the CRDT engine (crdt.ts) and the
+// deck-sync session — the bridge between the CRDT engine (crdt.ts) and the
 // running editor. Owns: the differ hook on the store, transports (same-machine
 // BroadcastChannel always; an online relay transport can be added), presence,
 // and peer catch-up. See docs/collab-design.md.
@@ -97,7 +97,7 @@ class BroadcastTransport implements Transport {
   readonly kind = 'local'
   private ch: BroadcastChannel
   constructor(docId: string, onFrame: (f: Frame) => void) {
-    this.ch = new BroadcastChannel(`bento-sync-${docId}`)
+    this.ch = new BroadcastChannel(`deck-sync-${docId}`)
     this.ch.onmessage = (ev) => onFrame(ev.data as Frame)
   }
   send(frame: Frame) {
@@ -305,7 +305,7 @@ export class SyncSession {
    * (too large, room full). This path is a bug — console is the right surface.
    */
   private recoverFromDiffFailure(err: unknown) {
-    console.error('[bento-sync] diff failed; recovering via snapshot', err)
+    console.error('[deck-sync] diff failed; recovering via snapshot', err)
     this.shadow = JSON.stringify(this.store.doc)
     this.forkPending = true
     try {
@@ -320,7 +320,7 @@ export class SyncSession {
     } catch (e2) {
       // snapshot itself failed (state unserializable) — the shadow is still
       // advanced, so editing continues and the next reconnect retries
-      console.error('[bento-sync] snapshot recovery failed', e2)
+      console.error('[deck-sync] snapshot recovery failed', e2)
     }
   }
 
@@ -429,7 +429,7 @@ export class SyncSession {
       else if (c.v === 2 && c.ownerPriv) { role = 'owner'; pub = c.owner }
       else if (c.v === 2 && c.invite) {
         role = 'editor'
-        try { pub = JSON.parse(localStorage.getItem(`bento-member-${this.store.doc.docId}`) ?? 'null')?.pub } catch { /* absent */ }
+        try { pub = JSON.parse(localStorage.getItem(`deck-member-${this.store.doc.docId}`) ?? 'null')?.pub } catch { /* absent */ }
       } else if (c.writerPriv) { role = 'editor'; pub = c.writerPub }
     }
     return {
