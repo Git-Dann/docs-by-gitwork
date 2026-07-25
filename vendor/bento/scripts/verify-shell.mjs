@@ -92,10 +92,10 @@ console.log('\n01 // CONTROLS')
 
   for (const label of ['Text', 'Table', 'Chart']) {
     await check(`insert ${label}`, async () => {
-      const n0 = await page.evaluate(() => window.bento.doc.slides[0].elements.length)
+      const n0 = await page.evaluate(() => window.deck.doc.slides[0].elements.length)
       await page.click(`.ed-insert button:has-text("${label}")`)
       await page.waitForTimeout(250)
-      const n1 = await page.evaluate(() => window.bento.doc.slides[0].elements.length)
+      const n1 = await page.evaluate(() => window.deck.doc.slides[0].elements.length)
       if (n1 <= n0) throw new Error(`no element added (${n0}→${n1})`)
       await page.keyboard.press('Control+z')
     })
@@ -109,7 +109,7 @@ console.log('\n01 // CONTROLS')
     const read = () => page.evaluate(() => ({
       brand: document.documentElement.dataset.brand,
       accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
-      deck: window.bento.doc.theme.accent,
+      deck: window.deck.doc.theme.accent,
       title: document.title,
     }))
     const a = await read()
@@ -122,7 +122,7 @@ console.log('\n01 // CONTROLS')
     if (b.title === a.title) throw new Error('window title suffix not re-declared')
     await page.keyboard.press('Control+z') // the re-theme must be undoable
     await page.waitForTimeout(250)
-    if ((await page.evaluate(() => window.bento.doc.theme.accent)) !== a.deck) throw new Error('re-theme not undoable')
+    if ((await page.evaluate(() => window.deck.doc.theme.accent)) !== a.deck) throw new Error('re-theme not undoable')
     await page.click('.fd-brandswitch button:nth-child(1)')
   })
   await check('help surface is gone (button AND the ? key)', async () => {
@@ -181,7 +181,7 @@ console.log('\n01 // CONTROLS')
     // …but the licence itself MUST still travel in the file. That is the deal:
     // the notice lives in the source, not the UI. If this ever fails we are
     // shipping MIT code with no notice at all, which is not what was asked for.
-    const html = await page.evaluate(() => window.bento.serialize())
+    const html = await page.evaluate(() => window.deck.serialize())
     if (!/Permission is hereby granted/.test(html)) throw new Error('the NOTICE block is missing from a saved deck')
   })
   await check('replace-from-JSON has visible buttons', async () => {
@@ -199,22 +199,22 @@ console.log('\n01 // CONTROLS')
     if (await page.$('.ed-about-overlay')) throw new Error('Escape does not close Replace from JSON')
   })
   await check('new slide → layout picker → insert', async () => {
-    const n0 = await page.evaluate(() => window.bento.doc.slides.length)
+    const n0 = await page.evaluate(() => window.deck.doc.slides.length)
     await page.click('.ed-add-slide'); await page.waitForTimeout(350)
     const items = await page.$$('.ed-layoutpick-item')
     if (!items.length) throw new Error('layout picker empty (it is a PICKER, not an insert button)')
     await items[0].click(); await page.waitForTimeout(400)
-    if ((await page.evaluate(() => window.bento.doc.slides.length)) !== n0 + 1) throw new Error('layout did not insert')
+    if ((await page.evaluate(() => window.deck.doc.slides.length)) !== n0 + 1) throw new Error('layout did not insert')
     await page.keyboard.press('Control+z')
   })
   await check('slideshow starts + Escape exits', async () => {
     await page.click('.ed-pill-main'); await page.waitForTimeout(1600)
-    if (!(await page.$('.bento-present-overlay'))) throw new Error('no present overlay')
+    if (!(await page.$('.deck-present-overlay'))) throw new Error('no present overlay')
     await page.keyboard.press('Escape'); await page.waitForTimeout(700)
-    if (await page.$('.bento-present-overlay')) throw new Error('overlay did not close')
+    if (await page.$('.deck-present-overlay')) throw new Error('overlay did not close')
   })
   await check('props rail sections collapse + carry the NN // counter', async () => {
-    await page.click('.ed-stage .bento-el', { position: { x: 10, y: 10 } }).catch(() => {})
+    await page.click('.ed-stage .deck-el', { position: { x: 10, y: 10 } }).catch(() => {})
     await page.waitForTimeout(300)
     const count = (await page.$$('.ed-props .ed-section')).length
     if (!count) throw new Error('no props sections')
@@ -242,7 +242,7 @@ console.log('\n01 // CONTROLS')
     if (bad.length) throw new Error(bad.join('; '))
   })
   await check('serialize produces a whole file', async () => {
-    const html = await page.evaluate(() => window.bento.serialize())
+    const html = await page.evaluate(() => window.deck.serialize())
     if (!html.startsWith('<!DOCTYPE html>')) throw new Error('not a document')
     if (html.length < 300_000) throw new Error(`suspiciously small: ${html.length}`)
     if (html.includes('fd-brand-fonts')) throw new Error('injected @font-face got captured into the save (inject AFTER capturePristine)')
@@ -299,10 +299,10 @@ console.log('\n02 // BRAND ACCENTS')
     // present mode must follow the DECK's accent, not amber
     await page.click('.ed-pill-main'); await page.waitForTimeout(1500)
     const rev = await page.evaluate(() => {
-      const o = document.querySelector('.bento-present-overlay')
+      const o = document.querySelector('.deck-present-overlay')
       return o ? getComputedStyle(o).getPropertyValue('--r-link-color').trim() : ''
     })
-    const deck = await page.evaluate(() => window.bento.doc.theme.accent)
+    const deck = await page.evaluate(() => window.deck.doc.theme.accent)
     if (rev.toUpperCase() !== deck.toUpperCase()) note('accents', `${brand}: present mode link colour ${rev} ≠ deck accent ${deck}`)
     else pass(`${brand}: present mode follows the deck accent (${deck})`)
     await ctx.close()
@@ -353,7 +353,7 @@ console.log('\n04 // SAVED DECKS')
   const { page } = await openShell(ctx)
   await page.click('.fd-brandswitch button:nth-child(2)') // author it as Gitwork
   await page.waitForTimeout(400)
-  const saved = await page.evaluate(() => window.bento.serialize())
+  const saved = await page.evaluate(() => window.deck.serialize())
   await ctx.close()
   console.log(`       saved deck: ${(saved.length / 1024).toFixed(0)}KB`)
 
@@ -373,7 +373,7 @@ console.log('\n04 // SAVED DECKS')
   await page2.waitForTimeout(2200)
   const reopened = await page2.evaluate(() => ({
     brand: document.documentElement.dataset.brand,
-    slides: window.bento.doc.slides.length,
+    slides: window.deck.doc.slides.length,
     title: document.title,
   }))
   if (reopened.brand !== 'gitwork') note('saved', `reopened as ${reopened.brand}, expected gitwork (adoptDeckBrand)`)
@@ -391,11 +391,11 @@ console.log('\n05 // NOTHING HIDDEN')
   const STATES = {
     idle: async () => {},
     'element selected': async (p) => {
-      await p.click('.ed-stage .bento-el', { position: { x: 8, y: 8 }, timeout: 4000 }).catch(() => {})
+      await p.click('.ed-stage .deck-el', { position: { x: 8, y: 8 }, timeout: 4000 }).catch(() => {})
       await p.waitForTimeout(400)
     },
     'props sections all open': async (p) => {
-      await p.click('.ed-stage .bento-el', { position: { x: 8, y: 8 }, timeout: 4000 }).catch(() => {})
+      await p.click('.ed-stage .deck-el', { position: { x: 8, y: 8 }, timeout: 4000 }).catch(() => {})
       await p.waitForTimeout(400)
       for (const sec of await p.$$('.ed-props .ed-section.closed')) { await sec.click({ timeout: 4000 }).catch(() => {}); await p.waitForTimeout(50) }
     },
@@ -509,7 +509,7 @@ console.log('\n07 // DARK MODE')
         barInk: cs('.ed-topbar')?.color,
         rail: cs('.ed-props')?.backgroundColor,
         slide: cs('.ed-stage')?.backgroundColor ?? cs('.bento-slide')?.backgroundColor,
-        deckPaper: window.bento.doc.theme.background,
+        deckPaper: window.deck.doc.theme.background,
       }
     })
     const barDark = luma(m.bar) < 0.35
@@ -545,6 +545,45 @@ console.log('\n07 // DARK MODE')
   if (after !== 'dark') note('dark', `a theme change in another tab did not reach Deck (still ${after})`)
   else pass('follows a live theme change from another Foundry tab')
   await ctx.close()
+}
+
+// ── 8. the shipped shell carries no upstream identity ───────────────────────
+console.log('\n08 // NO UPSTREAM NAME')
+{
+  // Dan's rule: the Bento name and icon appear NOWHERE. The one exception is the
+  // MIT notice — the licence requires the copyright line be retained in copies,
+  // and the copyright holder is literally "The Bento authors". So: strip the
+  // NOTICE block, then assert the rest of the file is clean. Checking the BUILT
+  // shell (not the source) is the point — this is the byte-for-byte artefact that
+  // ships and that every saved deck carries.
+  const shellPath = new URL('../../../public/deck/index.html', import.meta.url)
+  const shell = readFileSync(shellPath, 'utf8')
+
+  const notice = shell.match(/<!--\s*\n\s*NOTICE[\s\S]*?-->/)
+  if (!notice) {
+    note('identity', 'the MIT NOTICE block is MISSING from the shell — that is a licence breach, put it back')
+  } else {
+    pass('the MIT NOTICE block is present (required — do not remove)')
+    const body = shell.replace(notice[0], '')
+    const hits = [...body.matchAll(/[Bb]ento/g)]
+    if (hits.length) {
+      const sample = body.slice(Math.max(0, hits[0].index - 60), hits[0].index + 60).replace(/\s+/g, ' ')
+      note('identity', `${hits.length} "bento" occurrence(s) outside the NOTICE, e.g. …${sample}…`)
+    } else {
+      pass('no "bento" anywhere in the shipped shell outside the NOTICE')
+    }
+  }
+
+  // The favicon must be the PLATFORM's, not a mark invented here or upstream's
+  // tile. Compare against src/app/icon.svg — the same disc Foundry's own tabs use.
+  const appIcon = readFileSync(new URL('../../../src/app/icon.svg', import.meta.url), 'utf8')
+  const fill = appIcon.match(/fill="(#[0-9A-Fa-f]{6})"/)?.[1] ?? ''
+  const iconTag = shell.match(/<link rel="icon"[^>]*>/)?.[0] ?? ''
+  if (!iconTag) note('identity', 'the shell has no <link rel="icon">')
+  else if (!fill || !iconTag.toLowerCase().includes(fill.replace('#', '%23').toLowerCase()))
+    note('identity', `the favicon is not the platform disc (${fill}): ${iconTag.slice(0, 120)}`)
+  else if (/rect/i.test(iconTag)) note('identity', 'the favicon still contains a tile/rect — that was upstream\'s mark')
+  else pass(`the favicon is the platform's own disc (${fill})`)
 }
 
 await browser.close()

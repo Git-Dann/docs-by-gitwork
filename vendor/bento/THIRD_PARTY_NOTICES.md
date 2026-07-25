@@ -1,10 +1,15 @@
 # Third-party notices
 
-bento/slides is MIT-licensed (© 2026 The Bento authors; see `LICENSE`).
-The shippable single-file shell (`Bento_Slides.bento.html`) bundles the
+Foundry Deck is built on bento/slides, which is MIT-licensed (© 2026 The Bento
+authors; see `LICENSE`). The product itself carries no upstream name or mark —
+see `CLAUDE.md` §30 — but the licence requires the copyright notice be retained
+in copies, so it lives in the `NOTICE` block at the top of the shell and travels
+into every saved deck. That block is load-bearing: do not remove it.
+
+The shippable single-file shell (`public/deck/index.html`) bundles the
 following third-party open-source components. Their license terms require that
 these notices accompany copies, so the same text is embedded as a `NOTICE`
-comment near the top of every built shell and every saved Bento document.
+comment near the top of every built shell and every saved deck.
 
 ## Bundled runtime (ships inside the shell)
 

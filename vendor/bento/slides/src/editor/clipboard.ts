@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Bento authors
 // System-clipboard copy/paste: external objects (images, text) onto the canvas,
-// and Bento elements or whole slides between decks (across tabs/windows).
+// and Deck elements or whole slides between decks (across tabs/windows).
 //
-// Bento content is written to the clipboard as JSON tagged with `__bento:"clip"`
+// Deck content is written to the clipboard as JSON tagged with `__deck:"clip"`
 // (plain text, so it survives the OS clipboard). Referenced assets (image data,
 // fonts) travel inside the payload, so pasting into another deck brings the
 // pixels and typefaces along; asset-key collisions with different content are
@@ -13,7 +13,7 @@ import type { BentoDoc, Slide, SlideElement } from '../model'
 import { uid } from '../model'
 
 export interface ClipPayload {
-  __bento: 'clip'
+  __deck: 'clip'
   kind: 'elements' | 'slides'
   elements?: SlideElement[]
   slides?: Slide[]
@@ -39,7 +39,7 @@ function collectAssets(els: SlideElement[], doc: BentoDoc): Record<string, strin
 
 export function serializeElements(els: SlideElement[], doc: BentoDoc): string {
   const payload: ClipPayload = {
-    __bento: 'clip', kind: 'elements',
+    __deck: 'clip', kind: 'elements',
     elements: JSON.parse(JSON.stringify(els)),
     assets: collectAssets(els, doc),
   }
@@ -49,7 +49,7 @@ export function serializeElements(els: SlideElement[], doc: BentoDoc): string {
 export function serializeSlides(slides: Slide[], doc: BentoDoc): string {
   const els = slides.flatMap((s) => s.elements)
   const payload: ClipPayload = {
-    __bento: 'clip', kind: 'slides',
+    __deck: 'clip', kind: 'slides',
     slides: JSON.parse(JSON.stringify(slides)),
     assets: collectAssets(els, doc),
     fonts: doc.fonts, // carry typefaces so pasted slides keep their look
@@ -59,7 +59,7 @@ export function serializeSlides(slides: Slide[], doc: BentoDoc): string {
 
 export function parseClip(text: string): ClipPayload | null {
   if (!text || text.length > 40_000_000) return null
-  try { const p = JSON.parse(text); return p && p.__bento === 'clip' ? p as ClipPayload : null } catch { return null }
+  try { const p = JSON.parse(text); return p && p.__deck === 'clip' ? p as ClipPayload : null } catch { return null }
 }
 
 /** Merge payload assets into doc; on same-key-different-value, remap to a fresh key. */

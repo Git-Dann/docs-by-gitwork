@@ -49,7 +49,6 @@
      caps instead of mono, so this is a token rather than a hard-coded family. */
   --fd-label: var(--fd-mono);
   --fd-label-tracking: 0.12em;
-  --fd-mark-ink: #ffffff;
   /* Speaker view is a dark surface in its OWN popup window, painted with a copy
      of these styles — so it never carries [data-brand] and always resolves the
      :root value. A mid blue reads on near-black where --accent (#1D4ED8) would
@@ -103,8 +102,11 @@ body {
   background: var(--fd-surface);
 }
 
-/* ─── the wordmark lockup ────────────────────────────────────────────────── */
+/* ─── the wordmark ───────────────────────────────────────────────────────── */
 
+/* Words only — the ONLY logo in this app is the favicon (see foundry/brand.ts).
+   Upstream's mark sat here; it was bento's, and a mark in the chrome is a mark
+   that can look like someone else's product. */
 .ed-logo {
   gap: 9px;
 }
@@ -117,27 +119,6 @@ body {
   font-size: 17px;
   letter-spacing: -0.01em;
   color: var(--ink);
-}
-/* the Gitwork round "G." mark — cream disc, navy Fraunces G, purple period */
-.fd-gmark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  flex: none;
-  border-radius: 50%;
-  background: #f2ede4;
-  border: 1px solid rgba(12, 12, 24, 0.1);
-  font-family: 'Fraunces', Georgia, serif;
-  font-size: 12px;
-  font-weight: 900;
-  line-height: 1;
-  color: #0c0c18;
-}
-.fd-gmark i {
-  font-style: normal;
-  color: #6b52ff;
 }
 
 /* ─── brand switch (Foundry · Gitwork) ───────────────────────────────────── */
@@ -190,7 +171,7 @@ body {
 /* Repeat opens skip the brand moment (main.ts) and fade fast — the inline splash
  * CSS in index.html sets `transition: opacity .5s`, and an id+class selector here
  * beats it. First open is untouched. */
-#bento-splash.fd-quick {
+#deck-splash.fd-quick {
   transition-duration: 0.18s;
 }
 
@@ -633,8 +614,8 @@ dialog.ed-pwdialog p {
 
 /* present-mode transient chrome sits on the deck, not the app — keep it neutral
    but on our ink rather than bento's warm cream */
-.bento-present-toast,
-.bento-present-grant {
+.deck-present-toast,
+.deck-present-grant {
   background: rgba(15, 23, 42, 0.92);
   color: #f8fafc;
 }
@@ -648,7 +629,7 @@ dialog.ed-pwdialog p {
  * banner, checkbox accent-color, the Slideshow first-run "runner", and — most
  * visibly — PRESENT MODE and the SPEAKER VIEW. DESIGN.md allows no accent outside
  * the blue family, so each is re-pointed here. Present mode and speaker view
- * follow `--bento-accent` (present.ts sets it from the DECK's theme accent), so a
+ * follow `--deck-accent` (present.ts sets it from the DECK's theme accent), so a
  * Gitwork deck presents in purple and a Foundry deck in blue, instead of amber. */
 
 .ed-btn-update {
@@ -718,14 +699,14 @@ input.ed-toggle {
 }
 
 /* present mode — reveal's own vars, plus the click-target hover outline */
-.bento-present-overlay {
-  --r-link-color: var(--bento-accent, var(--accent));
-  --r-link-color-hover: var(--bento-accent, var(--accent));
-  --r-selection-background-color: var(--bento-accent, var(--accent));
-  --r-progress-color: var(--bento-accent, var(--accent));
+.deck-present-overlay {
+  --r-link-color: var(--deck-accent, var(--accent));
+  --r-link-color-hover: var(--deck-accent, var(--accent));
+  --r-selection-background-color: var(--deck-accent, var(--accent));
+  --r-progress-color: var(--deck-accent, var(--accent));
 }
-.bento-present-overlay .bento-el[data-link]:hover {
-  outline-color: var(--bento-accent, var(--accent));
+.deck-present-overlay .deck-el[data-link]:hover {
+  outline-color: var(--deck-accent, var(--accent));
 }
 
 /* speaker view — a separate window that is painted with a copy of these styles
@@ -1087,7 +1068,6 @@ input.ed-toggle {
   --fd-brand-soft: #16213a;
   --fd-brand-strong: #1e2c4a;
   --fd-focus-ring: rgba(107, 160, 255, 0.4);
-  --fd-mark-ink: #0b0b0c;
   --fd-success: #3dd68c;
   --fd-warning: #f0b429;
   --fd-danger: #f87171;

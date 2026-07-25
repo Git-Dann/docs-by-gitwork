@@ -153,7 +153,7 @@ export class PropsPanel {
    */
   private applyAccordion() {
     let openState: Record<string, boolean> = {}
-    try { openState = JSON.parse(localStorage.getItem('bento-panel-open') ?? '{}') } catch { /* defaults */ }
+    try { openState = JSON.parse(localStorage.getItem('deck-panel-open') ?? '{}') } catch { /* defaults */ }
     const headers = [...this.host.querySelectorAll<HTMLElement>('.ed-section')]
     for (const h of headers) {
       const key = h.textContent ?? ''
@@ -176,7 +176,7 @@ export class PropsPanel {
         const nowClosed = h.classList.toggle('closed')
         body.style.display = nowClosed ? 'none' : ''
         openState[key] = !nowClosed
-        localStorage.setItem('bento-panel-open', JSON.stringify(openState))
+        localStorage.setItem('deck-panel-open', JSON.stringify(openState))
       })
     }
   }

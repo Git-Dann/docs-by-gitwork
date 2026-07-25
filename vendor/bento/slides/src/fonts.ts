@@ -43,10 +43,10 @@ export function injectFonts(doc: BentoDoc) {
         `font-weight:${f.weight ?? 'normal'};font-style:${f.style ?? 'normal'};font-display:swap}`
     })
     .join('\n')
-  let style = document.getElementById('bento-fonts') as HTMLStyleElement | null
+  let style = document.getElementById('deck-fonts') as HTMLStyleElement | null
   if (!style) {
     style = document.createElement('style')
-    style.id = 'bento-fonts'
+    style.id = 'deck-fonts'
     document.head.appendChild(style)
   }
   style.textContent = css

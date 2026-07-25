@@ -92,7 +92,7 @@ async function passwordGate() {
     `<input type="password" autocomplete="current-password">` +
     `<button>${t('Unlock')}</button><div class="ed-pwerr"></div></div>`
   document.body.appendChild(gate)
-  document.getElementById('bento-splash')?.remove()
+  document.getElementById('deck-splash')?.remove()
   const input = gate.querySelector('input')!
   const button = gate.querySelector('button')!
   const err = gate.querySelector<HTMLElement>('.ed-pwerr')!
@@ -138,7 +138,7 @@ function bootWith(doc: BentoDoc) {
 function playerMode(doc: BentoDoc) {
   document.title = `${doc.title} — ${appConfig().appName}`
   if (doc.fonts?.length) injectFonts(doc)
-  document.getElementById('bento-splash')?.remove()
+  document.getElementById('deck-splash')?.remove()
   const card = document.createElement('div')
   card.className = 'ed-player'
   card.innerHTML =
@@ -157,7 +157,7 @@ function playerMode(doc: BentoDoc) {
   card.querySelector('.ed-playcopy')!.addEventListener('click', () => {
     void serializeAuto(doc).then((html) => downloadFile(html, suggestedFileName(doc)))
   })
-  ;(window as any).bento = { format: doc.format, doc, readonly: true }
+  ;(window as any).deck = { format: doc.format, doc, readonly: true }
   start()
 }
 
@@ -172,7 +172,7 @@ if (doc.fonts?.length) injectFonts(doc)
 const store = new Store(doc)
 const editor = new Editor(document.getElementById('app')!, store)
 
-// Live collaboration (bento-sync): same-machine tabs sync automatically over
+// Live collaboration (deck-sync): same-machine tabs sync automatically over
 // BroadcastChannel; the online relay transport joins via the Share UI.
 const session = new SyncSession(store)
 editor.connectSync(session)
@@ -187,7 +187,7 @@ if (location.hash === '#present') {
 // brand moment instead of a flicker; the pristine capture ran before this,
 // so saved files keep the splash for their own next boot.
 {
-  const splash = document.getElementById('bento-splash')
+  const splash = document.getElementById('deck-splash')
   if (splash) {
     // FOUNDRY: the brand moment plays in full ONCE per browser (same idiom as
     // upstream's slideshow hint). Deck is an internal tool people open over and
@@ -219,7 +219,7 @@ function splashSeen(): boolean {
 
 // Small scripting surface for tooling and automation: read/replace the
 // document model and serialize the full .bento.html file.
-;(window as any).bento = {
+;(window as any).deck = {
   format: doc.format,
   get doc() {
     return store.doc

@@ -41,27 +41,27 @@ export const APP_VERSION: string = typeof __APP_VERSION__ !== 'undefined' ? __AP
  */
 export const offlineEnabled = (): boolean => {
   try {
-    return localStorage.getItem('bento-offline') === 'on'
+    return localStorage.getItem('deck-offline') === 'on'
   } catch {
     return false
   }
 }
 export const setOffline = (on: boolean): void => {
   try {
-    localStorage.setItem('bento-offline', on ? 'on' : 'off')
+    localStorage.setItem('deck-offline', on ? 'on' : 'off')
   } catch {
     /* storage unavailable */
   }
 }
 
-export const autoCheckEnabled = (): boolean => localStorage.getItem('bento-auto-check') !== 'off'
+export const autoCheckEnabled = (): boolean => localStorage.getItem('deck-auto-check') !== 'off'
 export const setAutoCheck = (on: boolean): void => {
-  if (on) localStorage.removeItem('bento-auto-check')
-  else localStorage.setItem('bento-auto-check', 'off')
+  if (on) localStorage.removeItem('deck-auto-check')
+  else localStorage.setItem('deck-auto-check', 'off')
 }
 
 /** Where shipped files look for releases (per-app, from configureApp).
- *  Dev override: localStorage 'bento-update-url'. */
+ *  Dev override: localStorage 'deck-update-url'. */
 export const updateManifestUrl = (): string => appConfig().manifestUrl
 
 // Release signing PUBLIC key. The private half lives offline with the
@@ -143,7 +143,7 @@ async function verifyManifest(raw: string): Promise<ReleaseInfo> {
 
 /** Ask the release origin for the latest version. */
 export async function checkForUpdates(manifestUrl?: string): Promise<UpdateCheck> {
-  const url = manifestUrl ?? localStorage.getItem('bento-update-url') ?? updateManifestUrl()
+  const url = manifestUrl ?? localStorage.getItem('deck-update-url') ?? updateManifestUrl()
   try {
     const res = await fetch(url, { cache: 'no-store' })
     if (!res.ok) throw new Error(`release server answered ${res.status}`)
@@ -169,8 +169,8 @@ export async function buildUpdatedFile(release: ReleaseInfo, doc: KernelDoc): Pr
     throw new Error('the downloaded update failed its integrity check — refusing it')
 
   const shell = new DOMParser().parseFromString(new TextDecoder().decode(bytes), 'text/html')
-  if (!shell.getElementById('bento-doc'))
-    throw new Error('the downloaded update is not a Bento shell')
+  if (!shell.getElementById('deck-doc') && !shell.getElementById('bento-doc'))
+    throw new Error('the downloaded update is not a Deck shell')
   return serializeDocInto(shell, doc)
 }
 

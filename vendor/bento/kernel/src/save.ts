@@ -10,7 +10,11 @@
 import type { KernelDoc } from './doc.ts'
 import { appConfig } from './app.ts'
 
-const DATA_BLOCK_ID = 'bento-doc'
+const DATA_BLOCK_ID = 'deck-doc'
+// FOUNDRY: the id the block used to carry. Read-only compatibility — a deck
+// saved before the rename still opens; every new save writes DATA_BLOCK_ID.
+const LEGACY_BLOCK_ID = 'bento-doc'
+const DATA_BLOCK_MIME = 'application/foundry-deck+json'
 // Split so the literal never appears in the bundle (it would terminate the
 // inline <script> that carries this very code inside a built Bento file).
 const SCRIPT_CLOSE = '</scr' + 'ipt>'
@@ -23,7 +27,7 @@ export function capturePristine() {
 }
 
 export function readEmbeddedDoc(): string | null {
-  const block = document.getElementById(DATA_BLOCK_ID)
+  const block = document.getElementById(DATA_BLOCK_ID) ?? document.getElementById(LEGACY_BLOCK_ID)
   const text = block?.textContent?.trim()
   return text || null
 }
@@ -32,13 +36,15 @@ export function readEmbeddedDoc(): string | null {
 function serializeBody(shell: Document, body: string, title: string): string {
   const clone = shell.cloneNode(true) as Document
 
-  let block = clone.getElementById(DATA_BLOCK_ID)
+  // An older shell being re-saved gets its block renamed in place, so the file
+  // stops carrying the old name the moment it is written again.
+  let block = clone.getElementById(DATA_BLOCK_ID) ?? clone.getElementById(LEGACY_BLOCK_ID)
   if (!block) {
     block = clone.createElement('script')
-    block.setAttribute('type', 'application/bento+json')
-    block.id = DATA_BLOCK_ID
     clone.head.appendChild(block)
   }
+  block.setAttribute('type', DATA_BLOCK_MIME)
+  block.id = DATA_BLOCK_ID
   // <-escape so the JSON can never contain "</script>" and break the file.
   block.textContent = '\n' + body.replace(/</g, '\\u003c') + '\n'
 

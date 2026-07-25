@@ -675,6 +675,14 @@ is no document row to render inside the `/app` shell, so Deck is never framed by
 it is reached by a small mono `· DECK ↗` link in the HQ context strip and a `Deck` secondary
 button on the Docs list toolbar, both `target="_blank"`.
 
+**There is no logo in Deck's chrome — the only mark is the favicon.** Identity is the words
+*Foundry Deck*: in the window title, the splash, the About dialog, and the inert lockup a saved deck
+shows. The favicon is the platform's own disc (`src/app/icon.svg`, `#4F46E5`), switched to the
+Gitwork disc under that brand, so a Deck tab sits beside a Foundry tab and reads as the same
+product. This is deliberate and load-bearing: what used to sit in the topbar was upstream's tile
+triptych repainted in our blue, and a mark repeated across topbar, dialog and splash is three
+chances to look like someone else's product. Don't reintroduce one.
+
 **Because it has no sidebar, the topbar's first slot is the way back** — `← Foundry`, linking to
 `/app`, mono caps label, arrow nudging left on hover. Not a logo, and not an About trigger: a
 window with no chrome around it needs an exit more than it needs a wordmark, and the window title

@@ -13,13 +13,13 @@
 // no false coupling for apps that skip a module.
 
 export interface AppConfig {
-  /** Manifest `app` field this shell will accept — e.g. 'bento-slides'.
+  /** Manifest `app` field this shell will accept — e.g. 'deck-slides'.
    *  A manifest signed for another app is rejected even though the signing
    *  key is shared platform-wide. */
   appId: string
   /** Human-facing product name: window title suffix, save-picker label. */
   appName: string
-  /** Release manifest URL. Dev override: localStorage 'bento-update-url'. */
+  /** Release manifest URL. Dev override: localStorage 'deck-update-url'. */
   manifestUrl: string
 }
 

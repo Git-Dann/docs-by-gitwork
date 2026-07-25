@@ -27,8 +27,8 @@ export function startPresentation(
   opts: { fullscreen?: boolean } = {},
 ): PresentSession {
   const overlay = document.createElement('div')
-  overlay.className = 'bento-present-overlay'
-  overlay.style.setProperty('--bento-accent', doc.theme.accent)
+  overlay.className = 'deck-present-overlay'
+  overlay.style.setProperty('--deck-accent', doc.theme.accent)
   // Reveal ignores key events originating from form fields. If focus is still
   // on an editor input (title, notes…) when the show starts, arrows go dead.
   ;(document.activeElement as HTMLElement | null)?.blur?.()
@@ -107,7 +107,7 @@ export function startPresentation(
   // ——— black-screen (audience blackout; presenter keeps notes) ———
   let blacked = false
   const blackout = document.createElement('div')
-  blackout.className = 'bento-blackout'
+  blackout.className = 'deck-blackout'
   blackout.hidden = true
   overlay.appendChild(blackout)
   const setBlack = (on: boolean) => {
@@ -128,7 +128,7 @@ export function startPresentation(
   const reduceQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
   const readMotionPref = (): boolean | null => {
     try {
-      const v = localStorage.getItem('bento-reduce-motion')
+      const v = localStorage.getItem('deck-reduce-motion')
       return v === 'on' ? true : v === 'off' ? false : null
     } catch { return null }
   }
@@ -143,7 +143,7 @@ export function startPresentation(
     margin: 0,
     // Reveal's default maxScale is 2.0 — on a 1280-wide deck that caps the show
     // at 2560px and letterboxes it in the middle of large displays (a 4K/5K/8K
-    // screen shows a small centred slide). Bento content is vector/text, so it
+    // screen shows a small centred slide). Deck content is vector/text, so it
     // upscales crisply: allow it to fill any display. minScale stays generous
     // for tiny embeds.
     minScale: 0.1,
@@ -174,7 +174,7 @@ export function startPresentation(
 
   // ——— speaker view (S) ———
   // Reveal's stock speaker window reloads the presentation URL in iframes —
-  // which in a Bento file boots the EDITOR. Instead: our own popup, rendered
+  // which in a deck file boots the EDITOR. Instead: our own popup, rendered
   // with the same renderer from this one app instance and synced directly.
   let speaker: Window | null = null
   let speakerTimer = 0
@@ -245,8 +245,8 @@ export function startPresentation(
   // audience overlay otherwise changes silently.
   let toastTimer = 0
   const flashPresentMsg = (text: string) => {
-    let el = overlay.querySelector<HTMLElement>('.bento-present-toast')
-    if (!el) { el = document.createElement('div'); el.className = 'bento-present-toast'; overlay.appendChild(el) }
+    let el = overlay.querySelector<HTMLElement>('.deck-present-toast')
+    if (!el) { el = document.createElement('div'); el.className = 'deck-present-toast'; overlay.appendChild(el) }
     el.textContent = text
     el.classList.remove('show'); void el.offsetWidth; el.classList.add('show') // restart the fade
     clearTimeout(toastTimer)
@@ -255,7 +255,7 @@ export function startPresentation(
 
   const setReduceMotion = (on: boolean, persist = true) => {
     reduceMotion = on
-    if (persist) { try { localStorage.setItem('bento-reduce-motion', on ? 'on' : 'off') } catch { /* storage off */ } }
+    if (persist) { try { localStorage.setItem('deck-reduce-motion', on ? 'on' : 'off') } catch { /* storage off */ } }
     overlay.classList.toggle('reduce-motion', on)
     // Toast only on an explicit toggle (M / speaker button), not the silent
     // OS-preference follow or the initial state.
@@ -268,7 +268,7 @@ export function startPresentation(
       const section = slidesEl.children[cur] as HTMLElement | undefined
       const slide = doc.slides[cur]
       if (section && slide) {
-        anim.killTweensOf(section.querySelectorAll('.bento-el'))
+        anim.killTweensOf(section.querySelectorAll('.deck-el'))
         for (const el of slide.elements) {
           const node = section.querySelector<HTMLElement>(`[data-el-id="${CSS.escape(el.id)}"]`)
           if (node) { applyElementFrame(node, el); resetXform(node) }
@@ -318,18 +318,18 @@ export function startPresentation(
       speaker = pre
       speakerAdopted = true
     } else {
-      speaker = window.open('', 'bento-speaker', 'width=1200,height=800')
+      speaker = window.open('', 'deck-speaker', 'width=1200,height=800')
       speakerAdopted = false
     }
-    if (!speaker) { openingSpeaker = false; console.warn('[bento-speaker] popup blocked — allow pop-ups for this site'); return }
+    if (!speaker) { openingSpeaker = false; console.warn('[deck-speaker] popup blocked — allow pop-ups for this site'); return }
     setSpeakerWindow(speaker)
-    ;(window as unknown as Record<string, unknown>).__bentoSpeaker = speaker // diagnostics
+    ;(window as unknown as Record<string, unknown>).__deckSpeaker = speaker // diagnostics
     const d = speaker.document
     d.title = `${doc.title} — ${t('Speaker view')}`
     if (!d.head.querySelector('style')) { // already styled when adopting an editor window
       for (const st of document.querySelectorAll('style')) d.head.appendChild(d.importNode(st, true))
     }
-    d.body.className = 'bento-speaker'
+    d.body.className = 'deck-speaker'
     const navBtn = (k: string, glyph: string, label: string) =>
       `<button class="sv-btn" data-nav="${k}" title="${label}" aria-label="${label}">${glyph}</button>`
     d.body.innerHTML =
@@ -571,7 +571,7 @@ export function startPresentation(
       // Kill the outgoing slide's tweens, then restore model frames —
       // a tween killed during its delay would otherwise leave the element
       // stuck at its "from" state (invisible) for every future visit.
-      anim.killTweensOf(from.querySelectorAll('.bento-el'))
+      anim.killTweensOf(from.querySelectorAll('.deck-el'))
       const fromSlide = doc.slides[fromIdx]
       for (const el of fromSlide?.elements ?? []) {
         const node = from.querySelector<HTMLElement>(`[data-el-id="${CSS.escape(el.id)}"]`)
@@ -774,7 +774,7 @@ function settleGuarantee(pairs: Array<[HTMLElement, SlideElement]>) {
 
 /** Animate every number in the element's text from 0 to its final value. */
 function runCountUp(node: HTMLElement) {
-  const inner = node.querySelector<HTMLElement>('.bento-text-inner') ?? node
+  const inner = node.querySelector<HTMLElement>('.deck-text-inner') ?? node
   const final = inner.textContent ?? ''
   const tokens = [...final.matchAll(/\d+(?:[.,]\d+)?/g)]
   if (!tokens.length) return
@@ -801,7 +801,7 @@ function runCountUp(node: HTMLElement) {
 
 /** Re-parse inline svg elements so their CSS animations replay on entry. */
 function restartSvgAnimations(section: HTMLElement) {
-  for (const host of section.querySelectorAll<HTMLElement>('.bento-el-svg')) {
+  for (const host of section.querySelectorAll<HTMLElement>('.deck-el-svg')) {
     if (host.querySelector('animate, [style*="animation"], style')) {
       // eslint-disable-next-line no-self-assign
       host.innerHTML = host.innerHTML
@@ -1034,7 +1034,7 @@ function runMorph(
       if (target) morphShapeFill(target, a, b)
     }
     if (a.type === 'text' && b.type === 'text' && a.color !== b.color) {
-      const inner = to.querySelector<HTMLElement>('.bento-text-inner')
+      const inner = to.querySelector<HTMLElement>('.deck-text-inner')
       if (inner) {
         anim.fromTo(inner, { color: a.color }, { color: b.color, duration: MORPH_DURATION, ease: MORPH_EASE })
       }
@@ -1117,7 +1117,7 @@ function morphShapeFill(target: SVGElement, a: ShapeElement, b: ShapeElement) {
     // destination is solid — fabricate a gradient shaped like the source so
     // there is something to tween through, then collapse it to b.fill
     lin = document.createElementNS(SVG_NS, 'linearGradient')
-    lin.id = `bento-morph-grad-${morphGradSeq++}`
+    lin.id = `deck-morph-grad-${morphGradSeq++}`
     for (const s of ag!.stops) {
       const stop = document.createElementNS(SVG_NS, 'stop')
       stop.setAttribute('offset', String(s.at))

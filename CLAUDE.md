@@ -1431,6 +1431,28 @@ upstream's *product* (as opposed to its engine) and finishes wiring Deck to the 
   { display:none }` — too broad. **"Replace from JSON…" builds its Apply/Cancel row with the same
   class, so that dialog shipped with no visible buttons.** The rule is gone (the update UI is
   removed at source instead) and `verify-shell.mjs` now asserts those buttons are visible.
+- **The Bento name and icon are gone from the product entirely (Dan's call, stated twice).**
+  - **Icon:** the topbar/About/splash marks are **deleted, not replaced** — "no logo anywhere other
+    than the favicon". Identity in the chrome is the words *Foundry Deck*. The **favicon** is the
+    platform's own disc, byte-identical to `src/app/icon.svg` (`#4F46E5`); `applyFavicon()` in
+    `foundry/boot.ts` swaps it for the Gitwork disc under that brand. What was there before was
+    upstream's tile triptych repainted blue — the single most recognisable thing about the app this
+    is forked from. **Do not add a mark back into the chrome.**
+  - **Name:** every runtime identifier was renamed `bento-*` → `deck-*` (41 of them across 21 files:
+    CSS classes, DOM ids, custom properties, `localStorage` keys, the sync channel), plus
+    `window.bento` → **`window.deck`**, the clipboard tag `__bento` → `__deck`, and the
+    `<meta generator>`. Three carry **read-both compatibility** because they live inside saved
+    files: the data block `#bento-doc` → **`#deck-doc`**, its MIME
+    `application/bento+json` → **`application/foundry-deck+json`**, and
+    `FORMAT 'bento/slides'` → **`'foundry/deck'`**. A deck written before the rename still opens
+    (`LEGACY_BLOCK_ID` / `LEGACY_FORMAT`) and is migrated forward on its next save.
+  - **The one exception, and it is not optional:** the **MIT `NOTICE` block** and the per-file SPDX
+    headers keep the name, because MIT requires the copyright line be retained in copies and the
+    copyright holder is literally *"The Bento authors"*. Removing it would be a licence breach, not
+    a branding win. **New group `08 // NO UPSTREAM NAME`** asserts exactly this pair on the BUILT
+    shell: the NOTICE is present, and stripping it leaves **zero** "bento" occurrences in the
+    artefact that ships (and therefore in every saved deck) — plus that the favicon matches
+    `src/app/icon.svg` and contains no tile/rect.
 - **`verify-shell.mjs` grew groups for all of it** — help-is-gone, the back link (and that a saved
   deck does *not* render one), the About dialog's exact 768/460/2-col geometry + that it doesn't
   resize between sections, "no MIT/bento string anywhere in the chrome **but** the NOTICE is still

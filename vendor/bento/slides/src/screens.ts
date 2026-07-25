@@ -60,7 +60,7 @@ export function paintSpeaker(w: Window, title: string, bodyHtml: string): void {
   if (!d.head.querySelector('style')) {
     for (const st of document.querySelectorAll('style')) d.head.appendChild(d.importNode(st, true))
   }
-  d.body.className = 'bento-speaker'
+  d.body.className = 'deck-speaker'
   d.body.innerHTML = bodyHtml
 }
 
@@ -80,7 +80,7 @@ export function openSpeakerWindow(title: string, bodyHtml: string): Window | nul
     paintSpeaker(speakerWin, title, bodyHtml)
     return speakerWin
   }
-  const w = window.open('', 'bento-speaker', speakerFeatures())
+  const w = window.open('', 'deck-speaker', speakerFeatures())
   if (!w) return null
   paintSpeaker(w, title, bodyHtml)
   speakerWin = w

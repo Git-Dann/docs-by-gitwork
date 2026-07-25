@@ -188,7 +188,7 @@ option { background: #fff; color: #1e2a3a; }
 .ed-thumb:hover .ed-thumb-tools { display: flex; }
 .ed-thumb-tools .ed-btn { padding: 3px; background: rgb(255 255 255 / 0.9); }
 
-.bento-thumb-surface { overflow: hidden; pointer-events: none; }
+.deck-thumb-surface { overflow: hidden; pointer-events: none; }
 
 .ed-add-slide { border: 1.5px dashed var(--line); justify-content: center; color: var(--muted); align-self: stretch; }
 
@@ -332,18 +332,18 @@ option { background: #fff; color: #1e2a3a; }
 
 /* ————— slide surface (shared by canvas, thumbs, present) ————— */
 
-.bento-slide { position: relative; overflow: hidden; }
+.deck-slide { position: relative; overflow: hidden; }
 
-.bento-el { position: absolute; contain: layout style; }
-.bento-el-text .bento-text-inner {
+.deck-el { position: absolute; contain: layout style; }
+.deck-el-text .deck-text-inner {
   overflow-wrap: break-word;
   outline: none;
   cursor: default;
 }
-.ed-stage .bento-el { cursor: grab; }
-.ed-stage .bento-el:active { cursor: grabbing; }
-.ed-stage .bento-editing { cursor: text; }
-.ed-stage .bento-editing .bento-text-inner {
+.ed-stage .deck-el { cursor: grab; }
+.ed-stage .deck-el:active { cursor: grabbing; }
+.ed-stage .deck-editing { cursor: text; }
+.ed-stage .deck-editing .deck-text-inner {
   cursor: text;
   user-select: text;
   box-shadow: 0 0 0 1.5px var(--blue);
@@ -584,17 +584,17 @@ option { background: #fff; color: #1e2a3a; }
 
 /* ————— present overlay ————— */
 
-.bento-present-overlay {
+.deck-present-overlay {
   position: fixed;
   inset: 0;
   z-index: 1000;
   background: #000;
 }
-.bento-present-overlay .reveal,
-.bento-present-overlay .reveal-viewport {
+.deck-present-overlay .reveal,
+.deck-present-overlay .reveal-viewport {
   background: #000;
 }
-.bento-present-overlay .reveal {
+.deck-present-overlay .reveal {
   width: 100%;
   height: 100%;
   --r-background-color: #000;
@@ -608,14 +608,14 @@ option { background: #fff; color: #1e2a3a; }
   --r-overlay-element-bg-color: 255, 255, 255;
   --r-overlay-element-fg-color: 0, 0, 0;
 }
-.bento-present-overlay .reveal .slides section { padding: 0; }
+.deck-present-overlay .reveal .slides section { padding: 0; }
 /* Reduced motion (M / speaker toggle / OS prefers-reduced-motion): JS fx are
    skipped in present.ts; this neutralises CSS-driven motion too — Reveal's
    slide transitions cut instantly and svg keyframe animations don't play. */
-.bento-present-overlay.reduce-motion .reveal .slides section { transition: none !important; }
-.bento-present-overlay.reduce-motion .bento-el-svg * { animation: none !important; }
+.deck-present-overlay.reduce-motion .reveal .slides section { transition: none !important; }
+.deck-present-overlay.reduce-motion .deck-el-svg * { animation: none !important; }
 /* dual-screen: one-click permission grant + transient toast */
-.bento-present-grant {
+.deck-present-grant {
   position: fixed;
   left: 50%;
   bottom: 28px;
@@ -631,8 +631,8 @@ option { background: #fff; color: #1e2a3a; }
   cursor: pointer;
   opacity: 0.94;
 }
-.bento-present-grant:hover { opacity: 1; }
-.bento-present-toast {
+.deck-present-grant:hover { opacity: 1; }
+.deck-present-toast {
   position: fixed;
   left: 50%;
   bottom: 28px;
@@ -647,9 +647,9 @@ option { background: #fff; color: #1e2a3a; }
   max-width: 80vw;
   text-align: center;
 }
-.bento-present-overlay .bento-el[data-link] { cursor: pointer; }
-.bento-present-overlay .bento-el[data-link]:hover {
-  outline: 2.5px solid var(--bento-accent, #f7a600);
+.deck-present-overlay .deck-el[data-link] { cursor: pointer; }
+.deck-present-overlay .deck-el[data-link]:hover {
+  outline: 2.5px solid var(--deck-accent, #f7a600);
   outline-offset: 3px;
   border-radius: 999px;
 }
@@ -832,7 +832,7 @@ option { background: #fff; color: #1e2a3a; }
 .ed-chart-grid .ed-btn-icon:hover { color: #c9302c; }
 
 /* inline code spans inside text elements — editor, present and print alike */
-.bento-el-text code {
+.deck-el-text code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.9em;
   background: rgb(127 127 127 / 0.16);
@@ -1192,19 +1192,19 @@ body.ed-col-resizing { cursor: col-resize; user-select: none; }
 
 /* interactive states read as secondary in Reveal's overview grid
    (!important: Reveal positions overview sections with inline styles) */
-.bento-present-overlay .reveal.overview section[data-bento-state] {
+.deck-present-overlay .reveal.overview section[data-deck-state] {
   opacity: 0.35 !important;
   outline: 2px dashed rgb(255 255 255 / 0.35);
   outline-offset: -2px;
 }
 
 /* PDF export: each linear slide is one exact 1600×900 page */
-#bento-print { display: none; }
+#deck-print { display: none; }
 @media print {
-  #app, #bento-splash, .bento-present-overlay, .ed-toast { display: none !important; }
-  #bento-print { display: block; }
+  #app, #deck-splash, .deck-present-overlay, .ed-toast { display: none !important; }
+  #deck-print { display: block; }
   @page { size: 1600px 900px; margin: 0; }
-  #bento-print .bp-page {
+  #deck-print .bp-page {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
     width: 1600px;
@@ -1221,7 +1221,7 @@ body.ed-col-resizing { cursor: col-resize; user-select: none; }
 }
 
 /* ————— speaker view popup ————— */
-.bento-speaker {
+.deck-speaker {
   margin: 0;
   background: #14181d;
   color: #e9edf3;
@@ -1371,16 +1371,16 @@ body.ed-col-resizing { cursor: col-resize; user-select: none; }
 .ed-le-anchor:hover { fill: #eaf1ff; }
 
 /* audience blackout — a plain black cover over the slides overlay */
-.bento-blackout {
+.deck-blackout {
   position: absolute;
   inset: 0;
   z-index: 60;
   background: #000;
 }
-.bento-blackout[hidden] { display: none; }
+.deck-blackout[hidden] { display: none; }
 
 /* transient confirmation pill in present mode (e.g. Reduced motion on/off) */
-.bento-present-toast {
+.deck-present-toast {
   position: absolute;
   left: 50%;
   bottom: 48px;
@@ -1395,7 +1395,7 @@ body.ed-col-resizing { cursor: col-resize; user-select: none; }
   opacity: 0;
   transition: opacity 0.25s ease;
 }
-.bento-present-toast.show { opacity: 1; }
+.deck-present-toast.show { opacity: 1; }
 
 /* --- live collaboration ----------------------------------------------- */
 .ed-avatars {
@@ -1928,13 +1928,13 @@ dialog.ed-pwdialog .ed-pwerr { color: #C33; }
 }
 
 /* ————— tables ————— */
-.bento-el-table { overflow: visible; }
-.bento-el-table .bento-cell-inner { min-height: 1em; }
+.deck-el-table { overflow: visible; }
+.deck-el-table .deck-cell-inner { min-height: 1em; }
 /* editor-only affordances */
-.ed-root .bento-el-table td { cursor: text; }
-.bento-col-handle { border-radius: 3px; }
-.bento-col-handle:hover { background: rgba(94, 118, 153, 0.35); }
-.bento-el-table.bento-editing td { cursor: text; }
+.ed-root .deck-el-table td { cursor: text; }
+.deck-col-handle { border-radius: 3px; }
+.deck-col-handle:hover { background: rgba(94, 118, 153, 0.35); }
+.deck-el-table.deck-editing td { cursor: text; }
 
 /* table properties: steppers + toggle */
 .ed-stepper { display: inline-flex; align-items: center; gap: 6px; }

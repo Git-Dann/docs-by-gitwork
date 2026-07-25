@@ -288,7 +288,7 @@ export class Editor {
     // hint merely plays — so it keeps nudging until it's used). Hover replays it
     // any time (CSS :hover). When the laps finish fading, just drop the class so
     // hover takes over cleanly (a lingering class would replay on mouse-out).
-    try { if (!localStorage.getItem('bento-slideshow-started')) pill.classList.add('ed-hint-pulse') } catch { /* storage off */ }
+    try { if (!localStorage.getItem('deck-slideshow-started')) pill.classList.add('ed-hint-pulse') } catch { /* storage off */ }
     pill.addEventListener('animationend', (e) => {
       if ((e as AnimationEvent).animationName !== 'ed-runner-fade') return
       pill.classList.remove('ed-hint-pulse')
@@ -354,7 +354,7 @@ export class Editor {
 
   private restorePanelWidths() {
     try {
-      const saved = JSON.parse(localStorage.getItem('bento-ed-panels') ?? '{}')
+      const saved = JSON.parse(localStorage.getItem('deck-ed-panels') ?? '{}')
       for (const side of ['left', 'right'] as const) {
         const [min, max] = Editor.PANEL_BOUNDS[side]
         if (typeof saved[side] === 'number') this.panelW[side] = Math.min(max, Math.max(min, saved[side]))
@@ -401,7 +401,7 @@ export class Editor {
     handle.appendChild(toggle)
     queueMicrotask(() => this.updatePanelChevrons())
     const commit = () => {
-      localStorage.setItem('bento-ed-panels', JSON.stringify(this.panelW))
+      localStorage.setItem('deck-ed-panels', JSON.stringify(this.panelW))
       // thumbnails render at a width derived from the sidebar — refit them
       if (side === 'left') this.rebuildSidebar()
     }
@@ -773,7 +773,7 @@ export class Editor {
     }
     nameInput.addEventListener('change', () => {
       try {
-        localStorage.setItem('bento-author', nameInput.value.trim())
+        localStorage.setItem('deck-author', nameInput.value.trim())
       } catch {
         /* storage unavailable */
       }
@@ -803,7 +803,7 @@ export class Editor {
       else if (cme.v === 2 && cme.ownerPriv) { myRole = 'owner'; myPub = cme.owner }
       else if (cme.v === 2 && cme.invite) {
         myRole = 'editor'
-        try { myPub = JSON.parse(localStorage.getItem(`bento-member-${this.store.doc.docId}`) ?? 'null')?.pub } catch { /* absent */ }
+        try { myPub = JSON.parse(localStorage.getItem(`deck-member-${this.store.doc.docId}`) ?? 'null')?.pub } catch { /* absent */ }
       } else if (cme.writerPriv) { myRole = 'editor'; myPub = cme.writerPub }
       if (myRole) {
         const label = div('ed-share-label')
@@ -1170,7 +1170,7 @@ export class Editor {
 
   private wireThumbDrag(item: HTMLElement, index: number) {
     item.addEventListener('dragstart', (ev) => {
-      ev.dataTransfer!.setData('text/bento-slide', String(index))
+      ev.dataTransfer!.setData('text/deck-slide', String(index))
       ev.dataTransfer!.effectAllowed = 'move'
     })
     item.addEventListener('dragover', (ev) => {
@@ -1181,7 +1181,7 @@ export class Editor {
     item.addEventListener('drop', (ev) => {
       ev.preventDefault()
       item.classList.remove('drop')
-      const from = parseInt(ev.dataTransfer!.getData('text/bento-slide'))
+      const from = parseInt(ev.dataTransfer!.getData('text/deck-slide'))
       if (Number.isNaN(from) || from === index) return
       this.store.commit(() => {
         const [moved] = this.store.doc.slides.splice(from, 1)
@@ -1208,7 +1208,7 @@ export class Editor {
         const slide = this.store.doc.slides[Number(item.dataset.index)]
         if (!slide) return
         const w = slide.stateOf ? Math.round(base * 0.84) : base
-        item.querySelector('.bento-thumb-surface')?.replaceWith(renderThumbnail(slide, this.store.doc, w))
+        item.querySelector('.deck-thumb-surface')?.replaceWith(renderThumbnail(slide, this.store.doc, w))
         // comment badge tracks doc-level changes too (comments emit 'doc')
         const open = slide.comments?.some((c) => !c.resolved)
         const badge = item.querySelector('.ed-thumb-cmt')
@@ -1273,13 +1273,13 @@ export class Editor {
    */
   exportPdf() {
     this.canvas.commitTextEdit()
-    document.getElementById('bento-print')?.remove()
+    document.getElementById('deck-print')?.remove()
     const box = div('')
-    box.id = 'bento-print'
+    box.id = 'deck-print'
     // page geometry follows the deck's aspect (width normalised to 1600)
     const pageH = Math.round((1600 * this.store.doc.size.height) / this.store.doc.size.width)
     const pageCss = document.createElement('style')
-    pageCss.textContent = `@page { size: 1600px ${pageH}px; margin: 0; } #bento-print .bp-page { height: ${pageH}px; }`
+    pageCss.textContent = `@page { size: 1600px ${pageH}px; margin: 0; } #deck-print .bp-page { height: ${pageH}px; }`
     box.appendChild(pageCss)
     for (const slide of this.store.doc.slides) {
       if (slide.stateOf) continue
@@ -1431,7 +1431,7 @@ export class Editor {
   present(fromStart = false, fullscreen = true) {
     if (this.presenting) return
     // They've started a slideshow — retire the first-run nudge for good.
-    try { localStorage.setItem('bento-slideshow-started', '1') } catch { /* storage off */ }
+    try { localStorage.setItem('deck-slideshow-started', '1') } catch { /* storage off */ }
     document.querySelector('.ed-hint-pulse')?.classList.remove('ed-hint-pulse')
     this.canvas.commitTextEdit()
     this.presenting = true
@@ -1458,7 +1458,7 @@ export class Editor {
         if (file) { ev.preventDefault(); this.pasteImageFile(file); return }
       }
       const text = dt.getData('text/plain')
-      // 2) Bento elements / slides copied from this or another deck
+      // 2) Deck elements / slides copied from this or another deck
       const clip = parseClip(text)
       if (clip?.kind === 'elements') {
         ev.preventDefault()
@@ -1792,7 +1792,7 @@ export class Editor {
       }
       if (mod && ev.key.toLowerCase() === 'c') {
         // Copy to BOTH the in-app clipboard (fast, same session) and the system
-        // clipboard as a Bento payload (works across decks/tabs). Elements when
+        // clipboard as a Deck payload (works across decks/tabs). Elements when
         // any are selected; otherwise the current slide.
         if (this.store.selection.length) {
           void navigator.clipboard?.writeText?.(serializeElements(this.store.selectedElements, this.store.doc)).catch(() => {})

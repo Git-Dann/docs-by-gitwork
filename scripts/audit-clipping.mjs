@@ -127,7 +127,12 @@ export const AUDIT = () => {
    * these is a document-authoring question, not hidden UI, so the walk stops there.
    * Extend this list if the app grows another artboard-style surface.
    */
-  const CROP_SURFACES = '.bento-slide, .bento-thumb-surface, .reveal .slides section'
+  const CROP_SURFACES =
+    // Deck's artboards. `.bento-*` are the pre-rename names, kept so this
+    // detector still reads a saved deck written before Deck dropped the upstream
+    // prefix — such a file carries the old classes forever.
+    '.deck-slide, .deck-thumb-surface, .bento-slide, .bento-thumb-surface, ' +
+    '.reveal .slides section'
 
   const all = document.querySelectorAll('body *')
   for (const el of all) {

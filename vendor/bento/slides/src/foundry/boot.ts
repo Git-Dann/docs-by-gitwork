@@ -22,6 +22,7 @@ import { FRAUNCES_900 } from '../fontdata'
 import { DM_SERIF_DISPLAY_400, INTER_VAR, JETBRAINS_MONO_VAR } from './fontdata'
 import {
   DEFAULT_BRAND,
+  FAVICON,
   brand,
   brandFromDeckTheme,
   brandParamOverride,
@@ -70,9 +71,22 @@ export function activeBrand(): Brand {
  * re-declares the app identity, so `appConfig().appName` (window-title suffix,
  * save-picker label) never lags behind the brand on screen.
  */
+/**
+ * Point the tab icon at the active brand's mark. The shell ships with Foundry's
+ * disc in <link rel=icon> so the tab is right before any JS runs; this only has
+ * work to do when the brand is Gitwork, or when it's switched live.
+ */
+function applyFavicon(id: BrandId): void {
+  const link =
+    document.querySelector<HTMLLinkElement>('link[rel="icon"]') ??
+    document.head.appendChild(Object.assign(document.createElement('link'), { rel: 'icon' }))
+  link.href = FAVICON[id]
+}
+
 export function applyBrand(id: BrandId): Brand {
   active = brand(id)
   document.documentElement.dataset.brand = id
+  applyFavicon(id)
   configureApp({
     appId: active.appId,
     appName: active.appName,
