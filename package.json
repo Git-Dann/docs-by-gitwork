@@ -15,6 +15,8 @@
     "deck:install": "npm --prefix vendor/bento/slides ci",
     "deck:dev": "npm --prefix vendor/bento/slides run dev",
     "deck:build": "npm --prefix vendor/bento/slides run build:foundry",
+    "deck:verify": "node vendor/bento/scripts/verify-shell.mjs",
+    "audit:clipping": "node scripts/audit-clipping.mjs",
     "proof:setup": "node scripts/proof-setup.mjs",
     "proof:run": "node scripts/proof-run.mjs",
     "db:generate": "prisma generate",

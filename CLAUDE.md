@@ -1305,6 +1305,33 @@ the Foundry · Gitwork brand switch. **No Foundry data touches it** — it's a l
   squeezes it to 100px there; ours is 179px). Verified clean at **390 · 430 · 768 · 1023 · 1024 ·
   1280 · 1440 · 1600**: no page H-scroll, no clipped control, canvas + Slideshow reachable at every
   width, and the `NN // SECTION` strip stays a 36px full-bleed band.
+- **Clipping audit — `scripts/audit-clipping.mjs` (`npm run audit:clipping <url>`).** Dan's standing
+  complaint was UI that's present but cut off, found by hand. This walks every rendered element at
+  four viewports for the five ways content goes missing: `CLIPPED` (an ancestor's overflow cuts it
+  and that ancestor **cannot scroll**), `OFFSCREEN` (fixed panel past the viewport), `COLLAPSED`
+  (text in a zero-size box), `TRUNCATED` (ellipsed with no `title` **and** no scroll), `PAGE-X`
+  (sideways page scroll — **and it names the offending element**). `--self-test` renders deliberately
+  broken markup and asserts every kind still fires plus that three lookalikes stay quiet — run that
+  before trusting a clean report. Full contract in **`docs/mobile-playbook.md` §3a**, which is now
+  step 5 of the standard responsive process. Two rules it encodes, both learned here:
+  **`overflow:hidden` is not scrollable** (the browser reports `scrollWidth` past the box either way,
+  so testing that alone excuses the commonest way UI vanishes) and **`innerWidth` lies on mobile**
+  (browsers widen it to fit overflowing content, so it claims nothing is past the edge while the user
+  scrolls sideways — measure `documentElement.clientWidth`).
+  - **Deck: clean across 8 editor states × 4 viewports** (dialogs, popovers, full props rail, present
+    mode; 1280×620 included because a short laptop viewport is where dialogs run off the bottom).
+    Wired into `npm run deck:verify` as group 05.
+  - **Two pre-existing app defects found and fixed** (both public pages, neither caused by Deck):
+    `/api-docs` endpoint rows clipped the path and hid the **"Auth required" badge entirely** on a
+    phone — up to 185px unreachable, because the header was a nowrap flex row inside a card with
+    `overflow:hidden` and the path couldn't shrink (`min-width:auto` is the flex default). Fixed with
+    `flex-wrap` + `min-width:0` + `overflow-wrap:anywhere`, and `.endpoint-body` now scrolls so param
+    tables aren't cropped. `/context`'s module-map table forced the page **90px wider than a phone**
+    (playbook §2: tables scroll, they don't reflow) — now in an `overflow-x:auto` wrapper; the Deck
+    row I added in this PR is the longest one, so I'd made it worse.
+  - Verified clean afterwards: `/api-docs`, `/context`, `/pulse-overview`, `/login`, `/embed/pulse`
+    at 390 · 768 · 1280×620 · 1440. **`/app` pages remain unreachable** (auth-gated, no staging) —
+    point the script at them the day staging exists.
 - **`vendor/bento/scripts/verify-shell.mjs`** — the regression gate for a vendored fork whose skin
   works by *overriding* upstream: it drives the built shell in headless Chromium and checks every
   control, both brands for accent leaks (incl. present mode), the five responsive bands, and a

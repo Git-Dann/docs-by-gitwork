@@ -22,6 +22,7 @@ import { existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium } from 'playwright-core'
+import { AUDIT } from '../../../scripts/audit-clipping.mjs'
 
 const target = process.argv[2] ?? `file://${new URL('../../../public/deck/index.html', import.meta.url).pathname}`
 const CHROME = findChromium()
@@ -263,6 +264,47 @@ console.log('\n04 // SAVED DECKS')
   if (errs.length) note('saved', `errors on reopen: ${errs.join(' | ')}`)
   await ctx2.close()
   rmSync(tmp, { force: true })
+}
+
+// ── 5. nothing hidden, in every state ───────────────────────────────────────
+// Idle is not where clipping lives — open dialogs, popovers, a full props rail and
+// present mode are. Shares the detector with scripts/audit-clipping.mjs.
+console.log('\n05 // NOTHING HIDDEN')
+{
+  const STATES = {
+    idle: async () => {},
+    'element selected': async (p) => {
+      await p.click('.ed-stage .bento-el', { position: { x: 8, y: 8 } }).catch(() => {})
+      await p.waitForTimeout(400)
+    },
+    'props sections all open': async (p) => {
+      await p.click('.ed-stage .bento-el', { position: { x: 8, y: 8 } }).catch(() => {})
+      await p.waitForTimeout(400)
+      for (const sec of await p.$$('.ed-props .ed-section.closed')) { await sec.click(); await p.waitForTimeout(50) }
+    },
+    'help dialog': async (p) => { await p.click('.ed-btn-help'); await p.waitForTimeout(500) },
+    'about dialog': async (p) => { await p.click('.ed-logo'); await p.waitForTimeout(700) },
+    'layout picker': async (p) => { await p.click('.ed-add-slide'); await p.waitForTimeout(500) },
+    'save menu': async (p) => { await p.click('.ed-split .ed-split-caret'); await p.waitForTimeout(400) },
+    'present mode': async (p) => { await p.click('.ed-pill-main'); await p.waitForTimeout(2000) },
+  }
+  // 1280x620 is in the list on purpose: a short laptop viewport is where dialogs
+  // run off the bottom with nothing to scroll.
+  for (const [w, h] of [[1600, 1000], [1280, 620], [768, 1024], [390, 844]]) {
+    let bad = 0
+    for (const [state, drive] of Object.entries(STATES)) {
+      const ctx = await browser.newContext({ viewport: { width: w, height: h }, isMobile: w < 900, hasTouch: w < 900 })
+      const { page } = await openShell(ctx)
+      try { await drive(page) } catch { /* control absent at this width — audit what is there */ }
+      await page.waitForTimeout(300)
+      for (const f of await page.evaluate(AUDIT)) {
+        bad++
+        note('hidden', `${w}px / ${state}: ${f.kind} ${f.el} — ${f.detail}`)
+      }
+      await ctx.close()
+    }
+    if (!bad) pass(`${w}px — nothing hidden in any of the ${Object.keys(STATES).length} states`)
+  }
 }
 
 await browser.close()

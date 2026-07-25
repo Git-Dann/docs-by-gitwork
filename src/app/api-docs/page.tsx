@@ -441,13 +441,24 @@ export default function ApiDocsPage() {
           .auth-box h3 { font-size: 0.9rem; font-weight: 600; color: #93c5fd; margin-bottom: 10px; }
           .auth-box p { font-size: 0.88rem; color: #94a3b8; }
           .endpoint { border: 1px solid #1a1a1a; border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
-          .endpoint-header { display: flex; align-items: center; gap: 12px; padding: 14px 20px; background: #111; }
-          .method-badge { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 4px; min-width: 60px; text-align: center; }
-          .endpoint-path { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.9rem; color: #e2e8f0; flex: 1; }
+          /* The header is a nowrap flex row inside a card that clips (overflow:hidden
+             above, for the rounded corners). On a phone that row is wider than the
+             card, so the long paths were cut and the auth badge disappeared entirely
+             — up to 185px of it, unreachable. Two fixes, both mobile-first:
+             wrap lets the badge drop to a second line, and min-width:0 defeats the
+             flex default (min-width:auto) that stops a flex item shrinking below its
+             own content. Found by scripts/audit-clipping.mjs. */
+          .endpoint-header { display: flex; align-items: center; gap: 12px; padding: 14px 20px; background: #111; flex-wrap: wrap; }
+          .method-badge { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 4px; min-width: 60px; text-align: center; flex: none; }
+          .endpoint-path { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.9rem; color: #e2e8f0; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
           .auth-badge { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; }
           .auth-required { background: #1c1917; color: #a8a29e; border: 1px solid #292524; }
           .auth-public { background: #052e16; color: #4ade80; border: 1px solid #14532d; }
-          .endpoint-body { padding: 16px 20px; }
+          /* Param tables don't reflow, they scroll (mobile playbook §2) — otherwise
+             the widest column is cut off by the card's overflow:hidden with no way
+             to reach it. Scrolling the body is the CSS-only version of wrapping each
+             table, and keeps the prose above it readable. */
+          .endpoint-body { padding: 16px 20px; overflow-x: auto; }
           .endpoint-desc { font-size: 0.88rem; color: #94a3b8; margin-bottom: 14px; }
           .param-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-bottom: 14px; }
           .param-table th { text-align: left; padding: 6px 12px; background: #161616; color: #6b7280; font-weight: 600; letter-spacing: 0.05em; font-size: 0.72rem; text-transform: uppercase; }
