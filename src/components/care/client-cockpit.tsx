@@ -145,7 +145,10 @@ export function ClientCockpit({
   }
 
   return (
-    <div className="flex h-full min-h-0">
+    // w-full + min-w-0: <main> is a row-flex container, so without an explicit fill the
+    // cockpit shrink-wraps to its content and leaves a dead strip on the right (the
+    // detail pane never reaches the viewport edge). Fill the whole main area.
+    <div className="flex h-full min-h-0 w-full min-w-0">
       {/* LEFT — saved views. Only a rail on wide desktops (xl+); below that it would
           crush the thread/detail into a sliver, so it collapses into the list-header
           dropdown instead (the 1024–1279 tablet band was the broken case). */}

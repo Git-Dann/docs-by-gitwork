@@ -153,16 +153,16 @@ export function ConversationDetail({
           <span className="shrink-0">{formatAge(conversation.receivedAt)} ago</span>
         </div>
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <h2 className="min-w-0 flex-1 text-lg font-semibold leading-snug text-[var(--text-1)]">{conversation.subject}</h2>
+          <h2 className="min-w-0 flex-1 break-words text-lg font-semibold leading-snug text-[var(--text-1)]">{conversation.subject}</h2>
           <OpenInChannelButton conversation={conversation} connection={connection} />
         </div>
       </div>
 
       {/* Thread + composer (center) beside the triage/notes rail. Stacks into one
           scrolling column until xl, splits side-by-side above. */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto xl:flex-row xl:overflow-hidden">
+      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto xl:flex-row xl:overflow-hidden">
         {/* ── Center: thread (scrolls) + reply composer (pinned) ── */}
-        <div className="flex min-h-0 flex-col xl:flex-1 xl:overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-col xl:flex-1 xl:overflow-hidden">
           <PaneHeader n="03" label="Thread" />
           <div className="space-y-3 px-5 py-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
             {messagesQ.isLoading && <p className="text-sm text-[var(--text-4)]">Loading messages…</p>}
@@ -183,7 +183,7 @@ export function ConversationDetail({
                   <span className="truncate">{m.authorLabel}</span>
                   <span className="shrink-0">{formatAge(m.createdAt)} ago</span>
                 </div>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-2)]">{m.body}</p>
+                <p className="overflow-hidden whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm leading-relaxed text-[var(--text-2)]">{m.body}</p>
               </div>
             ))}
           </div>
