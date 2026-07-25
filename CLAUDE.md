@@ -1263,8 +1263,58 @@ the Foundry · Gitwork brand switch. **No Foundry data touches it** — it's a l
   signed with a key we deliberately don't hold. `silenceUpstreamUpdateChecks()` sets it off once
   (so anyone re-enabling it in the About dialog keeps their choice); `manifestUrl` points at
   `/deck/manifest.json`, which is not published — this shell updates when Foundry redeploys.
+- **Optimised (second pass).** The shell went **726KB → 504KB (−31%)**, and with it every saved
+  deck (837KB → 620KB), because a Bento file carries the app:
+  - **English only** (`src/i18n.ts`) — the 7 translation catalogs were **171KB, 25% of the shell**.
+    The single-file build forbids lazy-loading (zero external requests is the format's contract), so
+    it's all-or-nothing; Dan chose English-only. The catalogs stay in the tree, just unreferenced so
+    rollup drops them, and `languageDropdown()` hides the globe while there's one locale — restoring
+    all 8 is putting the imports back.
+  - **Upstream's demo deck dropped from the shipped shell** (−52KB: a 1000-line tutorial + an
+    embedded Instrument Sans face) — it only ever served a developer comparison. `starterdeck.ts`
+    stays in the tree; swap the `foundryStarterDoc()` call to `starterDoc()` under `deck:dev` to see it.
+  - **Boot: 2.2s → ~0.55s on repeat opens.** The brand-moment splash held *every* open to 1250ms +
+    a 550ms fade while the editor was interactive at ~350ms. It now plays in full **once per browser**
+    (upstream's own slideshow-hint idiom) and afterwards clears as soon as the editor is up, on a
+    180ms fade (`#bento-splash.fd-quick`). First open is unchanged.
+  - **`Cache-Control: public, max-age=60, must-revalidate`** on `/deck/:path*` — Next serves `public/`
+    at `max-age=0`, so every open paid a revalidation round trip for a file that only changes on
+    deploy. Cache-Control only; `/deck` already matches the catch-all security-header rule, and
+    re-listing those would send each header twice.
+  - **`.dockerignore` now excludes `**/node_modules`** — the bare `node_modules` entry only matched
+    the top level, so the vendored app's own ~80MB install was going into the build context.
+  - Not done: gzip on the wire (**726KB → 547KB**, and 504KB → ~390KB now) is an **nginx** setting on
+    the VPS, outside this repo. Worth turning on for `text/html`.
+- **Every upstream accent swept out of the chrome.** Upstream drives most of its UI from `--accent`,
+  but hard-codes its coral/amber in places the token swap couldn't reach — so re-pointing the token
+  left them bento-coloured. Now brand-correct: the About primary, the update chip (needs
+  `!important` to beat upstream's), the player + unlock buttons, the live-reader dot **and its pulse
+  keyframe** (re-declared), the recovery banner, `accent-color` on checkboxes, the Slideshow
+  first-run "runner" comet, **present mode** (reveal's `--r-link/selection/progress-color` + the
+  click-target outline now follow `--bento-accent`, i.e. the DECK's accent — so a Gitwork deck
+  presents in purple), and the **speaker view** (its own popup window, painted with a copy of these
+  styles, so it gets `--fd-speaker-accent` — a mid blue/violet, because `#1D4ED8` on near-black is
+  why upstream reached for amber).
+- **Responsive (per `docs/mobile-playbook.md`).** Upstream's topbar is one nowrap flex row of ~38
+  controls, so below the desktop split it overflowed and took the page with it — **+292px of
+  horizontal page scroll at 390px, +19px at 768px, in upstream's own build too**; our wider lockup
+  made 768 worse (+33px). Fixed by **wrapping** below 1024px, not scrolling or clipping:
+  `overflow-x:auto` on the bar would make it a scroll container and clip the dropdown menus that
+  live inside it, and `overflow:hidden` would just hide controls. Our lockup also yields first — the
+  `DECK` tag hides ≤1359px, handing ~40px back to the deck-title field on a 1280 laptop (upstream
+  squeezes it to 100px there; ours is 179px). Verified clean at **390 · 430 · 768 · 1023 · 1024 ·
+  1280 · 1440 · 1600**: no page H-scroll, no clipped control, canvas + Slideshow reachable at every
+  width, and the `NN // SECTION` strip stays a 36px full-bleed band.
+- **`vendor/bento/scripts/verify-shell.mjs`** — the regression gate for a vendored fork whose skin
+  works by *overriding* upstream: it drives the built shell in headless Chromium and checks every
+  control, both brands for accent leaks (incl. present mode), the five responsive bands, and a
+  save → reopen-from-disk round trip. Needs `npm i --no-save playwright-core` (not a repo dep, and
+  not in CI — no browser there). **Run it after every upstream re-sync and after any `theme.css`
+  change.** Two things it already caught: "New slide" is a *layout picker*, not an insert button
+  (an earlier assertion was simply wrong about the contract), and `setContent()` can't boot a saved
+  deck (the shell needs a real document origin for its blob-URL runtime).
 - **Verified:** vendored `tsc -b` clean; root `tsc --noEmit` + `eslint` clean; `npm test` 135
-  passing; `next build` clean; headless-Chromium smoke tests of the built shell — both brands boot
+  passing; `next build` clean; `verify-shell.mjs` fully green; headless-Chromium smoke tests of the built shell — both brands boot
   with no console errors, all four faces load, the brand switch re-skins + re-themes + undoes,
   present mode runs, a saved deck round-trips and reopens in its own brand, the topbar holds at
   1600/1440/1366/1280, and `/deck` gates to `/login` unauthenticated. Two bugs were caught this way

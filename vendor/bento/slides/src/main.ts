@@ -19,7 +19,6 @@ import {
 import { APP_VERSION, checkForUpdates, buildUpdatedFile, applyUpdate } from './update'
 import { i18nApi, t } from './i18n'
 import { parseDoc, type BentoDoc } from './model'
-import { starterDoc } from './starterdeck'
 import { injectFonts } from './fonts'
 import { Store } from './store'
 import { Editor } from './editor/editor'
@@ -51,20 +50,14 @@ const envelope = embedded ? parseEnvelope(embedded) : null
 if (envelope) {
   void passwordGate()
 } else {
-  // FOUNDRY: an empty shell boots OUR starter deck. `?demo=bento` boots
-  // upstream's full product tour instead — handy when checking behaviour
-  // against upstream.
-  bootWith((embedded && parseDoc(embedded)) || foundryOrUpstreamStarter())
-}
-
-/** FOUNDRY: which starter deck a fresh window opens with. */
-function foundryOrUpstreamStarter(): BentoDoc {
-  try {
-    if (new URLSearchParams(location.search).get('demo') === 'bento') return starterDoc()
-  } catch {
-    /* no location */
-  }
-  return foundryStarterDoc(FD_BRAND)
+  // FOUNDRY: an empty shell boots OUR starter deck (foundry/starter.ts).
+  // Upstream's own product tour (starterdeck.ts) is deliberately NOT referenced:
+  // it's a 1000-line tutorial plus an embedded Instrument Sans face, ~52KB of the
+  // shipped shell — which every saved deck would then carry — to serve what is
+  // only a developer comparison. The file stays in the tree (unreferenced, so
+  // rollup drops it); to see it, swap this call for `starterDoc()` under
+  // `npm run deck:dev`.
+  bootWith((embedded && parseDoc(embedded)) || foundryStarterDoc(FD_BRAND))
 }
 
 /** Encrypted file: ask for the password (looping on failure), then boot. */
@@ -175,12 +168,32 @@ if (location.hash === '#present') {
 {
   const splash = document.getElementById('bento-splash')
   if (splash) {
-    const wait = Math.max(0, 1250 - performance.now())
+    // FOUNDRY: the brand moment plays in full ONCE per browser (same idiom as
+    // upstream's slideshow hint). Deck is an internal tool people open over and
+    // over, and the editor is interactive at ~350ms — holding every open to
+    // 1250ms, then fading for 550ms, was ~1.4s of pure waiting. First open:
+    // unchanged. After that: the splash goes as soon as the editor is up, on a
+    // quick fade (.fd-quick, styled in foundry/theme.css). 2.2s → ~0.8s.
+    const seen = splashSeen()
+    const wait = seen ? 0 : Math.max(0, 1250 - performance.now())
+    const fade = seen ? 180 : 550
     setTimeout(() => {
+      if (seen) splash.classList.add('fd-quick')
       splash.classList.add('done')
-      setTimeout(() => splash.remove(), 550)
+      setTimeout(() => splash.remove(), fade)
     }, wait)
   }
+}
+
+/** FOUNDRY: has this browser already watched the boot animation once? */
+function splashSeen(): boolean {
+  try {
+    if (localStorage.getItem('foundry.deck.splash-seen') === '1') return true
+    localStorage.setItem('foundry.deck.splash-seen', '1')
+  } catch {
+    /* storage off — always play it */
+  }
+  return false
 }
 
 // Small scripting surface for tooling and automation: read/replace the

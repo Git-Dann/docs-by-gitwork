@@ -96,6 +96,16 @@ const nextConfig: NextConfig = {
         headers: securityHeaders,
       },
       {
+        // Deck's shell is a 700KB static file that only changes on deploy, and Next
+        // serves public/ with `max-age=0` — so every open paid a revalidation round
+        // trip. A minute of freshness makes reopening instant while still picking up
+        // a deploy on the next open; `must-revalidate` keeps it from going stale
+        // beyond that. Cache-Control ONLY — /deck already matches the catch-all
+        // above, so re-listing the security headers here would send each twice.
+        source: "/deck/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=60, must-revalidate" }],
+      },
+      {
         // The public Pulse scanner is a lead-gen widget for the gitwork.co.uk marketing
         // site — restricted to Gitwork's own domains, plus 'self' so /pulse-overview's
         // same-origin self-embed keeps working. No X-Frame-Options here (it can't

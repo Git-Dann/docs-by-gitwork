@@ -50,6 +50,11 @@
   --fd-label: var(--fd-mono);
   --fd-label-tracking: 0.12em;
   --fd-mark-ink: #ffffff;
+  /* Speaker view is a dark surface in its OWN popup window, painted with a copy
+     of these styles — so it never carries [data-brand] and always resolves the
+     :root value. A mid blue reads on near-black where --accent (#1D4ED8) would
+     not, which is why upstream reached for amber there. */
+  --fd-speaker-accent: #60a5fa;
 }
 
 :root[data-brand='gitwork'] {
@@ -71,6 +76,7 @@
   --fd-display: 'Fraunces', 'DM Serif Display', Georgia, serif;
   --fd-label: var(--fd-sans);
   --fd-label-tracking: 0.14em;
+  --fd-speaker-accent: #a99bff;
 }
 
 /* ─── type ───────────────────────────────────────────────────────────────── */
@@ -181,6 +187,49 @@ body {
 @media (max-width: 1559px) {
   .fd-brandswitch {
     display: none;
+  }
+}
+
+/* Repeat opens skip the brand moment (main.ts) and fade fast — the inline splash
+ * CSS in index.html sets `transition: opacity .5s`, and an id+class selector here
+ * beats it. First open is untouched. */
+#bento-splash.fd-quick {
+  transition-duration: 0.18s;
+}
+
+/* ─── responsive: the topbar must never scroll the PAGE sideways ─────────── */
+
+/* Upstream's topbar is a single nowrap flex row of ~38 controls, so below the
+ * desktop split it overflows and takes the whole page with it (measured: +292px
+ * at 390, +19px at 768 — in upstream's own build too). Our lockup is a little
+ * wider than "bento/slides", which made 768 worse (+33px).
+ *
+ * Fix is to WRAP, not to scroll or clip: `overflow-x:auto` on the bar would make
+ * it a scroll container and clip the dropdown menus that live inside it
+ * (shape/media/share/save/language), and `overflow:hidden` would simply hide
+ * controls. Wrapping to a second row keeps every control reachable and tappable.
+ * Scoped to <1024px — the playbook's desktop split — so desktop is untouched. */
+/* Our lockup is wider than upstream's "bento/slides", so it yields first: the
+ * product tag goes at ≤1359px, which hands ~40px back to the deck-title field on
+ * a 1280 laptop (upstream squeezes it to ~100px there; this is the one place we
+ * can give room back without hiding any of upstream's controls). The mark and the
+ * house name still identify the app — upstream drops the name itself at 760px. */
+@media (max-width: 1359px) {
+  .fd-word-tag {
+    display: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  .ed-topbar {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  /* keep the deck title usable rather than letting it collapse to a few chars */
+  .ed-title {
+    flex: 1 1 160px;
+    min-width: 120px;
+    width: auto;
   }
 }
 
@@ -395,4 +444,111 @@ body {
   font-family: var(--fd-display);
   font-weight: 400;
   letter-spacing: -0.01em;
+}
+
+/* ─── the accents the token swap can't reach ─────────────────────────────── */
+
+/* Upstream drives most of its chrome from --accent, but a set of surfaces
+ * hard-code its coral/amber instead, so re-pointing the token left them bento-
+ * coloured: the About dialog's primary button, the update chip (with
+ * !important), the player + unlock buttons, the live-reader dot, the recovery
+ * banner, checkbox accent-color, the Slideshow first-run "runner", and — most
+ * visibly — PRESENT MODE and the SPEAKER VIEW. DESIGN.md allows no accent outside
+ * the blue family, so each is re-pointed here. Present mode and speaker view
+ * follow `--bento-accent` (present.ts sets it from the DECK's theme accent), so a
+ * Gitwork deck presents in purple and a Foundry deck in blue, instead of amber. */
+
+.ed-btn-update {
+  /* upstream sets coral with !important, so this has to match it */
+  background: var(--fd-brand-soft) !important;
+  color: var(--accent-ink) !important;
+}
+.ed-about .ed-btn-primary,
+.ed-pwcard button,
+.ed-playercard button,
+.ed-dialog-actions button.ed-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.ed-playercard button.ed-playcopy {
+  /* upstream's secondary player action is intentionally transparent — keep it */
+  background: none;
+  color: #fff;
+}
+input.ed-toggle {
+  accent-color: var(--accent);
+}
+.ed-recover {
+  background: var(--ink);
+}
+.ed-reader-dot {
+  background: var(--accent);
+}
+/* re-declared, so the pulse ring stops being coral (a later @keyframes of the
+   same name replaces the earlier one) */
+@keyframes ed-reader-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(29, 78, 216, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(29, 78, 216, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(29, 78, 216, 0);
+  }
+}
+
+/* the Slideshow first-run runner: same comet, brand-coloured */
+.ed-present-pill::after {
+  background: conic-gradient(
+    from var(--ed-runner-a),
+    rgb(59 130 246 / 0) 0deg,
+    rgb(59 130 246 / 0) 225deg,
+    rgb(59 130 246 / 0.55) 300deg,
+    rgb(96 165 250 / 1) 345deg,
+    rgb(219 234 254 / 1) 357deg,
+    rgb(59 130 246 / 0) 360deg
+  );
+  filter: drop-shadow(0 0 2px rgb(96 165 250 / 0.95)) drop-shadow(0 0 7px rgb(59 130 246 / 0.6));
+}
+:root[data-brand='gitwork'] .ed-present-pill::after {
+  background: conic-gradient(
+    from var(--ed-runner-a),
+    rgb(107 82 255 / 0) 0deg,
+    rgb(107 82 255 / 0) 225deg,
+    rgb(107 82 255 / 0.55) 300deg,
+    rgb(169 155 255 / 1) 345deg,
+    rgb(237 236 255 / 1) 357deg,
+    rgb(107 82 255 / 0) 360deg
+  );
+  filter: drop-shadow(0 0 2px rgb(169 155 255 / 0.95)) drop-shadow(0 0 7px rgb(107 82 255 / 0.6));
+}
+
+/* present mode — reveal's own vars, plus the click-target hover outline */
+.bento-present-overlay {
+  --r-link-color: var(--bento-accent, var(--accent));
+  --r-link-color-hover: var(--bento-accent, var(--accent));
+  --r-selection-background-color: var(--bento-accent, var(--accent));
+  --r-progress-color: var(--bento-accent, var(--accent));
+}
+.bento-present-overlay .bento-el[data-link]:hover {
+  outline-color: var(--bento-accent, var(--accent));
+}
+
+/* speaker view — a separate window that is painted with a copy of these styles
+   (screens.ts paintSpeaker), so the same tokens land there */
+.sv-timer:hover {
+  color: var(--fd-speaker-accent);
+}
+.sv-btn.active {
+  background: var(--fd-speaker-accent);
+  border-color: var(--fd-speaker-accent);
+  color: #0f172a;
+}
+.sv-thumb.current {
+  border-color: var(--fd-speaker-accent);
+}
+.sv-thumb.current .sv-thumb-n {
+  background: var(--fd-speaker-accent);
+  color: #0f172a;
 }

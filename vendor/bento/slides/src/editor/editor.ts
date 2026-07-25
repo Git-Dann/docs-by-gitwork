@@ -944,6 +944,13 @@ export class Editor {
   /** Globe → locale picker. UI language follows the VIEWER, never the file. */
   private languageDropdown(): HTMLElement {
     const wrap = div('ed-dropdown')
+    // FOUNDRY: this shell ships English only (see src/i18n.ts for why and how to
+    // restore the rest), and a picker offering one language is just clutter. Put
+    // the catalogs back and the globe returns on its own.
+    if (LOCALE_CHOICES.length < 2) {
+      wrap.style.display = 'none'
+      return wrap
+    }
     const trigger = btn(ICONS.globe, '', () => wrap.classList.toggle('open'), t('Language'))
     const menu = div('ed-menu ed-lang-menu')
     for (const c of LOCALE_CHOICES) {

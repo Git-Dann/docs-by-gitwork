@@ -716,6 +716,26 @@ field); `?brand=gitwork` forces a brand at any size.
 parts as the rest of the platform: a mono eyebrow over a short accent rule, a serif headline,
 and stat tiles (DM Serif figure over a mono caps label, one accent-filled).
 
+**The accent sweep is not optional, and tokens alone don't finish it.** Upstream drives most of its
+chrome from `--accent`, but hard-codes coral/amber in the places a token swap can't reach — so those
+surfaces stayed bento-coloured until each was re-pointed: the About primary, the update chip (with
+`!important`), the player/unlock buttons, the live-reader dot *and its pulse keyframe*, the recovery
+banner, checkbox `accent-color`, the Slideshow first-run "runner" comet, **present mode** and the
+**speaker view**. Present mode and speaker view follow `--bento-accent` — the **deck's** accent — so a
+Gitwork deck presents in purple and a Foundry deck in blue. Speaker view is a separate popup painted
+with a copy of these styles, so it never carries `[data-brand]` and uses `--fd-speaker-accent`, a mid
+blue/violet: `{colors.primary}` on near-black is unreadable, which is why upstream used amber there.
+
+**Responsive** — upstream's topbar is a single nowrap flex row of ~38 controls, so below the
+`lg` split it overflowed and scrolled the whole page sideways (+292px at 390px, in upstream's own
+build too). It **wraps** below 1024px instead: `overflow-x:auto` on that bar would clip the dropdown
+menus that live inside it, and `overflow:hidden` would hide controls outright. Where space is tight
+the house lockup yields before upstream's UI does — the `DECK` tag at ≤1359px, the brand switch at
+≤1559px (its two words *are* the control; initials would be worse than absence) — so the deck-title
+field stays readable. `?brand=gitwork` still forces a brand at any width. Verified at 390 · 430 · 768
+· 1023 · 1024 · 1280 · 1440 · 1600 with `vendor/bento/scripts/verify-shell.mjs`, which is also the
+regression gate for everything above.
+
 ## Do's and Don'ts
 
 ### Do

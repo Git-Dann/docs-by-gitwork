@@ -9,43 +9,29 @@
 // App code must never import the kernel i18n directly — that would bypass
 // this registration.
 
-import { ja } from './i18n/ja'
-import { zhHans } from './i18n/zh-Hans'
-import { es } from './i18n/es'
-import { fr } from './i18n/fr'
-import { de } from './i18n/de'
-import { zhHant } from './i18n/zh-Hant'
-import { it } from './i18n/it'
+// FOUNDRY: English only.
+//
+// The seven translation catalogs are ~171KB of the shipped shell — 25% of it —
+// and because a Bento file IS the app, every deck we hand a client would carry
+// them too. The single-file build forbids lazy-loading (zero external requests is
+// the format's contract), so it is all-or-nothing, and an internal English-
+// speaking team gets nothing for the 171KB. English is the source language, so
+// t() simply returns its keys with no catalog registered.
+//
+// The catalogs are still in the tree (src/i18n/*.ts) — just unreferenced, so
+// rollup drops them. To restore all eight languages, put the imports and the
+// `catalogs` map back below and re-add the CHOICES rows: the picker reappears on
+// its own (editor.ts hides the globe only while there is one locale).
 import { registerI18n } from '../../kernel/src/i18n.ts'
 import type { LocaleChoice } from '../../kernel/src/i18n.ts'
 
 export type { Catalog } from '../../kernel/src/i18n.ts'
 
 /** Locales offered in the About picker (label in its own language). */
-const CHOICES: LocaleChoice[] = [
-  { code: 'en', label: 'English' },
-  { code: 'ja', label: '日本語' },
-  { code: 'zh-Hans', label: '简体中文' },
-  { code: 'zh-Hant', label: '繁體中文' },
-  { code: 'es', label: 'Español' },
-  { code: 'fr', label: 'Français' },
-  { code: 'it', label: 'Italiano' },
-  { code: 'de', label: 'Deutsch' },
-]
+const CHOICES: LocaleChoice[] = [{ code: 'en', label: 'English' }]
 
 registerI18n({
-  catalogs: {
-    ja,
-    'zh-Hans': zhHans,
-    zh: zhHans, // zh, zh-CN, zh-SG → simplified
-    'zh-Hant': zhHant,
-    'zh-TW': zhHant,
-    'zh-HK': zhHant,
-    it,
-    es,
-    fr,
-    de,
-  },
+  catalogs: {},
   choices: CHOICES,
 })
 
