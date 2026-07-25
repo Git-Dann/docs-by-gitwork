@@ -898,15 +898,22 @@ h2, h3, h4, h5 {
     line-height: 20px;
   }
 
-  /* A <textarea> using .app-input / .app-input-compact must never inherit the
-     single-line `padding: 0 12px` — that jams the copy against the top edge.
-     Give multi-line fields proper vertical padding + comfortable line-height. */
+  /* A <textarea> is multi-line and is NEVER a dropdown. Whatever field class it
+     borrows (.app-input / .app-input-compact / .app-select / .app-select-compact),
+     it must (a) get real vertical padding — the single-line `padding: 0 12px`
+     jams the copy against the top edge — and (b) never inherit a <select>'s
+     chevron background-image or its reserved right padding. Baseline guard so this
+     class of bug can't recur regardless of which class a textarea is given. */
   textarea.app-input,
-  textarea.app-input-compact {
+  textarea.app-input-compact,
+  textarea.app-select,
+  textarea.app-select-compact {
     min-height: 72px;
     height: auto;
     padding: 10px 12px;
     line-height: 1.5;
+    resize: vertical;
+    background-image: none;
   }
 
   /* Modern, OS-consistent range slider (Studio controls). Thin track + neat branded thumb. */
