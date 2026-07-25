@@ -22,11 +22,11 @@ import {
 } from '../model'
 import type { Brand } from './brand'
 
-const W = 1280
-const H = 720
+export const W = 1280
+export const H = 720
 
 /** Slide furniture that repeats — a shared id means it MORPHS across slides. */
-function chrome(b: Brand, label: string): SlideElement[] {
+export function chrome(b: Brand, label: string): SlideElement[] {
   return [
     // the accent rule, morphing from slide to slide
     defaultShape('rect', {
@@ -76,7 +76,7 @@ function chrome(b: Brand, label: string): SlideElement[] {
   ]
 }
 
-function heading(b: Brand, html: string, y = 150): SlideElement {
+export function heading(b: Brand, html: string, y = 150): SlideElement {
   return defaultText({
     id: 'fd-title',
     x: 96,
@@ -114,7 +114,7 @@ function body(b: Brand, html: string, frame: { x?: number; y: number; w?: number
 }
 
 /** A DESIGN.md stat tile: serif figure over a mono label. */
-function statTile(
+export function statTile(
   b: Brand,
   frame: { x: number; y: number; w: number; h: number },
   figure: string,

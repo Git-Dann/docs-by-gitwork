@@ -717,7 +717,15 @@ field); `?brand=gitwork` forces a brand at any size.
   This is the brand signature; it is not optional, even here.
 - **No pills.** Upstream ships `999px` on its zoom bar, chip bar, present pill, toasts and
   dialog buttons; the skin returns them to `{rounded.md}` / `{rounded.lg}`. Full radius stays
-  reserved for status dots and collaborator avatars.
+  reserved for status dots and collaborator avatars. **This does not come free from the token
+  swap, and it is not self-evident on screen** — the present pill stayed a literal 999px pill for
+  two passes while this paragraph claimed otherwise, because upstream writes it at
+  `.ed-present-pill .ed-pill-main` (0,2,0) and our de-pilling rule is a bare `.ed-btn` (0,1,0).
+  Split controls have the same trap in reverse: a partial radius written at (0,1,0) loses to
+  `.ed-btn` and the half rounds on all four corners, which reads as the seam being *cropped*.
+  Write joined-control radii at (0,2,0), and let `02b // INSTRUMENT GEOMETRY` in
+  `verify-shell.mjs` check it — radius is invisible to the clipping audit and to every
+  behavioural test.
 - **Instrument geometry + hairlines** — 6px controls, 10px cards/menus, `{colors.hairline}`
   borders, Elevation-2 only on menus and dialogs.
 - **The type triple, each in its lane** — Inter for UI, DM Serif Display for the wordmark and

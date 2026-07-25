@@ -31,6 +31,7 @@ import { appConfig } from '../../../kernel/src/app.ts'
 import { mountBrandSwitch, mountHomeSlot } from '../foundry/boot'
 import { authorName, foundryUser, nameIsFromFoundry, servedByFoundry } from '../foundry/identity'
 import { SETTINGS_ICON, openFoundryAbout } from '../foundry/about'
+import { openTemplatePicker } from '../foundry/template-picker'
 import { disconnectOnline, joinFromDoc, mintCollab, mintInvite, onlineTransport, rotateKeys, sharingOn, startSharing, stopSharing } from '../sync/online'
 
 const i18nT = t
@@ -511,6 +512,9 @@ export class Editor {
       // (history, JSON round-trip) — which is exactly what About holds: the deck's
       // merge-field properties, the network switch, and which build you're on.
       menu.appendChild(div('ed-menu-sep'))
+      item(ICONS.template, t('New from template…'),
+        t('Start from one of the Foundry or Gitwork decks — kickoff, sprint review, pitch, case study and more.'),
+        () => this.openTemplates())
       item(SETTINGS_ICON, t('Deck settings & about…'),
         t('Document properties (author, company, subject — they fill {{merge}} fields), offline mode, and this build’s version.'),
         () => this.openAbout())
@@ -1885,6 +1889,15 @@ export class Editor {
    * people come here for — the document's merge-field properties and the network
    * switch — plus what the app is and which build you are on.
    */
+  /** FOUNDRY: pick one of the ten starting decks (foundry/templates.ts). */
+  private openTemplates() {
+    openTemplatePicker(this.store, () => {
+      this.canvas.render()
+
+      this.toast(t('Template loaded — ⌘Z puts your previous deck back'))
+    })
+  }
+
   private openAbout() {
     openFoundryAbout({
       store: this.store,
