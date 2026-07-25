@@ -440,7 +440,7 @@ console.log('\n06 // IDENTITY')
   // (a) served by Foundry → the People list names the signed-in user
   const ctx = await newCtx({ viewport: { width: 1600, height: 1000 } })
   const { page } = await openShell(ctx)
-  const seeded = await page.evaluate(() => localStorage.getItem('bento-author'))
+  const seeded = await page.evaluate(() => localStorage.getItem('deck-author'))
   if (target.startsWith('http')) {
     if (seeded !== 'Test Person') note('identity', `display name not seeded from /api/account (got ${seeded})`)
     else pass('signed-in Foundry user seeds the display name')
