@@ -23,17 +23,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date();
 
   return [
-    {
-      url: BASE,
-      lastModified,
-      changeFrequency: "monthly",
-      priority: 1,
-    },
+    // NOTE: "/" is deliberately absent. It 307s to /portal/login, which is noindex —
+    // listing a redirect in a sitemap is a soft error, and listing a noindex
+    // destination contradicts itself. /pulse-overview is the primary indexable page.
     {
       url: `${BASE}/pulse-overview`,
       lastModified,
       changeFrequency: "monthly",
-      priority: 0.8,
+      priority: 1,
     },
     {
       url: `${BASE}/api-docs`,
