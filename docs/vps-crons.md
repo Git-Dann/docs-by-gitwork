@@ -30,7 +30,10 @@ to `/tmp/foundry-cron.log`. This is what's actually installed on the box:
 0 6 * * *  /opt/apps/foundry/run-cron.sh analytics-snapshot   >> /tmp/foundry-cron.log 2>&1
 0 7 * * *  /opt/apps/foundry/run-cron.sh embed-conversations  >> /tmp/foundry-cron.log 2>&1
 0 8 * * *  /opt/apps/foundry/run-cron.sh support-sync         >> /tmp/foundry-cron.log 2>&1
-0 9 * * *  /opt/apps/foundry/run-cron.sh meet-transcripts     >> /tmp/foundry-cron.log 2>&1
+# Scribe runs TWICE a day (09:00 + 13:00) so an afternoon client call lands the same
+# day instead of waiting for the next morning. Re-scans are cheap — the run skips
+# meetings already SUMMARISED, so the second pass is a calendar read for most rows.
+0 9,13 * * * /opt/apps/foundry/run-cron.sh meet-transcripts   >> /tmp/foundry-cron.log 2>&1
 0 9 * * *  /opt/apps/foundry/run-cron.sh foreman              >> /tmp/foundry-cron.log 2>&1
 0 10 * * * /opt/apps/foundry/run-cron.sh care-digest          >> /tmp/foundry-cron.log 2>&1
 
