@@ -47,18 +47,46 @@ import { deckHref, deckTemplateBySlug } from "@/lib/deck-templates";
 
 /**
  * Where a document opens. Everything goes to the Docs editor except a DECK,
- * which has no sections to render there — it opens in the Deck window, which is
- * the thing that can actually edit slides. `target="_blank"` is applied at each
- * call site via `docLinkTarget`.
+ * which has no sections to render there — it opens in Deck, the thing that can
+ * actually edit slides.
  */
 function docHref(doc: { id: string; documentType?: string | null }): string {
   return doc.documentType === "DECK" ? deckHref(doc.id) : `/app/docs/${doc.id}`;
 }
-/** Decks open in their own window; everything else navigates in place. */
-function docLinkTarget(doc: { documentType?: string | null }) {
-  return doc.documentType === "DECK"
-    ? { target: "_blank" as const, rel: "noopener" }
-    : {};
+
+/**
+ * One link for any document row/card. IN THE SAME TAB — decks used to open a new
+ * window, which is disorienting and left Deck's back button with no history to
+ * return to.
+ *
+ * A deck needs a plain <a>, not next/link: `/deck` is a static shell reached
+ * through a rewrite, not an App Router route, so <Link> would attempt a
+ * client-side navigation, fail to find an RSC payload, and only then fall back
+ * to a hard navigation. The anchor just goes.
+ */
+function DocLink({
+  doc,
+  className,
+  children,
+  ...rest
+}: {
+  doc: { id: string; documentType?: string | null };
+  className?: string;
+  children: React.ReactNode;
+} & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, "href">) {
+  const href = docHref(doc);
+  if (doc.documentType === "DECK") {
+    return (
+      <a href={href} className={className} {...rest}>
+        {children}
+      </a>
+    );
+  }
+  return (
+    <Link href={href} className={className} {...rest}>
+      {children}
+    </Link>
+  );
 }
 import { StatusBadge } from "@/components/status-badge";
 import { TemplateGallery } from "@/components/proposals/template-gallery";
@@ -337,11 +365,12 @@ export function ProposalList() {
       deckTemplate: null,
     });
 
-    // A deck is edited in the Deck window, not the Docs editor — open it there
-    // and leave the library where it was, so closing the tab lands you back on
-    // the list rather than on an editor that cannot render slides.
+    // A deck is edited in Deck, not the Docs editor. Same tab (a new window is
+    // disorienting and leaves Deck's back button with nowhere to return to), and
+    // a hard navigation because /deck is a static shell behind a rewrite rather
+    // than an App Router route — router.push would try a client nav first.
     if (isDeck) {
-      window.open(deckHref(created.proposal.id), "_blank", "noopener");
+      window.location.assign(deckHref(created.proposal.id));
       return;
     }
     router.push(`/app/docs/${created.proposal.id}`);
@@ -710,12 +739,12 @@ export function ProposalList() {
                               {proposal.documentType === "CO" ? "CO" : proposal.documentType}
                             </span>
                           ) : null}
-                          <Link
-                            href={docHref(proposal)} {...docLinkTarget(proposal)}
+                          <DocLink
+                            doc={proposal}
                             className="font-medium text-[var(--text-1)] transition hover:text-[var(--brand-700)]"
                           >
                             {proposal.title}
-                          </Link>
+                          </DocLink>
                           {proposal.documentNumber ? (
                             <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
                               {proposal.documentNumber}
@@ -743,8 +772,8 @@ export function ProposalList() {
                       <td className="text-sm text-[var(--text-3)]">{formatUpdatedAt(proposal.updatedAt)}</td>
                       <td>
                         <div className="flex items-center justify-end gap-1">
-                          <Link
-                            href={docHref(proposal)} {...docLinkTarget(proposal)}
+                          <DocLink
+                            doc={proposal}
                             className={buttonStyles({
                               variant: "utility",
                               size: "icon-md",
@@ -754,7 +783,7 @@ export function ProposalList() {
                             title="Edit"
                           >
                             <PencilSquareIcon className="h-4 w-4" />
-                          </Link>
+                          </DocLink>
                           {canManageDocs ? (
                             <>
                               <Button
@@ -1221,12 +1250,12 @@ function GroupedList({
                       className="app-checkbox"
                       aria-label={`Select ${doc.title}`}
                     />
-                    <Link
-                      href={docHref(doc)} {...docLinkTarget(doc)}
+                    <DocLink
+                      doc={doc}
                       className="flex-1 truncate font-medium text-[var(--text-1)] transition hover:text-[var(--brand-700)]"
                     >
                       {doc.title}
-                    </Link>
+                    </DocLink>
                     {doc.documentNumber ? (
                       <span className="hidden font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)] sm:inline">
                         {doc.documentNumber}
@@ -1580,7 +1609,7 @@ function DocCard({
     <article className="group/card flex flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white transition hover:border-[var(--border-1)] hover:shadow-[var(--shadow-sm)]">
       {/* Generated cover — type eyebrow + serif title + client, clickable to open the editor. */}
       <div className="relative">
-        <Link href={docHref(proposal)} {...docLinkTarget(proposal)} className="block">
+        <DocLink doc={proposal} className="block">
           <div
             className="flex min-h-[136px] flex-col justify-between p-4"
             style={{ backgroundImage: `linear-gradient(135deg, ${palette.from}, ${palette.to})` }}
@@ -1607,7 +1636,7 @@ function DocCard({
               </p>
             </div>
           </div>
-        </Link>
+        </DocLink>
         <button
           type="button"
           onClick={() => onToggleFavorite(proposal.id, !fav)}
@@ -1633,14 +1662,14 @@ function DocCard({
         <div className="flex items-center justify-between gap-2">
         <StatusBadge status={proposal.status} />
         <div className="flex items-center gap-0.5 opacity-0 transition group-hover/card:opacity-100 focus-within:opacity-100">
-          <Link
-            href={docHref(proposal)} {...docLinkTarget(proposal)}
+          <DocLink
+            doc={proposal}
             className={buttonStyles({ variant: "utility", size: "icon-sm", className: "text-[var(--text-3)]" })}
             aria-label="Edit"
             title="Edit"
           >
             <PencilSquareIcon className="h-4 w-4" />
-          </Link>
+          </DocLink>
           {canManageDocs ? (
             scope === "archived" ? (
               <>
