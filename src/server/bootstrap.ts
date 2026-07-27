@@ -39,6 +39,7 @@ import { seedMasterPromptStarter } from "@/server/master-prompt-starter";
 import { seedHandbookArticles } from "@/server/handbook-catalog";
 import { seedGolfClubs } from "@/server/golf-clubs";
 import { isSeedAccountEmail } from "@/server/seed-accounts";
+import { resolveGeoForIp } from "@/server/ip-geo";
 
 // Adds columns/tables introduced by the Portal schema extension that
 // prisma db push may not apply reliably through a pooler connection.
@@ -469,6 +470,7 @@ async function _ensureBaseRecords() {
 
   await backfillUiDoneLabel(workspace.id);
   await backfillAvatarBlobs();
+  await backfillNotificationGeo();
 
   return {
     user,
@@ -494,6 +496,36 @@ async function backfillAvatarBlobs() {
        WHERE "avatarUrl" LIKE 'data:%'
          AND "avatarImage" IS NULL`,
     );
+  } catch {
+    // Non-critical — never block boot on a backfill.
+  }
+}
+
+// One-time, idempotent backfill (July 2026): existing doc-open notifications
+// have a raw IP baked into their stored `body` ("Opened from 154.192.49.228")
+// because geo broke when we moved off Vercel (see src/server/ip-geo.ts). New
+// notifications now carry a location, but historical rows keep the IP forever
+// unless rewritten. Resolve each DISTINCT ip once (the resolver caches, so a
+// repeated visitor costs one lookup) and rewrite to "Opened from Lahore, PK";
+// if geo can't be resolved, drop the line rather than leave an IP on display.
+// Bounded + fail-soft so it can never slow or break boot; after it runs the
+// pattern no longer matches, so later boots are a single cheap query.
+async function backfillNotificationGeo() {
+  try {
+    const rows = await prisma.$queryRawUnsafe<Array<{ body: string }>>(
+      `SELECT DISTINCT "body" FROM "Notification"
+        WHERE "body" ~ '^Opened from [0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}$'
+        LIMIT 50`,
+    );
+    for (const row of rows) {
+      const ip = row.body.replace("Opened from ", "").trim();
+      const geo = await resolveGeoForIp(ip);
+      const where = geo.city && geo.country ? `${geo.city}, ${geo.country}` : geo.country ?? null;
+      await prisma.notification.updateMany({
+        where: { body: row.body },
+        data: { body: where ? `Opened from ${where}` : null },
+      });
+    }
   } catch {
     // Non-critical — never block boot on a backfill.
   }
