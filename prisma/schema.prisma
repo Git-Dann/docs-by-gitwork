@@ -349,6 +349,7 @@ model Workspace {
   expenseCategories           Json? // Optional override of the hardcoded category list
   curatorConfig               Json? // Curator settings: { enabled, staleAfterDays, archiveAfterDays, consolidate, intervalDays }
   foremanConfig               Json? // Foreman settings: { enabled, dueSoonDays, criticalOverdue, staleDoingDays, consolidate }
+  dispatchConfig              Json? // Dispatch settings: { enabled, recentDays, maxEvidenceItems, perChannelPerHour, allowExternalChannels }
   pulsePricingConfig          Json? // PulsePricingConfig — { fxFromUsd, dayRateOverrideGbp?, seniority? } for Pulse engagement pricing
   costingConfig               Json? // SavedCostingConfig — Studio Costing tool: advanced levers + editable per-dev cost rates (seeded from the Rate Card)
   /// Master switch for the public Pulse embed (/embed/pulse + its API routes). Off = all
@@ -454,6 +455,7 @@ model Workspace {
   devSignalNotices            DevSignalNotice[]
   backgroundJobs              BackgroundJob[]
   foremanRuns                 ForemanRun[]
+  dispatchExchanges           DispatchExchange[]
   coldArchives                ColdArchive[]
   handbookArticles            HandbookArticle[]
   golfClubs                   GolfClub[]
@@ -3160,6 +3162,51 @@ model ForemanRun {
   error       String?   @db.Text
 
   @@index([workspaceId, startedAt])
+}
+
+// Dispatch — the Slack-resident coordinator. One row per question asked of the bot, written
+// BEFORE the answer is composed so `slackEventId` doubles as the Slack retry-dedupe key (Slack
+// re-delivers an event up to 3× when the ack is slow; the unique index makes the second delivery
+// a no-op). The row is then patched with the answer, so it is also the audit trail: what was
+// asked, what Dispatch could actually evidence, what it explicitly could NOT confirm, and what it
+// cost. `status` distinguishes a real answer from the honest refusals (no subject matched, rate
+// limited, AI unavailable) — those are outcomes worth seeing in the panel, not silent failures.
+model DispatchExchange {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Slack's per-delivery event id (`Ev…`). Unique → the retry-dedupe guard.
+  slackEventId String    @unique
+  channelId    String
+  /// Parent message ts — Dispatch always answers in-thread, never in the channel body.
+  threadTs     String?
+  /// Slack user id of the asker, and the Foundry user it resolved to (null when unlinked).
+  askerSlackId String?
+  askerUserId  String?
+  /// The question with the bot mention stripped.
+  question     String    @db.Text
+  /// What the question was judged to be about: "client" | "person" | "workspace" | "none".
+  subjectKind  String?
+  subjectId    String?
+  subjectLabel String?
+  /// "answered" | "no_subject" | "rate_limited" | "no_ai" | "error"
+  status       String    @default("pending")
+  /// The composed answer text posted to Slack.
+  answer       String?   @db.Text
+  /// Claims Dispatch deliberately would NOT make — the anti-false-flag record.
+  unverified   Json? // string[]
+  /// Compact record of the evidence pack the answer was grounded in (counts + ids, not prose).
+  evidence     Json?
+  aiModel      String?
+  /// True when the AI-response cache served this answer (£0).
+  cached       Boolean   @default(false)
+  latencyMs    Int?
+  error        String?   @db.Text
+  createdAt    DateTime  @default(now())
+  answeredAt   DateTime?
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, channelId, createdAt])
 }
 
 // Per-user notification preferences. One row per user.

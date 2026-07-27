@@ -8,9 +8,15 @@
 // Fire-and-forget, exactly like notifyDocumentEvent in slack-notify.ts: a failure here must
 // never bubble into the originating request (createTask, approveLeaveRequest, …).
 //
-// Channels: only `inApp` is wired today. email/push/slack routing through the dispatcher is
-// deferred — those branches are intentionally absent. Existing direct sends (Pulse iOS push,
-// Backstage approver emails) stay where they are, so nothing double-sends.
+// Channels: `inApp`, `push` and `slack` are wired; `email` is still deferred.
+//
+// `slack` is deliberately NOT per-recipient. The other channels deliver to a person, so a
+// person's preference governs them. A Slack channel post is a workspace-level broadcast — it
+// goes to `Workspace.channelRoutes[event]` exactly once per dispatch, gated on the event's
+// DEFAULT routing including "slack". Routing it per-recipient would post N copies of one digest
+// to one channel, and would let an individual's preference change what a shared channel sees.
+// Existing direct sends (Pulse iOS push, Backstage approver emails, the standup cards) stay
+// where they are, so nothing double-sends.
 
 import type { Notification, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -23,6 +29,7 @@ import {
 } from "@/server/notification-events";
 import type { NotificationDTO } from "@/types/notifications";
 import { isWebPushEnabled, sendWebPushToUser } from "@/server/web-push";
+import { getSlackBotToken, postMessage } from "@/server/slack/client";
 
 // ─── Dispatcher ──────────────────────────────────────────────────────────────
 
@@ -68,6 +75,10 @@ const GROUP_WINDOW_MS = 6 * 60 * 60 * 1000;
 export function dispatchNotification(input: DispatchInput): void {
   const job = (async () => {
     try {
+      // Workspace-level channel post first, and independent of the recipient set: a digest
+      // routed to a channel should still land there even if every individual has muted it.
+      await postToSlackChannel(input).catch(() => undefined);
+
       const recipients = await resolveRecipients(input);
       if (recipients.length === 0) return;
       const pushLive = isWebPushEnabled();
@@ -93,6 +104,42 @@ export function dispatchNotification(input: DispatchInput): void {
     }
   })();
   void job;
+}
+
+/**
+ * One Slack post per dispatch, to the channel mapped for this event in
+ * `Workspace.channelRoutes` (e.g. `{"foreman.digest": "C123"}`).
+ *
+ * Gated on the event's DEFAULT routing containing "slack" — an event is channel-worthy by
+ * design, not by an individual's preference. No route configured → silent no-op, so adding
+ * "slack" to an event's routing is safe before anyone has picked a channel.
+ */
+async function postToSlackChannel(input: DispatchInput): Promise<void> {
+  if (!(DEFAULT_EVENT_ROUTING[input.event] ?? []).includes("slack")) return;
+
+  const ws = await prisma.workspace.findUnique({
+    where: { id: input.workspaceId },
+    select: { channelRoutes: true, slackBotToken: true, slackBotTokenEncrypted: true },
+  });
+  if (!ws) return;
+
+  const routes = ws.channelRoutes;
+  if (!routes || typeof routes !== "object" || Array.isArray(routes)) return;
+  const channel = (routes as Record<string, unknown>)[input.event];
+  if (typeof channel !== "string" || !channel.trim()) return;
+
+  const token = getSlackBotToken(ws);
+  if (!token) return;
+
+  const lines = [`*${input.title}*`];
+  if (input.body) lines.push(input.body);
+  if (input.actionUrl) {
+    const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "https://foundry.gitwork.co.uk";
+    lines.push(`<${base}${input.actionUrl}|Open in Foundry>`);
+  }
+
+  const res = await postMessage(token, { channel: channel.trim(), text: lines.join("\n") });
+  if (!res.ok) console.warn("[notifications] slack post failed", { event: input.event, error: res.error });
 }
 
 async function resolveRecipients(input: DispatchInput): Promise<string[]> {
