@@ -22,23 +22,31 @@ interface AuditLogEntry {
 interface AuditLogResponse {
   entries: AuditLogEntry[];
   nextCursor: string | null;
+  /** Distinct actions present in the log (first page only). */
+  actions?: Array<{ action: string; count: number }>;
 }
 
-const ACTION_FILTERS: { id: string; label: string }[] = [
-  { id: "", label: "All actions" },
-  { id: "settings.ai_provider.changed", label: "AI provider changed" },
-  { id: "settings.ai_key.rotated", label: "AI key rotated" },
-  { id: "settings.external_key.rotated", label: "External key rotated" },
-  { id: "team.member.invited", label: "Member invited" },
-  { id: "team.member.role_changed", label: "Member role changed" },
-  { id: "team.member.removed", label: "Member removed" },
-  { id: "integration.google.connected", label: "Google connected" },
-  { id: "integration.slack.connected", label: "Slack connected" },
-];
+/** Nicer wording for the few ids that don't read well when humanised. */
+const ACTION_LABEL_OVERRIDES: Record<string, string> = {
+  "settings.ai_provider.changed": "AI provider changed",
+  "settings.ai_key.rotated": "AI key rotated",
+  "settings.external_key.rotated": "External key rotated",
+  "integration.mcp.connected": "MCP connected",
+  "integration.mcp.revoked": "MCP revoked",
+  "integration.mcp.enabled": "MCP enabled",
+  "integration.mcp.disabled": "MCP disabled",
+};
 
+/**
+ * Turn any action id into readable text — "foreman.run.completed" →
+ * "Foreman run completed". Previously unknown ids fell through as the raw id,
+ * which is why the feed was full of shouting FOREMAN.RUN.COMPLETED chips.
+ */
 function actionLabel(action: string): string {
-  const found = ACTION_FILTERS.find((f) => f.id === action);
-  return found?.label ?? action;
+  const override = ACTION_LABEL_OVERRIDES[action];
+  if (override) return override;
+  const words = action.replace(/[._]/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 function actionColor(action: string): string {
@@ -52,6 +60,11 @@ function actionColor(action: string): string {
 
 export function AuditLogSection() {
   const [filter, setFilter] = useState("");
+  // Pages already loaded via "Load more" — the log was previously capped at the
+  // first 50 rows with no way to reach older entries.
+  const [extraPages, setExtraPages] = useState<AuditLogEntry[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const query = useQuery({
     queryKey: ["audit-log", filter],
@@ -59,11 +72,30 @@ export function AuditLogSection() {
       const url = filter
         ? `/api/audit-log?action=${encodeURIComponent(filter)}`
         : "/api/audit-log";
-      return apiFetch<AuditLogResponse>(url);
+      const res = await apiFetch<AuditLogResponse>(url);
+      // A fresh first page resets any accumulated pages.
+      setExtraPages([]);
+      setCursor(res.nextCursor);
+      return res;
     },
   });
 
-  const entries = query.data?.entries ?? [];
+  const entries = [...(query.data?.entries ?? []), ...extraPages];
+  const actionOptions = query.data?.actions ?? [];
+
+  async function loadMore() {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const params = new URLSearchParams({ cursor });
+      if (filter) params.set("action", filter);
+      const res = await apiFetch<AuditLogResponse>(`/api/audit-log?${params.toString()}`);
+      setExtraPages((current) => [...current, ...res.entries]);
+      setCursor(res.nextCursor);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   return (
     <div className="proposal-form-theme space-y-4">
@@ -73,14 +105,21 @@ export function AuditLogSection() {
         bodyClassName="p-0"
         right={
           <div className="flex items-center gap-2">
+            {/* h-7 + min-h-0: the widget header is a fixed 36px box inside a
+                card with overflow:hidden, so a default 36px field exactly fills
+                it and its 4px focus ring gets clipped at the top. 28px leaves
+                room for the ring. font-mono/11px matches the header's grammar
+                rather than dropping a 14px sans control into a mono strip. */}
             <select
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
-              className="app-select"
+              className="app-select-compact h-7 min-h-0 w-auto font-mono text-[11px]"
+              aria-label="Filter activity by action"
             >
-              {ACTION_FILTERS.map((f) => (
-                <option key={f.id || "all"} value={f.id}>
-                  {f.label}
+              <option value="">All actions</option>
+              {actionOptions.map((option) => (
+                <option key={option.action} value={option.action}>
+                  {actionLabel(option.action)} ({option.count})
                 </option>
               ))}
             </select>
@@ -161,6 +200,27 @@ export function AuditLogSection() {
             ))}
           </ol>
         )}
+
+        {entries.length > 0 ? (
+          <div className="flex items-center justify-between gap-3 border-t border-[var(--border-3)] px-6 py-3">
+            <span className="widget-data-label">
+              {entries.length} {entries.length === 1 ? "entry" : "entries"}
+            </span>
+            {cursor ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={loadMore}
+                loading={loadingMore}
+              >
+                Load more
+              </Button>
+            ) : (
+              <span className="text-xs text-[var(--text-4)]">End of log</span>
+            )}
+          </div>
+        ) : null}
       </SettingsCard>
     </div>
   );

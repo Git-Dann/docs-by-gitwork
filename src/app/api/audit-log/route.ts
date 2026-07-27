@@ -11,7 +11,7 @@ import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { listAuditLog } from "@/server/audit-log";
+import { listAuditLog, listAuditActions } from "@/server/audit-log";
 import { isAtLeast } from "@/types/auth";
 
 export const dynamic = "force-dynamic";
@@ -32,14 +32,14 @@ export async function GET(request: NextRequest) {
     const limitRaw = url.searchParams.get("limit");
     const limit = limitRaw ? Math.max(1, Math.min(200, Number.parseInt(limitRaw, 10))) : 50;
 
-    const result = await listAuditLog({
-      workspaceId: workspace.id,
-      action,
-      cursor,
-      limit,
-    });
+    // `actions` powers the filter dropdown — every action present in the log,
+    // not a hardcoded subset. Only needed for the first page.
+    const [result, actions] = await Promise.all([
+      listAuditLog({ workspaceId: workspace.id, action, cursor, limit }),
+      cursor ? Promise.resolve(undefined) : listAuditActions(workspace.id),
+    ]);
 
-    return apiOk(result);
+    return apiOk({ ...result, ...(actions ? { actions } : {}) });
   } catch (error) {
     return fromError(error);
   }

@@ -147,3 +147,22 @@ export async function listAuditLog(params: ListAuditLogParams): Promise<{
     nextCursor: hasMore ? trimmed[trimmed.length - 1].id : null,
   };
 }
+
+/**
+ * Distinct actions actually present in this workspace's log, with counts,
+ * most-frequent first. Drives the activity filter so it offers every event
+ * that exists rather than a hand-maintained subset (which silently omitted
+ * most of the AuditAction union — e.g. every foreman.* and curator.* event).
+ */
+export async function listAuditActions(
+  workspaceId: string,
+): Promise<Array<{ action: string; count: number }>> {
+  const rows = await prisma.auditLog.groupBy({
+    by: ["action"],
+    where: { workspaceId },
+    _count: { action: true },
+  });
+  return rows
+    .map((row) => ({ action: row.action, count: row._count.action }))
+    .sort((a, b) => b.count - a.count || a.action.localeCompare(b.action));
+}
