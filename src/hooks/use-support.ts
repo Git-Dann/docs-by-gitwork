@@ -170,6 +170,41 @@ export function useTriageConversation(clientId: string | null) {
   });
 }
 
+/**
+ * Clear a conversation's `unread` flag — optimistically, so the row de-bolds on the
+ * click that opened it rather than a request later.
+ *
+ * This exists because Care had no path to clear `unread` at all: the cockpit renders
+ * the flag (bold subject) and the client list badges count it, but nothing ever wrote
+ * `false`, so the counters only ever grew for anyone working in Care. The legacy
+ * dashboard has always done this with a plain `useUpdateConversation` call; a
+ * dedicated optimistic hook is used here instead because the cockpit holds every
+ * conversation for a client under one cache key and re-bolding on refetch is visible.
+ *
+ * No saved view predicates on `unread`, so marking read never reorders or removes the
+ * row the user just clicked.
+ */
+export function useMarkConversationRead(clientId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (convId: string) => updateSupportConversation(clientId as string, convId, { unread: false }),
+    onMutate: async (convId) => {
+      await qc.cancelQueries({ queryKey: ["support", "conversations", clientId] });
+      const prev = patchConversationInCache(qc, clientId, convId, { unread: false });
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["support", "conversations", clientId], ctx.prev);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+      // The client-list badge is derived from a server-side unread count, so it needs
+      // its own invalidation or Care's own list stays stale until a hard reload.
+      void qc.invalidateQueries({ queryKey: ["support", "clients"] });
+    },
+  });
+}
+
 export function useSnoozeConversation(clientId: string | null) {
   const qc = useQueryClient();
   return useMutation({

@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import { authConfig, SESSION_VERSION } from "@/auth.config";
 import { verifyMobileToken, type MobileTokenClaims } from "@/server/auth/mobile-jwt";
 import { isAtLeast } from "@/types/auth";
+// The /app module gate lives in its own module so it can be unit-tested — importing
+// this middleware would pull NextAuth + the edge runtime into a Node test.
+import { hasModuleAccess } from "@/server/auth/module-gate";
 
 const { auth } = NextAuth(authConfig);
 
@@ -145,40 +148,6 @@ function corsHeadersFor(pathname: string): Record<string, string> {
   return isPublicApiPath(pathname) ? CORS_HEADERS : {};
 }
 
-// Maps /app/* path prefixes to the module permission that gates them. Listed as
-// pairs (not a module→path map) so a module can expose both its canonical route
-// and its legacy alias — e.g. clients lives at /app/portal today and /app/clients
-// historically; both resolve to the same `clients` permission.
-const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
-  { prefix: "/app/pulse", module: "pulse" },
-  // DevSignal — MUST precede the /app/code(clear) entries so it wins the
-  // first-match loop. Admin-only feature perm (default-off), not `codeclear`.
-  { prefix: "/app/codeclear/devsignal", module: "devsignal" },
-  // NOTE: matching is a bare `startsWith`, so "/app/codeclear" is already caught by
-  // "/app/code" below — a separate legacy entry for it would be dead code, and one was
-  // removed from here. If DevSignal ever moves to /app/code/devsignal, RENAME the entry
-  // above in place; appending it after "/app/code" would let that prefix match first and
-  // silently regate admin-only DevSignal onto `codeclear`, which STAFF auto-inherits.
-  { prefix: "/app/code", module: "codeclear" }, // canonical (also catches /app/codeclear)
-  { prefix: "/app/docs", module: "proposals" }, // canonical
-  { prefix: "/app/proposals", module: "proposals" }, // legacy
-  { prefix: "/app/portal", module: "clients" }, // canonical
-  { prefix: "/app/clients", module: "clients" }, // legacy (redirect stub — still needs gating, see below)
-  { prefix: "/app/care", module: "support" }, // canonical
-  { prefix: "/app/support", module: "support" }, // legacy
-  { prefix: "/app/study", module: "study" }, // Study is an optional Pulse tool — admin-only feature perm (default-off)
-  { prefix: "/app/backstage", module: "backstage" },
-  { prefix: "/app/studio", module: "studio" }, // Admin/Super Admin only (studio is a default-off feature perm)
-  // These three were reachable by ANY signed-in member — including a developer scoped
-  // to neither module — because hasModuleAccess() ends in an unconditional `return true`,
-  // so an /app path with no prefix match here is ungated by default. They are all
-  // nav-hidden or single-linked, which is why it went unnoticed.
-  { prefix: "/app/proof", module: "proposals" }, // document sign-off — nav-hidden (§11)
-  { prefix: "/app/templates", module: "proposals" }, // document templates
-  { prefix: "/app/projects", module: "clients" }, // Foundry project detail
-  // Starters is NOT here — it's Super-Admin-ONLY, enforced by a dedicated role check below.
-];
-
 function configuredApiKey() {
   return process.env.API_KEY ?? process.env.NEXT_PUBLIC_API_KEY ?? null;
 }
@@ -208,17 +177,6 @@ function isOgAssetPath(pathname: string): boolean {
 /** The Deck shell (public/deck/index.html, reached at /deck). */
 function isDeckPath(pathname: string): boolean {
   return pathname === "/deck" || pathname.startsWith("/deck/");
-}
-
-function hasModuleAccess(pathname: string, permissions: string[]): boolean {
-  for (const { prefix, module } of MODULE_PATHS) {
-    if (pathname.startsWith(prefix)) {
-      return permissions.includes(module);
-    }
-  }
-  // /app, /app/settings, /app/team, /app/account-settings are always accessible
-  // to any logged-in member.
-  return true;
 }
 
 export default auth(async (req) => {

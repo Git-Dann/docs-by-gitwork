@@ -28,6 +28,23 @@ headers exceed the buffer, nginx returns **`502 Bad Gateway`** with
 intermittent (only trips on the larger authenticated responses) and easy to
 misread as an app crash. Diagnosed + fixed 2026-07-08.
 
+## `server_tokens off` + gzip (added 2026-07-27)
+
+Two things CLAUDE.md described as "an nginx setting on the VPS, outside this
+repo" — true until this config was checked in, and no longer.
+
+- **`server_tokens off;`** drops the version from `Server: nginx/1.24.0`. The
+  matching app-side change (`poweredByHeader: false`, dropping
+  `X-Powered-By: Next.js`) already shipped; this is the other half.
+- **`gzip on;`** — the win is Deck: `public/deck/index.html` is a single
+  self-contained ~504KB shell fetched on every open, and it compresses to
+  ~390KB. `text/html` is gzipped by nginx unconditionally and must **not** be
+  listed in `gzip_types` (a duplicate MIME entry makes `nginx -t` warn).
+  Images are excluded on purpose — already-compressed formats gain nothing.
+
+**Neither is live until this file is copied up and nginx reloaded** (below).
+Editing it here changes nothing on the VPS by itself.
+
 ## Apply / update on the VPS
 
 ```bash

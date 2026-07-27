@@ -422,8 +422,33 @@ export function assertAtLeastAdmin(user: EffectiveUser | null): void {
   }
 }
 
-export function assertSuperAdmin(user: EffectiveUser | null): void {
-  if (user && !isSuperAdmin(user.role)) {
+/**
+ * Strict Super Admin gate. Takes a NON-NULL user, so the caller has to have resolved a
+ * real identity first — `requireAuthedUser(req)` is the way (it throws on an anonymous
+ * caller, and its return type is non-null, so this composes without a cast).
+ *
+ * The non-null parameter type is the point. This used to accept `EffectiveUser | null`
+ * and pass a null caller straight through, which meant "Super Admin only" actually read
+ * "Super Admin, **or anyone holding the workspace API_KEY**" — true by design for server
+ * integrations, but invisible at the call site and easy to inherit by copy-paste. Callers
+ * that genuinely want the lenient behaviour now say so by name:
+ * `assertSuperAdminOrApiKey`. Passing a possibly-null user here is a compile error.
+ */
+export function assertSuperAdmin(user: EffectiveUser): void {
+  if (!isSuperAdmin(user.role)) {
     throw new ForbiddenError("Super Admin access required.");
   }
+}
+
+/**
+ * Lenient Super Admin gate — same convention as assertCan / assertAtLeastAdmin: a
+ * signed-in user below the bar is rejected, but a trusted API_KEY-only caller (no
+ * per-user identity → null) passes.
+ *
+ * Use this ONLY where an unattended server integration legitimately needs the route:
+ * today that is the `/api/dev/seed-*` demo-seed one-shots. For anything a person reaches
+ * through the UI, resolve the user with `requireAuthedUser` and use `assertSuperAdmin`.
+ */
+export function assertSuperAdminOrApiKey(user: EffectiveUser | null): void {
+  if (user) assertSuperAdmin(user);
 }
