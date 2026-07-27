@@ -3,6 +3,11 @@
 **For: Syed & Harry.** Welcome. This is the short version — everything here is enforced by
 tooling, so following it is faster than not.
 
+> **This is a living document.** If you change the workflow, a gate, a canonical route, the module
+> map, or you fix (or learn) one of the traps in §4 — update this file in the same PR. Keep it
+> short: it earns its place by being readable in one sitting, so it is deliberately *not* a summary
+> of `CLAUDE.md`. See the rule at the top of `CLAUDE.md`.
+
 Foundry is Gitwork's agency platform: a public marketing page at `/` and the internal app at
 `/app` (proposals, clients, dev hiring, AI project validation, support). Next.js 15 · React 19 ·
 TypeScript · Tailwind v4 · Prisma · Postgres.
@@ -60,10 +65,16 @@ npm run verify                 # ← do NOT skip this; nothing else will catch y
 git commit -m "fix: …" && git push
 ```
 
-⚠️ **If you commit directly to `main`, `npm run verify` is the only gate there is.** CI does run on
-a push to `main`, but it runs *in parallel* with the deploy — so a failing check does not stop your
-change reaching production, it just tells you afterwards. On the PR path CI reports before you
-merge, which is why anything you're not certain about should go through a PR.
+**A `pre-push` hook runs `verify` for you when — and only when — you push to `main`.** Pushing a
+feature branch is unaffected and stays instant, because CI reports on the PR before you merge. If
+the gate fails, the push is refused.
+
+⚠️ Why that hook exists: on a push to `main`, CI runs *in parallel* with the deploy, so a failing
+check does **not** stop your change reaching production — it only tells you afterwards. The hook is
+the only thing that reports *before*. `git push --no-verify` bypasses it; on `main`, don't, unless
+you've just run `verify` yourself.
+
+Run `npm install` on a fresh clone or the hook can't run and will refuse the push.
 
 Report what `verify` actually printed. Never call something verified that you didn't run.
 

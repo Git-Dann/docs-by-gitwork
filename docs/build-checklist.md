@@ -18,6 +18,12 @@ That runs, in order: `prisma generate` → `tsc --noEmit` → `eslint` → `vite
 It needs no database, no secrets and no running server, so it works on a fresh clone
 (`npm install` first).
 
+A **`pre-push` hook** (`.husky/pre-push`) runs it automatically when you push to `main`, and refuses
+the push if it fails. It deliberately does **not** fire on a feature-branch push: there, CI reports
+on the PR *before* you merge, so a local gate would only slow you down. On `main` the deploy runs
+*in parallel* with CI, so the hook is the only check that reports before production gets the change.
+`git push --no-verify` bypasses it — on `main`, don't, unless you've just run `verify` yourself.
+
 **CI runs the same chain plus a real `next build`** on every PR via
 `.github/workflows/checks.yml`. If you're changing anything structural (a server/client boundary,
 a route, `generateStaticParams`), run the build locally too — `tsc` won't catch those:
