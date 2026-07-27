@@ -7,6 +7,7 @@ import {
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Avatar } from "@/components/ui/avatar";
 import {
   useBulkUpdateCodeClearCandidates,
   useCodeClearCandidates,
@@ -686,22 +687,9 @@ function DevCard({
             the name as a small label rather than in a separate strip so
             the card stays compact now that calibre/tier are gone. */}
         <div className="flex items-center gap-3">
-          {candidate.avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={candidate.avatarUrl}
-              alt=""
-              className="h-12 w-12 shrink-0 rounded-full object-cover"
-            />
-          ) : (
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--surface-brand)] text-sm font-semibold text-[var(--brand-700)]">
-              {candidate.name
-                .split(" ")
-                .map((part) => part[0])
-                .join("")
-                .slice(0, 2)}
-            </div>
-          )}
+          {/* Avatar falls back to initials when the stored URL is dead — never
+              the browser's broken-image glyph. */}
+          <Avatar src={candidate.avatarUrl} name={candidate.name} size={48} />
           <div className="min-w-0 flex-1">
             <p className="truncate font-semibold leading-snug text-[var(--text-1)]">
               {candidate.name}

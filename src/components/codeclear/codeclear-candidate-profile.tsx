@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Avatar } from "@/components/ui/avatar";
 import {
   useAddCodeClearCandidateNote,
   useBulkUpdateCodeClearCandidates,
@@ -172,22 +173,8 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
         <div className="border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_100%)] px-6 py-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex min-w-0 flex-1 items-start gap-4">
-              {candidate.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={candidate.avatarUrl}
-                  alt={candidate.name}
-                  className="h-16 w-16 shrink-0 rounded-full object-cover"
-                />
-              ) : (
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[var(--surface-brand)] text-xl font-semibold text-[var(--brand-700)]">
-                  {candidate.name
-                    .split(" ")
-                    .map((part) => part[0])
-                    .join("")
-                    .slice(0, 2)}
-                </div>
-              )}
+              {/* Falls back to initials if the stored avatar URL is dead. */}
+              <Avatar src={candidate.avatarUrl} name={candidate.name} size={64} />
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="truncate font-display text-[32px] font-normal leading-[1.1] tracking-[-0.02em] text-[var(--text-1)]">

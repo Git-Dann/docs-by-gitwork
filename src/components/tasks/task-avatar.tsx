@@ -1,16 +1,6 @@
 import { cn } from "@/lib/format";
+import { Avatar } from "@/components/ui/avatar";
 import type { TaskUserRef } from "@/types/tasks";
-
-function initials(name: string): string {
-  return (
-    name
-      .split(" ")
-      .map((w) => w[0] ?? "")
-      .slice(0, 2)
-      .join("")
-      .toUpperCase() || "?"
-  );
-}
 
 /** Small assignee avatar — uploaded image if present, else initials. */
 export function TaskAvatar({
@@ -36,30 +26,8 @@ export function TaskAvatar({
       </span>
     );
   }
-  if (user.avatarUrl) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={user.avatarUrl}
-        alt={user.name}
-        title={user.name}
-        className={cn("shrink-0 rounded-full object-cover", className)}
-        style={{ width: size, height: size }}
-      />
-    );
-  }
-  return (
-    <span
-      title={user.name}
-      className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-full bg-[var(--surface-brand)] font-semibold text-[var(--brand-700)]",
-        className,
-      )}
-      style={{ width: size, height: size, fontSize: size * 0.4 }}
-    >
-      {initials(user.name)}
-    </span>
-  );
+  // Shared primitive: falls back to initials if the image fails to load.
+  return <Avatar src={user.avatarUrl} name={user.name} size={size} className={className} />;
 }
 
 /** Overlapping avatars for multi-assignee, with a +N overflow chip. */
