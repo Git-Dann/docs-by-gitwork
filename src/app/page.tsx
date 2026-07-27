@@ -10,9 +10,9 @@ import { redirect } from "next/navigation";
 // /portal/login instead: real landmarks, Organization/WebSite JSON-LD, and the
 // company/VAT disclosure. See src/app/portal/login/page.tsx.
 //
-// The legal pages that would have lifted the score cap were removed before merge
-// pending legal review, so privacy_policy / terms_of_service stay FAIL and the score
-// remains capped at 65. See the note in components/public/portal-footer.tsx.
+// Legal lives on gitwork.co.uk. The login footer links /privacy and /terms as RELATIVE
+// paths that 308 out to it (next.config.ts) — the relative href is what satisfies the
+// score-cap checks, the redirect is what serves the content. See portal-footer.tsx.
 export default function RootPage() {
   redirect("/portal/login");
 }

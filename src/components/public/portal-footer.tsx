@@ -11,17 +11,18 @@ import Link from "next/link";
  * was removed this is the only public page stating the company and VAT numbers — don't
  * drop them.
  *
- * ⚠️ There are deliberately NO links to /privacy, /terms, /cookies or /security. Those
- * pages were written and then removed before merge because they had not had legal
- * review — publishing an unreviewed privacy policy in the company's name was judged the
- * wrong trade. The direct consequence is that `privacy_policy` and `terms_of_service`
- * stay FAIL, and those two hard-cap the Pulse score at 65 (`score-breakdown.ts`), so no
- * other scan work can lift the number past 65 until real legal pages exist.
+ * The legal links are RELATIVE (`/privacy`, `/terms`, …) but the pages do not live here
+ * — `next.config.ts` 308s each one to its gitwork.co.uk equivalent. One set of policies
+ * for the company, owned where the rest of the company's public content is owned. Foundry
+ * hosted its own copies briefly; they were removed pending legal review, and deferring
+ * beat both alternatives (publishing unreviewed text, or having none at all).
  *
- * If you reinstate them: the checks match a LITERAL `href="/privacy"` / `href="/terms"`
- * in this page's HTML, closing quote included — a trailing slash does not count — and
- * they must resolve, because `vibe_broken_links` samples internal links and fails at
- * more than two broken. The removed pages are recoverable from this branch's history.
+ * ⚠️ Keep them relative. `privacy_policy` and `terms_of_service` hard-cap the Pulse score
+ * at 65 (`score-breakdown.ts`) and they pass on a LITERAL `href="/privacy"` /
+ * `href="/terms"` in THIS page's HTML — closing quote included, so a trailing slash does
+ * not count, and an absolute `https://gitwork.co.uk/privacy` does not count either. The
+ * relative href is what satisfies the check; the redirect is what serves the content.
+ * Changing these to absolute URLs would silently re-cap the score at 65.
  *
  * Colours are explicit hex rather than design tokens on purpose: the login hard-locks
  * itself to the cream (`#EDE8E1`) via an inline style, but `data-theme` still follows
@@ -73,11 +74,22 @@ export function PortalFooter() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(STRUCTURED_DATA) }}
       />
 
-      <nav aria-label="Support" className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5">
+      <nav aria-label="Legal and support" className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5">
+        {/* Relative on purpose — see the note at the top of this file. These 308 out to
+            gitwork.co.uk via next.config.ts; do not turn them into absolute URLs. */}
+        <Link href="/privacy" className="text-[12.5px] text-[#7c766a] transition-colors hover:text-[#403D38]">
+          Privacy
+        </Link>
+        <Link href="/terms" className="text-[12.5px] text-[#7c766a] transition-colors hover:text-[#403D38]">
+          Terms
+        </Link>
+        <Link href="/cookies" className="text-[12.5px] text-[#7c766a] transition-colors hover:text-[#403D38]">
+          Cookies
+        </Link>
         {/* Staff sign-in. The client portal and the team sign-in are separate front
             doors, and someone from Gitwork landing here needs the other one. */}
         <Link href="/login" className="text-[12.5px] text-[#7c766a] transition-colors hover:text-[#403D38]">
-          Gitwork team sign in
+          Team sign in
         </Link>
         <a
           href="https://gitwork.co.uk"
