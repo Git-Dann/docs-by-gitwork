@@ -72,6 +72,20 @@ const nextConfig: NextConfig = {
       { source: "/deck", destination: "/deck/index.html" },
     ];
   },
+  async redirects() {
+    return [
+      // Agency marketing lives on gitwork.co.uk, which is what links HERE — these
+      // pages duplicated it. Permanent (308) rather than deleted outright so any
+      // inbound link or indexed result lands on the real marketing site instead of
+      // a 404, and passes its ranking signal across. Root, not a deep path: this
+      // repo can't verify gitwork.co.uk's own route names.
+      { source: "/products", destination: "https://gitwork.co.uk", permanent: true },
+      { source: "/products/:slug", destination: "https://gitwork.co.uk", permanent: true },
+      { source: "/pricing", destination: "https://gitwork.co.uk", permanent: true },
+      { source: "/company", destination: "https://gitwork.co.uk", permanent: true },
+      { source: "/customers", destination: "https://gitwork.co.uk", permanent: true },
+    ];
+  },
   async headers() {
     // Baseline security headers applied to every route EXCEPT /embed/* (the public
     // Pulse widget is intentionally frameable — handled separately below). The

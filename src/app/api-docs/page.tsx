@@ -3,7 +3,7 @@ export const metadata = {
   description: "REST API documentation for Foundry by Gitwork",
 };
 
-const BASE_URL = "https://foundry.gitwork.co";
+const BASE_URL = "https://foundry.gitwork.co.uk";
 
 interface Param {
   name: string;
