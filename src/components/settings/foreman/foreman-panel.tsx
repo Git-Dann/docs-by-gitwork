@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowPathIcon, PlayIcon, BeakerIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowPathIcon,
+  PlayIcon,
+  BeakerIcon,
+  SparklesIcon,
+  EyeSlashIcon,
+  NoSymbolIcon,
+  ArrowUturnLeftIcon,
+} from "@heroicons/react/24/outline";
 import { SettingsCard } from "@/components/settings/settings-card";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/format";
@@ -10,10 +18,12 @@ import {
   useForemanRuns,
   useRunForeman,
   useUpdateForemanConfig,
+  useForemanFindings,
+  useForemanFindingAction,
   type ForemanConfig,
-  type ForemanFinding,
   type ForemanRunSummary,
   type Severity,
+  type FindingActionKind,
 } from "@/hooks/use-foreman";
 
 function fmtDate(iso: string | null): string {
@@ -55,8 +65,6 @@ export function ForemanPanel() {
   }
 
   const latest = status.latestRun;
-  const findings = latest?.findings ?? [];
-  const risks = findings.filter((f) => f.category !== "blindspot");
 
   async function run(consolidate?: boolean, dryRun?: boolean) {
     try {
@@ -139,36 +147,8 @@ export function ForemanPanel() {
         </div>
       </SettingsCard>
 
-      {/* 02 — LATEST FINDINGS */}
-      <SettingsCard
-        number="02"
-        title="Latest findings"
-        right={<span className="widget-data-label text-[var(--text-3)]">{risks.length} risks</span>}
-      >
-        {latest?.narrative?.summary ? (
-          <p className="mb-3 text-sm leading-relaxed text-[var(--text-2)]">{latest.narrative.summary}</p>
-        ) : null}
-        {risks.length === 0 ? (
-          <p className="text-sm text-[var(--text-3)]">No overdue or at-risk work in the latest run.</p>
-        ) : (
-          <ul className="space-y-2">
-            {risks.map((f: ForemanFinding) => (
-              <li key={f.key} className="rounded-xl border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={cn("rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider", sevClass(f.severity))}
-                    style={{ fontFamily: "var(--font-mono)" }}
-                  >
-                    {f.severity === "critical" ? "Critical" : f.severity === "warn" ? "At risk" : "Watch"}
-                  </span>
-                  <span className="min-w-0 flex-1 text-sm font-medium text-[var(--text-1)]">{f.headline}</span>
-                </div>
-                <p className="mt-1.5 text-xs text-[var(--text-3)]">{f.recommendation}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </SettingsCard>
+      {/* 02 — FINDINGS MANAGER (dismiss / mute / bulk) */}
+      <FindingsManager narrative={latest?.narrative?.summary ?? null} />
 
       {/* 03 — SETTINGS */}
       <ConfigSection
@@ -269,6 +249,189 @@ function ConfigSection({
           </button>
         </div>
       </div>
+    </SettingsCard>
+  );
+}
+
+// ─── Findings manager — dismiss / mute / bulk, so the daily audit is manageable ───────────────
+function FindingsManager({ narrative }: { narrative: string | null }) {
+  const { data: view, isLoading } = useForemanFindings();
+  const act = useForemanFindingAction();
+  const { success, error } = useToast();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const findings = view?.findings ?? [];
+  const active = findings.filter((f) => f.state === "active");
+  const dismissed = findings.filter((f) => f.state === "dismissed");
+  const muted = findings.filter((f) => f.state === "muted");
+  const resolved = [...muted, ...dismissed];
+
+  const allSelected = active.length > 0 && active.every((f) => selected.has(f.key));
+  function toggle(key: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(active.map((f) => f.key)));
+  }
+
+  async function apply(keys: string[], action: FindingActionKind, verb: string) {
+    if (keys.length === 0) return;
+    try {
+      await act.mutateAsync({ findingKeys: keys, action });
+      success(`${verb} ${keys.length} finding${keys.length === 1 ? "" : "s"}`);
+      setSelected(new Set());
+    } catch (e) {
+      error("Couldn't update findings", e instanceof Error ? e.message : undefined);
+    }
+  }
+
+  const busy = act.isPending;
+  const right = view
+    ? `${active.length} active · ${muted.length} muted · ${dismissed.length} dismissed`
+    : "";
+
+  return (
+    <SettingsCard
+      number="02"
+      title="Findings"
+      right={<span className="widget-data-label text-[var(--text-3)]">{right}</span>}
+    >
+      {narrative ? <p className="mb-3 text-sm leading-relaxed text-[var(--text-2)]">{narrative}</p> : null}
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 py-4 text-sm text-[var(--text-3)]">
+          <ArrowPathIcon className="size-4 animate-spin" /> Loading findings…
+        </div>
+      ) : findings.length === 0 ? (
+        <p className="text-sm text-[var(--text-3)]">No findings in the latest run — delivery looks clear.</p>
+      ) : (
+        <div className="space-y-3">
+          {/* Batch bar */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
+            <label className="flex items-center gap-2 text-sm text-[var(--text-2)]">
+              <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={active.length === 0} className="size-4" />
+              Select all ({active.length})
+            </label>
+            {selected.size > 0 ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="widget-data-label text-[var(--text-3)]">{selected.size} selected</span>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => apply([...selected], "dismiss", "Dismissed")}
+                  className="flex items-center gap-1 rounded-lg border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] hover:bg-[var(--surface-2)] disabled:opacity-50"
+                >
+                  <EyeSlashIcon className="size-3.5" /> Dismiss
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => apply([...selected], "mute", "Muted")}
+                  className="flex items-center gap-1 rounded-lg border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] hover:bg-[var(--surface-2)] disabled:opacity-50"
+                >
+                  <NoSymbolIcon className="size-3.5" /> Mute
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelected(new Set())}
+                  className="rounded-lg px-2.5 py-1 text-xs font-medium text-[var(--text-3)] hover:text-[var(--text-1)]"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <span className="text-xs text-[var(--text-4)]">Dismiss hides until it worsens · Mute hides for good</span>
+            )}
+          </div>
+
+          {/* Active findings */}
+          {active.length === 0 ? (
+            <p className="text-sm text-[var(--text-3)]">Nothing active — everything is muted or dismissed below.</p>
+          ) : (
+            <ul className="space-y-2">
+              {active.map((f) => (
+                <li key={f.key} className="rounded-xl border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+                  <div className="flex items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(f.key)}
+                      onChange={() => toggle(f.key)}
+                      className="mt-0.5 size-4 shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={cn("rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider", sevClass(f.severity))}
+                          style={{ fontFamily: "var(--font-mono)" }}
+                        >
+                          {f.severity === "critical" ? "Critical" : f.severity === "warn" ? "At risk" : "Watch"}
+                        </span>
+                        <span className="min-w-0 flex-1 text-sm font-medium text-[var(--text-1)]">{f.headline}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-[var(--text-3)]">{f.recommendation}</p>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <button
+                        type="button"
+                        title="Dismiss until it worsens"
+                        disabled={busy}
+                        onClick={() => apply([f.key], "dismiss", "Dismissed")}
+                        className="rounded-lg border border-[var(--border-2)] p-1.5 text-[var(--text-3)] hover:bg-[var(--surface-2)] hover:text-[var(--text-1)] disabled:opacity-50"
+                      >
+                        <EyeSlashIcon className="size-4" />
+                      </button>
+                      <button
+                        type="button"
+                        title="Mute for good"
+                        disabled={busy}
+                        onClick={() => apply([f.key], "mute", "Muted")}
+                        className="rounded-lg border border-[var(--border-2)] p-1.5 text-[var(--text-3)] hover:bg-[var(--surface-2)] hover:text-[var(--text-1)] disabled:opacity-50"
+                      >
+                        <NoSymbolIcon className="size-4" />
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Muted & dismissed — restore any */}
+          {resolved.length > 0 ? (
+            <details className="group rounded-xl border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2.5">
+              <summary className="cursor-pointer list-none widget-data-label text-[var(--text-3)]">
+                Muted &amp; dismissed ({resolved.length}) — click to manage
+              </summary>
+              <ul className="mt-2 space-y-1.5">
+                {resolved.map((f) => (
+                  <li key={f.key} className="flex items-center gap-2 text-sm">
+                    <span
+                      className="shrink-0 rounded-[4px] bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-3)]"
+                      style={{ fontFamily: "var(--font-mono)" }}
+                    >
+                      {f.state}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[var(--text-2)]">{f.headline}</span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => apply([f.key], "clear", "Restored")}
+                      className="flex shrink-0 items-center gap-1 rounded-lg border border-[var(--border-2)] px-2 py-1 text-xs font-medium text-[var(--text-2)] hover:bg-[var(--surface-2)] disabled:opacity-50"
+                    >
+                      <ArrowUturnLeftIcon className="size-3.5" /> Restore
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </div>
+      )}
     </SettingsCard>
   );
 }

@@ -18,6 +18,7 @@ import type { WorkspaceAiFields } from "@/server/ai-provider";
 import { resolveForemanConfig } from "./config";
 import { gatherWorkspace, detectFindings, countDevelopers } from "./scan";
 import { runNarrative } from "./narrate";
+import { listFindingActions, visibleFindings } from "./actions";
 import {
   sortFindings,
   type ForemanFinding,
@@ -104,14 +105,20 @@ export async function runForeman(opts: RunForemanOptions = {}): Promise<ForemanR
       }),
     );
 
-    const riskFindings = findings.filter((f) => f.severity !== "info");
+    // Resolutions (dismiss/mute) suppress findings from the digest + narrative immediately — muted
+    // noise and known/dismissed items shouldn't ping admins or spend AI tokens. All findings are
+    // still persisted raw below, so Settings can show + un-resolve them and un-muting reveals them
+    // without a re-run.
+    const actionsByKey = await listFindingActions(ws.id);
+    const visible = visibleFindings(findings, actionsByKey);
+    const riskFindings = visible.filter((f) => f.severity !== "info");
 
-    // AI narrative — only when consolidation is on AND there are real risks to summarise.
+    // AI narrative — only when consolidation is on AND there are real (visible) risks to summarise.
     let narrative: ForemanNarrative | null = null;
     let aiModel: string | null = null;
     let aiSkipped = true;
     if (wantLLM && riskFindings.length > 0) {
-      const res = await runNarrative({ workspaceId: ws.id, aiFields: ws as WorkspaceAiFields, findings });
+      const res = await runNarrative({ workspaceId: ws.id, aiFields: ws as WorkspaceAiFields, findings: visible });
       narrative = res.narrative;
       aiModel = res.aiModel;
       aiSkipped = false;
