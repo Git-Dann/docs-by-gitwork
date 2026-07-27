@@ -251,8 +251,9 @@ ENCRYPTION_KEY=""      # 32-byte base64 secret
 The sidebar uses different labels from the URL routes — mapping below.
 
 > **Use the canonical route in anything new.** Four modules have both a canonical short path and a
-> legacy one, and `src/middleware.ts` (`MODULE_PATHS`) is the source of truth — it labels them
-> exactly that way. Both resolve, so the legacy paths are safe in old links, but new code, new nav
+> legacy one, and `MODULE_PATHS` in **`src/server/auth/module-gate.ts`** is the source of truth — it
+> labels them exactly that way (it moved out of `src/middleware.ts` in July 2026 so it could be
+> unit-tested; see §33). Both resolve, so the legacy paths are safe in old links, but new code, new nav
 > entries and new deep links use the canonical column.
 >
 > | Canonical | Legacy (still resolves) |
