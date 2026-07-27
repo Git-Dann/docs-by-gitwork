@@ -14,7 +14,7 @@ function ClientRow({ clientId, name }: { clientId: string; name: string }) {
 
   return (
     <Link
-      href={`/app/support`}
+      href={`/app/care`}
       className="flex items-center justify-between rounded-[6px] px-2 py-1.5 transition-colors hover:bg-[var(--surface-1)]"
     >
       <span className="truncate text-sm text-[#0F172A]">{name}</span>
@@ -59,7 +59,7 @@ export default function CareWidget({ index }: { size: WidgetSize; index: number 
         <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
           {`${num} // CARE`}
         </span>
-        <Link href="/app/support" className="text-xs text-[#475569] transition-colors hover:text-[#0F172A]">
+        <Link href="/app/care" className="text-xs text-[#475569] transition-colors hover:text-[#0F172A]">
           View all
         </Link>
       </div>
@@ -71,7 +71,7 @@ export default function CareWidget({ index }: { size: WidgetSize; index: number 
             <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
               <HeartIcon className="h-6 w-6 text-[#94A3B8]" />
               <p className="text-xs text-[#475569]">No support clients yet</p>
-              <Link href="/app/support" className="text-xs font-medium text-[#1D4ED8] hover:underline">
+              <Link href="/app/care" className="text-xs font-medium text-[#1D4ED8] hover:underline">
                 Add a client →
               </Link>
             </div>

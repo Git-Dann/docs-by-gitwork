@@ -1,19 +1,15 @@
-import { AppShell } from "@/components/app-shell";
-import { ClientDetail } from "@/components/clients/client-detail";
+/**
+ * Legacy route — see the sibling list page. Preserves the slug so an old bookmark or
+ * Slack link lands on the same client, now with the tasks / wiki / design-system tabs
+ * this copy never had.
+ */
+import { redirect } from "next/navigation";
 
-export default async function ClientDetailPage({
+export default async function LegacyClientDetailRedirect({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-
-  return (
-    <AppShell
-      title="Client"
-      subtitle="Proposals and linked documents grouped under a single client record."
-    >
-      <ClientDetail slug={slug} />
-    </AppShell>
-  );
+  redirect(`/app/portal/${slug}`);
 }

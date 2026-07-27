@@ -10,6 +10,7 @@ import { SettingsShell, type SettingsSectionId } from "@/components/settings/set
 import { NotificationsSection } from "@/components/settings/notifications-section";
 import { AuditLogSection } from "@/components/settings/audit-log-section";
 import { PrivacySection } from "@/components/settings/privacy-section";
+import { LabsPanel } from "@/components/settings/labs-panel";
 import { PeopleAccess } from "@/components/settings/people-shell";
 import { isAtLeast, isSuperAdmin } from "@/types/auth";
 
@@ -54,6 +55,7 @@ const VALID_SECTIONS: SettingsSectionId[] = [
   "foreman",
   "mcp",
   "agents-checks", // legacy — redirects to "agents"
+  "labs", // internal/experimental entry points (Super Admin) — see labs-panel.tsx
   "analytics", // link-out rail entry — redirects to the full-page /app/analytics
   "audit",
   "developer",
@@ -64,7 +66,7 @@ const VALID_SECTIONS: SettingsSectionId[] = [
 // Sections only Super Admins may open (the role matrix editor). MCP is no longer
 // here — the page itself is permission-gated (mcp.connect) and self-gates its
 // workspace-toggle section to Super Admins internally.
-const SUPER_ADMIN_SECTIONS = new Set<SettingsSectionId>(["roles", "curator"]);
+const SUPER_ADMIN_SECTIONS = new Set<SettingsSectionId>(["roles", "curator", "labs"]);
 
 // Admin-or-above sections that are NOT per-role toggles (member management + legacy).
 // "people" (Members + the Roles tab) is admin-or-above; the Roles tab self-gates to Super Admin.
@@ -200,6 +202,10 @@ const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string 
   },
   // Present so the exhaustive Record compiles; the page-level redirect (PEOPLE_REDIRECTS)
   // sends this slug to the full-page /app/analytics before this meta is ever read.
+  labs: {
+    title: "Labs",
+    subtitle: "Experimental and internal-only surfaces.",
+  },
   analytics: {
     title: "Analytics",
     subtitle: "Delivery, output and AI usage across the workspace.",
@@ -331,6 +337,7 @@ export default async function SettingsSectionPage({
         {sectionId === "checks" ? <ChecksPanel /> : null}
         {sectionId === "curator" ? <CuratorPanel /> : null}
         {sectionId === "foreman" ? <ForemanPanel /> : null}
+        {sectionId === "labs" ? <LabsPanel /> : null}
         {sectionId === "audit" ? <AuditLogSection /> : null}
         {sectionId === "developer" ? <DeveloperTab apiKeyConfigured={apiKeyConfigured} /> : null}
         {sectionId === "privacy" ? <PrivacySection /> : null}

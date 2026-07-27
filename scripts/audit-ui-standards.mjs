@@ -378,6 +378,50 @@ const RULES = [
       }
     },
   },
+  {
+    id: "WEAK-PRIVILEGE",
+    title: "requireAuthedUserOrDefault used to prove a privilege",
+    why:
+      "`requireAuthedUserOrDefault` falls back to the DEFAULT WORKSPACE OWNER when no " +
+      "per-user identity resolves, and that owner is a Super Admin — so proving a role " +
+      "from its result PASSES for an identity-less caller instead of returning 401. Its " +
+      "own docstring forbids exactly this ('Do NOT use where a specific privilege must " +
+      "be proven'). Use `requireAuthedUser`, which throws 401 with no identity, then " +
+      "assert. A real defect, found in api/dev/sync-bigwedge-status in July 2026.",
+    run(file, src, consts, report) {
+      const decl = /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+requireAuthedUserOrDefault\s*\(/g;
+      let m;
+      while ((m = decl.exec(src))) {
+        const v = m[1];
+        const proves = new RegExp(
+          "isAtLeast\\(\\s*" + v + "\\.role" +
+            "|assertSuperAdmin\\(\\s*" + v + "\\b" +
+            "|assertAtLeastAdmin\\(\\s*" + v + "\\b" +
+            "|assertCan\\(\\s*[A-Za-z_$][\\w$]*\\s*,\\s*" + v + "\\b",
+        );
+        if (proves.test(src)) {
+          report(file, lineOf(src, m.index), '"' + v + '" comes from requireAuthedUserOrDefault and is used to prove a role');
+        }
+      }
+    },
+  },
+  {
+    id: "ROBOTS-DISALLOW-ALL",
+    title: "robots route disallowing the whole site",
+    why:
+      "A bare `disallow: \"/\"` de-indexes the entire origin, and it also flips Pulse's " +
+      "`aeo_ai_crawlers_allowed` from PASS to WARN because every AI crawler then counts " +
+      "as fully blocked. Use path-scoped entries and keep `allow: \"/\"` as the base " +
+      "rule. One character between 'tidy crawl rules' and 'invisible to search'.",
+    run(file, src, consts, report) {
+      if (!/MetadataRoute\.Robots/.test(src)) return;
+      const re = /disallow\s*:\s*(?:"\/"|'\/'|\[\s*(?:"\/"|'\/')\s*,?\s*\])/g;
+      let m;
+      while ((m = re.exec(src))) {
+        report(file, lineOf(src, m.index), 'disallow: "/" blocks the entire site');
+      }
+    },
+  },
 ];
 
 /* ── Runner ───────────────────────────────────────────────────────────────── */
@@ -477,6 +521,18 @@ const SELF_TEST_CASES = {
     good: `const a = <div className="overflow-x-auto"><table className="min-w-[998px]" /></div>;
            const b = <div className="overflow-hidden"><table className="w-full" /></div>;
            const c = <div className="mt-4"><table className="w-full"><colgroup><col className="w-[22%]" /></colgroup></table></div>;`,
+  },
+  "WEAK-PRIVILEGE": {
+    bad: `const user = await requireAuthedUserOrDefault(req);
+          if (!isAtLeast(user.role, "ADMIN")) return apiError("Admin only", 403);`,
+    good: `const user = await requireAuthedUser(req);
+           if (!isAtLeast(user.role, "ADMIN")) return apiError("Admin only", 403);
+           const me = await requireAuthedUserOrDefault(req);
+           const rows = await listMyExpenses(me.id);`,
+  },
+  "ROBOTS-DISALLOW-ALL": {
+    bad: `const r: MetadataRoute.Robots = { rules: [{ userAgent: "*", disallow: "/" }] };`,
+    good: `const r: MetadataRoute.Robots = { rules: [{ userAgent: "*", allow: "/", disallow: ["/app", "/api/"] }] };`,
   },
   "MODEL-LITERAL": {
     bad: `const m = workspace.anthropicModel ?? "claude-sonnet-5";`,

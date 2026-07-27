@@ -14,7 +14,6 @@ const eslintConfig = [
   {
     ignores: [
       "node_modules/**",
-      "toolcraft-app/**",
       // Vendored upstream app — built by its own toolchain (vendor/bento/README.md).
       "vendor/**",
       ".next/**",

@@ -55,7 +55,7 @@ export async function notifyOnboardingSubmitted(token: string): Promise<void> {
 
   const payload = {
     channel: channelId,
-    text: `:memo: New onboarding submitted: *${company}*${product}${summary}\n_Review in Portal → /app/clients_`,
+    text: `:memo: New onboarding submitted: *${company}*${product}${summary}\n_Review in Portal → /app/portal_`,
     unfurl_links: false,
     unfurl_media: false,
   };

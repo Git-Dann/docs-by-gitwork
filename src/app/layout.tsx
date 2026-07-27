@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, DM_Serif_Display, JetBrains_Mono, Caveat, Dancing_Script, Great_Vibes, Fraunces, Playfair_Display, Poppins, Montserrat, Space_Grotesk, Manrope, Archivo, Sora } from "next/font/google";
 import { AppProviders } from "@/components/providers/app-providers";
 import "./globals.css";
@@ -61,6 +61,33 @@ export const metadata: Metadata = {
   title: "Foundry by Gitwork",
   description:
     "Gitwork’s prompt-to-production delivery platform for projects, signals, documents, reviews, and support.",
+  // Self-referencing canonical. With metadataBase set, "./" resolves per route, so
+  // every page declares itself canonical rather than pointing everything at the root.
+  alternates: { canonical: "./" },
+  openGraph: {
+    siteName: "Foundry by Gitwork",
+    type: "website",
+    locale: "en_GB",
+    url: "./",
+  },
+};
+
+/**
+ * Viewport + theme-color. There was no viewport export at all, so no theme-color
+ * meta tag was ever emitted and mobile browser chrome fell back to a default grey.
+ *
+ * The two values are the light and dark `--surface-canvas` tokens from globals.css,
+ * so the browser chrome matches the page rather than the brand blue — which is what
+ * you want when the surface is what meets the chrome. `background_color` in
+ * manifest.ts matches the light value; keep the three in sync.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#FAFAF9" },
+    { media: "(prefers-color-scheme: dark)", color: "#0B0B0C" },
+  ],
 };
 
 export default function RootLayout({
@@ -75,6 +102,22 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        {/*
+          Baseline accessibility preferences, inlined so they apply on first paint
+          before globals.css arrives — which matters most for reduced-motion, where a
+          late-loading rule means the animation has already played.
+
+          These are honoured app-wide and are real behaviour, not decoration: a
+          visible focus ring for keyboard users (WCAG 2.4.7), near-instant
+          animations for anyone who has asked their OS to reduce motion (WCAG
+          2.3.3), and stronger borders/text under prefers-contrast: more. Component
+          styles can still override per-element.
+        */}
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `:focus-visible{outline:2px solid #1D4ED8;outline-offset:2px;border-radius:3px}@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;scroll-behavior:auto !important}}@media (prefers-contrast:more){:root{--border-1:rgba(0,0,0,.55);--border-2:rgba(0,0,0,.4);--text-3:#1E293B;--text-4:#334155}[data-theme="dark"]{--border-1:rgba(255,255,255,.7);--border-2:rgba(255,255,255,.5);--text-3:#E3E3E5;--text-4:#C9C9CE}}`,
+          }}
+        />
         {/*
           Anti-flash theme script — runs synchronously before first paint so the
           page never flashes the wrong theme. Resolves the stored mode (default

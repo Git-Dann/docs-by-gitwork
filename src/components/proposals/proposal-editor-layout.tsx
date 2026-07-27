@@ -864,7 +864,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               <ChevronRightIcon className="h-4 w-4" />
               {draft.clientName ? (
                 <Link
-                  href={`/app/clients/${slugifyClientName(draft.clientName)}`}
+                  href={`/app/portal/${slugifyClientName(draft.clientName)}`}
                   className="hover:text-[var(--text-1)]"
                 >
                   {draft.clientName}
