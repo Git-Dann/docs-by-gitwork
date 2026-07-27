@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { PortalLoginForm } from "@/components/portal/portal-login-form";
-import { PortalLegalFooter } from "@/components/public/portal-legal-footer";
+import { PortalFooter } from "@/components/public/portal-footer";
 
 /**
  * This page is the public front door of the host — `/` redirects here — and because a
  * Pulse scan follows redirects, it is the page the scan actually grades. That is why it
- * carries a legal footer and real landmarks; see PortalLegalFooter for the detail.
+ * carries a footer and real landmarks; see PortalFooter for the detail.
  *
  * `robots: index:false` is deliberate and stays. A login page ranking for the brand is
  * worse than nothing, and the crawl directives in robots.ts disallow it too. The
@@ -36,14 +36,14 @@ export default async function PortalLoginPage({
       {/*
         <main> wraps the form for the landmark; the form sets its own 100dvh and stays
         centred in the first viewport exactly as designed, so the footer follows below
-        it rather than competing for that space. A login you scroll once to reach the
-        legal links is normal — and the alternative (changing the form's height) would
-        risk the centring on mobile for no real gain.
+        it rather than competing for that space. Scrolling once past a centred login card
+        to reach a footer is normal — and the alternative (changing the form's height)
+        would risk the centring on mobile for no real gain.
       */}
       <main id="main-content">
         <PortalLoginForm next={safeNext} />
       </main>
-      <PortalLegalFooter />
+      <PortalFooter />
     </>
   );
 }

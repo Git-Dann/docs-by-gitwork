@@ -38,14 +38,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "monthly",
       priority: 0.5,
     },
-    // Legal set. Low priority — they should be findable, not competing with the
-    // landing page — but they must be indexable, so they are absent from the
-    // robots.ts disallow list by design.
-    ...["/legal", "/privacy", "/terms", "/cookies", "/security"].map((path) => ({
-      url: `${BASE}${path}`,
-      lastModified,
-      changeFrequency: "yearly" as const,
-      priority: 0.3,
-    })),
   ];
 }
