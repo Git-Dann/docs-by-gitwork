@@ -49,6 +49,38 @@ function actionLabel(action: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+/**
+ * A run of consecutive identical events, shown as one row.
+ *
+ * DISPLAY ONLY — the underlying rows are untouched. This is an append-only
+ * audit log, so nothing is merged or dropped at the source; a repeated event
+ * (e.g. the Claude connector re-authorising 15×) is just presented once with a
+ * count and a time span so it can't bury everything else in the feed.
+ */
+interface EntryGroup {
+  key: string;
+  entries: AuditLogEntry[];
+  /** Most recent entry — the one whose detail we render. */
+  latest: AuditLogEntry;
+}
+
+/** Group runs of consecutive entries sharing action + target + actor. */
+function collapseEntries(entries: AuditLogEntry[]): EntryGroup[] {
+  const groups: EntryGroup[] = [];
+  for (const entry of entries) {
+    const signature = `${entry.action}|${entry.target ?? ""}|${entry.actor?.id ?? "system"}`;
+    const previous = groups[groups.length - 1];
+    // Only collapse an unbroken run, so the feed stays chronologically honest —
+    // a different event in between starts a new group.
+    if (previous && previous.key === signature) {
+      previous.entries.push(entry);
+    } else {
+      groups.push({ key: signature, entries: [entry], latest: entry });
+    }
+  }
+  return groups;
+}
+
 function actionColor(action: string): string {
   if (action.startsWith("team.")) return "bg-[var(--brand-200)] text-[var(--brand-700)]";
   if (action.startsWith("integration.")) return "bg-[var(--brand-200)] text-[var(--brand-700)]";
@@ -152,18 +184,32 @@ export function AuditLogSection() {
           </div>
         ) : (
           <ol className="divide-y divide-[var(--border-3)]">
-            {entries.map((entry) => (
+            {collapseEntries(entries).map((group) => {
+              const entry = group.latest;
+              const repeatCount = group.entries.length;
+              const oldest = group.entries[repeatCount - 1];
+              return (
               <li
                 key={entry.id}
                 className="grid gap-3 px-6 py-4 sm:grid-cols-[180px_minmax(0,1fr)_180px]"
               >
-                <span
-                  className={cn(
-                    "inline-flex h-fit items-center rounded-[4px] px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.06em]",
-                    actionColor(entry.action),
-                  )}
-                >
-                  {actionLabel(entry.action)}
+                <span className="flex h-fit flex-wrap items-center gap-1.5">
+                  <span
+                    className={cn(
+                      "inline-flex h-fit items-center rounded-[4px] px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.06em]",
+                      actionColor(entry.action),
+                    )}
+                  >
+                    {actionLabel(entry.action)}
+                  </span>
+                  {repeatCount > 1 ? (
+                    <span
+                      title={`${repeatCount} identical events collapsed`}
+                      className="inline-flex h-fit items-center rounded-full bg-[var(--surface-2)] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[var(--text-3)]"
+                    >
+                      ×{repeatCount}
+                    </span>
+                  ) : null}
                 </span>
 
                 <div className="min-w-0">
@@ -195,9 +241,15 @@ export function AuditLogSection() {
                     {entry.actor?.name ?? entry.actor?.email ?? "System"}
                   </p>
                   <p className="mt-0.5">{formatDate(entry.createdAt)}</p>
+                  {repeatCount > 1 ? (
+                    <p className="mt-0.5 text-[11px]">
+                      {repeatCount} events since {formatDate(oldest.createdAt)}
+                    </p>
+                  ) : null}
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ol>
         )}
 
