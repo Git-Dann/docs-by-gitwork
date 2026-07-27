@@ -5,6 +5,7 @@
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { resolveForemanConfig } from "./config";
+import { listFindingActions, findingState, visibleFindings, type FindingState } from "./actions";
 import type { ForemanConfig, ForemanFinding, ForemanNarrative, ForemanStats } from "./types";
 
 export interface ForemanRunSummary {
@@ -123,7 +124,8 @@ export async function listForemanRuns(limit = 20): Promise<ForemanRunSummary[]> 
   return rows.map(serializeRun);
 }
 
-/** The latest successful live scan, shaped for the Desk panel. Null before the first run. */
+/** The latest successful live scan, shaped for the Desk panel — dismissed/muted findings filtered
+ *  out so the Desk only shows what's currently actionable. Null before the first run. */
 export async function getForemanReport(): Promise<ForemanReport | null> {
   const { workspace } = await ensureBaseRecords();
   const run = await prisma.foremanRun.findFirst({
@@ -133,13 +135,44 @@ export async function getForemanReport(): Promise<ForemanReport | null> {
   });
   if (!run) return null;
   const s = serializeRun(run);
+  const actions = await listFindingActions(workspace.id);
   return {
     runId: s.id,
     generatedAt: s.finishedAt ?? s.startedAt,
     stats: s.stats,
-    findings: s.findings,
+    findings: visibleFindings(s.findings, actions),
     narrative: s.narrative,
   };
+}
+
+export interface AnnotatedFinding extends ForemanFinding {
+  state: FindingState;
+}
+export interface ForemanFindingsView {
+  generatedAt: string | null;
+  findings: AnnotatedFinding[];
+  counts: { active: number; dismissed: number; muted: number };
+}
+
+/** All findings from the latest run, each annotated with its resolution state — for the Settings
+ *  management UI (bulk dismiss/mute/clear + view what's muted/dismissed). */
+export async function getForemanFindings(): Promise<ForemanFindingsView> {
+  const { workspace } = await ensureBaseRecords();
+  const run = await prisma.foremanRun.findFirst({
+    where: { workspaceId: workspace.id, mode: "scan", status: "succeeded" },
+    orderBy: { startedAt: "desc" },
+    select: RUN_SELECT,
+  });
+  if (!run) return { generatedAt: null, findings: [], counts: { active: 0, dismissed: 0, muted: 0 } };
+  const s = serializeRun(run);
+  const actions = await listFindingActions(workspace.id);
+  const counts = { active: 0, dismissed: 0, muted: 0 };
+  const findings: AnnotatedFinding[] = s.findings.map((f) => {
+    const state = findingState(f, actions.get(f.key));
+    counts[state] += 1;
+    return { ...f, state };
+  });
+  return { generatedAt: s.finishedAt ?? s.startedAt, findings, counts };
 }
 
 /** Merge a partial config over the stored one and persist. Returns the resolved config. */

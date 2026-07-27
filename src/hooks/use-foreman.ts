@@ -81,6 +81,17 @@ export interface ForemanReport {
   narrative: ForemanNarrative | null;
 }
 
+export type FindingState = "active" | "muted" | "dismissed";
+export type FindingActionKind = "dismiss" | "mute" | "clear";
+export interface AnnotatedFinding extends ForemanFinding {
+  state: FindingState;
+}
+export interface ForemanFindingsView {
+  generatedAt: string | null;
+  findings: AnnotatedFinding[];
+  counts: { active: number; dismissed: number; muted: number };
+}
+
 const KEY = ["foreman"];
 
 export function useForemanStatus(enabled = true) {
@@ -122,6 +133,24 @@ export function useUpdateForemanConfig() {
   return useMutation({
     mutationFn: (patch: Partial<ForemanConfig>) =>
       apiFetch("/api/foreman/config", { method: "PATCH", body: JSON.stringify(patch) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+}
+
+export function useForemanFindings(enabled = true) {
+  return useQuery<ForemanFindingsView>({
+    queryKey: [...KEY, "findings"],
+    queryFn: async () => (await apiFetch<{ view: ForemanFindingsView }>("/api/foreman/findings")).view,
+    enabled,
+  });
+}
+
+export function useForemanFindingAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { findingKeys: string[]; action: FindingActionKind }) =>
+      apiFetch("/api/foreman/findings", { method: "POST", body: JSON.stringify(input) }),
+    // Invalidate the whole foreman key so the Desk report, findings manager and status all refresh.
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });
 }

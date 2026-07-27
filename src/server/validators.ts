@@ -1502,6 +1502,11 @@ export const foremanConfigSchema = z.object({
   consolidate: z.boolean().optional(),
 });
 
+export const foremanFindingActionSchema = z.object({
+  findingKeys: z.array(z.string().min(1).max(300)).min(1).max(1000),
+  action: z.enum(["dismiss", "mute", "clear"]),
+});
+
 // ── Handbook (internal developer knowledgebase) ──────────────────────────────
 export const handbookStatusSchema = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);
 

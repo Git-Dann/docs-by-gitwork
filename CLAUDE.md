@@ -1221,6 +1221,18 @@ agent **calls out its own blind spots** (missing due dates/timelines) as info ra
   Settings → Foreman → Dry run, Run now (check the digest lands on the Desk + ALERTS), hit
   `GET /api/cron/foreman` with `CRON_SECRET`. **Deferred:** per-developer digests (management-only for
   now), configurable notification recipients, a "why not flagged" explain view.
+- **Finding resolution — dismiss / mute / bulk (follow-up).** Findings are managed rather than a fixed
+  wall: new `ForemanFindingAction` model (one row per `findingKey` = `${kind}:${subjectId}`; additive →
+  guarded `prisma db push`). Two actions, both reversible via "clear": **mute** hides a finding until
+  un-muted (for stale/known noise — e.g. ancient imported milestones); **dismiss** hides it while its
+  metric stays ≤ the value it had when dismissed, and **resurfaces if it worsens** so a real escalation
+  is never lost. Applied at **read time** (`src/server/foreman/actions.ts` — pure `findingState` /
+  `visibleFindings`, unit-tested), so it takes effect immediately without a re-run: the Desk report,
+  the Settings findings list, the digest notification and the AI narrative all filter through it (raw
+  findings are still persisted on the run so un-muting reveals them). API `GET/POST /api/foreman/findings`
+  (admin; bulk `{ findingKeys[], action }`); hooks `useForemanFindings` / `useForemanFindingAction`.
+  UI: per-finding Dismiss/Mute on the Desk "Delivery watch" cards, and a Settings → Foreman **Findings**
+  manager (select-all + bulk Dismiss/Mute, per-row actions, and a "Muted & dismissed" reveal to Restore).
 
 ## 30. Recent Changes (July 2026) — Deck (the slide editor, forked from bento/slides)
 

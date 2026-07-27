@@ -1,0 +1,9 @@
+# After switching branches (`git checkout` / `git switch`): if the Prisma schema differs between
+# the two branches, regenerate the client. Same guard as post-merge so hopping between a
+# schema-changing branch and main never leaves a stale client behind.
+# Args: $1 = previous HEAD, $2 = new HEAD, $3 = 1 for a branch checkout (0 for a file checkout).
+[ "$3" = "1" ] || exit 0
+if git diff-tree -r --name-only "$1" "$2" 2>/dev/null | grep -q '^prisma/schema\.prisma$'; then
+  echo "▸ prisma/schema.prisma differs on this branch — regenerating the Prisma client…"
+  npm run db:generate
+fi

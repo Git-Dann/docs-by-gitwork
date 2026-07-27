@@ -1,0 +1,8 @@
+# After a merge / `git pull`: if the Prisma schema changed, regenerate the client so you're
+# never left on a stale client (missing new models/enums/columns → phantom TS errors like the
+# "20 Foreman errors" that were really just an un-regenerated client). No-ops when the schema
+# is untouched, so a normal pull stays instant.
+if git diff-tree -r --name-only ORIG_HEAD HEAD 2>/dev/null | grep -q '^prisma/schema\.prisma$'; then
+  echo "▸ prisma/schema.prisma changed in this pull — regenerating the Prisma client…"
+  npm run db:generate
+fi
