@@ -189,16 +189,33 @@ ENCRYPTION_KEY=""      # 32-byte base64 secret
 
 ## 4. Module Map
 
-The sidebar uses different labels from the URL routes — mapping below:
+The sidebar uses different labels from the URL routes — mapping below.
+
+> **Use the canonical route in anything new.** Four modules have both a canonical short path and a
+> legacy one, and `src/middleware.ts` (`MODULE_PATHS`) is the source of truth — it labels them
+> exactly that way. Both resolve, so the legacy paths are safe in old links, but new code, new nav
+> entries and new deep links use the canonical column.
+>
+> | Canonical | Legacy (still resolves) |
+> |---|---|
+> | `/app/portal` | `/app/clients` |
+> | `/app/care` | `/app/support` |
+> | `/app/code` | `/app/codeclear` |
+> | `/app/docs` | `/app/proposals` → `redirect()` stubs |
+>
+> Note the **server module name is a third thing again** and doesn't match either: Portal →
+> `clients`, Care → `support`, Code → `codeclear`, Docs → `proposals`. The `Server module` column
+> below is the one to trust for imports.
 
 | Sidebar label | Route | Server module | Description |
 |---|---|---|---|
 | **Foundry HQ** | `/app` | — | Dashboard overview |
 | **Pulse** | `/app/pulse` | `src/server/pulse*.ts` + `pulse-agents/` | AI project validation — 150+ automated checks, gap analysis, GitHub fix-agent, continuous monitors. Also hosts the optional **Study** research tool (no longer a top-level module — see §26) |
-| **Code** | `/app/codeclear` | `src/server/codeclear*.ts` | Developer hiring pipeline — GitHub analysis, scoring, candidate management |
+| **Code** | `/app/code` (legacy `/app/codeclear`) | `src/server/codeclear*.ts` | Developer hiring pipeline — GitHub analysis, scoring, candidate management |
+| **Studio** | `/app/studio` | — (client-side only, no `/api/studio`) | Brand asset studio — design on-brand social assets and App Store / Play Store screenshots, then batch-export at the exact size each platform needs. ~30 components under `src/components/studio/` (`studio-root.tsx` entry, plus `templates/`, `screenshots/`, `costing/`, `brand.tsx`, `export.ts`). Also now hosts the **Demo builder** (`demo-builder.tsx`), moved out of Settings in July 2026 — this is the `Demo {{Feat}}` workstream in §32. Module permission id `studio` |
 | **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). **Canonical route is `/app/docs`**; `/app/proposals/*` are redirect stubs (see §16) |
-| **Portal** | `/app/clients` | `src/server/clients.ts` · `meetings.ts` | Client management + detail pages, incl. **Scribe** AI meeting notes per-client (no sidebar item — see §14) |
-| **Care** | `/app/support` | `src/server/support.ts` | Client support ops — conversations, tickets, workflow rules, audit log |
+| **Portal** | `/app/portal` (legacy `/app/clients`) | `src/server/clients.ts` · `meetings.ts` | Client management + detail pages, incl. **Scribe** AI meeting notes per-client (no sidebar item — see §14) |
+| **Care** | `/app/care` (legacy `/app/support`) | `src/server/support.ts` | Client support ops — conversations, tickets, workflow rules, audit log |
 | **Study** (tool) | `/app/study` | `src/server/study*.ts` + `study-agents/` | AI user research — multi-agent persona interviews, synthesis, reports. **No sidebar item** — surfaced as an optional tool inside Pulse (see §26). Routes/API/models unchanged at `/app/study` · `/api/study` |
 | **Backstage** | `/app/backstage` | `src/server/backstage.ts` + `backstage-holidays.ts` | Internal Gitwork ops umbrella — v1 covers staff leave booking + expenses tracking + staffing alerts on HQ. Future tools slot in as `/app/backstage/<slug>` |
 | **Settings** | `/app/settings` | — | AI provider config, rate card, workspace branding |
@@ -1669,8 +1686,8 @@ The `{{Product}}` list above is **Dan's tracking taxonomy**, and it is deliberat
 as given. It does not currently line up 1:1 with the §4 module map, and that's worth knowing
 before you reconcile anything:
 
-- **`Studio`** is a `{{Product}}` here and is real in the code (`/app/studio`,
-  `src/components/studio/`), but it has **no row in the §4 module map** — §4 is out of date.
+- **`Studio`** — resolved (July 2026, Dan confirmed it's real and belongs): it now has a §4 row.
+  Live at `/app/studio`, in the sidebar, module permission id `studio`, client-side only.
 - **`Study`, `Backstage` and `Proof`** have §4 rows but no entry in this taxonomy. Study was
   demoted to an admin-only tool inside Pulse (§26) and Proof is nav-hidden (§11), so their absence
   is probably intentional; Backstage's is less clear.
@@ -1678,5 +1695,5 @@ before you reconcile anything:
   yet — they are in-flight workstreams, which is exactly what the taxonomy is for. It tracks
   **work**, not only shipped surfaces.
 
-Ask before reconciling the two lists in either direction. Adding `Studio` to §4 is a safe
-documentation fix; deciding whether `Backstage` needs a tracking tag is Dan's call.
+Ask before reconciling the two lists in either direction — deciding whether `Backstage` needs a
+tracking tag is Dan's call, still open.

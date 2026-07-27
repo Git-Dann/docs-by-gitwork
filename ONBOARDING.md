@@ -42,16 +42,28 @@ monitors work across the team, so an untagged chat is effectively invisible. Ful
 
 ## 3. The loop for every change
 
+**`main` is production.** Anything that lands on `main` — merged *or* committed directly —
+auto-deploys to the Fasthosts VPS in about 6 minutes. There is **no staging environment and there
+are no branch preview URLs**. (Vercel still comments on PRs; ignore it, it's a vestigial
+integration that deploys nowhere real.)
+
+Two accepted paths:
+
 ```bash
+# Features and anything non-trivial → branch + PR
 git checkout -b feature/your-thing
-# ...build...
-npm run verify        # tsc + lint + tests + audit:ui — no database needed
+npm run verify                 # tsc + lint + tests + audit:ui — no database needed
 # open a PR → CI runs the exact same thing → squash-merge
+
+# Small fixes → straight to main, with a Conventional Commit message
+npm run verify                 # ← do NOT skip this; nothing else will catch you
+git commit -m "fix: …" && git push
 ```
 
-**`main` is production.** A squash-merge auto-deploys to the Fasthosts VPS in ~6 minutes. There is
-**no staging environment and there are no branch preview URLs**. (Vercel still comments on PRs —
-ignore it, it's a vestigial integration that deploys nowhere real.)
+⚠️ **If you commit directly to `main`, `npm run verify` is the only gate there is.** CI does run on
+a push to `main`, but it runs *in parallel* with the deploy — so a failing check does not stop your
+change reaching production, it just tells you afterwards. On the PR path CI reports before you
+merge, which is why anything you're not certain about should go through a PR.
 
 Report what `verify` actually printed. Never call something verified that you didn't run.
 
@@ -97,20 +109,18 @@ npm run audit:clipping -- --self-test
 - `src/server/{domain}.ts` — business logic, one file per domain; agents in `{domain}-agents/`
 - `src/hooks/**` — React Query hooks · `src/lib/api.ts` — fetch helpers
 - `prisma/schema.prisma` — the schema (70+ models)
-- `CLAUDE.md` §4 has the sidebar-label → route → server-module map. **Two gotchas there:** the
-  sidebar labels don't match the server module names (Portal → `clients`, Care → `support`,
-  Code → `codeclear`, Docs → `proposals`), and §4's route column is **out of date** — it lists the
-  legacy paths. The canonical routes are the short ones, per `src/middleware.ts`:
+- `CLAUDE.md` §4 has the sidebar-label → route → server-module map. **One thing to internalise:** a
+  module is known by up to three different names. Four of them also have a legacy route that still
+  resolves — use the canonical one in anything new:
 
-  | Canonical | Legacy (still resolves) |
-  |---|---|
-  | `/app/portal` | `/app/clients` |
-  | `/app/care` | `/app/support` |
-  | `/app/code` | `/app/codeclear` |
-  | `/app/docs` | `/app/proposals` → redirects |
+  | Sidebar | Canonical route | Legacy route | Server module |
+  |---|---|---|---|
+  | Portal | `/app/portal` | `/app/clients` | `clients` |
+  | Care | `/app/care` | `/app/support` | `support` |
+  | Code | `/app/code` | `/app/codeclear` | `codeclear` |
+  | Docs | `/app/docs` | `/app/proposals` → redirects | `proposals` |
 
-  Use the canonical path in anything new. (`Studio` at `/app/studio` is a real module that §4
-  omits entirely.)
+  `src/middleware.ts` (`MODULE_PATHS`) is the source of truth for which is canonical.
 
 **Schema changes:** the deploy runs `prisma db push` *without* `--accept-data-loss`, and Prisma's
 safety check is all-or-nothing per push — so if your diff drops anything, **the whole sync is
