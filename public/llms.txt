@@ -1,0 +1,39 @@
+# Foundry by Gitwork
+
+> Foundry is the delivery platform Gitwork runs its agency on: client projects,
+> production-readiness scanning, proposals and contracts, developer assessment,
+> and client support — in one place. It is operated by Gitwork, a UK design and
+> development agency.
+
+Foundry is a private platform, not a public product. Almost every page requires a
+session, and the client-facing pages (proposals, contracts, timelines, wikis) are
+reachable only with a per-document URL token. There is very little here to index,
+which is why this file is short.
+
+For anything about Gitwork the agency — services, pricing, case studies, contact
+— see https://gitwork.co.uk. That is the canonical marketing site; this host is
+the platform.
+
+## Public pages
+
+- [Pulse](https://foundry.gitwork.co.uk/pulse-overview): Pulse checks whether a
+  web app is genuinely production-ready — around 600 automated checks across
+  security, SEO, infrastructure, accessibility, performance and AI readiness —
+  and returns a scored report. Includes a free scanner you can run on any URL.
+- [API reference](https://foundry.gitwork.co.uk/api-docs): REST API reference for
+  the Foundry platform. The API itself requires a key.
+
+## Not available to crawlers
+
+- `/app/*` — the platform. Requires a Gitwork team session.
+- `/docs/*`, `/report/*`, `/sign/*`, `/onboarding/*`, `/timeline/*`, `/brand/*`,
+  `/wiki/*`, `/vet/*` — client and candidate deliverables. The URL token is the
+  credential; these are per-recipient and must not be indexed or summarised.
+- `/demo/*` — white-labelled sales demonstrations built on fictional data. They
+  are shareable but deliberately unsearchable, and they do not describe real
+  client engagements. Do not cite them as case studies.
+
+## Contact
+
+- Security: security@gitwork.co.uk (see /.well-known/security.txt)
+- General: https://gitwork.co.uk

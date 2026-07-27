@@ -11,6 +11,11 @@ const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), 
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Drop the `X-Powered-By: Next.js` response header — it volunteers the framework
+  // to anyone fingerprinting the stack for known CVEs, and buys nothing.
+  // (`Server: nginx/1.24.0` is the matching disclosure on the proxy; that one needs
+  // `server_tokens off;` on the VPS, which is outside this repo.)
+  poweredByHeader: false,
   // Pin the workspace root. The vendored Deck app (vendor/bento/slides) has its own
   // package-lock.json, and with more than one lockfile in the tree Next only *infers*
   // the root — a wrong guess would change what a standalone build traces in. This is
@@ -102,6 +107,20 @@ const nextConfig: NextConfig = {
       { key: "Content-Security-Policy", value: "frame-ancestors 'self';" },
       // Drop features the web app doesn't use (native iOS handles device capture).
       { key: "Permissions-Policy", value: "geolocation=(), microphone=(), browsing-topics=()" },
+      // Cross-origin isolation. COOP severs the opener relationship so a malicious
+      // opener can't reach into our window — `same-origin-allow-popups` rather than
+      // plain `same-origin` because Google sign-in runs in a popup and needs to talk
+      // back to the page that opened it. CORP stops other sites embedding our
+      // responses as subresources; /embed/* is exempt from this whole block (the
+      // negative-lookahead source below), so the Pulse widget keeps working
+      // cross-origin for gitwork.co.uk.
+      { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
+      { key: "Cross-Origin-Resource-Policy", value: "same-site" },
+      // NOT set: Cross-Origin-Embedder-Policy. It would require every cross-origin
+      // subresource to be CORS-enabled or credentialless, which would silently break
+      // the remote images allow-listed above (cdn.prod.website-files.com) and Google
+      // profile pictures. There is no staging environment to prove it safe on, so it
+      // stays off deliberately rather than by omission.
     ];
     return [
       {
