@@ -103,12 +103,59 @@ Rules of thumb:
 - **Stay tidy** → prune stale worktrees (`git worktree prune`) and don't leave dozens of
   abandoned branches around. Auto-delete handles remote branches post-merge.
 
+### ⛔ `main`'s history was re-rooted — DO NOT prune remote branches
+
+**Read this before deleting any branch.** `main` currently holds **55 commits and its root commit
+is `3242110b`, dated 2026-07-17**. It contains nothing older. **43 of the 45 remote branches share
+a completely different root** (`bd8d7145`, the repo's initial commit, 2026-03-11) and have **no
+merge base with `main` at all**.
+
+Those branches are the **only** copy of **1,365 commits** — the project's entire history from
+March to July 2026. Deleting them destroys it permanently. Almost certainly fallout from the June
+mirror-clone repair described below, where a rebuilt `main` was force-pushed.
+
+Three consequences that will bite you:
+
+1. **`git branch --merged` and three-dot diffs are useless here.** With no merge base,
+   `git diff main...branch` returns **empty** — which reads as "this branch adds nothing, safe to
+   delete". It is the exact opposite. An audit built that test in July 2026 and it reported all 33
+   unreferenced branches as safe; checking one by hand (`homepage-redesign`: 108 commits ahead,
+   23,112 files differing) caught it before anything was deleted. **Use
+   `git merge-base --is-ancestor <branch> main` and treat an empty `git merge-base` output as
+   "orphaned, do not touch".**
+2. **`git log` / `git blame` lie about anything before 17 July.** `3242110b` is a root commit, so
+   it appears to *add* every file in the repo — it will show as the last-touch commit for most of
+   the tree and as the origin of files it never touched.
+3. **Nine of the eleven open PRs are built on the orphaned lineage** (e.g. #37's base is
+   `ddf707d7`, not on `main`), which is why they report `mergeable_state: unknown` and why some
+   have sat since May. They cannot be merged normally — they need re-creating from current `main`.
+
+**To make the branches safe to delete**, first anchor the history with tags, then prune:
+
+```bash
+# Tag every orphaned tip (annotated, namespaced) — objects stay reachable via the tag.
+for b in $(git ls-remote --heads origin | sed 's|.*refs/heads/||' | grep -v '^main$'); do
+  git merge-base --is-ancestor "origin/$b" origin/main 2>/dev/null && continue
+  [ -n "$(git merge-base origin/main "origin/$b" 2>/dev/null)" ] && continue   # based on main, skip
+  git tag -a "archive/pre-reroot/$b" "origin/$b" -m "Archived tip of $b (pre-2026-07-17 re-root)."
+done
+git push origin --tags     # ⚠️ blocked by the sandbox git proxy (403) — run this locally
+# Verify BEFORE deleting anything: expect 1365
+git rev-list --count $(git tag -l 'archive/pre-reroot/*' | tr '\n' ' ') --not origin/main
+```
+
+The better long-term fix is to reattach the history to `main` so it stops depending on loose refs:
+`git merge -s ours --allow-unrelated-histories <orphan-tip>` records the old lineage as a second
+parent **without changing a single file**. It needs a merge commit on `main`, which this repo
+otherwise forbids (§2), so it is Dan's call.
+
 ### Git hygiene — prevent object store corruption
 
 Claude Code creates a worktree per session. Without maintenance, accumulated worktrees and stale
 local `claude/` branches cause pack-file corruption (missing delta bases, orphaned commit objects)
 that breaks `git gc`, `git prune`, and `git fsck`. This happened in June 2026 and required a full
-mirror clone to repair.
+mirror clone to repair — and that repair is what orphaned the history described above, so treat
+the recipe below as a last resort, not routine maintenance.
 
 **Run periodically** (every few sessions, or when > ~5 active worktrees):
 
@@ -118,6 +165,10 @@ git worktree prune
 git branch | grep claude/ | xargs git branch -D 2>/dev/null || true
 git gc --prune=now
 ```
+
+> ⚠️ That `git branch -D` line is **local-only and must stay that way**. Do not adapt it to
+> `git push origin --delete` — see the re-root warning above; the remote branches are load-bearing
+> until the archive tags are pushed.
 
 **If `git gc` fails** with "bad tree object" or "unable to read [sha]":
 1. **Do NOT use `--depth=20`** for repair — shallow clone packs have their own missing bases.
