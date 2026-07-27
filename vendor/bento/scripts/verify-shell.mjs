@@ -130,7 +130,7 @@ console.log('\n01 // CONTROLS')
     await page.keyboard.press('Shift+Slash'); await page.waitForTimeout(350)
     if (await page.$('.ed-help-box')) throw new Error('? still opens a shortcuts overlay')
   })
-  await check('topbar slot is a back link to Foundry', async () => {
+  await check('topbar slot goes BACK, never to the dashboard', async () => {
     const slot = await page.$('.ed-logo')
     if (!slot) throw new Error('no topbar slot')
     const info = await slot.evaluate((e) => ({
@@ -138,11 +138,15 @@ console.log('\n01 // CONTROLS')
     }))
     // file:// is a saved deck — it must show the inert lockup, NOT a dead link.
     if (target.startsWith('http')) {
-      if (info.tag !== 'A' || info.href !== '/app') throw new Error(`served by Foundry but slot is <${info.tag} href=${info.href}>`)
+      if (info.tag !== 'A') throw new Error(`served by Foundry but slot is <${info.tag}>`)
       if (!info.arrow) throw new Error('back link has no arrow')
-      if (!/Foundry/.test(info.text)) throw new Error(`back link reads "${info.text}"`)
+      if (!/Back/i.test(info.text)) throw new Error(`back link reads "${info.text}"`)
+      // No referrer in this context, so it must fall back to the LIBRARY.
+      // `/app` is the dashboard and is the specific thing complained about.
+      if (info.href === '/app') throw new Error('back link goes to the dashboard, not the previous screen')
+      if (info.href !== '/app/docs') throw new Error(`no-referrer fallback is ${info.href}, expected /app/docs`)
     } else if (info.tag === 'A') {
-      throw new Error('a saved deck must not render a back-to-Foundry link')
+      throw new Error('a saved deck must not render a back link')
     }
   })
   await check('about opens from Save ▾ as the standard 2-col dialog', async () => {

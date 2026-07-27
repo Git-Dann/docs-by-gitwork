@@ -115,15 +115,41 @@ export function adoptDeckBrand(doc: BentoDoc): Brand {
 }
 
 /**
- * The topbar's first slot. Deck opens in its own window from Foundry, so the
- * useful thing there is the way BACK — `← Foundry`, not a logo that reopens a
- * dialog. (Upstream put its wordmark here and hung About off it; About now lives
- * in the Save ▾ menu with the other document-level things.)
+ * The topbar's first slot: the way BACK. Deck opens in its own window, so the
+ * useful thing in the top-left corner is the exit, not a logo.
+ *
+ * "Back to the PREVIOUS SCREEN, not the dashboard" — which is fiddlier than it
+ * sounds, because a deck is usually opened with target="_blank". In a new tab
+ * `history.back()` has nothing to go back to, so it would either do nothing or
+ * (worse) look broken. The rule:
+ *
+ *   1. Real history in THIS tab  → history.back(). Truest "previous screen":
+ *      keeps the list's scroll position and filters exactly as they were.
+ *   2. Otherwise → the same-origin REFERRER, which for a new tab IS the screen
+ *      you came from (the Docs list, a client page, wherever).
+ *   3. Otherwise → /app/docs. Decks are documents; the library is where they
+ *      live. Never /app — landing on the dashboard is the complaint.
+ *
+ * The href is always set to the resolved destination, so middle-click and
+ * open-in-new-tab still go somewhere sensible rather than nowhere.
  *
  * A saved deck has nowhere to go back TO — it's a file on someone's disk, quite
  * possibly someone outside Gitwork — so it shows the brand lockup instead, inert.
  * Same test as identity.ts: served from /deck over http(s), or not.
  */
+function sameOriginReferrer(): string | null {
+  try {
+    if (!document.referrer) return null
+    const url = new URL(document.referrer)
+    if (url.origin !== location.origin) return null
+    // Coming "back" to another deck window is not going back — skip it.
+    if (url.pathname.startsWith('/deck')) return null
+    return url.pathname + url.search + url.hash
+  } catch {
+    return null
+  }
+}
+
 export function mountHomeSlot(servedByFoundry: boolean): HTMLElement {
   if (!servedByFoundry) {
     const mark = document.createElement('div')
@@ -131,17 +157,27 @@ export function mountHomeSlot(servedByFoundry: boolean): HTMLElement {
     mark.innerHTML = active.wordmark
     return mark
   }
+  const referrer = sameOriginReferrer()
+  const destination = referrer ?? '/app/docs'
   const link = document.createElement('a')
   link.className = 'ed-logo fd-home'
-  link.href = '/app'
-  // The destination is the platform, under either brand — you are going back to
-  // Foundry, not to "Gitwork". So this label is deliberately not brand-derived.
+  link.href = destination
   link.innerHTML =
     `<svg class="fd-home-arrow" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">` +
     `<path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.75" ` +
     `stroke-linecap="round" stroke-linejoin="round"/></svg>` +
-    `<span class="fd-home-label">Foundry</span>`
-  link.title = 'Back to Foundry'
+    `<span class="fd-home-label">Back</span>`
+  link.title = referrer ? 'Back to where you came from' : 'Back to Docs'
+  link.addEventListener('click', (ev) => {
+    // Let the browser handle modified clicks (new tab / new window / download).
+    if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return
+    // Only intercept when this tab genuinely has somewhere to go back to;
+    // otherwise fall through to the href, which is the referrer or the library.
+    if (history.length > 1 && referrer) {
+      ev.preventDefault()
+      history.back()
+    }
+  })
   return link
 }
 
