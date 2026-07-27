@@ -33,9 +33,6 @@ const OnboardingFormsTab = dynamic(() =>
 const McpAdminPanel = dynamic(() =>
   import("@/components/settings/mcp-admin-panel").then((m) => ({ default: m.McpAdminPanel })),
 );
-const DemoConfigurator = dynamic(() =>
-  import("@/components/settings/demo-configurator").then((m) => ({ default: m.DemoConfigurator })),
-);
 
 const VALID_SECTIONS: SettingsSectionId[] = [
   "account",
@@ -61,7 +58,6 @@ const VALID_SECTIONS: SettingsSectionId[] = [
   "audit",
   "developer",
   "privacy",
-  "demo",
   "workspace", // legacy
 ];
 
@@ -80,7 +76,6 @@ const ADMIN_ONLY_SECTIONS = new Set<SettingsSectionId>([
   "rate-card",
   "workspace",
   "onboarding",
-  "demo",
   "foreman",
 ]);
 
@@ -221,10 +216,6 @@ const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string 
     title: "Privacy & data",
     subtitle: "Data exports, retention, workspace deletion.",
   },
-  demo: {
-    title: "Demo builder",
-    subtitle: "White-label a shareable demo link and choose which modules it shows.",
-  },
   workspace: {
     title: "Workspace",
     subtitle: "Workspace-level settings (legacy view — pick a specific section).",
@@ -343,7 +334,6 @@ export default async function SettingsSectionPage({
         {sectionId === "audit" ? <AuditLogSection /> : null}
         {sectionId === "developer" ? <DeveloperTab apiKeyConfigured={apiKeyConfigured} /> : null}
         {sectionId === "privacy" ? <PrivacySection /> : null}
-        {sectionId === "demo" ? <DemoConfigurator /> : null}
         {sectionId === "workspace" ? <LegacyWorkspaceRedirect /> : null}
       </SettingsShell>
     </AppShell>

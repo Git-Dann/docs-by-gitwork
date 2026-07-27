@@ -52,7 +52,6 @@ export type SettingsSectionId =
   | "audit"
   | "developer"
   | "privacy"
-  | "demo"
   // Back-compat: the old "workspace" mega-section
   | "workspace";
 
@@ -211,13 +210,6 @@ const GROUPS: SectionGroup[] = [
         description: "Exports, retention, deletion.",
         icon: ShieldCheckIcon,
         permission: "settings.privacy",
-      },
-      {
-        id: "demo",
-        label: "Demo builder",
-        description: "White-label a shareable demo link.",
-        icon: Squares2X2Icon,
-        adminOnly: true,
       },
     ],
   },

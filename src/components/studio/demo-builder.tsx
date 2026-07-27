@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * Settings → Demo. Admin/super-admin tool to build a shareable, white-labelled
- * demo link: set the client name, choose which modules appear, copy the URL.
- * The link carries `?client=…&modules=…`; opening it rebrands the whole /demo
- * suite and filters the sidebar to the chosen modules. Nothing is persisted
- * server-side — it's purely a link builder.
+ * Studio → Demo builder. Admin/super-admin tool to build a shareable, white-labelled
+ * demo link: set the client name, choose which modules appear, pick a brand colour,
+ * copy the URL. The link carries `/demo/<Client>?modules=…&color=…`; opening it
+ * rebrands the whole /demo suite and filters the sidebar to the chosen modules.
+ * Nothing is persisted server-side — it's purely a link builder.
  */
 
 import { useState } from "react";
