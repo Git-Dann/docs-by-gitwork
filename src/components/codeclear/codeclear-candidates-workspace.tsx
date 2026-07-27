@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  ListBulletIcon,
   MagnifyingGlassIcon,
   PlusIcon,
+  Squares2X2Icon,
 } from "@heroicons/react/24/outline";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -42,6 +44,32 @@ import {
 } from "@/components/codeclear/candidate-profile-form";
 import { ClientAvatar } from "@/components/codeclear/client-avatar";
 
+/** Card grid (default) vs the dense table. Persisted in the URL as ?view=. */
+type DevViewMode = "cards" | "table";
+
+type DevSortMode =
+  | "roster"
+  | "name"
+  | "name-desc"
+  | "rate-desc"
+  | "rate-asc"
+  | "stack"
+  | "clients"
+  | "updated";
+
+/** Sort options shown in the toolbar. `ratesOnly` entries are hidden from
+ *  viewers without `code.viewRates` (they can't see the figure being sorted on). */
+const DEV_SORTS: Array<{ value: DevSortMode; label: string; ratesOnly?: boolean }> = [
+  { value: "roster", label: "Roster order" },
+  { value: "name", label: "Name A–Z" },
+  { value: "name-desc", label: "Name Z–A" },
+  { value: "stack", label: "Stack" },
+  { value: "clients", label: "Most clients" },
+  { value: "updated", label: "Recently updated" },
+  { value: "rate-desc", label: "Monthly: high → low", ratesOnly: true },
+  { value: "rate-asc", label: "Monthly: low → high", ratesOnly: true },
+];
+
 export function CodeClearCandidatesWorkspace() {
   const router = useRouter();
   const pathname = usePathname();
@@ -60,6 +88,14 @@ export function CodeClearCandidatesWorkspace() {
     (searchParams.get("identityConfidence") as IdentityConfidence | null) ?? "",
   );
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // Cards stay the default; table is the opt-in dense view. Both persist in the
+  // URL so a view (and its filters/sort) can be shared or restored on refresh.
+  const [viewMode, setViewMode] = useState<DevViewMode>(
+    searchParams.get("view") === "table" ? "table" : "cards",
+  );
+  const [sortMode, setSortMode] = useState<DevSortMode>(
+    (DEV_SORTS.find((s) => s.value === searchParams.get("sort"))?.value as DevSortMode) ?? "roster",
+  );
   const [moveToStatus, setMoveToStatus] = useState<PipelineStatus>("CODECLEAR_COMPLETE");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState<CandidateProfileValue>(emptyCandidateProfile);
@@ -82,16 +118,52 @@ export function CodeClearCandidatesWorkspace() {
   const clientOptions = clientsQuery.data?.clients ?? [];
   const candidates = useMemo(() => candidatesQuery.data?.items ?? [], [candidatesQuery.data]);
 
-  // Same canonical sort as the overview: roster order first, then any new
-  // devs by createdAt. Keeps groups visually stable across filter changes.
+  // Default ("roster") is the same canonical order as the overview: roster
+  // order first, then any new devs by createdAt — keeps groups visually stable
+  // across filter changes. The other modes sort client-side over the same set,
+  // so they compose with the Bench / Off Bench grouping below.
   const orderedCandidates = useMemo(() => {
-    return [...candidates].sort((a, b) => {
+    const byRoster = (a: CodeClearCandidateListItem, b: CodeClearCandidateListItem) => {
       const ai = rosterIndexFor(a.name);
       const bi = rosterIndexFor(b.name);
       if (ai !== bi) return ai - bi;
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-    });
-  }, [candidates]);
+    };
+    // Unrated devs sink to the bottom of a rate sort rather than reading as £0.
+    const byRate = (a: CodeClearCandidateListItem, b: CodeClearCandidateListItem, dir: 1 | -1) => {
+      const av = a.monthlyRate;
+      const bv = b.monthlyRate;
+      if (av == null && bv == null) return byRoster(a, b);
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      return av === bv ? byRoster(a, b) : (av - bv) * dir;
+    };
+    const rows = [...candidates];
+    switch (sortMode) {
+      case "name":
+        return rows.sort((a, b) => a.name.localeCompare(b.name));
+      case "name-desc":
+        return rows.sort((a, b) => b.name.localeCompare(a.name));
+      case "rate-desc":
+        return rows.sort((a, b) => byRate(a, b, -1));
+      case "rate-asc":
+        return rows.sort((a, b) => byRate(a, b, 1));
+      case "stack":
+        return rows.sort(
+          (a, b) => a.primaryStack.localeCompare(b.primaryStack) || byRoster(a, b),
+        );
+      case "clients":
+        return rows.sort(
+          (a, b) => b.currentClients.length - a.currentClients.length || byRoster(a, b),
+        );
+      case "updated":
+        return rows.sort(
+          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+        );
+      default:
+        return rows.sort(byRoster);
+    }
+  }, [candidates, sortMode]);
 
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
@@ -120,8 +192,11 @@ export function CodeClearCandidatesWorkspace() {
       <CodeClearTabs />
 
       <section className="app-card p-6">
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
-          <label className="relative">
+        {/* One toolbar row: search grows, the four filters sit inline beside it,
+            and Add candidate anchors the right. Wraps to further rows on narrow
+            viewports rather than stacking a separate filter block. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative min-w-[200px] flex-1">
             <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
             <input
               value={search}
@@ -134,27 +209,14 @@ export function CodeClearCandidatesWorkspace() {
               className="app-input pl-9"
             />
           </label>
-          {canManageCode ? (
-            <Button
-              type="button"
-              variant="primary"
-              size="md"
-              leadingIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => setShowCreateModal(true)}
-            >
-              Add candidate
-            </Button>
-          ) : null}
-        </div>
 
-        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <select
             value={statusFilter}
             onChange={(event) => {
               setStatusFilter(event.target.value as PipelineStatus | "");
               updateQuery({ status: event.target.value || null });
             }}
-            className="app-select"
+            className="app-select-compact w-auto"
           >
             <option value="">All stages</option>
             {PIPELINE_STATUSES.map((option) => (
@@ -170,7 +232,7 @@ export function CodeClearCandidatesWorkspace() {
               setTierFilter(event.target.value as CodeClearTier | "");
               updateQuery({ tier: event.target.value || null });
             }}
-            className="app-select"
+            className="app-select-compact w-auto"
           >
             <option value="">All tiers</option>
             {CODECLEAR_TIERS.map((option) => (
@@ -186,7 +248,7 @@ export function CodeClearCandidatesWorkspace() {
               setStackFilter(event.target.value);
               updateQuery({ stack: event.target.value || null });
             }}
-            className="app-select"
+            className="app-select-compact w-auto"
           >
             <option value="">All stacks</option>
             {stackOptions.map((stack) => (
@@ -202,7 +264,7 @@ export function CodeClearCandidatesWorkspace() {
               setConfidenceFilter(event.target.value as IdentityConfidence | "");
               updateQuery({ identityConfidence: event.target.value || null });
             }}
-            className="app-select"
+            className="app-select-compact w-auto"
           >
             <option value="">All confidence</option>
             {IDENTITY_CONFIDENCE_LEVELS.map((value) => (
@@ -211,6 +273,67 @@ export function CodeClearCandidatesWorkspace() {
               </option>
             ))}
           </select>
+
+          {canManageCode ? (
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              leadingIcon={<PlusIcon className="h-4 w-4" />}
+              onClick={() => setShowCreateModal(true)}
+            >
+              Add candidate
+            </Button>
+          ) : null}
+        </div>
+
+        {/* Sort + view controls — right-aligned, subordinate to the filters. */}
+        <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+          <label className="flex items-center gap-1.5">
+            <span className="widget-data-label">Sort</span>
+            <select
+              value={sortMode}
+              onChange={(event) => {
+                setSortMode(event.target.value as DevSortMode);
+                updateQuery({ sort: event.target.value === "roster" ? null : event.target.value });
+              }}
+              className="app-select-compact w-auto"
+            >
+              {DEV_SORTS.filter((option) => !option.ratesOnly || canViewRates).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="inline-flex overflow-hidden rounded-[8px] border border-[var(--border-2)]">
+            {(["cards", "table"] as DevViewMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => {
+                  setViewMode(mode);
+                  updateQuery({ view: mode === "cards" ? null : mode });
+                }}
+                aria-pressed={viewMode === mode}
+                title={mode === "cards" ? "Card view" : "Table view"}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium transition",
+                  viewMode === mode
+                    ? "bg-[var(--surface-brand)] text-[var(--brand-700)]"
+                    : "text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
+                )}
+              >
+                {mode === "cards" ? (
+                  <Squares2X2Icon className="h-4 w-4" />
+                ) : (
+                  <ListBulletIcon className="h-4 w-4" />
+                )}
+                {mode === "cards" ? "Cards" : "Table"}
+              </button>
+            ))}
+          </div>
         </div>
 
         {selectedIds.length ? (
@@ -374,6 +497,7 @@ export function CodeClearCandidatesWorkspace() {
                   onRowClick={(id) => router.push(`/app/codeclear/candidates/${id}`)}
                   clientOptions={clientOptions}
                   canViewRates={canViewRates}
+                  viewMode={viewMode}
                 />
               </div>
             );
@@ -527,6 +651,7 @@ function DevsTable({
   onRowClick,
   clientOptions,
   canViewRates,
+  viewMode,
 }: {
   sections: Array<{
     key: string;
@@ -539,6 +664,7 @@ function DevsTable({
   onRowClick: (id: string) => void;
   clientOptions: ClientListItem[];
   canViewRates: boolean;
+  viewMode: DevViewMode;
 }) {
   // Skip empty sections so an empty Off Bench doesn't render a header.
   const nonEmpty = sections.filter((s) => s.rows.length > 0);
@@ -550,19 +676,33 @@ function DevsTable({
 
   return (
     <div className="space-y-6">
-      {nonEmpty.map((section) => (
-        <DevsCardSection
-          key={section.key}
-          section={section}
-          showHeader={showSectionHeaders}
-          selectedIdSet={selectedIdSet}
-          onToggleSelect={onToggleSelect}
-          onRowClick={onRowClick}
-          clientOptions={clientOptions}
-          canViewRates={canViewRates}
-          usdToGbp={usdToGbp}
-        />
-      ))}
+      {nonEmpty.map((section) =>
+        viewMode === "table" ? (
+          <DevsRowSection
+            key={section.key}
+            section={section}
+            showHeader={showSectionHeaders}
+            selectedIdSet={selectedIdSet}
+            onToggleSelect={onToggleSelect}
+            onRowClick={onRowClick}
+            clientOptions={clientOptions}
+            canViewRates={canViewRates}
+            usdToGbp={usdToGbp}
+          />
+        ) : (
+          <DevsCardSection
+            key={section.key}
+            section={section}
+            showHeader={showSectionHeaders}
+            selectedIdSet={selectedIdSet}
+            onToggleSelect={onToggleSelect}
+            onRowClick={onRowClick}
+            clientOptions={clientOptions}
+            canViewRates={canViewRates}
+            usdToGbp={usdToGbp}
+          />
+        ),
+      )}
     </div>
   );
 }
@@ -621,6 +761,122 @@ function DevsCardSection({
             usdToGbp={usdToGbp}
           />
         ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Dense table view — same rows, same selection/navigation behaviour as the
+ * cards, just compact. Scrolls horizontally on narrow viewports rather than
+ * squashing columns. The rate column is omitted entirely (not blanked) for
+ * viewers without `code.viewRates`.
+ */
+function DevsRowSection({
+  section,
+  showHeader,
+  selectedIdSet,
+  onToggleSelect,
+  onRowClick,
+  clientOptions,
+  canViewRates,
+  usdToGbp,
+}: {
+  section: { key: string; title: string; subtitle: string; rows: CodeClearCandidateListItem[] };
+  showHeader: boolean;
+  selectedIdSet: Set<string>;
+  onToggleSelect: (id: string, next: boolean) => void;
+  onRowClick: (id: string) => void;
+  clientOptions: ClientListItem[];
+  canViewRates: boolean;
+  usdToGbp: number | null;
+}) {
+  const headCell =
+    "px-3 py-2 text-left font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-4)]";
+  return (
+    <section>
+      {showHeader ? (
+        <header className="mb-2 flex items-baseline justify-between gap-3 px-1">
+          <h3 className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-2)]">
+            {section.title}
+          </h3>
+          <span className="font-mono text-[11px] text-[var(--text-4)]">
+            {section.rows.length} DEV{section.rows.length === 1 ? "" : "S"}
+          </span>
+        </header>
+      ) : null}
+      <div className="overflow-x-auto rounded-[10px] border border-[var(--border-1)]">
+        <table className="w-full min-w-[720px] border-collapse text-sm">
+          <thead className="border-b border-[var(--border-1)] bg-[var(--surface-1)]">
+            <tr>
+              <th className={cn(headCell, "w-9")} aria-label="Select" />
+              <th className={headCell}>Developer</th>
+              <th className={headCell}>Stack</th>
+              {canViewRates ? <th className={cn(headCell, "text-right")}>Monthly</th> : null}
+              <th className={headCell}>Current clients</th>
+            </tr>
+          </thead>
+          <tbody>
+            {section.rows.map((candidate) => (
+              <tr
+                key={candidate.id}
+                onClick={() => onRowClick(candidate.id)}
+                className="cursor-pointer border-b border-[var(--border-1)] transition-colors last:border-0 hover:bg-[var(--surface-1)]"
+              >
+                <td className="px-3 py-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedIdSet.has(candidate.id)}
+                    onChange={(event) => {
+                      event.stopPropagation();
+                      onToggleSelect(candidate.id, event.target.checked);
+                    }}
+                    onClick={(event) => event.stopPropagation()}
+                    className="h-3.5 w-3.5 rounded border-[var(--border-1)]"
+                    aria-label={`Select ${candidate.name}`}
+                  />
+                </td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-2.5">
+                    <Avatar src={candidate.avatarUrl} name={candidate.name} size={28} />
+                    <div className="min-w-0">
+                      <p className="truncate font-medium leading-tight text-[var(--text-1)]">
+                        {candidate.name}
+                      </p>
+                      <p className="truncate font-mono text-[11px] text-[var(--text-4)]">
+                        @{candidate.githubHandle}
+                      </p>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-3 py-2 text-[var(--text-2)]">{candidate.primaryStack}</td>
+                {canViewRates ? (
+                  <td className="px-3 py-2 text-right">
+                    {candidate.monthlyRate != null && candidate.monthlyRateCurrency ? (
+                      <MonthlyRateCell
+                        amount={candidate.monthlyRate}
+                        currency={candidate.monthlyRateCurrency}
+                        usdToGbp={usdToGbp}
+                      />
+                    ) : (
+                      <span className="text-xs text-[var(--text-4)]">—</span>
+                    )}
+                  </td>
+                ) : null}
+                <td className="px-3 py-2">
+                  {candidate.currentClients.length === 0 ? (
+                    <span className="text-xs italic text-[var(--text-4)]">Unassigned</span>
+                  ) : (
+                    <ClientAvatarStack
+                      clients={candidate.currentClients}
+                      clientOptions={clientOptions}
+                    />
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </section>
   );
