@@ -18,13 +18,21 @@ class name" and a request to move fast are **not** exemptions — most of the de
 §30 and §31 arrived in exactly those disguises. This is enforced at session start by
 `.claude/hooks/session-start.sh`, which prints these rules into every session (§32).
 
-**Two hard rules that follow from the above:**
+**Three hard rules that follow from the above:**
 
 - **Name your chat to the convention** — `<Name> {{Product}}` / `{{Feat}}` / `{{Agent}}`. See
   **§32**. This is how work is tracked across the team; an untagged chat is invisible.
 - **Run `npm run verify` before any PR**, and report what it actually printed. CI runs the same
-  thing on every PR (§31). Never call something verified that wasn't run. There is **no staging
-  and no branch previews** — only `main` deploys, straight to the Fasthosts VPS (§23), not Vercel.
+  thing on every PR (§31), and a `pre-push` hook runs it for you on a push to `main`. Never call
+  something verified that wasn't run. There is **no staging and no branch previews** — only `main`
+  deploys, straight to the Fasthosts VPS (§23), not Vercel.
+- **Keep [`ONBOARDING.md`](ONBOARDING.md) current — in the same PR as the change.** It's the
+  one-page handover new builders actually read, so a stale one actively misleads them. It is **not**
+  a summary of this file; it only covers what someone needs in week one. Update it when you change:
+  the **workflow or a gate** (`verify`, CI, the hooks), a **canonical route or the module map**, a
+  **shared field/layout convention** it names, or when a **trap in its §4 list** is fixed or a new
+  one is learned. Adding a feature does *not* require touching it — resist growing it into a second
+  `CLAUDE.md`; its value is that it is short enough to be read in full.
 
 ---
 
