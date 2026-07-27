@@ -7,6 +7,11 @@
 > first — it is the mandatory operating standard for responsive fixes (breakpoints, shared
 > primitives, blast-radius discipline, and how to verify). Don't silo a fix to one screen.
 
+> **Before opening any PR:** run **`npm run verify`** and read
+> [`docs/build-checklist.md`](docs/build-checklist.md). That is the standing quality bar —
+> typecheck, lint, tests and the UI-standards audit (field padding, select chevrons, phone-width
+> overflow, hardcoded model ids). CI runs the same thing on every PR (§31).
+
 ---
 
 ## 1. Project Overview
@@ -476,10 +481,18 @@ Core domains:
 ```bash
 npm run dev          # Start local dev server (localhost:3000)
 npm run build        # prisma generate → prisma db push → next build
+                     #   ⚠️ pushes schema to whatever DATABASE_URL points at — never run in CI
 npm run db:generate  # prisma generate only
-npm run db:push      # push schema changes to Neon
+npm run db:push      # push schema changes to the database
 npm run db:migrate   # create a named migration
 npm run lint         # ESLint
+npm test             # vitest (unit tests)
+
+# Quality gate — run before every PR (§31, docs/build-checklist.md)
+npm run verify       # db:generate → tsc --noEmit → lint → test → audit:ui   (no DB needed)
+npm run audit:ui     # static field/layout/AI-cost standards audit (add -- --self-test first)
+npm run audit:clipping <url>   # runtime clipping audit, needs a reachable page
+npm run deck:verify  # Deck's own regression gate (see §30)
 ```
 
 ---
@@ -1500,3 +1513,85 @@ upstream's *product* (as opposed to its engine) and finishes wiring Deck to the 
   capture into Docs; no `manifest.json`, so in-app "update" is a redeploy; collaboration (bento's
   CRDT + relay) is untouched and unused; and the product name is one constant in `brand.ts` if
   "Deck" isn't the final call.
+
+## 31. Recent Changes (July 2026) — The build gate: CI on PRs + a static UI-standards audit
+
+Dan's standing pre-access checks (responsiveness, padding in text boxes, chevrons too close to the
+right, mobile optimisation, low token usage, general best practices) were **documented but almost
+entirely unenforced**. This closes that, so a new builder in the workspace hits a gate rather than
+a code review.
+
+**The headline gap: there was no CI.** `.github/workflows/deploy.yml` was the *only* workflow and
+it triggers on **push to `main`** — straight to build → GHCR → VPS. Nothing ran `tsc`, `eslint` or
+the tests on a branch or a PR. New **`.github/workflows/checks.yml`** runs on `pull_request` +
+push to `main` + `workflow_dispatch`: `npm ci` → `db:generate` → `tsc --noEmit` → `lint` → `test`
+→ `audit:ui --self-test` → `audit:ui` → **`npx next build`**, with `concurrency`
+cancel-in-progress.
+⚠️ **It calls `npx next build`, never `npm run build`** — the npm script runs `prisma db push`
+first and would mutate whatever `DATABASE_URL` it was handed. Bare `next build` was verified to
+compile and prerender all 101 static pages with **no database**, so CI gets the RSC-boundary and
+static-generation coverage `tsc` can't give without any DB access. (Nothing here touches Vercel —
+it hasn't been in the deploy path since §23.)
+
+**New static audit — `scripts/audit-ui-standards.mjs` (`npm run audit:ui`).** The companion to
+`audit-clipping.mjs`: that one drives a real page, which makes it the better detector, but **every
+`/app` page is auth-gated with no staging environment**, so the screens where most of these defects
+actually live had no gate at all. This one reads **source** (1380 files), needs no browser or
+server, and covers the gated screens. Seven rules, each a defect that has really shipped here:
+`SELECT-CHEVRON` (native OS chevron with no reserved padding — the Deck bug from §30) ·
+`SELECT-PAD` (`app-select-chevron` under `pr-6`, so the value sits under the arrow) ·
+`TEXTAREA-PAD` (horizontal padding only → first line flush to the top border) · `INPUT-PAD` ·
+`FIXED-WIDTH` (unprefixed `w-[≥380px]` with no cap/scroller/desktop-guard → `PAGE-X` on a phone) ·
+`TABLE-SCROLL` (a table that *cannot shrink* with no scrollable ancestor; `overflow-hidden` is not
+a scroller) · `MODEL-LITERAL` (hardcoded model id in server/API code).
+It has a **`--self-test`** (like the clipping audit) asserting every rule fires on the defect **and
+stays quiet on the fix** — run it before trusting a clean report. Also `--rule=`, `--warn-only`.
+
+**Writing the rules found more bugs in the rules than in the app, which is the point.** The first
+pass reported 28 findings; 25 were false positives and each one taught the rule something:
+`className="…"` plain strings weren't being parsed at all; `\bw-\[` also matched inside
+`min-w-[…]`; a prose `<select>` in a *comment* read as markup; `border-0` satisfied a
+"draws its own border" test; and `overflow-x-auto` ancestors, `max-w-[94vw]` caps and
+`hidden lg:block` desktop-only markup were all legitimate and being flagged. Ancestor state matters
+too: `.endpoint-body { overflow-x: auto }` on `/api-docs` is a real scroller declared in CSS, not
+Tailwind, so the audit now collects CSS-declared scroller classes and honours them.
+
+**Real defects found and fixed (3):** two `<select>`s in `starters/starter-form.tsx` and the
+sync-interval `<select>` in `support-dashboard.tsx` were bespoke fields with **no chevron
+treatment** — native OS arrow, no reserved right padding. Fixed with `app-select-chevron` + `pr-9`
+/ `pl-2 pr-6`, matching the correct precedent already in `support-dashboard.tsx` (the ticket-status
+dropdown). Audit is now clean at 0 findings.
+
+**Token usage: audited, and already in good shape — nothing invented.** `completeText()` already
+marks every system prompt `cache_control: ephemeral`, `tier: "light"` routes to Haiku, and
+`ai-cache.ts` / `ai-usage.ts` / `ai-cost.ts` / `ai-pricing.ts` cover response caching, usage and
+cost. Of 15 Anthropic call sites, the 5 that looked uncached were: 2 in `fix-agent.ts` that pass
+`cache_control` **via a variable** (and add rolling `withPrefixCache` on the tool loop — the
+exemplar), and 3 whose system prompts measure **~124–446 tokens, far below Anthropic's ~1024-token
+minimum cacheable length**, where `cache_control` would be a literal no-op. `proof/analyse` already
+wraps its call in a workspace response cache keyed on the brief hash. **No caching changes were
+made**, because none would have saved a token.
+
+**The one real AI-cost drift risk, fixed:** the handbook and §8 both say fallback models live *only*
+in `DEFAULT_MODELS` (`ai-provider.ts`), but the literals were **duplicated across 29 sites in 10
+server/API files** (`?? "claude-sonnet-5"`, `?? "gpt-4o"`, `?? "gemini-2.0-flash"`,
+`?? "llama3.1"`). Bump the table and every one of those silently keeps the old default. All now
+import `DEFAULT_MODELS`; `MODEL-LITERAL` keeps it that way. Its scope excludes the places a
+model-shaped string is *data* — `ai-pricing.ts` (rate card), `api/settings/models/` (its `gpt-4` is
+a prefix filter for OpenAI's catalogue), `pulse-checks/` (sniffs these names in scanned HTML) and
+`starters-catalog.ts` (`claude-*` slugs are tags/build refs) — each exclusion commented with why.
+
+**Docs:** new **[`docs/build-checklist.md`](docs/build-checklist.md)** — the one-command gate, a
+table of every rule and its rationale, what the audits *can't* see (radius mismatches and cramped-
+but-recoverable controls are screenshot findings), verification honesty (no staging, no branch
+previews, `/app` can't be self-screenshotted), and the AI cost rules. `docs/mobile-playbook.md`
+gained **§3b** for the static audit and a step 6 in its process. This file's header now points at
+the checklist.
+
+**Deferred / notes:** the clipping audit stays manual for `/app` until a staging environment
+exists (it needs a reachable page and those are auth-gated). **~8 hand-rolled field
+class constants** (`inputCls` / `fieldInput` / `brandInputClass` / `inputClass` in `wiki/*`,
+`starters`, `onboarding/brand.tsx`) all have correct `px-3 py-2` padding but diverge cosmetically
+from `app-input` (different radius, border token, focus ring) — consolidating them is a real
+consistency win but touches screens that can't be visually verified pre-merge, so it was left as a
+follow-up rather than done blind.

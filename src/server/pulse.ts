@@ -47,6 +47,7 @@ import type {
   CheckCategory,
 } from "@/types/pulse";
 import { runVisualAgent } from "@/server/pulse-agents/visual-agent";
+import { DEFAULT_MODELS } from "@/server/ai-provider";
 
 export const pulseInclude = {
   client: {
@@ -610,10 +611,10 @@ export async function createPulseScanRecord(input: {
       if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
       return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
     })(),
-    model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o") :
-           p === "GEMINI" ? (workspace.geminiModel ?? "gemini-2.0-flash") :
-           p === "LOCAL" ? (workspace.localLlmModel ?? "llama3.1") :
-           (workspace.anthropicModel ?? "claude-sonnet-5"),
+    model: p === "OPENAI" ? (workspace.openaiModel ?? DEFAULT_MODELS.OPENAI) :
+           p === "GEMINI" ? (workspace.geminiModel ?? DEFAULT_MODELS.GEMINI) :
+           p === "LOCAL" ? (workspace.localLlmModel ?? DEFAULT_MODELS.LOCAL) :
+           (workspace.anthropicModel ?? DEFAULT_MODELS.ANTHROPIC),
     baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/" :
              p === "LOCAL" ? (workspace.localLlmUrl ?? "http://localhost:11434/v1") :
              null,
@@ -690,10 +691,10 @@ export async function retryPulseScan(scanId: string): Promise<{
       if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
       return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
     })(),
-    model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o") :
-           p === "GEMINI" ? (workspace.geminiModel ?? "gemini-2.0-flash") :
-           p === "LOCAL" ? (workspace.localLlmModel ?? "llama3.1") :
-           (workspace.anthropicModel ?? "claude-sonnet-5"),
+    model: p === "OPENAI" ? (workspace.openaiModel ?? DEFAULT_MODELS.OPENAI) :
+           p === "GEMINI" ? (workspace.geminiModel ?? DEFAULT_MODELS.GEMINI) :
+           p === "LOCAL" ? (workspace.localLlmModel ?? DEFAULT_MODELS.LOCAL) :
+           (workspace.anthropicModel ?? DEFAULT_MODELS.ANTHROPIC),
     baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/" :
              p === "LOCAL" ? (workspace.localLlmUrl ?? "http://localhost:11434/v1") :
              null,
@@ -752,10 +753,10 @@ export async function reanalysePulseScan(
       if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
       return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
     })(),
-    model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o")
-         : p === "GEMINI" ? (workspace.geminiModel ?? "gemini-2.0-flash")
-         : p === "LOCAL"  ? (workspace.localLlmModel ?? "llama3.1")
-         : (workspace.anthropicModel ?? "claude-sonnet-5"),
+    model: p === "OPENAI" ? (workspace.openaiModel ?? DEFAULT_MODELS.OPENAI)
+         : p === "GEMINI" ? (workspace.geminiModel ?? DEFAULT_MODELS.GEMINI)
+         : p === "LOCAL"  ? (workspace.localLlmModel ?? DEFAULT_MODELS.LOCAL)
+         : (workspace.anthropicModel ?? DEFAULT_MODELS.ANTHROPIC),
     baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/"
            : p === "LOCAL"  ? (workspace.localLlmUrl ?? "http://localhost:11434/v1")
            : null,

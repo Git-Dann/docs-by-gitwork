@@ -38,12 +38,13 @@ import { ensureBaseRecords } from "@/server/bootstrap";
 import { AiNotConfiguredError } from "@/server/document-ai";
 import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { recordAiUsage, usageFromAnthropic } from "@/server/ai-usage";
+import { DEFAULT_MODELS } from "@/server/ai-provider";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-const DEFAULT_MODEL = "claude-sonnet-5";
+const DEFAULT_MODEL = DEFAULT_MODELS.ANTHROPIC;
 
 const chatSchema = z.object({
   messages: z
