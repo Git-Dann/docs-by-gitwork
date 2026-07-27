@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { recordAuditEntry } from "@/server/audit-log";
 import { authTest, getSlackBotToken } from "@/server/slack/client";
+import { DEFAULT_MODELS } from "@/server/ai-provider";
 
 export const dynamic = "force-dynamic";
 
@@ -76,15 +77,15 @@ export async function GET() {
       aiProvider: workspace?.aiProvider ?? "ANTHROPIC",
       anthropicKeyMasked: anthropicKey ? maskKey(anthropicKey) : null,
       anthropicKeySource: process.env.ANTHROPIC_API_KEY ? "env" : workspace?.anthropicApiKey ? "database" : null,
-      anthropicModel: workspace?.anthropicModel ?? "claude-sonnet-5",
+      anthropicModel: workspace?.anthropicModel ?? DEFAULT_MODELS.ANTHROPIC,
       openaiKeyMasked: openaiKey ? maskKey(openaiKey) : null,
       openaiKeySource: process.env.OPENAI_API_KEY ? "env" : workspace?.openaiApiKey ? "database" : null,
-      openaiModel: workspace?.openaiModel ?? "gpt-4o",
+      openaiModel: workspace?.openaiModel ?? DEFAULT_MODELS.OPENAI,
       geminiKeyMasked: geminiKey ? maskKey(geminiKey) : null,
       geminiKeySource: process.env.GEMINI_API_KEY ? "env" : workspace?.geminiApiKey ? "database" : null,
-      geminiModel: workspace?.geminiModel ?? "gemini-2.0-flash",
+      geminiModel: workspace?.geminiModel ?? DEFAULT_MODELS.GEMINI,
       localLlmUrl: workspace?.localLlmUrl ?? "",
-      localLlmModel: workspace?.localLlmModel ?? "llama3.1",
+      localLlmModel: workspace?.localLlmModel ?? DEFAULT_MODELS.LOCAL,
       externalApiKeyMasked: externalKey ? maskKey(externalKey) : null,
       externalApiKeySource: process.env.API_KEY ? "env" : workspace?.externalApiKey ? "database" : null,
       googleServiceAccountJsonSet: Boolean(workspace?.googleServiceAccountJson),

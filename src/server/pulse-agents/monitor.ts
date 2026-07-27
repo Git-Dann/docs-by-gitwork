@@ -6,6 +6,7 @@ import { createPulseScanRecord, runAnalysis } from "@/server/pulse";
 import { githubHeaders } from "@/lib/github";
 import { sendWorkspaceEmail, listBackstageApproverEmails, escapeHtml } from "@/server/email";
 import { getSlackBotToken } from "@/server/slack/client";
+import { DEFAULT_MODELS } from "@/server/ai-provider";
 
 export type MonitorFrequency = "DAILY" | "WEEKLY" | "OFF";
 
@@ -154,10 +155,10 @@ export async function triggerMonitorScan(monitorId: string): Promise<void> {
       if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
       return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
     })(),
-    model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o") :
-           p === "GEMINI" ? (workspace.geminiModel ?? "gemini-2.0-flash") :
-           p === "LOCAL" ? (workspace.localLlmModel ?? "llama3.1") :
-           (workspace.anthropicModel ?? "claude-sonnet-5"),
+    model: p === "OPENAI" ? (workspace.openaiModel ?? DEFAULT_MODELS.OPENAI) :
+           p === "GEMINI" ? (workspace.geminiModel ?? DEFAULT_MODELS.GEMINI) :
+           p === "LOCAL" ? (workspace.localLlmModel ?? DEFAULT_MODELS.LOCAL) :
+           (workspace.anthropicModel ?? DEFAULT_MODELS.ANTHROPIC),
     baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/" :
              p === "LOCAL" ? (workspace.localLlmUrl ?? "http://localhost:11434/v1") :
              null,

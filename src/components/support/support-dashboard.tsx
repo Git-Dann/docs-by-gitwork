@@ -4557,7 +4557,7 @@ export function ConnectorsView({ clientId, clientSlug, showAgentLogs = true }: {
                         });
                       }}
                       title="How often this connector auto-fetches on the background sync"
-                      className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-1.5 py-1 text-[11px] text-[var(--text-2)]"
+                      className="app-select-chevron rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] py-1 pl-2 pr-6 text-[11px] text-[var(--text-2)]"
                     >
                       <option value="60">Hourly</option>
                       <option value="360">Every 6h</option>
