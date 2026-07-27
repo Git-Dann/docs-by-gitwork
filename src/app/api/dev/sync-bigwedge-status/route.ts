@@ -14,7 +14,7 @@
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { requireAuthedUserOrDefault } from "@/server/auth/effective-user";
+import { requireAuthedUser } from "@/server/auth/effective-user";
 import { syncBigWedgeStatus } from "@/server/wiki-bigwedge-sync";
 import { isAtLeast } from "@/types/auth";
 import { z } from "zod";
@@ -38,7 +38,14 @@ function isWorkspaceApiKeyCall(req: Request): boolean {
 export async function POST(req: Request) {
   try {
     if (!isWorkspaceApiKeyCall(req)) {
-      const user = await requireAuthedUserOrDefault(req);
+      // requireAuthedUser, NOT requireAuthedUserOrDefault. The ...OrDefault variant
+      // falls back to the default workspace owner when no per-user identity resolves,
+      // and that owner is a Super Admin — so the isAtLeast(ADMIN) check below passed
+      // for an identity-less caller instead of returning 401. Its own docstring rules
+      // this out ("Do NOT use where a specific privilege must be proven"), and the
+      // sibling import-bigwedge-courses route already does it this way. No effect on
+      // real users, who always have a session.
+      const user = await requireAuthedUser(req);
       if (!isAtLeast(user.role, "ADMIN")) return apiError("Admin only", 403);
     }
 

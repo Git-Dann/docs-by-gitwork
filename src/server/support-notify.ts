@@ -66,7 +66,7 @@ export async function postCareDigest(workspaceId: string): Promise<void> {
     }
 
     if (urgentCount > 0) lines.push(`⚠️  ${urgentCount} urgent`);
-    lines.push(`Review → https://foundry.gitwork.co.uk/app/support`);
+    lines.push(`Review → https://foundry.gitwork.co.uk/app/care`);
 
     await postSlack(botToken, channel, lines.join("\n"));
   } catch {

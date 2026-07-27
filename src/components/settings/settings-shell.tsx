@@ -15,6 +15,7 @@ import {
   CommandLineIcon,
   CpuChipIcon,
   DocumentDuplicateIcon,
+  BeakerIcon,
   ShieldCheckIcon,
   SparklesIcon,
   Squares2X2Icon,
@@ -48,6 +49,7 @@ export type SettingsSectionId =
   | "mcp"
   | "agents-checks" // legacy — redirects to "agents"
   // System
+  | "labs"
   | "analytics"
   | "audit"
   | "developer"
@@ -182,6 +184,13 @@ const GROUPS: SectionGroup[] = [
     id: "system",
     label: "System",
     sections: [
+      {
+        id: "labs",
+        label: "Labs",
+        description: "Experimental and internal-only surfaces.",
+        icon: BeakerIcon,
+        superAdminOnly: true,
+      },
       {
         id: "analytics",
         label: "Analytics",

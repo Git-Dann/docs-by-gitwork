@@ -62,7 +62,10 @@ export default function ProofWidget({ size }: { size: WidgetSize }) {
             {docs.slice(0, displayCount).map((doc) => (
               <Link
                 key={doc.id}
-                href={`/app/proof/${doc.id}`}
+                // /app/proof/[id] does not exist — the Proof route is a single page that
+                // accepts ?brief= and ?scenario= only, so this was a 404 for every row.
+                // Until there is a per-document view, send them to the workspace.
+                href="/app/proof"
                 className="flex items-center gap-2 rounded-[6px] px-2 py-1.5 transition-colors hover:bg-[var(--surface-1)]"
               >
                 <ClipboardDocumentCheckIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-3)]" />

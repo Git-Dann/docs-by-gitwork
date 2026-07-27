@@ -206,9 +206,9 @@ The sidebar uses different labels from the URL routes — mapping below.
 >
 > | Canonical | Legacy (still resolves) |
 > |---|---|
-> | `/app/portal` | `/app/clients` |
-> | `/app/care` | `/app/support` |
-> | `/app/code` | `/app/codeclear` |
+> | `/app/portal` | `/app/clients` → `redirect()` stubs |
+> | `/app/care` | `/app/support` — ⚠️ still a **live, different** UI, not a stub |
+> | `/app/code` | `/app/codeclear` — ⚠️ its `candidates/`, `pipeline/`, `devsignal/**` subtrees live **only** here |
 > | `/app/docs` | `/app/proposals` → `redirect()` stubs |
 >
 > Note the **server module name is a third thing again** and doesn't match either: Portal →
@@ -217,13 +217,17 @@ The sidebar uses different labels from the URL routes — mapping below.
 
 | Sidebar label | Route | Server module | Description |
 |---|---|---|---|
-| **Foundry HQ** | `/app` | — | Dashboard overview |
-| **Pulse** | `/app/pulse` | `src/server/pulse*.ts` + `pulse-agents/` | AI project validation — 150+ automated checks, gap analysis, GitHub fix-agent, continuous monitors. Also hosts the optional **Study** research tool (no longer a top-level module — see §26) |
-| **Code** | `/app/code` (legacy `/app/codeclear`) | `src/server/codeclear*.ts` | Developer hiring pipeline — GitHub analysis, scoring, candidate management |
+| **Foundry HQ** | `/app` | — | Dashboard overview. `/app/projects/[slug]` hangs off it (project detail; `app-shell.tsx` deliberately highlights HQ for it) |
+| **Pulse** | `/app/pulse` | `src/server/pulse*.ts` + `pulse-agents/` | AI project validation — ~600 checks in `checks-registry.ts`, gap analysis, GitHub fix-agent, continuous monitors. Also hosts the optional **Study** research tool (no longer a top-level module — see §26) |
+| **Code** | `/app/code` (legacy `/app/codeclear`) | `src/server/codeclear*.ts` | Developer hiring pipeline — GitHub analysis, scoring, candidate management. ⚠️ `candidates/`, `pipeline/` and `devsignal/**` still live ONLY under the legacy `/app/codeclear/*` prefix — moving them is a separate PR, and the `/app/codeclear/devsignal` `MODULE_PATHS` entry must be renamed **in place** or admin-only DevSignal silently regates onto the staff-inherited `codeclear` module |
 | **Studio** | `/app/studio` | — (client-side only, no `/api/studio`) | Brand asset studio — design on-brand social assets and App Store / Play Store screenshots, then batch-export at the exact size each platform needs. ~30 components under `src/components/studio/` (`studio-root.tsx` entry, plus `templates/`, `screenshots/`, `costing/`, `brand.tsx`, `export.ts`). Also now hosts the **Demo builder** (`demo-builder.tsx`), moved out of Settings in July 2026 — this is the `Demo {{Feat}}` workstream in §32. Module permission id `studio` |
-| **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). **Canonical route is `/app/docs`**; `/app/proposals/*` are redirect stubs (see §16) |
-| **Portal** | `/app/portal` (legacy `/app/clients`) | `src/server/clients.ts` · `meetings.ts` | Client management + detail pages, incl. **Scribe** AI meeting notes per-client (no sidebar item — see §14) |
-| **Care** | `/app/care` (legacy `/app/support`) | `src/server/support.ts` | Client support ops — conversations, tickets, workflow rules, audit log |
+| **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). `/app/proposals/*` are redirect stubs (see §16) |
+| **Portal** | `/app/portal` (legacy `/app/clients`) | `src/server/clients.ts` · `meetings.ts` | Client management + detail pages, incl. **Scribe** AI meeting notes per-client (no sidebar item — see §14). `/app/clients(/[slug])` are redirect stubs — they were a live, degraded second copy missing the tasks/wiki/design-system children |
+| **Care** | `/app/care` (legacy `/app/support`) | `src/server/support.ts` | Client support ops. ⚠️ **Two UIs are live.** `/app/care` is the rebuilt cockpit; `/app/support` still serves the 5,535-line legacy dashboard and exclusively owns add-client, Tickets, monthly Reports, health scoring, AI search and workflow rules. `client-cockpit.tsx` imports `ConnectorsView` *out of* the legacy file, so it cannot be deleted yet. Finishing the port is a two-way merge, not a cutover |
+| **Analytics** | `/app/analytics` | `src/server/analytics/` | Delivery, output & AI usage. Super Admin — gated by the page itself (`notFound()` on a live DB role read), not by `MODULE_PATHS`. Reached from the Settings rail |
+| **Starters** | `/app/starters` | `src/server/starters*.ts` | Prompt→production library. **Super Admin only**, enforced by a dedicated check in `middleware.ts` ahead of the module gate |
+| **Handbook** | `/app/handbook` | — | Internal developer knowledgebase. Deliberately readable by every internal user (no module gate); writes are Admin+ (enforced in `/api/handbook`) |
+| **Templates** | `/app/templates` | `src/server/proposals.ts` | Document templates. Linked from the Docs workspace; gated on `proposals` since July 2026 |
 | **Study** (tool) | `/app/study` | `src/server/study*.ts` + `study-agents/` | AI user research — multi-agent persona interviews, synthesis, reports. **No sidebar item** — surfaced as an optional tool inside Pulse (see §26). Routes/API/models unchanged at `/app/study` · `/api/study` |
 | **Backstage** | `/app/backstage` | `src/server/backstage.ts` + `backstage-holidays.ts` | Internal Gitwork ops umbrella — v1 covers staff leave booking + expenses tracking + staffing alerts on HQ. Future tools slot in as `/app/backstage/<slug>` |
 | **Settings** | `/app/settings` | — | AI provider config, rate card, workspace branding |
@@ -232,15 +236,36 @@ The sidebar uses different labels from the URL routes — mapping below.
 
 **Public pages (outside /app):**
 
+> **The agency marketing pages are gone (July 2026).** `/products`, `/products/[slug]`,
+> `/pricing`, `/company` and `/customers` duplicated gitwork.co.uk — which is the site that
+> links *here* — and were removed along with the whole of `src/components/marketing/`, their
+> only consumer. All five 308 to gitwork.co.uk. `/design-system` went too: a stale, indexable
+> HTML mirror of `DESIGN.md` with zero inbound links.
+
 | Route | Description |
 |---|---|
-| `/` | Foundry marketing homepage — Gitwork logo in nav/footer, Foundry cream design |
-| `/pulse-overview` | Standalone public Pulse product page (not in app nav, shareable URL) |
-| `/api-docs` | REST API reference |
-| `/context` | AI context page — this project's structured context for AI assistants |
-| `/report/[token]` | Shareable public Pulse scan report |
-| `/onboarding/[token]` | Public client onboarding flow — tokenised, no auth, autosaves per step |
+| `/` | Lean **platform** landing page — not agency marketing. Was a bare `redirect("/portal/login")`, which meant a Pulse scan of this origin graded a noindex login screen (49 of 60 SEO/AEO/Trust checks read `/`'s HTML). Carries the landmarks, skip link, JSON-LD `@graph` and legal footer links those checks need. Client sign-in is still the primary action |
+| `/legal` · `/privacy` · `/terms` · `/cookies` · `/security` | Legal set. `privacy_policy` + `terms_of_service` **hard-cap the Pulse score at 65** (`score-breakdown.ts:66`) when either FAILs, and the check matches a literal `href="/privacy"` in the scanned HTML — closing quote included, so a trailing slash does not count. Shared chrome in `src/components/public/` |
+| `/pulse-overview` | Standalone public Pulse product page (not in app nav, shareable URL). Self-embeds `/embed/pulse`, which is why `'self'` is in that route's `frame-ancestors` |
+| `/embed/pulse` | Embeddable scanner widget. **External contract** — allow-listed for gitwork.co.uk in `next.config.ts` and the only route exempt from the baseline security headers. Do not touch without checking the live embed |
+| `/api-docs` | REST API reference. Linked in-app from Settings → Developer |
+| `/context` | AI context page — noindex, no inbound links, and self-reports "May 2026". Stale; either refresh or drop it |
+| `/report/[token]` · `/docs/[token]` · `/sign/[token]` · `/onboarding/[token]` · `/timeline/[token]` · `/brand/[token]` · `/wiki/[slug]` · `/vet/[token]` | Client & candidate deliverables — the URL token is the credential. All noindex, all disallowed in `robots.ts` |
+| `/demo/**` | 16 white-labelled sales demos. Public by design, noindex, **fully mock** — no demo page imports Prisma or any server module |
+| `/edge` | Corsair Xeneon kiosk board. Session-gated, chrome-free, dark-forced. Entry point now lives in **Settings → Labs** (§4a) rather than a top-level route, per the rule below |
+| `/deck` | Deck slide editor shell (static, `public/deck/index.html`, rewritten in `next.config.ts`). Session-gated. **Do not move it** — four vendored files test `location.pathname.startsWith('/deck')` and a Next rewrite does not change `location.pathname`; `foundry-doc.ts` uses that test to select DOCUMENT MODE, so `/app/deck?doc=` would boot an empty file-mode deck and stop saving |
 | `/app/pulse/[scanId]/report` | Printable Pulse report (in-app) |
+
+### 4a. Where a surface belongs
+
+`/app/<name>` is for a **main product** — its own sidebar item and module permission.
+Anything else gets an entry point, not a namespace:
+
+- **A feature of a product** → surfaced inside that product. Deck sits on the Docs
+  toolbar; Study sits inside Pulse; Scribe is a panel on the client detail page.
+- **An experiment or internal-only surface** → **Settings → Labs**
+  (`src/components/settings/labs-panel.tsx`, Super Admin). `/edge` is the first entry.
+- **A second internal tool** → under Backstage, never a new top-level item (§10).
 
 ---
 
@@ -563,15 +588,24 @@ npm run deck:verify  # Deck's own regression gate (see §30)
 
 ## 11. Known Issues / Tech Debt
 
+> Audited July 2026. Rows that were **fixed or simply wrong** have been removed rather than
+> left to mislead: the `MODULE_PATHS` row (fixed long ago, and it contradicted §13.4 in this
+> same file), the "Library/Templates nav hidden" row (Templates is linked from the Docs
+> workspace and now gated), and the `any`-usage count, which was ~135 and is actually **26**.
+
 | Issue | File | Notes |
 |---|---|---|
-| `pulse-scan.ts` is 3200+ lines | `src/server/pulse-scan.ts` | Works fine — don't split without a clear plan. Future task. |
-| ~135 `any` type usages | various | Not breaking. Gradual cleanup is a future task. |
-| Proof is built but hidden | `src/components/app-shell.tsx` | Nav item commented out. Can be re-enabled when ready. |
-| Library/Templates nav hidden | `src/components/app-shell.tsx` | Same — commented out, works but not exposed. |
+| **Care runs two UIs at once** | `src/components/care/` + `src/components/support/support-dashboard.tsx` | `/app/care` is the rebuilt cockpit; `/app/support` is the 5,535-line legacy dashboard. Each holds capabilities the other lacks, so it is a **two-way merge**. Legacy exclusively owns add-client, Tickets, monthly Reports (~815 lines), health scoring, AI semantic search and workflow rules; the cockpit owns triage, snooze, notes and batch actions. `client-cockpit.tsx` imports `ConnectorsView` from the legacy file, so it cannot be deleted today. **Also a live bug:** Care has no path to clear `unread`, so unread counters only grow for anyone working there. |
+| **`/app/codeclear/*` subtrees not yet moved** | `src/app/(app)/app/codeclear/` | `candidates/`, `pipeline/` and `devsignal/**` exist only under the legacy prefix; 33 refs across 10 files. When moving, rename the `/app/codeclear/devsignal` `MODULE_PATHS` entry **in place** — appending it after `/app/code` regates admin-only DevSignal onto `codeclear`, which STAFF auto-inherits. Silent privilege escalation, no compile error. |
+| `hasModuleAccess` has no segment boundary | `src/middleware.ts` | Bare `startsWith`, so `/app/code` also matches `/app/codeclear`. Harmless today (same module) but worth anchoring the way `isPublicApiPath` already does. It also ends in an unconditional `return true`, so **any `/app` path absent from `MODULE_PATHS` is ungated** — that is how `/app/proof`, `/app/templates` and `/app/projects` were reachable by any signed-in member until they were added. |
+| `assertSuperAdmin(null)` is a deliberate no-op | `src/server/auth/effective-user.ts` | A null user falls straight through, so `assertSuperAdmin(await getEffectiveUserOrNull(req))` means "Super Admin **or any API_KEY bearer**". Intentional, for server integrations — but do not read it as strict. For strict, use `requireAuthedUser` first (the `merge-accounts` pattern). Browser sessions are unaffected. |
+| Cron scheduling has drifted | `vercel.json` · `docs/vps-crons.md` | `wedge-keepwarm` and `retention` are scheduled **nowhere**; `wiki-monitors` is only in `vercel.json`; the critical `jobs` worker is **missing** from `vercel.json`; three schedules disagree between the two; `foreman` is listed twice in the doc. And `vercel.json` crons are **not** necessarily inert — Vercel crons hit the deployment directly regardless of DNS, so some may be double-running. Reconcile against the live `crontab -l` before changing either. |
+| `pulse-scan.ts` is 4000+ lines | `src/server/pulse-scan.ts` | Works fine — don't split without a clear plan. Future task. |
+| 26 `any` type usages | various | Not breaking. Gradual cleanup is a future task. |
+| Proof is built but hidden | `src/components/app-shell.tsx` | Nav item commented out. Now gated on `proposals`. `src/server/proof.ts` hands out absolute `/app/proof?…` share URLs, so any relocation needs a query-preserving stub. |
 | `locals-settings` uses localStorage | `src/lib/local-settings.ts` | Account/workspace settings client-only — pre-auth artifact. |
-| Stale `MODULE_PATHS` route names | `src/middleware.ts` | Still references old paths (`/app/support`, `/app/clients`, etc.) — the new routes (`/app/care`, `/app/portal`) aren't permission-gated as a result. Pre-existing bug, separate ticket. |
-| Backstage receipts in Postgres `bytea` | `prisma/schema.prisma` (`Expense.receiptImage/Thumb`) | Fine for now. Migrate to Vercel Blob / R2 once volume exceeds ~100 expenses or any receipt routinely > 1MB. Lifecycle: full image dropped on review, ~20KB thumb retained for audit. |
+| Backstage receipts in Postgres `bytea` | `prisma/schema.prisma` (`Expense.receiptImage/Thumb`) | Fine for now. Migrate to object storage once volume exceeds ~100 expenses or any receipt routinely > 1MB. Lifecycle: full image dropped on review, ~20KB thumb retained for audit. |
+| Deleting a route is invisible to the gate | — | `npm run verify` and `next build` cannot see a removed API route: `audit:ui` walks `src/` dynamically, no test references `api/dev` or `api/cron`, and the "101 static pages" line in `checks.yml` is a comment, not an assertion. **Grep for callers by hand before deleting a route.** |
 
 ---
 
@@ -658,7 +692,7 @@ In the last session, the following was completed:
 
 **UI** — `MeetingNotesSection` + `MeetingNotesModal` in `src/components/clients/client-detail.tsx`: compact rows (title · date · status) with a **View ↗** button (Retry for no-notes/error). View opens a content-sized, branded 2-col modal (per `DESIGN.md`: mono "Scribe" eyebrow, DM Serif Display title, JetBrains Mono timestamp + labels; non-pill attendee chips) — notes left, decisions + action items right. Each **action item has a "+ Task"** button that creates a `Task` on the client's board via `useCreateTask` (no checkboxes — the task board tracks done-ness).
 
-**Go/no-go:** `GET /api/dev/notes-spike?title=…&start=…` confirms Drive access + that the matching Gemini doc is reachable (`verdict: "GO …"`).
+**Go/no-go:** was `GET /api/dev/notes-spike` — **removed July 2026** along with the other eight spent one-shot `/api/dev/*` routes, since the spike it de-risked shipped. If Drive access ever needs re-proving, the reachability logic lives in `findGeminiNotesForEvent` (`src/server/google-drive-notes.ts`).
 
 **Prerequisites:** Meet AI ("Take notes for me") enabled on the Workspace tier (Gitwork has it — Gemini notes are already generated); each teammate signs out/in once to grant `drive.readonly`.
 

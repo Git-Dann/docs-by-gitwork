@@ -127,7 +127,7 @@ function StudyCard({
 
       {study.workspaceClientName && (
         <Link
-          href={`/app/clients/${study.workspaceClientSlug}`}
+          href={`/app/portal/${study.workspaceClientSlug}`}
           className="mx-4 mt-2.5 inline-flex w-fit items-center gap-1.5 rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-3)] transition hover:border-[var(--brand-200)] hover:text-[var(--brand-700)]"
         >
           <BuildingOffice2Icon className="h-3 w-3" />
