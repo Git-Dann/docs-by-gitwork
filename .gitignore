@@ -1,10 +1,12 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
+# `**/` not `/` — a bare `/node_modules` only matches the top level, which is how
+# a nested app's entire install (21,573 files) got committed once already. This
+# pattern is the root-cause guard; keep it broad.
+**/node_modules
 # vendored apps build with their own deps (see vendor/bento/README.md). The
 # BUILT shell is committed (public/deck/index.html) — the deps never are.
-vendor/**/node_modules
 vendor/**/dist
 vendor/**/dist-single
 vendor/**/*.tsbuildinfo
