@@ -1,16 +1,32 @@
 # Foundry by Gitwork — Claude Code Guide
 
-> **New session?** Read this file top-to-bottom before doing anything. It has everything
-> needed to pick up the project without re-exploring the codebase.
+## 🛑 STOP — READ THESE FIRST. MANDATORY, NO EXCEPTIONS.
 
-> **Doing any mobile / responsive / layout work?** Read [`docs/mobile-playbook.md`](docs/mobile-playbook.md)
-> first — it is the mandatory operating standard for responsive fixes (breakpoints, shared
-> primitives, blast-radius discipline, and how to verify). Don't silo a fix to one screen.
+**Read all four of these BEFORE you change, create, refactor or deploy anything.** Not skimmed.
+Not assumed from an earlier session. Not inferred from the diff or the file you're about to open.
+If you are about to touch this repo and haven't read them, **stop and read them now.**
 
-> **Before opening any PR:** run **`npm run verify`** and read
-> [`docs/build-checklist.md`](docs/build-checklist.md). That is the standing quality bar —
-> typecheck, lint, tests and the UI-standards audit (field padding, select chevrons, phone-width
-> overflow, hardcoded model ids). CI runs the same thing on every PR (§31).
+| File | What it governs |
+|---|---|
+| **`CLAUDE.md`** (this file) | Project guide, conventions, module map, history |
+| **[`DESIGN.md`](DESIGN.md)** | The design system — tokens, type, components, spacing, radius |
+| **[`docs/build-checklist.md`](docs/build-checklist.md)** | The quality gate: `npm run verify` and what it checks |
+| **[`docs/mobile-playbook.md`](docs/mobile-playbook.md)** | **Mandatory** for any layout / responsive / spacing work |
+
+There is no exemption for a small change. "It's a one-liner", "it's just copy", "it's only a
+class name" and a request to move fast are **not** exemptions — most of the defects catalogued in
+§30 and §31 arrived in exactly those disguises. This is enforced at session start by
+`.claude/hooks/session-start.sh`, which prints these rules into every session (§32).
+
+**Two hard rules that follow from the above:**
+
+- **Name your chat to the convention** — `<Name> {{Product}}` / `{{Feat}}` / `{{Agent}}`. See
+  **§32**. This is how work is tracked across the team; an untagged chat is invisible.
+- **Run `npm run verify` before any PR**, and report what it actually printed. CI runs the same
+  thing on every PR (§31). Never call something verified that wasn't run. There is **no staging
+  and no branch previews** — only `main` deploys, straight to the Fasthosts VPS (§23), not Vercel.
+
+---
 
 ---
 
@@ -1595,3 +1611,60 @@ class constants** (`inputCls` / `fieldInput` / `brandInputClass` / `inputClass` 
 from `app-input` (different radius, border token, focus ring) — consolidating them is a real
 consistency win but touches screens that can't be visually verified pre-merge, so it was left as a
 follow-up rather than done blind.
+
+## 32. Chat / session naming convention — REQUIRED for every Gitwork session
+
+**Every chat or Claude Code session started by anyone at Gitwork must be titled to this
+convention.** It is how work is tracked, triaged and monitored across the team — an untagged or
+free-form chat title is effectively invisible in the session list, so this is not cosmetic.
+
+### The format
+
+```
+<Name> {{Tag}}
+```
+
+The name first, then a single space, then the tag **verbatim including the double braces**. Three
+tags exist. Do not invent a fourth.
+
+| Tag | Means | Current members |
+|---|---|---|
+| `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications** |
+| `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
+
+Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
+
+### Rules
+
+1. **`{{Feat}}` is spelled `{{Feat}}`** — never `{{Feature}}`, `{{feat}}` or `{{FEAT}}`. The tags
+   are matched literally.
+2. **Use the established name exactly** as it appears above — `On Your Desk`, not `Desk`;
+   `DevSignal`, not `Dev Signal`; `RoundUp`, not `Round Up`.
+3. **New workstream not on the list?** Use its real name plus the tag that fits what it is
+   (module → `{{Product}}`, feature → `{{Feat}}`, scheduled agent → `{{Agent}}`), and add it to
+   the table above in the same PR so the registry stays the source of truth.
+4. **Standing intake threads are the only untagged exception** — the long-lived, cross-cutting
+   ones: `SOUNDING BOARD`, `SUGGESTIONS`, and named feedback threads such as
+   `Developer feedback: bugs and improvements`. Everything else gets a tag.
+5. **One workstream per chat.** The convention only buys visibility if a chat titled
+   `Care {{Product}}` is actually about Care. Spin up a new correctly-named chat rather than
+   letting one drift across three modules.
+
+### Registry vs. the module map — known drift (do not silently "fix" either)
+
+The `{{Product}}` list above is **Dan's tracking taxonomy**, and it is deliberately recorded here
+as given. It does not currently line up 1:1 with the §4 module map, and that's worth knowing
+before you reconcile anything:
+
+- **`Studio`** is a `{{Product}}` here and is real in the code (`/app/studio`,
+  `src/components/studio/`), but it has **no row in the §4 module map** — §4 is out of date.
+- **`Study`, `Backstage` and `Proof`** have §4 rows but no entry in this taxonomy. Study was
+  demoted to an admin-only tool inside Pulse (§26) and Proof is nav-hidden (§11), so their absence
+  is probably intentional; Backstage's is less clear.
+- **`Dispatch` and `RoundUp`** are tracked as `{{Feat}}` but have no module/route in the codebase
+  yet — they are in-flight workstreams, which is exactly what the taxonomy is for. It tracks
+  **work**, not only shipped surfaces.
+
+Ask before reconciling the two lists in either direction. Adding `Studio` to §4 is a safe
+documentation fix; deciding whether `Backstage` needs a tracking tag is Dan's call.
