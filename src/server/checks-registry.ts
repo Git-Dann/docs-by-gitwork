@@ -660,6 +660,10 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   // Gate for every file-tree-derived finding: if Pulse cannot read the repo, this
   // fails and the rest are not emitted at all, rather than reporting "missing".
   { key: "repo_accessible", category: CATEGORIES.CODE_QUALITY, label: "Repository is readable by Pulse" },
+  // The GraphQL counterpart: repo METADATA (branch protection, releases, velocity,
+  // dependency alerts) needs permissions the source read does not. Emitted SKIPPED
+  // when unavailable, so "we could not look" never reads as "the repo lacks this".
+  { key: "repo_intelligence", category: CATEGORIES.CODE_QUALITY, label: "GitHub repo intelligence" },
 
   // ── Native iOS app family (src/server/pulse-checks/ios-app.ts) ──────────────
   // Emitted only when the scanned repo is detected as a native iOS project. The

@@ -2097,3 +2097,59 @@ cannot see this repository"* — different fixes, and conflating them cost a day
 secret that silently goes missing, and a check built on `safeGithubRequest` converts "we couldn't
 look" into "it isn't there". Any *scored* check needs to distinguish those two; an optional signal
 can get away with not caring.
+
+### 35.1 The token landed — and the iOS/Flutter families still did not run
+
+With `GITHUB_TOKEN` finally in place, the two real client repos scanned **53/100** (iOS) and
+**64/100** (Flutter) — and **not one of the 39 iOS or 21 Flutter checks appeared**. Every finding in
+both scans was generic repo hygiene (no CONTRIBUTING.md, no Makefile, no Renovate). `techStack` was
+now correctly populated (`iOS · Swift · Objective-C · CocoaPods · SPM`, `Flutter · Dart`), so the
+tree read and the platform detection were both working.
+
+**The tell was that *every* code-agent check was missing too** — `branch_protection`, `has_releases`,
+`github_stars`, `repo_not_archived`, `primary_language`. All of them live in `runCodeAgent`, and so
+does the native family (it is called at the END of that function). `runCodeAgent` opened with:
+
+```ts
+try { data = await githubGraphQL(...) } catch { return { checks: [], insights: emptyInsights() } }
+```
+
+So **one failed GraphQL call discarded the entire source analysis** — the whole point of §34 — and
+reported a plausible score instead. Same shape as the `safeGithubRequest` bug in §35: a failure in an
+auxiliary signal silently deleting the primary measurement.
+
+**Two independent defects, both fixed:**
+
+1. **`githubGraphQL` threw on partial errors.** GraphQL is **partial-success by design**: when a
+   token lacks permission for ONE field, GitHub answers **HTTP 200** with that field `null`, an entry
+   in `errors`, and good data for every other field. Throwing on any `errors` entry discarded all of
+   it. `vulnerabilityAlerts` needs *Dependabot alerts: read* and `branchProtectionRules` needs
+   *administration: read* — permissions a repo-scoped PAT routinely lacks, so this fires on a
+   perfectly valid token. It now returns the usable data (warning once, naming the unreadable field
+   paths) and throws **only** when there is nothing usable — `repository: null` still errors, because
+   that genuinely is "we could not look".
+2. **Source analysis was downstream of metadata.** The REST-only families (secret scan + native
+   mobile) moved into `runRestOnlyFamilies()`, called **before** GraphQL and unconditionally, via
+   `Promise.allSettled` so neither can take out the other. Repo metadata and source analysis now fail
+   **independently**: losing GraphQL costs you branch-protection and star count, never the 39 iOS
+   checks.
+
+Because partial responses are now honoured, any single field can arrive `null` — so
+`branchProtectionRules?.nodes?.[0]` and `pullRequests?.nodes ?? []` needed optional chaining, and
+both are `| null` in `GQLResponse`. Without that, tolerating the partial response would have swapped
+a silent empty result for a crash.
+
+**New check `repo_intelligence`** (registered, emitted `SKIPPED`) says *why* metadata is missing, and
+distinguishes "GITHUB_TOKEN is not configured" from "the token lacks the permissions these fields
+require". Eight checks silently vanishing is what made this cost two days; the diagnostic is now in
+the scan itself.
+
+⚠️ **The trap worth internalising:** `techStack` being populated looked like proof the token worked.
+It is not — the tree read is REST, which succeeds unauthenticated on a **public** repo. Only the
+GraphQL path proves the token. Verified by unit test rather than by inference: 6 tests for the
+partial-error contract, 5 asserting the native family survives every GraphQL failure mode.
+
+**Still open (unchanged):** `codeclear-analysis.ts` has the same shape with worse stakes —
+`detectRepoSignals` turns an empty listing into `hasTests/hasCi/hasLint/hasReadme: false`, feeding
+`CodeClearScore`, so every private candidate repo has been scored as having no tests, CI, linter or
+docs.
