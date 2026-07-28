@@ -118,3 +118,64 @@ describe("annotateTrust", () => {
     expect(annotated.trustBucket).toBe("CONFIRMED");
   });
 });
+
+// ── Priority ordering (July 2026) ────────────────────────────────────────────
+// Third defect from the same real iOS scan: both lists were in SCAN order, so
+// topFixes recommended "README.md" and ".gitignore" above a finding that the app
+// logs plaintext passwords and auth tokens to the device console. And because the
+// lists are capped at 15, an arbitrary 16 of 31 warnings were dropped — severity
+// decided nothing, file order decided everything.
+describe("buildAgentVerdict ranks findings by priority", () => {
+  it("puts a security failure above cosmetic ones, whatever the scan order", () => {
+    const v = verdict([
+      // Scan order deliberately puts the trivia first, as the real scan did.
+      check({ checkKey: "has_readme", status: "FAIL", label: "README.md" }),
+      check({ checkKey: "has_gitignore", status: "FAIL", label: ".gitignore" }),
+      check({
+        checkKey: "ios_sensitive_payload_logging",
+        status: "FAIL",
+        label: "Request/response bodies not logged in Release",
+        category: CATEGORIES.SECURITY,
+        confidence: "HIGH",
+      }),
+    ]);
+
+    expect(v.topFixes[0]).toBe("Request/response bodies not logged in Release");
+    expect(v.confirmedIssues[0].checkKey).toBe("ios_sensitive_payload_logging");
+  });
+
+  it("keeps the most serious warnings when the list is truncated", () => {
+    // 20 cosmetic warnings scanned BEFORE one security warning: with a cap of 15 and
+    // no ranking, the security finding fell off the end entirely.
+    const noise = Array.from({ length: 20 }, (_, i) =>
+      check({ checkKey: `has_editorconfig_${i}`, status: "WARN", label: `Trivia ${i}` }),
+    );
+    const v = verdict([
+      ...noise,
+      check({
+        checkKey: "ios_debug_guards",
+        status: "WARN",
+        label: "Debug-only code is compile-gated",
+        category: CATEGORIES.SECURITY,
+        confidence: "HIGH",
+      }),
+    ]);
+
+    expect(v.warnings.map((w) => w.checkKey)).toContain("ios_debug_guards");
+    expect(v.counts.warnings, "the count still reports the true total").toBe(21);
+  });
+
+  it("does not let a damped cosmetic finding reach the top of the fix list", () => {
+    const v = verdict([
+      check({ checkKey: "flutter_dev_endpoints", status: "WARN", label: "Dev endpoints in source" }),
+      check({
+        checkKey: "flutter_cleartext_traffic",
+        status: "FAIL",
+        label: "Cleartext HTTP disabled on Android",
+        category: CATEGORIES.SECURITY,
+        confidence: "HIGH",
+      }),
+    ]);
+    expect(v.topFixes[0]).toBe("Cleartext HTTP disabled on Android");
+  });
+});
