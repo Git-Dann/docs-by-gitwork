@@ -3447,6 +3447,47 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
   );
 
   const entries = Array.isArray(contents) ? (contents as GitHubContentsEntry[]) : [];
+
+  // ── Can we actually READ this repo? ─────────────────────────────────────────
+  // Every check below is derived from the root listing, so an empty listing made
+  // them all report "missing" — a wall of confident, entirely false findings plus a
+  // plausible-looking score. Observed live: a private repo that genuinely contains
+  // README.md, .gitignore and pubspec.yaml was reported as having none of them.
+  //
+  // `safeGithubRequest` swallows the HTTP error, so an empty array is ambiguous
+  // between "no access", "does not exist" and "genuinely empty repo". One extra
+  // request (only on this path) tells them apart. The secret scanner already skips
+  // on an unreadable tree; this brings runGithubChecks in line.
+  let repoReadable = entries.length > 0;
+  let repoExists = repoReadable;
+  if (!repoReadable) {
+    const meta = await safeGithubRequest<{ full_name?: string; size?: number }>(
+      `/repos/${fullName}`,
+      {},
+    );
+    repoExists = Boolean(meta.full_name);
+    // Repo metadata readable but no contents ⇒ a real, empty repository.
+    repoReadable = repoExists;
+  }
+
+  if (!repoReadable) {
+    const reason = repoExists
+      ? `Repository ${fullName} could not be read. Pulse's GitHub token has no access to it — findings derived from the file tree are unavailable rather than negative.`
+      : `Repository ${fullName} is not accessible: it does not exist, is private, or Pulse's GITHUB_TOKEN cannot see it. Findings derived from the file tree are unavailable, NOT negative — nothing below was assessed.`;
+    return {
+      checks: [
+        {
+          category: CATEGORIES.CODE_QUALITY,
+          checkKey: "repo_accessible",
+          label: "Repository is readable by Pulse",
+          status: "FAIL" as const,
+          detail: `${reason} Grant the token access (or install the GitHub App on the repo) and re-scan — until then this scan carries no information about the code.`,
+        },
+      ].map((check, i) => ({ ...check, sortOrder: i })),
+      techStack: [],
+    };
+  }
+
   const names = entries.map((e) => e.name.toLowerCase());
 
   const hasReadme = names.some((n) => n.startsWith("readme"));
@@ -3926,6 +3967,14 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
   // same as a broken one. Rewrite those to SKIPPED (excluded from the score, with
   // the reason shown) and label the stack, which package.json sniffing can't do.
   // The snapshot is memoized, so this shares one tree fetch with the iOS family.
+  checks.push({
+    category: CATEGORIES.CODE_QUALITY,
+    checkKey: "repo_accessible",
+    label: "Repository is readable by Pulse",
+    status: "PASS",
+    detail: `Repository ${fullName} read successfully (${entries.length} root entries), so the findings below are based on the actual file tree.`,
+  });
+
   const nativeSnapshot = await getRepoSnapshot(repoInput).catch(() => null);
   const nativePlatform = nativeSnapshot?.accessible
     ? detectNativePlatform(nativeSnapshot.paths)

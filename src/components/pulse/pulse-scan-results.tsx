@@ -48,6 +48,7 @@ import {
   PulseValueBadge,
 } from "@/components/pulse/pulse-shared";
 import { DocumentCover, HealthScoreRing, type DocumentCoverStat, type DocumentCoverMeta } from "@/components/document-cover";
+import { githubRepoLabel } from "@/lib/github";
 
 const actionMenuPanel =
   "z-50 mt-1.5 w-52 rounded-[10px] border border-[rgba(0,0,0,0.10)] bg-white p-1.5 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)] focus:outline-none";
@@ -1907,7 +1908,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           boldPalette="navy"
           eyebrow="PULSE // PROJECT HEALTH"
           title={scan.projectName}
-          subtitle={scan.inputUrl ?? (scan.inputGithubRepo ? `github.com/${scan.inputGithubRepo}` : undefined)}
+          subtitle={scan.inputUrl ?? githubRepoLabel(scan.inputGithubRepo) ?? undefined}
           rightSlot={scan.healthScore !== null ? <HealthScoreRing score={scan.healthScore} /> : undefined}
           meta={heroMeta}
           stats={scan.healthScore !== null ? heroStats : undefined}

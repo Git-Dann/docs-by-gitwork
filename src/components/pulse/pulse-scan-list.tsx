@@ -24,6 +24,7 @@ import {
   MonitorDot,
 } from "@/components/pulse/pulse-shared";
 import { Button } from "@/components/ui/button";
+import { githubRepoLabel } from "@/lib/github";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -337,7 +338,7 @@ function ScanRow({
     scan.inputType === "URL"
       ? scan.inputUrl
       : scan.inputType === "GITHUB_REPO"
-        ? `github.com/${scan.inputGithubRepo}`
+        ? githubRepoLabel(scan.inputGithubRepo)
         : "Free-text description";
 
   return (
