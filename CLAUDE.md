@@ -396,6 +396,14 @@ src/
       persona.ts                  ← AI persona interview conductor
       synthesizer.ts              ← Turn/session/final report synthesis
       types.ts                    ← Shared agent types (AiConfig etc.)
+    dispatch/                     ← Dispatch: the Slack-resident coordinator (§36)
+      resolve.ts                  ← PURE question → subject (client/person/workspace) resolution
+      evidence.ts                 ← Deterministic bounded evidence pack + deriveBlindSpots (no AI)
+      answer.ts                   ← Pure no-AI floor + ONE cached light-tier phrasing call
+      respond.ts                  ← Orchestrator: gates → resolve → gather → answer
+      config.ts / types.ts        ← resolveDispatchConfig + DISPATCH_DEFAULTS
+    slack/
+      events.ts                   ← Events API handler (loop guard, dedupe, external-channel gate)
     support.ts                    ← Care/Support CRUD (clients, tickets, convos, workflow rules)
     codeclear.ts                  ← Candidate management + default payloads
     codeclear-analysis.ts         ← GitHub code analysis runner
@@ -2153,3 +2161,79 @@ partial-error contract, 5 asserting the native family survives every GraphQL fai
 `detectRepoSignals` turns an empty listing into `hasTests/hasCi/hasLint/hasReadme: false`, feeding
 `CodeClearScore`, so every private candidate repo has been scored as having no tests, CI, linter or
 docs.
+
+## 36. Recent Changes (July 2026) — Dispatch (the Slack-resident coordinator)
+
+`@Foundry` is now **answerable**. Mention the bot in a channel — or DM it — and **Dispatch**
+answers delivery questions ("where are we with the ElectricFire onboarding?", "what has Howard
+done on Big Wedge Golf?", "is anything at risk?") from Foundry's own records, in-thread, always
+stating what it could **not** confirm. Prompted by a Loom of Ayven doing the same thing; the gap
+turned out to be narrow, because Foreman (§29) already had the brain — it had no mouth. **Full
+operator runbook + verification steps: `docs/dispatch.md`.**
+
+- **The inbound half of Slack, which never existed.** Foundry had `/commands` and `/interactions`
+  but no Events API endpoint — it could post and be clicked, never *talked to*. New
+  `src/app/api/webhooks/slack/events/route.ts`: verifies the HMAC over raw bytes (that path is
+  public in middleware, so the signature is the only auth), answers the `url_verification`
+  challenge, then **acks immediately and works in `after()`**. Deferring is correct here, unlike
+  the interactions route which must finish `views.open` inside the 3s `trigger_id` window —
+  nothing in an event expires. Manifest gains `event_subscriptions` (`app_mention`, `message.im`)
+  + `app_mentions:read`/`im:*`; **reinstalling the Slack app is required** (Slack never grants new
+  scopes to an existing token).
+- **The design rule, and it's structural not prompted:** `question → deterministic subject
+  resolution (resolve.ts, pure) → deterministic evidence pack (evidence.ts, Prisma only) → ONE
+  light-tier LLM call that may only rephrase the pack`. The model never queries, never infers,
+  never decides what's true — it's a writer, not a researcher. Three consequences worth keeping:
+  (a) **`unverified` is not the model's to write** — it's derived from the pack's blind spots and
+  merged in afterwards; the model may only *add* a caveat, never drop one; (b) **there's a no-AI
+  floor** — `composeDeterministicAnswer()` is pure, so with no API key / a failed call / junk JSON
+  Dispatch still answers, just plainly; (c) **"nothing overdue" can never mean "on track"** unless
+  tasks are actually dated — computed in `deriveBlindSpots()`, not left to the model.
+- **Blind spots** (`NO_TASKS`, `NO_DUE_DATES`, `NO_TIMELINE`, `NO_COMPLETION_STAMPS`,
+  `NO_RECENT_ACTIVITY`, `NOT_IN_FOUNDRY`, `SLACK_NOT_READ`) each name a question the evidence
+  *can't* answer. `SLACK_NOT_READ` is **conditional on purpose** — only added when the board has
+  gone quiet, which is the one moment a reader would otherwise conclude nothing happened.
+- **Subject resolution is deterministic, never the model's pick** — a confidently wrong client is
+  the exact failure Dispatch exists to prevent. Two passes: word-bounded on a normalised form,
+  then a length-guarded squashed pass so "ElectricFire" finds "Electric Fire" while "Echo" can't
+  match inside "echoed". Client + person in one question = client subject narrowed to that person.
+  Nothing matched → it says so and stops.
+- **`allowExternalChannels` is a disclosure gate, default OFF, fails closed.** Per-client Slack
+  Connect channels contain the client; overdue counts / developer workload / Foreman flags are not
+  client-facing. Classified from a live `conversations.info` (`is_ext_shared` — **not** `is_shared`,
+  which is also true for internal org shares); any failure to classify → treated as external.
+  `resolveDispatchConfig` accepts only a literal boolean `true`, so a stray `"yes"`/`1` can't open it.
+- **Cost discipline mirrors the Foreman narrative** — one `tier:"light"` (Haiku) call, 900 tokens,
+  cached system prompt, wrapped in `AiResponseCache` with the **subject+question in the cache key**
+  and the **evidence in the inputs hash**, so re-asking an unchanged board is **£0**. Attributed to
+  the pre-existing `AiModule.SLACK`. Per-channel rate limit counts *every* exchange, junk included.
+- **Schema (additive → applies via the guarded `prisma db push`):** `Workspace.dispatchConfig`
+  (`{enabled, recentDays 7, maxEvidenceItems 12, perChannelPerHour 20, allowExternalChannels false}`)
+  + new **`DispatchExchange`** — written BEFORE the answer, so `slackEventId @unique` doubles as the
+  Slack retry-dedupe guard (a re-delivery loses the insert race; an attempt that died pre-insert
+  legitimately retries). Also the audit trail: `status` (`answered` | `no_subject` | `rate_limited`
+  | `no_ai` | `error` — honest refusals are outcomes, not silent failures), `unverified`, `evidence`
+  (counts + blind-spot kinds only, never a second copy of client data), `aiModel`, `cached`, `latencyMs`.
+- **`slack` notification channel wired** (was declared-but-no-op in `dispatchNotification`). Posts
+  **once** per dispatch to `Workspace.channelRoutes[event]`, gated on the event's **default**
+  routing — deliberately NOT per-recipient, because a channel post is a workspace broadcast and
+  routing it per-user would post N copies to one channel and let one person's mute change what a
+  shared channel sees. Runs independently of the recipient set, so a channel-routed digest lands
+  even if every individual muted it. **`foreman.digest` now routes `["inApp","push","slack"]`** —
+  set `channelRoutes["foreman.digest"]` and the morning delivery picture lands in Slack. No route
+  configured → silent no-op.
+- **Deliberate limits (all Phase 2/3, all called out in `docs/dispatch.md`):** it does **not** read
+  Slack conversation (no `channels:history` scope requested — least privilege, and it keeps the
+  answer's provenance honest); there is **no mission object** yet, so it answers from derived state
+  rather than a durable "the ElectricFire onboarding" record with an owner + completion target +
+  evidence log (that's the real product work); it answers but never acts (read-only, no writes on
+  your behalf); replies are always in-thread; no Settings UI or panel — config is JSON on the
+  workspace.
+- **Verified:** `tsc --noEmit` + targeted `eslint` clean; `npm test` **174 passing** (39 new
+  Dispatch unit tests covering mention stripping, subject resolution incl. the squash-collision
+  guards, config clamping + the external-channel boolean guard, every blind-spot rule, the no-AI
+  floor, and event triage/loop-guard); `next build` clean with
+  `/api/webhooks/slack/events` registered. App is auth-gated with no local DB → **post-deploy**:
+  reinstall the Slack app, confirm the Events URL verifies, mention the bot in an internal channel,
+  re-ask to prove the `cached` footer, ask something unresolvable, and try a Slack Connect channel
+  to confirm it declines. Steps 1-8 in `docs/dispatch.md`.
