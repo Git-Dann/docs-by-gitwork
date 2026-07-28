@@ -10,6 +10,7 @@
 // pulse-agents (NOT pulse-lite) so the AI-free public embed core stays AI-free.
 
 import Anthropic from "@anthropic-ai/sdk";
+import { launchHeadlessBrowser } from "@/server/headless-browser";
 import type { VisualAgentInsights } from "@/types/pulse";
 import { recordAiUsage, usageFromAnthropic } from "@/server/ai-usage";
 
@@ -55,14 +56,11 @@ async function captureScreenshot(url: string): Promise<CaptureResult> {
   let browser: import("puppeteer-core").Browser | null = null;
   const out: CaptureResult = { base64: null, a11yViolations: null, a11ySerious: null };
   try {
-    const chromium = (await import("@sparticuz/chromium")).default;
-    const puppeteer = await import("puppeteer-core");
-    browser = await puppeteer.default.launch({
-      args: chromium.args,
-      defaultViewport: { width: 1280, height: 800 },
-      executablePath: await chromium.executablePath(),
-      headless: true,
-    });
+    // Shared launcher — honours PUPPETEER_EXECUTABLE_PATH, so this uses the
+    // native Chromium in production. Launching @sparticuz's Lambda binary here
+    // could never work on the Alpine container, and because this agent is
+    // best-effort the failure was swallowed (silently no screenshot / no a11y).
+    browser = await launchHeadlessBrowser({ defaultViewport: { width: 1280, height: 800 } });
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
     // viewport (above-the-fold) screenshot — the first impression, and keeps the

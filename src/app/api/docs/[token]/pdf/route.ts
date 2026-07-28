@@ -16,12 +16,11 @@
  * PUPPETEER_EXECUTABLE_PATH in prod, @sparticuz/chromium's bundled binary otherwise).
  */
 
-import chromium from "@sparticuz/chromium";
-import puppeteer from "puppeteer-core";
 import { NextRequest } from "next/server";
 import { apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { originFrom } from "@/lib/request-origin";
+import { launchHeadlessBrowser } from "@/server/headless-browser";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
@@ -44,21 +43,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const origin = originFrom(request);
     const target = `${origin}/docs/${token}?print=1`;
 
-    const usingNativeChromium = Boolean(process.env.PUPPETEER_EXECUTABLE_PATH);
-    const browser = await puppeteer.launch({
-      args: usingNativeChromium
-        ? [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--disable-software-rasterizer",
-            "--no-zygote",
-          ]
-        : chromium.args,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || (await chromium.executablePath()),
-      headless: true,
-    });
+    // Shared launcher — single implementation in src/server/headless-browser.ts.
+    const browser = await launchHeadlessBrowser();
 
     try {
       const page = await browser.newPage();

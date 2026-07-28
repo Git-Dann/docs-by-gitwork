@@ -6,12 +6,11 @@
  * a NextAuth session) — 409 otherwise. `?print=1` strips the tracker/CTA. Gated by Manage Pulse.
  */
 
-import chromium from "@sparticuz/chromium";
-import puppeteer from "puppeteer-core";
 import { NextRequest } from "next/server";
 import { apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { originFrom } from "@/lib/request-origin";
+import { launchHeadlessBrowser } from "@/server/headless-browser";
 import { assertCan, canManagePulse, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const maxDuration = 60;
@@ -32,11 +31,10 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sca
     }
 
     const target = `${originFrom(request)}/report/${scan.shareToken}?print=1`;
-    const browser = await puppeteer.launch({
-      args: chromium.args,
-      executablePath: await chromium.executablePath(),
-      headless: true,
-    });
+    // Shared launcher — resolves the native Alpine Chromium in production. This
+    // route previously launched @sparticuz's Lambda binary directly, which can't
+    // run on musl and failed with "Navigating frame was detached".
+    const browser = await launchHeadlessBrowser();
 
     try {
       const page = await browser.newPage();

@@ -1,3 +1,5 @@
+import { launchHeadlessBrowser } from "@/server/headless-browser";
+
 export interface AuthPageContent {
   pageTitle: string | null;
   h1: string | null;
@@ -26,15 +28,9 @@ export async function runAuthAgent(
 
   const run = async (): Promise<AuthPageContent | null> => {
     try {
-      const chromium = (await import("@sparticuz/chromium")).default;
-      const puppeteer = await import("puppeteer-core");
-
-      browser = await puppeteer.default.launch({
-        args: chromium.args,
-        defaultViewport: { width: 1280, height: 800 },
-        executablePath: await chromium.executablePath(),
-        headless: true,
-      });
+      // Shared launcher — see visual-agent: the Lambda binary can't run on the
+      // Alpine container, and this agent's swallowed errors hid that.
+      browser = await launchHeadlessBrowser({ defaultViewport: { width: 1280, height: 800 } });
 
       const page = await browser.newPage();
 
