@@ -20,7 +20,7 @@ const ALL_CHECKS: Array<[string, string]> = [
 
 export async function runUsPrivacyExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   // No public page to inspect for these signals on API/CLI/mobile-store scans.
-  if (platformIs(ctx.platform, "API_BACKEND", "CLI_TOOL", "IOS_APP", "ANDROID_APP")) {
+  if (platformIs(ctx.platform, "API_BACKEND", "CLI_TOOL", "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE")) {
     return skip(CATEGORY, ALL_CHECKS, "Not applicable for this platform type.");
   }
 

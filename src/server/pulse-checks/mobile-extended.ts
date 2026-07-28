@@ -54,12 +54,14 @@ export async function runMobileExtended(ctx: ExtendedCheckContext): Promise<Puls
 
   // App Clips (iOS)
   const hasAppClips = /app.*clip|appclip|apple.*app.*clip/i.test(html) || /<meta[^>]+name=["']apple-itunes-app["'][^>]*app-clip/i.test(html);
-  const isIosApp = platformIs(ctx.platform, "IOS_APP") || ctx.ctx.isMobileApp;
+  // CROSS_PLATFORM_MOBILE counts as both targets: a React Native / Flutter app ships
+  // an iOS build and an Android build, so it is in scope for both platforms' features.
+  const isIosApp = platformIs(ctx.platform, "IOS_APP", "CROSS_PLATFORM_MOBILE") || ctx.ctx.isMobileApp;
   checks.push({ category: CATEGORIES.MOBILE, checkKey: "apple_app_clip_support", label: "App Clips support (iOS)", status: isIosApp ? (hasAppClips ? "PASS" : "WARN") : "PASS", detail: isIosApp ? (hasAppClips ? "App Clips signals detected." : "iOS app signals detected but no App Clips — App Clips enable instant app experiences without full installation, great for onboarding.") : "Not applicable." });
 
   // Android Instant Apps
   const hasInstantApp = /instant.*app|android.*instant|intent.*instant/i.test(html);
-  const isAndroidApp = platformIs(ctx.platform, "ANDROID_APP") || ctx.ctx.isMobileApp;
+  const isAndroidApp = platformIs(ctx.platform, "ANDROID_APP", "CROSS_PLATFORM_MOBILE") || ctx.ctx.isMobileApp;
   checks.push({ category: CATEGORIES.MOBILE, checkKey: "android_instant_app", label: "Android Instant Apps", status: isAndroidApp ? (hasInstantApp ? "PASS" : "WARN") : "PASS", detail: isAndroidApp ? (hasInstantApp ? "Android Instant App signals detected." : "Android app signals detected but no Instant App — Android Instant Apps let users try your app without installing, reducing friction.") : "Not applicable." });
 
   return checks;

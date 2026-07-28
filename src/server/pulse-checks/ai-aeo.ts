@@ -85,7 +85,7 @@ function parseRobots(robots: string): { blockedBots: string[]; wildcardBlocked: 
 
 export async function runAiAeoChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   // Only web surfaces have crawlable HTML / robots.txt.
-  if (platformIs(ctx.platform, "API_BACKEND", "CLI_TOOL", "IOS_APP", "ANDROID_APP")) {
+  if (platformIs(ctx.platform, "API_BACKEND", "CLI_TOOL", "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE")) {
     return skip(CATEGORY, ALL_CHECKS, "Not applicable — this platform type has no crawlable web surface.");
   }
 

@@ -5,7 +5,7 @@ export async function runSaasExtended(ctx: ExtendedCheckContext): Promise<PulseS
   const html = ctx.pageResult.html;
   const checks: PulseScanCheckInput[] = [];
 
-  if (platformIs(ctx.platform, "API_BACKEND", "CLI_TOOL", "IOS_APP", "ANDROID_APP")) {
+  if (platformIs(ctx.platform, "API_BACKEND", "CLI_TOOL", "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE")) {
     return skip(CATEGORIES.SAAS, [
       ["saml_sso_available", "SAML / SSO enterprise tier"],
       ["scim_user_provisioning", "SCIM user provisioning"],

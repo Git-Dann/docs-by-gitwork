@@ -106,7 +106,10 @@ function ScanRunningState({
 
   // Only present the checks step as "done" once the count-up has caught up — so the
   // green/complete state never appears in the same instant the data arrives.
-  const countCaughtUp = displayCount >= checksCount;
+  // `checksCount` is what the CLIENT has received, so it starts at 0 — and `0 >= 0`
+  // is true, which made this fail OPEN: the "complete" state could render before a
+  // single check had arrived. Require at least one check before believing it.
+  const countCaughtUp = checksCount > 0 && displayCount >= checksCount;
   const showDone = checksDone && countCaughtUp;
   const checksPct = checksCount > 0 ? Math.round((displayCount / checksCount) * 100) : 8;
 

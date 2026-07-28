@@ -6,7 +6,7 @@ export async function runSeoExtended(ctx: ExtendedCheckContext): Promise<PulseSc
   const html = ctx.pageResult.html;
   const checks: PulseScanCheckInput[] = [];
 
-  if (platformIs(ctx.platform, "API_BACKEND", "CLI_TOOL", "IOS_APP", "ANDROID_APP")) {
+  if (platformIs(ctx.platform, "API_BACKEND", "CLI_TOOL", "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE")) {
     return skip(CATEGORIES.SEO, [
       ["faqpage_schema", "FAQPage JSON-LD schema"],
       ["product_schema", "Product schema markup"],

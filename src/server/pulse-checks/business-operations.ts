@@ -28,7 +28,7 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
     return skip(CATEGORY, ALL_CHECKS, "Not applicable for API backends and CLI tools.");
   }
 
-  if (platformIs(ctx.platform, "IOS_APP", "ANDROID_APP")) {
+  if (platformIs(ctx.platform, "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE")) {
     return skip(CATEGORY, ALL_CHECKS, "Not applicable — business operations compliance is managed through web presence, not the app store listing.");
   }
 

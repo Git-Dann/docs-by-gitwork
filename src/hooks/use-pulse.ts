@@ -131,12 +131,52 @@ export function usePulseScan(scanId: string) {
 export function usePulseScanStream(scanId: string, enabled: boolean) {
   const queryClient = useQueryClient();
   const esRef = useRef<EventSource | null>(null);
+  // Events that arrived before the mount fetch populated the cache. The stream is a
+  // DELTA stream — it only ever sends each checkKey once — so an event dropped here
+  // is lost for the rest of the scan. Buffer instead of dropping, then flush.
+  const pendingChecks = useRef<PulseScanRecord["checks"]>([]);
+  const pendingMeta = useRef<Partial<PulseScanRecord> | null>(null);
 
   useEffect(() => {
     if (!enabled || !scanId) return;
 
     const es = new EventSource(`/api/pulse/scans/${scanId}/stream`);
     esRef.current = es;
+    pendingChecks.current = [];
+    pendingMeta.current = null;
+
+    // Apply whatever is buffered. Returns false while the base scan is still absent,
+    // so the caller knows to keep retrying rather than assume the data landed.
+    function flush(): boolean {
+      if (!pendingChecks.current.length && !pendingMeta.current) return true;
+
+      let applied = false;
+      queryClient.setQueryData(
+        ["pulse-scan", scanId],
+        (old: { scan: PulseScanRecord } | undefined) => {
+          if (!old?.scan) return old;
+          applied = true;
+
+          const byKey = new Map(old.scan.checks.map((c) => [c.checkKey, c]));
+          for (const c of pendingChecks.current) byKey.set(c.checkKey, c);
+          const checks = Array.from(byKey.values()).sort((a, b) => a.sortOrder - b.sortOrder);
+
+          return { scan: { ...old.scan, ...(pendingMeta.current ?? {}), checks } };
+        },
+      );
+
+      if (applied) {
+        pendingChecks.current = [];
+        pendingMeta.current = null;
+      }
+      return applied;
+    }
+
+    // While the mount fetch is in flight, retry the flush so buffered waves land as
+    // soon as the base exists. Cleared once nothing is outstanding.
+    const flushTimer = setInterval(() => {
+      flush();
+    }, 300);
 
     es.onmessage = (event) => {
       try {
@@ -147,31 +187,20 @@ export function usePulseScanStream(scanId: string, enabled: boolean) {
         };
 
         // Delta: merge only the new checks into the cached scan (by checkKey),
-        // re-sorting by sortOrder. Skipped if the base scan hasn't loaded yet —
-        // the parallel usePulseScan mount fetch already includes checks-so-far.
+        // re-sorting by sortOrder.
         if (msg.type === "checks" && msg.checks?.length) {
-          queryClient.setQueryData(
-            ["pulse-scan", scanId],
-            (old: { scan: PulseScanRecord } | undefined) => {
-              if (!old?.scan) return old;
-              const byKey = new Map(old.scan.checks.map((c) => [c.checkKey, c]));
-              for (const c of msg.checks!) byKey.set(c.checkKey, c);
-              const checks = Array.from(byKey.values()).sort((a, b) => a.sortOrder - b.sortOrder);
-              return { scan: { ...old.scan, checks } };
-            },
-          );
+          pendingChecks.current = [...pendingChecks.current, ...msg.checks];
         }
 
         // Scalar state (status, healthScore, checksCompletedAt…) — small patch.
+        // Buffered alongside the checks so `checksCompletedAt` can never be applied
+        // while the checks that completed are still sitting unmerged — that ordering
+        // is what rendered "All checks complete" beside a single category card.
         if (msg.type === "meta" && msg.scan) {
-          queryClient.setQueryData(
-            ["pulse-scan", scanId],
-            (old: { scan: PulseScanRecord } | undefined) => {
-              if (!old?.scan) return old;
-              return { scan: { ...old.scan, ...msg.scan } };
-            },
-          );
+          pendingMeta.current = { ...(pendingMeta.current ?? {}), ...msg.scan };
         }
+
+        flush();
 
         if (msg.type === "complete") {
           es.close();
@@ -194,6 +223,7 @@ export function usePulseScanStream(scanId: string, enabled: boolean) {
     };
 
     return () => {
+      clearInterval(flushTimer);
       es.close();
     };
   }, [scanId, enabled, queryClient]);

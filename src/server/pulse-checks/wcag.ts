@@ -6,7 +6,7 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
   const html = pageResult.html;
   const checks: PulseScanCheckInput[] = [];
 
-  if (platformIs(ctx.platform, "API_BACKEND", "CLI_TOOL", "IOS_APP", "ANDROID_APP", "DESKTOP_APP")) {
+  if (platformIs(ctx.platform, "API_BACKEND", "CLI_TOOL", "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP")) {
     return skip(CATEGORIES.ACCESSIBILITY, [
       ["skip_to_main_content", "Skip to main content link"],
       ["image_input_alt", "<input type=image> has alt text"],

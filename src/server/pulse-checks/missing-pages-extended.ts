@@ -6,7 +6,7 @@ export async function runMissingPagesExtended(ctx: ExtendedCheckContext): Promis
   const html = ctx.pageResult.html;
   const checks: PulseScanCheckInput[] = [];
 
-  if (platformIs(ctx.platform, "API_BACKEND", "CLI_TOOL", "IOS_APP", "ANDROID_APP")) {
+  if (platformIs(ctx.platform, "API_BACKEND", "CLI_TOOL", "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE")) {
     return skip(CATEGORIES.MISSING_PAGES, [
       ["legal_hub_page", "/legal hub page"],
       ["security_dedicated_page", "/security dedicated page"],

@@ -21,7 +21,7 @@ const ALL_CHECKS: Array<[string, string]> = [
 const LLM_SIGNAL = /openai|anthropic|claude-|gpt-[0-9]|@ai-sdk|\bai\/react\b|usechat|langchain|llamaindex|\/api\/chat\b|chat\/completions|generativelanguage|mistral|cohere|huggingface/i;
 
 export async function runAiAppSafetyChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
-  if (platformIs(ctx.platform, "CLI_TOOL", "IOS_APP", "ANDROID_APP")) {
+  if (platformIs(ctx.platform, "CLI_TOOL", "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE")) {
     return skip(CATEGORY, ALL_CHECKS, "Not applicable for this platform type.");
   }
 
