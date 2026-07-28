@@ -1,0 +1,150 @@
+name: VPS ops (manual)
+
+# Manually-triggered VPS operations that are NOT part of the app deploy.
+#
+# Why this exists: `deploy.yml` only touches Docker, so anything else on the box
+# (the nginx reverse proxy, the crontab) has always been "do it by hand over SSH" —
+# which meant it drifted from what this repo claims, and nobody without shell
+# access could inspect or fix it. This workflow reuses the same VPS_HOST /
+# VPS_USER / VPS_SSH_KEY secrets `deploy.yml` already holds, so no new access is
+# granted; it just makes two specific, bounded operations runnable and auditable.
+#
+# `workflow_dispatch` only — never on push. Nothing here should ever run
+# automatically: `nginx-sync` changes how production serves every request.
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "What to do on the VPS"
+        required: true
+        type: choice
+        default: inspect
+        options:
+          - inspect # read-only: crontab, cron log, nginx state. Changes nothing.
+          - nginx-sync # copy deploy/nginx/foundry.conf up, validate, reload
+
+concurrency:
+  # Never let two of these overlap on one box, and never race the app deploy's
+  # own SSH session.
+  group: vps-ops
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    if: inputs.task == 'inspect'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read VPS scheduling + proxy state (read-only)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo -n"
+
+            echo "=============== whoami / host ==============="
+            echo "user: $(whoami)   host: $(hostname)   date: $(date -u) UTC"
+
+            echo
+            echo "=============== crontab: deploy user ==============="
+            # docs/vps-crons.md says the jobs live in `deploy`'s crontab, not root's.
+            $SUDO -u deploy crontab -l 2>&1 || crontab -l 2>&1 || echo "(none readable)"
+
+            echo
+            echo "=============== crontab: current user ==============="
+            crontab -l 2>&1 || echo "(none)"
+
+            echo
+            echo "=============== crontab: root ==============="
+            $SUDO crontab -l 2>&1 || echo "(none / no sudo)"
+
+            echo
+            echo "=============== systemd timers ==============="
+            # A timer would be an alternative trigger the crontab wouldn't show.
+            $SUDO systemctl list-timers --all --no-pager 2>&1 | head -30 || echo "(unavailable)"
+
+            echo
+            echo "=============== cron log: last 60 lines ==============="
+            tail -60 /tmp/foundry-cron.log 2>&1 || echo "(no /tmp/foundry-cron.log)"
+
+            echo
+            echo "=============== which cron jobs have actually fired (last 200) ==============="
+            # Endpoint name per line, counted — shows what is really running vs merely listed.
+            grep -oE 'run-cron\.sh [a-z-]+|"[a-z-]+" *:' /tmp/foundry-cron.log 2>/dev/null \
+              | tail -200 | sort | uniq -c | sort -rn || echo "(nothing parseable)"
+
+            echo
+            echo "=============== nginx: version + tokens/gzip state ==============="
+            $SUDO nginx -v 2>&1 || echo "(nginx not on PATH)"
+            echo "--- server_tokens / gzip as currently configured:"
+            $SUDO grep -rn "server_tokens\|gzip on\|gzip_types" /etc/nginx/ 2>/dev/null | head -20 \
+              || echo "(none set)"
+
+            echo
+            echo "=============== nginx: the live foundry vhost ==============="
+            $SUDO cat /etc/nginx/sites-available/foundry 2>&1 || echo "(not found)"
+
+  nginx-sync:
+    if: inputs.task == 'nginx-sync'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Upload the config to a staging path
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: deploy/nginx/foundry.conf
+          target: /tmp/foundry-nginx-staging
+          strip_components: 2
+
+      - name: Back up, validate, then reload — restore on any failure
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo -n"
+
+            LIVE=/etc/nginx/sites-available/foundry
+            NEW=/tmp/foundry-nginx-staging/foundry.conf
+            BACKUP="/root/foundry-nginx-backup-$(date -u +%Y%m%dT%H%M%SZ).conf"
+
+            test -s "$NEW" || { echo "staged config missing or empty"; exit 1; }
+
+            echo "--- backing up the live config to $BACKUP"
+            $SUDO cp "$LIVE" "$BACKUP"
+
+            echo "--- diff (live -> new); empty means nothing changes"
+            $SUDO diff -u "$LIVE" "$NEW" || true
+
+            echo "--- installing"
+            $SUDO cp "$NEW" "$LIVE"
+
+            # nginx -t is the whole safety story: a bad config that gets reloaded
+            # takes the site down, so validate BEFORE reloading and roll straight
+            # back if it fails. `reload` (not restart) keeps existing connections.
+            if $SUDO nginx -t; then
+              echo "--- config valid, reloading"
+              $SUDO systemctl reload nginx
+              echo "--- reloaded. Backup kept at $BACKUP"
+            else
+              echo "!!! nginx -t FAILED — restoring the previous config"
+              $SUDO cp "$BACKUP" "$LIVE"
+              $SUDO nginx -t && echo "restored config validates; nginx untouched"
+              exit 1
+            fi
+
+      - name: Confirm the two headers actually changed
+        run: |
+          echo "--- Server header (want: nginx, with no version)"
+          curl -sSI https://foundry.gitwork.co.uk/portal/login | grep -i '^server:' || true
+          echo "--- Content-Encoding on Deck's shell (want: gzip)"
+          curl -sSI -H 'Accept-Encoding: gzip' \
+            https://foundry.gitwork.co.uk/deck/index.html | grep -i '^content-encoding:' || true

@@ -11,6 +11,12 @@ import {
 import { computeScoreBreakdown } from "./pulse-checks/score-breakdown";
 import { detectAiBuilder } from "./pulse-checks/vibe-code-hygiene";
 import { detectSpaContext, reclassifySpaChecks } from "./pulse-lite/spa-detect";
+import {
+  applyNativeApplicability,
+  detectNativePlatform,
+  nativeTechStack,
+} from "./pulse-checks/native-mobile";
+import { getRepoSnapshot } from "./pulse-checks/native-repo";
 
 export const SCAN_VERSION = "pulse-v2";
 
@@ -3913,8 +3919,21 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
 
   if (hasTs) techStack.push("TypeScript");
 
+  // ── Native mobile applicability ─────────────────────────────────────────────
+  // Many of the checks above look for web/JS artefacts (tsconfig, .env.example,
+  // Dockerfile, a top-level test/ folder). A Swift or Kotlin project has no
+  // equivalent, so scoring them as failures made a flawless native app score the
+  // same as a broken one. Rewrite those to SKIPPED (excluded from the score, with
+  // the reason shown) and label the stack, which package.json sniffing can't do.
+  // The snapshot is memoized, so this shares one tree fetch with the iOS family.
+  const nativeSnapshot = await getRepoSnapshot(repoInput).catch(() => null);
+  const nativePlatform = nativeSnapshot?.accessible
+    ? detectNativePlatform(nativeSnapshot.paths)
+    : null;
+  techStack.push(...nativeTechStack(nativePlatform, nativeSnapshot?.paths ?? []));
+
   return {
-    checks: checks.map((check, i) => ({ ...check, sortOrder: i })),
+    checks: applyNativeApplicability(checks, nativePlatform).map((check, i) => ({ ...check, sortOrder: i })),
     techStack: [...new Set(techStack)],
   };
 }
