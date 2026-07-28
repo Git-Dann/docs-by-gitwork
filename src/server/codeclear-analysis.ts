@@ -109,6 +109,31 @@ async function safeGithubRequest<T>(path: string, fallback: T): Promise<T> {
   }
 }
 
+/**
+ * Read a repo's root listing, returning `null` when it could not be read at all.
+ *
+ * WHY THIS IS SEPARATE FROM safeGithubRequest. That helper collapses every failure
+ * into its fallback, so a 404 (private repo, or no GITHUB_TOKEN), a 403 (rate limit)
+ * and a genuinely empty repository all became `[]`. detectRepoSignals then turned
+ * `[]` into hasTests/hasCi/hasLint/hasReadme/hasManifest ALL FALSE — worth 50 of the
+ * ~100 health-score points — so a candidate's private or unreadable repository was
+ * scored as one with no tests, no CI, no linter and no docs.
+ *
+ * That is the same defect class as the Pulse one fixed in #463/#468: "we could not
+ * look" silently rendering as "it is not there". Here it fed CodeClearScore, so it
+ * was shaping developer assessments.
+ *
+ * A distinguishable null is the whole point — callers must be able to exclude the
+ * repo rather than score it at zero.
+ */
+async function readRepoContents(fullName: string): Promise<GitHubContentResponse | null> {
+  try {
+    return await githubRequest<GitHubContentResponse>(`/repos/${fullName}/contents`);
+  } catch {
+    return null;
+  }
+}
+
 function isRecent(dateString: string) {
   const ageMs = Date.now() - new Date(dateString).getTime();
   return ageMs <= RECENT_ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000;
@@ -128,7 +153,26 @@ function aggregateLanguages(languageMaps: Array<Record<string, number>>) {
     .map(([language, bytes]) => ({ language, bytes }));
 }
 
-function detectRepoSignals(contents: GitHubContentResponse) {
+/**
+ * Read the repo's root listing into boolean signals.
+ *
+ * `contents` is null when the listing could not be read — private repo, missing
+ * token, rate limit. In that case every signal is false AND `readable` is false, and
+ * the caller must use `readable` to decide whether those falses mean anything. They
+ * do not: an unread repo is unassessed, not deficient.
+ */
+/** Test seam — the readable/unreadable distinction is the whole point of the fix. */
+export function detectRepoSignalsForTest(contents: GitHubContentResponse | null) {
+  return detectRepoSignals(contents);
+}
+
+/** Test seam — an unread repo must not be scored as a deficient one. */
+export function buildHealthScoreForTest(input: Parameters<typeof buildHealthScore>[0]) {
+  return buildHealthScore(input);
+}
+
+function detectRepoSignals(contents: GitHubContentResponse | null) {
+  const readable = contents !== null;
   const entries = Array.isArray(contents) ? contents : [];
   const names = entries.map((entry) => entry.name.toLowerCase());
 
@@ -153,6 +197,7 @@ function detectRepoSignals(contents: GitHubContentResponse) {
     names.includes("requirements.txt");
 
   return {
+    readable,
     hasReadme,
     hasDocs,
     hasTests,
@@ -162,10 +207,14 @@ function detectRepoSignals(contents: GitHubContentResponse) {
   };
 }
 
+/** Points the five file-tree signals are worth — only awardable if we read the tree. */
+const FILE_SIGNAL_POINTS = 10 + 14 + 10 + 8 + 8; // docs, tests, CI, lint, manifest
+
 function buildHealthScore(input: {
   stars: number;
   forks: number;
   recentActivity: boolean;
+  readable: boolean;
   hasDocs: boolean;
   hasTests: boolean;
   hasCi: boolean;
@@ -185,6 +234,17 @@ function buildHealthScore(input: {
   score += Math.min(10, Math.round(input.stars / 40));
   score += Math.min(7, Math.round(input.forks / 25));
   score += Math.min(10, input.recentCommitCount);
+
+  // Repo tree unreadable — the five file signals were not observed, so they must not
+  // be scored as absent. Rescale what WAS observed over the points that were actually
+  // available, the same way Pulse's score-breakdown excludes SKIPPED checks from both
+  // sides of the ratio. Without this an unreadable repo lost 50 of ~100 points for
+  // reasons that have nothing to do with the candidate.
+  if (!input.readable) {
+    const observed = score; // no file-signal points can have been added above
+    const available = 100 - FILE_SIGNAL_POINTS;
+    return clampScore(Math.round((observed / available) * 100));
+  }
 
   return clampScore(score);
 }
@@ -254,7 +314,9 @@ export async function analyzeGitHubProfile(githubHandle: string) {
     selectedRepos.map(async (repo) => {
       const [languages, contents, commits] = await Promise.all([
         safeGithubRequest<Record<string, number>>(`/repos/${repo.full_name}/languages`, {}),
-        safeGithubRequest<GitHubContentResponse>(`/repos/${repo.full_name}/contents`, []),
+        // NOT safeGithubRequest: an unreadable tree must stay distinguishable from an
+        // empty one, or its signals get scored as absent. See readRepoContents.
+        readRepoContents(repo.full_name),
         safeGithubRequest<Array<{ sha: string }>>(
           `/repos/${repo.full_name}/commits?per_page=20`,
           [],
@@ -287,6 +349,7 @@ export async function analyzeGitHubProfile(githubHandle: string) {
         size: repo.size,
         recentCommitCount,
         recentActivity,
+        treeReadable: signals.readable,
         hasReadme: signals.hasReadme,
         hasDocs: signals.hasDocs,
         hasTests: signals.hasTests,
@@ -312,7 +375,13 @@ export async function analyzeGitHubProfile(githubHandle: string) {
     return map;
   }));
 
-  const coverageCount = repoDetails.length || 1;
+  // Coverage is measured over the repos we could actually READ. Using every selected
+  // repo made an unreadable one count as a repo without docs/tests/CI, which then
+  // produced red flags like "Limited visible test coverage" about repositories nobody
+  // had looked inside. Same defect as the per-repo score, one level up.
+  const readableRepos = repoDetails.filter((repo) => repo.treeReadable);
+  const unreadableCount = repoDetails.length - readableRepos.length;
+  const coverageCount = readableRepos.length || 1;
   const metrics: GitHubAnalysisMetrics = {
     publicRepoCount: reposResponse.length,
     selectedRepoCount: repoDetails.length,
@@ -328,19 +397,19 @@ export async function analyzeGitHubProfile(githubHandle: string) {
         )
       : 0,
     docsCoverage: Math.round(
-      (repoDetails.filter((repo) => repo.hasDocs).length / coverageCount) * 100,
+      (readableRepos.filter((repo) => repo.hasDocs).length / coverageCount) * 100,
     ),
     testsCoverage: Math.round(
-      (repoDetails.filter((repo) => repo.hasTests).length / coverageCount) * 100,
+      (readableRepos.filter((repo) => repo.hasTests).length / coverageCount) * 100,
     ),
     ciCoverage: Math.round(
-      (repoDetails.filter((repo) => repo.hasCi).length / coverageCount) * 100,
+      (readableRepos.filter((repo) => repo.hasCi).length / coverageCount) * 100,
     ),
     lintCoverage: Math.round(
-      (repoDetails.filter((repo) => repo.hasLint).length / coverageCount) * 100,
+      (readableRepos.filter((repo) => repo.hasLint).length / coverageCount) * 100,
     ),
     manifestCoverage: Math.round(
-      (repoDetails.filter((repo) => repo.hasManifest).length / coverageCount) * 100,
+      (readableRepos.filter((repo) => repo.hasManifest).length / coverageCount) * 100,
     ),
     averageRecentCommitCount: repoDetails.length
       ? Math.round(
@@ -361,14 +430,32 @@ export async function analyzeGitHubProfile(githubHandle: string) {
   if (metrics.recentRepoRatio < 35) {
     redFlags.push("Low recent public activity.");
   }
-  if (metrics.docsCoverage < 30) {
-    redFlags.push("Limited documentation coverage.");
-  }
-  if (metrics.testsCoverage < 25) {
-    redFlags.push("Limited visible test coverage.");
-  }
-  if (metrics.ciCoverage < 25) {
-    redFlags.push("Limited visible CI coverage.");
+  // Coverage-based flags are statements about what we READ. When no repo tree could
+  // be read they would be statements about nothing, so they are replaced by one flag
+  // naming the actual problem — which is ours, not the candidate's. Emitting
+  // "Limited visible test coverage" for repositories nobody could open is how a
+  // scoring bug turns into an unfair assessment of a person.
+  if (readableRepos.length === 0) {
+    redFlags.push(
+      repoDetails.length === 0
+        ? "No public repositories to assess."
+        : "Repository contents could not be read, so documentation, test, CI and linter coverage are UNASSESSED — not absent. Check GITHUB_TOKEN is configured and can see these repos.",
+    );
+  } else {
+    if (metrics.docsCoverage < 30) {
+      redFlags.push("Limited documentation coverage.");
+    }
+    if (metrics.testsCoverage < 25) {
+      redFlags.push("Limited visible test coverage.");
+    }
+    if (metrics.ciCoverage < 25) {
+      redFlags.push("Limited visible CI coverage.");
+    }
+    if (unreadableCount > 0) {
+      redFlags.push(
+        `${unreadableCount} of ${repoDetails.length} sampled repositories could not be read; coverage figures above cover the rest.`,
+      );
+    }
   }
 
   const recommendedTechnicalDepth = clampScore(
