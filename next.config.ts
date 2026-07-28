@@ -91,6 +91,22 @@ const nextConfig: NextConfig = {
       { source: "/pricing", destination: "https://gitwork.co.uk", permanent: true },
       { source: "/company", destination: "https://gitwork.co.uk", permanent: true },
       { source: "/customers", destination: "https://gitwork.co.uk", permanent: true },
+      // Legal lives on gitwork.co.uk — one set of policies for the company, owned and
+      // reviewed by whoever owns that site, rather than a second copy here that would
+      // drift. Foundry hosted its own briefly in July 2026; they were removed before
+      // merge pending legal review, and deferring is the better answer than either
+      // publishing unreviewed text or having none.
+      //
+      // These are DEEP redirects, unlike the marketing ones above which go to the root.
+      // That is deliberate: a privacy link must land on the privacy policy, not a
+      // homepage. ⚠️ If gitwork.co.uk ever stops serving one of these paths, fix it
+      // there — do not repoint it at the root, because a "Privacy" link that opens a
+      // marketing page is worse than no link at all.
+      { source: "/privacy", destination: "https://gitwork.co.uk/privacy", permanent: true },
+      { source: "/terms", destination: "https://gitwork.co.uk/terms", permanent: true },
+      { source: "/cookies", destination: "https://gitwork.co.uk/cookies", permanent: true },
+      { source: "/security", destination: "https://gitwork.co.uk/security", permanent: true },
+      { source: "/legal", destination: "https://gitwork.co.uk/legal", permanent: true },
     ];
   },
   async headers() {
