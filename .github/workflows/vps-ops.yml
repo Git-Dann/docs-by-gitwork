@@ -23,6 +23,7 @@ on:
         options:
           - inspect # read-only: crontab, cron log, nginx state. Changes nothing.
           - nginx-sync # copy deploy/nginx/foundry.conf up, validate, reload
+          - cron-install-missing # append the missing agent crons (NOT retention)
 
 concurrency:
   # Never let two of these overlap on one box, and never race the app deploy's
@@ -42,10 +43,17 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
+            # The first run of this proved `sudo -n` needs a password for the deploy
+            # user, so every sudo'd probe returned nothing useful. Try unprivileged
+            # first and only fall back to sudo — /etc/nginx is usually world-readable,
+            # and `crontab -l` for the current user needs no privilege at all.
             SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo -n"
+            have_sudo() { [ -z "$SUDO" ] || sudo -n true 2>/dev/null; }
 
             echo "=============== whoami / host ==============="
             echo "user: $(whoami)   host: $(hostname)   date: $(date -u) UTC"
+            echo "groups: $(id -nG)"
+            have_sudo && echo "passwordless sudo: YES" || echo "passwordless sudo: NO"
 
             echo
             echo "=============== crontab: deploy user ==============="
@@ -76,15 +84,35 @@ jobs:
               | tail -200 | sort | uniq -c | sort -rn || echo "(nothing parseable)"
 
             echo
-            echo "=============== nginx: version + tokens/gzip state ==============="
-            $SUDO nginx -v 2>&1 || echo "(nginx not on PATH)"
-            echo "--- server_tokens / gzip as currently configured:"
-            $SUDO grep -rn "server_tokens\|gzip on\|gzip_types" /etc/nginx/ 2>/dev/null | head -20 \
-              || echo "(none set)"
+            echo "=============== is the proxy a HOST service or a CONTAINER? ==============="
+            # This is the question that decides how nginx can be changed at all. The
+            # deploy user is in the docker group (deploy.yml runs `docker compose`
+            # unsudoed) but has no passwordless sudo — so if the proxy is a container,
+            # it is reachable; if it is a host service, it is not, without granting
+            # something new.
+            echo "--- docker ps:"
+            docker ps --format '{{.Names}}\t{{.Image}}\t{{.Ports}}' 2>&1 | head -20 || echo "(docker unavailable)"
+            echo "--- host nginx binary / service:"
+            command -v nginx >/dev/null 2>&1 && echo "nginx on PATH: $(nginx -v 2>&1)" || echo "nginx NOT on PATH for this user"
+            systemctl is-active nginx 2>&1 | head -1 || true
+            echo "--- compose file (which services exist):"
+            grep -nE "^\s{2}[a-z0-9_-]+:|image:|ports:" /opt/apps/foundry/docker-compose.yml 2>&1 | head -30 \
+              || echo "(compose file unreadable)"
 
             echo
-            echo "=============== nginx: the live foundry vhost ==============="
-            $SUDO cat /etc/nginx/sites-available/foundry 2>&1 || echo "(not found)"
+            echo "=============== nginx config: readable without sudo? ==============="
+            ls -la /etc/nginx/sites-available/ 2>&1 | head -10 || echo "(cannot list)"
+            echo "--- server_tokens / gzip as currently configured:"
+            grep -rn "server_tokens\|gzip on\|gzip_types" /etc/nginx/ 2>/dev/null | head -20 \
+              || echo "(unreadable unprivileged, or not set)"
+            echo "--- the live foundry vhost:"
+            cat /etc/nginx/sites-available/foundry 2>&1 | head -60 || echo "(unreadable unprivileged)"
+
+            echo
+            echo "=============== which /api/cron routes exist vs are scheduled ==============="
+            # Names the app ships, so the gap against the crontab above is explicit.
+            ls /opt/apps/foundry 2>/dev/null | head -20 || true
+            echo "(compare the crontab above against docs/vps-crons.md — the repo is the other half)"
 
   nginx-sync:
     if: inputs.task == 'nginx-sync'
@@ -102,7 +130,7 @@ jobs:
           target: /tmp/foundry-nginx-staging
           strip_components: 2
 
-      - name: Back up, validate, then reload — restore on any failure
+      - name: Apply via the root-owned script, or explain exactly what is missing
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -110,41 +138,130 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -e
-            SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo -n"
+            APPLY=/usr/local/sbin/foundry-nginx-apply
 
-            LIVE=/etc/nginx/sites-available/foundry
-            NEW=/tmp/foundry-nginx-staging/foundry.conf
-            BACKUP="/root/foundry-nginx-backup-$(date -u +%Y%m%dT%H%M%SZ).conf"
-
-            test -s "$NEW" || { echo "staged config missing or empty"; exit 1; }
-
-            echo "--- backing up the live config to $BACKUP"
-            $SUDO cp "$LIVE" "$BACKUP"
-
-            echo "--- diff (live -> new); empty means nothing changes"
-            $SUDO diff -u "$LIVE" "$NEW" || true
-
-            echo "--- installing"
-            $SUDO cp "$NEW" "$LIVE"
-
-            # nginx -t is the whole safety story: a bad config that gets reloaded
-            # takes the site down, so validate BEFORE reloading and roll straight
-            # back if it fails. `reload` (not restart) keeps existing connections.
-            if $SUDO nginx -t; then
-              echo "--- config valid, reloading"
-              $SUDO systemctl reload nginx
-              echo "--- reloaded. Backup kept at $BACKUP"
-            else
-              echo "!!! nginx -t FAILED — restoring the previous config"
-              $SUDO cp "$BACKUP" "$LIVE"
-              $SUDO nginx -t && echo "restored config validates; nginx untouched"
+            # Writing /etc/nginx needs root, and this user has NO passwordless sudo
+            # (proven by the inspect run). Rather than grant NOPASSWD on `cp` — which
+            # is write-anywhere-as-root, i.e. root — the privileged half lives in a
+            # root-owned script with NOPASSWD scoped to that one path. If it is not
+            # installed yet, say so precisely instead of failing cryptically.
+            if ! sudo -n "$APPLY" --help >/dev/null 2>&1 && ! sudo -n test -x "$APPLY" 2>/dev/null; then
+              echo "BLOCKED: cannot apply nginx config from CI yet."
+              echo
+              echo "  Reason: $APPLY is not installed, or this user has no NOPASSWD rule for it."
+              echo "  sudo -n check: $(sudo -n true 2>&1 || echo 'password required')"
+              echo
+              echo "  One-time fix, as root on the VPS (the script is in this repo at"
+              echo "  deploy/nginx/foundry-nginx-apply, and documents this at the top):"
+              echo
+              echo "    install -o root -g root -m 0755 foundry-nginx-apply /usr/local/sbin/"
+              echo "    printf '%s\\n' '$(whoami) ALL=(root) NOPASSWD: $APPLY' > /etc/sudoers.d/foundry-nginx"
+              echo "    chmod 0440 /etc/sudoers.d/foundry-nginx && visudo -c"
+              echo
+              echo "  Nothing was changed. The staged config is at"
+              echo "  /tmp/foundry-nginx-staging/foundry.conf if you want to apply it by hand."
               exit 1
             fi
+
+            sudo -n "$APPLY"
 
       - name: Confirm the two headers actually changed
         run: |
           echo "--- Server header (want: nginx, with no version)"
           curl -sSI https://foundry.gitwork.co.uk/portal/login | grep -i '^server:' || true
-          echo "--- Content-Encoding on Deck's shell (want: gzip)"
-          curl -sSI -H 'Accept-Encoding: gzip' \
-            https://foundry.gitwork.co.uk/deck/index.html | grep -i '^content-encoding:' || true
+          # NOT /deck — middleware gates it, so an unauthenticated probe gets the
+          # login redirect and tells you nothing about compression. Use a JS chunk:
+          # it is application/javascript, so it is only compressed if gzip_types
+          # took effect (text/html is gzipped regardless, which is why the earlier
+          # check was misleading).
+          echo "--- Content-Encoding on a JS chunk (want: gzip)"
+          JS=$(curl -sSL https://foundry.gitwork.co.uk/portal/login \
+                 | grep -oE '/_next/static/chunks/[a-zA-Z0-9_./-]+\.js' | head -1)
+          echo "    chunk: $JS"
+          curl -sSI -H 'Accept-Encoding: gzip' "https://foundry.gitwork.co.uk$JS" \
+            | grep -iE '^(content-type|content-encoding):' || true
+
+  cron-install-missing:
+    if: inputs.task == 'cron-install-missing'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Append the missing agent crons (idempotent; NOT retention)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+
+            # The `inspect` run on 2026-07-28 proved four documented jobs were never
+            # installed: foreman, curator, wedge-keepwarm and retention. This installs
+            # the first three.
+            #
+            # ⛔ `retention` is DELIBERATELY EXCLUDED. It has never run, so its first
+            #    pass would sweep the entire accumulated backlog in one go — that is a
+            #    data-deletion decision, not a scheduling fix, and it needs the policy
+            #    reviewed first. Do not "complete the set" by adding it here.
+            #
+            # Idempotent: each line is appended only if that endpoint is absent, so
+            # re-running changes nothing. `crontab -l` needs no privilege for this user
+            # (sudo requires a password on this box), which is why this works at all.
+
+            RUN=/opt/apps/foundry/run-cron.sh
+            LOG=/tmp/foundry-cron.log
+            test -x "$RUN" || { echo "run-cron.sh missing or not executable at $RUN"; exit 1; }
+
+            BACKUP="$HOME/crontab.backup.$(date -u +%Y%m%dT%H%M%SZ)"
+            crontab -l > "$BACKUP" 2>/dev/null || { echo "could not read crontab"; exit 1; }
+            echo "--- backed up current crontab to $BACKUP ($(wc -l < "$BACKUP") lines)"
+
+            add_if_missing() {
+              local sched="$1" name="$2" why="$3"
+              if crontab -l 2>/dev/null | grep -qE "run-cron\.sh[[:space:]]+${name}([[:space:]]|$)"; then
+                echo "SKIP  $name — already scheduled"
+                return
+              fi
+              # Append to a copy, then install the whole file in one shot.
+              { crontab -l 2>/dev/null; echo "# $why"; echo "$sched $RUN $name >> $LOG 2>&1"; } | crontab -
+              echo "ADDED $name  ($sched)"
+            }
+
+            add_if_missing "0 9 * * *"   foreman \
+              "Foreman — daily delivery-risk digest. Enqueues FOREMAN_RUN; the jobs worker executes it."
+            add_if_missing "0 1 * * 1"   curator \
+              "Curator — weekly library maintenance (Mon 01:00). Enqueues CURATOR_RUN."
+            add_if_missing "*/5 * * * *" wedge-keepwarm \
+              "Big Wedge keep-warm — tiny authed read so their free-tier DB does not cold-start."
+
+            echo
+            echo "--- crontab now installed:"
+            crontab -l | grep -E "run-cron\.sh|db-backup" | sed 's/^/    /'
+
+            echo
+            echo "--- which of the 4 previously-missing jobs are now scheduled:"
+            for n in foreman curator wedge-keepwarm retention; do
+              if crontab -l | grep -qE "run-cron\.sh[[:space:]]+${n}([[:space:]]|$)"; then
+                echo "    $n: SCHEDULED"
+              else
+                echo "    $n: not scheduled$([ "$n" = retention ] && echo '  <- deliberate, see comment above')"
+              fi
+            done
+
+      - name: Prove the endpoints respond (does not wait for the schedule)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            # A wrong CRON_SECRET or a bad path would otherwise only show up as
+            # silence at 09:00 tomorrow — which is exactly how these went unnoticed
+            # for months. foreman and curator only ENQUEUE, and both dedupe per
+            # workspace per interval, so invoking them now is safe and idempotent.
+            for n in foreman curator wedge-keepwarm; do
+              echo "--- $n"
+              /opt/apps/foundry/run-cron.sh "$n" 2>&1 | tail -3
+            done
+            echo
+            echo "--- draining the queue once so the enqueued runs actually execute:"
+            /opt/apps/foundry/run-cron.sh jobs 2>&1 | tail -3
