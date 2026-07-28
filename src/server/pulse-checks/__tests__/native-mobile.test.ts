@@ -212,3 +212,34 @@ describe("swift sampling", () => {
     expect(swift).toEqual([]);
   });
 });
+
+// ── Platform applicability parity (July 2026) ────────────────────────────────
+// Picking "React Native / Flutter" in the scan dropdown used to get 2 of the 5
+// category exclusions a native project gets, and NONE of the 15 per-check platform
+// guards — so the full web suite ran against a mobile app and buried the real
+// findings. CROSS_PLATFORM_MOBILE ships the same store-distributed app, so it must
+// be excluded from exactly the same web-shaped checks.
+describe("CROSS_PLATFORM_MOBILE has parity with native platforms", () => {
+  it("skips the same web-shaped categories as IOS_APP", async () => {
+    const { getSkippedCategoriesForPlatformForTest } = await import("../../pulse-scan");
+    const ios = getSkippedCategoriesForPlatformForTest("IOS_APP").map((s) => s.category).sort();
+    const cross = getSkippedCategoriesForPlatformForTest("CROSS_PLATFORM_MOBILE").map((s) => s.category).sort();
+    expect(cross).toEqual(ios);
+  });
+
+  it("appears in every guard that skips both native platforms", async () => {
+    const { readdirSync, readFileSync } = await import("node:fs");
+    const dir = new URL("../", import.meta.url).pathname;
+
+    const offenders: string[] = [];
+    for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts"))) {
+      const src = readFileSync(`${dir}${file}`, "utf8");
+      for (const line of src.split("\n")) {
+        if (!line.includes("platformIs(ctx.platform")) continue;
+        if (!line.includes('"IOS_APP"') || !line.includes('"ANDROID_APP"')) continue;
+        if (!line.includes("CROSS_PLATFORM_MOBILE")) offenders.push(`${file}: ${line.trim()}`);
+      }
+    }
+    expect(offenders, "these guards skip native but not cross-platform mobile").toEqual([]);
+  });
+});

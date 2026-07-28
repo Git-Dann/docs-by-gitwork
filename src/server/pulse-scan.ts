@@ -15,6 +15,7 @@ import {
   applyNativeApplicability,
   detectNativePlatform,
   nativeTechStack,
+  type NativePlatform,
 } from "./pulse-checks/native-mobile";
 import { getRepoSnapshot } from "./pulse-checks/native-repo";
 
@@ -493,6 +494,10 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
  * Returns the categories that are irrelevant for the declared platform,
  * and a human-readable reason to embed in the SKIPPED detail message.
  */
+export function getSkippedCategoriesForPlatformForTest(platform: string) {
+  return getSkippedCategoriesForPlatform(platform);
+}
+
 function getSkippedCategoriesForPlatform(platform: string): Array<{ category: string; reason: string }> {
   const p = platform.toUpperCase();
 
@@ -506,10 +511,19 @@ function getSkippedCategoriesForPlatform(platform: string): Array<{ category: st
     ];
   }
 
+  // React Native / Flutter ships the same store-distributed app as a native project,
+  // so it gets the SAME exclusions. It previously got only 2 of these 5 (and none of
+  // the 15 per-check platform guards), which meant picking "React Native / Flutter"
+  // in the scan dropdown ran the full web suite against a mobile app and buried the
+  // real findings under web failures. If a codebase genuinely also ships a web
+  // target, scan that URL as its own Web App scan.
   if (p === "CROSS_PLATFORM_MOBILE") {
     return [
-      { category: CATEGORIES.SEO, reason: "Lower relevance — cross-platform mobile apps are primarily distributed through app stores, not web search." },
-      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — web routing internationalisation does not apply to mobile app bundles." },
+      { category: CATEGORIES.SEO, reason: "Not applicable — cross-platform mobile apps are distributed through app stores, not indexed by web search engines." },
+      { category: CATEGORIES.SAAS, reason: "Not applicable — web SaaS UI patterns (billing portals, pricing pages) do not apply to a mobile app bundle." },
+      { category: CATEGORIES.MISSING_PAGES, reason: "Not applicable — a mobile app bundle does not have marketing web pages." },
+      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — hreflang, language switchers, and international web routing do not apply to mobile app bundles." },
+      { category: CATEGORIES.API_QUALITY, reason: "Not applicable — API quality checks are for API backends and developer platforms, not mobile apps." },
     ];
   }
 
@@ -3421,7 +3435,13 @@ export async function runUrlChecks(
 type GitHubContentsEntry = { name: string; type: "file" | "dir" };
 type GitHubContentsResponse = GitHubContentsEntry[] | { message?: string };
 
-export async function runGithubChecks(repoInput: string): Promise<{ checks: PulseScanCheckInput[]; techStack: string[] }> {
+export async function runGithubChecks(repoInput: string): Promise<{
+  checks: PulseScanCheckInput[];
+  techStack: string[];
+  /** Detected mobile project shape, or null for anything else. Null on every early
+   *  return, so an unreadable repo is never mistaken for a mobile one. */
+  nativePlatform: NativePlatform | null;
+}> {
   const parsed = parseGithubRepo(repoInput);
   const checks: PulseScanCheckInput[] = [];
 
@@ -3437,6 +3457,9 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
         },
       ],
       techStack: [],
+      // Unreadable / unparseable repo is not a mobile repo — never let a failed read
+      // suppress the web suite as though we had detected a mobile project.
+      nativePlatform: null,
     };
   }
 
@@ -3490,6 +3513,9 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
         },
       ].map((check, i) => ({ ...check, sortOrder: i })),
       techStack: [],
+      // Unreadable / unparseable repo is not a mobile repo — never let a failed read
+      // suppress the web suite as though we had detected a mobile project.
+      nativePlatform: null,
     };
   }
 
@@ -3989,6 +4015,10 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
   return {
     checks: applyNativeApplicability(checks, nativePlatform).map((check, i) => ({ ...check, sortOrder: i })),
     techStack: [...new Set(techStack)],
+    // Surfaced so the orchestrator knows not to run the ~400-check WEB suite against
+    // a mobile repo's GitHub "Website" field. That field is a link, not the artefact
+    // under test — grading a native app on it scored a real client app 0/100.
+    nativePlatform,
   };
 }
 

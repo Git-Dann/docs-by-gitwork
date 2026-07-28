@@ -66,7 +66,7 @@ export async function runApiHealthChecks(ctx: ExtendedCheckContext): Promise<Pul
   const { httpsUrl, catchAll200 } = ctx;
   const html = ctx.pageResult.html;
 
-  if (platformIs(ctx.platform, "MARKETING_SITE", "IOS_APP", "ANDROID_APP", "CLI_TOOL", "DESKTOP_APP")) {
+  if (platformIs(ctx.platform, "MARKETING_SITE", "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "CLI_TOOL", "DESKTOP_APP")) {
     return skip(CATEGORY, ALL_CHECKS, "Not applicable — API health checks are for API backends and developer platforms.");
   }
 

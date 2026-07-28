@@ -68,7 +68,7 @@ const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}
 
 export async function runVibeSecurityChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   // Only meaningful for live web apps with a backend.
-  if (platformIs(ctx.platform, "API_BACKEND", "CLI_TOOL", "IOS_APP", "ANDROID_APP", "DESKTOP_APP")) {
+  if (platformIs(ctx.platform, "API_BACKEND", "CLI_TOOL", "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP")) {
     return skip(CATEGORY, ALL_CHECKS, "Not applicable for this platform type.");
   }
 

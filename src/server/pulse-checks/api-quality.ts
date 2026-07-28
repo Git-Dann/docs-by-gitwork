@@ -26,7 +26,7 @@ export async function runApiQualityChecks(ctx: ExtendedCheckContext): Promise<Pu
   const html = ctx.pageResult.html;
 
   // Only relevant for API backends and developer-facing SaaS products
-  if (platformIs(ctx.platform, "MARKETING_SITE", "IOS_APP", "ANDROID_APP", "CLI_TOOL", "DESKTOP_APP")) {
+  if (platformIs(ctx.platform, "MARKETING_SITE", "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "CLI_TOOL", "DESKTOP_APP")) {
     return skip(CATEGORY, ALL_CHECKS, "Not applicable — API quality checks are for API backends and developer platforms.");
   }
 

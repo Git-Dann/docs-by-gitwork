@@ -2,6 +2,7 @@ import { runUrlChecks, runGithubChecks, skipAllChecks } from "@/server/pulse-sca
 import { runCodeAgent } from "./code-agent";
 import { runDeployAgent } from "./deploy-agent";
 import { getDisabledCheckKeys, getCheckOverrides } from "@/server/check-config";
+import { CATEGORIES } from "@/server/pulse-checks/categories";
 import type { PulseScanCheckInput, PulseScanInputType, CodeAgentInsights, DeployAgentInsights } from "@/types/pulse";
 
 export interface OrchestratorResult {
@@ -62,7 +63,30 @@ export async function runOrchestratedScan(input: {
     let urlTechStack: string[] = [];
     const homepageUrl = codeResult.insights.homepageUrl ?? null;
 
-    if (homepageUrl) {
+    // A MOBILE repo is not graded on its GitHub "Website" link.
+    //
+    // homepageUrl was always null until July 2026, because runCodeAgent bailed on any
+    // GraphQL failure — so this branch never ran. The moment that was fixed, a native
+    // iOS repo whose Website field points at a marketing page (or anything that does
+    // not answer) had the full ~400-check web suite run against it and failed nearly
+    // all of them: a real client app scored 0/100 off 439 checks. The repo's own
+    // source is the subject of the scan; the link is not.
+    const isMobileRepo = infraResult.nativePlatform !== null;
+
+    if (homepageUrl && isMobileRepo) {
+      urlChecks = [
+        {
+          category: CATEGORIES.CODE_QUALITY,
+          checkKey: "mobile_repo_web_suite_skipped",
+          label: "Web checks skipped (mobile repo)",
+          status: "SKIPPED",
+          detail:
+            `Detected a ${infraResult.nativePlatform} project, so the website suite was not run against ` +
+            `the repository's linked homepage (${homepageUrl}). A mobile app is graded on its source and ` +
+            `store readiness, not on the marketing page it links to. Scan that URL separately if you want it graded.`,
+        },
+      ];
+    } else if (homepageUrl) {
       const [urlResult, deployResult] = await Promise.all([
         runUrlChecks(homepageUrl, input.platform, undefined, undefined, { githubTechStack: infraResult.techStack }),
         runDeployAgent(homepageUrl),

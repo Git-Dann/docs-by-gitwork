@@ -34,7 +34,7 @@ export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Prom
     return skip(CATEGORY, ALL_CHECKS, "Not applicable — roles and permissions are not relevant for this platform type.");
   }
 
-  if (platformIs(ctx.platform, "IOS_APP", "ANDROID_APP")) {
+  if (platformIs(ctx.platform, "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE")) {
     return skip(CATEGORY, ALL_CHECKS, "Not applicable — native app role management is handled server-side.");
   }
 

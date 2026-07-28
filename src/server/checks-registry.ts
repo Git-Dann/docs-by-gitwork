@@ -664,6 +664,9 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   // dependency alerts) needs permissions the source read does not. Emitted SKIPPED
   // when unavailable, so "we could not look" never reads as "the repo lacks this".
   { key: "repo_intelligence", category: CATEGORIES.CODE_QUALITY, label: "GitHub repo intelligence" },
+  // Emitted when a mobile repo links a homepage: says the web suite was deliberately
+  // not run against it, rather than leaving its absence unexplained.
+  { key: "mobile_repo_web_suite_skipped", category: CATEGORIES.CODE_QUALITY, label: "Web checks skipped (mobile repo)" },
 
   // ── Native iOS app family (src/server/pulse-checks/ios-app.ts) ──────────────
   // Emitted only when the scanned repo is detected as a native iOS project. The

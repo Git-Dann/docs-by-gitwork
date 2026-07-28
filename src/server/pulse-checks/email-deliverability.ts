@@ -25,7 +25,7 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
   const { hostname } = ctx;
   const html = ctx.pageResult.html;
 
-  if (platformIs(ctx.platform, "IOS_APP", "ANDROID_APP", "DESKTOP_APP", "CLI_TOOL")) {
+  if (platformIs(ctx.platform, "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP", "CLI_TOOL")) {
     return skip(CATEGORY, ALL_CHECKS, "Not applicable — email deliverability checks are not relevant for this platform type.");
   }
 

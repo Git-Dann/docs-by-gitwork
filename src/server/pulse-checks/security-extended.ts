@@ -38,7 +38,7 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
   const { pageResult, httpsUrl, hostname, htmlLower, catchAll200 } = ctx;
   const h = pageResult.headers;
 
-  if (platformIs(ctx.platform, "IOS_APP", "ANDROID_APP")) {
+  if (platformIs(ctx.platform, "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE")) {
     return skip(CATEGORIES.SECURITY, CHECKS, "Not applicable — native mobile apps are not web servers.");
   }
 
