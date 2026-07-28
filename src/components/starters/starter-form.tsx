@@ -134,7 +134,7 @@ export function StarterForm({
               </label>
               <select
                 id="starter-type"
-                className={`${inputClass} mt-1.5`}
+                className={`${inputClass} app-select-chevron mt-1.5 pr-9`}
                 value={type}
                 onChange={(e) => setType(e.target.value as StarterType)}
               >
@@ -151,7 +151,7 @@ export function StarterForm({
               </label>
               <select
                 id="starter-status"
-                className={`${inputClass} mt-1.5`}
+                className={`${inputClass} app-select-chevron mt-1.5 pr-9`}
                 value={status}
                 onChange={(e) => setStatus(e.target.value as StarterStatus)}
               >

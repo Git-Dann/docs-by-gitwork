@@ -283,7 +283,7 @@ function ClientLinker({ study }: { study: StudyRecord }) {
     return (
       <div className="flex items-center gap-2">
         <Link
-          href={`/app/clients/${study.workspaceClientSlug}`}
+          href={`/app/portal/${study.workspaceClientSlug}`}
           className="inline-flex items-center gap-1.5 rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:border-[var(--brand-200)] hover:text-[var(--brand-700)]"
         >
           <BuildingOffice2Icon className="h-3.5 w-3.5" />

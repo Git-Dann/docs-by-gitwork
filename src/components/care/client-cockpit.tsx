@@ -10,6 +10,7 @@ import {
   useSupportMembers,
   useSyncSupportClient,
   useBatchTriageConversations,
+  useMarkConversationRead,
 } from "@/hooks/use-support";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
@@ -130,6 +131,7 @@ export function ClientCockpit({
   const membersQ = useSupportMembers(client.id);
   const sync = useSyncSupportClient(client.id);
   const batch = useBatchTriageConversations(client.id);
+  const markRead = useMarkConversationRead(client.id);
   const { canManageSupport } = usePermissions();
 
   const [activeView, setActiveView] = useState("needs-action");
@@ -166,6 +168,20 @@ export function ClientCockpit({
 
   const selected = selectedId ? conversations.find((c) => c.id === selectedId) ?? null : null;
   const sources = useMemo(() => Array.from(new Set(conversations.map((c) => c.source))), [conversations]);
+
+  // Opening a conversation is what marks it read — the same contract the legacy
+  // dashboard has always had. Guarded on `conv.unread` so re-opening an already-read
+  // thread doesn't fire a pointless write; the mutation is optimistic, so the subject
+  // de-bolds on this click.
+  //
+  // Also guarded on canManageSupport because the PATCH route asserts it: without the
+  // guard a read-only Care viewer would take a 403 on every open and watch the row
+  // re-bold as the optimistic patch rolled back.
+  function openConversation(conv: Conversation) {
+    setShowSettings(false);
+    setSelectedId(conv.id);
+    if (conv.unread && canManageSupport) markRead.mutate(conv.id);
+  }
 
   function toggleSelect(id: string) {
     setSelection((prev) => {
@@ -323,7 +339,7 @@ export function ClientCockpit({
               active={c.id === selectedId}
               selected={selection.has(c.id)}
               selectable={canManageSupport}
-              onOpen={() => { setShowSettings(false); setSelectedId(c.id); }}
+              onOpen={() => openConversation(c)}
               onToggleSelect={() => toggleSelect(c.id)}
               assigneeName={c.assigneeId ? memberName.get(c.assigneeId) : undefined}
             />

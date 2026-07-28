@@ -4,6 +4,7 @@ import { getPulseScan } from "@/server/pulse";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { runFixAgent } from "@/server/pulse-agents/fix-agent";
 import { assertCan, canRunFixAgent, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { DEFAULT_MODELS } from "@/server/ai-provider";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 90;
@@ -31,10 +32,10 @@ export async function POST(
         if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
         return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
       })(),
-      model: p === "OPENAI" ? (workspace.openaiModel ?? "gpt-4o")
-           : p === "GEMINI" ? (workspace.geminiModel ?? "gemini-2.0-flash")
-           : p === "LOCAL"  ? (workspace.localLlmModel ?? "llama3.1")
-           : (workspace.anthropicModel ?? "claude-sonnet-5"),
+      model: p === "OPENAI" ? (workspace.openaiModel ?? DEFAULT_MODELS.OPENAI)
+           : p === "GEMINI" ? (workspace.geminiModel ?? DEFAULT_MODELS.GEMINI)
+           : p === "LOCAL"  ? (workspace.localLlmModel ?? DEFAULT_MODELS.LOCAL)
+           : (workspace.anthropicModel ?? DEFAULT_MODELS.ANTHROPIC),
       baseUrl: p === "GEMINI" ? "https://generativelanguage.googleapis.com/v1beta/openai/"
              : p === "LOCAL"  ? (workspace.localLlmUrl ?? "http://localhost:11434/v1")
              : null,

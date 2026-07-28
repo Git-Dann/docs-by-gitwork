@@ -52,7 +52,7 @@ export default function ContextPage() {
               ["Docs / Proposals", "/app/docs", "Proposal builder — sections, costing, timeline, PDF export", "Live"],
               ["Proof", "/app/proof", "Document sign-off workflow — DRAFT → APPROVED", "Live"],
               ["Code", "/app/codeclear", "Developer hiring pipeline with GitHub analysis + scoring", "Live"],
-              ["Clients", "/app/clients", "Client management and profile pages", "Live"],
+              ["Portal", "/app/portal", "Client management and profile pages", "Live"],
               ["Pulse", "/app/pulse", "AI project validation — 150+ checks, gap analysis, fix agent; includes an optional Study research tool (multi-agent interviews) at /app/study", "Live"],
               ["Care / Support", "/app/support", "Client support ops — conversations, tickets, workflow rules", "Live"],
               ["Deck", "/deck", "Foundry's slide editor — a deck is one self-contained file: edit it, present it, send it. Served as a single static shell (vendor/bento) and opened in its own window from HQ + the Docs toolbar. Follows the platform's light/dark setting. Signed-in members only; holds no workspace data", "Beta"],

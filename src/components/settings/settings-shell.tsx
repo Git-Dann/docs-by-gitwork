@@ -15,6 +15,7 @@ import {
   CommandLineIcon,
   CpuChipIcon,
   DocumentDuplicateIcon,
+  BeakerIcon,
   ShieldCheckIcon,
   SparklesIcon,
   Squares2X2Icon,
@@ -48,11 +49,11 @@ export type SettingsSectionId =
   | "mcp"
   | "agents-checks" // legacy — redirects to "agents"
   // System
+  | "labs"
   | "analytics"
   | "audit"
   | "developer"
   | "privacy"
-  | "demo"
   // Back-compat: the old "workspace" mega-section
   | "workspace";
 
@@ -184,6 +185,13 @@ const GROUPS: SectionGroup[] = [
     label: "System",
     sections: [
       {
+        id: "labs",
+        label: "Labs",
+        description: "Experimental and internal-only surfaces.",
+        icon: BeakerIcon,
+        superAdminOnly: true,
+      },
+      {
         id: "analytics",
         label: "Analytics",
         description: "Delivery, output & AI usage across the workspace.",
@@ -211,13 +219,6 @@ const GROUPS: SectionGroup[] = [
         description: "Exports, retention, deletion.",
         icon: ShieldCheckIcon,
         permission: "settings.privacy",
-      },
-      {
-        id: "demo",
-        label: "Demo builder",
-        description: "White-label a shareable demo link.",
-        icon: Squares2X2Icon,
-        adminOnly: true,
       },
     ],
   },

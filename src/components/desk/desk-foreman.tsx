@@ -1,9 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { EyeSlashIcon, NoSymbolIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
-import { useForemanReport, type ForemanFinding, type Severity, type Trend } from "@/hooks/use-foreman";
+import {
+  useForemanReport,
+  useForemanFindingAction,
+  type ForemanFinding,
+  type Severity,
+  type Trend,
+} from "@/hooks/use-foreman";
 import { EditorialRow, Stamp, DeskEmpty, DeskSkeleton, RevealList } from "./desk-shared";
+
+type QuickAction = (key: string, action: "dismiss" | "mute") => void;
 
 /**
  * The Desk "Delivery watch" panel — Foreman's latest daily audit, admin-only. Reads the frozen
@@ -13,6 +22,11 @@ import { EditorialRow, Stamp, DeskEmpty, DeskSkeleton, RevealList } from "./desk
  */
 export function DeskForeman({ enabled = true }: { enabled?: boolean }) {
   const report = useForemanReport(enabled);
+  const act = useForemanFindingAction();
+  const onAction: QuickAction = (findingKey, action) => {
+    // Fire-and-forget; the mutation invalidates the report so the row drops out on refetch.
+    act.mutate({ findingKeys: [findingKey], action });
+  };
 
   const findings = report.data?.findings ?? [];
   const risks = findings.filter((f) => f.category !== "blindspot");
@@ -47,7 +61,11 @@ export function DeskForeman({ enabled = true }: { enabled?: boolean }) {
               No overdue or slipping work — only blind spots to tidy up below.
             </p>
           ) : (
-            <RevealList items={risks} initial={5} renderItem={(f) => <FindingCard key={f.key} f={f} />} />
+            <RevealList
+              items={risks}
+              initial={5}
+              renderItem={(f) => <FindingCard key={f.key} f={f} onAction={onAction} />}
+            />
           )}
 
           {blindSpots.length > 0 ? (
@@ -68,11 +86,17 @@ export function DeskForeman({ enabled = true }: { enabled?: boolean }) {
   );
 }
 
-function FindingCard({ f }: { f: ForemanFinding }) {
+function FindingCard({ f, onAction }: { f: ForemanFinding; onAction: QuickAction }) {
+  // Stop the surrounding Link from navigating when a quick-action is clicked.
+  const fire = (action: "dismiss" | "mute") => (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onAction(f.key, action);
+  };
   const body = (
     <div
       className={cn(
-        "rounded-[8px] border bg-[var(--surface-0)] px-3.5 py-3 transition",
+        "group/finding rounded-[8px] border bg-[var(--surface-0)] px-3.5 py-3 transition",
         f.href ? "hover:border-[var(--brand-300)] hover:shadow-[var(--shadow-xs)]" : "",
         sevBorder(f.severity),
       )}
@@ -82,7 +106,25 @@ function FindingCard({ f }: { f: ForemanFinding }) {
           <SevChip severity={f.severity} />
           <span className="min-w-0 flex-1 text-sm font-medium text-[var(--text-1)]">{f.headline}</span>
         </div>
-        <TrendBadge trend={f.trend} metric={f.metric} previous={f.previousMetric} />
+        <div className="flex shrink-0 items-center gap-1.5">
+          <TrendBadge trend={f.trend} metric={f.metric} previous={f.previousMetric} />
+          <button
+            type="button"
+            title="Dismiss until it worsens"
+            onClick={fire("dismiss")}
+            className="rounded-[6px] p-1 text-[var(--text-4)] opacity-0 transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] focus:opacity-100 group-hover/finding:opacity-100"
+          >
+            <EyeSlashIcon className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            title="Mute for good"
+            onClick={fire("mute")}
+            className="rounded-[6px] p-1 text-[var(--text-4)] opacity-0 transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] focus:opacity-100 group-hover/finding:opacity-100"
+          >
+            <NoSymbolIcon className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {f.evidence.length > 0 ? (

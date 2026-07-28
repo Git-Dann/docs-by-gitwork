@@ -1,11 +1,40 @@
 # Foundry by Gitwork — Claude Code Guide
 
-> **New session?** Read this file top-to-bottom before doing anything. It has everything
-> needed to pick up the project without re-exploring the codebase.
+## 🛑 STOP — READ THESE FIRST. MANDATORY, NO EXCEPTIONS.
 
-> **Doing any mobile / responsive / layout work?** Read [`docs/mobile-playbook.md`](docs/mobile-playbook.md)
-> first — it is the mandatory operating standard for responsive fixes (breakpoints, shared
-> primitives, blast-radius discipline, and how to verify). Don't silo a fix to one screen.
+**Read all four of these BEFORE you change, create, refactor or deploy anything.** Not skimmed.
+Not assumed from an earlier session. Not inferred from the diff or the file you're about to open.
+If you are about to touch this repo and haven't read them, **stop and read them now.**
+
+| File | What it governs |
+|---|---|
+| **`CLAUDE.md`** (this file) | Project guide, conventions, module map, history |
+| **[`DESIGN.md`](DESIGN.md)** | The design system — tokens, type, components, spacing, radius |
+| **[`docs/build-checklist.md`](docs/build-checklist.md)** | The quality gate: `npm run verify` and what it checks |
+| **[`docs/mobile-playbook.md`](docs/mobile-playbook.md)** | **Mandatory** for any layout / responsive / spacing work |
+
+There is no exemption for a small change. "It's a one-liner", "it's just copy", "it's only a
+class name" and a request to move fast are **not** exemptions — most of the defects catalogued in
+§30 and §31 arrived in exactly those disguises. This is enforced at session start by
+`.claude/hooks/session-start.sh`, which prints these rules into every session (§32).
+
+**Three hard rules that follow from the above:**
+
+- **Name your chat to the convention** — `<Name> {{Product}}` / `{{Feat}}` / `{{Agent}}`. See
+  **§32**. This is how work is tracked across the team; an untagged chat is invisible.
+- **Run `npm run verify` before any PR**, and report what it actually printed. CI runs the same
+  thing on every PR (§31), and a `pre-push` hook runs it for you on a push to `main`. Never call
+  something verified that wasn't run. There is **no staging and no branch previews** — only `main`
+  deploys, straight to the Fasthosts VPS (§23), not Vercel.
+- **Keep [`ONBOARDING.md`](ONBOARDING.md) current — in the same PR as the change.** It's the
+  one-page handover new builders actually read, so a stale one actively misleads them. It is **not**
+  a summary of this file; it only covers what someone needs in week one. Update it when you change:
+  the **workflow or a gate** (`verify`, CI, the hooks), a **canonical route or the module map**, a
+  **shared field/layout convention** it names, or when a **trap in its §4 list** is fixed or a new
+  one is learned. Adding a feature does *not* require touching it — resist growing it into a second
+  `CLAUDE.md`; its value is that it is short enough to be read in full.
+
+---
 
 ---
 
@@ -74,12 +103,59 @@ Rules of thumb:
 - **Stay tidy** → prune stale worktrees (`git worktree prune`) and don't leave dozens of
   abandoned branches around. Auto-delete handles remote branches post-merge.
 
+### ⛔ `main`'s history was re-rooted — DO NOT prune remote branches
+
+**Read this before deleting any branch.** `main` currently holds **55 commits and its root commit
+is `3242110b`, dated 2026-07-17**. It contains nothing older. **43 of the 45 remote branches share
+a completely different root** (`bd8d7145`, the repo's initial commit, 2026-03-11) and have **no
+merge base with `main` at all**.
+
+Those branches are the **only** copy of **1,365 commits** — the project's entire history from
+March to July 2026. Deleting them destroys it permanently. Almost certainly fallout from the June
+mirror-clone repair described below, where a rebuilt `main` was force-pushed.
+
+Three consequences that will bite you:
+
+1. **`git branch --merged` and three-dot diffs are useless here.** With no merge base,
+   `git diff main...branch` returns **empty** — which reads as "this branch adds nothing, safe to
+   delete". It is the exact opposite. An audit built that test in July 2026 and it reported all 33
+   unreferenced branches as safe; checking one by hand (`homepage-redesign`: 108 commits ahead,
+   23,112 files differing) caught it before anything was deleted. **Use
+   `git merge-base --is-ancestor <branch> main` and treat an empty `git merge-base` output as
+   "orphaned, do not touch".**
+2. **`git log` / `git blame` lie about anything before 17 July.** `3242110b` is a root commit, so
+   it appears to *add* every file in the repo — it will show as the last-touch commit for most of
+   the tree and as the origin of files it never touched.
+3. **Nine of the eleven open PRs are built on the orphaned lineage** (e.g. #37's base is
+   `ddf707d7`, not on `main`), which is why they report `mergeable_state: unknown` and why some
+   have sat since May. They cannot be merged normally — they need re-creating from current `main`.
+
+**To make the branches safe to delete**, first anchor the history with tags, then prune:
+
+```bash
+# Tag every orphaned tip (annotated, namespaced) — objects stay reachable via the tag.
+for b in $(git ls-remote --heads origin | sed 's|.*refs/heads/||' | grep -v '^main$'); do
+  git merge-base --is-ancestor "origin/$b" origin/main 2>/dev/null && continue
+  [ -n "$(git merge-base origin/main "origin/$b" 2>/dev/null)" ] && continue   # based on main, skip
+  git tag -a "archive/pre-reroot/$b" "origin/$b" -m "Archived tip of $b (pre-2026-07-17 re-root)."
+done
+git push origin --tags     # ⚠️ blocked by the sandbox git proxy (403) — run this locally
+# Verify BEFORE deleting anything: expect 1365
+git rev-list --count $(git tag -l 'archive/pre-reroot/*' | tr '\n' ' ') --not origin/main
+```
+
+The better long-term fix is to reattach the history to `main` so it stops depending on loose refs:
+`git merge -s ours --allow-unrelated-histories <orphan-tip>` records the old lineage as a second
+parent **without changing a single file**. It needs a merge commit on `main`, which this repo
+otherwise forbids (§2), so it is Dan's call.
+
 ### Git hygiene — prevent object store corruption
 
 Claude Code creates a worktree per session. Without maintenance, accumulated worktrees and stale
 local `claude/` branches cause pack-file corruption (missing delta bases, orphaned commit objects)
 that breaks `git gc`, `git prune`, and `git fsck`. This happened in June 2026 and required a full
-mirror clone to repair.
+mirror clone to repair — and that repair is what orphaned the history described above, so treat
+the recipe below as a last resort, not routine maintenance.
 
 **Run periodically** (every few sessions, or when > ~5 active worktrees):
 
@@ -89,6 +165,10 @@ git worktree prune
 git branch | grep claude/ | xargs git branch -D 2>/dev/null || true
 git gc --prune=now
 ```
+
+> ⚠️ That `git branch -D` line is **local-only and must stay that way**. Do not adapt it to
+> `git push origin --delete` — see the re-root warning above; the remote branches are load-bearing
+> until the archive tags are pushed.
 
 **If `git gc` fails** with "bad tree object" or "unable to read [sha]":
 1. **Do NOT use `--depth=20`** for repair — shallow clone packs have their own missing bases.
@@ -168,16 +248,38 @@ ENCRYPTION_KEY=""      # 32-byte base64 secret
 
 ## 4. Module Map
 
-The sidebar uses different labels from the URL routes — mapping below:
+The sidebar uses different labels from the URL routes — mapping below.
+
+> **Use the canonical route in anything new.** Four modules have both a canonical short path and a
+> legacy one, and `MODULE_PATHS` in **`src/server/auth/module-gate.ts`** is the source of truth — it
+> labels them exactly that way (it moved out of `src/middleware.ts` in July 2026 so it could be
+> unit-tested; see §33). Both resolve, so the legacy paths are safe in old links, but new code, new nav
+> entries and new deep links use the canonical column.
+>
+> | Canonical | Legacy (still resolves) |
+> |---|---|
+> | `/app/portal` | `/app/clients` → `redirect()` stubs |
+> | `/app/care` | `/app/support` — ⚠️ still a **live, different** UI, not a stub |
+> | `/app/code` | `/app/codeclear` — ⚠️ its `candidates/`, `pipeline/`, `devsignal/**` subtrees live **only** here |
+> | `/app/docs` | `/app/proposals` → `redirect()` stubs |
+>
+> Note the **server module name is a third thing again** and doesn't match either: Portal →
+> `clients`, Care → `support`, Code → `codeclear`, Docs → `proposals`. The `Server module` column
+> below is the one to trust for imports.
 
 | Sidebar label | Route | Server module | Description |
 |---|---|---|---|
-| **Foundry HQ** | `/app` | — | Dashboard overview |
-| **Pulse** | `/app/pulse` | `src/server/pulse*.ts` + `pulse-agents/` | AI project validation — 150+ automated checks, gap analysis, GitHub fix-agent, continuous monitors. Also hosts the optional **Study** research tool (no longer a top-level module — see §26) |
-| **Code** | `/app/codeclear` | `src/server/codeclear*.ts` | Developer hiring pipeline — GitHub analysis, scoring, candidate management |
-| **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). **Canonical route is `/app/docs`**; `/app/proposals/*` are redirect stubs (see §16) |
-| **Portal** | `/app/clients` | `src/server/clients.ts` · `meetings.ts` | Client management + detail pages, incl. **Scribe** AI meeting notes per-client (no sidebar item — see §14) |
-| **Care** | `/app/support` | `src/server/support.ts` | Client support ops — conversations, tickets, workflow rules, audit log |
+| **Foundry HQ** | `/app` | — | Dashboard overview. `/app/projects/[slug]` hangs off it (project detail; `app-shell.tsx` deliberately highlights HQ for it) |
+| **Pulse** | `/app/pulse` | `src/server/pulse*.ts` + `pulse-agents/` | AI project validation — ~600 checks in `checks-registry.ts`, gap analysis, GitHub fix-agent, continuous monitors. Also hosts the optional **Study** research tool (no longer a top-level module — see §26) |
+| **Code** | `/app/code` (legacy `/app/codeclear`) | `src/server/codeclear*.ts` | Developer hiring pipeline — GitHub analysis, scoring, candidate management. ⚠️ `candidates/`, `pipeline/` and `devsignal/**` still live ONLY under the legacy `/app/codeclear/*` prefix — moving them is a separate PR, and the `/app/codeclear/devsignal` `MODULE_PATHS` entry must be renamed **in place** or admin-only DevSignal silently regates onto the staff-inherited `codeclear` module |
+| **Studio** | `/app/studio` | — (client-side only, no `/api/studio`) | Brand asset studio — design on-brand social assets and App Store / Play Store screenshots, then batch-export at the exact size each platform needs. ~30 components under `src/components/studio/` (`studio-root.tsx` entry, plus `templates/`, `screenshots/`, `costing/`, `brand.tsx`, `export.ts`). Also now hosts the **Demo builder** (`demo-builder.tsx`), moved out of Settings in July 2026 — this is the `Demo {{Feat}}` workstream in §32. Module permission id `studio` |
+| **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). `/app/proposals/*` are redirect stubs (see §16) |
+| **Portal** | `/app/portal` (legacy `/app/clients`) | `src/server/clients.ts` · `meetings.ts` | Client management + detail pages, incl. **Scribe** AI meeting notes per-client (no sidebar item — see §14). `/app/clients(/[slug])` are redirect stubs — they were a live, degraded second copy missing the tasks/wiki/design-system children |
+| **Care** | `/app/care` (legacy `/app/support`) | `src/server/support.ts` | Client support ops. ⚠️ **Two UIs are live.** `/app/care` is the rebuilt cockpit; `/app/support` still serves the 5,535-line legacy dashboard and exclusively owns add-client, Tickets, monthly Reports, health scoring, AI search and workflow rules. `client-cockpit.tsx` imports `ConnectorsView` *out of* the legacy file, so it cannot be deleted yet. Finishing the port is a two-way merge, not a cutover |
+| **Analytics** | `/app/analytics` | `src/server/analytics/` | Delivery, output & AI usage. Super Admin — gated by the page itself (`notFound()` on a live DB role read), not by `MODULE_PATHS`. Reached from the Settings rail |
+| **Starters** | `/app/starters` | `src/server/starters*.ts` | Prompt→production library. **Super Admin only**, enforced by a dedicated check in `middleware.ts` ahead of the module gate |
+| **Handbook** | `/app/handbook` | — | Internal developer knowledgebase. Deliberately readable by every internal user (no module gate); writes are Admin+ (enforced in `/api/handbook`) |
+| **Templates** | `/app/templates` | `src/server/proposals.ts` | Document templates. Linked from the Docs workspace; gated on `proposals` since July 2026 |
 | **Study** (tool) | `/app/study` | `src/server/study*.ts` + `study-agents/` | AI user research — multi-agent persona interviews, synthesis, reports. **No sidebar item** — surfaced as an optional tool inside Pulse (see §26). Routes/API/models unchanged at `/app/study` · `/api/study` |
 | **Backstage** | `/app/backstage` | `src/server/backstage.ts` + `backstage-holidays.ts` | Internal Gitwork ops umbrella — v1 covers staff leave booking + expenses tracking + staffing alerts on HQ. Future tools slot in as `/app/backstage/<slug>` |
 | **Settings** | `/app/settings` | — | AI provider config, rate card, workspace branding |
@@ -186,15 +288,36 @@ The sidebar uses different labels from the URL routes — mapping below:
 
 **Public pages (outside /app):**
 
+> **The agency marketing pages are gone (July 2026).** `/products`, `/products/[slug]`,
+> `/pricing`, `/company` and `/customers` duplicated gitwork.co.uk — which is the site that
+> links *here* — and were removed along with the whole of `src/components/marketing/`, their
+> only consumer. All five 308 to gitwork.co.uk. `/design-system` went too: a stale, indexable
+> HTML mirror of `DESIGN.md` with zero inbound links.
+
 | Route | Description |
 |---|---|
-| `/` | Foundry marketing homepage — Gitwork logo in nav/footer, Foundry cream design |
-| `/pulse-overview` | Standalone public Pulse product page (not in app nav, shareable URL) |
-| `/api-docs` | REST API reference |
-| `/context` | AI context page — this project's structured context for AI assistants |
-| `/report/[token]` | Shareable public Pulse scan report |
-| `/onboarding/[token]` | Public client onboarding flow — tokenised, no auth, autosaves per step |
+| `/` | **307 → `/portal/login`.** A platform landing page briefly lived here to win the ~49 SEO/AEO/Trust checks that parse `/`'s HTML, but the portal login is the intended front door, so it was reverted. Because a scan FOLLOWS the redirect, `/portal/login` is the page that gets graded — which is why it carries a footer, `<main>`, Organization/WebSite JSON-LD and the company/VAT disclosure. Put scan-facing scaffolding THERE, not here |
+| `/legal` · `/privacy` · `/terms` · `/cookies` · `/security` | **308 → the gitwork.co.uk equivalent** (`next.config.ts`). One set of company policies, owned where the rest of the public content is owned — Foundry hosted its own briefly in July 2026 and they were removed pending legal review. ⚠️ The login footer must link these **relatively**: `privacy_policy` + `terms_of_service` hard-cap the Pulse score at 65 (`score-breakdown.ts`) and match a literal `href="/privacy"` in the SCANNED page's HTML (i.e. `/portal/login`, since `/` redirects there) — closing quote included, so a trailing slash does not count and an absolute `https://gitwork.co.uk/privacy` does not count either. Relative href satisfies the check; the redirect serves the content. |
+| `/pulse-overview` | Standalone public Pulse product page (not in app nav, shareable URL). Self-embeds `/embed/pulse`, which is why `'self'` is in that route's `frame-ancestors` |
+| `/embed/pulse` | Embeddable scanner widget. **External contract** — allow-listed for gitwork.co.uk in `next.config.ts` and the only route exempt from the baseline security headers. Do not touch without checking the live embed |
+| `/api-docs` | REST API reference. Linked in-app from Settings → Developer |
+| `/context` | AI context page — noindex, no inbound links, and self-reports "May 2026". Stale; either refresh or drop it |
+| `/report/[token]` · `/docs/[token]` · `/sign/[token]` · `/onboarding/[token]` · `/timeline/[token]` · `/brand/[token]` · `/wiki/[slug]` · `/vet/[token]` | Client & candidate deliverables — the URL token is the credential. All noindex, all disallowed in `robots.ts` |
+| `/demo/**` | 16 white-labelled sales demos. Public by design, noindex, **fully mock** — no demo page imports Prisma or any server module |
+| `/edge` | Corsair Xeneon kiosk board. Session-gated, chrome-free, dark-forced. Entry point now lives in **Settings → Labs** (§4a) rather than a top-level route, per the rule below |
+| `/deck` | Deck slide editor shell (static, `public/deck/index.html`, rewritten in `next.config.ts`). Session-gated. **Do not move it** — four vendored files test `location.pathname.startsWith('/deck')` and a Next rewrite does not change `location.pathname`; `foundry-doc.ts` uses that test to select DOCUMENT MODE, so `/app/deck?doc=` would boot an empty file-mode deck and stop saving |
 | `/app/pulse/[scanId]/report` | Printable Pulse report (in-app) |
+
+### 4a. Where a surface belongs
+
+`/app/<name>` is for a **main product** — its own sidebar item and module permission.
+Anything else gets an entry point, not a namespace:
+
+- **A feature of a product** → surfaced inside that product. Deck sits on the Docs
+  toolbar; Study sits inside Pulse; Scribe is a panel on the client detail page.
+- **An experiment or internal-only surface** → **Settings → Labs**
+  (`src/components/settings/labs-panel.tsx`, Super Admin). `/edge` is the first entry.
+- **A second internal tool** → under Backstage, never a new top-level item (§10).
 
 ---
 
@@ -273,7 +396,7 @@ src/
       persona.ts                  ← AI persona interview conductor
       synthesizer.ts              ← Turn/session/final report synthesis
       types.ts                    ← Shared agent types (AiConfig etc.)
-    dispatch/                     ← Dispatch: the Slack-resident coordinator (§31)
+    dispatch/                     ← Dispatch: the Slack-resident coordinator (§34)
       resolve.ts                  ← PURE question → subject (client/person/workspace) resolution
       evidence.ts                 ← Deterministic bounded evidence pack + deriveBlindSpots (no AI)
       answer.ts                   ← Pure no-AI floor + ONE cached light-tier phrasing call
@@ -484,10 +607,18 @@ Core domains:
 ```bash
 npm run dev          # Start local dev server (localhost:3000)
 npm run build        # prisma generate → prisma db push → next build
+                     #   ⚠️ pushes schema to whatever DATABASE_URL points at — never run in CI
 npm run db:generate  # prisma generate only
-npm run db:push      # push schema changes to Neon
+npm run db:push      # push schema changes to the database
 npm run db:migrate   # create a named migration
 npm run lint         # ESLint
+npm test             # vitest (unit tests)
+
+# Quality gate — run before every PR (§31, docs/build-checklist.md)
+npm run verify       # db:generate → tsc --noEmit → lint → test → audit:ui   (no DB needed)
+npm run audit:ui     # static field/layout/AI-cost standards audit (add -- --self-test first)
+npm run audit:clipping <url>   # runtime clipping audit, needs a reachable page
+npm run deck:verify  # Deck's own regression gate (see §30)
 ```
 
 ---
@@ -517,15 +648,22 @@ npm run lint         # ESLint
 
 ## 11. Known Issues / Tech Debt
 
+> Audited July 2026. Rows that were **fixed or simply wrong** have been removed rather than
+> left to mislead: the `MODULE_PATHS` row (fixed long ago, and it contradicted §13.4 in this
+> same file), the "Library/Templates nav hidden" row (Templates is linked from the Docs
+> workspace and now gated), and the `any`-usage count, which was ~135 and is actually **26**.
+
 | Issue | File | Notes |
 |---|---|---|
-| `pulse-scan.ts` is 3200+ lines | `src/server/pulse-scan.ts` | Works fine — don't split without a clear plan. Future task. |
-| ~135 `any` type usages | various | Not breaking. Gradual cleanup is a future task. |
-| Proof is built but hidden | `src/components/app-shell.tsx` | Nav item commented out. Can be re-enabled when ready. |
-| Library/Templates nav hidden | `src/components/app-shell.tsx` | Same — commented out, works but not exposed. |
+| **Care runs two UIs at once** | `src/components/care/` + `src/components/support/support-dashboard.tsx` | `/app/care` is the rebuilt cockpit; `/app/support` is the 5,535-line legacy dashboard. Each holds capabilities the other lacks, so it is a **two-way merge**. Legacy exclusively owns add-client, Tickets, monthly Reports (~815 lines), health scoring, AI semantic search and workflow rules; the cockpit owns triage, snooze, notes and batch actions. `client-cockpit.tsx` imports `ConnectorsView` from the legacy file, so it cannot be deleted today. (The "Care never clears `unread`" bug listed here was fixed in July 2026 — see §33.) |
+| **`/app/codeclear/*` subtrees not yet moved** | `src/app/(app)/app/codeclear/` | `candidates/`, `pipeline/` and `devsignal/**` exist only under the legacy prefix; 33 refs across 10 files. When moving, rename the `/app/codeclear/devsignal` `MODULE_PATHS` entry **in place** — appending it after `/app/code` regates admin-only DevSignal onto `codeclear`, which STAFF auto-inherits. Silent privilege escalation, no compile error. |
+| Cron scheduling has drifted | `vercel.json` · `docs/vps-crons.md` | `wedge-keepwarm` and `retention` are scheduled **nowhere**; `wiki-monitors` is only in `vercel.json`; the critical `jobs` worker is **missing** from `vercel.json`; three schedules disagree between the two; `foreman` is listed twice in the doc. And `vercel.json` crons are **not** necessarily inert — Vercel crons hit the deployment directly regardless of DNS, so some may be double-running. Reconcile against the live `crontab -l` before changing either. |
+| `pulse-scan.ts` is 4000+ lines | `src/server/pulse-scan.ts` | Works fine — don't split without a clear plan. Future task. |
+| 26 `any` type usages | various | Not breaking. Gradual cleanup is a future task. |
+| Proof is built but hidden | `src/components/app-shell.tsx` | Nav item commented out. Now gated on `proposals`. `src/server/proof.ts` hands out absolute `/app/proof?…` share URLs, so any relocation needs a query-preserving stub. |
 | `locals-settings` uses localStorage | `src/lib/local-settings.ts` | Account/workspace settings client-only — pre-auth artifact. |
-| Stale `MODULE_PATHS` route names | `src/middleware.ts` | Still references old paths (`/app/support`, `/app/clients`, etc.) — the new routes (`/app/care`, `/app/portal`) aren't permission-gated as a result. Pre-existing bug, separate ticket. |
-| Backstage receipts in Postgres `bytea` | `prisma/schema.prisma` (`Expense.receiptImage/Thumb`) | Fine for now. Migrate to Vercel Blob / R2 once volume exceeds ~100 expenses or any receipt routinely > 1MB. Lifecycle: full image dropped on review, ~20KB thumb retained for audit. |
+| Backstage receipts in Postgres `bytea` | `prisma/schema.prisma` (`Expense.receiptImage/Thumb`) | Fine for now. Migrate to object storage once volume exceeds ~100 expenses or any receipt routinely > 1MB. Lifecycle: full image dropped on review, ~20KB thumb retained for audit. |
+| Deleting a route is invisible to the gate | — | `npm run verify` and `next build` cannot see a removed API route: `audit:ui` walks `src/` dynamically, no test references `api/dev` or `api/cron`, and the "101 static pages" line in `checks.yml` is a comment, not an assertion. **Grep for callers by hand before deleting a route.** |
 
 ---
 
@@ -612,7 +750,7 @@ In the last session, the following was completed:
 
 **UI** — `MeetingNotesSection` + `MeetingNotesModal` in `src/components/clients/client-detail.tsx`: compact rows (title · date · status) with a **View ↗** button (Retry for no-notes/error). View opens a content-sized, branded 2-col modal (per `DESIGN.md`: mono "Scribe" eyebrow, DM Serif Display title, JetBrains Mono timestamp + labels; non-pill attendee chips) — notes left, decisions + action items right. Each **action item has a "+ Task"** button that creates a `Task` on the client's board via `useCreateTask` (no checkboxes — the task board tracks done-ness).
 
-**Go/no-go:** `GET /api/dev/notes-spike?title=…&start=…` confirms Drive access + that the matching Gemini doc is reachable (`verdict: "GO …"`).
+**Go/no-go:** was `GET /api/dev/notes-spike` — **removed July 2026** along with the other eight spent one-shot `/api/dev/*` routes, since the spike it de-risked shipped. If Drive access ever needs re-proving, the reachability logic lives in `findGeminiNotesForEvent` (`src/server/google-drive-notes.ts`).
 
 **Prerequisites:** Meet AI ("Take notes for me") enabled on the Workspace tier (Gitwork has it — Gemini notes are already generated); each teammate signs out/in once to grant `drive.readonly`.
 
@@ -1200,6 +1338,18 @@ agent **calls out its own blind spots** (missing due dates/timelines) as info ra
   Settings → Foreman → Dry run, Run now (check the digest lands on the Desk + ALERTS), hit
   `GET /api/cron/foreman` with `CRON_SECRET`. **Deferred:** per-developer digests (management-only for
   now), configurable notification recipients, a "why not flagged" explain view.
+- **Finding resolution — dismiss / mute / bulk (follow-up).** Findings are managed rather than a fixed
+  wall: new `ForemanFindingAction` model (one row per `findingKey` = `${kind}:${subjectId}`; additive →
+  guarded `prisma db push`). Two actions, both reversible via "clear": **mute** hides a finding until
+  un-muted (for stale/known noise — e.g. ancient imported milestones); **dismiss** hides it while its
+  metric stays ≤ the value it had when dismissed, and **resurfaces if it worsens** so a real escalation
+  is never lost. Applied at **read time** (`src/server/foreman/actions.ts` — pure `findingState` /
+  `visibleFindings`, unit-tested), so it takes effect immediately without a re-run: the Desk report,
+  the Settings findings list, the digest notification and the AI narrative all filter through it (raw
+  findings are still persisted on the run so un-muting reveals them). API `GET/POST /api/foreman/findings`
+  (admin; bulk `{ findingKeys[], action }`); hooks `useForemanFindings` / `useForemanFindingAction`.
+  UI: per-finding Dismiss/Mute on the Desk "Delivery watch" cards, and a Settings → Foreman **Findings**
+  manager (select-all + bulk Dismiss/Mute, per-row actions, and a "Muted & dismissed" reveal to Restore).
 
 ## 30. Recent Changes (July 2026) — Deck (the slide editor, forked from bento/slides)
 
@@ -1291,8 +1441,10 @@ the Foundry · Gitwork brand switch. **No Foundry data touches it** — it's a l
     re-listing those would send each header twice.
   - **`.dockerignore` now excludes `**/node_modules`** — the bare `node_modules` entry only matched
     the top level, so the vendored app's own ~80MB install was going into the build context.
-  - Not done: gzip on the wire (**726KB → 547KB**, and 504KB → ~390KB now) is an **nginx** setting on
-    the VPS, outside this repo. Worth turning on for `text/html`.
+  - gzip on the wire (**726KB → 547KB**, and 504KB → ~390KB now) is an **nginx** setting, which was
+    outside this repo until the VPS config was checked in. `gzip on` is now set in
+    **`deploy/nginx/foundry.conf`** — but that file is a checked-in mirror, not a deployed one: it
+    only takes effect once someone copies it up and reloads nginx (see `deploy/nginx/README.md`).
 - **Every upstream accent swept out of the chrome.** Upstream drives most of its UI from `--accent`,
   but hard-codes its coral/amber in places the token swap couldn't reach — so re-pointing the token
   left them bento-coloured. Now brand-correct: the About primary, the update chip (needs
@@ -1509,7 +1661,234 @@ upstream's *product* (as opposed to its engine) and finishes wiring Deck to the 
   CRDT + relay) is untouched and unused; and the product name is one constant in `brand.ts` if
   "Deck" isn't the final call.
 
-## 31. Recent Changes (July 2026) — Dispatch (the Slack-resident coordinator)
+## 31. Recent Changes (July 2026) — The build gate: CI on PRs + a static UI-standards audit
+
+Dan's standing pre-access checks (responsiveness, padding in text boxes, chevrons too close to the
+right, mobile optimisation, low token usage, general best practices) were **documented but almost
+entirely unenforced**. This closes that, so a new builder in the workspace hits a gate rather than
+a code review.
+
+**The headline gap: there was no CI.** `.github/workflows/deploy.yml` was the *only* workflow and
+it triggers on **push to `main`** — straight to build → GHCR → VPS. Nothing ran `tsc`, `eslint` or
+the tests on a branch or a PR. New **`.github/workflows/checks.yml`** runs on `pull_request` +
+push to `main` + `workflow_dispatch`: `npm ci` → `db:generate` → `tsc --noEmit` → `lint` → `test`
+→ `audit:ui --self-test` → `audit:ui` → **`npx next build`**, with `concurrency`
+cancel-in-progress.
+⚠️ **It calls `npx next build`, never `npm run build`** — the npm script runs `prisma db push`
+first and would mutate whatever `DATABASE_URL` it was handed. Bare `next build` was verified to
+compile and prerender all 101 static pages with **no database**, so CI gets the RSC-boundary and
+static-generation coverage `tsc` can't give without any DB access. (Nothing here touches Vercel —
+it hasn't been in the deploy path since §23.)
+
+**New static audit — `scripts/audit-ui-standards.mjs` (`npm run audit:ui`).** The companion to
+`audit-clipping.mjs`: that one drives a real page, which makes it the better detector, but **every
+`/app` page is auth-gated with no staging environment**, so the screens where most of these defects
+actually live had no gate at all. This one reads **source** (1380 files), needs no browser or
+server, and covers the gated screens. Seven rules, each a defect that has really shipped here:
+`SELECT-CHEVRON` (native OS chevron with no reserved padding — the Deck bug from §30) ·
+`SELECT-PAD` (`app-select-chevron` under `pr-6`, so the value sits under the arrow) ·
+`TEXTAREA-PAD` (horizontal padding only → first line flush to the top border) · `INPUT-PAD` ·
+`FIXED-WIDTH` (unprefixed `w-[≥380px]` with no cap/scroller/desktop-guard → `PAGE-X` on a phone) ·
+`TABLE-SCROLL` (a table that *cannot shrink* with no scrollable ancestor; `overflow-hidden` is not
+a scroller) · `MODEL-LITERAL` (hardcoded model id in server/API code).
+It has a **`--self-test`** (like the clipping audit) asserting every rule fires on the defect **and
+stays quiet on the fix** — run it before trusting a clean report. Also `--rule=`, `--warn-only`.
+
+**Writing the rules found more bugs in the rules than in the app, which is the point.** The first
+pass reported 28 findings; 25 were false positives and each one taught the rule something:
+`className="…"` plain strings weren't being parsed at all; `\bw-\[` also matched inside
+`min-w-[…]`; a prose `<select>` in a *comment* read as markup; `border-0` satisfied a
+"draws its own border" test; and `overflow-x-auto` ancestors, `max-w-[94vw]` caps and
+`hidden lg:block` desktop-only markup were all legitimate and being flagged. Ancestor state matters
+too: `.endpoint-body { overflow-x: auto }` on `/api-docs` is a real scroller declared in CSS, not
+Tailwind, so the audit now collects CSS-declared scroller classes and honours them.
+
+**Real defects found and fixed (3):** two `<select>`s in `starters/starter-form.tsx` and the
+sync-interval `<select>` in `support-dashboard.tsx` were bespoke fields with **no chevron
+treatment** — native OS arrow, no reserved right padding. Fixed with `app-select-chevron` + `pr-9`
+/ `pl-2 pr-6`, matching the correct precedent already in `support-dashboard.tsx` (the ticket-status
+dropdown). Audit is now clean at 0 findings.
+
+**Token usage: audited, and already in good shape — nothing invented.** `completeText()` already
+marks every system prompt `cache_control: ephemeral`, `tier: "light"` routes to Haiku, and
+`ai-cache.ts` / `ai-usage.ts` / `ai-cost.ts` / `ai-pricing.ts` cover response caching, usage and
+cost. Of 15 Anthropic call sites, the 5 that looked uncached were: 2 in `fix-agent.ts` that pass
+`cache_control` **via a variable** (and add rolling `withPrefixCache` on the tool loop — the
+exemplar), and 3 whose system prompts measure **~124–446 tokens, far below Anthropic's ~1024-token
+minimum cacheable length**, where `cache_control` would be a literal no-op. `proof/analyse` already
+wraps its call in a workspace response cache keyed on the brief hash. **No caching changes were
+made**, because none would have saved a token.
+
+**The one real AI-cost drift risk, fixed:** the handbook and §8 both say fallback models live *only*
+in `DEFAULT_MODELS` (`ai-provider.ts`), but the literals were **duplicated across 29 sites in 10
+server/API files** (`?? "claude-sonnet-5"`, `?? "gpt-4o"`, `?? "gemini-2.0-flash"`,
+`?? "llama3.1"`). Bump the table and every one of those silently keeps the old default. All now
+import `DEFAULT_MODELS`; `MODEL-LITERAL` keeps it that way. Its scope excludes the places a
+model-shaped string is *data* — `ai-pricing.ts` (rate card), `api/settings/models/` (its `gpt-4` is
+a prefix filter for OpenAI's catalogue), `pulse-checks/` (sniffs these names in scanned HTML) and
+`starters-catalog.ts` (`claude-*` slugs are tags/build refs) — each exclusion commented with why.
+
+**Docs:** new **[`docs/build-checklist.md`](docs/build-checklist.md)** — the one-command gate, a
+table of every rule and its rationale, what the audits *can't* see (radius mismatches and cramped-
+but-recoverable controls are screenshot findings), verification honesty (no staging, no branch
+previews, `/app` can't be self-screenshotted), and the AI cost rules. `docs/mobile-playbook.md`
+gained **§3b** for the static audit and a step 6 in its process. This file's header now points at
+the checklist.
+
+**Deferred / notes:** the clipping audit stays manual for `/app` until a staging environment
+exists (it needs a reachable page and those are auth-gated). **~8 hand-rolled field
+class constants** (`inputCls` / `fieldInput` / `brandInputClass` / `inputClass` in `wiki/*`,
+`starters`, `onboarding/brand.tsx`) all have correct `px-3 py-2` padding but diverge cosmetically
+from `app-input` (different radius, border token, focus ring) — consolidating them is a real
+consistency win but touches screens that can't be visually verified pre-merge, so it was left as a
+follow-up rather than done blind.
+
+## 32. Chat / session naming convention — REQUIRED for every Gitwork session
+
+**Every chat or Claude Code session started by anyone at Gitwork must be titled to this
+convention.** It is how work is tracked, triaged and monitored across the team — an untagged or
+free-form chat title is effectively invisible in the session list, so this is not cosmetic.
+
+### The format
+
+```
+<Name> {{Tag}}
+```
+
+The name first, then a single space, then the tag **verbatim including the double braces**. Three
+tags exist. Do not invent a fourth.
+
+| Tag | Means | Current members |
+|---|---|---|
+| `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications** |
+| `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
+
+Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
+
+### Rules
+
+1. **`{{Feat}}` is spelled `{{Feat}}`** — never `{{Feature}}`, `{{feat}}` or `{{FEAT}}`. The tags
+   are matched literally.
+2. **Use the established name exactly** as it appears above — `On Your Desk`, not `Desk`;
+   `DevSignal`, not `Dev Signal`; `RoundUp`, not `Round Up`.
+3. **New workstream not on the list?** Use its real name plus the tag that fits what it is
+   (module → `{{Product}}`, feature → `{{Feat}}`, scheduled agent → `{{Agent}}`), and add it to
+   the table above in the same PR so the registry stays the source of truth.
+4. **Standing intake threads are the only untagged exception** — the long-lived, cross-cutting
+   ones: `SOUNDING BOARD`, `SUGGESTIONS`, and named feedback threads such as
+   `Developer feedback: bugs and improvements`. Everything else gets a tag.
+5. **One workstream per chat.** The convention only buys visibility if a chat titled
+   `Care {{Product}}` is actually about Care. Spin up a new correctly-named chat rather than
+   letting one drift across three modules.
+
+### Registry vs. the module map — known drift (do not silently "fix" either)
+
+The `{{Product}}` list above is **Dan's tracking taxonomy**, and it is deliberately recorded here
+as given. It does not currently line up 1:1 with the §4 module map, and that's worth knowing
+before you reconcile anything:
+
+- **`Studio`** — resolved (July 2026, Dan confirmed it's real and belongs): it now has a §4 row.
+  Live at `/app/studio`, in the sidebar, module permission id `studio`, client-side only.
+- **`Study`, `Backstage` and `Proof`** have §4 rows but no entry in this taxonomy. Study was
+  demoted to an admin-only tool inside Pulse (§26) and Proof is nav-hidden (§11), so their absence
+  is probably intentional; Backstage's is less clear.
+- **`Dispatch` and `RoundUp`** are tracked as `{{Feat}}` but have no module/route in the codebase
+  yet — they are in-flight workstreams, which is exactly what the taxonomy is for. It tracks
+  **work**, not only shipped surfaces.
+
+Ask before reconciling the two lists in either direction — deciding whether `Backstage` needs a
+tracking tag is Dan's call, still open.
+
+## 33. Recent Changes (July 2026) — Backend cleanup: the /app gate defaults to deny, Care clears unread
+
+Three items that had been sitting in §11 as known defects, plus recovery of work that was lost
+when the orphaned history was reattached to `main`. No schema change, no new env, no new route.
+
+**The `/app` module gate is now default-deny, anchored, and unit-tested.** `hasModuleAccess` moved
+out of `src/middleware.ts` into **`src/server/auth/module-gate.ts`** — a pure module with no
+NextAuth or edge-runtime imports, so it can actually be tested (importing the middleware into a
+Node test can't work). Three real changes came with the move:
+
+- **It no longer ends in `return true`.** Any `/app` path matching neither `MODULE_PATHS` nor the
+  new **`UNGATED_APP_PREFIXES`** allow-list is now **denied** for non-admins. The old default is
+  precisely how `/app/proof`, `/app/templates` and `/app/projects` were reachable by any signed-in
+  member — including a developer scoped to neither module — because nobody has to *decide* to
+  expose a page, they get it for free by adding a directory. Adding a page under `/app` now means
+  picking one of the two lists on purpose; miss both and it redirects to `/app`, a visible failure
+  at first click instead of a silent hole. `UNGATED_APP_PREFIXES` holds the six genuinely-open
+  surfaces (`settings`, `account-settings`, `team`, `handbook`, `analytics`, `starters` — the last
+  two self-gate on Super Admin).
+- **Prefix matching is anchored on a path-segment boundary** (`matchesPrefix`), the same guard
+  `isPublicApiPath` already had. A bare `startsWith` meant `/app/code` would gate a hypothetical
+  `/app/codex` on `codeclear`. It also meant `/app/code` incidentally covered `/app/codeclear`, so
+  the legacy prefix now needs — and has — **its own explicit `MODULE_PATHS` entry**. The DevSignal
+  ordering hazard is unchanged and still first in the list.
+- **`src/server/auth/__tests__/module-gate.test.ts`** (13 tests) asserts the lookalike cases, that
+  DevSignal stays on its admin-only perm rather than STAFF-inherited `codeclear`, that an unknown
+  `/app` path is denied, and — the useful one — that **every `/app` route segment resolves to a
+  decision in one of the two lists**. Add a page without gating it and that test fails.
+  ⚠️ It caught a real bug in the first cut of this file: a `"/app"` row in `UNGATED_APP_PREFIXES`
+  matched every descendant path and quietly turned the default-deny back into a default-allow.
+  `/app` is now an exact-match constant (`APP_ROOT`) for that reason — **keep it exact.**
+
+**`assertSuperAdmin` is strict; the lenient behaviour has its own name.** It used to take
+`EffectiveUser | null` and pass a null caller straight through, so "Super Admin only" actually read
+"Super Admin, **or anyone holding the workspace API_KEY**" — deliberate for unattended server
+integrations, but invisible at the call site and trivially inherited by copy-paste. It now takes a
+**non-null** `EffectiveUser`, so passing a possibly-null user is a **compile error**, and the
+lenient path is spelled **`assertSuperAdminOrApiKey`**. Only the five `/api/dev/seed-*` demo-seed
+one-shots use the lenient one (they're invoked unattended). Every other call site already resolved
+its user via `requireAuthedUser` and was strict in fact — it just didn't look it. No behaviour
+changed for any existing route.
+
+**Care clears `unread` when you open a conversation.** The cockpit rendered the flag (bold subject)
+and the client-list badges counted it, but **no code path ever wrote `false`**, so the counters only
+ever grew for anyone working in Care. New **`useMarkConversationRead`** in `use-support.ts` —
+optimistic, reusing the existing `patchConversationInCache`, so the row de-bolds on the click that
+opened it rather than a request later; it also invalidates `["support","clients"]` because the badge
+count is derived server-side. Wired through a single `openConversation()` in `client-cockpit.tsx`
+(one open path, so no effect needed), guarded on `conv.unread` to skip pointless writes and on
+`canManageSupport` because the PATCH route asserts it — without that guard a read-only Care viewer
+would take a 403 per open and watch the row re-bold as the optimistic patch rolled back. Server side
+needed nothing: `updateConversation` already had `unread` in its allow-list, and the legacy dashboard
+has always done this (`support-dashboard.tsx`). No saved view predicates on `unread`, so marking read
+never reorders the row under the cursor.
+
+**Recovered three commits the history reattachment closed without merging.** Reattaching the
+orphaned lineage with `git merge -s ours` kept `main`'s tree byte-identical but made 9 open PRs
+ancestors of `main`, so GitHub's ancestry-based merge detection **closed them and auto-deleted their
+branches while none of their code landed**. Checking each: **#43, #37, #222, #255 and #140 were
+already in `main` or moot**; three were genuinely missing and are cherry-picked here — the
+`fix(care)` Gmail-UNREAD-preservation fix (**#202**), the checked-in VPS nginx config + proxy-buffer
+502 fix (**#332**), and the IMAP/SMTP mailbox-connector build plan (**#432**). Head SHAs for all
+nine are recorded in `docs/pr-recovery-2026-07-27.md`.
+**#354 is deliberately NOT recovered here** — it removes the forced `prompt: "consent"` and moves to
+30-day sessions, which must not land until the Google OAuth consent screen is set to "Internal", so
+it needs its own PR held until then.
+
+**Two nginx settings that stopped being "outside this repo".** Recovering #332 checked the VPS
+proxy config in at **`deploy/nginx/foundry.conf`**, which makes two long-standing "can't fix from
+here" notes actionable — both now set in that file:
+
+- **`server_tokens off;`** — drops the version from `Server: nginx/1.24.0`. The app half of this
+  (`poweredByHeader: false`, dropping `X-Powered-By: Next.js`) already shipped; §30 and the
+  `next.config.ts` comment both said the nginx half was out of reach.
+- **`gzip on;`** — §30 listed this as "not done … outside this repo". The win is Deck: a single
+  self-contained ~504KB shell fetched on every open, ~390KB gzipped. `text/html` is gzipped by
+  nginx unconditionally and must **not** appear in `gzip_types` (duplicate MIME → `nginx -t`
+  warning); images are excluded deliberately (already-compressed formats gain nothing).
+
+⚠️ **Neither is live yet.** That file is a **checked-in mirror for disaster recovery**, not a
+deployed artefact — `deploy.yml` only touches Docker. It takes `scp` + `nginx -t && systemctl
+restart nginx`, documented in `deploy/nginx/README.md`. Don't read the committed config as the
+running config.
+
+**The lesson worth keeping:** `git merge -s ours --allow-unrelated-histories` is safe for *files*
+and not for *PR state*. Anything it makes an ancestor of `main` gets marked merged. Close or draft
+the affected PRs first, or record their head SHAs before you run it.
+
+## 34. Recent Changes (July 2026) — Dispatch (the Slack-resident coordinator)
 
 `@Foundry` is now **answerable**. Mention the bot in a channel — or DM it — and **Dispatch**
 answers delivery questions ("where are we with the ElectricFire onboarding?", "what has Howard

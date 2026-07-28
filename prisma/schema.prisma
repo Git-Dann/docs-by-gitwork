@@ -456,6 +456,7 @@ model Workspace {
   backgroundJobs              BackgroundJob[]
   foremanRuns                 ForemanRun[]
   dispatchExchanges           DispatchExchange[]
+  foremanFindingActions       ForemanFindingAction[]
   coldArchives                ColdArchive[]
   handbookArticles            HandbookArticle[]
   golfClubs                   GolfClub[]
@@ -3207,6 +3208,30 @@ model DispatchExchange {
 
   @@index([workspaceId, createdAt])
   @@index([workspaceId, channelId, createdAt])
+}
+
+// A viewer's resolution of a single Foreman finding, so the daily audit is manageable rather than a
+// wall of repeating rows. Findings are regenerated every run, so an action is keyed by the finding's
+// stable `findingKey` (`${kind}:${subjectId}`) and applied at READ time — dismiss/mute take effect
+// immediately without waiting for the next run.
+//   • action = "mute"     → never show this finding again until un-muted (for stale/known noise).
+//   • action = "dismiss"  → hide it while its metric stays ≤ `dismissedMetric`; if it WORSENS past
+//                           that (e.g. overdue count climbs), it resurfaces so a real escalation is
+//                           never lost.
+// One active action per finding (unique on workspace+key); "clear" deletes the row.
+model ForemanFindingAction {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  findingKey      String // `${kind}:${subjectId}` — matches ForemanFinding.key
+  action          String // "mute" | "dismiss"
+  dismissedMetric Int? // dismiss only: hide while the finding's metric stays ≤ this
+  createdById     String? // who resolved it (audit only; no FK)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([workspaceId, findingKey])
+  @@index([workspaceId])
 }
 
 // Per-user notification preferences. One row per user.

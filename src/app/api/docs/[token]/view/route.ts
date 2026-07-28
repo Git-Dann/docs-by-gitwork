@@ -18,6 +18,7 @@ import { notifyDocumentEvent } from "@/server/slack-notify";
 import { dispatchNotification } from "@/server/notifications";
 import { recordDocumentView } from "@/server/document-analytics";
 import { clientIpFromRequest, geoFromRequest, parseUserAgent } from "@/server/visitor-context";
+import { resolveGeoForIp } from "@/server/ip-geo";
 
 interface RouteContext {
   params: Promise<{ token: string }>;
@@ -37,7 +38,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const ip = clientIpFromRequest(request);
     const userAgent = request.headers.get("user-agent");
     const referer = request.headers.get("referer");
-    const geo = geoFromRequest(request);
+    // Prefer geo from the edge/proxy; nginx doesn't provide it (unlike Vercel),
+    // so fall back to resolving the IP. Fail-soft: nulls if it can't be found.
+    const headerGeo = geoFromRequest(request);
+    const geo = headerGeo.country ? headerGeo : await resolveGeoForIp(ip);
     const ua = parseUserAgent(userAgent);
 
     const visitorId = request.nextUrl.searchParams.get("v")?.slice(0, 64) || null;
@@ -58,7 +62,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       os: ua.os,
     });
 
-    const where = geo.city && geo.country ? `${geo.city}, ${geo.country}` : geo.country ?? ip ?? null;
+    // Location only — never a raw IP. An IP in a notification is meaningless to
+    // the reader (and needlessly exposes the visitor's address); when geo can't
+    // be resolved we simply omit the "Opened from …" line.
+    const where = geo.city && geo.country ? `${geo.city}, ${geo.country}` : geo.country ?? null;
 
     // First open is the high-signal moment — surface it distinctly. Every subsequent open still
     // fires DOC_VIEWED so subscribers who want all traffic keep getting it.

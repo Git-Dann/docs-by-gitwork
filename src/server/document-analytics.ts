@@ -303,7 +303,9 @@ export async function getDocumentAnalytics(documentId: string): Promise<Document
       id: v.id,
       createdAt: v.createdAt.toISOString(),
       durationMs: v.durationMs,
-      visitorLabel: v.city && v.country ? `${v.city}, ${v.country}` : (v.country ?? v.ip ?? "Anonymous"),
+      // Location, else "Anonymous" — never the raw IP (it's still stored on the
+      // row for support/debugging, it just isn't a useful label to surface).
+      visitorLabel: v.city && v.country ? `${v.city}, ${v.country}` : (v.country ?? "Anonymous"),
       device: v.device,
       browser: v.browser,
       os: v.os,

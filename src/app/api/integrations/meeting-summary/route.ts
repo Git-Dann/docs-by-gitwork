@@ -11,7 +11,7 @@ import { ensureBaseRecords } from "@/server/bootstrap";
 import { getUserGoogleAuth } from "@/server/google-auth";
 import { getSlackBotToken } from "@/server/slack/client";
 import { getEffectiveUserOrNull, canComputeAiFor } from "@/server/auth/effective-user";
-import { lightModelFor } from "@/server/ai-provider";
+import { lightModelFor, DEFAULT_MODELS } from "@/server/ai-provider";
 import { recordAiUsage, usageFromAnthropic, usageFromOpenAI } from "@/server/ai-usage";
 
 export const dynamic = "force-dynamic";
@@ -63,18 +63,18 @@ export async function POST(req: NextRequest) {
 
     if (provider === "OPENAI") {
       apiKey = process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null;
-      model = workspace.openaiModel ?? "gpt-4o";
+      model = workspace.openaiModel ?? DEFAULT_MODELS.OPENAI;
     } else if (provider === "GEMINI") {
       apiKey = process.env.GEMINI_API_KEY ?? workspace.geminiApiKey ?? null;
-      model = workspace.geminiModel ?? "gemini-2.0-flash";
+      model = workspace.geminiModel ?? DEFAULT_MODELS.GEMINI;
       baseUrl = "https://generativelanguage.googleapis.com/v1beta/openai";
     } else if (provider === "LOCAL") {
       apiKey = workspace.openaiApiKey ?? "local";
-      model = workspace.localLlmModel ?? "llama3.1";
+      model = workspace.localLlmModel ?? DEFAULT_MODELS.LOCAL;
       baseUrl = workspace.localLlmUrl ?? "http://localhost:11434/v1";
     } else {
       apiKey = process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
-      model = workspace.anthropicModel ?? "claude-sonnet-5";
+      model = workspace.anthropicModel ?? DEFAULT_MODELS.ANTHROPIC;
     }
 
     // A meeting summary is short, structured output — route it to the light tier (Haiku /

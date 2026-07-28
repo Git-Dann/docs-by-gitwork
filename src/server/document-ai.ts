@@ -29,8 +29,9 @@ import { prisma } from "@/lib/prisma";
 import { recordAiUsage, usageFromAnthropic } from "@/server/ai-usage";
 import { SECTION_REGISTRY } from "@/lib/sections/registry";
 import type { ProposalDocument, ProposalSection, SectionKey } from "@/types/proposal";
+import { DEFAULT_MODELS } from "@/server/ai-provider";
 
-const DEFAULT_MODEL = "claude-sonnet-5";
+const DEFAULT_MODEL = DEFAULT_MODELS.ANTHROPIC;
 
 // ── Errors ────────────────────────────────────────────────────────────────
 

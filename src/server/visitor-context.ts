@@ -51,10 +51,26 @@ export function parseUserAgent(ua: string | null | undefined): ParsedUserAgent {
   return { device, browser, os };
 }
 
-/** Coarse geo from Vercel's edge headers. Null when not behind Vercel (local dev). */
+/**
+ * Coarse geo from whatever the edge/proxy in front of us provides.
+ *
+ * Since the move off Vercel to the VPS (nginx), the `x-vercel-ip-*` headers no
+ * longer exist — geo silently became null everywhere, which is why doc-open
+ * notifications degraded to printing a raw IP. We now read the common variants
+ * (Cloudflare, nginx GeoIP2, Vercel) so geo works under any of them; when none
+ * is present the caller falls back to an IP lookup (see resolveGeoForIp).
+ */
 export function geoFromRequest(req: Request): { country: string | null; city: string | null } {
-  const country = req.headers.get("x-vercel-ip-country") || null;
-  const rawCity = req.headers.get("x-vercel-ip-city");
+  const country =
+    req.headers.get("x-vercel-ip-country") || // Vercel (kept for the rollback path)
+    req.headers.get("cf-ipcountry") || // Cloudflare
+    req.headers.get("x-geoip-country") || // nginx GeoIP2 (if enabled on the VPS)
+    null;
+  const rawCity =
+    req.headers.get("x-vercel-ip-city") ||
+    req.headers.get("cf-ipcity") ||
+    req.headers.get("x-geoip-city") ||
+    null;
   // Vercel URL-encodes the city ("New%20York"); decode best-effort.
   let city: string | null = null;
   if (rawCity) {
@@ -65,6 +81,21 @@ export function geoFromRequest(req: Request): { country: string | null; city: st
     }
   }
   return { country, city };
+}
+
+/** True for loopback/private/reserved addresses we should never geo-lookup. */
+export function isPrivateIp(ip: string): boolean {
+  if (ip === "::1" || ip.startsWith("fc") || ip.startsWith("fd")) return true;
+  const parts = ip.split(".").map((n) => Number(n));
+  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n))) return false;
+  const [a, b] = parts;
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254)
+  );
 }
 
 /** Best-effort client IP from the usual proxy headers. */

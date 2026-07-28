@@ -11,6 +11,13 @@ const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), 
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Drop the `X-Powered-By: Next.js` response header — it volunteers the framework
+  // to anyone fingerprinting the stack for known CVEs, and buys nothing.
+  // (`Server: nginx/1.24.0` was the matching disclosure on the proxy. The nginx
+  // config is now checked in — `server_tokens off;` is set in
+  // deploy/nginx/foundry.conf, which has to be copied up and reloaded by hand;
+  // see that directory's README.)
+  poweredByHeader: false,
   // Pin the workspace root. The vendored Deck app (vendor/bento/slides) has its own
   // package-lock.json, and with more than one lockfile in the tree Next only *infers*
   // the root — a wrong guess would change what a standalone build traces in. This is
@@ -72,6 +79,36 @@ const nextConfig: NextConfig = {
       { source: "/deck", destination: "/deck/index.html" },
     ];
   },
+  async redirects() {
+    return [
+      // Agency marketing lives on gitwork.co.uk, which is what links HERE — these
+      // pages duplicated it. Permanent (308) rather than deleted outright so any
+      // inbound link or indexed result lands on the real marketing site instead of
+      // a 404, and passes its ranking signal across. Root, not a deep path: this
+      // repo can't verify gitwork.co.uk's own route names.
+      { source: "/products", destination: "https://gitwork.co.uk", permanent: true },
+      { source: "/products/:slug", destination: "https://gitwork.co.uk", permanent: true },
+      { source: "/pricing", destination: "https://gitwork.co.uk", permanent: true },
+      { source: "/company", destination: "https://gitwork.co.uk", permanent: true },
+      { source: "/customers", destination: "https://gitwork.co.uk", permanent: true },
+      // Legal lives on gitwork.co.uk — one set of policies for the company, owned and
+      // reviewed by whoever owns that site, rather than a second copy here that would
+      // drift. Foundry hosted its own briefly in July 2026; they were removed before
+      // merge pending legal review, and deferring is the better answer than either
+      // publishing unreviewed text or having none.
+      //
+      // These are DEEP redirects, unlike the marketing ones above which go to the root.
+      // That is deliberate: a privacy link must land on the privacy policy, not a
+      // homepage. ⚠️ If gitwork.co.uk ever stops serving one of these paths, fix it
+      // there — do not repoint it at the root, because a "Privacy" link that opens a
+      // marketing page is worse than no link at all.
+      { source: "/privacy", destination: "https://gitwork.co.uk/privacy", permanent: true },
+      { source: "/terms", destination: "https://gitwork.co.uk/terms", permanent: true },
+      { source: "/cookies", destination: "https://gitwork.co.uk/cookies", permanent: true },
+      { source: "/security", destination: "https://gitwork.co.uk/security", permanent: true },
+      { source: "/legal", destination: "https://gitwork.co.uk/legal", permanent: true },
+    ];
+  },
   async headers() {
     // Baseline security headers applied to every route EXCEPT /embed/* (the public
     // Pulse widget is intentionally frameable — handled separately below). The
@@ -88,6 +125,20 @@ const nextConfig: NextConfig = {
       { key: "Content-Security-Policy", value: "frame-ancestors 'self';" },
       // Drop features the web app doesn't use (native iOS handles device capture).
       { key: "Permissions-Policy", value: "geolocation=(), microphone=(), browsing-topics=()" },
+      // Cross-origin isolation. COOP severs the opener relationship so a malicious
+      // opener can't reach into our window — `same-origin-allow-popups` rather than
+      // plain `same-origin` because Google sign-in runs in a popup and needs to talk
+      // back to the page that opened it. CORP stops other sites embedding our
+      // responses as subresources; /embed/* is exempt from this whole block (the
+      // negative-lookahead source below), so the Pulse widget keeps working
+      // cross-origin for gitwork.co.uk.
+      { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
+      { key: "Cross-Origin-Resource-Policy", value: "same-site" },
+      // NOT set: Cross-Origin-Embedder-Policy. It would require every cross-origin
+      // subresource to be CORS-enabled or credentialless, which would silently break
+      // the remote images allow-listed above (cdn.prod.website-files.com) and Google
+      // profile pictures. There is no staging environment to prove it safe on, so it
+      // stays off deliberately rather than by omission.
     ];
     return [
       {

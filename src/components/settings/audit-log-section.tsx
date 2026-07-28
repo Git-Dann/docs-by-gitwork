@@ -22,23 +22,63 @@ interface AuditLogEntry {
 interface AuditLogResponse {
   entries: AuditLogEntry[];
   nextCursor: string | null;
+  /** Distinct actions present in the log (first page only). */
+  actions?: Array<{ action: string; count: number }>;
 }
 
-const ACTION_FILTERS: { id: string; label: string }[] = [
-  { id: "", label: "All actions" },
-  { id: "settings.ai_provider.changed", label: "AI provider changed" },
-  { id: "settings.ai_key.rotated", label: "AI key rotated" },
-  { id: "settings.external_key.rotated", label: "External key rotated" },
-  { id: "team.member.invited", label: "Member invited" },
-  { id: "team.member.role_changed", label: "Member role changed" },
-  { id: "team.member.removed", label: "Member removed" },
-  { id: "integration.google.connected", label: "Google connected" },
-  { id: "integration.slack.connected", label: "Slack connected" },
-];
+/** Nicer wording for the few ids that don't read well when humanised. */
+const ACTION_LABEL_OVERRIDES: Record<string, string> = {
+  "settings.ai_provider.changed": "AI provider changed",
+  "settings.ai_key.rotated": "AI key rotated",
+  "settings.external_key.rotated": "External key rotated",
+  "integration.mcp.connected": "MCP connected",
+  "integration.mcp.revoked": "MCP revoked",
+  "integration.mcp.enabled": "MCP enabled",
+  "integration.mcp.disabled": "MCP disabled",
+};
 
+/**
+ * Turn any action id into readable text — "foreman.run.completed" →
+ * "Foreman run completed". Previously unknown ids fell through as the raw id,
+ * which is why the feed was full of shouting FOREMAN.RUN.COMPLETED chips.
+ */
 function actionLabel(action: string): string {
-  const found = ACTION_FILTERS.find((f) => f.id === action);
-  return found?.label ?? action;
+  const override = ACTION_LABEL_OVERRIDES[action];
+  if (override) return override;
+  const words = action.replace(/[._]/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * A run of consecutive identical events, shown as one row.
+ *
+ * DISPLAY ONLY — the underlying rows are untouched. This is an append-only
+ * audit log, so nothing is merged or dropped at the source; a repeated event
+ * (e.g. the Claude connector re-authorising 15×) is just presented once with a
+ * count and a time span so it can't bury everything else in the feed.
+ */
+interface EntryGroup {
+  key: string;
+  entries: AuditLogEntry[];
+  /** Most recent entry — the one whose detail we render. */
+  latest: AuditLogEntry;
+}
+
+/** Group runs of consecutive entries sharing action + target + actor. */
+function collapseEntries(entries: AuditLogEntry[]): EntryGroup[] {
+  const groups: EntryGroup[] = [];
+  for (const entry of entries) {
+    const signature = `${entry.action}|${entry.target ?? ""}|${entry.actor?.id ?? "system"}`;
+    const previous = groups[groups.length - 1];
+    // Only collapse an unbroken run, so the feed stays chronologically honest —
+    // a different event in between starts a new group.
+    if (previous && previous.key === signature) {
+      previous.entries.push(entry);
+    } else {
+      groups.push({ key: signature, entries: [entry], latest: entry });
+    }
+  }
+  return groups;
 }
 
 function actionColor(action: string): string {
@@ -52,6 +92,11 @@ function actionColor(action: string): string {
 
 export function AuditLogSection() {
   const [filter, setFilter] = useState("");
+  // Pages already loaded via "Load more" — the log was previously capped at the
+  // first 50 rows with no way to reach older entries.
+  const [extraPages, setExtraPages] = useState<AuditLogEntry[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const query = useQuery({
     queryKey: ["audit-log", filter],
@@ -59,11 +104,30 @@ export function AuditLogSection() {
       const url = filter
         ? `/api/audit-log?action=${encodeURIComponent(filter)}`
         : "/api/audit-log";
-      return apiFetch<AuditLogResponse>(url);
+      const res = await apiFetch<AuditLogResponse>(url);
+      // A fresh first page resets any accumulated pages.
+      setExtraPages([]);
+      setCursor(res.nextCursor);
+      return res;
     },
   });
 
-  const entries = query.data?.entries ?? [];
+  const entries = [...(query.data?.entries ?? []), ...extraPages];
+  const actionOptions = query.data?.actions ?? [];
+
+  async function loadMore() {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const params = new URLSearchParams({ cursor });
+      if (filter) params.set("action", filter);
+      const res = await apiFetch<AuditLogResponse>(`/api/audit-log?${params.toString()}`);
+      setExtraPages((current) => [...current, ...res.entries]);
+      setCursor(res.nextCursor);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   return (
     <div className="proposal-form-theme space-y-4">
@@ -73,14 +137,21 @@ export function AuditLogSection() {
         bodyClassName="p-0"
         right={
           <div className="flex items-center gap-2">
+            {/* h-7 + min-h-0: the widget header is a fixed 36px box inside a
+                card with overflow:hidden, so a default 36px field exactly fills
+                it and its 4px focus ring gets clipped at the top. 28px leaves
+                room for the ring. font-mono/11px matches the header's grammar
+                rather than dropping a 14px sans control into a mono strip. */}
             <select
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
-              className="app-select"
+              className="app-select-compact h-7 min-h-0 w-auto font-mono text-[11px]"
+              aria-label="Filter activity by action"
             >
-              {ACTION_FILTERS.map((f) => (
-                <option key={f.id || "all"} value={f.id}>
-                  {f.label}
+              <option value="">All actions</option>
+              {actionOptions.map((option) => (
+                <option key={option.action} value={option.action}>
+                  {actionLabel(option.action)} ({option.count})
                 </option>
               ))}
             </select>
@@ -113,18 +184,32 @@ export function AuditLogSection() {
           </div>
         ) : (
           <ol className="divide-y divide-[var(--border-3)]">
-            {entries.map((entry) => (
+            {collapseEntries(entries).map((group) => {
+              const entry = group.latest;
+              const repeatCount = group.entries.length;
+              const oldest = group.entries[repeatCount - 1];
+              return (
               <li
                 key={entry.id}
                 className="grid gap-3 px-6 py-4 sm:grid-cols-[180px_minmax(0,1fr)_180px]"
               >
-                <span
-                  className={cn(
-                    "inline-flex h-fit items-center rounded-[4px] px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.06em]",
-                    actionColor(entry.action),
-                  )}
-                >
-                  {actionLabel(entry.action)}
+                <span className="flex h-fit flex-wrap items-center gap-1.5">
+                  <span
+                    className={cn(
+                      "inline-flex h-fit items-center rounded-[4px] px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.06em]",
+                      actionColor(entry.action),
+                    )}
+                  >
+                    {actionLabel(entry.action)}
+                  </span>
+                  {repeatCount > 1 ? (
+                    <span
+                      title={`${repeatCount} identical events collapsed`}
+                      className="inline-flex h-fit items-center rounded-full bg-[var(--surface-2)] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[var(--text-3)]"
+                    >
+                      ×{repeatCount}
+                    </span>
+                  ) : null}
                 </span>
 
                 <div className="min-w-0">
@@ -156,11 +241,38 @@ export function AuditLogSection() {
                     {entry.actor?.name ?? entry.actor?.email ?? "System"}
                   </p>
                   <p className="mt-0.5">{formatDate(entry.createdAt)}</p>
+                  {repeatCount > 1 ? (
+                    <p className="mt-0.5 text-[11px]">
+                      {repeatCount} events since {formatDate(oldest.createdAt)}
+                    </p>
+                  ) : null}
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ol>
         )}
+
+        {entries.length > 0 ? (
+          <div className="flex items-center justify-between gap-3 border-t border-[var(--border-3)] px-6 py-3">
+            <span className="widget-data-label">
+              {entries.length} {entries.length === 1 ? "entry" : "entries"}
+            </span>
+            {cursor ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={loadMore}
+                loading={loadingMore}
+              >
+                Load more
+              </Button>
+            ) : (
+              <span className="text-xs text-[var(--text-4)]">End of log</span>
+            )}
+          </div>
+        ) : null}
       </SettingsCard>
     </div>
   );

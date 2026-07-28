@@ -74,10 +74,13 @@ Grep every usage before editing any of these; a change here is never local:
        environment** exists, hand the user a precise, minimal capture list — the exact page,
        the 2–3 viewports, and the specific elements to check — never "please check everything."
        Once staging is available, drive Playwright against it for gated pages too.
-5. **Run the clipping audit** (below) on whatever you can reach. "It looked right in the
+5. **Run the clipping audit** (§3a) on whatever you can reach. "It looked right in the
    screenshot" is how cut-off UI keeps shipping — the audit checks the whole DOM, in states a
    screenshot never covers.
-6. **Report the blast radius, not just the fix**: what changed, every place that shares the code
+6. **Run `npm run audit:ui`** (§3b). It reads source rather than a rendered page, so unlike the
+   clipping audit it covers the auth-gated `/app` screens too — which is where most of this repo's
+   field-padding and chevron defects have actually been.
+7. **Report the blast radius, not just the fix**: what changed, every place that shares the code
    and why it's safe, desktop-regression status, and the verification actually run (with output).
 
 ---
@@ -124,6 +127,37 @@ Two rules learned the hard way, both encoded in the script:
 present mode) at four viewports — 1280×620 is in the list on purpose, because a short laptop
 viewport is where dialogs run off the bottom with nothing to scroll. `/app` pages stay unreachable
 until there's a staging environment; point the script at them the day there is one.
+
+## 3b. The static standards audit — `npm run audit:ui`
+
+`scripts/audit-ui-standards.mjs` is the companion to §3a. The clipping audit is the better
+detector — it drives a real page — but it can only see pages it can reach, and **every `/app` page
+is auth-gated with no staging environment**. So the defects that keep being found by hand (a value
+tucked under a select's chevron, copy jammed against the top edge of a textarea, a fixed pixel
+width that drags a phone sideways) had no gate at all on the screens where most of them live.
+
+This one reads the **source**, so it covers all 500+ components including the gated ones, and needs
+no browser and no server.
+
+```bash
+npm run audit:ui -- --self-test        # do this first — proves each rule still fires
+npm run audit:ui                       # exits 1 on any finding
+npm run audit:ui -- --rule=SELECT-PAD  # one rule
+npm run audit:ui -- --warn-only        # report, don't fail
+```
+
+Rules: `SELECT-CHEVRON` · `SELECT-PAD` · `TEXTAREA-PAD` · `INPUT-PAD` · `FIXED-WIDTH` ·
+`TABLE-SCROLL` · `MODEL-LITERAL`. Each one, and the reasoning behind it, is tabulated in
+[`docs/build-checklist.md`](build-checklist.md) §2.
+
+**The two audits are complementary, and neither is sufficient alone.** The static one knows the
+house field classes but has never seen a layout; the runtime one measures real boxes but can't log
+in. Both are blind to "this looks wrong" — a mismatched corner radius on a split control, or a
+`<select>` whose value is *recoverable* but visually cramped, are screenshot findings (see
+`CLAUDE.md` §30, "two layout defects the audit could not see").
+
+**Both are wired into CI** (`.github/workflows/checks.yml`) — `audit:ui` on every PR; the clipping
+audit stays manual/`deck:verify` until there's a staging environment to point it at.
 
 ## 4. Standing rules
 

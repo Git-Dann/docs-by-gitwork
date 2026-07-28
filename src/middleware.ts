@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import { authConfig, SESSION_VERSION } from "@/auth.config";
 import { verifyMobileToken, type MobileTokenClaims } from "@/server/auth/mobile-jwt";
 import { isAtLeast } from "@/types/auth";
+// The /app module gate lives in its own module so it can be unit-tested — importing
+// this middleware would pull NextAuth + the edge runtime into a Node test.
+import { hasModuleAccess } from "@/server/auth/module-gate";
 
 const { auth } = NextAuth(authConfig);
 
@@ -145,29 +148,6 @@ function corsHeadersFor(pathname: string): Record<string, string> {
   return isPublicApiPath(pathname) ? CORS_HEADERS : {};
 }
 
-// Maps /app/* path prefixes to the module permission that gates them. Listed as
-// pairs (not a module→path map) so a module can expose both its canonical route
-// and its legacy alias — e.g. clients lives at /app/portal today and /app/clients
-// historically; both resolve to the same `clients` permission.
-const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
-  { prefix: "/app/pulse", module: "pulse" },
-  // DevSignal — MUST precede the /app/code(clear) entries so it wins the
-  // first-match loop. Admin-only feature perm (default-off), not `codeclear`.
-  { prefix: "/app/codeclear/devsignal", module: "devsignal" },
-  { prefix: "/app/code", module: "codeclear" }, // canonical
-  { prefix: "/app/codeclear", module: "codeclear" }, // legacy
-  { prefix: "/app/docs", module: "proposals" }, // canonical
-  { prefix: "/app/proposals", module: "proposals" }, // legacy
-  { prefix: "/app/portal", module: "clients" }, // canonical
-  { prefix: "/app/clients", module: "clients" }, // legacy
-  { prefix: "/app/care", module: "support" }, // canonical
-  { prefix: "/app/support", module: "support" }, // legacy
-  { prefix: "/app/study", module: "study" }, // Study is an optional Pulse tool — admin-only feature perm (default-off)
-  { prefix: "/app/backstage", module: "backstage" },
-  { prefix: "/app/studio", module: "studio" }, // Admin/Super Admin only (studio is a default-off feature perm)
-  // Starters is NOT here — it's Super-Admin-ONLY, enforced by a dedicated role check below.
-];
-
 function configuredApiKey() {
   return process.env.API_KEY ?? process.env.NEXT_PUBLIC_API_KEY ?? null;
 }
@@ -197,17 +177,6 @@ function isOgAssetPath(pathname: string): boolean {
 /** The Deck shell (public/deck/index.html, reached at /deck). */
 function isDeckPath(pathname: string): boolean {
   return pathname === "/deck" || pathname.startsWith("/deck/");
-}
-
-function hasModuleAccess(pathname: string, permissions: string[]): boolean {
-  for (const { prefix, module } of MODULE_PATHS) {
-    if (pathname.startsWith(prefix)) {
-      return permissions.includes(module);
-    }
-  }
-  // /app, /app/settings, /app/team, /app/account-settings are always accessible
-  // to any logged-in member.
-  return true;
 }
 
 export default auth(async (req) => {
