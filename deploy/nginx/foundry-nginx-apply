@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Install the staged Foundry nginx vhost, validate it, and reload — or roll back.
+#
+# WHY THIS EXISTS AS A ROOT-OWNED SCRIPT:
+# The deploy user (which CI's VPS_SSH_KEY authenticates as) needs no interactive
+# sudo, so applying nginx config from CI needs *some* privilege. The lazy version
+# is `NOPASSWD: /bin/cp` — but write-anywhere-as-root is root, so that would hand
+# the CI key the whole box. Instead this script hardcodes both paths, is owned by
+# root and not writable by the deploy user, and is the ONLY thing granted NOPASSWD.
+# The deploy user can therefore apply *this* config and nothing else.
+#
+# INSTALL (once, as root on the VPS):
+#   install -o root -g root -m 0755 foundry-nginx-apply /usr/local/sbin/foundry-nginx-apply
+#   printf '%s\n' 'deploy ALL=(root) NOPASSWD: /usr/local/sbin/foundry-nginx-apply' \
+#     > /etc/sudoers.d/foundry-nginx
+#   chmod 0440 /etc/sudoers.d/foundry-nginx
+#   visudo -c            # validate before trusting it
+# Replace `deploy` with the actual VPS_USER if it differs.
+set -euo pipefail
+
+STAGED=/tmp/foundry-nginx-staging/foundry.conf   # written by CI over scp
+LIVE=/etc/nginx/sites-available/foundry
+BACKUP="/root/foundry-nginx-backup-$(date -u +%Y%m%dT%H%M%SZ).conf"
+
+[ -s "$STAGED" ] || { echo "staged config missing or empty: $STAGED"; exit 1; }
+
+# The staged file arrives from a path the deploy user CAN write, so sanity-check it
+# is actually a Foundry vhost before installing it as root. Cheap, and it stops a
+# truncated or wrong-file upload becoming a production change.
+grep -q 'server_name foundry.gitwork.co.uk;' "$STAGED" \
+  || { echo "staged file does not look like the Foundry vhost — refusing"; exit 1; }
+grep -q 'proxy_pass http://127.0.0.1:3000;' "$STAGED" \
+  || { echo "staged file has no proxy_pass to the app — refusing"; exit 1; }
+
+echo "--- backing up live config to $BACKUP"
+cp "$LIVE" "$BACKUP"
+
+echo "--- diff (live -> staged); empty means nothing changes"
+diff -u "$LIVE" "$STAGED" || true
+
+cp "$STAGED" "$LIVE"
+
+# Validate BEFORE reloading. A broken config that gets reloaded takes the site
+# down; `nginx -t` catches that. It does NOT catch a config that is merely worse
+# (dropping http2, say) — that is what code review of deploy/nginx/foundry.conf is
+# for, and it has already caught exactly that once.
+if nginx -t; then
+  echo "--- valid; reloading (reload, not restart — keeps live connections)"
+  systemctl reload nginx
+  echo "--- done. Backup at $BACKUP"
+else
+  echo "!!! nginx -t FAILED — restoring $BACKUP"
+  cp "$BACKUP" "$LIVE"
+  nginx -t && echo "restored config validates; nginx never reloaded the bad one"
+  exit 1
+fi

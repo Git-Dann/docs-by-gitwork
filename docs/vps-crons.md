@@ -51,13 +51,58 @@ Every cron route is guarded by the `CRON_SECRET` env var and must be called with
 Authorization: Bearer $CRON_SECRET
 ```
 
+## ⛔ Four documented jobs are NOT installed (verified 2026-07-28)
+
+`crontab -l` was finally read off the box, via the `inspect` task of
+`.github/workflows/vps-ops.yml` (run it yourself: Actions → "VPS ops (manual)" →
+`inspect`; it is read-only). The list below in this file was **wrong in both
+directions**. Against the 17 `/api/cron/*` routes the app ships:
+
+| Route | This file claimed | Actually installed |
+|---|---|---|
+| **`foreman`** | `0 9 * * *` | **NOTHING — never runs** |
+| **`curator`** | `0 1 * * 1` | **NOTHING — never runs** |
+| **`retention`** | `0 0 * * *` | **NOTHING — never runs** |
+| **`wedge-keepwarm`** | `*/5 * * * *` | **NOTHING — never runs** |
+| `support-sync` | `0 8 * * *` | `0 8` **and** `0 13` — the "optional" twice-daily variant below is installed |
+
+Everything else matches exactly.
+
+**What that means, and it is not cosmetic:**
+
+- **Foreman (§29) has never run in production.** The daily delivery-risk digest
+  that is supposed to land on admins' Desk at 09:00 has never fired. The Desk
+  panel reads the *latest persisted run*, so it has simply been empty rather than
+  visibly broken — which is why nobody noticed.
+- **The Curator (§28) has never run.** No Starter has ever been aged
+  `ACTIVE→STALE→ARCHIVED` by schedule, and `PulseCheckStat` has never been
+  refreshed, so the dead/always-pass/noisy chips in Settings → Checks have no data
+  behind them.
+- **The retention policy has never executed.** Nothing else enqueues a
+  `RETENTION_SWEEP`, so retention is not merely late, it has never happened.
+  ⚠️ **Installing this cron is therefore NOT a no-op** — the first run will sweep
+  the entire accumulated backlog in one pass. Decide the policy is right *before*
+  scheduling it.
+- The `jobs` worker IS installed and running every minute, and the cron log shows
+  it reporting `"claimed":0` every time — consistent with nothing ever being
+  enqueued for it, since `curator` and `foreman` are the two things that enqueue.
+
+**Do not "fix" this file by trusting it.** Run `inspect` and compare.
+
 ## Crontab
 
 Edit with `crontab -e` on the VPS **as the `deploy` user** (`sudo crontab -l` as root
 is empty — that's a false alarm; the jobs live in `deploy`'s crontab). The jobs do
 **not** call `curl` directly — they go through the `run-cron.sh` wrapper, which reads
 `CRON_SECRET` from the app `.env` and hits the endpoint on the internal host, logging
-to `/tmp/foundry-cron.log`. This is what's actually installed on the box:
+to `/tmp/foundry-cron.log`.
+
+⚠️ **The block below is the INTENDED set, not a transcript of the box.** It used to
+claim it was "what's actually installed", and that was disproved on 2026-07-28 — the
+four jobs called out above (`foreman`, `curator`, `retention`, `wedge-keepwarm`) are in
+this block and are **not** in the real crontab, and the real crontab has a second
+`support-sync` at `0 13` that this block does not. Treat it as the target state to
+reconcile *towards*, and run the `inspect` workflow for ground truth.
 
 ```cron
 0 2 * * *  /opt/apps/foundry/run-cron.sh docs-gdrive-backup   >> /tmp/foundry-cron.log 2>&1
