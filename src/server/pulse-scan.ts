@@ -1,5 +1,5 @@
 import { CATEGORIES, type CheckCategory } from "./pulse-checks/categories";
-import { safeGithubRequest, parseGithubRepo } from "@/lib/github";
+import { safeGithubRequest, parseGithubRepo, hasGithubToken } from "@/lib/github";
 import type { PulseScanCheckInput, PulseScanInputType } from "@/types/pulse";
 import { runExtendedChecks } from "./pulse-scan-extended";
 import {
@@ -3471,9 +3471,14 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
   }
 
   if (!repoReadable) {
-    const reason = repoExists
-      ? `Repository ${fullName} could not be read. Pulse's GitHub token has no access to it — findings derived from the file tree are unavailable rather than negative.`
-      : `Repository ${fullName} is not accessible: it does not exist, is private, or Pulse's GITHUB_TOKEN cannot see it. Findings derived from the file tree are unavailable, NOT negative — nothing below was assessed.`;
+    // Name the ACTUAL cause. "No access" and "no credentials at all" need completely
+    // different fixes, and conflating them cost a full day of misdiagnosis: the token
+    // was never set in prod, but the symptom looked like a scoring problem.
+    const reason = !hasGithubToken()
+      ? `GITHUB_TOKEN is not configured on this server, so Pulse is calling GitHub unauthenticated — every private repository returns 404 and no repository intelligence is available. This is a server configuration problem, not a finding about ${fullName}: nothing below was assessed. Set GITHUB_TOKEN in the VPS .env (or the FOUNDRY_GITHUB_TOKEN Actions secret, which the deploy syncs) and re-scan.`
+      : repoExists
+        ? `Repository ${fullName} exists but its contents could not be read — Pulse's GITHUB_TOKEN lacks access. If it is a fine-grained token, add this repository to its allow-list (or set it to All repositories). Findings derived from the file tree are unavailable rather than negative.`
+        : `Repository ${fullName} is not accessible: it does not exist, or Pulse's GITHUB_TOKEN cannot see it. Findings derived from the file tree are unavailable, NOT negative — nothing below was assessed.`;
     return {
       checks: [
         {
@@ -3481,7 +3486,7 @@ export async function runGithubChecks(repoInput: string): Promise<{ checks: Puls
           checkKey: "repo_accessible",
           label: "Repository is readable by Pulse",
           status: "FAIL" as const,
-          detail: `${reason} Grant the token access (or install the GitHub App on the repo) and re-scan — until then this scan carries no information about the code.`,
+          detail: `${reason} Until this is resolved the scan carries no information about the code.`,
         },
       ].map((check, i) => ({ ...check, sortOrder: i })),
       techStack: [],

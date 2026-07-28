@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+  # Manual re-run, needed because the deploy now syncs secrets into the VPS .env:
+  # after adding or rotating a secret there is nothing to push, but the box still
+  # needs a deploy to pick it up. Actions tab → this workflow → "Run workflow".
+  workflow_dispatch:
 
 jobs:
   build-and-push:
@@ -59,15 +63,65 @@ jobs:
     steps:
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
+        env:
+          # ── Managed secrets ───────────────────────────────────────────────────
+          # Secrets set HERE (repo → Settings → Secrets and variables → Actions) are
+          # synced into the VPS `.env` on every deploy, so setting one no longer needs
+          # SSH and a hand-edited file on the box.
+          #
+          # ⚠️ The Actions secret is FOUNDRY_GITHUB_TOKEN, not GITHUB_TOKEN: GitHub
+          # REJECTS any secret name starting with `GITHUB_` (that name is reserved for
+          # the token Actions injects itself, used for GHCR login above). It is written
+          # to the VPS as GITHUB_TOKEN, which is what the app reads.
+          #
+          # Why this exists: GITHUB_TOKEN was "never set in prod" (see
+          # docs/fasthosts-secrets-recovery.md), so every Pulse repo scan read nothing
+          # for months while still reporting a plausible score. A secret that only
+          # lives in one hand-edited file is a secret that silently goes missing.
+          FOUNDRY_GITHUB_TOKEN: ${{ secrets.FOUNDRY_GITHUB_TOKEN }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          # Passed over the SSH channel, never interpolated into a logged command line.
+          envs: FOUNDRY_GITHUB_TOKEN
           script: |
             cd /opt/apps/foundry
+
+            # Idempotent upsert of one key in .env. Never prints the value.
+            # An empty value is a NO-OP rather than a delete, so a secret that isn't
+            # set in Actions can't wipe one that was set by hand on the box.
+            upsert_env() {
+              key="$1"
+              val="$2"
+              if [ -z "$val" ]; then
+                echo "  $key: not provided by CI — leaving .env untouched"
+                return 0
+              fi
+              touch .env
+              # Guarantee a trailing newline: appending to a file that lacks one
+              # concatenates onto the previous variable and corrupts both.
+              if [ -n "$(tail -c1 .env 2>/dev/null)" ]; then printf '\n' >> .env; fi
+              if grep -q "^${key}=" .env; then
+                grep -v "^${key}=" .env > .env.next
+                printf '%s=%s\n' "$key" "$val" >> .env.next
+                cat .env.next > .env   # preserve the original file's inode + perms
+                rm -f .env.next
+                echo "  $key: updated from CI"
+              else
+                printf '%s=%s\n' "$key" "$val" >> .env
+                echo "  $key: added from CI"
+              fi
+              chmod 600 .env
+            }
+
+            echo "Syncing managed secrets into .env"
+            upsert_env GITHUB_TOKEN "${FOUNDRY_GITHUB_TOKEN:-}"
+
             docker compose pull app
             docker compose up -d db
             docker compose run --rm --no-deps --user root --entrypoint sh app \
               -c "npx --yes prisma@6.16.2 db push --schema=prisma/schema.prisma --skip-generate"
-            docker compose up -d --no-deps app
+            # Recreate so the container picks up any .env change made above.
+            docker compose up -d --no-deps --force-recreate app
             docker image prune -f
