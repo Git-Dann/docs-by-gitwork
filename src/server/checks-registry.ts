@@ -692,6 +692,23 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   // not run against it, rather than leaving its absence unexplained.
   { key: "mobile_repo_web_suite_skipped", category: CATEGORIES.CODE_QUALITY, label: "Web checks skipped (mobile repo)" },
 
+  // ── Chrome extension family (src/server/pulse-checks/chrome-extension.ts) ───
+  // Emitted only when the repo carries a manifest.json with a manifest_version key.
+  // "Chrome extension" was selectable in the dropdown with no checks of its own, and
+  // an extension is the highest-privilege thing most teams ship: it runs on pages the
+  // user did not write, with their cookies, and auto-updates on every install.
+  { key: "ext_manifest_valid", category: CATEGORIES.CODE_QUALITY, label: "Extension manifest is valid JSON" },
+  { key: "ext_manifest_v3", category: CATEGORIES.APP_STORE, label: "Uses Manifest V3" },
+  { key: "ext_host_permissions_scoped", category: CATEGORIES.SECURITY, label: "Host permissions scoped to the sites the extension needs" },
+  { key: "ext_high_risk_permissions", category: CATEGORIES.SECURITY, label: "High-risk permissions are justified" },
+  { key: "ext_no_remote_code", category: CATEGORIES.SECURITY, label: "No remotely-hosted code" },
+  { key: "ext_csp_unsafe_inline", category: CATEGORIES.SECURITY, label: "No unsafe-inline in the extension CSP" },
+  { key: "ext_externally_connectable_scoped", category: CATEGORIES.SECURITY, label: "externally_connectable is scoped" },
+  { key: "ext_oauth_secret_committed", category: CATEGORIES.SECRETS_KEYS, label: "No OAuth client secret in the manifest" },
+  { key: "ext_update_url_https", category: CATEGORIES.SECURITY, label: "Update URL uses HTTPS" },
+  { key: "ext_listing_complete", category: CATEGORIES.STORE_LISTING, label: "Manifest carries the fields the store listing needs" },
+  { key: "ext_minimum_chrome_version", category: CATEGORIES.APP_STORE, label: "minimum_chrome_version declared" },
+
   // ── Native Android app family (src/server/pulse-checks/android-app.ts) ──────
   // Emitted only when the repo is detected as a native Kotlin/Java Gradle project.
   // "Android app" was selectable in the scan dropdown with NO checks of its own —

@@ -2,7 +2,7 @@ import { CATEGORIES } from "../pulse-checks/categories";
 import { githubGraphQL, hasGithubToken, parseGithubRepo } from "@/lib/github";
 import type { PulseScanCheckInput, CodeAgentInsights } from "@/types/pulse";
 import { scanRepoSecrets, type SecretFinding } from "./secret-scanner";
-import { runNativeMobileChecks } from "@/server/pulse-checks/native-repo";
+import { runNativeMobileChecks, runChromeExtensionChecks } from "@/server/pulse-checks/native-repo";
 
 const CODE_AGENT_QUERY = `
   query RepoIntelligence($owner: String!, $name: String!) {
@@ -400,12 +400,15 @@ async function runRestOnlyFamilies(
   const checks: PulseScanCheckInput[] = [];
   let exposedSecrets: SecretFinding[] = [];
 
-  const [secretResult, nativeResult] = await Promise.allSettled([
+  const [secretResult, nativeResult, extensionResult] = await Promise.allSettled([
     scanRepoSecrets(parsed.owner, parsed.repo),
     // Shares one memoized tree fetch with runGithubChecks, which runs in parallel —
     // see pulse-checks/native-repo.ts. Returns [] for anything that is not a native
     // or Flutter app, so this is a no-op for every web repo.
     runNativeMobileChecks(repoInput),
+    // Browser extensions, on the same snapshot. Independent of the mobile family so
+    // neither can take the other out.
+    runChromeExtensionChecks(repoInput),
   ]);
 
   if (secretResult.status === "fulfilled") {
@@ -415,6 +418,10 @@ async function runRestOnlyFamilies(
 
   if (nativeResult.status === "fulfilled") {
     checks.push(...nativeResult.value.checks);
+  }
+
+  if (extensionResult.status === "fulfilled") {
+    checks.push(...extensionResult.value.checks);
   }
 
   return { checks, exposedSecrets };
