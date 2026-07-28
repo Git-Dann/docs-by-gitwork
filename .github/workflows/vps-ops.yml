@@ -23,6 +23,7 @@ on:
         options:
           - inspect # read-only: crontab, cron log, nginx state. Changes nothing.
           - nginx-sync # copy deploy/nginx/foundry.conf up, validate, reload
+          - cron-install-missing # append the missing agent crons (NOT retention)
 
 concurrency:
   # Never let two of these overlap on one box, and never race the app deploy's
@@ -175,3 +176,88 @@ jobs:
           echo "--- Content-Encoding on Deck's shell (want: gzip)"
           curl -sSI -H 'Accept-Encoding: gzip' \
             https://foundry.gitwork.co.uk/deck/index.html | grep -i '^content-encoding:' || true
+
+  cron-install-missing:
+    if: inputs.task == 'cron-install-missing'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Append the missing agent crons (idempotent; NOT retention)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+
+            # The `inspect` run on 2026-07-28 proved four documented jobs were never
+            # installed: foreman, curator, wedge-keepwarm and retention. This installs
+            # the first three.
+            #
+            # ⛔ `retention` is DELIBERATELY EXCLUDED. It has never run, so its first
+            #    pass would sweep the entire accumulated backlog in one go — that is a
+            #    data-deletion decision, not a scheduling fix, and it needs the policy
+            #    reviewed first. Do not "complete the set" by adding it here.
+            #
+            # Idempotent: each line is appended only if that endpoint is absent, so
+            # re-running changes nothing. `crontab -l` needs no privilege for this user
+            # (sudo requires a password on this box), which is why this works at all.
+
+            RUN=/opt/apps/foundry/run-cron.sh
+            LOG=/tmp/foundry-cron.log
+            test -x "$RUN" || { echo "run-cron.sh missing or not executable at $RUN"; exit 1; }
+
+            BACKUP="$HOME/crontab.backup.$(date -u +%Y%m%dT%H%M%SZ)"
+            crontab -l > "$BACKUP" 2>/dev/null || { echo "could not read crontab"; exit 1; }
+            echo "--- backed up current crontab to $BACKUP ($(wc -l < "$BACKUP") lines)"
+
+            add_if_missing() {
+              local sched="$1" name="$2" why="$3"
+              if crontab -l 2>/dev/null | grep -qE "run-cron\.sh[[:space:]]+${name}([[:space:]]|$)"; then
+                echo "SKIP  $name — already scheduled"
+                return
+              fi
+              # Append to a copy, then install the whole file in one shot.
+              { crontab -l 2>/dev/null; echo "# $why"; echo "$sched $RUN $name >> $LOG 2>&1"; } | crontab -
+              echo "ADDED $name  ($sched)"
+            }
+
+            add_if_missing "0 9 * * *"   foreman \
+              "Foreman — daily delivery-risk digest. Enqueues FOREMAN_RUN; the jobs worker executes it."
+            add_if_missing "0 1 * * 1"   curator \
+              "Curator — weekly library maintenance (Mon 01:00). Enqueues CURATOR_RUN."
+            add_if_missing "*/5 * * * *" wedge-keepwarm \
+              "Big Wedge keep-warm — tiny authed read so their free-tier DB does not cold-start."
+
+            echo
+            echo "--- crontab now installed:"
+            crontab -l | grep -E "run-cron\.sh|db-backup" | sed 's/^/    /'
+
+            echo
+            echo "--- which of the 4 previously-missing jobs are now scheduled:"
+            for n in foreman curator wedge-keepwarm retention; do
+              if crontab -l | grep -qE "run-cron\.sh[[:space:]]+${n}([[:space:]]|$)"; then
+                echo "    $n: SCHEDULED"
+              else
+                echo "    $n: not scheduled$([ "$n" = retention ] && echo '  <- deliberate, see comment above')"
+              fi
+            done
+
+      - name: Prove the endpoints respond (does not wait for the schedule)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            # A wrong CRON_SECRET or a bad path would otherwise only show up as
+            # silence at 09:00 tomorrow — which is exactly how these went unnoticed
+            # for months. foreman and curator only ENQUEUE, and both dedupe per
+            # workspace per interval, so invoking them now is safe and idempotent.
+            for n in foreman curator wedge-keepwarm; do
+              echo "--- $n"
+              /opt/apps/foundry/run-cron.sh "$n" 2>&1 | tail -3
+            done
+            echo
+            echo "--- draining the queue once so the enqueued runs actually execute:"
+            /opt/apps/foundry/run-cron.sh jobs 2>&1 | tail -3
