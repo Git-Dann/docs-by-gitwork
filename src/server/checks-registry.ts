@@ -692,6 +692,48 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   // not run against it, rather than leaving its absence unexplained.
   { key: "mobile_repo_web_suite_skipped", category: CATEGORIES.CODE_QUALITY, label: "Web checks skipped (mobile repo)" },
 
+  // ── Chrome extension family (src/server/pulse-checks/chrome-extension.ts) ───
+  // Emitted only when the repo carries a manifest.json with a manifest_version key.
+  // "Chrome extension" was selectable in the dropdown with no checks of its own, and
+  // an extension is the highest-privilege thing most teams ship: it runs on pages the
+  // user did not write, with their cookies, and auto-updates on every install.
+  { key: "ext_manifest_valid", category: CATEGORIES.CODE_QUALITY, label: "Extension manifest is valid JSON" },
+  { key: "ext_manifest_v3", category: CATEGORIES.APP_STORE, label: "Uses Manifest V3" },
+  { key: "ext_host_permissions_scoped", category: CATEGORIES.SECURITY, label: "Host permissions scoped to the sites the extension needs" },
+  { key: "ext_high_risk_permissions", category: CATEGORIES.SECURITY, label: "High-risk permissions are justified" },
+  { key: "ext_no_remote_code", category: CATEGORIES.SECURITY, label: "No remotely-hosted code" },
+  { key: "ext_csp_unsafe_inline", category: CATEGORIES.SECURITY, label: "No unsafe-inline in the extension CSP" },
+  { key: "ext_externally_connectable_scoped", category: CATEGORIES.SECURITY, label: "externally_connectable is scoped" },
+  { key: "ext_oauth_secret_committed", category: CATEGORIES.SECRETS_KEYS, label: "No OAuth client secret in the manifest" },
+  { key: "ext_update_url_https", category: CATEGORIES.SECURITY, label: "Update URL uses HTTPS" },
+  { key: "ext_listing_complete", category: CATEGORIES.STORE_LISTING, label: "Manifest carries the fields the store listing needs" },
+  { key: "ext_minimum_chrome_version", category: CATEGORIES.APP_STORE, label: "minimum_chrome_version declared" },
+
+  // ── Native Android app family (src/server/pulse-checks/android-app.ts) ──────
+  // Emitted only when the repo is detected as a native Kotlin/Java Gradle project.
+  // "Android app" was selectable in the scan dropdown with NO checks of its own —
+  // scored purely on generic repo hygiene, the same hole iOS was in before §34.
+  // Findings deliberately mirror the Flutter family's: they are one house pattern.
+  { key: "android_cleartext_traffic", category: CATEGORIES.SECURITY, label: "Cleartext HTTP disabled" },
+  { key: "android_debuggable_release", category: CATEGORIES.SECURITY, label: "Release build is not debuggable" },
+  { key: "android_backup_rules", category: CATEGORIES.SECURITY, label: "Backup excludes sensitive data" },
+  { key: "android_exported_components", category: CATEGORIES.SECURITY, label: "Exported components are permission-guarded" },
+  { key: "android_release_logging", category: CATEGORIES.SECURITY, label: "Logging is disabled in release builds" },
+  { key: "android_webview_js_bridge", category: CATEGORIES.SECURITY, label: "WebView JavaScript bridge is not exposed to remote content" },
+  { key: "android_env_baseurl", category: CATEGORIES.SECURITY, label: "API environment is not selected by editing source" },
+  { key: "android_token_storage", category: CATEGORIES.SECRETS_KEYS, label: "Auth tokens stored in encrypted storage" },
+  { key: "android_password_retention", category: CATEGORIES.SECRETS_KEYS, label: "User password is not persisted on device" },
+  { key: "android_hardcoded_api_key", category: CATEGORIES.SECRETS_KEYS, label: "API keys are not hardcoded in the repo" },
+  { key: "android_signing_credentials_committed", category: CATEGORIES.SECRETS_KEYS, label: "Signing credentials are not committed" },
+  { key: "android_target_sdk_current", category: CATEGORIES.APP_STORE, label: "targetSdk meets the Play Store floor" },
+  { key: "android_sensitive_permissions", category: CATEGORIES.APP_STORE, label: "Sensitive permissions are justified" },
+  { key: "android_minify_enabled", category: CATEGORIES.APP_STORE, label: "Release build is minified and shrunk" },
+  { key: "android_test_coverage", category: CATEGORIES.CODE_QUALITY, label: "Test suite proportionate to the codebase" },
+  { key: "android_force_unwrap_density", category: CATEGORIES.CODE_QUALITY, label: "Null assertions (!!) used sparingly" },
+  { key: "android_content_descriptions", category: CATEGORIES.ACCESSIBILITY, label: "Interactive elements have content descriptions" },
+  { key: "android_http_cache", category: CATEGORIES.PERFORMANCE, label: "HTTP responses are cached" },
+  { key: "android_metered_network", category: CATEGORIES.PERFORMANCE, label: "Large transfers respect metered connections" },
+
   // ── Native iOS app family (src/server/pulse-checks/ios-app.ts) ──────────────
   // Emitted only when the scanned repo is detected as a native iOS project. The
   // generic repo checks are web/JS-shaped; these cover what an App Store binary

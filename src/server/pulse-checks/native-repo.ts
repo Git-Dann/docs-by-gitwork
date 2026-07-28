@@ -20,6 +20,8 @@ import type { PulseScanCheckInput } from "@/types/pulse";
 import { detectNativePlatform, isVendoredPath, type NativePlatform, type RepoSnapshot } from "./native-mobile";
 import { evaluateIosChecks } from "./ios-app";
 import { evaluateFlutterChecks } from "./flutter-app";
+import { evaluateAndroidChecks } from "./android-app";
+import { evaluateChromeExtensionChecks, isChromeExtension } from "./chrome-extension";
 
 /** Max Swift files whose contents we read. See ios-app.ts for how coverage is used. */
 const SWIFT_SAMPLE_CAP = 150;
@@ -62,6 +64,10 @@ const CONFIG_PATTERNS: RegExp[] = [
   /(^|\/)fvm_config\.json$/i,
   /(^|\/)\.fvmrc$/i,
   /(^|\/)google-services\.json$/i,
+  // Browser-extension manifest. Deliberately broad here and narrowed at match time
+  // by findExtensionManifest, which requires a "manifest_version" key — a PWA web
+  // app manifest shares this filename and must not be scanned as an extension.
+  /(^|\/)manifest\.json$/i,
 ];
 
 /** Which source extension carries the app's own logic, per platform. */
@@ -271,7 +277,26 @@ export async function runNativeMobileChecks(
   if (platform === "flutter") {
     return { platform, checks: evaluateFlutterChecks(snapshot) };
   }
-  // Native Android lands here next — the reader, detection and applicability layers
-  // are already platform-agnostic, so it is a checks module and a registry block.
+  if (platform === "android") {
+    return { platform, checks: evaluateAndroidChecks(snapshot) };
+  }
+  // React Native is the remaining gap: it keeps the JS toolchain, so its generic
+  // checks are largely correct already and a family would cover RN-specific ground
+  // (Hermes, over-the-air update signing, AsyncStorage for tokens).
   return { platform, checks: [] };
+}
+
+/**
+ * Run the browser-extension family. Independent of the mobile family: an extension
+ * is not a NativePlatform, and neither should be able to take the other out.
+ *
+ * Shares the same memoized snapshot, so this adds no extra tree fetch.
+ */
+export async function runChromeExtensionChecks(
+  repoInput: string,
+): Promise<{ isExtension: boolean; checks: PulseScanCheckInput[] }> {
+  const snapshot = await getRepoSnapshot(repoInput);
+  if (!snapshot || !snapshot.accessible) return { isExtension: false, checks: [] };
+  if (!isChromeExtension(snapshot)) return { isExtension: false, checks: [] };
+  return { isExtension: true, checks: evaluateChromeExtensionChecks(snapshot) };
 }

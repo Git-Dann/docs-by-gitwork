@@ -30,6 +30,10 @@ vi.mock("../secret-scanner", () => ({
 
 vi.mock("@/server/pulse-checks/native-repo", () => ({
   runNativeMobileChecks: (...args: unknown[]) => nativeChecks(...args),
+  // The browser-extension family runs alongside the mobile one in
+  // runRestOnlyFamilies. Mocked to a no-op here so these tests stay about GraphQL
+  // resilience; its own behaviour is covered in chrome-extension.test.ts.
+  runChromeExtensionChecks: async () => ({ isExtension: false, checks: [] }),
 }));
 
 const { runCodeAgent } = await import("../code-agent");
