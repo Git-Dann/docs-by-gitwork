@@ -22,6 +22,7 @@ import { runDeployAgent } from "@/server/pulse-agents/deploy-agent";
 import { runCodeAgent } from "@/server/pulse-agents/code-agent";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { assertScannableUrl } from "./url-guard";
+import { CATEGORIES } from "@/server/pulse-checks/categories";
 import { annotateTrust } from "@/server/pulse-checks/confidence";
 import type { JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
 import type {
@@ -124,13 +125,37 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     if (!repo) throw new Error("A GitHub repo is required.");
 
     const [ghResult, codeResult] = await Promise.all([
-      runGithubChecks(repo).then((r) => { pending.push(ingest(r.checks)); return r; }).catch(() => ({ checks: [], techStack: [] as string[] })),
+      runGithubChecks(repo).then((r) => { pending.push(ingest(r.checks)); return r; }).catch(() => ({ checks: [], techStack: [] as string[], nativePlatform: null })),
       runCodeAgent(repo).then((r) => { codeInsights = r.insights; pending.push(ingest(r.checks)); return r; }).catch(() => null),
     ]);
     techStack = ghResult.techStack;
     homepageUrl = codeResult?.insights.homepageUrl ?? null;
 
-    if (homepageUrl) {
+    // A MOBILE repo is not graded on its GitHub "Website" link.
+    //
+    // homepageUrl was always null until July 2026 because runCodeAgent bailed on any
+    // GraphQL failure, so this branch never ran. Once that was fixed (#463) a native
+    // iOS repo whose Website field points at a marketing page had the full ~400-check
+    // web suite run against it and failed nearly all of it — 0/100 off 439 checks.
+    // The repo's own source is the subject of the scan; the link is not.
+    //
+    // ⚠️ The same guard exists in pulse-agents/orchestrator.ts, which is DEAD CODE —
+    // runOrchestratedScan has no callers. THIS is the live path. Check for callers
+    // before assuming a change to that file affects a scan.
+    const isMobileRepo = ghResult.nativePlatform != null;
+
+    if (homepageUrl && isMobileRepo) {
+      pending.push(ingest([{
+        category: CATEGORIES.CODE_QUALITY,
+        checkKey: "mobile_repo_web_suite_skipped",
+        label: "Web checks skipped (mobile repo)",
+        status: "SKIPPED",
+        detail:
+          `Detected a ${ghResult.nativePlatform} project, so the website suite was not run against the repository's ` +
+          `linked homepage (${homepageUrl}). A mobile app is graded on its source and store readiness, not on the ` +
+          `marketing page it links to. Scan that URL separately if you want it graded.`,
+      }]));
+    } else if (homepageUrl) {
       const safeHome = input.skipUrlGuard ? homepageUrl : (await assertScannableUrl(homepageUrl).then((r) => r.url).catch(() => null));
       if (safeHome) {
         const deployP = runDeployAgent(safeHome)
