@@ -9,6 +9,21 @@ on:
   # needs a deploy to pick it up. Actions tab → this workflow → "Run workflow".
   workflow_dispatch:
 
+# Deploys MUST NOT run concurrently. Every run pushes the same `:latest` tag and
+# then restarts the box, so two overlapping deploys race and WHICHEVER FINISHES
+# LAST wins — which can be the OLDER commit. That really happened on 2026-07-28:
+# two pushes a minute apart deployed in parallel, the earlier commit's build
+# finished second, overwrote `:latest`, and production silently reverted, so a
+# fix that had "successfully deployed" was not actually running.
+#
+# cancel-in-progress is deliberately FALSE: cancelling mid-run could interrupt
+# the SSH/compose step and leave the box half-deployed. Queuing instead means an
+# in-flight deploy finishes cleanly, and GitHub keeps only the newest pending run
+# per group — so the latest commit is what lands, in order.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
