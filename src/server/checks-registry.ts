@@ -657,6 +657,43 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "psi_seo", category: CATEGORIES.SEO, label: "Lighthouse SEO score" },
   { key: "psi_tbt", category: CATEGORIES.PERFORMANCE, label: "Total Blocking Time (TBT)" },
   { key: "repo_not_archived", category: CATEGORIES.CODE_QUALITY, label: "Repository is not archived" },
+
+  // ── Native iOS app family (src/server/pulse-checks/ios-app.ts) ──────────────
+  // Emitted only when the scanned repo is detected as a native iOS project. The
+  // generic repo checks are web/JS-shaped; these cover what an App Store binary
+  // is actually judged on. Android will add an `android_*` block alongside.
+  { key: "ios_debug_guards", category: CATEGORIES.SECURITY, label: "Debug-only code is compile-gated (#if DEBUG)" },
+  { key: "ios_release_logging", category: CATEGORIES.SECURITY, label: "Console logging disabled in Release builds" },
+  { key: "ios_sensitive_payload_logging", category: CATEGORIES.SECURITY, label: "Request/response bodies not logged in Release" },
+  { key: "ios_ats_arbitrary_loads", category: CATEGORIES.SECURITY, label: "App Transport Security enforced" },
+  { key: "ios_cert_pinning", category: CATEGORIES.SECURITY, label: "Certificate pinning on API traffic" },
+  { key: "ios_env_switcher_in_release", category: CATEGORIES.SECURITY, label: "Staging/QA environment switch excluded from Release" },
+  { key: "ios_token_storage", category: CATEGORIES.SECRETS_KEYS, label: "Auth tokens stored in the Keychain" },
+  { key: "ios_password_retention", category: CATEGORIES.SECRETS_KEYS, label: "User password is not persisted on device" },
+  { key: "ios_keychain_accessibility", category: CATEGORIES.SECRETS_KEYS, label: "Keychain items use a restrictive accessibility class" },
+  { key: "ios_privacy_manifest", category: CATEGORIES.APP_STORE, label: "Privacy manifest (PrivacyInfo.xcprivacy)" },
+  { key: "ios_usage_descriptions", category: CATEGORIES.APP_STORE, label: "Permission usage descriptions present" },
+  { key: "ios_aps_environment", category: CATEGORIES.APP_STORE, label: "Push notification environment" },
+  { key: "ios_background_modes_declared", category: CATEGORIES.APP_STORE, label: "Declared background modes are actually used" },
+  { key: "ios_encryption_declaration", category: CATEGORIES.APP_STORE, label: "Export-compliance declaration (ITSAppUsesNonExemptEncryption)" },
+  { key: "ios_deployment_target", category: CATEGORIES.APP_STORE, label: "iOS deployment target is current" },
+  { key: "ios_dynamic_type", category: CATEGORIES.ACCESSIBILITY, label: "Dynamic Type supported" },
+  { key: "ios_accessibility_labels", category: CATEGORIES.ACCESSIBILITY, label: "VoiceOver labels on interactive elements" },
+  { key: "ios_low_data_mode", category: CATEGORIES.PERFORMANCE, label: "Adapts to Low Data Mode / constrained networks" },
+  { key: "ios_adaptive_streaming", category: CATEGORIES.PERFORMANCE, label: "Video uses adaptive-bitrate streaming (HLS)" },
+  { key: "ios_url_cache", category: CATEGORIES.PERFORMANCE, label: "HTTP response caching configured" },
+  { key: "ios_image_cache", category: CATEGORIES.PERFORMANCE, label: "Image caching in place" },
+  { key: "ios_image_downsampling", category: CATEGORIES.PERFORMANCE, label: "Images downsampled before display" },
+  { key: "ios_request_timeout", category: CATEGORIES.PERFORMANCE, label: "Explicit network timeouts set" },
+  { key: "ios_offline_cache_fallback", category: CATEGORIES.PERFORMANCE, label: "Serves cached data when offline" },
+  { key: "ios_test_target", category: CATEGORIES.CODE_QUALITY, label: "Unit test target present" },
+  { key: "ios_ui_test_target", category: CATEGORIES.CODE_QUALITY, label: "UI test target present" },
+  { key: "ios_dependency_pinning", category: CATEGORIES.CODE_QUALITY, label: "Dependencies pinned (Podfile.lock / Package.resolved)" },
+  { key: "ios_vendored_deps_committed", category: CATEGORIES.CODE_QUALITY, label: "Dependency sources not committed" },
+  { key: "ios_swiftlint", category: CATEGORIES.CODE_QUALITY, label: "Swift linter configured (SwiftLint / swift-format)" },
+  { key: "ios_force_unwrap_density", category: CATEGORIES.CODE_QUALITY, label: "Force-unwrap / force-cast density" },
+  { key: "ios_http_status_discarded", category: CATEGORIES.CODE_QUALITY, label: "HTTP status codes propagated to error handling" },
+  { key: "ios_committed_junk", category: CATEGORIES.CODE_QUALITY, label: "No editor / OS cruft committed" },
 ];
 
 /** All unique categories in display order */

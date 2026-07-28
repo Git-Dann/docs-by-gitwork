@@ -1879,3 +1879,107 @@ running config.
 **The lesson worth keeping:** `git merge -s ours --allow-unrelated-histories` is safe for *files*
 and not for *PR state*. Anything it makes an ancestor of `main` gets marked merged. Close or draft
 the affected PRs first, or record their head SHAs before you run it.
+
+## 34. Recent Changes (July 2026) — Pulse learns to read a native iOS repo
+
+Pulse scored a real client iOS app (Fellas, 39k LOC, live on the App Store) at **50/100 with two
+findings: no README, no .gitignore**. A hand review of the same commit found 18, including a
+shipping build that writes users' plaintext passwords and both auth tokens to the device console.
+`grades`, `techStack` and `compliance` all came back **empty** — the scan couldn't even identify
+the project as Swift. Three scans over two months returned **47 / 50 / 50** with identical
+findings while the app shipped many releases.
+
+**The score wasn't wrong by a margin — it wasn't measuring.** Two independent causes, both fixed:
+
+### 34.1 Generic repo checks are web/JS-shaped, and were scored as failures
+
+`runGithubChecks` looks for a top-level `test/` folder, an ESLint config, a tsconfig, a Dockerfile,
+an `.env.example`. A Swift or Kotlin project has **no equivalent by design**, so each emitted
+FAIL/WARN and a flawless native app scored the same as a broken one — a floor for the input type.
+
+**`src/server/pulse-checks/native-mobile.ts`** (pure) detects the project shape and rewrites those
+checks to **SKIPPED**, which `score-breakdown.ts` already excludes from both sides of the ratio.
+Same pattern the Supabase RLS check uses (`applicable: false` + a reason). 15 keys are listed with
+a per-key justification, split into *toolchain mismatch* and *superseded by the native family*.
+Checks that remain true for any repo (README, .gitignore, CI, licence, branch protection) are
+deliberately **not** in that list.
+
+⚠️ **Detection order matters.** React Native and Flutter projects *contain* `ios/` and `android/`
+folders with real `Info.plist` / `AndroidManifest.xml` files. Matched naively, every RN app reads
+as native iOS and gets the wrong check family plus the wrong skips — so `pubspec.yaml` and the JS
+manifest are tested **first**. Only `ios`/`android` count as native; RN and Flutter keep the JS/Dart
+toolchain and its generic checks. There is a unit test for exactly this.
+
+`nativeTechStack()` also fills in the empty `techStack` (iOS · Swift · CocoaPods · SPM …), which
+package.json sniffing structurally cannot do.
+
+### 34.2 There was no iOS check family at all
+
+**`src/server/pulse-checks/ios-app.ts`** — 32 checks, every one traceable to a real finding from
+the Fellas review, across six areas: credential logging in Release, Keychain vs UserDefaults token
+storage, ATS, privacy manifest + permission strings + background modes, Dynamic Type + VoiceOver,
+**caching and constrained networks**, and test targets / dependency pinning / status-code handling.
+Registered in `checks-registry.ts` per §8; the reconcile test enforces it.
+
+**The caching group exists because a client reported "the app is slow on low data."** The checks
+are the actual causes: no adaptive bitrate (`ios_adaptive_streaming` — a progressive `.mp4` has ONE
+bitrate, so a weak connection can only buffer), no Low Data Mode adaptation, no on-disk response
+cache, no image downsampling, no explicit timeouts, no offline cache fallback.
+
+**Evidence model — read this before adding a check.** A 376-file app can't be fetched whole, so
+config files are always read and Swift sources are **relevance-ranked and capped** (150). That makes
+two different kinds of finding, and they are handled differently:
+- **Presence** ("we found `try!`") is sound on a sample — we saw it.
+- **Absence** ("no Dynamic Type anywhere") is not. Those declare `confidence: "LOW"` when coverage
+  is thin, which `score-breakdown.ts` excludes from scoring and the UI shows as Inconclusive. A thin
+  sample can therefore never invent a failure.
+
+To support that, `deriveConfidence` in `confidence.ts` now **honours a confidence a module set
+itself** (nothing else does, so behaviour is unchanged elsewhere). Confidence is keyed by
+`checkKey`, which cannot express "sound this run, weak the next" — and for a sampled family that
+case is real.
+
+### 34.3 Four bugs found by validating against the real app, not by unit tests
+
+The unit tests passed while the checks were wrong. Running the family against the actual Fellas
+clone is what caught these — **do this for any new check family**:
+
+1. **`Logger.swift` was never sampled.** It scored 900 against a hundred-odd `*Service.swift` files
+   at 1000 and fell outside the cap, so the *critical* credential-logging finding reported PASS.
+   Fixed with a `MUST_READ_BASENAMES` tier scoring 100,000 — small, high-value files (logger,
+   keychain, environment, `*Keys`, app delegate) can't be crowded out.
+2. **`UserJourneyKeys.swift` matched no pattern**, because the token names are in its *contents*,
+   not its path — so tokens-in-UserDefaults reported PASS. Same fix, plus broader path keywords.
+3. **Comments were matched as code.** The low-data check passed because the only occurrences of
+   `allowsConstrainedNetworkAccess` in the app were two **commented-out** lines.
+   `stripSwiftComments()` now runs over sampled source. It **must** preserve string literals — a URL
+   contains `//`, and naive stripping truncates `"https://…/master.m3u8"` and breaks media
+   detection. `ctx.swiftRaw` is kept for the few signals that genuinely live in comments (TODOs).
+4. **Presence-not-ratio.** `ios_dynamic_type` passed an app with 358 hardcoded font sizes and one
+   `.font(.title)`. It is now a ratio. Likewise `ios_force_unwrap_density` divided by *file count*
+   rather than lines, which is meaningless — now per 1,000 lines with a minimum sample size.
+
+One check was wrong in the *other* direction, which is worth remembering: `ios_url_cache` was
+"failing" in the hand review and actually passes — the app really does configure a
+`URLCache(memoryCapacity:diskCapacity:)`. **Validate against the repo before trusting either the
+scanner or the reviewer.**
+
+Result on the same commit: **10 FAIL / 12 WARN / 10 PASS**, versus two findings before.
+
+### 34.4 The agent verdict dropped every warning
+
+`buildAgentVerdict` (`pulse-agent.ts`) built `confirmedIssues` from `status === "FAIL"` only, so a
+scan whose problems were all warnings returned "0 confirmed issues" and an **empty `topFixes`** —
+for a native repo that was most of them. It now returns a `warnings[]` array, `counts.failures` /
+`counts.warnings`, and `topFixes` falls through to warnings when there are no failures.
+
+Note `counts.confirmed` is a **trust-bucket population that includes passes** — it is not the
+number of issues, and reading it as one is a mistake that has already been made. `counts.failures`
+is the number the summary quotes.
+
+**Also:** `categories.reconcile.test.ts` now walks check directories **recursively**. It only read
+the top level, so a module in a subdirectory could emit unregistered keys and the drift guard would
+never see it.
+
+**Android is next** and is deliberately cheap: detection, applicability, the repo reader and the
+sampling tiers are all platform-agnostic already. It needs an `android-app.ts` and a registry block.

@@ -45,6 +45,17 @@ const HIGH_CONFIDENCE_KEYS = new Set<string>([
   // SEO — reliable single-tag parses
   "meta_title", "meta_description", "og_tags", "twitter_card", "canonical_url",
   "h1_present", "charset_utf8", "has_heading_hierarchy", "hreflang_tags",
+  // Native iOS — parses of files we actually fetched (Info.plist, entitlements,
+  // project.pbxproj, lockfiles) or a pattern PRESENT in fetched source. Absence-based
+  // iOS checks are deliberately NOT here: they stay MEDIUM, and ios-app.ts downgrades
+  // them to LOW itself when the source sample is too thin to prove an absence.
+  "ios_release_logging", "ios_sensitive_payload_logging", "ios_env_switcher_in_release",
+  "ios_ats_arbitrary_loads", "ios_token_storage", "ios_password_retention",
+  "ios_keychain_accessibility", "ios_privacy_manifest", "ios_usage_descriptions",
+  "ios_aps_environment", "ios_encryption_declaration", "ios_deployment_target",
+  "ios_test_target", "ios_ui_test_target", "ios_dependency_pinning",
+  "ios_vendored_deps_committed", "ios_swiftlint", "ios_committed_junk",
+  "ios_http_status_discarded", "ios_force_unwrap_density", "ios_adaptive_streaming",
 ]);
 
 // A handful of genuinely weak inferences → LOW.
@@ -57,6 +68,17 @@ const LOW_CONFIDENCE_KEYS = new Set<string>([
 /** Confidence for a check, by detection method. */
 export function deriveConfidence(check: PulseScanCheckInput): { confidence: CheckConfidence; reason: string } {
   const key = check.checkKey;
+  // A module that knows its own evidence quality may declare it, and wins. Confidence
+  // here is keyed by checkKey, which cannot express "sound this run, weak the next" —
+  // and that case is real: the iOS family's absence findings depend on how much of the
+  // source it managed to sample. Only modules that measure their own coverage should
+  // set this; everything else leaves it unset and is derived below.
+  if (check.confidence) {
+    return {
+      confidence: check.confidence,
+      reason: check.confidenceReason ?? "Declared by the emitting check module.",
+    };
+  }
   if (LOW_CONFIDENCE_KEYS.has(key)) return { confidence: "LOW", reason: "Weak single-signal heuristic." };
   if (HIGH_CONFIDENCE_KEYS.has(key)) return { confidence: "HIGH", reason: "Directly observed (header / DNS / content-verified)." };
   // Deterministic families by prefix.
