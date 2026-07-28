@@ -155,7 +155,7 @@ export default async function PublicDocumentPage({ params, searchParams }: PageP
           </p>
           <div className="mt-6">
             <a
-              href="https://gitwork.io"
+              href="https://gitwork.co.uk"
               target="_blank"
               rel="noopener noreferrer"
               className="app-button app-button-primary app-button-md inline-flex"

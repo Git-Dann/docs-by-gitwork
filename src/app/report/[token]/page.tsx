@@ -287,7 +287,12 @@ export default async function PublicReportPage({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    // Flex column + min-h-screen so the dark CTA band is pinned to the bottom:
+    // on a short report it still sits at the foot of the viewport instead of
+    // leaving the page background showing beneath it. `print:min-h-0` stops the
+    // 100vh floor forcing blank space when this page is rendered to PDF.
+    <div className="flex min-h-screen flex-col bg-gray-50 print:min-h-0">
+      <div className="flex-1">
       <div className="mx-auto max-w-3xl">
         {/* ═══════════════════════ COVER ═══════════════════════ */}
         <DocumentCover
@@ -537,15 +542,22 @@ export default async function PublicReportPage({
           </div>
         )}
 
-        {/* CTA footer */}
-        <div className="rounded-[10px] border border-gray-900 bg-gray-900 p-6 text-center">
+      </div>
+      </div>
+
+      {/* CTA footer — a FULL-BLEED band, deliberately outside the max-w-3xl
+          padded column: as a rounded card it left the page's light background
+          visible around and below it. Square corners, edge-to-edge, and last
+          child of the flex column so it always closes the page. */}
+      <div className="bg-gray-900 px-4 py-8 text-center sm:px-6">
+        <div className="mx-auto max-w-3xl">
           <p className="text-sm font-semibold text-white">Want to act on this report?</p>
           <p className="mt-1 text-sm text-gray-400">
             Gitwork specialises in taking AI-built apps from prototype to production.
           </p>
           <div className="mt-4">
             <Link
-              href="https://gitwork.io"
+              href="https://gitwork.co.uk"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-[10px] bg-white px-5 py-2.5 text-sm font-semibold text-gray-900 hover:bg-gray-100"
@@ -557,7 +569,6 @@ export default async function PublicReportPage({
             Powered by <span className="font-medium text-gray-400">Gitwork Pulse</span> — from prompt to production.
           </p>
         </div>
-
       </div>
     </div>
   );
