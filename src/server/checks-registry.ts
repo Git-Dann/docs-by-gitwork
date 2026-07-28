@@ -657,6 +657,9 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "psi_seo", category: CATEGORIES.SEO, label: "Lighthouse SEO score" },
   { key: "psi_tbt", category: CATEGORIES.PERFORMANCE, label: "Total Blocking Time (TBT)" },
   { key: "repo_not_archived", category: CATEGORIES.CODE_QUALITY, label: "Repository is not archived" },
+  // Gate for every file-tree-derived finding: if Pulse cannot read the repo, this
+  // fails and the rest are not emitted at all, rather than reporting "missing".
+  { key: "repo_accessible", category: CATEGORIES.CODE_QUALITY, label: "Repository is readable by Pulse" },
 
   // ── Native iOS app family (src/server/pulse-checks/ios-app.ts) ──────────────
   // Emitted only when the scanned repo is detected as a native iOS project. The
