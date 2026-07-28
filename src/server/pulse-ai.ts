@@ -307,17 +307,34 @@ Gitwork preferred services (recommend by name):
   Auth: Clerk (first choice — DX), NextAuth.js / Auth.js (open source), WorkOS (enterprise SSO)
 `;
 
+/** Test seam — the prompt bound is a cost guarantee, so it is asserted directly. */
+export function formatChecksForPromptForTest(checks: PulseScanCheckInput[]): string {
+  return formatChecksForPrompt(checks);
+}
+
 function formatChecksForPrompt(checks: PulseScanCheckInput[]): string {
   // Separate failures from warnings — always include all FAILs, cap WARNs
   const fails = checks.filter((c) => c.status === "FAIL");
   const warns = checks.filter((c) => c.status === "WARN");
 
-  // Cap total issues at 60: all FAILs + top WARNs (sorted by category, then label for determinism)
-  // This bounds the prompt to ~3,500 tokens of issue data regardless of check count
+  // Cap TOTAL issues at 60 — failures included.
+  //
+  // This used to cap only the warnings, so the "~3,500 tokens regardless of check
+  // count" claim held only while failures were few. A scan where most checks fail sent
+  // every one of them: a 439-check mobile scan in July 2026 put ~400 failures in the
+  // prompt and cost ~20x a normal scan. Worst-case input must be bounded, not just
+  // typical input.
+  //
+  // Failures are kept ahead of warnings (they matter more) and the omitted count is
+  // stated for both, so the model is told the list is partial rather than inferring
+  // the project only has 60 problems.
   const MAX_ISSUES = 60;
-  const truncatedWarns = warns.slice(0, Math.max(0, MAX_ISSUES - fails.length));
-  const truncated = warns.length > truncatedWarns.length;
-  const issueSet = new Set([...fails, ...truncatedWarns].map((c) => c.checkKey));
+  const includedFails = fails.slice(0, MAX_ISSUES);
+  const truncatedWarns = warns.slice(0, Math.max(0, MAX_ISSUES - includedFails.length));
+  const omittedFails = fails.length - includedFails.length;
+  const omittedWarns = warns.length - truncatedWarns.length;
+  const truncated = omittedFails > 0 || omittedWarns > 0;
+  const issueSet = new Set([...includedFails, ...truncatedWarns].map((c) => c.checkKey));
 
   // Group by category for readability
   const byCategory = new Map<string, PulseScanCheckInput[]>();
@@ -354,8 +371,13 @@ function formatChecksForPrompt(checks: PulseScanCheckInput[]): string {
   }
 
   if (truncated) {
-    const omitted = warns.length - truncatedWarns.length;
-    lines.push(`\n(${omitted} lower-priority warnings omitted from AI prompt — visible in full scan results)`);
+    const parts: string[] = [];
+    if (omittedFails > 0) parts.push(`${omittedFails} further failures`);
+    if (omittedWarns > 0) parts.push(`${omittedWarns} lower-priority warnings`);
+    lines.push(
+      `\n(${parts.join(" and ")} omitted from this prompt for length — visible in the full scan results. ` +
+        `Treat the list above as a sample, not the complete set.)`,
+    );
   }
 
   return lines.join("\n");
