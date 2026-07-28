@@ -20,6 +20,7 @@ import type { PulseScanCheckInput } from "@/types/pulse";
 import { detectNativePlatform, isVendoredPath, type NativePlatform, type RepoSnapshot } from "./native-mobile";
 import { evaluateIosChecks } from "./ios-app";
 import { evaluateFlutterChecks } from "./flutter-app";
+import { evaluateAndroidChecks } from "./android-app";
 
 /** Max Swift files whose contents we read. See ios-app.ts for how coverage is used. */
 const SWIFT_SAMPLE_CAP = 150;
@@ -271,7 +272,11 @@ export async function runNativeMobileChecks(
   if (platform === "flutter") {
     return { platform, checks: evaluateFlutterChecks(snapshot) };
   }
-  // Native Android lands here next — the reader, detection and applicability layers
-  // are already platform-agnostic, so it is a checks module and a registry block.
+  if (platform === "android") {
+    return { platform, checks: evaluateAndroidChecks(snapshot) };
+  }
+  // React Native is the remaining gap: it keeps the JS toolchain, so its generic
+  // checks are largely correct already and a family would cover RN-specific ground
+  // (Hermes, over-the-air update signing, AsyncStorage for tokens).
   return { platform, checks: [] };
 }
