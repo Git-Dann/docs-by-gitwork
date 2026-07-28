@@ -1102,6 +1102,8 @@ This supersedes the Vercel/Neon assumptions throughout §2, §3, §5.
   and builds every push in parallel, but it's vestigial** — DNS points at the VPS, so those Vercel
   deploys reach nothing live. Disconnect Vercel's Git integration to stop the phantom builds.
 - **Secrets / env** — production secrets live in the **VPS `.env`** (loaded by Compose), not Vercel.
+  **Since July 2026 a managed subset is synced from GitHub Actions secrets by `deploy.yml`** (see §35),
+  so adding or rotating those needs no SSH.
   All Vercel "Sensitive" vars were **write-only and could not be exported** (`vercel env pull`
   returns them blank), so each was re-sourced: Google OAuth from Cloud Console (two web clients —
   "Foundry Login" → `AUTH_GOOGLE_*`, "Foundry Care" → `GOOGLE_CLIENT_*`; iOS server client →
@@ -1879,3 +1881,219 @@ running config.
 **The lesson worth keeping:** `git merge -s ours --allow-unrelated-histories` is safe for *files*
 and not for *PR state*. Anything it makes an ancestor of `main` gets marked merged. Close or draft
 the affected PRs first, or record their head SHAs before you run it.
+
+## 34. Recent Changes (July 2026) — Pulse learns to read a native iOS repo
+
+Pulse scored a real client iOS app (Fellas, 39k LOC, live on the App Store) at **50/100 with two
+findings: no README, no .gitignore**. A hand review of the same commit found 18, including a
+shipping build that writes users' plaintext passwords and both auth tokens to the device console.
+`grades`, `techStack` and `compliance` all came back **empty** — the scan couldn't even identify
+the project as Swift. Three scans over two months returned **47 / 50 / 50** with identical
+findings while the app shipped many releases.
+
+**The score wasn't wrong by a margin — it wasn't measuring.** Two independent causes, both fixed:
+
+### 34.1 Generic repo checks are web/JS-shaped, and were scored as failures
+
+`runGithubChecks` looks for a top-level `test/` folder, an ESLint config, a tsconfig, a Dockerfile,
+an `.env.example`. A Swift or Kotlin project has **no equivalent by design**, so each emitted
+FAIL/WARN and a flawless native app scored the same as a broken one — a floor for the input type.
+
+**`src/server/pulse-checks/native-mobile.ts`** (pure) detects the project shape and rewrites those
+checks to **SKIPPED**, which `score-breakdown.ts` already excludes from both sides of the ratio.
+Same pattern the Supabase RLS check uses (`applicable: false` + a reason). 15 keys are listed with
+a per-key justification, split into *toolchain mismatch* and *superseded by the native family*.
+Checks that remain true for any repo (README, .gitignore, CI, licence, branch protection) are
+deliberately **not** in that list.
+
+⚠️ **Detection order matters.** React Native and Flutter projects *contain* `ios/` and `android/`
+folders with real `Info.plist` / `AndroidManifest.xml` files. Matched naively, every RN app reads
+as native iOS and gets the wrong check family plus the wrong skips — so `pubspec.yaml` and the JS
+manifest are tested **first**. Only `ios`/`android` count as native; RN and Flutter keep the JS/Dart
+toolchain and its generic checks. There is a unit test for exactly this.
+
+`nativeTechStack()` also fills in the empty `techStack` (iOS · Swift · CocoaPods · SPM …), which
+package.json sniffing structurally cannot do.
+
+### 34.2 There was no iOS check family at all
+
+**`src/server/pulse-checks/ios-app.ts`** — 32 checks, every one traceable to a real finding from
+the Fellas review, across six areas: credential logging in Release, Keychain vs UserDefaults token
+storage, ATS, privacy manifest + permission strings + background modes, Dynamic Type + VoiceOver,
+**caching and constrained networks**, and test targets / dependency pinning / status-code handling.
+Registered in `checks-registry.ts` per §8; the reconcile test enforces it.
+
+**The caching group exists because a client reported "the app is slow on low data."** The checks
+are the actual causes: no adaptive bitrate (`ios_adaptive_streaming` — a progressive `.mp4` has ONE
+bitrate, so a weak connection can only buffer), no Low Data Mode adaptation, no on-disk response
+cache, no image downsampling, no explicit timeouts, no offline cache fallback.
+
+**Evidence model — read this before adding a check.** A 376-file app can't be fetched whole, so
+config files are always read and Swift sources are **relevance-ranked and capped** (150). That makes
+two different kinds of finding, and they are handled differently:
+- **Presence** ("we found `try!`") is sound on a sample — we saw it.
+- **Absence** ("no Dynamic Type anywhere") is not. Those declare `confidence: "LOW"` when coverage
+  is thin, which `score-breakdown.ts` excludes from scoring and the UI shows as Inconclusive. A thin
+  sample can therefore never invent a failure.
+
+To support that, `deriveConfidence` in `confidence.ts` now **honours a confidence a module set
+itself** (nothing else does, so behaviour is unchanged elsewhere). Confidence is keyed by
+`checkKey`, which cannot express "sound this run, weak the next" — and for a sampled family that
+case is real.
+
+### 34.3 Four bugs found by validating against the real app, not by unit tests
+
+The unit tests passed while the checks were wrong. Running the family against the actual Fellas
+clone is what caught these — **do this for any new check family**:
+
+1. **`Logger.swift` was never sampled.** It scored 900 against a hundred-odd `*Service.swift` files
+   at 1000 and fell outside the cap, so the *critical* credential-logging finding reported PASS.
+   Fixed with a `MUST_READ_BASENAMES` tier scoring 100,000 — small, high-value files (logger,
+   keychain, environment, `*Keys`, app delegate) can't be crowded out.
+2. **`UserJourneyKeys.swift` matched no pattern**, because the token names are in its *contents*,
+   not its path — so tokens-in-UserDefaults reported PASS. Same fix, plus broader path keywords.
+3. **Comments were matched as code.** The low-data check passed because the only occurrences of
+   `allowsConstrainedNetworkAccess` in the app were two **commented-out** lines.
+   `stripSwiftComments()` now runs over sampled source. It **must** preserve string literals — a URL
+   contains `//`, and naive stripping truncates `"https://…/master.m3u8"` and breaks media
+   detection. `ctx.swiftRaw` is kept for the few signals that genuinely live in comments (TODOs).
+4. **Presence-not-ratio.** `ios_dynamic_type` passed an app with 358 hardcoded font sizes and one
+   `.font(.title)`. It is now a ratio. Likewise `ios_force_unwrap_density` divided by *file count*
+   rather than lines, which is meaningless — now per 1,000 lines with a minimum sample size.
+
+One check was wrong in the *other* direction, which is worth remembering: `ios_url_cache` was
+"failing" in the hand review and actually passes — the app really does configure a
+`URLCache(memoryCapacity:diskCapacity:)`. **Validate against the repo before trusting either the
+scanner or the reviewer.**
+
+Result on the same commit: **10 FAIL / 12 WARN / 10 PASS**, versus two findings before.
+
+### 34.4 The agent verdict dropped every warning
+
+`buildAgentVerdict` (`pulse-agent.ts`) built `confirmedIssues` from `status === "FAIL"` only, so a
+scan whose problems were all warnings returned "0 confirmed issues" and an **empty `topFixes`** —
+for a native repo that was most of them. It now returns a `warnings[]` array, `counts.failures` /
+`counts.warnings`, and `topFixes` falls through to warnings when there are no failures.
+
+Note `counts.confirmed` is a **trust-bucket population that includes passes** — it is not the
+number of issues, and reading it as one is a mistake that has already been made. `counts.failures`
+is the number the summary quotes.
+
+**Also:** `categories.reconcile.test.ts` now walks check directories **recursively**. It only read
+the top level, so a module in a subdirectory could emit unregistered keys and the drift guard would
+never see it.
+
+### 34.5 Tidiness checks, and how "nice to have" is expressed
+
+Seven further checks close the gap to the hand review: `ios_restricted_entitlements` (entitlements
+Apple gates behind an approval request or a very recent OS — an archive fails outright if the
+distribution profile lacks one), `ios_firebase_config_committed`, `ios_invalid_plist_keys`,
+`ios_ats_exception_noop`, `ios_dev_leftovers`, `ios_todo_density`, `ios_dead_code`.
+
+**"Nice to have" is a property, not wording.** `priority.ts` already had `HARD_CRITICAL` to boost
+launch-blockers; it now has the mirror — a **`COSMETIC`** set damped by 0.3, so tidiness findings
+always land in **P3** and can never push a security or store-blocking finding down the fix list.
+A check qualifies only if acting on it changes nothing a user or reviewer would ever see; if it can
+break a build, fail review, or expose data, it does **not** belong there. These checks are also
+WARN-at-worst by construction, which a test enforces.
+
+Two of them are deliberately **not** failures even though they look like security findings:
+- `ios_firebase_config_committed` — Google ships these keys in every app binary and treats them as
+  public identifiers, so rotating one achieves nothing. The action is confirming the key is
+  bundle-ID-restricted in the Cloud console, which cannot be seen from the repo.
+- `ios_aps_environment` — Xcode's automatic signing usually substitutes `production` on export.
+
+**Densities need a denominator.** `ios_todo_density` and `ios_dead_code` are per-1,000-lines with a
+200-line minimum, and both SKIP below it. This matters: the hand review called out "20 TODOs" as a
+finding, but across 19k sampled lines that is ~1 per 1,000 — the check correctly passes. A raw count
+grows with any codebase and would fire on every large repo forever.
+
+### 34.6 Flutter family — and the reason "the Android app" was a Flutter app
+
+Chasing the Fellas **Android** build turned up three separate repos and the live one is **Flutter**,
+not Kotlin. `src/server/pulse-checks/flutter-app.ts` adds **21 checks**; `FLUTTER_INAPPLICABLE_CHECKS`
+gives Dart its own skip list (deliberately different from the native one: `has_tests` is **not**
+skipped, because a Flutter project really does keep a top-level `test/`, while `has_linter` **is**,
+because Dart lints live in `analysis_options.yaml`).
+
+**The two findings the family exists for, both recurring across all three Fellas codebases:**
+- `flutter_env_baseurl` — the API host is chosen by **commenting out lines** in a Dart constants
+  file. On the branch that ships, production was commented out and **staging was active** across all
+  37 generated services. Same defect class as iOS's `//TODO: Set environment before release`, except
+  here it *is* the mechanism.
+- `flutter_token_storage` / `flutter_password_retention` — tokens in SharedPreferences while
+  `flutter_secure_storage` sits in the same repo holding the user's **password**. The exact inversion
+  found in the native iOS app (Keychain holding the password, tokens in UserDefaults). One house
+  pattern, not three teams' mistakes — which is what makes it worth a check rather than a comment.
+
+**Three bugs found by validating against the real repo (again — do this every time):**
+
+1. **`MUST_READ_STEMS` was `\.swift$`-anchored**, so no Dart file could ever be must-read. On a
+   1,114-file app `constants.dart` fell outside the cap and `flutter_env_baseurl` — the whole point
+   of the family — silently **SKIPPED**. It now matches on the filename **stem** across
+   `swift|dart|kt|java`. This is the `Logger.swift` lesson from §34.3, which should have been
+   generalised the first time.
+2. **`stripCStyleComments` only understood double-quoted strings.** Dart's idiomatic delimiter is
+   `'`, so `'https://api…/api/'` was truncated at the `//` and the constant vanished entirely. Both
+   quote styles and both triple-quote forms are handled now. Swift has no single-quoted literals and
+   a Kotlin/Java `'x'` char literal strips identically, so this is safe for every family.
+3. **`flutter_metered_network` reported PASS when a guard was only partially disabled.** The original
+   rule was "commented out AND no live guard" — but on the real app the *download* path's cellular
+   guard was commented out while another screen kept one, so the check passed and the actual cause of
+   the client's "used all my data" report stayed invisible. Partial disablement is now its own WARN,
+   worded as such: inconsistent is worse than either, because the setting appears to work.
+
+Result on the live branch: **6 FAIL / 8 WARN / 7 PASS**, with `flutter_env_baseurl` and
+`flutter_cleartext_traffic` at P1 and every tidiness finding at P3.
+
+⚠️ **Sampling coverage on a big Flutter repo is ~13%** (150 of 1,114 Dart files), which is *below*
+`SOUND_ABSENCE_COVERAGE`. That is working as designed, not a bug: presence findings fire at HIGH
+confidence, and absence findings (`flutter_semantics`, `flutter_release_logging`,
+`flutter_response_cache`) self-downgrade to LOW and drop out of the score. Don't "fix" it by raising
+the threshold — raise the cap or add a must-read stem if a specific check is being starved.
+
+**Native Android (Kotlin/Gradle) is still next** and remains cheap: detection, applicability, the
+reader and the sampling tiers are all platform-agnostic now. It needs an `android-app.ts` and a
+registry block.
+
+## 35. Recent Changes (July 2026) — Secrets sync from CI, and the token that was never set
+
+**`GITHUB_TOKEN` had never been set in production.** `docs/fasthosts-secrets-recovery.md` lists it
+under *"Optional — only if you want the feature (were never set in prod)"* — so it was absent on
+Vercel before the migration and absent on the VPS after it. Consequences, all silent:
+
+- Unauthenticated REST → **404 on every private repo** → an empty file listing.
+- `githubGraphQL` throws without a token → `runCodeAgent` catches it → no repo intelligence at all
+  (no stars, releases, branch protection, commit velocity, dependency alerts).
+- So every Pulse repo scan of a private repo reported **~28 confident "missing X" findings** and a
+  plausible score, having read nothing. A repo demonstrably containing `README.md`, `.gitignore` and
+  `pubspec.yaml` was reported as having none of them (§34.7 covers the guard that now prevents this).
+- `codeclear-analysis.ts` has the **same shape and worse stakes**: `detectRepoSignals` turns an
+  empty listing into `hasTests/hasCi/hasLint/hasReadme: false`, feeding `CodeClearScore`. Every
+  private candidate repo has been scored as having no tests, CI, linter or docs. **Not yet fixed.**
+
+### What changed
+
+**1. The deploy syncs secrets into the VPS `.env`.** `deploy.yml`'s VPS step now upserts a managed
+allow-list before restarting the app, via `upsert_env` — idempotent, never prints the value, and an
+empty value is a **no-op rather than a delete** so an unset Actions secret can't wipe one set by
+hand. It guarantees a trailing newline first: appending to a `.env` without one concatenates onto
+the previous variable and corrupts both. `--force-recreate` so the container picks up the change.
+
+⚠️ **The Actions secret is `FOUNDRY_GITHUB_TOKEN`, not `GITHUB_TOKEN`** — GitHub rejects any secret
+name beginning with `GITHUB_` (reserved for the token Actions injects, which `deploy.yml` uses for
+GHCR login). It is written to the VPS as `GITHUB_TOKEN`. Add another managed secret with one more
+`upsert_env` line.
+
+**2. `deploy.yml` accepts `workflow_dispatch`.** Adding or rotating a secret changes no code, so
+there is nothing to push — the deploy has to be re-runnable on its own.
+
+**3. The failure is no longer silent.** `hasGithubToken()` in `lib/github.ts`; `githubHeaders()`
+warns **once per process** when GitHub is called with no token; and `repo_accessible` now names the
+actual cause, distinguishing *"GITHUB_TOKEN is not configured on this server"* from *"the token
+cannot see this repository"* — different fixes, and conflating them cost a day of misdiagnosis.
+
+**The lesson worth keeping:** a secret that lives only in one hand-edited file on one box is a
+secret that silently goes missing, and a check built on `safeGithubRequest` converts "we couldn't
+look" into "it isn't there". Any *scored* check needs to distinguish those two; an optional signal
+can get away with not caring.

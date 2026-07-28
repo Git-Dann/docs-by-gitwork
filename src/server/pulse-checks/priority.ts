@@ -22,6 +22,29 @@ const HARD_CRITICAL = new Set([
   "supabase_rls_enforced", "no_service_role_key_exposed", "no_exposed_env", "no_exposed_git",
 ]);
 
+/**
+ * TIDINESS findings — the mirror of HARD_CRITICAL. Real, worth fixing, and never a
+ * launch consideration: dead code, stray dev leftovers, TODO density, a plist key
+ * that does nothing. They are damped so they always land in P3 and can never crowd
+ * a security or store-blocking finding out of the top of the fix list.
+ *
+ * A check belongs here only if acting on it changes nothing a user or reviewer would
+ * ever see. If it can break a build, fail review, or expose data, it does NOT.
+ */
+const COSMETIC = new Set([
+  "ios_invalid_plist_keys",
+  "ios_ats_exception_noop",
+  "ios_dev_leftovers",
+  "ios_todo_density",
+  "ios_dead_code",
+  "ios_committed_junk",
+  // Flutter tidiness — a dev endpoint left in source is worth removing and is never
+  // a launch consideration. NOTE flutter_commented_features is deliberately NOT here:
+  // commenting out a feature CHANGES SHIPPED BEHAVIOUR, so it is a real finding.
+  "flutter_dev_endpoints",
+]);
+const COSMETIC_DAMPING = 0.3;
+
 /** Deterministic priority for a single check. PASS/SKIPPED → not a priority (null). */
 export function computePriority(check: AnyCheck): CheckPriority {
   if (check.status !== "FAIL" && check.status !== "WARN") return { score: 0, tier: null };
@@ -39,6 +62,7 @@ export function computePriority(check: AnyCheck): CheckPriority {
 
   let score = base * certainty * categoryWeight;
   if (check.status === "FAIL" && HARD_CRITICAL.has(check.checkKey)) score += 4; // launch gate
+  if (COSMETIC.has(check.checkKey)) score *= COSMETIC_DAMPING; // nice-to-have, never P1/P2
 
   const tier: PriorityTier = score >= 6 ? "P1" : score >= 2.5 ? "P2" : "P3";
   return { score: Math.round(score * 10) / 10, tier };

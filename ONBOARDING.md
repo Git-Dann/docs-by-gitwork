@@ -52,6 +52,15 @@ auto-deploys to the Fasthosts VPS in about 6 minutes. There is **no staging envi
 are no branch preview URLs**. (Vercel still comments on PRs; ignore it, it's a vestigial
 integration that deploys nowhere real.)
 
+**Secrets go in GitHub, not on the box.** The deploy syncs a managed allow-list of Actions secrets
+into the VPS `.env` on every run, so adding or rotating one needs no SSH — set it in repo →
+Settings → Secrets and variables → Actions, then re-run the deploy (it accepts
+`workflow_dispatch`, so no code push is needed). ⚠️ GitHub rejects any secret name starting with
+`GITHUB_`, so the app's GitHub PAT is the Actions secret **`FOUNDRY_GITHUB_TOKEN`** and is written
+to the VPS as `GITHUB_TOKEN`. Add a new managed secret by adding one `upsert_env` line in
+`.github/workflows/deploy.yml`. Anything set only by hand on the box can silently go missing —
+`GITHUB_TOKEN` was absent in prod for months and every Pulse repo scan quietly read nothing.
+
 Two accepted paths:
 
 ```bash

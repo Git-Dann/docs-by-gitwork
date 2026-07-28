@@ -2,6 +2,7 @@ import { CATEGORIES } from "../pulse-checks/categories";
 import { githubGraphQL, parseGithubRepo } from "@/lib/github";
 import type { PulseScanCheckInput, CodeAgentInsights } from "@/types/pulse";
 import { scanRepoSecrets, type SecretFinding } from "./secret-scanner";
+import { runNativeMobileChecks } from "@/server/pulse-checks/native-repo";
 
 const CODE_AGENT_QUERY = `
   query RepoIntelligence($owner: String!, $name: String!) {
@@ -332,6 +333,19 @@ export async function runCodeAgent(repoInput: string): Promise<{
     exposedSecrets = secretScan.secrets;
   } catch {
     // ignore — secret scan is additive
+  }
+
+  // ── Native mobile family (iOS today, Android next) ──────────────────────────
+  // Best-effort like the secret scan: a native app is judged on things the generic
+  // repo checks above cannot see (Info.plist, entitlements, Keychain vs UserDefaults,
+  // Dynamic Type, adaptive streaming). Returns [] for anything that isn't a native
+  // app, so this is a no-op for every web repo. Shares one memoized tree fetch with
+  // runGithubChecks — see pulse-checks/native-repo.ts.
+  try {
+    const native = await runNativeMobileChecks(repoInput);
+    checks.push(...native.checks);
+  } catch {
+    // ignore — the native family is additive and must never break the code agent
   }
 
   return {
