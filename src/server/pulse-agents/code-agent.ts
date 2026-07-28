@@ -1,5 +1,5 @@
 import { CATEGORIES } from "../pulse-checks/categories";
-import { githubGraphQL, parseGithubRepo } from "@/lib/github";
+import { githubGraphQL, hasGithubToken, parseGithubRepo } from "@/lib/github";
 import type { PulseScanCheckInput, CodeAgentInsights } from "@/types/pulse";
 import { scanRepoSecrets, type SecretFinding } from "./secret-scanner";
 import { runNativeMobileChecks } from "@/server/pulse-checks/native-repo";
@@ -68,6 +68,9 @@ const CODE_AGENT_QUERY = `
 `;
 
 interface GQLResponse {
+  // `repository` is null when the token cannot see the repo at all; every field
+  // inside it is independently nullable because GraphQL nulls just the field the
+  // token lacked permission for and reports it in `errors` beside good data.
   repository: {
     vulnerabilityAlerts: {
       totalCount: number;
@@ -86,11 +89,11 @@ interface GQLResponse {
         restrictsPushes: boolean;
         isAdminEnforced: boolean;
       }[];
-    };
+    } | null;
     pullRequests: {
       totalCount: number;
       nodes: { mergedAt: string; reviews: { totalCount: number } }[];
-    };
+    } | null;
     defaultBranchRef: {
       target: {
         history: {
@@ -129,17 +132,50 @@ export async function runCodeAgent(repoInput: string): Promise<{
     return { checks: [], insights: emptyInsights() };
   }
 
-  let data: GQLResponse;
+  // ── REST-only families, run FIRST and unconditionally ───────────────────────
+  // These need no GraphQL. They used to sit at the end of this function, after the
+  // GraphQL early-return — so a token that could read the repo over REST but not
+  // GraphQL's admin-scoped fields silently produced ZERO iOS/Flutter checks while
+  // the scan still reported a plausible score. Measured on two real client apps:
+  // 39 iOS and 21 Flutter checks, all missing, no error anywhere.
+  const rest = await runRestOnlyFamilies(parsed, repoInput);
+
+  let data: GQLResponse | null = null;
   try {
     data = await githubGraphQL<GQLResponse>(CODE_AGENT_QUERY, {
       owner: parsed.owner,
       name: parsed.repo,
     });
   } catch {
-    return { checks: [], insights: emptyInsights() };
+    data = null;
   }
 
-  const repo = data.repository;
+  const repo = data?.repository ?? null;
+
+  // Repo intelligence unavailable — say so instead of omitting eight checks in
+  // silence. The distinction matters: "we could not look" is a different finding
+  // from "this repo has no branch protection", and they need different fixes.
+  if (!repo) {
+    return {
+      checks: [
+        ...rest.checks,
+        {
+          category: CATEGORIES.CODE_QUALITY,
+          checkKey: "repo_intelligence",
+          label: "GitHub repo intelligence",
+          status: "SKIPPED" as const,
+          detail: hasGithubToken()
+            ? "Repo intelligence (branch protection, releases, commit velocity, dependency alerts) " +
+              "could not be read. The configured GITHUB_TOKEN most likely lacks the permissions these " +
+              "fields require — Dependabot alerts: read, and administration: read for branch protection."
+            : "GITHUB_TOKEN is not configured on this server, so branch protection, releases, commit " +
+              "velocity and dependency alerts could not be read.",
+        },
+      ],
+      insights: { ...emptyInsights(), exposedSecrets: rest.exposedSecrets },
+    };
+  }
+
   const checks: PulseScanCheckInput[] = [];
 
   // ── Vulnerability alerts ───────────────────────────────────────────────────
@@ -176,7 +212,11 @@ export async function runCodeAgent(repoInput: string): Promise<{
   });
 
   // ── Branch protection ──────────────────────────────────────────────────────
-  const branchRule = repo.branchProtectionRules.nodes[0];
+  // `?.` throughout: now that partial GraphQL responses are honoured, any single
+  // field can arrive null because the token lacked the permission for just that one
+  // (branchProtectionRules needs administration:read). Nulling one field must not
+  // throw and lose the other seven checks.
+  const branchRule = repo.branchProtectionRules?.nodes?.[0];
   const branchProtected = Boolean(branchRule);
   const requiresReviews = branchRule?.requiresApprovingReviews ?? false;
   const requiresChecks = branchRule?.requiresStatusChecks ?? false;
@@ -194,7 +234,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
   });
 
   // ── PR review culture ──────────────────────────────────────────────────────
-  const prs = repo.pullRequests.nodes;
+  const prs = repo.pullRequests?.nodes ?? [];
   const reviewedPrs = prs.filter((pr) => pr.reviews.totalCount > 0).length;
   const prReviewRate = prs.length > 0 ? reviewedPrs / prs.length : null;
 
@@ -323,30 +363,9 @@ export async function runCodeAgent(repoInput: string): Promise<{
     description: n.securityVulnerability.advisory.summary,
   }));
 
-  // ── Secret scanning + prompt-injection (REST tree walk) ─────────────────────
-  // Best-effort — must never break the code agent. Runs after GraphQL so it only
-  // fires for repos we can actually read.
-  let exposedSecrets: SecretFinding[] = [];
-  try {
-    const secretScan = await scanRepoSecrets(parsed.owner, parsed.repo);
-    checks.push(...secretScan.checks);
-    exposedSecrets = secretScan.secrets;
-  } catch {
-    // ignore — secret scan is additive
-  }
-
-  // ── Native mobile family (iOS today, Android next) ──────────────────────────
-  // Best-effort like the secret scan: a native app is judged on things the generic
-  // repo checks above cannot see (Info.plist, entitlements, Keychain vs UserDefaults,
-  // Dynamic Type, adaptive streaming). Returns [] for anything that isn't a native
-  // app, so this is a no-op for every web repo. Shares one memoized tree fetch with
-  // runGithubChecks — see pulse-checks/native-repo.ts.
-  try {
-    const native = await runNativeMobileChecks(repoInput);
-    checks.push(...native.checks);
-  } catch {
-    // ignore — the native family is additive and must never break the code agent
-  }
+  // The REST-only families (secret scan + native mobile) ran before GraphQL — see
+  // the top of this function. Appended here so display order is unchanged.
+  checks.push(...rest.checks);
 
   return {
     checks,
@@ -358,9 +377,47 @@ export async function runCodeAgent(repoInput: string): Promise<{
       commitVelocity,
       uniqueContributors,
       homepageUrl: repo.homepageUrl ?? null,
-      exposedSecrets,
+      exposedSecrets: rest.exposedSecrets,
     },
   };
+}
+
+/**
+ * Everything the code agent can learn over plain REST, with no GraphQL involved:
+ * the secret scan and the native-mobile (iOS / Flutter) families.
+ *
+ * Kept separate and run unconditionally because these are the checks that actually
+ * read the app's source. GraphQL only supplies repo *metadata* — losing it should
+ * cost you branch-protection and star count, never the 39 iOS checks.
+ *
+ * Each family is independently best-effort: neither may break the code agent, and a
+ * failure in one must not take out the other.
+ */
+async function runRestOnlyFamilies(
+  parsed: { owner: string; repo: string },
+  repoInput: string,
+): Promise<{ checks: PulseScanCheckInput[]; exposedSecrets: SecretFinding[] }> {
+  const checks: PulseScanCheckInput[] = [];
+  let exposedSecrets: SecretFinding[] = [];
+
+  const [secretResult, nativeResult] = await Promise.allSettled([
+    scanRepoSecrets(parsed.owner, parsed.repo),
+    // Shares one memoized tree fetch with runGithubChecks, which runs in parallel —
+    // see pulse-checks/native-repo.ts. Returns [] for anything that is not a native
+    // or Flutter app, so this is a no-op for every web repo.
+    runNativeMobileChecks(repoInput),
+  ]);
+
+  if (secretResult.status === "fulfilled") {
+    checks.push(...secretResult.value.checks);
+    exposedSecrets = secretResult.value.secrets;
+  }
+
+  if (nativeResult.status === "fulfilled") {
+    checks.push(...nativeResult.value.checks);
+  }
+
+  return { checks, exposedSecrets };
 }
 
 function emptyInsights(): CodeAgentInsights {

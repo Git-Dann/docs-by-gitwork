@@ -99,11 +99,43 @@ export async function githubGraphQL<T>(
     throw new GitHubRequestError("GITHUB_GRAPHQL_FAILED", `GraphQL request failed: ${response.status}`);
   }
 
-  const json = (await response.json()) as { data?: T; errors?: { message: string }[] };
+  const json = (await response.json()) as {
+    data?: T | null;
+    errors?: { message: string; type?: string; path?: (string | number)[] }[];
+  };
+
+  // GraphQL is PARTIAL-SUCCESS by design: a field the token cannot read comes back
+  // `null` with an entry in `errors`, alongside perfectly good data for every other
+  // field. Throwing on any error therefore discarded the whole response — and since
+  // runCodeAgent catches that into `checks: []`, one unreadable auxiliary field
+  // (vulnerabilityAlerts needs Dependabot-alerts:read, branchProtectionRules needs
+  // admin) silently disabled EVERY check the code agent emits, including the whole
+  // iOS and Flutter families. Only throw when there is nothing usable to return.
   if (json.errors?.length) {
-    throw new GitHubRequestError("GITHUB_GRAPHQL_ERROR", json.errors[0].message);
+    const usable =
+      json.data != null &&
+      typeof json.data === "object" &&
+      Object.values(json.data as Record<string, unknown>).some((v) => v != null);
+
+    if (!usable) {
+      throw new GitHubRequestError("GITHUB_GRAPHQL_ERROR", json.errors[0].message);
+    }
+
+    const fields = json.errors
+      .map((e) => e.path?.join(".") ?? e.type ?? "?")
+      .filter((f, i, all) => all.indexOf(f) === i)
+      .join(", ");
+    console.warn(
+      `[github] GraphQL returned partial data; unreadable field(s): ${fields}. ` +
+        `First error: ${json.errors[0].message}. Continuing with the fields that did resolve.`,
+    );
   }
-  return json.data as T;
+
+  if (json.data == null) {
+    throw new GitHubRequestError("GITHUB_GRAPHQL_ERROR", "GraphQL response contained no data.");
+  }
+
+  return json.data;
 }
 
 /**
