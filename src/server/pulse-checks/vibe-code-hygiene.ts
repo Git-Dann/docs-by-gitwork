@@ -1,8 +1,10 @@
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { ExtendedCheckContext } from "./_types";
-import { headRequest } from "./_types";
+import { headRequest, fetchWithTimeout } from "./_types";
 import { detectSpaContext } from "@/server/pulse-lite/spa-detect";
+import { evaluateBuilderChecks, probeBubbleDataApi, probeBubbleVersionTest } from "./builder-platforms";
+import { fetchBundleText } from "./vibe-security";
 
 const CATEGORY = CATEGORIES.VIBE_HYGIENE;
 
@@ -289,6 +291,47 @@ export async function runVibeCodeHygieneChecks(
       });
     }
   } catch { /* best-effort — never break the category */ }
+
+  // ── Platform-specific checks (builder-platforms.ts) ─────────────────────────
+  // Until July 2026 the `builder` detected above was used for one informational
+  // check and nothing else, so a Lovable app and a hand-written repo were judged
+  // identically. Returns [] when no builder was detected, so this is a no-op for
+  // every hand-coded project. Best-effort: it must never break the category.
+  //
+  // Note it needs the JS bundle, not just the HTML — a prompt-built app is a
+  // client-rendered SPA whose real content (provider calls, admin flags, source-map
+  // refs) is in the bundle. fetchBundleText is the same helper vibe-security uses,
+  // so the fetch is bounded by the same limits.
+  if (builder) {
+    try {
+      const bundle = pageResult.html + "\n" + (await fetchBundleText(pageResult.html, httpsUrl));
+      checks.push(...evaluateBuilderChecks({ builder, hostname, html: pageResult.html, bundle }));
+    } catch { /* best-effort — a bundle fetch failure must not lose the checks above */ }
+
+    // Bubble needs a live read to prove its central risk (privacy rules are empty
+    // by default), the same way vibe-security proves Supabase RLS. Read-only, one
+    // row per type, stops at the first exposure. Both probes are independent so a
+    // failure in one cannot lose the other.
+    if (builder === "Bubble") {
+      let origin = "";
+      try { origin = new URL(httpsUrl).origin; } catch { /* unusable URL — skip */ }
+      if (origin) {
+        const [dataApi, versionTest] = await Promise.allSettled([
+          probeBubbleDataApi({ builder, origin }, {
+            fetchJson: async (url) => {
+              const res = await fetchWithTimeout(url, { headers: { "User-Agent": "Gitwork-Pulse/1.0" } });
+              return { status: res.status, body: await res.json().catch(() => null) };
+            },
+          }),
+          probeBubbleVersionTest({ builder, origin }, {
+            fetchStatus: async (url) => (await fetchWithTimeout(url, { headers: { "User-Agent": "Gitwork-Pulse/1.0" } })).status,
+          }),
+        ]);
+        if (dataApi.status === "fulfilled") checks.push(...dataApi.value);
+        if (versionTest.status === "fulfilled") checks.push(...versionTest.value);
+      }
+    }
+  }
 
   return checks;
 }

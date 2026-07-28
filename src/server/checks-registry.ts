@@ -621,6 +621,30 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "vibe_ai_builder", category: CATEGORIES.VIBE_HYGIENE, label: "Builder / platform origin" },
   { key: "vibe_ai_comment_markers", category: CATEGORIES.VIBE_HYGIENE, label: "No AI-generated comment markers in page source" },
   { key: "vibe_broken_links", category: CATEGORIES.VIBE_HYGIENE, label: "Internal links resolve (no broken links)" },
+
+  // ── Builder-platform family (src/server/pulse-checks/builder-platforms.ts) ──
+  // Emitted only when detectAiBuilder identifies the platform. Presence-based —
+  // each fires because something was found in the served HTML or client bundle —
+  // so none needs the LOW-confidence absence downgrade the mobile families use.
+  // Deliberately does NOT duplicate vibe-security's supabase_rls_enforced,
+  // no_service_role_key_exposed, firebase_rules_locked or no_public_secret_env.
+  { key: "builder_paid_provider_from_browser", category: CATEGORIES.SECRETS_KEYS, label: "Paid APIs are not called from the browser" },
+  { key: "builder_dev_tooling_in_prod", category: CATEGORIES.VIBE_HYGIENE, label: "No development tooling in the production build" },
+  { key: "builder_sourcemaps_public", category: CATEGORIES.VIBE_HYGIENE, label: "Source maps not published alongside the bundle" },
+  { key: "builder_client_side_authorization", category: CATEGORIES.ROLES, label: "Authorization is enforced server-side, not in the client" },
+  { key: "builder_badge_visible", category: CATEGORIES.TRUST_BRAND, label: "No builder badge on the production site" },
+  { key: "builder_default_deploy_domain", category: CATEGORIES.TRUST_BRAND, label: "Custom domain in use, not the default deploy subdomain" },
+  { key: "replit_production_deployment", category: CATEGORIES.INFRASTRUCTURE, label: "Served from a Replit Deployment, not a workspace URL" },
+  { key: "v0_preview_host_production", category: CATEGORIES.INFRASTRUCTURE, label: "Not served from a v0 preview host" },
+  { key: "lovable_preview_host_production", category: CATEGORIES.INFRASTRUCTURE, label: "Not served from a Lovable preview host" },
+  { key: "lovable_uploads_unoptimised", category: CATEGORIES.PERFORMANCE, label: "Images served through an optimising pipeline" },
+  { key: "webflow_staging_indexable", category: CATEGORIES.SEO, label: "Webflow staging subdomain is not indexable" },
+  { key: "glide_client_side_visibility", category: CATEGORIES.ROLES, label: "Row visibility enforced server-side" },
+  // Bubble's privacy rules are EMPTY by default and the Data API can serve every
+  // field of every thing — the same failure shape as Supabase RLS, so it is proven
+  // with a live read-only probe rather than inferred.
+  { key: "bubble_data_api_open", category: CATEGORIES.SECURITY, label: "Bubble Data API is protected by privacy rules" },
+  { key: "bubble_version_test_exposed", category: CATEGORIES.SECURITY, label: "Bubble development version is not publicly reachable" },
   { key: "vibe_debug_mode", category: CATEGORIES.VIBE_HYGIENE, label: "No debug or development mode signals" },
   { key: "vibe_default_title", category: CATEGORIES.VIBE_HYGIENE, label: "Meaningful page title (not a framework default)" },
   { key: "vibe_empty_alt_images", category: CATEGORIES.VIBE_HYGIENE, label: "Images have descriptive alt text" },
