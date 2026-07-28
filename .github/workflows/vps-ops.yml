@@ -42,10 +42,17 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
+            # The first run of this proved `sudo -n` needs a password for the deploy
+            # user, so every sudo'd probe returned nothing useful. Try unprivileged
+            # first and only fall back to sudo — /etc/nginx is usually world-readable,
+            # and `crontab -l` for the current user needs no privilege at all.
             SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo -n"
+            have_sudo() { [ -z "$SUDO" ] || sudo -n true 2>/dev/null; }
 
             echo "=============== whoami / host ==============="
             echo "user: $(whoami)   host: $(hostname)   date: $(date -u) UTC"
+            echo "groups: $(id -nG)"
+            have_sudo && echo "passwordless sudo: YES" || echo "passwordless sudo: NO"
 
             echo
             echo "=============== crontab: deploy user ==============="
@@ -76,15 +83,35 @@ jobs:
               | tail -200 | sort | uniq -c | sort -rn || echo "(nothing parseable)"
 
             echo
-            echo "=============== nginx: version + tokens/gzip state ==============="
-            $SUDO nginx -v 2>&1 || echo "(nginx not on PATH)"
-            echo "--- server_tokens / gzip as currently configured:"
-            $SUDO grep -rn "server_tokens\|gzip on\|gzip_types" /etc/nginx/ 2>/dev/null | head -20 \
-              || echo "(none set)"
+            echo "=============== is the proxy a HOST service or a CONTAINER? ==============="
+            # This is the question that decides how nginx can be changed at all. The
+            # deploy user is in the docker group (deploy.yml runs `docker compose`
+            # unsudoed) but has no passwordless sudo — so if the proxy is a container,
+            # it is reachable; if it is a host service, it is not, without granting
+            # something new.
+            echo "--- docker ps:"
+            docker ps --format '{{.Names}}\t{{.Image}}\t{{.Ports}}' 2>&1 | head -20 || echo "(docker unavailable)"
+            echo "--- host nginx binary / service:"
+            command -v nginx >/dev/null 2>&1 && echo "nginx on PATH: $(nginx -v 2>&1)" || echo "nginx NOT on PATH for this user"
+            systemctl is-active nginx 2>&1 | head -1 || true
+            echo "--- compose file (which services exist):"
+            grep -nE "^\s{2}[a-z0-9_-]+:|image:|ports:" /opt/apps/foundry/docker-compose.yml 2>&1 | head -30 \
+              || echo "(compose file unreadable)"
 
             echo
-            echo "=============== nginx: the live foundry vhost ==============="
-            $SUDO cat /etc/nginx/sites-available/foundry 2>&1 || echo "(not found)"
+            echo "=============== nginx config: readable without sudo? ==============="
+            ls -la /etc/nginx/sites-available/ 2>&1 | head -10 || echo "(cannot list)"
+            echo "--- server_tokens / gzip as currently configured:"
+            grep -rn "server_tokens\|gzip on\|gzip_types" /etc/nginx/ 2>/dev/null | head -20 \
+              || echo "(unreadable unprivileged, or not set)"
+            echo "--- the live foundry vhost:"
+            cat /etc/nginx/sites-available/foundry 2>&1 | head -60 || echo "(unreadable unprivileged)"
+
+            echo
+            echo "=============== which /api/cron routes exist vs are scheduled ==============="
+            # Names the app ships, so the gap against the crontab above is explicit.
+            ls /opt/apps/foundry 2>/dev/null | head -20 || true
+            echo "(compare the crontab above against docs/vps-crons.md — the repo is the other half)"
 
   nginx-sync:
     if: inputs.task == 'nginx-sync'
