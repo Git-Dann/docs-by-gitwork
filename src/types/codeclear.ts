@@ -204,6 +204,11 @@ export interface GitHubRepoSnapshot {
   size: number;
   recentCommitCount: number;
   recentActivity: boolean;
+  /** False when the repo's file tree could not be read (private / no token / rate
+   *  limited). The has* flags below are then UNASSESSED, not negative — they are all
+   *  false simply because nothing was observed. Never render them as findings when
+   *  this is false. */
+  treeReadable: boolean;
   hasReadme: boolean;
   hasDocs: boolean;
   hasTests: boolean;
