@@ -13,8 +13,10 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // Drop the `X-Powered-By: Next.js` response header — it volunteers the framework
   // to anyone fingerprinting the stack for known CVEs, and buys nothing.
-  // (`Server: nginx/1.24.0` is the matching disclosure on the proxy; that one needs
-  // `server_tokens off;` on the VPS, which is outside this repo.)
+  // (`Server: nginx/1.24.0` was the matching disclosure on the proxy. The nginx
+  // config is now checked in — `server_tokens off;` is set in
+  // deploy/nginx/foundry.conf, which has to be copied up and reloaded by hand;
+  // see that directory's README.)
   poweredByHeader: false,
   // Pin the workspace root. The vendored Deck app (vendor/bento/slides) has its own
   // package-lock.json, and with more than one lockfile in the tree Next only *infers*

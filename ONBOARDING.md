@@ -78,7 +78,7 @@ Run `npm install` on a fresh clone or the hook can't run and will refuse the pus
 
 Report what `verify` actually printed. Never call something verified that you didn't run.
 
-## 4. Five traps that have actually bitten people here
+## 4. Six traps that have actually bitten people here
 
 1. **Never run `npm run build`** against a real `DATABASE_URL` — it does a `prisma db push` and
    will mutate the database. Use `npx next build`.
@@ -93,6 +93,11 @@ Report what `verify` actually printed. Never call something verified that you di
    it handles prompt caching, the cheap Haiku tier, and cost tracking for you.
 5. **Tables scroll, they don't reflow.** Wrap wide ones in `overflow-x-auto`. Note
    `overflow-hidden` is *not* a scroller — it clips the content away where nobody can reach it.
+6. **A new page under `/app` needs a gate, explicitly.** Add a `MODULE_PATHS` entry (or a row in
+   `UNGATED_APP_PREFIXES` if it's open to every member) in `src/server/auth/module-gate.ts`. Miss
+   both and non-admins get redirected to `/app` — a unit test will tell you. This replaced the old
+   default, which was to let *any* signed-in member reach an unlisted page; that's how three pages
+   ended up ungated.
 
 ## 5. Verifying honestly
 
@@ -131,7 +136,8 @@ npm run audit:clipping -- --self-test
   | Code | `/app/code` | `/app/codeclear` | `codeclear` |
   | Docs | `/app/docs` | `/app/proposals` → redirects | `proposals` |
 
-  `src/middleware.ts` (`MODULE_PATHS`) is the source of truth for which is canonical.
+  `MODULE_PATHS` in **`src/server/auth/module-gate.ts`** is the source of truth for which is
+  canonical, and for which permission gates each route.
 
 **Schema changes:** the deploy runs `prisma db push` *without* `--accept-data-loss`, and Prisma's
 safety check is all-or-nothing per push — so if your diff drops anything, **the whole sync is

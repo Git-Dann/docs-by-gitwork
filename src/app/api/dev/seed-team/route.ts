@@ -7,7 +7,7 @@
  */
 
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { assertSuperAdmin, getEffectiveUserOrNull, requireAuthedUser } from "@/server/auth/effective-user";
+import { assertSuperAdminOrApiKey, getEffectiveUserOrNull, requireAuthedUser } from "@/server/auth/effective-user";
 import { seedGitworkTeam } from "@/server/team-roster";
 import { isAtLeast } from "@/types/auth";
 
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    assertSuperAdmin(await getEffectiveUserOrNull(req));
+    assertSuperAdminOrApiKey(await getEffectiveUserOrNull(req));
     const user = await requireAuthedUser(req);
     // Admins AND Super Admins (Dan) — isAtLeast, not a strict equality.
     if (!isAtLeast(user.role, "ADMIN")) return apiError("Admin only", 403);

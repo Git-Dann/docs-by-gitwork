@@ -1,6 +1,6 @@
 import { apiOk, fromError } from "@/lib/api-response";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { assertSuperAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertSuperAdminOrApiKey, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { seedBuiltInStarters } from "@/server/starters-catalog";
 import { seedStarterAdditions } from "@/server/starters-additions-seed";
 
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 // force a refresh (idempotent upsert by slug + prune of stale built-ins).
 export async function POST(request: Request) {
   try {
-    assertSuperAdmin(await getEffectiveUserOrNull(request));
+    assertSuperAdminOrApiKey(await getEffectiveUserOrNull(request));
     const { workspace } = await ensureBaseRecords();
     const count = await seedBuiltInStarters(workspace.id);
     const additionsCount = await seedStarterAdditions(workspace.id);

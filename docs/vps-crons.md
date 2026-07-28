@@ -28,6 +28,20 @@ authoritative list**, and the schedules below are what the host executes.
 > and the Vercel copy is pure duplication. Do NOT delete it before confirming, or you may
 > remove the only thing actually running a job. Either way it is one or the other, never
 > both.
+>
+> **Where the two lists disagree today** (compared line by line, July 2026). If Vercel is
+> still firing, these three run twice a day at *different* times, which is why the
+> duplication is not harmless:
+>
+> | Route | `vercel.json` | this file (the box) |
+> |---|---|---|
+> | `support-sync` | `0 9 * * *` | `0 8 * * *` |
+> | `absence-cover-reconcile` | `0 8 * * *` | `0 11 * * *` |
+> | `meet-transcripts` | `0 9 * * *` | `0 9,13 * * *` (extra afternoon pass) |
+>
+> Three more are **VPS-only** and absent from `vercel.json` — `jobs`, `retention` and
+> `wedge-keepwarm` — so Vercel was never running the job worker at all. And
+> `wiki-monitors` is the reverse: in `vercel.json`, not on the box.
 
 ## Auth
 
@@ -117,9 +131,11 @@ they're independent, but the crontab otherwise staggers one job per hour.)
 - **All 17 `/api/cron/*` routes are accounted for above**, and that is the property to
   preserve — if you add a route, add a line here in the same PR. Two were missing until
   July 2026 (`retention`, `wedge-keepwarm`) and `foreman` was listed twice.
-- **`wiki-monitors` is the one deliberate omission.** It exists in `vercel.json` at a
-  sub-daily schedule that only ever meant anything on Vercel, and it is not wired on the
-  box — so client uptime monitoring is **not currently running**. That is a decision, not
+- **`wiki-monitors` is the one deliberate omission.** It exists in `vercel.json` at
+  `0 1 * * *` (daily 01:00 — this file used to describe it as "sub-daily", which was
+  simply wrong) and it is not wired on the box — so client uptime monitoring is **not
+  currently running** from the crontab. Note that if the Vercel crons *are* still firing,
+  it is the one job Vercel is running that the box is not. That is a decision, not
   an oversight: adopt it by adding
   `*/5 * * * * /opt/apps/foundry/run-cron.sh wiki-monitors >> /tmp/foundry-cron.log 2>&1`,
   or drop the route. Leaving it half-configured is the one option to avoid, because the

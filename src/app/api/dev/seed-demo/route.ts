@@ -1,7 +1,7 @@
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
-import { assertSuperAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertSuperAdminOrApiKey, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 
@@ -545,7 +545,7 @@ const CHECKS: Array<{ category: string; checkKey: string; label: string; status:
 
 export async function POST(request: Request) {
   try {
-    assertSuperAdmin(await getEffectiveUserOrNull(request));
+    assertSuperAdminOrApiKey(await getEffectiveUserOrNull(request));
     const workspace = await prisma.workspace.findFirst({
       where: { slug: "gitwork" },
       select: { id: true },

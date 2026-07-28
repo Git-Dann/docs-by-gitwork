@@ -251,8 +251,9 @@ ENCRYPTION_KEY=""      # 32-byte base64 secret
 The sidebar uses different labels from the URL routes — mapping below.
 
 > **Use the canonical route in anything new.** Four modules have both a canonical short path and a
-> legacy one, and `src/middleware.ts` (`MODULE_PATHS`) is the source of truth — it labels them
-> exactly that way. Both resolve, so the legacy paths are safe in old links, but new code, new nav
+> legacy one, and `MODULE_PATHS` in **`src/server/auth/module-gate.ts`** is the source of truth — it
+> labels them exactly that way (it moved out of `src/middleware.ts` in July 2026 so it could be
+> unit-tested; see §33). Both resolve, so the legacy paths are safe in old links, but new code, new nav
 > entries and new deep links use the canonical column.
 >
 > | Canonical | Legacy (still resolves) |
@@ -646,10 +647,8 @@ npm run deck:verify  # Deck's own regression gate (see §30)
 
 | Issue | File | Notes |
 |---|---|---|
-| **Care runs two UIs at once** | `src/components/care/` + `src/components/support/support-dashboard.tsx` | `/app/care` is the rebuilt cockpit; `/app/support` is the 5,535-line legacy dashboard. Each holds capabilities the other lacks, so it is a **two-way merge**. Legacy exclusively owns add-client, Tickets, monthly Reports (~815 lines), health scoring, AI semantic search and workflow rules; the cockpit owns triage, snooze, notes and batch actions. `client-cockpit.tsx` imports `ConnectorsView` from the legacy file, so it cannot be deleted today. **Also a live bug:** Care has no path to clear `unread`, so unread counters only grow for anyone working there. |
+| **Care runs two UIs at once** | `src/components/care/` + `src/components/support/support-dashboard.tsx` | `/app/care` is the rebuilt cockpit; `/app/support` is the 5,535-line legacy dashboard. Each holds capabilities the other lacks, so it is a **two-way merge**. Legacy exclusively owns add-client, Tickets, monthly Reports (~815 lines), health scoring, AI semantic search and workflow rules; the cockpit owns triage, snooze, notes and batch actions. `client-cockpit.tsx` imports `ConnectorsView` from the legacy file, so it cannot be deleted today. (The "Care never clears `unread`" bug listed here was fixed in July 2026 — see §33.) |
 | **`/app/codeclear/*` subtrees not yet moved** | `src/app/(app)/app/codeclear/` | `candidates/`, `pipeline/` and `devsignal/**` exist only under the legacy prefix; 33 refs across 10 files. When moving, rename the `/app/codeclear/devsignal` `MODULE_PATHS` entry **in place** — appending it after `/app/code` regates admin-only DevSignal onto `codeclear`, which STAFF auto-inherits. Silent privilege escalation, no compile error. |
-| `hasModuleAccess` has no segment boundary | `src/middleware.ts` | Bare `startsWith`, so `/app/code` also matches `/app/codeclear`. Harmless today (same module) but worth anchoring the way `isPublicApiPath` already does. It also ends in an unconditional `return true`, so **any `/app` path absent from `MODULE_PATHS` is ungated** — that is how `/app/proof`, `/app/templates` and `/app/projects` were reachable by any signed-in member until they were added. |
-| `assertSuperAdmin(null)` is a deliberate no-op | `src/server/auth/effective-user.ts` | A null user falls straight through, so `assertSuperAdmin(await getEffectiveUserOrNull(req))` means "Super Admin **or any API_KEY bearer**". Intentional, for server integrations — but do not read it as strict. For strict, use `requireAuthedUser` first (the `merge-accounts` pattern). Browser sessions are unaffected. |
 | Cron scheduling has drifted | `vercel.json` · `docs/vps-crons.md` | `wedge-keepwarm` and `retention` are scheduled **nowhere**; `wiki-monitors` is only in `vercel.json`; the critical `jobs` worker is **missing** from `vercel.json`; three schedules disagree between the two; `foreman` is listed twice in the doc. And `vercel.json` crons are **not** necessarily inert — Vercel crons hit the deployment directly regardless of DNS, so some may be double-running. Reconcile against the live `crontab -l` before changing either. |
 | `pulse-scan.ts` is 4000+ lines | `src/server/pulse-scan.ts` | Works fine — don't split without a clear plan. Future task. |
 | 26 `any` type usages | various | Not breaking. Gradual cleanup is a future task. |
@@ -1434,8 +1433,10 @@ the Foundry · Gitwork brand switch. **No Foundry data touches it** — it's a l
     re-listing those would send each header twice.
   - **`.dockerignore` now excludes `**/node_modules`** — the bare `node_modules` entry only matched
     the top level, so the vendored app's own ~80MB install was going into the build context.
-  - Not done: gzip on the wire (**726KB → 547KB**, and 504KB → ~390KB now) is an **nginx** setting on
-    the VPS, outside this repo. Worth turning on for `text/html`.
+  - gzip on the wire (**726KB → 547KB**, and 504KB → ~390KB now) is an **nginx** setting, which was
+    outside this repo until the VPS config was checked in. `gzip on` is now set in
+    **`deploy/nginx/foundry.conf`** — but that file is a checked-in mirror, not a deployed one: it
+    only takes effect once someone copies it up and reloads nginx (see `deploy/nginx/README.md`).
 - **Every upstream accent swept out of the chrome.** Upstream drives most of its UI from `--accent`,
   but hard-codes its coral/amber in places the token swap couldn't reach — so re-pointing the token
   left them bento-coloured. Now brand-correct: the About primary, the update chip (needs
@@ -1790,3 +1791,91 @@ before you reconcile anything:
 
 Ask before reconciling the two lists in either direction — deciding whether `Backstage` needs a
 tracking tag is Dan's call, still open.
+
+## 33. Recent Changes (July 2026) — Backend cleanup: the /app gate defaults to deny, Care clears unread
+
+Three items that had been sitting in §11 as known defects, plus recovery of work that was lost
+when the orphaned history was reattached to `main`. No schema change, no new env, no new route.
+
+**The `/app` module gate is now default-deny, anchored, and unit-tested.** `hasModuleAccess` moved
+out of `src/middleware.ts` into **`src/server/auth/module-gate.ts`** — a pure module with no
+NextAuth or edge-runtime imports, so it can actually be tested (importing the middleware into a
+Node test can't work). Three real changes came with the move:
+
+- **It no longer ends in `return true`.** Any `/app` path matching neither `MODULE_PATHS` nor the
+  new **`UNGATED_APP_PREFIXES`** allow-list is now **denied** for non-admins. The old default is
+  precisely how `/app/proof`, `/app/templates` and `/app/projects` were reachable by any signed-in
+  member — including a developer scoped to neither module — because nobody has to *decide* to
+  expose a page, they get it for free by adding a directory. Adding a page under `/app` now means
+  picking one of the two lists on purpose; miss both and it redirects to `/app`, a visible failure
+  at first click instead of a silent hole. `UNGATED_APP_PREFIXES` holds the six genuinely-open
+  surfaces (`settings`, `account-settings`, `team`, `handbook`, `analytics`, `starters` — the last
+  two self-gate on Super Admin).
+- **Prefix matching is anchored on a path-segment boundary** (`matchesPrefix`), the same guard
+  `isPublicApiPath` already had. A bare `startsWith` meant `/app/code` would gate a hypothetical
+  `/app/codex` on `codeclear`. It also meant `/app/code` incidentally covered `/app/codeclear`, so
+  the legacy prefix now needs — and has — **its own explicit `MODULE_PATHS` entry**. The DevSignal
+  ordering hazard is unchanged and still first in the list.
+- **`src/server/auth/__tests__/module-gate.test.ts`** (13 tests) asserts the lookalike cases, that
+  DevSignal stays on its admin-only perm rather than STAFF-inherited `codeclear`, that an unknown
+  `/app` path is denied, and — the useful one — that **every `/app` route segment resolves to a
+  decision in one of the two lists**. Add a page without gating it and that test fails.
+  ⚠️ It caught a real bug in the first cut of this file: a `"/app"` row in `UNGATED_APP_PREFIXES`
+  matched every descendant path and quietly turned the default-deny back into a default-allow.
+  `/app` is now an exact-match constant (`APP_ROOT`) for that reason — **keep it exact.**
+
+**`assertSuperAdmin` is strict; the lenient behaviour has its own name.** It used to take
+`EffectiveUser | null` and pass a null caller straight through, so "Super Admin only" actually read
+"Super Admin, **or anyone holding the workspace API_KEY**" — deliberate for unattended server
+integrations, but invisible at the call site and trivially inherited by copy-paste. It now takes a
+**non-null** `EffectiveUser`, so passing a possibly-null user is a **compile error**, and the
+lenient path is spelled **`assertSuperAdminOrApiKey`**. Only the five `/api/dev/seed-*` demo-seed
+one-shots use the lenient one (they're invoked unattended). Every other call site already resolved
+its user via `requireAuthedUser` and was strict in fact — it just didn't look it. No behaviour
+changed for any existing route.
+
+**Care clears `unread` when you open a conversation.** The cockpit rendered the flag (bold subject)
+and the client-list badges counted it, but **no code path ever wrote `false`**, so the counters only
+ever grew for anyone working in Care. New **`useMarkConversationRead`** in `use-support.ts` —
+optimistic, reusing the existing `patchConversationInCache`, so the row de-bolds on the click that
+opened it rather than a request later; it also invalidates `["support","clients"]` because the badge
+count is derived server-side. Wired through a single `openConversation()` in `client-cockpit.tsx`
+(one open path, so no effect needed), guarded on `conv.unread` to skip pointless writes and on
+`canManageSupport` because the PATCH route asserts it — without that guard a read-only Care viewer
+would take a 403 per open and watch the row re-bold as the optimistic patch rolled back. Server side
+needed nothing: `updateConversation` already had `unread` in its allow-list, and the legacy dashboard
+has always done this (`support-dashboard.tsx`). No saved view predicates on `unread`, so marking read
+never reorders the row under the cursor.
+
+**Recovered three commits the history reattachment closed without merging.** Reattaching the
+orphaned lineage with `git merge -s ours` kept `main`'s tree byte-identical but made 9 open PRs
+ancestors of `main`, so GitHub's ancestry-based merge detection **closed them and auto-deleted their
+branches while none of their code landed**. Checking each: **#43, #37, #222, #255 and #140 were
+already in `main` or moot**; three were genuinely missing and are cherry-picked here — the
+`fix(care)` Gmail-UNREAD-preservation fix (**#202**), the checked-in VPS nginx config + proxy-buffer
+502 fix (**#332**), and the IMAP/SMTP mailbox-connector build plan (**#432**). Head SHAs for all
+nine are recorded in `docs/pr-recovery-2026-07-27.md`.
+**#354 is deliberately NOT recovered here** — it removes the forced `prompt: "consent"` and moves to
+30-day sessions, which must not land until the Google OAuth consent screen is set to "Internal", so
+it needs its own PR held until then.
+
+**Two nginx settings that stopped being "outside this repo".** Recovering #332 checked the VPS
+proxy config in at **`deploy/nginx/foundry.conf`**, which makes two long-standing "can't fix from
+here" notes actionable — both now set in that file:
+
+- **`server_tokens off;`** — drops the version from `Server: nginx/1.24.0`. The app half of this
+  (`poweredByHeader: false`, dropping `X-Powered-By: Next.js`) already shipped; §30 and the
+  `next.config.ts` comment both said the nginx half was out of reach.
+- **`gzip on;`** — §30 listed this as "not done … outside this repo". The win is Deck: a single
+  self-contained ~504KB shell fetched on every open, ~390KB gzipped. `text/html` is gzipped by
+  nginx unconditionally and must **not** appear in `gzip_types` (duplicate MIME → `nginx -t`
+  warning); images are excluded deliberately (already-compressed formats gain nothing).
+
+⚠️ **Neither is live yet.** That file is a **checked-in mirror for disaster recovery**, not a
+deployed artefact — `deploy.yml` only touches Docker. It takes `scp` + `nginx -t && systemctl
+restart nginx`, documented in `deploy/nginx/README.md`. Don't read the committed config as the
+running config.
+
+**The lesson worth keeping:** `git merge -s ours --allow-unrelated-histories` is safe for *files*
+and not for *PR state*. Anything it makes an ancestor of `main` gets marked merged. Close or draft
+the affected PRs first, or record their head SHAs before you run it.
