@@ -11,8 +11,28 @@ export class GitHubRequestError extends Error {
   }
 }
 
+/** True when a GitHub token is configured. Never returns the value itself. */
+export function hasGithubToken(): boolean {
+  return Boolean(process.env.GITHUB_TOKEN?.trim());
+}
+
+// Warn once per process when GitHub is used with no token. Without this the failure
+// is completely silent: unauthenticated REST 404s on every private repo and GraphQL
+// refuses outright, so callers see "empty" rather than "unauthorised" and report the
+// repo as containing nothing. That is exactly what happened in production for months.
+let warnedNoToken = false;
+
 export function githubHeaders() {
   const token = process.env.GITHUB_TOKEN?.trim();
+
+  if (!token && !warnedNoToken) {
+    warnedNoToken = true;
+    console.warn(
+      "[github] GITHUB_TOKEN is not set. Private repositories will return 404 and GraphQL " +
+        "queries will fail, so Pulse repo scans and CodeClear analysis cannot read source. " +
+        "Set it in the VPS .env (or the FOUNDRY_GITHUB_TOKEN Actions secret) and restart.",
+    );
+  }
 
   return {
     Accept: "application/vnd.github+json",

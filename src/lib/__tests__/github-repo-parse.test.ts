@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { githubRepoLabel, normalizeGithubRepo, parseGithubRepo } from "../github";
+import { githubRepoLabel, hasGithubToken, normalizeGithubRepo, parseGithubRepo } from "../github";
 
 // People paste whatever the address bar or `git remote -v` gave them. Every form
 // below is one someone has actually typed into the Pulse scan field.
@@ -107,5 +107,26 @@ describe("githubRepoLabel", () => {
 
   it("falls back to the raw value rather than hiding an unparseable one", () => {
     expect(githubRepoLabel("something odd")).toBe("something odd");
+  });
+});
+
+describe("hasGithubToken", () => {
+  // The whole point: a missing token must be distinguishable from "repo has no files",
+  // because they need completely different fixes and looked identical in production.
+  it("reports presence without ever returning the value", () => {
+    const original = process.env.GITHUB_TOKEN;
+    try {
+      delete process.env.GITHUB_TOKEN;
+      expect(hasGithubToken()).toBe(false);
+
+      process.env.GITHUB_TOKEN = "   ";
+      expect(hasGithubToken(), "whitespace is not a token").toBe(false);
+
+      process.env.GITHUB_TOKEN = "github_pat_example";
+      expect(hasGithubToken()).toBe(true);
+    } finally {
+      if (original === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = original;
+    }
   });
 });
