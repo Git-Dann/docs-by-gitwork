@@ -19,6 +19,7 @@ import { parseGithubRepo, safeGithubRequest } from "@/lib/github";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import { detectNativePlatform, isVendoredPath, type NativePlatform, type RepoSnapshot } from "./native-mobile";
 import { evaluateIosChecks } from "./ios-app";
+import { evaluateFlutterChecks } from "./flutter-app";
 
 /** Max Swift files whose contents we read. See ios-app.ts for how coverage is used. */
 const SWIFT_SAMPLE_CAP = 150;
@@ -51,7 +52,28 @@ const CONFIG_PATTERNS: RegExp[] = [
   /(^|\/)Package\.swift$/i,
   /Package\.resolved$/i,
   /(^|\/)\.swiftlint\.ya?ml$/i,
+  // Flutter / Android
+  /(^|\/)pubspec\.ya?ml$/i,
+  /(^|\/)pubspec\.lock$/i,
+  /(^|\/)analysis_options\.ya?ml$/i,
+  /(^|\/)AndroidManifest\.xml$/i,
+  /(^|\/)build\.gradle(\.kts)?$/i,
+  /(^|\/)gradle\.properties$/i,
+  /(^|\/)fvm_config\.json$/i,
+  /(^|\/)\.fvmrc$/i,
+  /(^|\/)google-services\.json$/i,
 ];
+
+/** Which source extension carries the app's own logic, per platform. */
+const SOURCE_EXTENSION: Record<NativePlatform, RegExp> = {
+  ios: /\.swift$/i,
+  android: /\.(kt|java)$/i,
+  flutter: /\.dart$/i,
+  "react-native": /\.(ts|tsx|js|jsx)$/i,
+};
+
+/** Generated Dart (freezed/json_serializable/retrofit) — read a few, not hundreds. */
+const GENERATED_DART = /\.(g|freezed|config)\.dart$/i;
 
 /**
  * Files that MUST be read whatever else is in the repo, matched on the BASENAME.
@@ -65,8 +87,17 @@ const CONFIG_PATTERNS: RegExp[] = [
  * A concern-based ranking cannot fix that on its own: these files are small, so size
  * never rescues them either. They get an unbeatable score instead.
  */
-const MUST_READ_BASENAMES =
-  /^(logger|logging|log|keychain\w*|\w*keychain|userdefaults|\w*storage|\w*store|\w*persist\w*|environment\w*|\w*environment|config\w*|constants|strings|settings|apiclient|api-client|networkmanager|reachability|appdelegate\w*|scenedelegate|app|session\w*|\w*session|auth\w*|\w*auth|token\w*|\w*token|\w*journey\w*|cache\w*|\w*cache\w*|\w*keys)\.swift$/i;
+const MUST_READ_STEMS =
+  /^(logger|logging|log|keychain\w*|\w*keychain|userdefaults|\w*storage\w*|\w*store|\w*persist\w*|\w*pref\w*|environment\w*|\w*environment|env|config\w*|\w*config|constants|\w*constants|strings|settings|apiclient|api_?client|dio_?client|\w*_client|networkmanager|reachability|\w*connectivity\w*|\w*interceptor\w*|appdelegate\w*|scenedelegate|app|main|session\w*|\w*session|auth\w*|\w*auth|token\w*|\w*token|\w*journey\w*|cache\w*|\w*cache\w*|\w*keys|\w*download\w*|\w*player|\w*secure\w*)$/i;
+
+/** Extensions the must-read tier applies to — every language family we sample. */
+const SOURCE_EXT = /\.(swift|dart|kt|java)$/i;
+
+/** The filename stem (no directory, no extension), for must-read matching. */
+function stemOf(path: string): string {
+  const base = path.toLowerCase().split("/").pop() ?? "";
+  return base.replace(SOURCE_EXT, "");
+}
 
 /**
  * Relevance for Swift sampling, in three tiers:
@@ -78,9 +109,13 @@ const MUST_READ_BASENAMES =
  */
 export function swiftRelevance(path: string, size: number): number {
   const p = path.toLowerCase();
-  const base = p.split("/").pop() ?? "";
   let score = 0;
-  if (MUST_READ_BASENAMES.test(base)) score += 100_000;
+  // Matched on the STEM, not the full basename, so the tier works for Swift, Dart,
+  // Kotlin and Java alike. It was `\.swift$`-anchored at first, which meant no Dart
+  // file could ever be must-read — and the Flutter env-baseurl check, the whole
+  // reason that family exists, silently SKIPPED because constants.dart fell outside
+  // the cap on a 1,114-file app.
+  if (MUST_READ_STEMS.test(stemOf(p))) score += 100_000;
   if (/(network|apiclient|api-client|service|request|session|http)/.test(p)) score += 1000;
   if (/(auth|login|signin|register|token|keychain|credential|secret)/.test(p)) score += 1000;
   if (/(logger|logging|analytics|telemetry)/.test(p)) score += 900;
@@ -92,23 +127,34 @@ export function swiftRelevance(path: string, size: number): number {
   return score + Math.min(size, 60_000) / 1000;
 }
 
-/** Choose which paths to read, config first then a relevance-ranked Swift sample. */
+/**
+ * Choose which paths to read: config always, then a relevance-ranked source sample
+ * for the detected platform. `source` is named generically because the same ranking
+ * serves Swift, Dart and Kotlin — the concern keywords are language-independent.
+ */
 export function selectFilesToRead(
   entries: { path: string; size: number }[],
-): { config: string[]; swift: string[] } {
+  platform: NativePlatform = "ios",
+): { config: string[]; source: string[] } {
   const usable = entries.filter((e) => e.size <= MAX_BLOB_BYTES);
   const config = usable
     .filter((e) => CONFIG_PATTERNS.some((re) => re.test(e.path)) && !isVendoredPath(e.path))
     .map((e) => e.path);
 
-  const swift = usable
-    .filter((e) => /\.swift$/i.test(e.path) && !isVendoredPath(e.path))
-    .map((e) => ({ path: e.path, score: swiftRelevance(e.path, e.size) }))
+  const ext = SOURCE_EXTENSION[platform];
+  const source = usable
+    .filter((e) => ext.test(e.path) && !isVendoredPath(e.path))
+    // Generated Dart is repetitive boilerplate; a handful is enough to read the
+    // retrofit baseUrl, and reading hundreds would crowd out hand-written code.
+    .map((e) => ({
+      path: e.path,
+      score: swiftRelevance(e.path, e.size) - (GENERATED_DART.test(e.path) ? 500 : 0),
+    }))
     .sort((a, b) => b.score - a.score)
     .slice(0, SWIFT_SAMPLE_CAP)
     .map((e) => e.path);
 
-  return { config, swift };
+  return { config, source };
 }
 
 async function fetchText(owner: string, repo: string, path: string): Promise<string | null> {
@@ -150,17 +196,19 @@ async function buildSnapshot(owner: string, repo: string): Promise<RepoSnapshot>
     return { owner, repo, paths: [], files: new Map(), truncated: false, accessible: false };
   }
 
-  // Only pay for content when this is actually a native mobile repo.
+  // Only pay for content when there is a check family that will use it. React Native
+  // is deliberately excluded — it's a JS project and the generic checks cover it.
   const platform = detectNativePlatform(paths);
-  if (platform !== "ios" && platform !== "android") {
+  if (platform !== "ios" && platform !== "android" && platform !== "flutter") {
     return { owner, repo, paths, files: new Map(), truncated: Boolean(tree.truncated), accessible: true };
   }
 
-  const { config, swift } = selectFilesToRead(
+  const { config, source } = selectFilesToRead(
     blobs.map((b) => ({ path: b.path, size: b.size ?? 0 })),
+    platform,
   );
   const files = new Map<string, string>();
-  await mapLimit([...config, ...swift], FETCH_CONCURRENCY, async (path) => {
+  await mapLimit([...config, ...source], FETCH_CONCURRENCY, async (path) => {
     const text = await fetchText(owner, repo, path);
     if (text !== null) files.set(path, text);
   });
@@ -220,7 +268,10 @@ export async function runNativeMobileChecks(
   if (platform === "ios") {
     return { platform, checks: evaluateIosChecks(snapshot) };
   }
-  // Android lands here next — the reader, detection and applicability layers are
-  // already platform-agnostic, so it is a checks module and a registry block.
+  if (platform === "flutter") {
+    return { platform, checks: evaluateFlutterChecks(snapshot) };
+  }
+  // Native Android lands here next — the reader, detection and applicability layers
+  // are already platform-agnostic, so it is a checks module and a registry block.
   return { platform, checks: [] };
 }

@@ -38,6 +38,10 @@ const COSMETIC = new Set([
   "ios_todo_density",
   "ios_dead_code",
   "ios_committed_junk",
+  // Flutter tidiness — a dev endpoint left in source is worth removing and is never
+  // a launch consideration. NOTE flutter_commented_features is deliberately NOT here:
+  // commenting out a feature CHANGES SHIPPED BEHAVIOUR, so it is a real finding.
+  "flutter_dev_endpoints",
 ]);
 const COSMETIC_DAMPING = 0.3;
 

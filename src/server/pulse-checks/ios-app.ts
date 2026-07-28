@@ -27,7 +27,7 @@
 
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
-import { isVendoredPath, type RepoSnapshot } from "./native-mobile";
+import { isVendoredPath, stripCStyleComments, type RepoSnapshot } from "./native-mobile";
 
 /**
  * Below this fraction of Swift files read, absence-based findings drop to LOW
@@ -42,76 +42,8 @@ const SOUND_ABSENCE_COVERAGE = 0.3;
 const INCONCLUSIVE_NOTE =
   " (Based on a partial source sample, so this result is inconclusive and is not counted toward the score.)";
 
-/**
- * Strip Swift comments so code patterns can't match commented-out code.
- *
- * This is not a nicety. Validating against a real app, the low-data check passed
- * because the only occurrences of `allowsConstrainedNetworkAccess` in the codebase
- * were two commented-out lines — the app had no adaptation at all and the scan said
- * it did. Commented-out blocks are common, so every code pattern needs this.
- *
- * String literals MUST survive: a URL contains `//`, so naive stripping would cut
- * `"https://cdn.example.com/x.m3u8"` down to `"https:` and break media detection.
- * Handles line comments, nested block comments (legal in Swift), plain and multiline
- * string literals, and escapes.
- */
-export function stripSwiftComments(source: string): string {
-  let out = "";
-  let i = 0;
-  const n = source.length;
-
-  while (i < n) {
-    const two = source.slice(i, i + 2);
-
-    // Multiline string literal — copy verbatim to its closing delimiter.
-    if (source.startsWith('"""', i)) {
-      const end = source.indexOf('"""', i + 3);
-      const stop = end === -1 ? n : end + 3;
-      out += source.slice(i, stop);
-      i = stop;
-      continue;
-    }
-
-    // Single-line string literal — copy verbatim, honouring escapes.
-    if (source[i] === '"') {
-      out += source[i++];
-      while (i < n) {
-        if (source[i] === "\\") {
-          out += source.slice(i, i + 2);
-          i += 2;
-          continue;
-        }
-        out += source[i];
-        if (source[i] === '"' || source[i] === "\n") { i++; break; }
-        i++;
-      }
-      continue;
-    }
-
-    // Line comment — drop to end of line, keeping the newline for line counts.
-    if (two === "//") {
-      const nl = source.indexOf("\n", i);
-      i = nl === -1 ? n : nl;
-      continue;
-    }
-
-    // Block comment — Swift allows nesting, so track depth.
-    if (two === "/*") {
-      let depth = 1;
-      i += 2;
-      while (i < n && depth > 0) {
-        if (source.startsWith("/*", i)) { depth++; i += 2; }
-        else if (source.startsWith("*/", i)) { depth--; i += 2; }
-        else { if (source[i] === "\n") out += "\n"; i++; }
-      }
-      continue;
-    }
-
-    out += source[i++];
-  }
-
-  return out;
-}
+/** Swift shares C-style comments — see stripCStyleComments for why this matters. */
+export const stripSwiftComments = stripCStyleComments;
 
 interface IosContext {
   snapshot: RepoSnapshot;

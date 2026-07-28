@@ -7,6 +7,7 @@ import {
   nativeSkipReason,
   nativeTechStack,
   NATIVE_INAPPLICABLE_CHECKS,
+  FLUTTER_INAPPLICABLE_CHECKS,
 } from "../native-mobile";
 import { selectFilesToRead, swiftRelevance } from "../native-repo";
 import { CHECKS_REGISTRY } from "../../checks-registry";
@@ -99,9 +100,35 @@ describe("applyNativeApplicability", () => {
     expect(byKey.get("has_gitignore")!.status).toBe("FAIL");
   });
 
-  it("is a no-op for web, React Native and Flutter repos", () => {
-    for (const platform of [null, "react-native", "flutter"] as const) {
+  // React Native genuinely IS a JS project — package.json, ESLint and tsconfig all
+  // apply to it — so nothing may be skipped there.
+  it("is a no-op for web and React Native repos", () => {
+    for (const platform of [null, "react-native"] as const) {
       expect(applyNativeApplicability(generic, platform)).toEqual(generic);
+    }
+  });
+
+  it("applies a Dart-shaped skip list to Flutter repos", () => {
+    const out = applyNativeApplicability(
+      [...generic, { checkKey: "has_tests", status: "WARN", detail: "No test directory detected." }],
+      "flutter",
+    );
+    const byKey = new Map(out.map((c) => [c.checkKey, c]));
+
+    expect(byKey.get("has_typescript")!.status).toBe("SKIPPED");
+    expect(byKey.get("has_linter")!.status).toBe("SKIPPED");
+    expect(byKey.get("has_typescript")!.detail).toMatch(/Dart/);
+
+    // The Flutter-vs-native difference that makes this a separate list: a Flutter
+    // project really does keep a top-level test/ folder, so has_tests still applies.
+    expect(byKey.get("has_tests")!.status).toBe("WARN");
+    expect(byKey.get("has_readme")!.status).toBe("FAIL");
+  });
+
+  it("every Flutter inapplicable key is a real registered check", () => {
+    const registered = new Set(CHECKS_REGISTRY.map((c) => c.key));
+    for (const key of FLUTTER_INAPPLICABLE_CHECKS.keys()) {
+      expect(registered.has(key), `"${key}" is not in CHECKS_REGISTRY`).toBe(true);
     }
   });
 
@@ -162,7 +189,7 @@ describe("swift sampling", () => {
   });
 
   it("always reads config files and never reads vendored sources", () => {
-    const { config, swift } = selectFilesToRead([
+    const { config, source: swift } = selectFilesToRead([
       { path: "MyApp/Info.plist", size: 2_000 },
       { path: "MyApp/MyApp.entitlements", size: 500 },
       { path: "MyApp.xcodeproj/project.pbxproj", size: 90_000 },
@@ -181,7 +208,7 @@ describe("swift sampling", () => {
   });
 
   it("skips blobs too large to be source (generated JSON, bundles)", () => {
-    const { swift } = selectFilesToRead([{ path: "App/Huge.swift", size: 2_000_000 }]);
+    const { source: swift } = selectFilesToRead([{ path: "App/Huge.swift", size: 2_000_000 }]);
     expect(swift).toEqual([]);
   });
 });

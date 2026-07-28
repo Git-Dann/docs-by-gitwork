@@ -56,6 +56,15 @@ const HIGH_CONFIDENCE_KEYS = new Set<string>([
   "ios_test_target", "ios_ui_test_target", "ios_dependency_pinning",
   "ios_vendored_deps_committed", "ios_swiftlint", "ios_committed_junk",
   "ios_http_status_discarded", "ios_force_unwrap_density", "ios_adaptive_streaming",
+  // Flutter — same rule: config-file parses (pubspec, AndroidManifest, build.gradle,
+  // analysis_options) and patterns PRESENT in fetched Dart. Absence-based Flutter
+  // checks stay MEDIUM and self-downgrade to LOW on a thin sample.
+  "flutter_env_baseurl", "flutter_cleartext_traffic", "flutter_token_storage",
+  "flutter_password_retention", "flutter_firebase_config_committed", "flutter_target_sdk",
+  "flutter_sdk_currency", "flutter_release_shrinking", "flutter_test_coverage",
+  "flutter_dependency_pinning", "flutter_unpinned_git_dep", "flutter_dev_deps_in_prod",
+  "flutter_analyzer_lints", "flutter_dev_endpoints", "flutter_commented_features",
+  "flutter_metered_network", "flutter_adaptive_streaming",
 ]);
 
 // A handful of genuinely weak inferences → LOW.

@@ -703,6 +703,32 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "ios_dev_leftovers", category: CATEGORIES.CODE_QUALITY, label: "No development leftovers in shipped code" },
   { key: "ios_todo_density", category: CATEGORIES.CODE_QUALITY, label: "TODO / FIXME density" },
   { key: "ios_dead_code", category: CATEGORIES.CODE_QUALITY, label: "No commented-out code left in place" },
+
+  // ── Flutter / Dart family (src/server/pulse-checks/flutter-app.ts) ──────────
+  // Emitted only when the scanned repo is detected as a Flutter project. Note
+  // detection tests Flutter BEFORE native iOS/Android, because a Flutter repo
+  // contains ios/ and android/ runners with real Info.plist and AndroidManifest files.
+  { key: "flutter_env_baseurl", category: CATEGORIES.SECURITY, label: "API environment is not selected by editing source" },
+  { key: "flutter_cleartext_traffic", category: CATEGORIES.SECURITY, label: "Cleartext HTTP disabled on Android" },
+  { key: "flutter_release_logging", category: CATEGORIES.SECURITY, label: "Logging excluded from release builds" },
+  { key: "flutter_dev_endpoints", category: CATEGORIES.SECURITY, label: "No development endpoints in shipped source" },
+  { key: "flutter_token_storage", category: CATEGORIES.SECRETS_KEYS, label: "Auth tokens stored in secure storage" },
+  { key: "flutter_password_retention", category: CATEGORIES.SECRETS_KEYS, label: "User password is not persisted on device" },
+  { key: "flutter_firebase_config_committed", category: CATEGORIES.SECRETS_KEYS, label: "Firebase config keys are restricted" },
+  { key: "flutter_target_sdk", category: CATEGORIES.APP_STORE, label: "Android targetSdk meets Play's floor" },
+  { key: "flutter_sdk_currency", category: CATEGORIES.APP_STORE, label: "Flutter SDK pin is current" },
+  { key: "flutter_release_shrinking", category: CATEGORIES.APP_STORE, label: "Release build shrinks code and resources" },
+  { key: "flutter_response_cache", category: CATEGORIES.PERFORMANCE, label: "HTTP response caching configured" },
+  { key: "flutter_image_cache", category: CATEGORIES.PERFORMANCE, label: "Image caching in place" },
+  { key: "flutter_adaptive_streaming", category: CATEGORIES.PERFORMANCE, label: "Video uses adaptive-bitrate streaming (HLS)" },
+  { key: "flutter_metered_network", category: CATEGORIES.PERFORMANCE, label: "Adapts to metered / cellular connections" },
+  { key: "flutter_semantics", category: CATEGORIES.ACCESSIBILITY, label: "Screen-reader labels on interactive elements" },
+  { key: "flutter_test_coverage", category: CATEGORIES.CODE_QUALITY, label: "Test suite proportionate to the codebase" },
+  { key: "flutter_dependency_pinning", category: CATEGORIES.CODE_QUALITY, label: "Dependencies pinned (pubspec.lock committed)" },
+  { key: "flutter_unpinned_git_dep", category: CATEGORIES.CODE_QUALITY, label: "Git dependencies pinned to a commit" },
+  { key: "flutter_dev_deps_in_prod", category: CATEGORIES.CODE_QUALITY, label: "No test-only packages in production dependencies" },
+  { key: "flutter_analyzer_lints", category: CATEGORIES.CODE_QUALITY, label: "Dart analyzer lint set configured" },
+  { key: "flutter_commented_features", category: CATEGORIES.CODE_QUALITY, label: "No disabled features left commented out" },
 ];
 
 /** All unique categories in display order */

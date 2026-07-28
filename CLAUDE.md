@@ -2006,5 +2006,50 @@ Two of them are deliberately **not** failures even though they look like securit
 finding, but across 19k sampled lines that is ~1 per 1,000 — the check correctly passes. A raw count
 grows with any codebase and would fire on every large repo forever.
 
-**Android is next** and is deliberately cheap: detection, applicability, the repo reader and the
-sampling tiers are all platform-agnostic already. It needs an `android-app.ts` and a registry block.
+### 34.6 Flutter family — and the reason "the Android app" was a Flutter app
+
+Chasing the Fellas **Android** build turned up three separate repos and the live one is **Flutter**,
+not Kotlin. `src/server/pulse-checks/flutter-app.ts` adds **21 checks**; `FLUTTER_INAPPLICABLE_CHECKS`
+gives Dart its own skip list (deliberately different from the native one: `has_tests` is **not**
+skipped, because a Flutter project really does keep a top-level `test/`, while `has_linter` **is**,
+because Dart lints live in `analysis_options.yaml`).
+
+**The two findings the family exists for, both recurring across all three Fellas codebases:**
+- `flutter_env_baseurl` — the API host is chosen by **commenting out lines** in a Dart constants
+  file. On the branch that ships, production was commented out and **staging was active** across all
+  37 generated services. Same defect class as iOS's `//TODO: Set environment before release`, except
+  here it *is* the mechanism.
+- `flutter_token_storage` / `flutter_password_retention` — tokens in SharedPreferences while
+  `flutter_secure_storage` sits in the same repo holding the user's **password**. The exact inversion
+  found in the native iOS app (Keychain holding the password, tokens in UserDefaults). One house
+  pattern, not three teams' mistakes — which is what makes it worth a check rather than a comment.
+
+**Three bugs found by validating against the real repo (again — do this every time):**
+
+1. **`MUST_READ_STEMS` was `\.swift$`-anchored**, so no Dart file could ever be must-read. On a
+   1,114-file app `constants.dart` fell outside the cap and `flutter_env_baseurl` — the whole point
+   of the family — silently **SKIPPED**. It now matches on the filename **stem** across
+   `swift|dart|kt|java`. This is the `Logger.swift` lesson from §34.3, which should have been
+   generalised the first time.
+2. **`stripCStyleComments` only understood double-quoted strings.** Dart's idiomatic delimiter is
+   `'`, so `'https://api…/api/'` was truncated at the `//` and the constant vanished entirely. Both
+   quote styles and both triple-quote forms are handled now. Swift has no single-quoted literals and
+   a Kotlin/Java `'x'` char literal strips identically, so this is safe for every family.
+3. **`flutter_metered_network` reported PASS when a guard was only partially disabled.** The original
+   rule was "commented out AND no live guard" — but on the real app the *download* path's cellular
+   guard was commented out while another screen kept one, so the check passed and the actual cause of
+   the client's "used all my data" report stayed invisible. Partial disablement is now its own WARN,
+   worded as such: inconsistent is worse than either, because the setting appears to work.
+
+Result on the live branch: **6 FAIL / 8 WARN / 7 PASS**, with `flutter_env_baseurl` and
+`flutter_cleartext_traffic` at P1 and every tidiness finding at P3.
+
+⚠️ **Sampling coverage on a big Flutter repo is ~13%** (150 of 1,114 Dart files), which is *below*
+`SOUND_ABSENCE_COVERAGE`. That is working as designed, not a bug: presence findings fire at HIGH
+confidence, and absence findings (`flutter_semantics`, `flutter_release_logging`,
+`flutter_response_cache`) self-downgrade to LOW and drop out of the score. Don't "fix" it by raising
+the threshold — raise the cap or add a must-read stem if a specific check is being starved.
+
+**Native Android (Kotlin/Gradle) is still next** and remains cheap: detection, applicability, the
+reader and the sampling tiers are all platform-agnostic now. It needs an `android-app.ts` and a
+registry block.
