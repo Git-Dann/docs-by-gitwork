@@ -396,7 +396,7 @@ src/
       persona.ts                  ← AI persona interview conductor
       synthesizer.ts              ← Turn/session/final report synthesis
       types.ts                    ← Shared agent types (AiConfig etc.)
-    dispatch/                     ← Dispatch: the Slack-resident coordinator (§35)
+    dispatch/                     ← Dispatch: the Slack-resident coordinator (§36)
       resolve.ts                  ← PURE question → subject (client/person/workspace) resolution
       evidence.ts                 ← Deterministic bounded evidence pack + deriveBlindSpots (no AI)
       answer.ts                   ← Pure no-AI floor + ONE cached light-tier phrasing call
@@ -1110,6 +1110,8 @@ This supersedes the Vercel/Neon assumptions throughout §2, §3, §5.
   and builds every push in parallel, but it's vestigial** — DNS points at the VPS, so those Vercel
   deploys reach nothing live. Disconnect Vercel's Git integration to stop the phantom builds.
 - **Secrets / env** — production secrets live in the **VPS `.env`** (loaded by Compose), not Vercel.
+  **Since July 2026 a managed subset is synced from GitHub Actions secrets by `deploy.yml`** (see §35),
+  so adding or rotating those needs no SSH.
   All Vercel "Sensitive" vars were **write-only and could not be exported** (`vercel env pull`
   returns them blank), so each was re-sourced: Google OAuth from Cloud Console (two web clients —
   "Foundry Login" → `AUTH_GOOGLE_*`, "Foundry Care" → `GOOGLE_CLIENT_*`; iOS server client →
@@ -2062,7 +2064,49 @@ the threshold — raise the cap or add a must-read stem if a specific check is b
 reader and the sampling tiers are all platform-agnostic now. It needs an `android-app.ts` and a
 registry block.
 
-## 35. Recent Changes (July 2026) — Dispatch (the Slack-resident coordinator)
+## 35. Recent Changes (July 2026) — Secrets sync from CI, and the token that was never set
+
+**`GITHUB_TOKEN` had never been set in production.** `docs/fasthosts-secrets-recovery.md` lists it
+under *"Optional — only if you want the feature (were never set in prod)"* — so it was absent on
+Vercel before the migration and absent on the VPS after it. Consequences, all silent:
+
+- Unauthenticated REST → **404 on every private repo** → an empty file listing.
+- `githubGraphQL` throws without a token → `runCodeAgent` catches it → no repo intelligence at all
+  (no stars, releases, branch protection, commit velocity, dependency alerts).
+- So every Pulse repo scan of a private repo reported **~28 confident "missing X" findings** and a
+  plausible score, having read nothing. A repo demonstrably containing `README.md`, `.gitignore` and
+  `pubspec.yaml` was reported as having none of them (§34.7 covers the guard that now prevents this).
+- `codeclear-analysis.ts` has the **same shape and worse stakes**: `detectRepoSignals` turns an
+  empty listing into `hasTests/hasCi/hasLint/hasReadme: false`, feeding `CodeClearScore`. Every
+  private candidate repo has been scored as having no tests, CI, linter or docs. **Not yet fixed.**
+
+### What changed
+
+**1. The deploy syncs secrets into the VPS `.env`.** `deploy.yml`'s VPS step now upserts a managed
+allow-list before restarting the app, via `upsert_env` — idempotent, never prints the value, and an
+empty value is a **no-op rather than a delete** so an unset Actions secret can't wipe one set by
+hand. It guarantees a trailing newline first: appending to a `.env` without one concatenates onto
+the previous variable and corrupts both. `--force-recreate` so the container picks up the change.
+
+⚠️ **The Actions secret is `FOUNDRY_GITHUB_TOKEN`, not `GITHUB_TOKEN`** — GitHub rejects any secret
+name beginning with `GITHUB_` (reserved for the token Actions injects, which `deploy.yml` uses for
+GHCR login). It is written to the VPS as `GITHUB_TOKEN`. Add another managed secret with one more
+`upsert_env` line.
+
+**2. `deploy.yml` accepts `workflow_dispatch`.** Adding or rotating a secret changes no code, so
+there is nothing to push — the deploy has to be re-runnable on its own.
+
+**3. The failure is no longer silent.** `hasGithubToken()` in `lib/github.ts`; `githubHeaders()`
+warns **once per process** when GitHub is called with no token; and `repo_accessible` now names the
+actual cause, distinguishing *"GITHUB_TOKEN is not configured on this server"* from *"the token
+cannot see this repository"* — different fixes, and conflating them cost a day of misdiagnosis.
+
+**The lesson worth keeping:** a secret that lives only in one hand-edited file on one box is a
+secret that silently goes missing, and a check built on `safeGithubRequest` converts "we couldn't
+look" into "it isn't there". Any *scored* check needs to distinguish those two; an optional signal
+can get away with not caring.
+
+## 36. Recent Changes (July 2026) — Dispatch (the Slack-resident coordinator)
 
 `@Foundry` is now **answerable**. Mention the bot in a channel — or DM it — and **Dispatch**
 answers delivery questions ("where are we with the ElectricFire onboarding?", "what has Howard

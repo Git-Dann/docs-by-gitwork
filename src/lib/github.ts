@@ -11,8 +11,28 @@ export class GitHubRequestError extends Error {
   }
 }
 
+/** True when a GitHub token is configured. Never returns the value itself. */
+export function hasGithubToken(): boolean {
+  return Boolean(process.env.GITHUB_TOKEN?.trim());
+}
+
+// Warn once per process when GitHub is used with no token. Without this the failure
+// is completely silent: unauthenticated REST 404s on every private repo and GraphQL
+// refuses outright, so callers see "empty" rather than "unauthorised" and report the
+// repo as containing nothing. That is exactly what happened in production for months.
+let warnedNoToken = false;
+
 export function githubHeaders() {
   const token = process.env.GITHUB_TOKEN?.trim();
+
+  if (!token && !warnedNoToken) {
+    warnedNoToken = true;
+    console.warn(
+      "[github] GITHUB_TOKEN is not set. Private repositories will return 404 and GraphQL " +
+        "queries will fail, so Pulse repo scans and CodeClear analysis cannot read source. " +
+        "Set it in the VPS .env (or the FOUNDRY_GITHUB_TOKEN Actions secret) and restart.",
+    );
+  }
 
   return {
     Accept: "application/vnd.github+json",
@@ -135,20 +155,72 @@ export async function fetchRepoSubtree(
   return files.filter((f): f is RepoFile => f !== null);
 }
 
+/**
+ * Parse any reasonable way someone might name a GitHub repo into `{owner, repo}`.
+ *
+ * People paste whatever the address bar or `git remote -v` gave them, so this accepts
+ * all of it: `owner/repo`, a full https URL, a bare `github.com/...`, an SSH remote,
+ * a deep link to a branch or file, a trailing `.git` or slash, and a stray `@`.
+ *
+ * It also tolerates a DOUBLED prefix (`github.com/https://github.com/owner/repo`),
+ * which is what the Pulse scan header was producing: it stored the full URL and then
+ * prefixed `github.com/` again when rendering. Always take the LAST `github.com/`
+ * occurrence, so the innermost real path wins.
+ */
 export function parseGithubRepo(input: string): { owner: string; repo: string } | null {
-  const cleaned = input.trim().replace(/\.git$/, "");
+  const cleaned = input
+    .trim()
+    .replace(/^@/, "")
+    // SSH remote → path form.
+    .replace(/^git@github\.com:/i, "github.com/")
+    .replace(/^ssh:\/\/git@github\.com\//i, "github.com/")
+    .replace(/^[a-z]+:\/\//i, "")
+    .replace(/^www\./i, "")
+    .replace(/\/+$/, "");
 
-  // Handle "owner/repo" format
-  const simpleMatch = cleaned.match(/^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/);
-  if (simpleMatch) {
-    return { owner: simpleMatch[1], repo: simpleMatch[2] };
-  }
+  // A URL-ish input: take the LAST github.com/ segment so a doubled prefix resolves.
+  const lastHost = cleaned.toLowerCase().lastIndexOf("github.com/");
+  const onGithub = lastHost !== -1;
+  const path = onGithub ? cleaned.slice(lastHost + "github.com/".length) : cleaned;
 
-  // Handle full GitHub URL
-  const urlMatch = cleaned.match(/github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)/);
-  if (urlMatch) {
-    return { owner: urlMatch[1], repo: urlMatch[2] };
-  }
+  // First two path segments are owner and repo; anything after (tree/<branch>,
+  // blob/<path>, pull/<n>) is a deep link and is discarded.
+  const segments = path.split("/").filter(Boolean);
+  if (segments.length < 2) return null;
 
-  return null;
+  // Without a github.com host this must be the bare `owner/repo` form, and nothing
+  // else: exactly two segments, and an owner that can't be a hostname. GitHub owners
+  // are alphanumerics and hyphens only, so a dot means we were handed some other
+  // host's path — `gitlab.com/group/project` must not parse as owner `gitlab.com`.
+  if (!onGithub && (segments.length !== 2 || /\./.test(segments[0]))) return null;
+
+  const owner = segments[0];
+  const repo = segments[1].replace(/\.git$/i, "");
+  const NAME = /^[A-Za-z0-9_.-]+$/;
+  if (!NAME.test(owner) || !NAME.test(repo)) return null;
+  // GitHub reserves these as site routes, never as owners.
+  if (/^(orgs|settings|features|about|pricing|login|marketplace|topics|explore)$/i.test(owner)) return null;
+
+  return { owner, repo };
+}
+
+/**
+ * Canonical `owner/repo` for storage, or null if the input isn't a repo reference.
+ * Storing the canonical form is what stops a full URL being rendered as
+ * `github.com/https://github.com/owner/repo`.
+ */
+export function normalizeGithubRepo(input: string): string | null {
+  const parsed = parseGithubRepo(input);
+  return parsed ? `${parsed.owner}/${parsed.repo}` : null;
+}
+
+/**
+ * Display label for a stored repo reference — always `github.com/owner/repo`.
+ * Handles historical rows that stored a full URL, so old scans render correctly too.
+ * Falls back to the raw value rather than hiding something we can't parse.
+ */
+export function githubRepoLabel(stored: string | null | undefined): string | null {
+  if (!stored) return null;
+  const normalized = normalizeGithubRepo(stored);
+  return normalized ? `github.com/${normalized}` : stored;
 }

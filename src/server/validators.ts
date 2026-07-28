@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeGithubRepo } from "@/lib/github";
 
 export const documentStatusSchema = z.enum([
   "DRAFT",
@@ -686,7 +687,16 @@ export const pulseScanCreateSchema = z
     projectName: z.string().trim().min(1).max(200),
     inputType: pulseScanInputTypeSchema,
     inputUrl: z.string().trim().optional(),
-    inputGithubRepo: z.string().trim().optional(),
+    // Normalised to canonical `owner/repo` on the way in, so the stored value never
+    // depends on what form the user pasted. Rendering can then prefix `github.com/`
+    // unconditionally — previously a pasted full URL was stored verbatim and displayed
+    // as `github.com/https://github.com/owner/repo`. An unparseable value is left as
+    // typed so the refine below still rejects it with a useful message.
+    inputGithubRepo: z
+      .string()
+      .trim()
+      .transform((v) => (v === "" ? v : (normalizeGithubRepo(v) ?? v)))
+      .optional(),
     inputDescription: z.string().max(10000).optional(),
     platform: z.string().trim().max(50).optional(),
     clientId: z.string().cuid().optional(),
