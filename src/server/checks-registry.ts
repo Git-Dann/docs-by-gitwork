@@ -694,6 +694,15 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "ios_force_unwrap_density", category: CATEGORIES.CODE_QUALITY, label: "Force-unwrap / force-cast density" },
   { key: "ios_http_status_discarded", category: CATEGORIES.CODE_QUALITY, label: "HTTP status codes propagated to error handling" },
   { key: "ios_committed_junk", category: CATEGORIES.CODE_QUALITY, label: "No editor / OS cruft committed" },
+  { key: "ios_restricted_entitlements", category: CATEGORIES.APP_STORE, label: "Restricted entitlements are provisioned" },
+  { key: "ios_firebase_config_committed", category: CATEGORIES.SECRETS_KEYS, label: "Firebase config key is restricted" },
+  // Tidiness / nice-to-haves. WARN at worst, and damped by priority.ts's COSMETIC set
+  // so they always rank P3 and can never crowd a real finding out of the fix list.
+  { key: "ios_invalid_plist_keys", category: CATEGORIES.APP_STORE, label: "No non-existent Info.plist keys" },
+  { key: "ios_ats_exception_noop", category: CATEGORIES.SECURITY, label: "No redundant ATS exception domains" },
+  { key: "ios_dev_leftovers", category: CATEGORIES.CODE_QUALITY, label: "No development leftovers in shipped code" },
+  { key: "ios_todo_density", category: CATEGORIES.CODE_QUALITY, label: "TODO / FIXME density" },
+  { key: "ios_dead_code", category: CATEGORIES.CODE_QUALITY, label: "No commented-out code left in place" },
 ];
 
 /** All unique categories in display order */

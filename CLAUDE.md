@@ -1981,5 +1981,30 @@ is the number the summary quotes.
 the top level, so a module in a subdirectory could emit unregistered keys and the drift guard would
 never see it.
 
+### 34.5 Tidiness checks, and how "nice to have" is expressed
+
+Seven further checks close the gap to the hand review: `ios_restricted_entitlements` (entitlements
+Apple gates behind an approval request or a very recent OS — an archive fails outright if the
+distribution profile lacks one), `ios_firebase_config_committed`, `ios_invalid_plist_keys`,
+`ios_ats_exception_noop`, `ios_dev_leftovers`, `ios_todo_density`, `ios_dead_code`.
+
+**"Nice to have" is a property, not wording.** `priority.ts` already had `HARD_CRITICAL` to boost
+launch-blockers; it now has the mirror — a **`COSMETIC`** set damped by 0.3, so tidiness findings
+always land in **P3** and can never push a security or store-blocking finding down the fix list.
+A check qualifies only if acting on it changes nothing a user or reviewer would ever see; if it can
+break a build, fail review, or expose data, it does **not** belong there. These checks are also
+WARN-at-worst by construction, which a test enforces.
+
+Two of them are deliberately **not** failures even though they look like security findings:
+- `ios_firebase_config_committed` — Google ships these keys in every app binary and treats them as
+  public identifiers, so rotating one achieves nothing. The action is confirming the key is
+  bundle-ID-restricted in the Cloud console, which cannot be seen from the repo.
+- `ios_aps_environment` — Xcode's automatic signing usually substitutes `production` on export.
+
+**Densities need a denominator.** `ios_todo_density` and `ios_dead_code` are per-1,000-lines with a
+200-line minimum, and both SKIP below it. This matters: the hand review called out "20 TODOs" as a
+finding, but across 19k sampled lines that is ~1 per 1,000 — the check correctly passes. A raw count
+grows with any codebase and would fire on every large repo forever.
+
 **Android is next** and is deliberately cheap: detection, applicability, the repo reader and the
 sampling tiers are all platform-agnostic already. It needs an `android-app.ts` and a registry block.

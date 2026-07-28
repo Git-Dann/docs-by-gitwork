@@ -123,6 +123,8 @@ interface IosContext {
   plist: string;
   /** All .entitlements contents concatenated. */
   entitlements: string;
+  /** GoogleService-Info.plist, if committed — kept out of `plist` so it can't satisfy Info.plist checks. */
+  googleServicePlist: string;
   /** project.pbxproj contents (build settings, targets, SPM pins). */
   pbxproj: string;
   swiftTotal: number;
@@ -138,9 +140,13 @@ function buildContext(snapshot: RepoSnapshot): IosContext {
   let plist = "";
   let entitlements = "";
   let pbxproj = "";
+  let googleServicePlist = "";
 
   for (const [path, text] of snapshot.files) {
     if (isSwift(path)) readSwift.push(text);
+    // GoogleService-Info.plist first: it must NOT land in `plist`, or its keys could
+    // satisfy an Info.plist check it has nothing to do with.
+    else if (/(^|\/)GoogleService-Info\.plist$/i.test(path)) googleServicePlist += `\n${text}`;
     else if (/(^|\/)Info\.plist$/i.test(path)) plist += `\n${text}`;
     else if (/\.entitlements$/i.test(path)) entitlements += `\n${text}`;
     else if (/project\.pbxproj$/i.test(path)) pbxproj += `\n${text}`;
@@ -153,6 +159,7 @@ function buildContext(snapshot: RepoSnapshot): IosContext {
     swiftRaw,
     plist,
     entitlements,
+    googleServicePlist,
     pbxproj,
     swiftTotal,
     swiftRead: readSwift.length,
@@ -193,7 +200,85 @@ export function evaluateIosChecks(snapshot: RepoSnapshot): PulseScanCheckInput[]
     ...accessibilityChecks(ctx),
     ...performanceChecks(ctx),
     ...codeQualityChecks(ctx),
+    ...hygieneChecks(ctx),
   ];
+}
+
+// ── Hygiene / nice-to-haves ─────────────────────────────────────────────────
+//
+// Real findings that are never a launch consideration. All of these are WARN at
+// worst and are listed in priority.ts's COSMETIC set, which damps their score so
+// they always rank P3 and can't push a security finding down the fix list.
+// They read the RAW source, because what they are looking for lives in comments.
+
+function hygieneChecks(ctx: IosContext): PulseScanCheckInput[] {
+  const checks: PulseScanCheckInput[] = [];
+  const C = CATEGORIES.CODE_QUALITY;
+  const rawLines = ctx.swiftRaw === "" ? 0 : ctx.swiftRaw.split("\n").length;
+  // Too little source to derive a rate — skip rather than report noise.
+  const MIN_LINES = 200;
+
+  // Development leftovers that made it into a shipped build.
+  const leftovers: string[] = [];
+  if (/ngrok(-free)?\.(app|io)/i.test(ctx.swiftRaw)) leftovers.push("an ngrok tunnel URL");
+  if (/https?:\/\/(localhost|127\.0\.0\.1|10\.0\.2\.2)/i.test(ctx.swiftRaw)) leftovers.push("a localhost endpoint");
+  if (/^\/\/\s+(fdsf|untitled|file|temp|asdf|qwerty|test)\w*\.swift/im.test(ctx.swiftRaw)) {
+    leftovers.push("a placeholder file header (the file was renamed but its header wasn't)");
+  }
+  // A media URL hardcoded as a DEFAULT PARAMETER value — a demo asset that ships.
+  if (/=\s*"https?:\/\/[^"]+\.(mp4|m3u8|jpg|png)"/i.test(ctx.swiftRaw)) {
+    leftovers.push("a hardcoded media URL used as a default value");
+  }
+  checks.push({
+    category: C,
+    checkKey: "ios_dev_leftovers",
+    label: "No development leftovers in shipped code",
+    status: rawLines === 0 ? "SKIPPED" : leftovers.length > 0 ? "WARN" : "PASS",
+    detail:
+      rawLines === 0
+        ? "No Swift source could be read."
+        : leftovers.length > 0
+          ? `Development leftovers found in the shipped source: ${leftovers.join("; ")}. None of these break the app, but a tunnel or localhost URL in a release binary tells anyone who unzips it how the team develops, and a hardcoded demo asset eventually renders in front of a user when a real value is missing. Nice-to-have cleanup.`
+          : "No ngrok/localhost endpoints, placeholder headers or hardcoded demo media found.",
+    evidence: leftovers.length > 0 ? leftovers.join("; ") : undefined,
+  });
+
+  // TODO/FIXME density — a rate, not a raw count, so a big codebase isn't punished.
+  const todos = countMatches(ctx.swiftRaw, /\/\/\s*(TODO|FIXME|HACK|XXX)\b/i);
+  const todosPer1k = rawLines > 0 ? (todos / rawLines) * 1000 : 0;
+  checks.push({
+    category: C,
+    checkKey: "ios_todo_density",
+    label: "TODO / FIXME density",
+    status: rawLines < MIN_LINES ? "SKIPPED" : todosPer1k <= 2 ? "PASS" : todosPer1k <= 6 ? "WARN" : "WARN",
+    detail:
+      rawLines < MIN_LINES
+        ? `Only ${rawLines} line${rawLines !== 1 ? "s" : ""} of Swift source available — too little to measure a meaningful density.`
+        : `${todos} TODO/FIXME/HACK marker${todos !== 1 ? "s" : ""} across ${rawLines.toLocaleString()} sampled lines (${todosPer1k.toFixed(1)} per 1,000).${todosPer1k <= 2 ? " That is a low density." : " Markers left in shipped code are unread by anyone who didn't write them; move the ones that matter to the tracker and delete the rest. Nice-to-have."}`,
+  });
+
+  // Commented-out CODE (not prose comments) — the difference is measurable, and this
+  // is the metric that stays honest as a codebase grows.
+  const commentLines = ctx.swiftRaw
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith("//"));
+  const codeLike = commentLines.filter((l) =>
+    /(\b(func|let|var|if|guard|return|import|class|struct|enum|case)\b|[{}]\s*$|\)\s*$|\s=\s)/.test(l.slice(2)),
+  ).length;
+  const codeLikePer1k = rawLines > 0 ? (codeLike / rawLines) * 1000 : 0;
+  checks.push({
+    category: C,
+    checkKey: "ios_dead_code",
+    label: "No commented-out code left in place",
+    status: rawLines < MIN_LINES ? "SKIPPED" : codeLikePer1k <= 10 ? "PASS" : "WARN",
+    detail:
+      rawLines < MIN_LINES
+        ? `Only ${rawLines} line${rawLines !== 1 ? "s" : ""} of Swift source available — too little to measure a meaningful density.`
+        : `${codeLike} commented-out code line${codeLike !== 1 ? "s" : ""} across ${rawLines.toLocaleString()} sampled lines (${codeLikePer1k.toFixed(1)} per 1,000).${codeLikePer1k <= 10 ? " That is a low density." : " Version control already remembers deleted code, so commented-out blocks only cost reading time — and they actively mislead: a search for a symbol finds it in a block that never runs. (This scanner had exactly that bug: a check passed because the API it looked for appeared only in commented-out lines.) Nice-to-have."}`,
+  });
+
+  return checks;
 }
 
 // ── Security ────────────────────────────────────────────────────────────────
@@ -271,6 +356,25 @@ function securityChecks(ctx: IosContext): PulseScanCheckInput[] {
           : "App Transport Security is enforced — no app-wide arbitrary loads and no insecure HTTP exceptions.",
   });
 
+  // An ATS exception domain that weakens nothing. Tidiness, but the kind that
+  // misleads a reader into thinking an exception is load-bearing when it is inert.
+  const hasExceptionDomains = /<key>\s*NSExceptionDomains\s*<\/key>/i.test(ctx.plist);
+  const weakensAnything =
+    /(NSExceptionAllowsInsecureHTTPLoads|NSExceptionMinimumTLSVersion|NSExceptionRequiresForwardSecrecy|NSThirdPartyExceptionAllowsInsecureHTTPLoads|NSThirdPartyExceptionMinimumTLSVersion|NSRequiresCertificateTransparency)/i.test(
+      ctx.plist,
+    );
+  checks.push({
+    category: C,
+    checkKey: "ios_ats_exception_noop",
+    label: "No redundant ATS exception domains",
+    status: !hasExceptionDomains ? "SKIPPED" : weakensAnything ? "PASS" : "WARN",
+    detail: !hasExceptionDomains
+      ? "No NSExceptionDomains declared."
+      : weakensAnything
+        ? "ATS exception domains declare an explicit policy, so their intent is legible."
+        : "An NSExceptionDomains entry is declared but sets no policy key (only NSIncludesSubdomains), so it changes nothing — the default ATS rules already apply to that host. Nice-to-have: remove it, or state the intended policy explicitly, so a future reader doesn't assume the exception is doing work.",
+  });
+
   // Certificate pinning — advisory: absence is common and defensible.
   const pins = /(urlSession\s*\(\s*_?\s*\w*\s*,\s*didReceive\s+challenge|SecTrustEvaluate|serverTrustPolicy|pinnedCertificates|publicKeyHashes)/i.test(ctx.swift);
   checks.push(
@@ -345,6 +449,24 @@ function secretsChecks(ctx: IosContext): PulseScanCheckInput[] {
       ? "The user's password appears to be written to on-device storage (typically for a \"Remember me\" feature). A password never needs to be retained: keep a refresh token instead and re-authenticate with that. Retaining it widens the blast radius of any device compromise to the user's actual credential, which is very often reused elsewhere."
       : "No on-device password persistence detected.",
     evidence: passwordPersisted ? "Password written to Keychain/UserDefaults" : undefined,
+  });
+
+  // Firebase config in git. Google's own position is that these ship in every binary
+  // and are not secrets, so this is WARN, never FAIL — the actionable part is whether
+  // the key is restricted, which cannot be seen from the repo.
+  const firebaseKey = /<key>\s*API_KEY\s*<\/key>\s*<string>\s*AIza[\w-]{10,}/i.exec(ctx.googleServicePlist);
+  const firebaseProject = /<key>\s*PROJECT_ID\s*<\/key>\s*<string>\s*([^<\s]+)/i.exec(ctx.googleServicePlist);
+  checks.push({
+    category: C,
+    checkKey: "ios_firebase_config_committed",
+    label: "Firebase config key is restricted",
+    status: ctx.googleServicePlist === "" ? "SKIPPED" : firebaseKey ? "WARN" : "PASS",
+    detail:
+      ctx.googleServicePlist === ""
+        ? "No GoogleService-Info.plist committed."
+        : firebaseKey
+          ? `GoogleService-Info.plist is committed with an API_KEY${firebaseProject ? ` for project \`${firebaseProject[1]}\`` : ""}. This is NOT a leak on its own — Google ships these in every app binary and treats them as public identifiers, so rotating it achieves nothing. The action is to confirm in the Google Cloud console that the key is restricted to this app's bundle ID and to the specific APIs it needs; an unrestricted key is callable from anywhere by anyone who unzips the app.`
+          : "GoogleService-Info.plist is committed but carries no API key.",
   });
 
   // Keychain accessibility class — the weak ones survive device lock or migrate off-device.
@@ -495,6 +617,58 @@ function storeReadinessChecks(ctx: IosContext): PulseScanCheckInput[] {
       : hasEncryptionKey
         ? "ITSAppUsesNonExemptEncryption is declared — uploads skip the export-compliance prompt."
         : "ITSAppUsesNonExemptEncryption is not declared, so every upload stops on the export-compliance question and cannot be fully automated. Declare it (false is correct for apps using only HTTPS/system crypto).",
+  });
+
+  // Entitlements that Apple gates behind an approval request or a very recent OS.
+  // A build fails outright if the provisioning profile lacks one, and the
+  // approval-gated ones can sit unanswered for weeks — worth knowing before a release
+  // is planned around them, not on the day the archive fails.
+  const RESTRICTED_ENTITLEMENTS: { key: string; why: string }[] = [
+    { key: "com.apple.developer.networking.multicast", why: "requires an approved request to Apple" },
+    { key: "com.apple.developer.family-controls", why: "requires an approved request to Apple" },
+    { key: "com.apple.developer.usernotifications.critical-alerts", why: "requires an approved request to Apple" },
+    { key: "com.apple.developer.usernotifications.filtering", why: "requires an approved request to Apple" },
+    { key: "com.apple.developer.carplay-audio", why: "requires CarPlay entitlement approval" },
+    { key: "com.apple.developer.background-tasks.continued-processing", why: "very recent OS-version entitlement" },
+    { key: "com.apple.developer.healthkit.recalibrate-estimates", why: "requires an approved request to Apple" },
+  ];
+  const restricted = RESTRICTED_ENTITLEMENTS.filter((e) => ctx.entitlements.includes(e.key));
+  checks.push({
+    category: C,
+    checkKey: "ios_restricted_entitlements",
+    label: "Restricted entitlements are provisioned",
+    status: !hasEntitlements ? "SKIPPED" : restricted.length > 0 ? "WARN" : "PASS",
+    detail: !hasEntitlements
+      ? "No .entitlements file could be read."
+      : restricted.length > 0
+        ? `${restricted.length} restricted entitlement${restricted.length !== 1 ? "s" : ""} declared: ${restricted.map((r) => `${r.key.replace("com.apple.developer.", "")} (${r.why})`).join("; ")}. Confirm each is present in the distribution provisioning profile and, where Apple approval is needed, that it has been granted — an archive fails outright if the profile is missing one, and approvals are not quick.`
+        : "No approval-gated or OS-restricted entitlements declared.",
+    evidence: restricted.length > 0 ? restricted.map((r) => r.key).join(", ") : undefined,
+  });
+
+  // Info.plist keys that simply do not exist in iOS. Harmless — iOS ignores them —
+  // but they mislead: someone added them believing a permission was being explained.
+  const INVALID_PLIST_KEYS = [
+    "NSUserNotificationsUsageDescription",
+    "NSPushNotificationsUsageDescription",
+    "NSRemoteNotificationsUsageDescription",
+    "NSInternetUsageDescription",
+    "NSNetworkUsageDescription",
+    "NSStorageUsageDescription",
+    "NSFileAccessUsageDescription",
+    "NSPhotoLibraryUsageDescriptions",
+  ];
+  const invalidKeys = hasPlist ? INVALID_PLIST_KEYS.filter((k) => ctx.plist.includes(k)) : [];
+  checks.push({
+    category: C,
+    checkKey: "ios_invalid_plist_keys",
+    label: "No non-existent Info.plist keys",
+    status: !hasPlist ? "SKIPPED" : invalidKeys.length > 0 ? "WARN" : "PASS",
+    detail: !hasPlist
+      ? "No Info.plist could be read."
+      : invalidKeys.length > 0
+        ? `${invalidKeys.length} Info.plist key${invalidKeys.length !== 1 ? "s that iOS does" : " that iOS does"} not recognise: ${invalidKeys.join(", ")}. iOS ignores them, so nothing breaks — but notification permission has no usage-description string, and a key like this usually means someone believed they were explaining a permission to the user when no prompt copy was ever shown. Nice-to-have: delete them.`
+        : "No unrecognised usage-description keys in Info.plist.",
   });
 
   // Deployment target — how much of the install base is supported, and how much modern API is available.

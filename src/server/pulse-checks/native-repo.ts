@@ -42,6 +42,8 @@ interface ContentsResponse {
 /** Config files that are always worth reading in full. */
 const CONFIG_PATTERNS: RegExp[] = [
   /(^|\/)Info\.plist$/i,
+  // Read separately from Info.plist — it carries the Firebase API key + project id.
+  /(^|\/)GoogleService-Info\.plist$/i,
   /\.entitlements$/i,
   /project\.pbxproj$/i,
   /(^|\/)Podfile$/i,

@@ -31,17 +31,42 @@ const statusOf = (checks: ReturnType<typeof evaluateIosChecks>, key: string) =>
 
 const BAD_PLIST = `<plist><dict>
   <key>NSAppTransportSecurity</key>
-  <dict><key>NSAllowsArbitraryLoads</key><true/></dict>
+  <dict>
+    <key>NSAllowsArbitraryLoads</key><true/>
+    <key>NSExceptionDomains</key>
+    <dict><key>api.example.com</key><dict><key>NSIncludesSubdomains</key><true/></dict></dict>
+  </dict>
+  <key>NSUserNotificationsUsageDescription</key><string>We send notifications.</string>
   <key>UIBackgroundModes</key><array><string>audio</string><string>fetch</string></array>
 </dict></plist>`;
 
 const BAD_ENTITLEMENTS = `<plist><dict>
   <key>aps-environment</key><string>development</string>
+  <key>com.apple.developer.networking.multicast</key><true/>
+  <key>com.apple.developer.background-tasks.continued-processing.gpu</key><true/>
+</dict></plist>`;
+
+const BAD_GOOGLE_PLIST = `<plist><dict>
+  <key>API_KEY</key><string>AIzaSyAfO3oaEXAMPLEKEYVALUE1234567890</string>
+  <key>PROJECT_ID</key><string>cool-attic-123456</string>
 </dict></plist>`;
 
 const BAD_PBXPROJ = `
   IPHONEOS_DEPLOYMENT_TARGET = 13.0;
   MARKETING_VERSION = 2.1.33;
+`;
+
+// Deliberate leftovers: a renamed-but-not-retitled file header, a tunnel URL, and a
+// demo asset wired in as a default parameter value.
+const BAD_SWIFT_LEFTOVERS = `
+//
+//  fdsf.swift
+//  MyApp
+//
+struct FramedVideoPlayer {
+    var remoteURL: String? = "https://vz-b5cdb98e-9cd.b-cdn.net/abc/play_720p.mp4"
+//    static let base = "https://innocent-subtly-duck.ngrok-free.app/api"
+}
 `;
 
 const BAD_SWIFT_LOGGER = `
@@ -120,8 +145,10 @@ const badApp = () =>
     {
       "MyApp/Info.plist": BAD_PLIST,
       "MyApp/MyApp.entitlements": BAD_ENTITLEMENTS,
+      "MyApp/GoogleService-Info.plist": BAD_GOOGLE_PLIST,
       "MyApp.xcodeproj/project.pbxproj": BAD_PBXPROJ,
       Podfile: "pod 'Kingfisher'",
+      "MyApp/Extras/FramedVideoPlayer.swift": BAD_SWIFT_LEFTOVERS,
       "MyApp/Extras/Logger.swift": BAD_SWIFT_LOGGER,
       "MyApp/Networking/APIClient.swift": BAD_SWIFT_API,
       "MyApp/Extras/UserJourney.swift": BAD_SWIFT_STORAGE,
@@ -280,6 +307,34 @@ describe("iOS checks — fire on the defect", () => {
     expect(statusOf(checks, "ios_http_status_discarded")).toBe("FAIL");
   });
 
+  it("catches the two substantive extras", () => {
+    // Restricted entitlements: multicast needs Apple's approval, and an archive fails
+    // outright if the distribution profile is missing one.
+    expect(statusOf(checks, "ios_restricted_entitlements")).toBe("WARN");
+    // Firebase key: WARN not FAIL — Google ships these publicly, so rotating is not
+    // the fix; confirming the key is bundle-restricted is.
+    expect(statusOf(checks, "ios_firebase_config_committed")).toBe("WARN");
+    const fb = checks.find((c) => c.checkKey === "ios_firebase_config_committed")?.detail ?? "";
+    expect(fb).toMatch(/NOT a leak/i);
+    expect(fb).toMatch(/restricted/i);
+  });
+
+  it("catches the nice-to-haves without dressing them as risks", () => {
+    expect(statusOf(checks, "ios_invalid_plist_keys")).toBe("WARN");
+    expect(statusOf(checks, "ios_ats_exception_noop")).toBe("WARN");
+    expect(statusOf(checks, "ios_dev_leftovers")).toBe("WARN");
+
+    const leftovers = checks.find((c) => c.checkKey === "ios_dev_leftovers")?.detail ?? "";
+    expect(leftovers).toMatch(/ngrok/i);
+    expect(leftovers).toMatch(/placeholder file header/i);
+
+    // None of the tidiness checks may ever be a FAIL — that is what makes them
+    // safe to damp in priority.ts rather than hide.
+    for (const key of ["ios_invalid_plist_keys", "ios_ats_exception_noop", "ios_dev_leftovers", "ios_todo_density", "ios_dead_code"]) {
+      expect(statusOf(checks, key), `${key} must never FAIL`).not.toBe("FAIL");
+    }
+  });
+
   it("explains the critical logging finding well enough to act on", () => {
     const detail = checks.find((c) => c.checkKey === "ios_sensitive_payload_logging")?.detail ?? "";
     expect(detail).toMatch(/password/i);
@@ -318,6 +373,39 @@ describe("iOS checks — stay quiet on the fix", () => {
     ]) {
       expect(statusOf(checks, key), `${key} should PASS on the fixed app`).toBe("PASS");
     }
+  });
+});
+
+describe("density checks need enough source to be meaningful", () => {
+  // Both are rates, so on a small sample they must skip rather than report a
+  // meaningless number — the same trap that made force-unwrap density divide by
+  // file count and report "10 per 1k" from a single occurrence.
+  const build = (body: string) =>
+    evaluateIosChecks(snapshot({ "MyApp/Info.plist": GOOD_PLIST, "MyApp/A.swift": body }));
+
+  it("skips below the minimum sample size", () => {
+    const checks = build("let x = 1\n// TODO: fix\n");
+    expect(statusOf(checks, "ios_todo_density")).toBe("SKIPPED");
+    expect(statusOf(checks, "ios_dead_code")).toBe("SKIPPED");
+  });
+
+  it("passes a large clean file and warns on a marker-heavy one", () => {
+    const clean = Array.from({ length: 400 }, (_, i) => `let v${i} = ${i}`).join("\n");
+    const cleanChecks = build(clean);
+    expect(statusOf(cleanChecks, "ios_todo_density")).toBe("PASS");
+    expect(statusOf(cleanChecks, "ios_dead_code")).toBe("PASS");
+
+    const noisy = `${clean}\n${Array.from({ length: 40 }, (_, i) => `// TODO: thing ${i}`).join("\n")}`;
+    expect(statusOf(build(noisy), "ios_todo_density")).toBe("WARN");
+  });
+
+  it("counts commented-out CODE but not prose comments", () => {
+    const filler = Array.from({ length: 300 }, (_, i) => `let v${i} = ${i}`).join("\n");
+    const prose = `${filler}\n${Array.from({ length: 60 }, () => "// this explains why the thing happens").join("\n")}`;
+    expect(statusOf(build(prose), "ios_dead_code")).toBe("PASS");
+
+    const deadCode = `${filler}\n${Array.from({ length: 60 }, (_, i) => `// let dead${i} = compute()`).join("\n")}`;
+    expect(statusOf(build(deadCode), "ios_dead_code")).toBe("WARN");
   });
 });
 
