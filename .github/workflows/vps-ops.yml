@@ -130,7 +130,7 @@ jobs:
           target: /tmp/foundry-nginx-staging
           strip_components: 2
 
-      - name: Back up, validate, then reload — restore on any failure
+      - name: Apply via the root-owned script, or explain exactly what is missing
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -138,44 +138,48 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -e
-            SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo -n"
+            APPLY=/usr/local/sbin/foundry-nginx-apply
 
-            LIVE=/etc/nginx/sites-available/foundry
-            NEW=/tmp/foundry-nginx-staging/foundry.conf
-            BACKUP="/root/foundry-nginx-backup-$(date -u +%Y%m%dT%H%M%SZ).conf"
-
-            test -s "$NEW" || { echo "staged config missing or empty"; exit 1; }
-
-            echo "--- backing up the live config to $BACKUP"
-            $SUDO cp "$LIVE" "$BACKUP"
-
-            echo "--- diff (live -> new); empty means nothing changes"
-            $SUDO diff -u "$LIVE" "$NEW" || true
-
-            echo "--- installing"
-            $SUDO cp "$NEW" "$LIVE"
-
-            # nginx -t is the whole safety story: a bad config that gets reloaded
-            # takes the site down, so validate BEFORE reloading and roll straight
-            # back if it fails. `reload` (not restart) keeps existing connections.
-            if $SUDO nginx -t; then
-              echo "--- config valid, reloading"
-              $SUDO systemctl reload nginx
-              echo "--- reloaded. Backup kept at $BACKUP"
-            else
-              echo "!!! nginx -t FAILED — restoring the previous config"
-              $SUDO cp "$BACKUP" "$LIVE"
-              $SUDO nginx -t && echo "restored config validates; nginx untouched"
+            # Writing /etc/nginx needs root, and this user has NO passwordless sudo
+            # (proven by the inspect run). Rather than grant NOPASSWD on `cp` — which
+            # is write-anywhere-as-root, i.e. root — the privileged half lives in a
+            # root-owned script with NOPASSWD scoped to that one path. If it is not
+            # installed yet, say so precisely instead of failing cryptically.
+            if ! sudo -n "$APPLY" --help >/dev/null 2>&1 && ! sudo -n test -x "$APPLY" 2>/dev/null; then
+              echo "BLOCKED: cannot apply nginx config from CI yet."
+              echo
+              echo "  Reason: $APPLY is not installed, or this user has no NOPASSWD rule for it."
+              echo "  sudo -n check: $(sudo -n true 2>&1 || echo 'password required')"
+              echo
+              echo "  One-time fix, as root on the VPS (the script is in this repo at"
+              echo "  deploy/nginx/foundry-nginx-apply, and documents this at the top):"
+              echo
+              echo "    install -o root -g root -m 0755 foundry-nginx-apply /usr/local/sbin/"
+              echo "    printf '%s\\n' '$(whoami) ALL=(root) NOPASSWD: $APPLY' > /etc/sudoers.d/foundry-nginx"
+              echo "    chmod 0440 /etc/sudoers.d/foundry-nginx && visudo -c"
+              echo
+              echo "  Nothing was changed. The staged config is at"
+              echo "  /tmp/foundry-nginx-staging/foundry.conf if you want to apply it by hand."
               exit 1
             fi
+
+            sudo -n "$APPLY"
 
       - name: Confirm the two headers actually changed
         run: |
           echo "--- Server header (want: nginx, with no version)"
           curl -sSI https://foundry.gitwork.co.uk/portal/login | grep -i '^server:' || true
-          echo "--- Content-Encoding on Deck's shell (want: gzip)"
-          curl -sSI -H 'Accept-Encoding: gzip' \
-            https://foundry.gitwork.co.uk/deck/index.html | grep -i '^content-encoding:' || true
+          # NOT /deck — middleware gates it, so an unauthenticated probe gets the
+          # login redirect and tells you nothing about compression. Use a JS chunk:
+          # it is application/javascript, so it is only compressed if gzip_types
+          # took effect (text/html is gzipped regardless, which is why the earlier
+          # check was misleading).
+          echo "--- Content-Encoding on a JS chunk (want: gzip)"
+          JS=$(curl -sSL https://foundry.gitwork.co.uk/portal/login \
+                 | grep -oE '/_next/static/chunks/[a-zA-Z0-9_./-]+\.js' | head -1)
+          echo "    chunk: $JS"
+          curl -sSI -H 'Accept-Encoding: gzip' "https://foundry.gitwork.co.uk$JS" \
+            | grep -iE '^(content-type|content-encoding):' || true
 
   cron-install-missing:
     if: inputs.task == 'cron-install-missing'
