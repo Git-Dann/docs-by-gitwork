@@ -20,8 +20,28 @@ export interface AgentVerdict {
   summary: string;
   grades: PulseGrade[];
   techStack: string[];
-  counts: { confirmed: number; likely: number; verifiedWorking: number; inconclusive: number };
+  /**
+   * TRUST-BUCKET populations, not issue counts. `confirmed` is every HIGH-confidence
+   * check that is not passing — it is NOT the length of `confirmedIssues`, which
+   * counts only outright failures. Read `failures`/`warnings` for issue counts.
+   */
+  counts: {
+    confirmed: number;
+    likely: number;
+    verifiedWorking: number;
+    inconclusive: number;
+    /** Failing checks surfaced in `confirmedIssues` (the number the summary quotes). */
+    failures: number;
+    /** Warning checks surfaced in `warnings`. */
+    warnings: number;
+  };
   confirmedIssues: { checkKey: string; label: string; category: string; detail: string }[];
+  /**
+   * WARN-status findings. Previously omitted entirely, which made a scan whose
+   * problems were all warnings look clean — for a native mobile repo that was most
+   * of them. Capped like confirmedIssues.
+   */
+  warnings: { checkKey: string; label: string; category: string; detail: string }[];
   rls: { applicable: boolean; enforced: boolean | null; detail: string };
   compliance: { jurisdiction: string; label: string; compliancePct: number; missing: string[] }[];
   topFixes: string[];
@@ -50,15 +70,32 @@ export function buildAgentVerdict(args: {
     ? { applicable: true, enforced: rlsCheck.status === "PASS", detail: rlsCheck.detail ?? "" }
     : { applicable: false, enforced: null, detail: "No Supabase backend detected." };
 
-  const confirmedIssues = confirmed
-    .filter((c) => c.status === "FAIL")
-    .map((c) => ({ checkKey: c.checkKey, label: c.label, category: c.category, detail: c.detail ?? "" }));
+  const asIssue = (c: PulseScanCheckInput) => ({
+    checkKey: c.checkKey,
+    label: c.label,
+    category: c.category,
+    detail: c.detail ?? "",
+  });
+
+  const confirmedIssues = confirmed.filter((c) => c.status === "FAIL").map(asIssue);
+  // Warnings across every bucket except the unprovable ones — a WARN is still a real
+  // finding, and omitting them made "all warnings" read as "nothing wrong".
+  const warnings = checks
+    .filter((c) => c.status === "WARN" && c.trustBucket !== "INCONCLUSIVE")
+    .map(asIssue);
+
+  const summaryParts = [
+    `${args.healthScore}/100`,
+    `${confirmedIssues.length} confirmed issue${confirmedIssues.length !== 1 ? "s" : ""}`,
+  ];
+  if (warnings.length > 0) summaryParts.push(`${warnings.length} warning${warnings.length !== 1 ? "s" : ""}`);
+  if (rls.applicable) summaryParts.push(`RLS ${rls.enforced ? "enforced" : "OFF"}`);
 
   return {
     url: args.url,
     status: args.status,
     healthScore: args.healthScore,
-    summary: `${args.healthScore}/100 · ${confirmedIssues.length} confirmed issue${confirmedIssues.length !== 1 ? "s" : ""}${rls.applicable ? ` · RLS ${rls.enforced ? "enforced" : "OFF"}` : ""}`,
+    summary: summaryParts.join(" · "),
     grades: computeGrades(checks),
     techStack: args.techStack,
     counts: {
@@ -66,11 +103,16 @@ export function buildAgentVerdict(args: {
       likely: bucket("LIKELY").length,
       verifiedWorking: bucket("VERIFIED_WORKING").length,
       inconclusive: bucket("INCONCLUSIVE").length,
+      failures: confirmedIssues.length,
+      warnings: warnings.length,
     },
     confirmedIssues: confirmedIssues.slice(0, 15),
+    warnings: warnings.slice(0, 15),
     rls,
     compliance: scorecard.map((e) => ({ jurisdiction: e.jurisdiction, label: e.label, compliancePct: e.compliancePct, missing: e.missing.map((m) => m.label).slice(0, 8) })),
-    topFixes: confirmedIssues.slice(0, 5).map((i) => i.label),
+    // Failures first, then warnings — so a scan whose worst findings are warnings
+    // still recommends something rather than returning an empty fix list.
+    topFixes: [...confirmedIssues, ...warnings].slice(0, 5).map((i) => i.label),
   };
 }
 
@@ -98,8 +140,9 @@ export async function runAgentScan(input: { url: string; targetMarkets?: string[
     return {
       url: input.url, status: "FAILED", healthScore: 0,
       summary: error instanceof Error ? error.message : "Scan failed.",
-      grades: [], techStack: [], counts: { confirmed: 0, likely: 0, verifiedWorking: 0, inconclusive: 0 },
-      confirmedIssues: [], rls: { applicable: false, enforced: null, detail: "" }, compliance: [], topFixes: [],
+      grades: [], techStack: [],
+      counts: { confirmed: 0, likely: 0, verifiedWorking: 0, inconclusive: 0, failures: 0, warnings: 0 },
+      confirmedIssues: [], warnings: [], rls: { applicable: false, enforced: null, detail: "" }, compliance: [], topFixes: [],
     };
   }
 }

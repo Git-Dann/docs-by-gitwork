@@ -25,17 +25,27 @@ import { CHECKS_REGISTRY } from "../../checks-registry";
 
 const ALL_CATEGORIES = Object.values(CATEGORIES) as CheckCategory[];
 
+/**
+ * Every .ts file under a directory, recursively, excluding tests.
+ *
+ * Recursive on purpose: this used to read only the top level, so a check module in a
+ * subdirectory emitted keys that the registry guard below could never see — the drift
+ * this whole test exists to catch would have gone unnoticed.
+ */
+function tsFilesUnder(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      return entry.name === "__tests__" ? [] : tsFilesUnder(path);
+    }
+    return entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts") ? [path] : [];
+  });
+}
+
 /** Scan every check module's source for the checkKey string literals it emits. */
 function emittedCheckKeys(): Set<string> {
   const roots = ["src/server/pulse-checks", "src/server/pulse-agents"];
-  const files = [
-    ...roots.flatMap((d) =>
-      readdirSync(d)
-        .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
-        .map((f) => join(d, f)),
-    ),
-    "src/server/pulse-scan.ts",
-  ];
+  const files = [...roots.flatMap(tsFilesUnder), "src/server/pulse-scan.ts"];
   const keys = new Set<string>();
   for (const file of files) {
     const src = readFileSync(file, "utf8");
