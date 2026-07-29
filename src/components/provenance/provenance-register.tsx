@@ -10,6 +10,7 @@ import {
   CheckBadgeIcon,
   ClipboardDocumentIcon,
   LockOpenIcon,
+  BeakerIcon,
 } from "@heroicons/react/24/outline";
 import { usePulseScans } from "@/hooks/use-pulse";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -17,6 +18,7 @@ import {
   useCountermarks,
   useIssueCountermark,
   useRevokeCountermark,
+  useSeedProvenanceDemo,
   type Countermark,
   type CountermarkGrade,
   type CountermarkStatus,
@@ -60,11 +62,12 @@ function Badge({ grade }: { grade: CountermarkGrade }) {
 }
 
 export function ProvenanceRegister() {
-  const { canIssueCountermark } = usePermissions();
+  const { canIssueCountermark, isSuperAdmin } = usePermissions();
   const { data, isPending, error } = useCountermarks();
   const scans = usePulseScans();
   const issue = useIssueCountermark();
   const revoke = useRevokeCountermark();
+  const seed = useSeedProvenanceDemo();
 
   const [issueOpen, setIssueOpen] = useState(false);
   const [scanId, setScanId] = useState("");
@@ -132,19 +135,61 @@ export function ProvenanceRegister() {
             A Countermark is the certificate you hand to a client, insurer or acquirer. It states what
             was checked, what passed, and what could not be established.
           </p>
-          {canIssueCountermark && (
-            <button
-              type="button"
-              className="button-primary shrink-0"
-              onClick={() => {
-                setScanId(eligibleScans[0]?.id ?? "");
-                setIssueOpen(true);
-              }}
-            >
-              Strike a countermark
-            </button>
-          )}
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {/* Super Admin only, and last in the row so it never sits where "Strike" is
+                expected. Demoing previously needed a devtools fetch or the workspace API
+                key; neither is something to do in front of an audience. */}
+            {isSuperAdmin && (
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={seed.isPending}
+                onClick={() => seed.mutate()}
+                title="Seeds six specimen countermarks covering every grade. Re-running replaces only its own rows."
+              >
+                <BeakerIcon className="h-4 w-4" />
+                <span className="ml-1.5">{seed.isPending ? "Seeding…" : "Seed demo data"}</span>
+              </button>
+            )}
+            {canIssueCountermark && (
+              <button
+                type="button"
+                className="button-primary"
+                onClick={() => {
+                  setScanId(eligibleScans[0]?.id ?? "");
+                  setIssueOpen(true);
+                }}
+              >
+                Strike a countermark
+              </button>
+            )}
+          </div>
         </div>
+
+        {(seed.data || seed.error) && (
+          <div
+            className={cn(
+              "border-b px-4 py-2.5 text-sm",
+              seed.error || seed.data?.ok === false
+                ? "border-red-200 bg-red-50 text-red-700"
+                : "border-emerald-200 bg-emerald-50 text-emerald-800",
+            )}
+          >
+            {seed.error ? (
+              <>Seed failed: {seed.error.message}</>
+            ) : (
+              <>
+                Seeded {seed.data?.seeded} specimen countermarks against {seed.data?.standard}.{" "}
+                {/* Surfaced rather than swallowed: a mismatch means the engine no longer
+                    grades these fixtures as they claim, so the demo is showing something
+                    other than what it says it is. */}
+                {seed.data?.gradeMismatches.length
+                  ? `⚠️ ${seed.data.gradeMismatches.length} grade mismatch(es): ${seed.data.gradeMismatches.join("; ")}`
+                  : "Every grade matched the engine's own output."}
+              </>
+            )}
+          </div>
+        )}
 
         {isPending ? (
           <div className="widget-body-compact text-sm text-[var(--text-4)]">Loading register…</div>
