@@ -31,6 +31,13 @@ const ENTRIES: LabEntry[] = [
       "A dark, chrome-free exec board built for the Corsair Xeneon Edge — client health, your desk and the day's calendar on one always-on screen. Open it fullscreen on the device and sign in once.",
     note: "Renders as the signed-in viewer, so everything shows as you. No API key or token to distribute.",
   },
+  {
+    name: "Assay",
+    href: "/app/assay",
+    blurb:
+      "Strike a Countermark from a completed Pulse scan — a signed, expiring certificate of what a piece of software was found to be, and what could not be established. The register is here; the certificate itself is a public link you send to a client, insurer or acquirer.",
+    note: "Marks are UNSEALED until ASSAY_SIGNING_SECRET is set on the server, and say so on the certificate. Issuing needs the assay.issue permission. See docs/assay.md.",
+  },
 ];
 
 export function LabsPanel() {

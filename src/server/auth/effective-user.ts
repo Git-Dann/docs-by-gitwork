@@ -332,14 +332,14 @@ export function canRunFixAgent(user: EffectiveUser): boolean {
   return can(user, "pulse.fixAgent");
 }
 /**
- * Strike or withdraw a Hallmark attestation (Assay).
+ * Strike or withdraw a Countermark attestation (Assay).
  *
  * Separate from the `assay` module permission on purpose: reading the register is a
  * different act from certifying. Issuing puts the workspace's name to a claim a client,
  * insurer or acquirer relies on, and the issuer's name goes on the certificate — so it is
  * a high-risk action permission that has to be granted deliberately.
  */
-export function canIssueHallmark(user: EffectiveUser): boolean {
+export function canIssueCountermark(user: EffectiveUser): boolean {
   return can(user, "assay.issue");
 }
 /** Add/edit/delete candidates + run analysis in Code. */

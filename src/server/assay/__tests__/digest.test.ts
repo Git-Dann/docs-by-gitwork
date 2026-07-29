@@ -16,7 +16,7 @@ const clause = (clauseId: string, verdict: ClauseOutcome["verdict"]): ClauseOutc
 });
 
 const PAYLOAD_INPUT = {
-  hallmarkId: "hm_1",
+  countermarkId: "hm_1",
   issuedAt: new Date("2026-07-29T12:00:00.000Z"),
   expiresAt: new Date("2026-10-27T12:00:00.000Z"),
   issuerName: "Gitwork",

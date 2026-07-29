@@ -3,7 +3,7 @@ import {
   EXPIRY_NOTICE_DAYS,
   daysUntil,
   expiryFor,
-  hallmarkStatus,
+  countermarkStatus,
   isAsserting,
   validityDaysFor,
 } from "../lapse";
@@ -43,43 +43,43 @@ describe("daysUntil", () => {
   });
 });
 
-describe("hallmarkStatus", () => {
+describe("countermarkStatus", () => {
   const base = { revokedAt: null, supersededById: null };
 
   it("is VALID well before expiry", () => {
-    expect(hallmarkStatus({ ...base, expiresAt: days(60) }, NOW).status).toBe("VALID");
+    expect(countermarkStatus({ ...base, expiresAt: days(60) }, NOW).status).toBe("VALID");
   });
 
   it("is EXPIRING inside the notice window", () => {
-    expect(hallmarkStatus({ ...base, expiresAt: days(EXPIRY_NOTICE_DAYS) }, NOW).status).toBe("EXPIRING");
-    expect(hallmarkStatus({ ...base, expiresAt: days(1) }, NOW).status).toBe("EXPIRING");
+    expect(countermarkStatus({ ...base, expiresAt: days(EXPIRY_NOTICE_DAYS) }, NOW).status).toBe("EXPIRING");
+    expect(countermarkStatus({ ...base, expiresAt: days(1) }, NOW).status).toBe("EXPIRING");
   });
 
   it("is LAPSED at and after expiry", () => {
-    expect(hallmarkStatus({ ...base, expiresAt: NOW }, NOW).status).toBe("LAPSED");
-    expect(hallmarkStatus({ ...base, expiresAt: days(-1) }, NOW).status).toBe("LAPSED");
+    expect(countermarkStatus({ ...base, expiresAt: NOW }, NOW).status).toBe("LAPSED");
+    expect(countermarkStatus({ ...base, expiresAt: days(-1) }, NOW).status).toBe("LAPSED");
   });
 
   it("reports REVOKED even once the mark would also have lapsed", () => {
     // Precedence matters: "we withdrew this" outranks "it would have run out anyway" for
     // anyone who relied on it. Collapsing the two lets a withdrawn mark read as merely stale.
-    const s = hallmarkStatus({ expiresAt: days(-40), revokedAt: days(-50), supersededById: null }, NOW);
+    const s = countermarkStatus({ expiresAt: days(-40), revokedAt: days(-50), supersededById: null }, NOW);
     expect(s.status).toBe("REVOKED");
   });
 
   it("reports REVOKED ahead of SUPERSEDED", () => {
-    const s = hallmarkStatus({ expiresAt: days(30), revokedAt: days(-1), supersededById: "h2" }, NOW);
+    const s = countermarkStatus({ expiresAt: days(30), revokedAt: days(-1), supersededById: "h2" }, NOW);
     expect(s.status).toBe("REVOKED");
   });
 
   it("reports SUPERSEDED while still inside its window", () => {
-    const s = hallmarkStatus({ expiresAt: days(30), revokedAt: null, supersededById: "h2" }, NOW);
+    const s = countermarkStatus({ expiresAt: days(30), revokedAt: null, supersededById: "h2" }, NOW);
     expect(s.status).toBe("SUPERSEDED");
   });
 
   it("carries daysRemaining through every status", () => {
-    expect(hallmarkStatus({ ...base, expiresAt: days(5) }, NOW).daysRemaining).toBe(5);
-    expect(hallmarkStatus({ ...base, expiresAt: days(-5) }, NOW).daysRemaining).toBe(-5);
+    expect(countermarkStatus({ ...base, expiresAt: days(5) }, NOW).daysRemaining).toBe(5);
+    expect(countermarkStatus({ ...base, expiresAt: days(-5) }, NOW).daysRemaining).toBe(-5);
   });
 });
 

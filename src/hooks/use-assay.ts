@@ -8,8 +8,8 @@ import { apiFetch } from "@/lib/api";
 // and use-curator.ts.
 
 export type ClauseVerdict = "MET" | "QUALIFIED" | "FAILED" | "UNPROVEN" | "NOT_APPLICABLE";
-export type HallmarkGrade = "CERTIFIED" | "CONDITIONAL" | "NOT_CERTIFIED" | "INCOMPLETE";
-export type HallmarkStatus = "VALID" | "EXPIRING" | "LAPSED" | "REVOKED" | "SUPERSEDED";
+export type CountermarkGrade = "CERTIFIED" | "CONDITIONAL" | "NOT_CERTIFIED" | "INCOMPLETE";
+export type CountermarkStatus = "VALID" | "EXPIRING" | "LAPSED" | "REVOKED" | "SUPERSEDED";
 
 export interface ClauseOutcome {
   clauseId: string;
@@ -29,7 +29,7 @@ export interface AssayBlindSpot {
   clauseIds: string[];
 }
 
-export interface Hallmark {
+export interface Countermark {
   id: string;
   clientId: string | null;
   clientName: string | null;
@@ -42,7 +42,7 @@ export interface Hallmark {
   checkCount: number;
   standardId: string;
   standardVersion: string;
-  grade: HallmarkGrade;
+  grade: CountermarkGrade;
   gradeReason: string;
   clauses: ClauseOutcome[];
   blindSpots: AssayBlindSpot[];
@@ -56,30 +56,30 @@ export interface Hallmark {
   digest: string;
   seal: string | null;
   token: string;
-  status: HallmarkStatus;
+  status: CountermarkStatus;
   daysRemaining: number;
 }
 
-interface HallmarkListResponse {
-  hallmarks: Hallmark[];
+interface CountermarkListResponse {
+  countermarks: Countermark[];
   sealingConfigured: boolean;
 }
 
-const KEY = ["assay", "hallmarks"];
+const KEY = ["assay", "countermarks"];
 
-export function useHallmarks(enabled = true) {
-  return useQuery<HallmarkListResponse>({
+export function useCountermarks(enabled = true) {
+  return useQuery<CountermarkListResponse>({
     queryKey: KEY,
-    queryFn: () => apiFetch<HallmarkListResponse>("/api/assay/hallmarks"),
+    queryFn: () => apiFetch<CountermarkListResponse>("/api/assay/countermarks"),
     enabled,
   });
 }
 
-export function useIssueHallmark() {
+export function useIssueCountermark() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { scanId: string; standardId?: string }) =>
-      apiFetch<{ hallmark: Hallmark }>("/api/assay/hallmarks", {
+      apiFetch<{ countermark: Countermark }>("/api/assay/countermarks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -90,11 +90,11 @@ export function useIssueHallmark() {
   });
 }
 
-export function useRevokeHallmark() {
+export function useRevokeCountermark() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      apiFetch<{ hallmark: Hallmark }>(`/api/assay/hallmarks/${id}`, {
+      apiFetch<{ countermark: Countermark }>(`/api/assay/countermarks/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason }),

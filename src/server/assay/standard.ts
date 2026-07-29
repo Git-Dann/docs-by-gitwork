@@ -1,9 +1,9 @@
-// The Assay Standard — the published, versioned document a Hallmark asserts against.
+// The Assay Standard — the published, versioned document a Countermark asserts against.
 //
 // A certificate that does not name its standard is worthless: "certified" means nothing
 // unless a reader can look up exactly what was tested and what the pass condition was.
 // So this file IS the product's contract with a counterparty, and it is versioned. A
-// hallmark records `standardId` + `standardVersion`, and the certificate page renders the
+// countermark records `standardId` + `standardVersion`, and the certificate page renders the
 // clause text from the frozen outcome, never from whatever this file says today.
 //
 // ── Rules for editing this file ──────────────────────────────────────────────────

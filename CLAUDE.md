@@ -271,7 +271,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 |---|---|---|---|
 | **Foundry HQ** | `/app` | — | Dashboard overview. `/app/projects/[slug]` hangs off it (project detail; `app-shell.tsx` deliberately highlights HQ for it) |
 | **Pulse** | `/app/pulse` | `src/server/pulse*.ts` + `pulse-agents/` | AI project validation — ~600 checks in `checks-registry.ts`, gap analysis, GitHub fix-agent, continuous monitors. Also hosts the optional **Study** research tool (no longer a top-level module — see §26) |
-| **Assay** | `/app/assay` | `src/server/assay/` | Attestation layer — strikes a **Hallmark** from a completed Pulse scan: a frozen, digest-and-seal-verified certificate of what a piece of software was found to be, what could **not** be established, and how long the mark is valid for. Public certificate at `/hallmark/[token]` (no auth, noindex). Module perm `assay`; issuing/revoking is the separate high-risk `assay.issue`. See §38 + `docs/assay.md` |
+| **Assay** (lab) | `/app/assay` | `src/server/assay/` | Attestation layer — strikes a **Countermark** from a completed Pulse scan: a frozen, digest-and-seal-verified certificate of what a piece of software was found to be, what could **not** be established, and how long the mark is valid for. Public certificate at `/countermark/[token]` (no auth, noindex). **No sidebar item** — entry point is Settings → Labs (§4a) while it's an experiment. Gated by the **admin-only `assay` feature perm** (default-off, NOT a module id — see §38); issuing/revoking is the separate high-risk `assay.issue`. See §38 + `docs/assay.md` |
 | **Code** | `/app/code` (legacy `/app/codeclear`) | `src/server/codeclear*.ts` | Developer hiring pipeline — GitHub analysis, scoring, candidate management. ⚠️ `candidates/`, `pipeline/` and `devsignal/**` still live ONLY under the legacy `/app/codeclear/*` prefix — moving them is a separate PR, and the `/app/codeclear/devsignal` `MODULE_PATHS` entry must be renamed **in place** or admin-only DevSignal silently regates onto the staff-inherited `codeclear` module |
 | **Studio** | `/app/studio` | — (client-side only, no `/api/studio`) | Brand asset studio — design on-brand social assets and App Store / Play Store screenshots, then batch-export at the exact size each platform needs. ~30 components under `src/components/studio/` (`studio-root.tsx` entry, plus `templates/`, `screenshots/`, `costing/`, `brand.tsx`, `export.ts`). Also now hosts the **Demo builder** (`demo-builder.tsx`), moved out of Settings in July 2026 — this is the `Demo {{Feat}}` workstream in §32. Module permission id `studio` |
 | **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). `/app/proposals/*` are redirect stubs (see §16) |
@@ -2424,7 +2424,7 @@ outranks "it would have run out anyway" for anyone who relied on it. `LAPSED` ex
 reads to whoever holds it as a broken link rather than a withdrawal — so the one thing
 revocation exists to communicate would be the one thing it fails to say.
 
-**The Hallmark row is frozen and self-contained** — `clauses`/`blindSpots`/`coverage`/
+**The Countermark row is frozen and self-contained** — `clauses`/`blindSpots`/`coverage`/
 `standardVersion`/`checkCount` snapshotted at issue, and `scanId` a **loose indexed id, not an
 FK**. Same precedent as Docs (`formSnapshot`, so editing a template never rewrites a document
 already sent) and `ForemanRun` (frozen findings). An attestation whose contents change when the
@@ -2438,10 +2438,10 @@ variant — that helper falls back to the default workspace owner, so an identit
 would issue a certificate in a Super Admin's name, which here is not merely a privilege bug
 but a forged signature.
 
-**Schema (additive → applies via the guarded `prisma db push`):** `Hallmark` + enum
-`HallmarkGrade`; relations on `Workspace` and `WorkspaceClient`. New env
+**Schema (additive → applies via the guarded `prisma db push`):** `Countermark` + enum
+`CountermarkGrade`; relations on `Workspace` and `WorkspaceClient`. New env
 `ASSAY_SIGNING_SECRET` (optional; absence degrades honestly to UNSEALED). New route
-`/hallmark/[token]` added to `robots.ts`'s disallow list alongside the other token pages.
+`/countermark/[token]` added to `robots.ts`'s disallow list alongside the other token pages.
 
 **Verified:** `npm run verify` green — tsc + lint **0 errors**, **560 tests passing** (66 new
 across evaluate/lapse/digest), `audit:ui` **0 findings** with its self-test passing;
@@ -2449,13 +2449,13 @@ across evaluate/lapse/digest), `audit:ui` **0 findings** with its self-test pass
 discriminate** by breaking four things on purpose (§37's discipline): certifying an unmeasured
 clause → 6 failures; letting a LOW-confidence adverse check count as proof → 1; making
 `LAPSED` outrank `REVOKED` → 1; dropping blind spots from the sealed payload → 2.
-**Not visually verified** — `/app/assay` is auth-gated and `/hallmark/[token]` needs a real
+**Not visually verified** — `/app/assay` is auth-gated and `/countermark/[token]` needs a real
 row, and there is no staging or local DB. Post-deploy steps 1-6 in `docs/assay.md` §5.
 
 **Deferred, highest-value first:** **commit pinning** — `subjectCommit` is written `null`
 because `PulseScan` never records the SHA it read, so a mark currently names a repo rather
 than a version (recorded as null rather than guessed, per the no-false-precision rule);
-**continuous re-assay** as a `HALLMARK_REASSAY` job on the existing Curator/Foreman cron spine
+**continuous re-assay** as a `COUNTERMARK_REASSAY` job on the existing Curator/Foreman cron spine
 (this is the subscription); **licensed issuers** for white label (issuer record + per-issuer
 certificate branding + a public issuer directory); a **public `SAS-1` page** at a stable URL so
 a contract can cite it; **Docs integration** (embed a mark in a handover; require a live mark
