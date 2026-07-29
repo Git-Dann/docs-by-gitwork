@@ -10,7 +10,7 @@ import type { BadgeTheme } from "@/lib/badge/svg-kit";
 /**
  * GET /api/badge/countermark/[token]  (PUBLIC — no API key)
  *
- * The embeddable face of an Provenance Countermark: an `<img>`-able SVG a client can
+ * The embeddable face of a Provenance Countermark: an `<img>`-able SVG a client can
  * put in their own footer, beside the certificate it links to.
  *
  *   <a href="https://foundry.gitwork.co.uk/countermark/<token>">

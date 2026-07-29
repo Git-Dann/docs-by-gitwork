@@ -1,5 +1,5 @@
 /**
- * Renders the public Countermark badge — the embeddable face of an Provenance
+ * Renders the public Countermark badge — the embeddable face of a Provenance
  * attestation (`src/server/provenance/`, `docs/provenance.md`).
  *
  * Pure and dependency-free: it takes plain values, never a Prisma row, so every
