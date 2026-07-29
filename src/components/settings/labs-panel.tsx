@@ -53,19 +53,18 @@ export function LabsPanel() {
 
       <ul className="space-y-3">
         {ENTRIES.map((entry) => (
+          // Every card is laid out identically regardless of how long its copy
+          // is: name + Open on one row, then blurb, then note. The previous
+          // single flex row wrapped the button onto its own line once the text
+          // block grew — so Mission Control showed Open top-right while Assay,
+          // whose note is longer, showed it bottom-left. Both text blocks share
+          // one measure (62ch) so a long mono note can't sprawl wider than the
+          // blurb above it either.
           <li key={entry.href} className="app-card p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h3 className="text-[14.5px] font-semibold text-[var(--text-1)]">{entry.name}</h3>
-                <p className="mt-1.5 max-w-[62ch] text-[13.5px] leading-relaxed text-[var(--text-3)]">
-                  {entry.blurb}
-                </p>
-                {entry.note ? (
-                  <p className="mt-2 font-mono text-[11px] leading-relaxed text-[var(--text-4)]">
-                    {entry.note}
-                  </p>
-                ) : null}
-              </div>
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="min-w-0 text-[14.5px] font-semibold text-[var(--text-1)]">
+                {entry.name}
+              </h3>
               <a
                 href={entry.href}
                 target="_blank"
@@ -76,6 +75,14 @@ export function LabsPanel() {
                 <ArrowTopRightOnSquareIcon className="ml-1.5 h-3.5 w-3.5" />
               </a>
             </div>
+            <p className="mt-1.5 max-w-[62ch] text-[13.5px] leading-relaxed text-[var(--text-3)]">
+              {entry.blurb}
+            </p>
+            {entry.note ? (
+              <p className="mt-2 max-w-[62ch] font-mono text-[11px] leading-relaxed text-[var(--text-4)]">
+                {entry.note}
+              </p>
+            ) : null}
           </li>
         ))}
       </ul>
