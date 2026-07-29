@@ -24,6 +24,8 @@ import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { assertScannableUrl } from "./url-guard";
 import { CATEGORIES } from "@/server/pulse-checks/categories";
 import { annotateTrust } from "@/server/pulse-checks/confidence";
+import { detectRepoShape } from "@/server/pulse-checks/native-repo";
+import { buildPlatformCoverageCheck } from "@/server/pulse-checks/platform-coverage";
 import type { JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
 import type {
   PulseScanCheckInput,
@@ -118,18 +120,39 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     // Reconcile: persist anything not already emitted (e.g. unreachable-site branch).
     pending.push(ingest(urlResult.checks));
 
+    // Say so when the selected platform's deep checks need source we do not have.
+    const coverage = buildPlatformCoverageCheck({
+      selectedPlatform: input.platform ?? "",
+      inputType: "URL",
+      detectedShape: null,
+    });
+    if (coverage) pending.push(ingest([coverage]));
+
     await Promise.all([deployP, browserP]);
   } else {
     // GITHUB_REPO — repo + code checks in parallel, then the homepage (if any).
     const repo = (input.githubRepo ?? "").trim();
     if (!repo) throw new Error("A GitHub repo is required.");
 
-    const [ghResult, codeResult] = await Promise.all([
+    const [ghResult, codeResult, repoShape] = await Promise.all([
       runGithubChecks(repo).then((r) => { pending.push(ingest(r.checks)); return r; }).catch(() => ({ checks: [], techStack: [] as string[], nativePlatform: null })),
       runCodeAgent(repo).then((r) => { codeInsights = r.insights; pending.push(ingest(r.checks)); return r; }).catch(() => null),
+      // Shares the memoized snapshot the families already fetched — no extra call.
+      detectRepoShape(repo).catch(() => "none" as const),
     ]);
     techStack = ghResult.techStack;
     homepageUrl = codeResult?.insights.homepageUrl ?? null;
+
+    // Reconcile the dropdown against what the repo actually is. A mismatch is a
+    // WARN rather than a failure: detection wins, so the findings are still
+    // correct — but the user asked for a family that did not run, and silence
+    // there is indistinguishable from "we ran them and found nothing".
+    const coverage = buildPlatformCoverageCheck({
+      selectedPlatform: input.platform ?? "",
+      inputType: "GITHUB_REPO",
+      detectedShape: repoShape,
+    });
+    if (coverage) pending.push(ingest([coverage]));
 
     // A MOBILE repo is not graded on its GitHub "Website" link.
     //

@@ -191,12 +191,32 @@ export const FLUTTER_INAPPLICABLE_CHECKS: ReadonlyMap<string, string> = new Map(
   ["has_manifest", "Superseded by the dependency-pinning check — the manifest is pubspec.yaml."],
 ]);
 
+/**
+ * Generic repo checks that cannot apply to a REACT NATIVE repo.
+ *
+ * Deliberately the shortest list of the three, because React Native genuinely IS a
+ * JavaScript project: package.json, ESLint, tsconfig, Jest and a top-level
+ * `__tests__` folder all apply to it unchanged. That is why RN was originally
+ * excluded from applicability filtering altogether — and that was very nearly
+ * right. Only the server-shaped checks and the web-discoverability one come out,
+ * plus `.env.example`: RN configures builds with react-native-config, `--dart`-style
+ * build flags and EAS secrets, never a committed .env.
+ */
+export const REACT_NATIVE_INAPPLICABLE_CHECKS: ReadonlyMap<string, string> = new Map([
+  ["has_orm_config", "No server-side ORM in a mobile client."],
+  ["has_migrations", "Database migrations belong to the backend, not the mobile app repo."],
+  ["has_infra_code", "Infrastructure-as-code belongs to the backend, not the mobile app repo."],
+  ["has_openapi_spec", "An API spec belongs to the backend this app consumes, not the app repo."],
+  ["dockerfile_present", "A React Native app ships as a signed store binary, not a container image."],
+  ["has_env_example", "React Native configures builds with react-native-config / EAS secrets, not a committed .env."],
+  ["aeo_repo_llms_txt", "llms.txt is a web-discoverability artefact — not applicable to a mobile app repo."],
+]);
+
 /** The applicability map for a platform, or null when every generic check still applies. */
 function inapplicableFor(platform: NativePlatform | null): ReadonlyMap<string, string> | null {
   if (isNativeMobile(platform)) return NATIVE_INAPPLICABLE_CHECKS;
   if (platform === "flutter") return FLUTTER_INAPPLICABLE_CHECKS;
-  // React Native genuinely IS a JS project — package.json, ESLint and tsconfig all
-  // apply to it, so nothing is skipped.
+  if (platform === "react-native") return REACT_NATIVE_INAPPLICABLE_CHECKS;
   return null;
 }
 
