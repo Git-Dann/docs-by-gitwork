@@ -104,3 +104,27 @@ export function useRevokeCountermark() {
     },
   });
 }
+
+/**
+ * Seed the six specimen countermarks (Super Admin only).
+ *
+ * Uses the session cookie — no API key. The route's own gate is
+ * `assertSuperAdminOrApiKey`, and middleware accepts a valid NextAuth session as
+ * authorization for /api/*, so a signed-in Super Admin can call it straight from the UI.
+ */
+export function useSeedProvenanceDemo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<{
+        ok: boolean;
+        seeded: number;
+        standard: string;
+        gradeMismatches: string[];
+        note: string;
+      }>("/api/dev/seed-provenance-demo", { method: "POST" }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY });
+    },
+  });
+}

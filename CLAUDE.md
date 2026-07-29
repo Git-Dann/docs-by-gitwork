@@ -2453,6 +2453,24 @@ clause → 6 failures; letting a LOW-confidence adverse check count as proof →
 **Not visually verified** — `/app/provenance` is auth-gated and `/countermark/[token]` needs a real
 row, and there is no staging or local DB. Post-deploy steps 1-6 in `docs/provenance.md` §5.
 
+**Demo data + the internal product case.** **Settings → Labs → Provenance → Seed demo data**
+(Super Admin, session-authorised — no API key; `POST /api/dev/seed-provenance-demo` for scripts)
+seeds **six countermarks** covering all four grades plus a revoked one and a superseded pair. It
+does **not** fabricate rows: it builds realistic `PulseScan`/`PulseScanCheck` records and runs the
+real `issueCountermark`, so every verdict, blind spot, digest and seal is genuine engine output —
+and the response asserts each scenario's grade against what the engine actually returned,
+surfacing `gradeMismatches` in the UI rather than swallowing them. Fixtures live in
+`src/server/provenance/demo-scenarios.ts` and are graded in CI by
+`__tests__/demo-scenarios.test.ts` with **no database**, which is how the demo data is known
+correct *before* it is seeded (the seed route can't run locally). Writing that test immediately
+earned its keep: it caught that `repo_accessible` — the canonical "could we even look" signal
+(§35) — was in no clause at all, even though C11's assertion already claimed readability had been
+established. Fixed by bumping **SAS-1 to v1.1.0** and adding the key, rather than loosening the
+test; safe because zero marks had been issued. Also `/provenance-overview`, the internal product
+case (noindex, in `robots.ts`) — a working document with dated regulation, sourced figures, a
+specimen certificate, the competitive-gap table, and an explicit register of what is NOT built
+and what is unresolved.
+
 **Deferred, highest-value first:** **commit pinning** — `subjectCommit` is written `null`
 because `PulseScan` never records the SHA it read, so a mark currently names a repo rather
 than a version (recorded as null rather than guessed, per the no-false-precision rule);

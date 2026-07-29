@@ -248,6 +248,51 @@ expose it to Staff.
 that `/app/<name>` with a sidebar item is for a main product. The route and the module gate
 are unchanged, so a deep link still works and still gates.
 
+### Demo data
+
+**From the UI (the normal way):** Settings → Labs → Provenance → **Seed demo data**. Super
+Admin only, authorised by your session — no API key. That button exists because demoing
+otherwise needs a devtools `fetch` or the workspace API key, and neither is something to do
+in front of an audience.
+
+**Unattended / scripted:**
+
+```bash
+curl -X POST https://foundry.gitwork.co.uk/api/dev/seed-provenance-demo \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+Either route seeds **six countermarks** covering every grade, plus one revoked and one
+superseded pair. Idempotent — safe to re-run mid-demo (it deletes only its own rows, matched
+on the demo project names).
+
+**It does not fabricate the marks.** It builds realistic `PulseScan` + `PulseScanCheck` rows
+and then runs the real `issueCountermark`, so every clause verdict, blind spot, grade, digest
+and seal on screen is genuine engine output. The response asserts each scenario's grade
+against what the engine actually returned and reports `gradeMismatches` if they diverge — a
+demo that quietly showed the wrong grade would be worse than no demo, because it would be
+believed. The UI surfaces that mismatch line rather than swallowing it.
+
+The fixtures live in `src/server/provenance/demo-scenarios.ts` and their grades are asserted
+in CI by `__tests__/demo-scenarios.test.ts`, which runs the real engine with no database.
+That test is how the demo data is known correct *before* anyone seeds it — necessary because
+the seed route cannot be exercised locally.
+
+**The one to show a sceptic** is *Halcyon Care Portal*: a private repo the token could not
+read, graded `INCOMPLETE`. Not certified, not failed. That distinction is the product.
+
+### The internal product case
+
+**`/provenance-overview`** — the page to send someone who has to decide whether Gitwork
+invests. Written as a working document, not marketing collateral: dated regulation with
+sources, a specimen certificate, the competitive-gap table, the business model, and an
+explicit register of what is *not* built and what is unresolved. `noindex` and in
+`robots.ts`, since it carries staging and commercial framing. Shareable by link.
+
+⚠️ Every figure on that page is either sourced in situ or labelled a specimen. Do not add an
+unsourced number to it — the page argues for a product whose entire value is not overstating
+what it knows.
+
 ### Post-deploy verification (the app is auth-gated with no staging, so this is manual)
 
 1. Set `PROVENANCE_SIGNING_SECRET`, redeploy, open `/app/provenance` — the amber "sealing is not
