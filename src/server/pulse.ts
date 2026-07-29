@@ -145,6 +145,11 @@ export function serializePulseScanListItem(
     status: record.status,
     healthScore: record.healthScore,
     generatedProposalId: record.generatedProposalId,
+    isShared: record.isShared,
+    // Gated on isShared so an unshared scan's token never leaves the server, even
+    // though unsharing already nulls it. Once shared it is exactly as public as
+    // the /report/[token] link — and the badge studio needs it to build a snippet.
+    shareToken: record.isShared ? record.shareToken : null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   };

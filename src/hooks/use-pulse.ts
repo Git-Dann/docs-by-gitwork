@@ -41,6 +41,8 @@ export function useSharePulseScan() {
     mutationFn: sharePulseScan,
     onSuccess: (_data, scanId) => {
       queryClient.invalidateQueries({ queryKey: ["pulse-scan", scanId] });
+      // The list carries isShared/shareToken too, so it goes stale on a share.
+      queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
     },
   });
 }
@@ -52,6 +54,7 @@ export function useUnsharePulseScan() {
     mutationFn: unsharePulseScan,
     onSuccess: (_data, scanId) => {
       queryClient.invalidateQueries({ queryKey: ["pulse-scan", scanId] });
+      queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
     },
   });
 }

@@ -1,4 +1,9 @@
+"use client";
+
+import { useState } from "react";
 import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
+
+import { BadgeStudio } from "@/components/settings/labs/badge-studio";
 
 /**
  * Labs — the home for internal and experimental surfaces that are real enough to use
@@ -9,6 +14,11 @@ import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
  * gets an entry point inside that product (Deck sits on the Docs toolbar). An
  * experiment lives here.
  *
+ * An entry either opens a route in a new tab (`href`) or a surface in place
+ * (`panel`). The badge studio is the second kind on purpose: `/app/settings/**`
+ * sits in `UNGATED_APP_PREFIXES`, so giving it a route would make it reachable by
+ * any signed-in member, while this section is Super-Admin-only.
+ *
  * These are entry points, not routes — nothing is moved by listing it here, which
  * matters for /edge in particular: it hard-codes its own path in two duplicated
  * dark-mode regexes (theme-provider.tsx and the inline anti-flash script in
@@ -18,12 +28,22 @@ import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 
 interface LabEntry {
   name: string;
-  href: string;
+  /** Opens in a new tab. Mutually exclusive with `panel`. */
+  href?: string;
+  /** Opens in place, inside this section's gate. */
+  panel?: "badges";
   blurb: string;
   note?: string;
 }
 
 const ENTRIES: LabEntry[] = [
+  {
+    name: "Badge studio",
+    panel: "badges",
+    blurb:
+      "The Foundry Approved marks and the Pulse score badge, with the snippet that installs each one on a client's site. Pick a mark, set the ground it will sit on, and copy.",
+    note: "Every mark has a permanent code (FA-01 … PS-04) — call them by it. Full reference: docs/badges.md.",
+  },
   {
     name: "Mission Control",
     href: "/edge",
@@ -41,13 +61,15 @@ const ENTRIES: LabEntry[] = [
 ];
 
 export function LabsPanel() {
+  const [panel, setPanel] = useState<LabEntry["panel"] | null>(null);
+
   return (
     <div className="space-y-5">
       <div>
         <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-[var(--text-1)]">Labs</h2>
         <p className="mt-1.5 max-w-[64ch] text-[13.5px] leading-relaxed text-[var(--text-3)]">
-          Internal surfaces that are useful but are not products. They open in a new tab and
-          are deliberately kept out of the sidebar.
+          Internal surfaces that are useful but are not products, and are deliberately kept
+          out of the sidebar.
         </p>
       </div>
 
@@ -60,20 +82,30 @@ export function LabsPanel() {
           // whose note is longer, showed it bottom-left. Both text blocks share
           // one measure (62ch) so a long mono note can't sprawl wider than the
           // blurb above it either.
-          <li key={entry.href} className="app-card p-4">
+          <li key={entry.href ?? entry.panel} className="app-card p-4">
             <div className="flex items-start justify-between gap-3">
               <h3 className="min-w-0 text-[14.5px] font-semibold text-[var(--text-1)]">
                 {entry.name}
               </h3>
-              <a
-                href={entry.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="app-button app-button-secondary app-button-sm shrink-0 whitespace-nowrap"
-              >
-                Open
-                <ArrowTopRightOnSquareIcon className="ml-1.5 h-3.5 w-3.5" />
-              </a>
+              {entry.href ? (
+                <a
+                  href={entry.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="app-button app-button-secondary app-button-sm shrink-0 whitespace-nowrap"
+                >
+                  Open
+                  <ArrowTopRightOnSquareIcon className="ml-1.5 h-3.5 w-3.5" />
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setPanel(entry.panel ?? null)}
+                  className="app-button app-button-secondary app-button-sm shrink-0 whitespace-nowrap"
+                >
+                  Open
+                </button>
+              )}
             </div>
             <p className="mt-1.5 max-w-[62ch] text-[13.5px] leading-relaxed text-[var(--text-3)]">
               {entry.blurb}
@@ -91,6 +123,8 @@ export function LabsPanel() {
         Adding one? Put the entry point here rather than in the sidebar — see the note at the
         top of this file for where features and experiments each belong.
       </p>
+
+      <BadgeStudio open={panel === "badges"} onClose={() => setPanel(null)} />
     </div>
   );
 }

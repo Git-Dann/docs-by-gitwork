@@ -1,0 +1,147 @@
+import { unstable_cache } from "next/cache";
+import type { NextRequest } from "next/server";
+
+import { renderPulseBadge, type BadgeBar, type BadgeStyle, type BadgeTheme } from "@/lib/badge/pulse-badge";
+import { prisma } from "@/lib/prisma";
+import { DOMAIN_DEFS } from "@/server/pulse-checks/categories";
+import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
+import type { PulseScanCheckInput } from "@/types/pulse";
+
+/**
+ * GET /api/badge/pulse/[token]  (PUBLIC — no API key)
+ *
+ * The client-facing Pulse score badge: an `<img>`-able SVG a client can drop in
+ * their own footer or README.
+ *
+ *   <img src="https://foundry.gitwork.co.uk/api/badge/pulse/<token>.svg" alt="Gitwork Pulse score">
+ *
+ * ## Auth is the share token, and only the share token
+ *
+ * `token` is the SAME `PulseScan.shareToken` that serves `/report/[token]`, so
+ * the badge is public exactly when the report is: nothing here is visible that
+ * the linked page does not already show. Unsharing revokes both at once — this
+ * reads through the same `pulse-report-<token>` cache tag that the share route
+ * already revalidates, so a rotated or removed token stops resolving promptly
+ * rather than after the TTL.
+ *
+ * A revoked or mistyped token returns 404, deliberately: a badge that kept
+ * rendering after its report was unshared would be advertising a claim nobody
+ * can check.
+ *
+ * ## Query parameters
+ *
+ *   style   shield (default) · ring · card · bar
+ *   theme   light (default) · dark      — pick for the HOST page's background
+ *   motion  1 to opt into the animated build (see below)
+ *
+ * Motion is off by default on purpose. A CSS animation inside an `<img>` is
+ * started and then frozen at t=0 wherever the page is rasterised without being
+ * scrolled — social card renderers, print-to-PDF — which would render an
+ * entrance animation's hidden first frame. Ask for it only on a surface where a
+ * person actually scrolls the badge into view.
+ */
+
+export const runtime = "nodejs";
+
+// Only shown on the `card` style, which has room for four rows.
+const MAX_BARS = 4;
+
+const loadBadgeScan = (token: string) =>
+  unstable_cache(
+    async () => {
+      const scan = await prisma.pulseScan.findUnique({
+        where: { shareToken: token, isShared: true },
+        select: {
+          projectName: true,
+          healthScore: true,
+          checks: { select: { checkKey: true, category: true, status: true, confidence: true } },
+        },
+      });
+      if (!scan) return null;
+      return {
+        projectName: scan.projectName,
+        healthScore: scan.healthScore,
+        // Narrowed to what the score maths reads. `computeScoreBreakdown` only
+        // touches category/status/confidence, so the badge never pulls the full
+        // check payload (evidence, remediation prose) into the cache entry.
+        checks: scan.checks as unknown as PulseScanCheckInput[],
+      };
+    },
+    ["pulse-badge", token],
+    { tags: [`pulse-report-${token}`], revalidate: 300 },
+  )();
+
+/** Domain rollup for the `card` style, ordered by how much weight each carries. */
+function domainBars(checks: PulseScanCheckInput[]): BadgeBar[] {
+  if (checks.length === 0) return [];
+  const byCategory = new Map(
+    computeScoreBreakdown(checks).byCategory.map((c) => [c.category, c]),
+  );
+
+  return DOMAIN_DEFS.map((domain) => {
+    let earned = 0;
+    let possible = 0;
+    for (const category of domain.categories) {
+      const row = byCategory.get(category);
+      if (!row) continue;
+      earned += row.earned;
+      possible += row.possible;
+    }
+    return { label: domain.label, value: possible > 0 ? earned / possible : 0, possible };
+  })
+    .filter((d) => d.possible > 0)
+    .sort((a, b) => b.possible - a.possible)
+    .slice(0, MAX_BARS)
+    .map(({ label, value }) => ({ label, value }));
+}
+
+function parseStyle(v: string | null): BadgeStyle {
+  return v === "ring" || v === "card" || v === "bar" ? v : "shield";
+}
+
+function parseTheme(v: string | null): BadgeTheme {
+  return v === "dark" ? "dark" : "light";
+}
+
+export async function GET(request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+  const { token: raw } = await params;
+  // `.svg` is accepted (and ignored) so the URL can end in a real file
+  // extension — some CMSes and markdown linters will not treat an extensionless
+  // URL as an image.
+  const token = raw.replace(/\.svg$/i, "");
+
+  const scan = await loadBadgeScan(token);
+  if (!scan || scan.healthScore === null) {
+    return new Response("Not found", {
+      status: 404,
+      headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+    });
+  }
+
+  const q = request.nextUrl.searchParams;
+  const style = parseStyle(q.get("style"));
+
+  const { svg } = renderPulseBadge({
+    score: scan.healthScore,
+    style,
+    theme: parseTheme(q.get("theme")),
+    motion: q.get("motion") === "1",
+    project: scan.projectName,
+    // Only the card renders bars; skip the rollup entirely otherwise.
+    bars: style === "card" ? domainBars(scan.checks) : undefined,
+  });
+
+  return new Response(svg, {
+    status: 200,
+    headers: {
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      // A score only moves when the scan is re-run, and the cache tag above
+      // handles unsharing, so a short TTL with a long stale window keeps this
+      // cheap without letting a revoked badge linger.
+      "Cache-Control": "public, max-age=300, s-maxage=300, stale-while-revalidate=86400",
+      // Hotlinked from client sites by design.
+      "Access-Control-Allow-Origin": "*",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}

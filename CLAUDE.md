@@ -369,6 +369,7 @@ src/
       rate-card/                  ← Rate card CRUD
       settings/                   ← AI integrations + model settings
       report/[token]/             ← Public shareable report
+      badge/pulse/[token]/        ← Public Pulse-score badge SVG (same shareToken; §38)
       webhooks/github/            ← GitHub webhook for Pulse monitors
       dev/seed-demo/              ← Dev: seed Pulse demo data
       dev/seed-study-demo/        ← Dev: seed Study demo data
@@ -2461,3 +2462,114 @@ certificate branding + a public issuer directory); a **public `SAS-1` page** at 
 a contract can cite it; **Docs integration** (embed a mark in a handover; require a live mark
 before e-sign acceptance); and an **insurer/marketplace API**, which needs a partner before it
 needs code.
+
+## 39. Recent Changes (July 2026) — Badges: "Foundry Approved" + an embeddable Pulse score
+
+Two families of self-contained SVG mark, so Gitwork's work can be signed on a client's own site and
+a Pulse score can be published there. **Full usage + parameters: `docs/badges.md`.**
+
+- **"Foundry Approved" — five options, committed under `public/badge/`.** Seal (circular stamp,
+  rotating legend), Instrument plate (the `01 // WIDGET NAME` widget grammar), Shield (inline,
+  shields.io proportions), Monogram (square, the real wordmark's "F"), Certificate lockup
+  (horizontal footer). Each ships light + `-dark` and static + `-anim`; the monogram adds `-sm`.
+  Measured size floors: **seal 64px**, **monogram 24px** (below that its tick lozenge is a smudge —
+  `-sm` drops it and is legible to 16px).
+- **Pulse score — `GET /api/badge/pulse/[token]`** (public, added to `PUBLIC_API_PATHS`). The token
+  is the **existing `PulseScan.shareToken`**, so no schema change, no new auth surface, and nothing
+  is exposed that `/report/[token]` does not already show. It reads through the **same
+  `pulse-report-<token>` cache tag** the share route already revalidates, so unshare revokes the
+  badge with the report. `?style=shield|ring|card|bar`, `?theme=light|dark`, `?motion=1`. A revoked
+  token **404s on purpose** — a badge that kept rendering would advertise a claim nobody can check.
+- **Bands are locked to the report.** `scoreBand`/`scoreGrade` mirror `HealthScoreRing`
+  (`document-cover.tsx`) and a unit test asserts every boundary, so the badge can never contradict
+  the report it links to. The `card`'s domain bars come from `computeScoreBreakdown` — the same
+  maths as the headline score.
+
+**Type is outlined to paths, and that is load-bearing.** An SVG in an `<img>` is an isolated
+document: no webfont fetch, no inherited CSS. `font-family:'DM Serif Display'` there falls back to
+Georgia, whose numerals are **old-style** — a score would render with a descending "9". So
+`scripts/badge/fonttype.py` outlines the brand faces (shaped through HarfBuzz for correct kerning)
+from the base64 woff2 **already vendored for Deck**, keeping one copy of the fonts in the repo.
+⚠️ `TTFont` loaded from `.woff2` keeps `flavor="woff2"` and re-saves compressed; HarfBuzz cannot
+parse that and fails **silently** — every character maps to `.notdef`, giving uniform advances and
+no outlines. Clear `font.flavor` before saving.
+
+**⚠️ The trap that shaped the whole design: a CSS animation inside an `<img>` freezes at frame 0.**
+It is not that the animation "doesn't apply" — the browser *starts* it and never advances the
+timeline, so an entrance animation renders its **hidden** first frame. **No `fill-mode` fixes it**;
+"frame 0" and "finished" are contradictory states. It fires wherever a page is rasterised without
+being scrolled: offscreen images in a full-page screenshot, social/OG card renderers, print-to-PDF.
+Found exactly that way here — the Pulse badges came out blank in a full-page screenshot while the
+same files were perfect in isolation. Consequences, both kept:
+1. **Everything ships in two builds.** Static is the **default** and the one that goes on someone
+   else's site; animated (`-anim`, or `?motion=1`) is for surfaces we control, where a person
+   scrolls it into view. The static build is literally the animated one minus its `<style>`.
+2. **Every base style must equal the finished state.** `entrance()` (in both the Python generator
+   and `pulse-badge.ts`) puts stagger in **keyframe percentages, never `animation-delay`**, because
+   a delay with `fill-mode:backwards` reintroduces a hidden resting state. `prefers-reduced-motion`
+   is deliberately *only* `animation:none`, which makes the invariant self-testing — get it wrong
+   and a reduced-motion render visibly breaks.
+
+**Layout defects the detectors cannot see, found by screenshotting** (the §30 lesson again): the
+ring's caption collided with its own arc, the lockup's serif title ran under the VERIFIED chip, and
+the card's fourth domain bar overlapped the footer rule. All three are geometry, so `audit:ui` and
+`audit-clipping` are blind to them — the lockup now **derives its width from the shaped type**, so
+that class of collision cannot come back when the copy changes.
+
+**Files:** `scripts/badge/{fonttype,generate}.py` (build-time only — `pip install fonttools brotli
+uharfbuzz`; outputs are committed, nothing runs Python at build or request time),
+`src/lib/badge/pulse-badge.ts` (pure, 23 unit tests), `src/lib/badge/glyphs.ts` (generated, ~15KB,
+caps-only), `src/app/api/badge/pulse/[token]/route.ts`, `public/badge/*.svg`, `docs/badges.md`.
+
+**Verified:** `npm run verify` green — tsc + lint clean, **517 tests** (23 new), `audit:ui` 0
+findings; `npx next build` clean with `/api/badge/pulse/[token]` registered. Both builds were
+rendered in headless Chromium at multiple sizes, on light and dark grounds, and under
+`prefers-reduced-motion`. **Not verified:** the live route against a real shared scan — that needs a
+database, so it is a post-deploy check (share a scan, hit each `style`, unshare and confirm 404).
+**Deferred:** per-client copy on the static plate/lockup (`AUDITED …` is baked into the art); an
+Inter block in the glyph table (the dynamic `card` sets its grade in mono for that reason); and a
+picker in-app — today you copy a URL out of `docs/badges.md`.
+
+### 39.1 Badge studio (Settings → Labs) + the naming scheme
+
+The marks are now installable from inside Foundry rather than by copying a URL out of a doc.
+
+- **Every mark has a permanent code** — `FA-01`…`FA-05`, `PS-01`…`PS-04` — defined in
+  **`src/lib/badge/catalog.ts`**, the single source of truth for badge identity that the studio,
+  the docs and any review comment all read from. Codes are permanent: retiring a mark retires its
+  code, because reusing a number makes a stale reference resolve to the *wrong* thing instead of
+  failing. `catalog.test.ts` asserts each code is unique, well-formed, and — the useful part —
+  that **every variant the studio can offer actually exists on disk**, so the catalogue can't
+  advertise a file the generator never wrote.
+- **Settings → Labs → Badge studio** (`src/components/settings/labs/badge-studio.tsx`): pick a
+  mark, set the ground, static/animated, then copy a paste-ready snippet. For a Pulse badge it also
+  picks the scan and **shares the report inline** if it isn't shared yet — that share is what mints
+  the token, so the studio is the whole install path rather than step one of three.
+- **It is a modal, not a route, and that is deliberate.** Labs is Super-Admin-gated in the settings
+  shell, but `/app/settings/**` is in `UNGATED_APP_PREFIXES` — a route would have been reachable by
+  any signed-in member. Keeping it in the panel means it inherits the gate it should have. `LabEntry`
+  now takes either an `href` (opens a tab, e.g. `/edge`) or a `panel` (opens in place).
+- **`PulseScanListItem` gained `isShared` + `shareToken`** (additive DTO, no schema change).
+  `shareToken` is populated **only while `isShared`** — an unshared scan's token never leaves the
+  server, and once shared it is no more secret than the `/report/[token]` link it belongs to. The
+  share/unshare hooks now also invalidate `["pulse-scans"]`; they only invalidated the single scan,
+  which left the list's new share state stale.
+
+**Two layout bugs, both caught by rendering the component rather than reading it.** `/app` is
+auth-gated with no staging, so the studio was server-rendered with `renderToStaticMarkup` inside
+the real providers, wrapped in the app's compiled CSS, and screenshotted. That is worth knowing as
+a technique — it does not run effects, but it does check real geometry on gated screens:
+
+1. The **Install block fell below the fold** once the Pulse scan picker was present. The column
+   scrolled, so `audit-clipping` would have passed it — but the snippet is the reason the studio
+   exists and should never be the thing you scroll to find. It is now a pinned, non-scrolling
+   footer with the content above scrolling under it.
+2. Pinning it didn't work at first: the inspector column needed **`min-h-0`**. Without it a grid
+   item's automatic minimum size is its content, so the column grew past the `h-[460px]` track and
+   pushed the footer out of the dialog. Same trap DESIGN.md documents for the Docs editor panes.
+
+**Verified:** `npm run verify` green — tsc + lint clean, **531 tests** (8 new catalogue tests),
+`audit:ui` 0 findings; `npx next build` clean. The studio was rendered and screenshotted in three
+states (FA-01, FA-03, PS-04). **Not verified:** the studio driven live with real scans — effects,
+the scan dropdown and the clipboard need a browser session against a database, so that is a
+post-deploy check.
