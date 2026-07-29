@@ -14,6 +14,11 @@
 npm run verify
 ```
 
+> ⚠️ **`verify` now runs `audit:ui --self-test` before `audit:ui`, because CI does and it
+> previously did not.** That gap shipped a red PR with a green local run: a new audit rule was
+> added without its self-test fixture, `npm run verify` passed locally, and CI failed on the
+> separate self-test step. Local green must mean CI green, or the gate is theatre.
+
 That runs, in order: `prisma generate` → `tsc --noEmit` → `eslint` → `vitest` → `audit:ui`.
 It needs no database, no secrets and no running server, so it works on a fresh clone
 (`npm install` first).

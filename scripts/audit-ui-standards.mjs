@@ -579,6 +579,19 @@ const SELF_TEST_CASES = {
     bad: `const r: MetadataRoute.Robots = { rules: [{ userAgent: "*", disallow: "/" }] };`,
     good: `const r: MetadataRoute.Robots = { rules: [{ userAgent: "*", allow: "/", disallow: ["/app", "/api/"] }] };`,
   },
+  "UNDEFINED-CLASS": {
+    bad: `const a = <button className="button-primary" />;
+          const b = <div className="widget-cardd" />;
+          const c = <span className="app-buton app-buton-sm" />;`,
+    // Real house classes, plus Tailwind utilities and arbitrary values — the rule must stay
+    // silent on all of them, or it would fire on most of the codebase.
+    good: `const a = <button className="app-button app-button-primary app-button-sm" />;
+           const b = <div className="widget-card" />;
+           const c = <div className="widget-header"><span className="widget-header-label" /></div>;
+           const d = <div className="flex items-center gap-2 px-3 text-sm" />;
+           const e = <div className="min-w-[420px] sm:grid-cols-2" />;
+           const f = <input className="app-input" />;`,
+  },
   "MODEL-LITERAL": {
     bad: `const m = workspace.anthropicModel ?? "claude-sonnet-5";`,
     good: `const m = workspace.anthropicModel ?? DEFAULT_MODELS.ANTHROPIC;
@@ -600,6 +613,10 @@ function selfTest(rules) {
       const found = [];
       rule.run("selftest.tsx", src, localStringConsts(src), (f, l, d) => found.push(d), {
         cssScrollers: [],
+        // The real set, not a stub: UNDEFINED-CLASS's `good` case only proves something if
+        // `app-button-primary` genuinely resolves, and its `bad` case only proves something
+        // if `button-primary` genuinely does not.
+        definedClasses: findDefinedClasses(),
       });
       return found;
     };
