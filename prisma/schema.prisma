@@ -462,7 +462,7 @@ model Workspace {
   golfClubs                   GolfClub[]
   pulseCheckStats             PulseCheckStat[]
   curatorRuns                 CuratorRun[]
-  hallmarks                   Hallmark[]
+  countermarks                   Countermark[]
   aiUsageLogs                 AiUsageLog[]
   /// Master switch for per-call AI usage logging (feeds the Super-Admin Analytics → AI usage
   /// scope). Default ON; a Super Admin can disable per-workspace. Never blocks the AI call.
@@ -1112,7 +1112,7 @@ model WorkspaceClient {
   updatedAt                DateTime                  @updatedAt
   workspace                Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   pulseScans               PulseScan[]
-  hallmarks                Hallmark[]
+  countermarks                Countermark[]
   platforms                ClientPlatform[]
   designs                  ClientDesign[]
   documentLinks            ClientDocumentLink[]
@@ -4392,7 +4392,7 @@ model DevSignalNotice {
 // ─────────────────────────────────────────────────────────────────────────────────────
 // Assay — the attestation layer (CLAUDE.md §38).
 //
-// A Hallmark is the counterparty-facing artifact: what a specific piece of software was
+// A Countermark is the counterparty-facing artifact: what a specific piece of software was
 // found to be, at a specific commit, against a named standard version, by a named issuer,
 // with an explicit list of what could NOT be established.
 //
@@ -4408,7 +4408,7 @@ model DevSignalNotice {
 //     is not an attestation. Someone accepted delivery on this text; it has to survive.
 // The `digest` is computed over the frozen payload, so re-deriving anything on read would
 // also break verification.
-model Hallmark {
+model Countermark {
   id            String           @id @default(cuid())
   workspaceId   String
   workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -4429,7 +4429,7 @@ model Hallmark {
 
   standardId      String
   standardVersion String
-  grade           HallmarkGrade
+  grade           CountermarkGrade
   gradeReason     String        @db.Text
 
   clauses    Json // ClauseOutcome[] — frozen per-clause verdicts + rationale
@@ -4456,7 +4456,7 @@ model Hallmark {
   digest String // sha256 of the canonical payload — recomputable by anyone from the certificate
   seal   String? // HMAC-SHA256 under ASSAY_SIGNING_SECRET; null = unsealed, shown as such
 
-  token String @unique // the public certificate URL credential (/hallmark/[token])
+  token String @unique // the public certificate URL credential (/countermark/[token])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -4467,11 +4467,28 @@ model Hallmark {
   @@index([scanId])
   // Supersession looks up the previous live mark for a subject on every issue.
   @@index([workspaceId, subjectName, issuedAt])
+  // ⚠️ The PHYSICAL table stays `Hallmark` — the product's artifact was renamed
+  // Hallmark → Countermark after the table had already shipped, and renaming a Prisma
+  // model renames its table. That reads to Prisma as "create Countermark, DROP Hallmark",
+  // and the build's `prisma db push` runs WITHOUT --accept-data-loss, so per the §2
+  // all-or-nothing footgun the ENTIRE sync would be skipped — additive parts included —
+  // leaving the new table uncreated and every Assay route erroring on a missing relation.
+  //
+  // `@@map` keeps this a pure code-level rename: zero schema diff, applies through the
+  // guarded push with no manual DB step and no data-loss flag. The legacy physical name
+  // is invisible to users. Renaming the table properly is a `prisma migrate` job for
+  // whenever this repo adopts migrations (§2 option (b)) — not worth a hand-run
+  // --accept-data-loss push that someone can forget.
+  @@map("Hallmark")
 }
 
-enum HallmarkGrade {
+enum CountermarkGrade {
   CERTIFIED
   CONDITIONAL
   NOT_CERTIFIED
   INCOMPLETE
+
+  // Same reasoning as the model's @@map above: renaming a Postgres enum type is a
+  // drop-and-recreate, which would trip the same guard and skip the whole sync.
+  @@map("HallmarkGrade")
 }

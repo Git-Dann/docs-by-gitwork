@@ -14,31 +14,31 @@ import {
 import { usePulseScans } from "@/hooks/use-pulse";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
-  useHallmarks,
-  useIssueHallmark,
-  useRevokeHallmark,
-  type Hallmark,
-  type HallmarkGrade,
-  type HallmarkStatus,
+  useCountermarks,
+  useIssueCountermark,
+  useRevokeCountermark,
+  type Countermark,
+  type CountermarkGrade,
+  type CountermarkStatus,
 } from "@/hooks/use-assay";
 import { Modal } from "@/components/ui/modal";
 import { cn, formatDate } from "@/lib/format";
 
-const GRADE_LABEL: Record<HallmarkGrade, string> = {
+const GRADE_LABEL: Record<CountermarkGrade, string> = {
   CERTIFIED: "Certified",
   CONDITIONAL: "Conditional",
   NOT_CERTIFIED: "Not certified",
   INCOMPLETE: "Incomplete",
 };
 
-const GRADE_TONE: Record<HallmarkGrade, string> = {
+const GRADE_TONE: Record<CountermarkGrade, string> = {
   CERTIFIED: "border-emerald-200 bg-emerald-50 text-emerald-700",
   CONDITIONAL: "border-amber-200 bg-amber-50 text-amber-700",
   NOT_CERTIFIED: "border-red-200 bg-red-50 text-red-700",
   INCOMPLETE: "border-slate-300 bg-slate-100 text-slate-600",
 };
 
-const STATUS_TONE: Record<HallmarkStatus, string> = {
+const STATUS_TONE: Record<CountermarkStatus, string> = {
   VALID: "text-emerald-600",
   EXPIRING: "text-amber-600",
   LAPSED: "text-slate-500",
@@ -46,7 +46,7 @@ const STATUS_TONE: Record<HallmarkStatus, string> = {
   SUPERSEDED: "text-blue-600",
 };
 
-function Badge({ grade }: { grade: HallmarkGrade }) {
+function Badge({ grade }: { grade: CountermarkGrade }) {
   return (
     <span
       className={cn(
@@ -60,21 +60,21 @@ function Badge({ grade }: { grade: HallmarkGrade }) {
 }
 
 export function AssayRegister() {
-  const { canIssueHallmark } = usePermissions();
-  const { data, isPending, error } = useHallmarks();
+  const { canIssueCountermark } = usePermissions();
+  const { data, isPending, error } = useCountermarks();
   const scans = usePulseScans();
-  const issue = useIssueHallmark();
-  const revoke = useRevokeHallmark();
+  const issue = useIssueCountermark();
+  const revoke = useRevokeCountermark();
 
   const [issueOpen, setIssueOpen] = useState(false);
   const [scanId, setScanId] = useState("");
-  const [revoking, setRevoking] = useState<Hallmark | null>(null);
+  const [revoking, setRevoking] = useState<Countermark | null>(null);
   const [revokeReason, setRevokeReason] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
 
   // Memoised because the `?? []` fallback is a fresh array on every render, which would
   // re-run the counts useMemo below each time.
-  const hallmarks = useMemo(() => data?.hallmarks ?? [], [data?.hallmarks]);
+  const countermarks = useMemo(() => data?.countermarks ?? [], [data?.countermarks]);
   const sealingConfigured = data?.sealingConfigured ?? false;
 
   // Only completed scans can be attested — issuing from a partial one would report
@@ -86,13 +86,13 @@ export function AssayRegister() {
   );
 
   const counts = useMemo(() => {
-    const live = hallmarks.filter((h) => h.status === "VALID" || h.status === "EXPIRING").length;
-    const lapsed = hallmarks.filter((h) => h.status === "LAPSED").length;
-    return { total: hallmarks.length, live, lapsed };
-  }, [hallmarks]);
+    const live = countermarks.filter((h) => h.status === "VALID" || h.status === "EXPIRING").length;
+    const lapsed = countermarks.filter((h) => h.status === "LAPSED").length;
+    return { total: countermarks.length, live, lapsed };
+  }, [countermarks]);
 
   const copyLink = async (token: string) => {
-    const url = `${window.location.origin}/hallmark/${token}`;
+    const url = `${window.location.origin}/countermark/${token}`;
     try {
       await navigator.clipboard.writeText(url);
       setCopied(token);
@@ -121,7 +121,7 @@ export function AssayRegister() {
 
       <div className="widget-card">
         <div className="widget-header">
-          <span className="widget-header-label">01 // HALLMARK REGISTER</span>
+          <span className="widget-header-label">01 // COUNTERMARK REGISTER</span>
           <span className="widget-header-right">
             {counts.total} ISSUED · {counts.live} LIVE · {counts.lapsed} LAPSED
           </span>
@@ -129,10 +129,10 @@ export function AssayRegister() {
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-2)] px-4 py-3">
           <p className="min-w-0 text-sm text-[var(--text-3)]">
-            A Hallmark is the certificate you hand to a client, insurer or acquirer. It states what
+            A Countermark is the certificate you hand to a client, insurer or acquirer. It states what
             was checked, what passed, and what could not be established.
           </p>
-          {canIssueHallmark && (
+          {canIssueCountermark && (
             <button
               type="button"
               className="button-primary shrink-0"
@@ -141,7 +141,7 @@ export function AssayRegister() {
                 setIssueOpen(true);
               }}
             >
-              Strike a hallmark
+              Strike a countermark
             </button>
           )}
         </div>
@@ -152,15 +152,15 @@ export function AssayRegister() {
           <div className="widget-body-compact text-sm text-red-600">
             Could not load the register: {error.message}
           </div>
-        ) : hallmarks.length === 0 ? (
+        ) : countermarks.length === 0 ? (
           <div className="widget-body-compact">
             <p className="text-sm text-[var(--text-3)]">
-              No hallmarks yet. Run a Pulse scan to completion, then strike a mark from it.
+              No countermarks yet. Run a Pulse scan to completion, then strike a mark from it.
             </p>
           </div>
         ) : (
           <ul className="divide-y divide-[var(--border-2)]">
-            {hallmarks.map((h) => (
+            {countermarks.map((h) => (
               <li key={h.id} className="px-4 py-3.5">
                 <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
                   <div className="min-w-0 flex-1">
@@ -200,14 +200,14 @@ export function AssayRegister() {
                     </button>
                     <a
                       className="button-secondary"
-                      href={`/hallmark/${h.token}`}
+                      href={`/countermark/${h.token}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       title="Open the public certificate"
                     >
                       <ArrowTopRightOnSquareIcon className="h-4 w-4" />
                     </a>
-                    {canIssueHallmark && !h.revokedAt && (
+                    {canIssueCountermark && !h.revokedAt && (
                       <button
                         type="button"
                         className="button-ghost text-[var(--text-3)]"
@@ -234,7 +234,7 @@ export function AssayRegister() {
       </div>
 
       {/* ─── Strike ─── */}
-      <Modal open={issueOpen} onClose={() => setIssueOpen(false)} title="Strike a hallmark">
+      <Modal open={issueOpen} onClose={() => setIssueOpen(false)} title="Strike a countermark">
         <div className="space-y-4 p-4">
           <p className="text-sm leading-relaxed text-[var(--text-2)]">
             The mark is assayed from a completed Pulse scan and frozen at issue. Re-running the
@@ -290,7 +290,7 @@ export function AssayRegister() {
       </Modal>
 
       {/* ─── Revoke ─── */}
-      <Modal open={revoking !== null} onClose={() => setRevoking(null)} title="Revoke this hallmark">
+      <Modal open={revoking !== null} onClose={() => setRevoking(null)} title="Revoke this countermark">
         <div className="space-y-4 p-4">
           <p className="text-sm leading-relaxed text-[var(--text-2)]">
             Revoking does not delete the certificate. The link stays live and reports{" "}

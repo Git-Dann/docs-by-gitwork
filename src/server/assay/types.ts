@@ -2,7 +2,7 @@
 // API and the public certificate page.
 //
 // The distinction that drives every shape here: a Pulse scan is a REPORT (for the person
-// who owns the software), and a Hallmark is an ATTESTATION (for a counterparty who does
+// who owns the software), and a Countermark is an ATTESTATION (for a counterparty who does
 // not own it and cannot read code — a client accepting handover, an insurer, an acquirer,
 // a procurement officer). A report may be provisional and may be re-read later. An
 // attestation must be frozen, self-describing, and honest about its own limits, because
@@ -27,8 +27,8 @@ export type ClauseVerdict =
   /** The clause does not apply to this kind of artifact (every covering check SKIPPED). */
   | "NOT_APPLICABLE";
 
-/** The overall grade struck onto the hallmark. */
-export type HallmarkGrade =
+/** The overall grade struck onto the countermark. */
+export type CountermarkGrade =
   /** Every critical clause MET, nothing failed, nothing qualified. */
   | "CERTIFIED"
   /** Nothing critical failed, but there are qualified or non-critical failed clauses. */
@@ -43,8 +43,8 @@ export type HallmarkGrade =
    */
   | "INCOMPLETE";
 
-/** Validity of an issued hallmark at a point in time. */
-export type HallmarkStatus =
+/** Validity of an issued countermark at a point in time. */
+export type CountermarkStatus =
   | "VALID"
   /** Still valid, inside the notice window before expiry. */
   | "EXPIRING"
@@ -52,7 +52,7 @@ export type HallmarkStatus =
   | "LAPSED"
   /** Withdrawn by the issuer before expiry. Stays publicly resolvable, saying so. */
   | "REVOKED"
-  /** A newer hallmark has been issued for the same subject. */
+  /** A newer countermark has been issued for the same subject. */
   | "SUPERSEDED";
 
 /** A named question the assay could not answer. Mirrors Dispatch/Foreman blind spots. */
@@ -69,7 +69,7 @@ export interface AssayBlindSpot {
   clauseIds: string[];
 }
 
-/** One clause of a standard — the unit a hallmark makes a claim about. */
+/** One clause of a standard — the unit a countermark makes a claim about. */
 export interface AssayClause {
   id: string;
   /** Short title, e.g. "Secrets are not shipped to the browser". */
@@ -101,7 +101,7 @@ export interface AssayStandard {
   clauses: AssayClause[];
 }
 
-/** Per-clause outcome, frozen onto the hallmark at issue time. */
+/** Per-clause outcome, frozen onto the countermark at issue time. */
 export interface ClauseOutcome {
   clauseId: string;
   title: string;
@@ -122,7 +122,7 @@ export interface ClauseOutcome {
 export interface AssayResult {
   standardId: string;
   standardVersion: string;
-  grade: HallmarkGrade;
+  grade: CountermarkGrade;
   /** One line explaining the grade, derived from the clause outcomes. */
   gradeReason: string;
   clauses: ClauseOutcome[];
@@ -146,7 +146,7 @@ export interface AssayResult {
 export interface AttestationPayload {
   /** Payload schema version, so an old seal stays verifiable when this shape changes. */
   payloadVersion: 1;
-  hallmarkId: string;
+  countermarkId: string;
   issuedAt: string;
   issuer: string;
   subject: {
@@ -158,7 +158,7 @@ export interface AttestationPayload {
   };
   standardId: string;
   standardVersion: string;
-  grade: HallmarkGrade;
+  grade: CountermarkGrade;
   expiresAt: string;
   /** Verdict per clause, ordered by clause id, so the digest is stable. */
   clauses: Array<{ clauseId: string; verdict: ClauseVerdict }>;
@@ -167,8 +167,8 @@ export interface AttestationPayload {
   evidence: { scanId: string; scanVersion: string; checkCount: number };
 }
 
-/** A hallmark as the app and the public certificate page consume it. */
-export interface HallmarkRecord {
+/** A countermark as the app and the public certificate page consume it. */
+export interface CountermarkRecord {
   id: string;
   workspaceId: string;
   clientId: string | null;
@@ -182,7 +182,7 @@ export interface HallmarkRecord {
   checkCount: number;
   standardId: string;
   standardVersion: string;
-  grade: HallmarkGrade;
+  grade: CountermarkGrade;
   gradeReason: string;
   clauses: ClauseOutcome[];
   blindSpots: AssayBlindSpot[];
@@ -198,6 +198,6 @@ export interface HallmarkRecord {
   seal: string | null;
   token: string;
   /** Derived, never stored: depends on `now`. */
-  status: HallmarkStatus;
+  status: CountermarkStatus;
   daysRemaining: number;
 }

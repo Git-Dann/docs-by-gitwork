@@ -10,17 +10,17 @@
 // 2. It never assumes the reader can read code. Every clause carries a plain-English
 //    assertion and a "why this matters".
 // 3. It renders from the FROZEN snapshot on the row, never from the live standard file, so
-//    the text is what was sealed at issue — see the Hallmark model comment in schema.prisma.
+//    the text is what was sealed at issue — see the Countermark model comment in schema.prisma.
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CheckCircleIcon, ExclamationTriangleIcon, XCircleIcon, QuestionMarkCircleIcon, MinusCircleIcon } from "@heroicons/react/24/outline";
-import { getHallmarkByToken } from "@/server/assay/issue";
+import { getCountermarkByToken } from "@/server/assay/issue";
 import { buildPayload } from "@/server/assay/issue";
 import { verifyAttestation } from "@/server/assay/digest";
 import { isAsserting } from "@/server/assay/lapse";
 import { getStandard } from "@/server/assay/standard";
-import type { ClauseVerdict, HallmarkRecord, HallmarkStatus } from "@/server/assay/types";
+import type { ClauseVerdict, CountermarkRecord, CountermarkStatus } from "@/server/assay/types";
 import { cn, formatDate } from "@/lib/format";
 
 // Never cached: status is a function of the clock (a mark lapses without anything being
@@ -32,16 +32,16 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const robots = { index: false, follow: false } as const;
-  const hallmark = await getHallmarkByToken(token);
-  if (!hallmark) return { title: "Certificate not found — Gitwork Assay", robots };
+  const countermark = await getCountermarkByToken(token);
+  if (!countermark) return { title: "Certificate not found — Gitwork Assay", robots };
   return {
-    title: `${hallmark.subjectName} — ${GRADE_COPY[hallmark.grade].label} · Gitwork Assay`,
-    description: `${hallmark.standardId} attestation for ${hallmark.subjectName}, issued ${formatDate(hallmark.issuedAt)} by ${hallmark.issuerName}.`,
+    title: `${countermark.subjectName} — ${GRADE_COPY[countermark.grade].label} · Gitwork Assay`,
+    description: `${countermark.standardId} attestation for ${countermark.subjectName}, issued ${formatDate(countermark.issuedAt)} by ${countermark.issuerName}.`,
     robots,
   };
 }
 
-const GRADE_COPY: Record<HallmarkRecord["grade"], { label: string; blurb: string; tone: string; ring: string }> = {
+const GRADE_COPY: Record<CountermarkRecord["grade"], { label: string; blurb: string; tone: string; ring: string }> = {
   CERTIFIED: {
     label: "Certified",
     blurb: "Every clause of the standard that applies to this software was met on confirmed evidence.",
@@ -78,7 +78,7 @@ const VERDICT_COPY: Record<ClauseVerdict, { label: string; tone: string; Icon: t
   NOT_APPLICABLE: { label: "Not applicable", tone: "text-slate-400", Icon: MinusCircleIcon },
 };
 
-const STATUS_COPY: Record<HallmarkStatus, { label: string; note: string; tone: string }> = {
+const STATUS_COPY: Record<CountermarkStatus, { label: string; note: string; tone: string }> = {
   VALID: { label: "Valid", note: "", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" },
   EXPIRING: { label: "Expiring soon", note: "Due for re-assay.", tone: "border-amber-200 bg-amber-50 text-amber-700" },
   LAPSED: {
@@ -98,42 +98,42 @@ const STATUS_COPY: Record<HallmarkStatus, { label: string; note: string; tone: s
   },
 };
 
-export default async function HallmarkCertificatePage({ params }: { params: Promise<{ token: string }> }) {
+export default async function CountermarkCertificatePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  // A hallmark token is 32 random bytes base64url-encoded (43 chars). Cheap reject before
+  // A countermark token is 32 random bytes base64url-encoded (43 chars). Cheap reject before
   // touching the DB, matching the public Pulse report's guard.
   if (!token || token.length < 20) notFound();
 
-  const hallmark = await getHallmarkByToken(token);
-  if (!hallmark) notFound();
+  const countermark = await getCountermarkByToken(token);
+  if (!countermark) notFound();
 
-  const grade = GRADE_COPY[hallmark.grade];
-  const status = STATUS_COPY[hallmark.status];
-  const asserting = isAsserting(hallmark.status);
-  const standard = getStandard(hallmark.standardId);
+  const grade = GRADE_COPY[countermark.grade];
+  const status = STATUS_COPY[countermark.status];
+  const asserting = isAsserting(countermark.status);
+  const standard = getStandard(countermark.standardId);
 
   // Re-derive the seal from the frozen contents on every load. This is the actual
   // verification step — without it the padlock would only be saying "a digest column is
   // populated", which is not a claim about anything.
   const payload = buildPayload({
-    hallmarkId: hallmark.id,
-    issuedAt: new Date(hallmark.issuedAt),
-    expiresAt: new Date(hallmark.expiresAt),
-    issuerName: hallmark.issuerName,
-    subjectName: hallmark.subjectName,
-    subjectRepo: hallmark.subjectRepo,
-    subjectCommit: hallmark.subjectCommit,
-    subjectUrl: hallmark.subjectUrl,
-    standardId: hallmark.standardId,
-    standardVersion: hallmark.standardVersion,
-    grade: hallmark.grade,
-    clauses: hallmark.clauses,
-    blindSpots: hallmark.blindSpots,
-    scanId: hallmark.scanId,
-    scanVersion: hallmark.scanVersion,
-    checkCount: hallmark.checkCount,
+    countermarkId: countermark.id,
+    issuedAt: new Date(countermark.issuedAt),
+    expiresAt: new Date(countermark.expiresAt),
+    issuerName: countermark.issuerName,
+    subjectName: countermark.subjectName,
+    subjectRepo: countermark.subjectRepo,
+    subjectCommit: countermark.subjectCommit,
+    subjectUrl: countermark.subjectUrl,
+    standardId: countermark.standardId,
+    standardVersion: countermark.standardVersion,
+    grade: countermark.grade,
+    clauses: countermark.clauses,
+    blindSpots: countermark.blindSpots,
+    scanId: countermark.scanId,
+    scanVersion: countermark.scanVersion,
+    checkCount: countermark.checkCount,
   });
-  const { verdict: sealVerdict } = verifyAttestation(payload, hallmark.digest, hallmark.seal);
+  const { verdict: sealVerdict } = verifyAttestation(payload, countermark.digest, countermark.seal);
 
   const SEAL_COPY: Record<typeof sealVerdict, string> = {
     SEALED: "Contents verified against the issuer's seal.",
@@ -142,8 +142,8 @@ export default async function HallmarkCertificatePage({ params }: { params: Prom
     TAMPERED: "The contents of this certificate do NOT match the digest recorded at issue. Do not rely on it.",
   };
 
-  const failed = hallmark.clauses.filter((c) => c.verdict === "FAILED");
-  const unproven = hallmark.clauses.filter((c) => c.verdict === "UNPROVEN");
+  const failed = countermark.clauses.filter((c) => c.verdict === "FAILED");
+  const unproven = countermark.clauses.filter((c) => c.verdict === "UNPROVEN");
 
   return (
     <div className="flex min-h-screen flex-col bg-[#FAFAF9] print:min-h-0">
@@ -155,7 +155,7 @@ export default async function HallmarkCertificatePage({ params }: { params: Prom
               GITWORK ASSAY // CERTIFICATE OF ATTESTATION
             </span>
             <span className="font-mono text-[12px] text-[var(--text-4)]">
-              {hallmark.standardId} v{hallmark.standardVersion}
+              {countermark.standardId} v{countermark.standardVersion}
             </span>
           </div>
 
@@ -165,7 +165,7 @@ export default async function HallmarkCertificatePage({ params }: { params: Prom
               Subject of attestation
             </p>
             <h1 className="mt-1 font-serif text-3xl leading-[1.15] tracking-[-0.02em] text-[var(--text-1)] sm:text-4xl [overflow-wrap:break-word]">
-              {hallmark.subjectName}
+              {countermark.subjectName}
             </h1>
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <span className={cn("font-serif text-2xl sm:text-3xl", grade.tone)}>{grade.label}</span>
@@ -174,17 +174,17 @@ export default async function HallmarkCertificatePage({ params }: { params: Prom
               </span>
             </div>
             <p className="mt-3 max-w-prose text-sm leading-relaxed text-[var(--text-2)]">{grade.blurb}</p>
-            <p className="mt-2 max-w-prose text-sm leading-relaxed text-[var(--text-3)]">{hallmark.gradeReason}</p>
+            <p className="mt-2 max-w-prose text-sm leading-relaxed text-[var(--text-3)]">{countermark.gradeReason}</p>
 
             {/* A lapsed/revoked/superseded mark says so here, above everything it used to
                 assert — the reader must not have to scroll to find out it does not count. */}
             {!asserting && (
               <p className="mt-4 rounded-[6px] border border-[var(--border-2)] bg-white/70 px-3 py-2.5 text-sm leading-relaxed text-[var(--text-2)]">
                 <span className="font-semibold">{status.label}.</span> {status.note}
-                {hallmark.status === "REVOKED" && hallmark.revokedReason && (
+                {countermark.status === "REVOKED" && countermark.revokedReason && (
                   <>
                     {" "}
-                    Reason given: <span className="italic">{hallmark.revokedReason}</span>
+                    Reason given: <span className="italic">{countermark.revokedReason}</span>
                   </>
                 )}
               </p>
@@ -195,22 +195,22 @@ export default async function HallmarkCertificatePage({ params }: { params: Prom
           <div className="widget-card mt-5">
             <div className="widget-header">
               <span className="widget-header-label">01 // PROVENANCE</span>
-              <span className="widget-header-right">{hallmark.checkCount} checks</span>
+              <span className="widget-header-right">{countermark.checkCount} checks</span>
             </div>
             <div className="widget-body-compact">
               <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-                <Field label="Issued by" value={hallmark.issuerName} />
-                <Field label="Issued" value={formatDate(hallmark.issuedAt)} mono />
+                <Field label="Issued by" value={countermark.issuerName} />
+                <Field label="Issued" value={formatDate(countermark.issuedAt)} mono />
                 <Field
                   label={asserting ? "Valid until" : "Expired"}
-                  value={`${formatDate(hallmark.expiresAt)}${asserting ? ` · ${hallmark.daysRemaining}d left` : ""}`}
+                  value={`${formatDate(countermark.expiresAt)}${asserting ? ` · ${countermark.daysRemaining}d left` : ""}`}
                   mono
                 />
-                <Field label="Standard" value={`${hallmark.standardId} v${hallmark.standardVersion}`} mono />
-                {hallmark.subjectRepo && <Field label="Repository" value={hallmark.subjectRepo} mono />}
-                {hallmark.subjectUrl && <Field label="Live address" value={hallmark.subjectUrl} mono />}
-                <Field label="Clause coverage" value={`${hallmark.coverage.measured} of ${hallmark.coverage.total} clauses assessed`} mono />
-                <Field label="Engine version" value={hallmark.scanVersion} mono />
+                <Field label="Standard" value={`${countermark.standardId} v${countermark.standardVersion}`} mono />
+                {countermark.subjectRepo && <Field label="Repository" value={countermark.subjectRepo} mono />}
+                {countermark.subjectUrl && <Field label="Live address" value={countermark.subjectUrl} mono />}
+                <Field label="Clause coverage" value={`${countermark.coverage.measured} of ${countermark.coverage.total} clauses assessed`} mono />
+                <Field label="Engine version" value={countermark.scanVersion} mono />
               </dl>
 
               <div className="mt-4 border-t border-[var(--border-2)] pt-3">
@@ -228,7 +228,7 @@ export default async function HallmarkCertificatePage({ params }: { params: Prom
                     this page's word for it. Wraps rather than truncating — a digest you
                     can only see 12 characters of verifies nothing. */}
                 <p className="mt-2 font-mono text-[11px] leading-relaxed text-[var(--text-4)] [overflow-wrap:anywhere]">
-                  digest sha256:{hallmark.digest}
+                  digest sha256:{countermark.digest}
                 </p>
               </div>
             </div>
@@ -238,7 +238,7 @@ export default async function HallmarkCertificatePage({ params }: { params: Prom
           <div className="widget-card mt-5">
             <div className="widget-header">
               <span className="widget-header-label">02 // WHAT THIS MARK DOES NOT ESTABLISH</span>
-              <span className="widget-header-right">{hallmark.blindSpots.length} noted</span>
+              <span className="widget-header-right">{countermark.blindSpots.length} noted</span>
             </div>
             <div className="widget-body-compact">
               <p className="mb-3 text-sm leading-relaxed text-[var(--text-2)]">
@@ -246,7 +246,7 @@ export default async function HallmarkCertificatePage({ params }: { params: Prom
                 what its limits are honest about.
               </p>
               <ul className="space-y-2.5">
-                {hallmark.blindSpots.map((spot, i) => (
+                {countermark.blindSpots.map((spot, i) => (
                   <li key={`${spot.kind}-${i}`} className="flex gap-2.5">
                     <QuestionMarkCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-4)]" />
                     <div className="min-w-0">
@@ -299,10 +299,10 @@ export default async function HallmarkCertificatePage({ params }: { params: Prom
           <div className="widget-card mt-5">
             <div className="widget-header">
               <span className="widget-header-label">04 // CLAUSE BY CLAUSE</span>
-              <span className="widget-header-right">{hallmark.clauses.length} clauses</span>
+              <span className="widget-header-right">{countermark.clauses.length} clauses</span>
             </div>
             <div className="divide-y divide-[var(--border-2)]">
-              {hallmark.clauses.map((c) => {
+              {countermark.clauses.map((c) => {
                 const v = VERDICT_COPY[c.verdict];
                 return (
                   <div key={c.clauseId} className="px-4 py-4">
@@ -337,7 +337,7 @@ export default async function HallmarkCertificatePage({ params }: { params: Prom
               <div className="widget-header">
                 <span className="widget-header-label">05 // THE STANDARD</span>
                 <span className="widget-header-right">
-                  {standard.id} v{hallmark.standardVersion}
+                  {standard.id} v{countermark.standardVersion}
                 </span>
               </div>
               <div className="widget-body-compact">
@@ -371,7 +371,7 @@ export default async function HallmarkCertificatePage({ params }: { params: Prom
             </Link>
           </div>
           <p className="mt-4 font-mono text-[10px] text-slate-600">
-            GITWORK ASSAY · {hallmark.standardId} v{hallmark.standardVersion} · REF {hallmark.id}
+            GITWORK ASSAY · {countermark.standardId} v{countermark.standardVersion} · REF {countermark.id}
           </p>
         </div>
       </div>

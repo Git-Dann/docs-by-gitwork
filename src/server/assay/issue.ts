@@ -7,15 +7,15 @@ import { prisma } from "@/lib/prisma";
 import type { CheckConfidence } from "@/server/pulse-checks/confidence";
 import { computeDigest, computeSeal } from "./digest";
 import { evaluateStandard, type AssayCheckEvidence } from "./evaluate";
-import { expiryFor, hallmarkStatus } from "./lapse";
+import { expiryFor, countermarkStatus } from "./lapse";
 import { DEFAULT_STANDARD_ID, getStandard } from "./standard";
 import type {
   AssayBlindSpot,
   AssayResult,
   AttestationPayload,
   ClauseOutcome,
-  HallmarkGrade,
-  HallmarkRecord,
+  CountermarkGrade,
+  CountermarkRecord,
 } from "./types";
 
 /** 32 bytes of entropy — the certificate URL's only credential. Matches the Docs pattern. */
@@ -32,7 +32,7 @@ function mintToken(): string {
  * every mark ever issued.
  */
 export function buildPayload(input: {
-  hallmarkId: string;
+  countermarkId: string;
   issuedAt: Date;
   expiresAt: Date;
   issuerName: string;
@@ -42,7 +42,7 @@ export function buildPayload(input: {
   subjectUrl: string | null;
   standardId: string;
   standardVersion: string;
-  grade: HallmarkGrade;
+  grade: CountermarkGrade;
   clauses: ClauseOutcome[];
   blindSpots: AssayBlindSpot[];
   scanId: string;
@@ -51,7 +51,7 @@ export function buildPayload(input: {
 }): AttestationPayload {
   return {
     payloadVersion: 1,
-    hallmarkId: input.hallmarkId,
+    countermarkId: input.countermarkId,
     issuedAt: input.issuedAt.toISOString(),
     issuer: input.issuerName,
     subject: {
@@ -94,18 +94,18 @@ export class AssayError extends Error {
 }
 
 /**
- * Assay a completed Pulse scan and issue a hallmark against it.
+ * Assay a completed Pulse scan and issue a countermark against it.
  *
  * Refuses an incomplete scan outright. Attesting on partial evidence is the exact mistake
  * this product exists to prevent, and a `RUNNING` scan's checks are still arriving — a mark
  * issued mid-scan would say "not established" about clauses that were about to pass.
  */
-export async function issueHallmark(input: {
+export async function issueCountermark(input: {
   workspaceId: string;
   scanId: string;
   standardId?: string;
   issuerName: string;
-}): Promise<HallmarkRecord> {
+}): Promise<CountermarkRecord> {
   const standard = getStandard(input.standardId ?? DEFAULT_STANDARD_ID);
   if (!standard) throw new AssayError(`Unknown standard "${input.standardId}".`, 400);
 
@@ -119,7 +119,7 @@ export async function issueHallmark(input: {
   if (!scan) throw new AssayError("Scan not found in this workspace.", 404);
   if (scan.status !== "COMPLETED") {
     throw new AssayError(
-      `This scan is ${scan.status.toLowerCase()}. A hallmark can only be issued from a completed ` +
+      `This scan is ${scan.status.toLowerCase()}. A countermark can only be issued from a completed ` +
         `assay — issuing from a partial one would report clauses as unestablished that were still being checked.`,
       409,
     );
@@ -140,11 +140,11 @@ export async function issueHallmark(input: {
   const expiresAt = expiryFor(issuedAt, standard.id, result.grade);
   const token = mintToken();
 
-  // The digest covers the hallmark's own id, so the row is created first and then patched
+  // The digest covers the countermark's own id, so the row is created first and then patched
   // with digest + seal. Both are written in one transaction with the supersession update,
   // so a reader can never see a mark with an empty digest or two live marks for a subject.
   const created = await prisma.$transaction(async (tx) => {
-    const row = await tx.hallmark.create({
+    const row = await tx.countermark.create({
       data: {
         workspaceId: input.workspaceId,
         clientId: scan.client?.id ?? null,
@@ -173,7 +173,7 @@ export async function issueHallmark(input: {
     });
 
     const payload = buildPayload({
-      hallmarkId: row.id,
+      countermarkId: row.id,
       issuedAt,
       expiresAt,
       issuerName: input.issuerName,
@@ -194,7 +194,7 @@ export async function issueHallmark(input: {
     // Supersede the previous live mark for the same subject. Scoped to marks that are still
     // asserting: re-pointing an already-lapsed or revoked mark would overwrite the more
     // specific reason it stopped counting.
-    await tx.hallmark.updateMany({
+    await tx.countermark.updateMany({
       where: {
         workspaceId: input.workspaceId,
         subjectName: row.subjectName,
@@ -206,19 +206,19 @@ export async function issueHallmark(input: {
       data: { supersededById: row.id },
     });
 
-    return tx.hallmark.update({
+    return tx.countermark.update({
       where: { id: row.id },
       data: { digest: computeDigest(payload), seal: computeSeal(payload) },
     });
   });
 
-  return serializeHallmark({ ...created, client: scan.client ?? null });
+  return serializeCountermark({ ...created, client: scan.client ?? null });
 }
 
-type HallmarkRow = Prisma.HallmarkGetPayload<{ include: { client: { select: { id: true; name: true } } } }>;
+type CountermarkRow = Prisma.CountermarkGetPayload<{ include: { client: { select: { id: true; name: true } } } }>;
 
-export function serializeHallmark(row: HallmarkRow, now: Date = new Date()): HallmarkRecord {
-  const { status, daysRemaining } = hallmarkStatus(
+export function serializeCountermark(row: CountermarkRow, now: Date = new Date()): CountermarkRecord {
+  const { status, daysRemaining } = countermarkStatus(
     { expiresAt: row.expiresAt, revokedAt: row.revokedAt, supersededById: row.supersededById },
     now,
   );
@@ -262,26 +262,26 @@ export function serializeHallmark(row: HallmarkRow, now: Date = new Date()): Hal
 
 const withClient = { client: { select: { id: true, name: true } } } as const;
 
-export async function listHallmarks(workspaceId: string, limit = 50): Promise<HallmarkRecord[]> {
-  const rows = await prisma.hallmark.findMany({
+export async function listCountermarks(workspaceId: string, limit = 50): Promise<CountermarkRecord[]> {
+  const rows = await prisma.countermark.findMany({
     where: { workspaceId },
     include: withClient,
     orderBy: { issuedAt: "desc" },
     take: Math.min(Math.max(limit, 1), 200),
   });
   const now = new Date();
-  return rows.map((r) => serializeHallmark(r, now));
+  return rows.map((r) => serializeCountermark(r, now));
 }
 
-export async function getHallmark(workspaceId: string, id: string): Promise<HallmarkRecord | null> {
-  const row = await prisma.hallmark.findFirst({ where: { id, workspaceId }, include: withClient });
-  return row ? serializeHallmark(row) : null;
+export async function getCountermark(workspaceId: string, id: string): Promise<CountermarkRecord | null> {
+  const row = await prisma.countermark.findFirst({ where: { id, workspaceId }, include: withClient });
+  return row ? serializeCountermark(row) : null;
 }
 
 /** Public lookup by token. No workspace scope — the token IS the credential. */
-export async function getHallmarkByToken(token: string): Promise<HallmarkRecord | null> {
-  const row = await prisma.hallmark.findUnique({ where: { token }, include: withClient });
-  return row ? serializeHallmark(row) : null;
+export async function getCountermarkByToken(token: string): Promise<CountermarkRecord | null> {
+  const row = await prisma.countermark.findUnique({ where: { token }, include: withClient });
+  return row ? serializeCountermark(row) : null;
 }
 
 /**
@@ -289,23 +289,23 @@ export async function getHallmarkByToken(token: string): Promise<HallmarkRecord 
  * so whoever holds the certificate link finds out. Idempotent — re-revoking keeps the
  * original timestamp and reason rather than rewriting the record of when it happened.
  */
-export async function revokeHallmark(input: {
+export async function revokeCountermark(input: {
   workspaceId: string;
   id: string;
   reason: string;
   byName: string;
-}): Promise<HallmarkRecord> {
-  const existing = await prisma.hallmark.findFirst({
+}): Promise<CountermarkRecord> {
+  const existing = await prisma.countermark.findFirst({
     where: { id: input.id, workspaceId: input.workspaceId },
     include: withClient,
   });
-  if (!existing) throw new AssayError("Hallmark not found in this workspace.", 404);
-  if (existing.revokedAt) return serializeHallmark(existing);
+  if (!existing) throw new AssayError("Countermark not found in this workspace.", 404);
+  if (existing.revokedAt) return serializeCountermark(existing);
 
-  const updated = await prisma.hallmark.update({
+  const updated = await prisma.countermark.update({
     where: { id: existing.id },
     data: { revokedAt: new Date(), revokedReason: input.reason, revokedByName: input.byName },
     include: withClient,
   });
-  return serializeHallmark(updated);
+  return serializeCountermark(updated);
 }

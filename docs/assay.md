@@ -91,9 +91,9 @@ Every free scanner on the market still has the bug Foundry found and fixed in it
 is a discipline gap, not a feature gap, and it does not get copied in a quarter. Assay is
 that discipline pointed at a third-party reader.
 
-Add the naming: Foundry → **assay office** → **hallmark**. Metal goes to the assay office,
-is tested, and is struck with a hallmark that travels with the object forever and tells any
-future buyer what it really is. UK hallmarking is a ~700-year statutory consumer-protection
+Add the naming: Foundry → **assay office** → **countermark**. Metal goes to the assay office,
+is tested, and is struck with a countermark that travels with the object forever and tells any
+future buyer what it really is. UK countermarking is a ~700-year statutory consumer-protection
 regime. Nobody in software uses it.
 
 ---
@@ -102,7 +102,7 @@ regime. Nobody in software uses it.
 
 | Moment | What is sold | Notes |
 |---|---|---|
-| **Issue** | A Hallmark at a point of commercial consequence — handover, final invoice, insurance renewal, acquisition, procurement | Per-attestation fee. Gitwork's own handovers are the first ones. |
+| **Issue** | A Countermark at a point of commercial consequence — handover, final invoice, insurance renewal, acquisition, procurement | Per-attestation fee. Gitwork's own handovers are the first ones. |
 | **Maintain** | Continuous re-assay so the mark stays valid instead of lapsing | The subscription. Works *because* marks expire — see §4. |
 | **Issue rights** | Licensed-issuer white label: agencies, MSPs, freelance platforms and AI-builder platforms strike marks under their own brand | The Cyber Essentials model. Phase 3. |
 
@@ -126,10 +126,10 @@ src/server/assay/digest.ts       ← canonical serialisation → sha256 digest +
 src/server/assay/issue.ts        ← the only Prisma file: issue / list / get / revoke
         │
         ├── /app/assay                 the internal register (module perm `assay`)
-        └── /hallmark/[token]          the PUBLIC certificate — no auth, noindex
+        └── /countermark/[token]          the PUBLIC certificate — no auth, noindex
 ```
 
-**The Hallmark row is frozen and self-contained.** `clauses`, `blindSpots`, `coverage`,
+**The Countermark row is frozen and self-contained.** `clauses`, `blindSpots`, `coverage`,
 `standardVersion` and `checkCount` are snapshotted at issue; `scanId` is a loose indexed id,
 not a foreign key. Same precedent as Docs (`formSnapshot`, so editing a template never
 rewrites a document already sent) and `ForemanRun` (frozen findings). An attestation whose
@@ -177,7 +177,7 @@ from `TAMPERED`. Reporting a rotated key as forgery would cry wolf over a config
 
 ## 4. Why marks expire, and why that is the product
 
-A hallmark that never expires is a lie about software: the artifact gets commits, its
+A countermark that never expires is a lie about software: the artifact gets commits, its
 dependencies acquire published vulnerabilities, its certificate expires. So SAS-1 carries a
 window — **90 days certified, 30 days conditional** — and a shorter window for
 `NOT_CERTIFIED`/`INCOMPLETE` (those marks still need to exist and be citable, e.g. in a
@@ -228,17 +228,31 @@ longer be confirmed. Treat it as a long-lived key.
 
 | Id | Category | Default | Meaning |
 |---|---|---|---|
-| `assay` | module | off | Read the register at `/app/assay` |
+| `assay` | **feature** (admin-only) | off | Read the register at `/app/assay` |
 | `assay.issue` | action, **high-risk** | off | Strike and revoke marks |
 
 Split on purpose: reading the register is a different act from certifying, and the issuer's
 name goes on the certificate.
 
+⚠️ **`assay` is a `feature`, not a `module`, and that is load-bearing.**
+`DEFAULT_ROLE_PERMISSIONS` grants STAFF `...MODULE_IDS`, so *any* module id is auto-inherited
+by every Staff member — which is how Assay briefly shipped visible to all Staff. A `feature`
+defaults off for everyone except ADMIN (holds all ids) and SUPER_ADMIN. Same trap DevSignal
+documents and the same fix applied when Study was demoted (§26). If Assay is ever promoted
+back to a top-level sold product, changing it back to `module` is a deliberate decision to
+expose it to Staff.
+
+### Where it lives
+
+**Settings → Labs** (Super Admin), not the sidebar — it is an experiment, and §4a is explicit
+that `/app/<name>` with a sidebar item is for a main product. The route and the module gate
+are unchanged, so a deep link still works and still gates.
+
 ### Post-deploy verification (the app is auth-gated with no staging, so this is manual)
 
 1. Set `ASSAY_SIGNING_SECRET`, redeploy, open `/app/assay` — the amber "sealing is not
    configured" banner should be **absent**.
-2. Run a Pulse scan to `COMPLETED`, then **Strike a hallmark**.
+2. Run a Pulse scan to `COMPLETED`, then **Strike a countermark**.
 3. Open the certificate link in a private window (proves no-auth access) and check:
    - the grade and its reason read correctly;
    - **`02 // WHAT THIS MARK DOES NOT ESTABLISH` is populated** — it should never be empty,
@@ -247,7 +261,7 @@ name goes on the certificate.
 4. Revoke it with a reason. Reload the public link: it must still resolve, report **Revoked**,
    and show the reason.
 5. Strike a second mark for the same subject; the first should report **Superseded**.
-6. `npm run audit:clipping https://foundry.gitwork.co.uk/hallmark/<token>` at
+6. `npm run audit:clipping https://foundry.gitwork.co.uk/countermark/<token>` at
    390 · 768 · 1280×620 · 1440 — this page is public, so it *can* be driven headlessly once a
    real mark exists.
 
@@ -255,17 +269,24 @@ name goes on the certificate.
 
 ## 6. Deliberately deferred
 
+- **Rename the physical table.** The Prisma model is `Countermark` but the table is still
+  `Hallmark` via `@@map` (and `HallmarkGrade` for the enum). Renaming a model renames its
+  table, which Prisma reads as a DROP — and the build's guarded `prisma db push` would then
+  skip the *entire* sync (§2's all-or-nothing footgun), leaving the table uncreated and every
+  Assay route erroring. `@@map` made it a pure code rename with no manual DB step. Fixing the
+  physical name properly is a `prisma migrate` job, not a hand-run `--accept-data-loss` push
+  someone can forget.
 - **Commit pinning.** `subjectCommit` is written as `null` because `PulseScan` does not
   record the SHA it read. Recorded as null rather than guessed — a certificate must not imply
   a precision it does not have. Threading the SHA through the code agent is the single
   highest-value next change: without it a mark names a repo, not a version.
 - **Continuous re-assay.** The `CuratorRun`/`ForemanRun` job + cron spine is right there; a
-  `HALLMARK_REASSAY` job that re-scans and re-issues before expiry is the subscription.
+  `COUNTERMARK_REASSAY` job that re-scans and re-issues before expiry is the subscription.
 - **Licensed issuers (white label).** Needs an issuer record, per-issuer branding on the
   certificate, and a public issuer directory so a reader can check the issuer is real.
 - **A public standard page.** `SAS-1` should be readable at a stable URL so a contract can
   cite it. Today the certificate carries the summary and the clause text.
-- **Docs integration.** A handover document should be able to embed its hallmark, and the
+- **Docs integration.** A handover document should be able to embed its countermark, and the
   e-sign flow should be able to require a live mark before acceptance.
 - **Runtime probing.** The certificate states this limit explicitly and unconditionally: Assay
   inspects code, configuration and public responses. It does not sign in, exercise payments,
@@ -277,7 +298,7 @@ name goes on the certificate.
 
 ## 7. Naming
 
-`Assay` (the instrument) and `Hallmark` (the artifact) are one constant each — the product
+`Assay` (the instrument) and `Countermark` (the artifact) are one constant each — the product
 name lives in `SAS_1.label`, the module label in `PERMISSION_CATALOG`, and the route is
 `/app/assay`. Renaming is cheap and deliberate, following the Deck precedent (§30: "the
 product name is one constant in `brand.ts` if Deck isn't the final call").
