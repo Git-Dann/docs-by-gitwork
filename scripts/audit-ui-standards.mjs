@@ -422,6 +422,33 @@ const RULES = [
       }
     },
   },
+  {
+    id: "UNDEFINED-CLASS",
+    title: "house class name that globals.css does not define",
+    why:
+      "A misspelt or invented class is the one UI defect NOTHING else catches: `tsc`, " +
+      "`eslint` and `vitest` never see class strings, and the clipping audit needs a " +
+      "reachable page. It shipped exactly this way — DESIGN.md documented `button-primary` " +
+      "while the implementation was `app-button app-button-primary`, so every button in the " +
+      "Provenance register rendered with no background, no border, no padding, and icons " +
+      "stacked above their labels, because the missing base class is what supplies " +
+      "`inline-flex`. Scoped to our own `app-*` / `widget-*` / `button-*` prefixes so " +
+      "Tailwind utilities are never flagged.",
+    run(file, src, consts, report, ctx) {
+      const re = /className=(?:"([^"]*)"|\{`([^`]*)`\})/g;
+      let m;
+      while ((m = re.exec(src))) {
+        const raw = m[1] ?? m[2] ?? "";
+        for (const cls of raw.split(/\s+/)) {
+          // Template holes and conditional fragments leave stray tokens; skip anything
+          // that is not a plain class token.
+          if (!/^(app|widget|button)-[a-z0-9-]+$/.test(cls)) continue;
+          if (ctx.definedClasses.has(cls)) continue;
+          report(file, lineOf(src, m.index), `"${cls}" is not defined in globals.css`);
+        }
+      }
+    },
+  },
 ];
 
 /* ── Runner ───────────────────────────────────────────────────────────────── */
@@ -450,6 +477,24 @@ function findCssScrollers() {
     while ((m = re.exec(src))) found.add(m[1]);
   }
   return [...found];
+}
+
+
+/**
+ * Every class name our own CSS defines — `globals.css` plus the inline `<style>` blocks the
+ * standalone public pages use. Feeds UNDEFINED-CLASS. Deliberately a plain selector scrape:
+ * it over-collects rather than under-collects, so the rule can only ever be too lenient,
+ * never falsely accuse a class that really is styled somewhere.
+ */
+function findDefinedClasses() {
+  const found = new Set();
+  const re = /\.(-?[_a-zA-Z][\w-]*)/g;
+  for (const full of walk(join(ROOT, "src"), [".css", ".tsx", ".ts"])) {
+    const src = readFileSync(full, "utf8");
+    let m;
+    while ((m = re.exec(src))) found.add(m[1]);
+  }
+  return found;
 }
 
 /**
@@ -534,6 +579,19 @@ const SELF_TEST_CASES = {
     bad: `const r: MetadataRoute.Robots = { rules: [{ userAgent: "*", disallow: "/" }] };`,
     good: `const r: MetadataRoute.Robots = { rules: [{ userAgent: "*", allow: "/", disallow: ["/app", "/api/"] }] };`,
   },
+  "UNDEFINED-CLASS": {
+    bad: `const a = <button className="button-primary" />;
+          const b = <div className="widget-cardd" />;
+          const c = <span className="app-buton app-buton-sm" />;`,
+    // Real house classes, plus Tailwind utilities and arbitrary values — the rule must stay
+    // silent on all of them, or it would fire on most of the codebase.
+    good: `const a = <button className="app-button app-button-primary app-button-sm" />;
+           const b = <div className="widget-card" />;
+           const c = <div className="widget-header"><span className="widget-header-label" /></div>;
+           const d = <div className="flex items-center gap-2 px-3 text-sm" />;
+           const e = <div className="min-w-[420px] sm:grid-cols-2" />;
+           const f = <input className="app-input" />;`,
+  },
   "MODEL-LITERAL": {
     bad: `const m = workspace.anthropicModel ?? "claude-sonnet-5";`,
     good: `const m = workspace.anthropicModel ?? DEFAULT_MODELS.ANTHROPIC;
@@ -555,6 +613,10 @@ function selfTest(rules) {
       const found = [];
       rule.run("selftest.tsx", src, localStringConsts(src), (f, l, d) => found.push(d), {
         cssScrollers: [],
+        // The real set, not a stub: UNDEFINED-CLASS's `good` case only proves something if
+        // `app-button-primary` genuinely resolves, and its `bad` case only proves something
+        // if `button-primary` genuinely does not.
+        definedClasses: findDefinedClasses(),
       });
       return found;
     };
@@ -590,7 +652,10 @@ if (SELF_TEST) {
 }
 
 const files = walk(join(ROOT, "src"), [".tsx", ".ts"]);
-const findings = audit(files, rules, { cssScrollers: findCssScrollers() });
+const findings = audit(files, rules, {
+  cssScrollers: findCssScrollers(),
+  definedClasses: findDefinedClasses(),
+});
 let total = 0;
 
 console.log(`UI standards audit — ${files.length} source files under src/\n`);

@@ -142,19 +142,19 @@ export function ProvenanceRegister() {
             {isSuperAdmin && (
               <button
                 type="button"
-                className="button-secondary"
+                className="app-button app-button-secondary app-button-sm"
                 disabled={seed.isPending}
                 onClick={() => seed.mutate()}
                 title="Seeds six specimen countermarks covering every grade. Re-running replaces only its own rows."
               >
                 <BeakerIcon className="h-4 w-4" />
-                <span className="ml-1.5">{seed.isPending ? "Seeding…" : "Seed demo data"}</span>
+                <span>{seed.isPending ? "Seeding…" : "Seed demo data"}</span>
               </button>
             )}
             {canIssueCountermark && (
               <button
                 type="button"
-                className="button-primary"
+                className="app-button app-button-primary app-button-sm"
                 onClick={() => {
                   setScanId(eligibleScans[0]?.id ?? "");
                   setIssueOpen(true);
@@ -236,7 +236,7 @@ export function ProvenanceRegister() {
                   <div className="flex shrink-0 items-center gap-2">
                     <button
                       type="button"
-                      className="button-secondary"
+                      className="app-button app-button-secondary app-button-sm"
                       onClick={() => void copyLink(h.token)}
                       title="Copy the public certificate link"
                     >
@@ -244,7 +244,7 @@ export function ProvenanceRegister() {
                       <span className="ml-1.5">{copied === h.token ? "Copied" : "Copy link"}</span>
                     </button>
                     <a
-                      className="button-secondary"
+                      className="app-button app-button-secondary app-button-sm"
                       href={`/countermark/${h.token}`}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -255,7 +255,7 @@ export function ProvenanceRegister() {
                     {canIssueCountermark && !h.revokedAt && (
                       <button
                         type="button"
-                        className="button-ghost text-[var(--text-3)]"
+                        className="app-button app-button-tertiary app-button-sm"
                         onClick={() => {
                           setRevoking(h);
                           setRevokeReason("");
@@ -313,12 +313,12 @@ export function ProvenanceRegister() {
           {issue.error && <p className="text-sm text-red-600">{issue.error.message}</p>}
 
           <div className="flex justify-end gap-2">
-            <button type="button" className="button-secondary" onClick={() => setIssueOpen(false)}>
+            <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => setIssueOpen(false)}>
               Cancel
             </button>
             <button
               type="button"
-              className="button-primary"
+              className="app-button app-button-primary app-button-sm"
               disabled={!scanId || issue.isPending}
               onClick={() => {
                 issue.mutate(
@@ -359,12 +359,12 @@ export function ProvenanceRegister() {
           </div>
           {revoke.error && <p className="text-sm text-red-600">{revoke.error.message}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" className="button-secondary" onClick={() => setRevoking(null)}>
+            <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => setRevoking(null)}>
               Cancel
             </button>
             <button
               type="button"
-              className="button-danger"
+              className="app-button app-button-danger app-button-sm"
               disabled={revokeReason.trim().length < 10 || revoke.isPending}
               onClick={() => {
                 if (!revoking) return;
