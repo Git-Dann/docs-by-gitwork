@@ -2573,3 +2573,46 @@ a technique — it does not run effects, but it does check real geometry on gate
 states (FA-01, FA-03, PS-04). **Not verified:** the studio driven live with real scans — effects,
 the scan dropdown and the clipboard need a browser session against a database, so that is a
 post-deploy check.
+
+### 39.2 The Countermark badge — the embeddable face of an Assay attestation
+
+Assay (§38) publishes a Countermark as a **page**; it had no embeddable mark. This adds one, so a
+client can put the attestation in their own footer rather than only linking to it. Three styles —
+**`CM-01` Mark shield**, **`CM-02` Validity disc**, **`CM-03` Certificate card** — served from
+`GET /api/badge/countermark/[token]` (public; `/api/badge` was already in `PUBLIC_API_PATHS`), keyed
+on the same `Countermark.token` that serves `/countermark/[token]`, so the badge is exactly as
+public as the certificate and shows strictly less.
+
+**`src/lib/badge/svg-kit.ts`** was extracted first — tokens, outlined-type composition, `entrance`,
+`wrap`, `cardFace` — because the alternative was copying ~150 lines out of the Pulse renderer. Both
+renderers now sit on it and `pulse-badge.ts` kept its public API, so its 23 tests passed the
+refactor unchanged.
+
+**Three honesty rules, enforced in `markState()` so every style inherits them.** Each has unit
+tests named after it, because a badge is the likeliest place for an attestation to get overstated:
+
+1. **Validity dominates grade.** A LAPSED / REVOKED / SUPERSEDED mark asserts nothing, so it never
+   leads with its grade — the status word, muted, and the shield is struck through rather than
+   merely greyed. A badge still reading CERTIFIED three months after expiry is precisely what Assay
+   exists to prevent.
+2. **INCOMPLETE is not NOT_CERTIFIED.** "Could not establish" and "provably broken" never share a
+   colour — neutral vs danger. The same distinction as §35, one layer out.
+3. **An unsealed mark says so.** No `ASSAY_SIGNING_SECRET` → an UNSEALED marker, so it cannot pass
+   for a signed mark.
+
+⚠️ **This badge is cached for 60 seconds, not 5 minutes, and never at a CDN.** Unlike the Pulse
+badge it is **time-dependent** — it renders days remaining and flips VALID → EXPIRING → LAPSED on
+its own, with no write to invalidate against. `max-age=60, must-revalidate`, deliberately no
+`s-maxage`: a CDN holding a lapsed mark as certified is the failure mode that matters. `validityDays`
+is derived from the record's own `issuedAt`/`expiresAt` rather than the standard, so a mark issued
+under an older validity policy still draws its own window correctly.
+
+**Studio:** the catalogue gained a third family and `countermarkPath()`; the studio lists it and
+picks a mark. There is no share step — a countermark is public the moment it is struck.
+
+**Verified:** `npm run verify` green — **624 tests** (26 new Countermark tests + the catalogue
+guard extended to `CM-`), `audit:ui` 0 findings; `npx next build` clean with both badge routes
+registered. All fifteen grade × status × seal × theme combinations were rendered and inspected —
+which caught the UNSEALED marker sitting on the disc's 9px ring stroke and being cut in half.
+**Not verified:** the route against a real struck countermark (needs a database) — post-deploy,
+issue a mark in Labs → Assay, hit each style, then revoke it and confirm the badge flips.

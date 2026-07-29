@@ -28,11 +28,14 @@ import {
 
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
+import { useCountermarks } from "@/hooks/use-assay";
 import { usePulseScans, useSharePulseScan } from "@/hooks/use-pulse";
 import {
   APPROVED_BADGES,
+  COUNTERMARK_BADGES,
   PULSE_BADGES,
   approvedPath,
+  countermarkPath,
   pulsePath,
 } from "@/lib/badge/catalog";
 import { cn } from "@/lib/format";
@@ -92,6 +95,7 @@ export function BadgeStudio({
   const [ground, setGround] = useState<Ground>("light");
   const [motion, setMotion] = useState(false);
   const [scanId, setScanId] = useState<string>("");
+  const [markId, setMarkId] = useState<string>("");
   const [replay, setReplay] = useState(0);
   const [copied, setCopied] = useState(false);
   const [sample, setSample] = useState<string | null>(null);
@@ -99,10 +103,14 @@ export function BadgeStudio({
   const { success, error } = useToast();
   const share = useSharePulseScan();
   const badge = useMemo(
-    () => [...APPROVED_BADGES, ...PULSE_BADGES].find((b) => b.code === code)!,
+    () => [...APPROVED_BADGES, ...PULSE_BADGES, ...COUNTERMARK_BADGES].find((b) => b.code === code)!,
     [code],
   );
   const isPulse = badge.family === "pulse";
+  const isCm = badge.family === "countermark";
+  /** Both live families render from a public token, so neither can be installed
+   *  until its subject has actually been published. */
+  const needsToken = isPulse || isCm;
 
   // Only completed scans can be shared, so they are the only ones that can carry
   // a badge at all.
@@ -112,6 +120,12 @@ export function BadgeStudio({
     [data],
   );
   const scan = candidates.find((s) => s.id === scanId) ?? null;
+
+  // Countermarks are already public the moment they are struck — there is no
+  // share step, so the picker is just a list.
+  const { data: assay } = useCountermarks(open && isCm);
+  const marks = assay?.countermarks ?? [];
+  const mark = marks.find((m) => m.id === markId) ?? null;
 
   // Origin is read on the client so the snippet is paste-ready from whichever host
   // the studio is open on, rather than hard-coding production.
@@ -124,41 +138,61 @@ export function BadgeStudio({
    * would put it in the settings bundle for everyone.
    */
   useEffect(() => {
-    if (!open || !isPulse || scan) {
+    const subject = isPulse ? scan : isCm ? mark : null;
+    if (!open || !needsToken || subject) {
       setSample(null);
       return;
     }
-    let live = true;
-    void import("@/lib/badge/pulse-badge").then((mod) => {
-      if (!live) return;
-      setSample(
-        mod.renderPulseBadge({
-          score: SAMPLE_SCORE,
-          style: badge.style,
-          theme: ground,
-          motion,
-          project: "example.com",
-          bars: [
-            { label: "SECURITY", value: 0.94 },
-            { label: "PERFORMANCE", value: 0.81 },
-            { label: "SEO & PRESENCE", value: 0.9 },
-            { label: "CODE QUALITY", value: 0.72 },
-          ],
-        }).svg,
-      );
+    let alive = true;
+    const loader = isPulse
+      ? import("@/lib/badge/pulse-badge").then((m) =>
+          m.renderPulseBadge({
+            score: SAMPLE_SCORE,
+            style: badge.style,
+            theme: ground,
+            motion,
+            project: "example.com",
+            bars: [
+              { label: "SECURITY", value: 0.94 },
+              { label: "PERFORMANCE", value: 0.81 },
+              { label: "SEO & PRESENCE", value: 0.9 },
+              { label: "CODE QUALITY", value: 0.72 },
+            ],
+          }).svg,
+        )
+      : import("@/lib/badge/countermark-badge").then((m) =>
+          m.renderCountermarkBadge({
+            grade: "CERTIFIED",
+            status: "VALID",
+            daysRemaining: 62,
+            validityDays: 90,
+            sealed: true,
+            subject: "example.com",
+            standard: "SAS-1 v1.0",
+            style: badge.cmStyle,
+            theme: ground,
+            motion,
+          }).svg,
+        );
+    void loader.then((svg) => {
+      if (alive) setSample(svg);
     });
     return () => {
-      live = false;
+      alive = false;
     };
-  }, [open, isPulse, scan, badge.style, ground, motion, replay]);
+  }, [open, isPulse, isCm, needsToken, scan, mark, badge.style, badge.cmStyle, ground, motion, replay]);
 
+  const bust = (path: string) =>
+    motion ? `${path}${path.includes("?") ? "&" : "?"}r=${replay}` : path;
   const src = isPulse
     ? scan?.shareToken
-      ? `${pulsePath(badge, scan.shareToken, { dark: ground === "dark", motion })}${
-          motion ? `&r=${replay}` : ""
-        }`
+      ? bust(pulsePath(badge, scan.shareToken, { dark: ground === "dark", motion }))
       : null
-    : `${approvedPath(badge, { dark: ground === "dark", motion })}${motion ? `?r=${replay}` : ""}`;
+    : isCm
+      ? mark
+        ? bust(countermarkPath(badge, mark.token, { dark: ground === "dark", motion }))
+        : null
+      : bust(approvedPath(badge, { dark: ground === "dark", motion }));
 
   const snippet = useMemo(() => {
     if (!origin) return "";
@@ -166,6 +200,15 @@ export function BadgeStudio({
     if (!isPulse) {
       const path = approvedPath(badge, { dark: ground === "dark", motion });
       return `<img src="${origin}${path}"${size} alt="Foundry Approved">`;
+    }
+    if (isCm) {
+      if (!mark) return "";
+      const path = countermarkPath(badge, mark.token, { dark: ground === "dark", motion });
+      return [
+        `<a href="${origin}/countermark/${mark.token}">`,
+        `  <img src="${origin}${path}"${size} alt="Gitwork Countermark">`,
+        `</a>`,
+      ].join("\n");
     }
     if (!scan?.shareToken) return "";
     const path = pulsePath(badge, scan.shareToken, { dark: ground === "dark", motion });
@@ -175,7 +218,7 @@ export function BadgeStudio({
       `  <img src="${origin}${path}"${size} alt="Gitwork Pulse score">`,
       `</a>`,
     ].join("\n");
-  }, [origin, badge, isPulse, ground, motion, scan]);
+  }, [origin, badge, isPulse, isCm, ground, motion, scan, mark]);
 
   const copy = useCallback(async () => {
     if (!snippet) return;
@@ -212,6 +255,7 @@ export function BadgeStudio({
           {[
             { label: "Foundry Approved", items: APPROVED_BADGES },
             { label: "Pulse score", items: PULSE_BADGES },
+            { label: "Countermark", items: COUNTERMARK_BADGES },
           ].map((group) => (
             <div key={group.label} className="mb-2">
               <p className="widget-data-label px-2 py-2 text-[var(--text-4)]">{group.label}</p>
@@ -282,12 +326,16 @@ export function BadgeStudio({
                 dangerouslySetInnerHTML={{ __html: sample }}
               />
             ) : (
-              <p className="text-[12px] text-[var(--text-4)]">Pick a scan to preview.</p>
+              <p className="text-[12px] text-[var(--text-4)]">
+                Pick a {isPulse ? "scan" : "countermark"} to preview.
+              </p>
             )}
           </div>
-          {isPulse && !scan ? (
+          {needsToken && !scan && !mark ? (
             <p className="px-4 pt-2 font-mono text-[11px] text-[var(--text-4)]">
-              Sample at {SAMPLE_SCORE}/100 — pick a scan below for the real badge.
+              {isPulse
+                ? `Sample at ${SAMPLE_SCORE}/100 — pick a scan below for the real badge.`
+                : "Sample mark — pick a countermark below for the real badge."}
             </p>
           ) : null}
 
@@ -384,6 +432,40 @@ export function BadgeStudio({
           ) : null}
         </div>
 
+          {isCm ? (
+            <div className="mt-3 border-t border-[var(--border-2)] px-4 pt-3">
+              <label
+                htmlFor="badge-mark"
+                className="widget-data-label block pb-1.5 text-[var(--text-4)]"
+              >
+                Countermark
+              </label>
+              <select
+                id="badge-mark"
+                value={markId}
+                onChange={(e) => setMarkId(e.target.value)}
+                className="app-select-chevron app-input w-full pr-9"
+              >
+                <option value="">Select a countermark…</option>
+                {marks.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.subjectName} — {m.grade} · {m.status}
+                  </option>
+                ))}
+              </select>
+              {marks.length === 0 ? (
+                <p className="pt-2 font-mono text-[11px] text-[var(--text-4)]">
+                  None struck yet — issue one in Labs → Assay first.
+                </p>
+              ) : (
+                <p className="pt-2 font-mono text-[11px] text-[var(--text-4)]">
+                  A countermark is public from the moment it is struck, so there is no share
+                  step. The badge ages with the mark and stops asserting when it lapses.
+                </p>
+              )}
+            </div>
+          ) : null}
+
           {/* Install — always in view; this is what the studio is for. */}
           <div className="shrink-0 border-t border-[var(--border-2)] bg-[var(--surface-0)] px-4 py-3">
             <div className="flex items-center justify-between gap-2 pb-1.5">
@@ -418,9 +500,11 @@ export function BadgeStudio({
                   {copied ? "Copied" : "Copy"}
                 </button>
               </div>
-            ) : isPulse ? (
+            ) : needsToken ? (
               <p className="font-mono text-[11px] text-[var(--text-4)]">
-                Select and share a scan to get an installable snippet.
+                {isPulse
+                  ? "Select and share a scan to get an installable snippet."
+                  : "Select a countermark to get an installable snippet."}
               </p>
             ) : null}
           </div>

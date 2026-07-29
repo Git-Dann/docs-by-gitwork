@@ -11,9 +11,10 @@
  * reusing the number — a stale reference should fail to resolve, not resolve to
  * something else.
  */
+import type { CountermarkStyle } from "./countermark-badge";
 import type { BadgeStyle } from "./pulse-badge";
 
-export type BadgeFamily = "approved" | "pulse";
+export type BadgeFamily = "approved" | "pulse" | "countermark";
 
 export interface BadgeDef {
   /** Permanent identifier. Call badges by this. */
@@ -30,6 +31,8 @@ export interface BadgeDef {
   stem?: string;
   /** `pulse` only: the `?style=` value on /api/badge/pulse/[token]. */
   style?: BadgeStyle;
+  /** `countermark` only: the `?style=` value on /api/badge/countermark/[token]. */
+  cmStyle?: CountermarkStyle;
   /** Whether a `-dark` build exists (some marks carry their own ground). */
   hasDark: boolean;
   note?: string;
@@ -134,10 +137,44 @@ export const BADGES: BadgeDef[] = [
     hasDark: true,
     blurb: "The trust-page unit — score, project, top four domains and a link to the report.",
   },
+  {
+    code: "CM-01",
+    name: "Mark shield",
+    family: "countermark",
+    cmStyle: "shield",
+    width: null,
+    height: 22,
+    hasDark: false,
+    blurb: "Inline — COUNTERMARK · CERTIFIED, or the status word once the mark stops asserting.",
+    note: "Carries its own dark ground. A mark past its window is struck through, not just greyed.",
+  },
+  {
+    code: "CM-02",
+    name: "Validity disc",
+    family: "countermark",
+    cmStyle: "disc",
+    width: 152,
+    height: 184,
+    hasDark: true,
+    blurb:
+      "A ring burning down the validity window, with the days left in the middle — the one thing a badge can show that a link to the certificate cannot.",
+  },
+  {
+    code: "CM-03",
+    name: "Certificate card",
+    family: "countermark",
+    cmStyle: "card",
+    width: 300,
+    height: 200,
+    hasDark: true,
+    blurb: "The trust-page unit — grade, subject, standard, seal state and a link to verify.",
+    note: "Shows an UNSEALED marker when no signing secret is configured, so it can't pass for a signed mark.",
+  },
 ];
 
 export const APPROVED_BADGES = BADGES.filter((b) => b.family === "approved");
 export const PULSE_BADGES = BADGES.filter((b) => b.family === "pulse");
+export const COUNTERMARK_BADGES = BADGES.filter((b) => b.family === "countermark");
 
 export function badgeByCode(code: string): BadgeDef | undefined {
   return BADGES.find((b) => b.code === code);
@@ -163,6 +200,20 @@ export function approvedStem(
 /** Public path of a Foundry Approved mark. */
 export function approvedPath(badge: BadgeDef, opts?: Parameters<typeof approvedStem>[1]): string {
   return `/badge/${approvedStem(badge, opts)}.svg`;
+}
+
+/** Public path of a Countermark badge for a given certificate token. */
+export function countermarkPath(
+  badge: BadgeDef,
+  token: string,
+  opts: { dark?: boolean; motion?: boolean } = {},
+): string {
+  const q = new URLSearchParams();
+  if (badge.cmStyle && badge.cmStyle !== "shield") q.set("style", badge.cmStyle);
+  if (opts.dark) q.set("theme", "dark");
+  if (opts.motion) q.set("motion", "1");
+  const qs = q.toString();
+  return `/api/badge/countermark/${token}.svg${qs ? `?${qs}` : ""}`;
 }
 
 /** Public path of a Pulse score badge for a given share token. */
