@@ -2237,3 +2237,119 @@ operator runbook + verification steps: `docs/dispatch.md`.**
   reinstall the Slack app, confirm the Events URL verifies, mention the bot in an internal channel,
   re-ask to prove the `cached` footer, ask something unresolvable, and try a Slack Connect channel
   to confirm it declines. Steps 1-8 in `docs/dispatch.md`.
+
+## 37. Recent Changes (July 2026) — Pulse: the scan dropdown gets check families behind it
+
+Six of the eleven entries in the scan dropdown had **no checks of their own**. The menu was
+purely **subtractive**: picking "iOS app" removed five irrelevant categories and fed a label into
+the AI prompt, and never caused a single one of the 39 iOS checks to run — those fire on repo
+DETECTION. So "Desktop app" and "CLI tool" were empty, "React Native" was a label with nothing
+behind it, and a scan that could not run the family you asked for looked identical to one that ran
+it and found nothing. Same disease as §35, one layer up.
+
+**Registry: 703 → 819 checks (+116).** Every one is deterministic and traceable to a vendor rule —
+citations in **`docs/platform-check-sources.md`**, which also carries the three version-pinned
+constants (below), because those are the parts that go stale on a schedule.
+
+### 37.1 The bug found while wiring: the browser-extension family could never fire
+
+`isChromeExtension` reads `snapshot.files`, and `buildSnapshot` returned early with an **empty
+files map** for any repo that wasn't iOS/Android/Flutter. A browser-extension repo is neither, so
+`findExtensionManifest` had nothing to search: **all 12 extension checks shipped in #469 were
+unreachable from the moment they landed**, and no test caught it because they were unit-tested
+against a hand-built snapshot. Fixed by the two-phase snapshot below; the family is now 26 checks.
+
+### 37.2 New families
+
+| Family | Checks | File |
+|---|---|---|
+| **Desktop — Electron + Tauri** | 33 | `pulse-checks/desktop-app.ts` |
+| **React Native** | 22 | `pulse-checks/react-native-app.ts` |
+| **CLI / published npm package** | 22 | `pulse-checks/cli-tool.ts` |
+| **API behaviour (probed)** | 13 | `pulse-checks/api-behaviour.ts` |
+| **Android — component & platform security** | +14 (19 → 33) | `pulse-checks/android-app.ts` |
+| **Browser extension — surface, code, listing** | +14 (12 → 26) | `pulse-checks/chrome-extension.ts` |
+
+- **Desktop is the highest-severity family in Pulse.** `nodeIntegration: true` with
+  `contextIsolation: false` is remote code execution on the user's machine from any script the
+  renderer loads — one boolean. `readBooleanSetting` returns `true` / `false` / **`null`** because
+  absent ≠ false: `contextIsolation` defaults SECURE (absence passes) while `sandbox` does not.
+  Collapsing them gets one backwards, and there is a test that fails if you do.
+- **API behaviour probes rather than reads docs.** `api-quality.ts`'s 15 checks all ask whether
+  something is *documented*; these ask what the API actually does — CORS origin reflection with
+  credentials, stack traces in error bodies, TRACE, GraphQL introspection. Two rules it must not
+  break: a **failed probe yields SKIPPED, never FAIL**, and on a `catchAll200` host the path probes
+  decline to answer. `api_unauthenticated_data` is deliberately SKIPPED with a reason — OWASP API1
+  needs an authenticated test with two accounts and cannot be inferred from outside.
+- **CLI is about DISTRIBUTION, not code.** Install lifecycle scripts, `bin` names that shadow
+  `node`, publish provenance, and the argv/stdout/stderr/exit-code contract other programs depend
+  on. Runs only for a `bin`-carrying package that is not a web app and not `private: true`.
+
+### 37.3 The dropdown now says what it did and didn't cover
+
+New `platform-coverage.ts` + check **`platform_family_coverage`**. Detection still WINS over a
+wrong selection — a user who picks the wrong entry should still get a correct scan — but the gap is
+no longer silent:
+
+- **URL scan + a source-based selection** → SKIPPED, naming the family and the count, and saying to
+  re-run with a GitHub repo. **Never a FAIL**: scanning a URL is legitimate, and the score must not
+  punish a project for how it was scanned.
+- **Repo scan, shape matches** → PASS. **Shape differs** → WARN naming both ("selected iOS, this is
+  a CLI"), because the cross-platform-product case — the mobile code is in another repo — is common.
+
+### 37.4 Two-phase snapshot (`native-repo.ts`)
+
+An Electron app, an RN app, a CLI and a plain web service all look like "a directory with a
+package.json", so shape detection needs file CONTENTS, which is what the old path-only early-return
+could not do.
+
+- **Round 0** — at most 8 tiny files (root `package.json`, `src-tauri/tauri.conf.json`, candidate
+  `manifest.json`s), ranked and capped so a 200-workspace monorepo can't stampede the API.
+- **Resolve shape** — mobile first (`detectNativePlatform` already orders RN/Flutter before native),
+  then desktop/CLI from package.json, then React Native, then extension last (needs the
+  `manifest_version` key, which is what stops every PWA being scanned as an extension).
+- **Round 1** — config + a relevance-ranked source sample for that shape, plus a CLI's `bin` targets
+  (named in package.json, so they match no path pattern — and the shebang check is meaningless
+  without them). Config capped at 60.
+- A plain web repo still costs **one tree call + the round-0 probes** and nothing else.
+
+⚠️ `SnapshotShape` is deliberately a **third** union, separate from `NativePlatform` and
+`ProjectShape`. It exists only to choose which files to fetch; merging it into either of the others
+would let a desktop repo silently pick up mobile applicability semantics.
+
+⚠️ `runNativeMobileChecks` guards the RN branch on the **resolved snapshot shape**, not on
+`detectNativePlatform` alone — an Electron app that also ships an `app.json` reads as
+`"react-native"` to the path-based detector. There is a test for exactly this.
+
+### 37.5 Version-pinned constants — these go stale and produce WRONG findings
+
+Not missing findings: an app on a supported version reported as end-of-life. Full table in
+`docs/platform-check-sources.md`.
+
+| Constant | File | Value | Cadence |
+|---|---|---|---|
+| `ELECTRON_OLDEST_SUPPORTED_MAJOR` | `desktop-app.ts` | 41 | new major every 8 weeks, latest 3 supported |
+| `RN_OLDEST_SUPPORTED_MINOR` | `react-native-app.ts` | 84 | latest 3 minors |
+| `PLAY_TARGET_SDK_FLOOR` | `android-app.ts` | 35 | each August |
+
+### 37.6 Things learned (again) writing this
+
+- **The reconcile guard's tuple heuristic bites any three-string array**, including one **inside a
+  comment**. It fired three times here: `["preinstall", "install", "postinstall"]`, the icon sizes,
+  and then the comment written to explain the first. Restructured the code each time rather than
+  loosening the guard — it is the only thing stopping the catalogue drifting.
+- **A computed `checkKey` opts a check out of that guard entirely.** The three `cli_pkg_*` metadata
+  checks were a loop over a template literal; they are written out explicitly now.
+- **Regex classes and quote characters.** `[^"']*` failed to match the Android SQL-concatenation
+  case because a SQL string routinely *contains* the other quote (`"… WHERE email = '"` + email).
+  Matched per-quote-style now. Same family of bug as the Dart single-quote issue in §34.6.
+- **Tests were proved to discriminate** by breaking four things on purpose: disabling comment
+  stripping (1 fail), collapsing absent-vs-false (3 fails), making a failed API probe report FAIL
+  (1 fail), and letting RN classify an Electron app (1 fail).
+
+**Verified:** `npm run verify` green — tsc + lint 0 errors, **494 tests**, audit:ui 0 findings.
+App is auth-gated with no local DB → **post-deploy**: scan a real Electron repo, a real Kotlin repo,
+a browser-extension repo and an npm CLI, and confirm the `platform_family_coverage` check reads
+correctly for a deliberate mismatch. **Deferred:** the 116 new checks are validated against unit
+tests, not against real repositories — §34.3's lesson is that validating a family against a real
+codebase is what finds the wrong ones, and that has not happened yet for any of these.

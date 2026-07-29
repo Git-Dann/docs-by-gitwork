@@ -28,12 +28,18 @@ vi.mock("../secret-scanner", () => ({
   scanRepoSecrets: (...args: unknown[]) => secretScan(...args),
 }));
 
+// Every repo-source family runs alongside the mobile one in runRestOnlyFamilies.
+// All but the mobile one are mocked to no-ops here so these tests stay about
+// GraphQL resilience; each family's own behaviour is covered by its own file.
+//
+// ⚠️ Adding a family to runRestOnlyFamilies WITHOUT adding it here fails loudly
+// ("No export is defined on the mock") rather than silently — which is the right
+// way round, so leave this list exhaustive.
 vi.mock("@/server/pulse-checks/native-repo", () => ({
   runNativeMobileChecks: (...args: unknown[]) => nativeChecks(...args),
-  // The browser-extension family runs alongside the mobile one in
-  // runRestOnlyFamilies. Mocked to a no-op here so these tests stay about GraphQL
-  // resilience; its own behaviour is covered in chrome-extension.test.ts.
   runChromeExtensionChecks: async () => ({ isExtension: false, checks: [] }),
+  runDesktopChecks: async () => ({ shape: null, checks: [] }),
+  runCliChecks: async () => ({ isCli: false, checks: [] }),
 }));
 
 const { runCodeAgent } = await import("../code-agent");

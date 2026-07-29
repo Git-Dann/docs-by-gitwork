@@ -110,9 +110,322 @@ export function evaluateAndroidChecks(snapshot: RepoSnapshot): PulseScanCheckInp
   const checks: PulseScanCheckInput[] = [];
 
   checks.push(...securityChecks(ctx));
+  checks.push(...componentSecurityChecks(ctx));
   checks.push(...secretsChecks(ctx));
   checks.push(...storeReadinessChecks(ctx));
   checks.push(...qualityChecks(ctx));
+  checks.push(...platformQualityChecks(ctx));
+
+  return checks;
+}
+
+// ── Component & IPC security ────────────────────────────────────────────────
+//
+// Everything in this section is about the boundary between this app and OTHER
+// apps on the same device. Android's defaults here are permissive for historical
+// reasons, so each of these is a case where doing nothing is the insecure choice.
+function componentSecurityChecks(ctx: AndroidContext): PulseScanCheckInput[] {
+  const checks: PulseScanCheckInput[] = [];
+
+  // PendingIntent mutability. A mutable PendingIntent handed to another app lets
+  // that app fill in the blanks and have YOUR app execute the result.
+  const pendingIntents = (ctx.source.match(/PendingIntent\.(getActivity|getService|getBroadcast|getForegroundService)\s*\(/g) ?? []).length;
+  if (pendingIntents > 0) {
+    const immutable = /FLAG_IMMUTABLE/.test(ctx.source);
+    const mutable = /FLAG_MUTABLE/.test(ctx.source);
+    checks.push({
+      category: CATEGORIES.SECURITY,
+      checkKey: "android_pending_intent_mutability",
+      label: "PendingIntents are immutable",
+      status: immutable ? (mutable ? "WARN" : "PASS") : "WARN",
+      confidence: "MEDIUM",
+      detail: immutable && !mutable
+        ? `${pendingIntents} PendingIntent(s) created, with FLAG_IMMUTABLE in use.`
+        : immutable && mutable
+          ? `${pendingIntents} PendingIntent(s) created; both FLAG_IMMUTABLE and FLAG_MUTABLE appear. A mutable ` +
+            `PendingIntent is only safe when the recipient is trusted AND the base Intent names an explicit ` +
+            `component — check each FLAG_MUTABLE site for both.`
+          : `${pendingIntents} PendingIntent(s) created with no FLAG_IMMUTABLE anywhere in the sampled source. A ` +
+            `PendingIntent runs with YOUR app's identity and permissions; if it is mutable, whichever app receives ` +
+            `it can fill in the unset fields — including the target component — and have your app perform an action ` +
+            `of their choosing. Android 12+ requires the flag to be stated explicitly for exactly this reason. Use ` +
+            `FLAG_IMMUTABLE unless you have a specific need not to.`,
+      evidence: `${pendingIntents} PendingIntent(s)`,
+    });
+  }
+
+  // Task hijacking (StrandHogg). Default taskAffinity lets a malicious app insert
+  // its activity into your task and present a convincing fake login screen.
+  const hasLauncher = /android\.intent\.category\.LAUNCHER/.test(ctx.manifest);
+  if (hasLauncher) {
+    const defended = /android:taskAffinity\s*=\s*""|android:launchMode\s*=\s*"singleTask"|android:launchMode\s*=\s*"singleInstance"/i.test(ctx.manifest);
+    checks.push({
+      category: CATEGORIES.SECURITY,
+      checkKey: "android_task_hijacking",
+      label: "Activities are protected against task hijacking",
+      status: defended ? "PASS" : "WARN",
+      confidence: "MEDIUM",
+      detail: defended
+        ? `Task affinity or launch mode is set to limit task reuse.`
+        : `No \`android:taskAffinity=""\` and no \`singleTask\`/\`singleInstance\` launch mode. By default every ` +
+          `activity shares a task affinity derived from the package name, which lets another installed app declare ` +
+          `the same affinity and have ITS activity appear inside your task — the user taps your icon and is shown ` +
+          `the attacker's screen, styled like yours. This is the StrandHogg class of attack, and it needs no ` +
+          `permissions. Set \`android:taskAffinity=""\` on activities that handle credentials or payment.`,
+    });
+  }
+
+  // sharedUserId collapses the sandbox between apps signed with the same key.
+  if (/android:sharedUserId\s*=/i.test(ctx.manifest)) {
+    checks.push({
+      category: CATEGORIES.SECURITY,
+      checkKey: "android_shared_user_id",
+      label: "sharedUserId is not used",
+      status: "WARN",
+      confidence: "HIGH",
+      detail:
+        `\`android:sharedUserId\` is declared. It puts this app in the same Linux UID as every other app declaring ` +
+        `the same id, so they share a sandbox and can read each other's private files directly. A compromise of any ` +
+        `one of them is a compromise of all. It is deprecated — Android has been removing support — and migrating ` +
+        `away later is disruptive because the UID is baked into installed copies. Use explicit IPC (a bound service, ` +
+        `or a content provider with a signature-level permission) instead.`,
+    });
+  }
+
+  // Custom permissions at protectionLevel normal/dangerous can be acquired by any
+  // app that asks; signature-level restricts them to your own signing key.
+  const customPermissions = (ctx.manifest.match(/<permission\b/gi) ?? []).length;
+  if (customPermissions > 0) {
+    const signatureLevel = /android:protectionLevel\s*=\s*"signature/i.test(ctx.manifest);
+    checks.push({
+      category: CATEGORIES.SECURITY,
+      checkKey: "android_custom_permission_level",
+      label: "Custom permissions use signature protection",
+      status: signatureLevel ? "PASS" : "WARN",
+      confidence: "MEDIUM",
+      detail: signatureLevel
+        ? `${customPermissions} custom permission(s) declared, with signature-level protection in use.`
+        : `${customPermissions} custom permission(s) declared with no \`android:protectionLevel="signature"\`. At ` +
+          `\`normal\` the permission is granted automatically to any app that requests it, and at \`dangerous\` it is ` +
+          `one user tap away — so a permission meant to restrict a component to your own apps restricts it to ` +
+          `nobody. Worse, a malicious app can define your permission FIRST if it installs before you. Use ` +
+          `\`signature\`, which binds the grant to your signing key.`,
+    });
+  }
+
+  // Content providers are exported by default below API 17 and are a direct
+  // read/write path into app data when left open.
+  const providers = (ctx.manifest.match(/<provider\b/gi) ?? []).length;
+  if (providers > 0) {
+    const exportedProvider = /<provider[\s\S]*?android:exported\s*=\s*"true"/i.test(ctx.manifest);
+    const guarded = /<provider[\s\S]*?android:(permission|readPermission|writePermission)\s*=/i.test(ctx.manifest);
+    checks.push({
+      category: CATEGORIES.SECURITY,
+      checkKey: "android_content_provider_exposure",
+      label: "Content providers are not openly exported",
+      status: exportedProvider && !guarded ? "WARN" : "PASS",
+      confidence: "MEDIUM",
+      detail: exportedProvider && !guarded
+        ? `A \`<provider>\` is exported with no \`android:permission\`, \`readPermission\` or \`writePermission\`. A ` +
+          `content provider is a direct query interface to app data — an exported, unguarded one lets any installed ` +
+          `app read (and often write) whatever it backs, with no user prompt. If it exists only to share files with ` +
+          `other apps, use \`FileProvider\` with \`grantUriPermissions\` and per-URI grants instead of blanket export.`
+        : `${providers} content provider(s) declared, either not exported or permission-guarded.`,
+    });
+  }
+
+  // WebView file access. Combined with universal access from file URLs, a
+  // malicious local HTML file can read every file the app can.
+  if (/WebView|webView/.test(ctx.source)) {
+    const fileAccess = /setAllowFileAccess\s*\(\s*true|setAllowFileAccessFromFileURLs\s*\(\s*true/.test(ctx.source);
+    const universalAccess = /setAllowUniversalAccessFromFileURLs\s*\(\s*true/.test(ctx.source);
+    checks.push({
+      category: CATEGORIES.SECURITY,
+      checkKey: "android_webview_file_access",
+      label: "WebView file access is disabled",
+      status: universalAccess ? "FAIL" : fileAccess ? "WARN" : "PASS",
+      confidence: "HIGH",
+      detail: universalAccess
+        ? `\`setAllowUniversalAccessFromFileURLs(true)\` lets content loaded from a \`file://\` URL make requests to ` +
+          `ANY origin and read the responses — bypassing the same-origin policy entirely. Any HTML that reaches the ` +
+          `WebView from disk (a downloaded file, a cache entry another app can write) can then read the app's private ` +
+          `files and exfiltrate them. Set it to false; Android defaults it off from API 30 for this reason.`
+        : fileAccess
+          ? `\`setAllowFileAccess(true)\` permits the WebView to load \`file://\` URLs. Combined with any path the ` +
+            `app writes from untrusted input, this becomes a local file read. Disable it unless the app genuinely ` +
+            `renders local HTML, and use \`WebViewAssetLoader\` if it does.`
+          : `WebView file access is not explicitly enabled.`,
+    });
+  }
+
+  // Raw SQL built by concatenation.
+  if (/rawQuery\s*\(|execSQL\s*\(/.test(ctx.source)) {
+    // The literal must be matched per-quote-style rather than with a shared
+    // [^"']* class: a SQL string very often CONTAINS the other quote character
+    // (`"... WHERE email = '"` + email), which made the shared class fail to match
+    // exactly the concatenation this check exists to find.
+    const concatenated =
+      /(rawQuery|execSQL)\s*\(\s*(?:"[^"]*"|'[^']*')\s*\+/i.test(ctx.source) ||
+      /(rawQuery|execSQL)\s*\(\s*`[^`]*\$\{/i.test(ctx.source) ||
+      /(rawQuery|execSQL)\s*\(\s*\w+\s*\+/i.test(ctx.source);
+    checks.push({
+      category: CATEGORIES.SECURITY,
+      checkKey: "android_sql_injection",
+      label: "SQL queries are parameterised",
+      status: concatenated ? "FAIL" : "PASS",
+      confidence: "MEDIUM",
+      detail: concatenated
+        ? `A \`rawQuery\`/\`execSQL\` call builds its SQL by string concatenation or interpolation. Any user-supplied ` +
+          `value reaching it can change the query — read other users' cached rows, or drop the table. Pass values as ` +
+          `\`selectionArgs\` with \`?\` placeholders, which SQLite binds rather than parses. If the app syncs data ` +
+          `from your API, remember the "user input" here includes anything the server sent.`
+        : `Raw SQL calls are present and do not appear to concatenate values into the statement.`,
+    });
+  }
+
+  // Sensitive data on external storage is world-readable on older API levels and
+  // survives uninstall.
+  if (/getExternalStorage(Directory|PublicDirectory)|Environment\.getExternalStorage/.test(ctx.source)) {
+    checks.push({
+      category: CATEGORIES.SECURITY,
+      checkKey: "android_external_storage",
+      label: "Sensitive files are not written to shared storage",
+      status: "WARN",
+      confidence: "MEDIUM",
+      detail:
+        `The app writes to shared external storage (\`Environment.getExternalStorageDirectory\`). Files there are ` +
+        `outside the app sandbox: readable by other apps on older API levels, retained after your app is uninstalled, ` +
+        `and backed up to the user's cloud account. Use \`context.getFilesDir()\` for anything private, or ` +
+        `\`getExternalFilesDir()\` for large non-sensitive caches — the latter is at least removed on uninstall.`,
+    });
+  }
+
+  return checks;
+}
+
+// ── Platform quality: deep links, notifications, threading, dependencies ────
+function platformQualityChecks(ctx: AndroidContext): PulseScanCheckInput[] {
+  const checks: PulseScanCheckInput[] = [];
+
+  // App Links verification. Without autoVerify, the OS shows a disambiguation
+  // dialog (or opens the browser) instead of your app.
+  const hasHttpIntentFilter = /<data[^>]*android:scheme\s*=\s*"https?"/i.test(ctx.manifest);
+  if (hasHttpIntentFilter) {
+    const autoVerify = /android:autoVerify\s*=\s*"true"/i.test(ctx.manifest);
+    checks.push({
+      category: CATEGORIES.APP_STORE,
+      checkKey: "android_app_links_verified",
+      label: "HTTP deep links are verified App Links",
+      status: autoVerify ? "PASS" : "WARN",
+      confidence: "HIGH",
+      detail: autoVerify
+        ? `\`android:autoVerify="true"\` is set — confirm \`/.well-known/assetlinks.json\` is served on the domain, ` +
+          `since verification fails silently if it is missing or malformed.`
+        : `The app registers an intent filter for http/https links without \`android:autoVerify="true"\`. Unverified ` +
+          `links do not open the app directly: Android shows a "open with" chooser, or just opens the browser — so ` +
+          `every marketing link, password reset and share link lands on the website instead of the app, and any ` +
+          `other app can claim the same links. Add \`autoVerify\` and publish \`assetlinks.json\` with your signing ` +
+          `certificate fingerprint.`,
+    });
+  }
+
+  // POST_NOTIFICATIONS became a runtime permission at API 33; apps that never
+  // request it silently stop notifying anyone on modern devices.
+  const usesNotifications = /NotificationManager|NotificationCompat|FirebaseMessagingService/.test(ctx.source) ||
+    /com\.google\.firebase\.MESSAGING_EVENT/.test(ctx.manifest);
+  if (usesNotifications) {
+    const requestsPermission = /POST_NOTIFICATIONS/.test(ctx.manifest + ctx.source);
+    checks.push({
+      category: CATEGORIES.MOBILE,
+      checkKey: "android_notification_permission",
+      label: "POST_NOTIFICATIONS is requested",
+      status: requestsPermission ? "PASS" : "FAIL",
+      confidence: "HIGH",
+      detail: requestsPermission
+        ? `\`POST_NOTIFICATIONS\` is declared — confirm the app also requests it at runtime and handles a refusal.`
+        : `The app posts notifications but never declares \`android.permission.POST_NOTIFICATIONS\`. Since Android 13 ` +
+          `(API 33) that is a runtime permission, and without it notifications are silently dropped — no error, no ` +
+          `log, nothing in the tray. On any modern device this app's notifications simply do not arrive, which is ` +
+          `usually reported as "push isn't working" and debugged on the server side for a long time first.`,
+    });
+  }
+
+  // Network on the main thread. StrictMode catches this in development; in
+  // production it is ANRs.
+  const mainThreadIo = /\.permitAll\s*\(\)|StrictMode\.setThreadPolicy[\s\S]{0,120}permitNetwork/.test(ctx.source);
+  if (mainThreadIo) {
+    checks.push({
+      category: CATEGORIES.PERFORMANCE,
+      checkKey: "android_main_thread_io",
+      label: "Main-thread network policy is not relaxed",
+      status: "WARN",
+      confidence: "HIGH",
+      detail:
+        `A StrictMode thread policy calls \`permitAll()\` (or explicitly permits network), which disables the guard ` +
+        `that stops network and disk I/O running on the UI thread. That guard exists because main-thread I/O is the ` +
+        `direct cause of ANRs — the system kills an app whose UI thread is blocked for 5 seconds, and Play Console ` +
+        `surfaces the ANR rate as a store-quality metric. Move the work to a coroutine or executor rather than ` +
+        `silencing the detector.`,
+    });
+  }
+
+  // Dynamic version ranges make builds non-reproducible and pull unreviewed code.
+  const dynamicVersions = /(implementation|api|compileOnly)\s*\(?\s*["'][^"']*:(\+|latest\.release|\d+\.\+)["']/i.test(ctx.gradle);
+  if (ctx.gradle) {
+    checks.push({
+      category: CATEGORIES.SECURITY,
+      checkKey: "android_dependency_pinning",
+      label: "Dependencies are pinned to exact versions",
+      status: dynamicVersions ? "WARN" : "PASS",
+      confidence: "HIGH",
+      detail: dynamicVersions
+        ? `A Gradle dependency uses a dynamic version (\`+\` or \`latest.release\`). Two builds of the same commit can ` +
+          `then produce different apps, so a crash report cannot be tied to a dependency set — and a compromised ` +
+          `release of that library is pulled into your next build with no diff to review and no approval step. Pin ` +
+          `exact versions and use a lockfile or version catalog.`
+        : `No dynamic Gradle version ranges — dependency versions are pinned.`,
+    });
+  }
+
+  // minSdk that is very old carries platform-level weaknesses the app cannot fix.
+  const minSdk = /minSdk(?:Version)?\s*=?\s*(\d{1,2})/i.exec(ctx.gradle);
+  if (minSdk) {
+    const level = Number(minSdk[1]);
+    checks.push({
+      category: CATEGORIES.SECURITY,
+      checkKey: "android_min_sdk_floor",
+      label: "Minimum SDK excludes unsupported Android versions",
+      status: level >= 24 ? "PASS" : "WARN",
+      confidence: "HIGH",
+      detail: level >= 24
+        ? `minSdk ${level} — the app does not run on Android versions that predate the modern security model.`
+        : `minSdk ${level} supports Android versions that no longer receive security updates and that lack platform ` +
+          `protections the app cannot supply for itself: TLS 1.2 by default (API 20+), cleartext blocked by default ` +
+          `(API 28+), and scoped storage. Supporting them also means shipping compatibility code and testing devices ` +
+          `almost nobody uses — Play's own distribution data will show the share, and it is usually under 1%.`,
+      evidence: `minSdk ${level}`,
+    });
+  }
+
+  // Firebase config committed. Deliberately NOT a failure — Google ships these
+  // keys in every app binary and treats them as public identifiers. Same call as
+  // the iOS family makes for GoogleService-Info.plist (§34.5).
+  if (ctx.paths.some((p) => /(^|\/)google-services\.json$/i.test(p))) {
+    checks.push({
+      category: CATEGORIES.SECRETS_KEYS,
+      checkKey: "android_firebase_config_committed",
+      label: "Firebase configuration is restricted, not secret",
+      status: "WARN",
+      confidence: "HIGH",
+      detail:
+        `\`google-services.json\` is committed. This is expected and not a leak — Google ships these values inside ` +
+        `every published app binary and treats them as public identifiers, so rotating the key achieves nothing. ` +
+        `The action is to confirm in the Cloud console that the API key is restricted to your package name and ` +
+        `signing-certificate fingerprint, and that Firestore/Storage security rules do not rely on the key being ` +
+        `secret — that cannot be seen from the repository, which is why this is flagged for confirmation rather than ` +
+        `scored as a failure.`,
+    });
+  }
 
   return checks;
 }

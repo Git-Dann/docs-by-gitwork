@@ -100,12 +100,39 @@ describe("applyNativeApplicability", () => {
     expect(byKey.get("has_gitignore")!.status).toBe("FAIL");
   });
 
-  // React Native genuinely IS a JS project — package.json, ESLint and tsconfig all
-  // apply to it — so nothing may be skipped there.
-  it("is a no-op for web and React Native repos", () => {
-    for (const platform of [null, "react-native"] as const) {
-      expect(applyNativeApplicability(generic, platform)).toEqual(generic);
-    }
+  it("is a no-op for a plain web repo", () => {
+    expect(applyNativeApplicability(generic, null)).toEqual(generic);
+  });
+
+  // React Native genuinely IS a JavaScript project, so its skip list is the
+  // shortest of the three and this test's job is to prove it stays that way. The
+  // JS toolchain checks must SURVIVE — skipping has_typescript or has_linter for
+  // RN would hide real findings, since an RN app really does have a tsconfig and
+  // really should have a linter.
+  it("keeps the JS toolchain checks for a React Native repo", () => {
+    const out = applyNativeApplicability(generic, "react-native");
+    const byKey = new Map(out.map((c) => [c.checkKey, c]));
+
+    expect(byKey.get("has_typescript")!.status).not.toBe("SKIPPED");
+    expect(byKey.get("has_linter")!.status).not.toBe("SKIPPED");
+    expect(byKey.get("has_readme")!.status).toBe("FAIL");
+    expect(byKey.get("has_gitignore")!.status).toBe("FAIL");
+  });
+
+  it("skips only the server-shaped checks for a React Native repo", () => {
+    const withServerChecks = [
+      ...generic,
+      { checkKey: "dockerfile_present", status: "FAIL", detail: "No Dockerfile." },
+      { checkKey: "has_migrations", status: "WARN", detail: "No migrations." },
+    ];
+    const byKey = new Map(
+      applyNativeApplicability(withServerChecks, "react-native").map((c) => [c.checkKey, c]),
+    );
+
+    expect(byKey.get("dockerfile_present")!.status).toBe("SKIPPED");
+    expect(byKey.get("has_migrations")!.status).toBe("SKIPPED");
+    // Every skip must explain itself — a silent skip is indistinguishable from a bug.
+    expect(byKey.get("dockerfile_present")!.detail).toMatch(/store binary/i);
   });
 
   it("applies a Dart-shaped skip list to Flutter repos", () => {
