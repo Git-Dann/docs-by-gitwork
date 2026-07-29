@@ -1,6 +1,6 @@
 // The public certificate — the whole point of the product.
 //
-// This page is read by someone who did NOT commission the assay and has no account: a
+// This page is read by someone who did NOT commission the examination and has no account: a
 // client accepting handover, an insurer's underwriter, an acquirer's analyst, a
 // procurement officer. Three consequences shape everything below.
 //
@@ -15,12 +15,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CheckCircleIcon, ExclamationTriangleIcon, XCircleIcon, QuestionMarkCircleIcon, MinusCircleIcon } from "@heroicons/react/24/outline";
-import { getCountermarkByToken } from "@/server/assay/issue";
-import { buildPayload } from "@/server/assay/issue";
-import { verifyAttestation } from "@/server/assay/digest";
-import { isAsserting } from "@/server/assay/lapse";
-import { getStandard } from "@/server/assay/standard";
-import type { ClauseVerdict, CountermarkRecord, CountermarkStatus } from "@/server/assay/types";
+import { getCountermarkByToken } from "@/server/provenance/issue";
+import { buildPayload } from "@/server/provenance/issue";
+import { verifyAttestation } from "@/server/provenance/digest";
+import { isAsserting } from "@/server/provenance/lapse";
+import { getStandard } from "@/server/provenance/standard";
+import type { ClauseVerdict, CountermarkRecord, CountermarkStatus } from "@/server/provenance/types";
 import { cn, formatDate } from "@/lib/format";
 
 // Never cached: status is a function of the clock (a mark lapses without anything being
@@ -33,9 +33,9 @@ export async function generateMetadata({ params }: { params: Promise<{ token: st
   const { token } = await params;
   const robots = { index: false, follow: false } as const;
   const countermark = await getCountermarkByToken(token);
-  if (!countermark) return { title: "Certificate not found — Gitwork Assay", robots };
+  if (!countermark) return { title: "Certificate not found — Gitwork Provenance", robots };
   return {
-    title: `${countermark.subjectName} — ${GRADE_COPY[countermark.grade].label} · Gitwork Assay`,
+    title: `${countermark.subjectName} — ${GRADE_COPY[countermark.grade].label} · Gitwork Provenance`,
     description: `${countermark.standardId} attestation for ${countermark.subjectName}, issued ${formatDate(countermark.issuedAt)} by ${countermark.issuerName}.`,
     robots,
   };
@@ -61,10 +61,10 @@ const GRADE_COPY: Record<CountermarkRecord["grade"], { label: string; blurb: str
     ring: "border-red-300 bg-red-50",
   },
   INCOMPLETE: {
-    label: "Incomplete assay",
+    label: "Incomplete examination",
     blurb:
       "No critical clause failed, but at least one could not be established from the evidence available. " +
-      "This is not a pass: the assay could not see enough to certify.",
+      "This is not a pass: the examination could not see enough to certify.",
     tone: "text-slate-700",
     ring: "border-slate-300 bg-slate-100",
   },
@@ -80,7 +80,7 @@ const VERDICT_COPY: Record<ClauseVerdict, { label: string; tone: string; Icon: t
 
 const STATUS_COPY: Record<CountermarkStatus, { label: string; note: string; tone: string }> = {
   VALID: { label: "Valid", note: "", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" },
-  EXPIRING: { label: "Expiring soon", note: "Due for re-assay.", tone: "border-amber-200 bg-amber-50 text-amber-700" },
+  EXPIRING: { label: "Expiring soon", note: "Due for re-examination.", tone: "border-amber-200 bg-amber-50 text-amber-700" },
   LAPSED: {
     label: "Lapsed",
     note: "This mark has passed its validity window and no longer asserts anything. It does not mean a fault was found — it means nobody has re-checked since.",
@@ -152,7 +152,7 @@ export default async function CountermarkCertificatePage({ params }: { params: P
           {/* ─── Masthead ─── */}
           <div className="mb-6 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
-              GITWORK ASSAY // CERTIFICATE OF ATTESTATION
+              GITWORK PROVENANCE // CERTIFICATE OF ATTESTATION
             </span>
             <span className="font-mono text-[12px] text-[var(--text-4)]">
               {countermark.standardId} v{countermark.standardVersion}
@@ -356,9 +356,9 @@ export default async function CountermarkCertificatePage({ params }: { params: P
 
       <div className="bg-[#0F172A] px-4 py-8 text-center sm:px-6">
         <div className="mx-auto max-w-3xl">
-          <p className="text-sm font-semibold text-white">Verify or re-assay this software</p>
+          <p className="text-sm font-semibold text-white">Verify or re-examination this software</p>
           <p className="mt-1 text-sm text-slate-400">
-            Marks lapse on purpose. Gitwork re-assays continuously so a certificate never outlives its evidence.
+            Marks lapse on purpose. Gitwork re-examines continuously so a certificate never outlives its evidence.
           </p>
           <div className="mt-4">
             <Link
@@ -371,7 +371,7 @@ export default async function CountermarkCertificatePage({ params }: { params: P
             </Link>
           </div>
           <p className="mt-4 font-mono text-[10px] text-slate-600">
-            GITWORK ASSAY · {countermark.standardId} v{countermark.standardVersion} · REF {countermark.id}
+            GITWORK PROVENANCE · {countermark.standardId} v{countermark.standardVersion} · REF {countermark.id}
           </p>
         </div>
       </div>

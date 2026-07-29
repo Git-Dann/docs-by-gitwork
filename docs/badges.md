@@ -4,8 +4,8 @@ Three families of embeddable SVG mark:
 
 - **Foundry Approved** — static art in `public/badge/`, for work Gitwork has built or audited.
 - **Pulse score** — generated per request from a real scan at `/api/badge/pulse/[token]`.
-- **Countermark** — the embeddable face of an Assay attestation, at
-  `/api/badge/countermark/[token]`. See `docs/assay.md` for the product itself.
+- **Countermark** — the embeddable face of an Provenance attestation, at
+  `/api/badge/countermark/[token]`. See `docs/provenance.md` for the product itself.
 
 **Install one from Settings → Labs → Badge studio.** Pick a mark, set the ground it will sit
 on, and copy the snippet. For a Pulse badge the studio also picks the scan and, if the report
@@ -141,7 +141,7 @@ certificate and shows strictly less.
 
 ### Three rules the renderer enforces, and why
 
-Assay exists because an unverifiable claim about software is worth nothing, and a badge is the
+Provenance exists because an unverifiable claim about software is worth nothing, and a badge is the
 most likely place for such a claim to get overstated. So:
 
 1. **Validity dominates grade.** A LAPSED, REVOKED or SUPERSEDED mark asserts nothing, so it
@@ -163,7 +163,7 @@ VALID → EXPIRING → LAPSED on its own, with no write to invalidate against. `
 must-revalidate`, and deliberately no `s-maxage` — a CDN holding a lapsed mark as certified is
 the failure mode that matters.
 
-A revoked mark keeps resolving and says REVOKED rather than 404ing. That is Assay's behaviour and
+A revoked mark keeps resolving and says REVOKED rather than 404ing. That is Provenance's behaviour and
 is preserved here: someone handed a mark needs to discover it was withdrawn, not get a 404 they
 might read as a mistake.
 

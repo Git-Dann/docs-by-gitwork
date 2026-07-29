@@ -28,7 +28,7 @@ import {
 
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { useCountermarks } from "@/hooks/use-assay";
+import { useCountermarks } from "@/hooks/use-provenance";
 import { usePulseScans, useSharePulseScan } from "@/hooks/use-pulse";
 import {
   APPROVED_BADGES,
@@ -123,8 +123,8 @@ export function BadgeStudio({
 
   // Countermarks are already public the moment they are struck — there is no
   // share step, so the picker is just a list.
-  const { data: assay } = useCountermarks(open && isCm);
-  const marks = assay?.countermarks ?? [];
+  const { data: register } = useCountermarks(open && isCm);
+  const marks = register?.countermarks ?? [];
   const mark = marks.find((m) => m.id === markId) ?? null;
 
   // Origin is read on the client so the snippet is paste-ready from whichever host
@@ -455,7 +455,7 @@ export function BadgeStudio({
               </select>
               {marks.length === 0 ? (
                 <p className="pt-2 font-mono text-[11px] text-[var(--text-4)]">
-                  None struck yet — issue one in Labs → Assay first.
+                  None struck yet — issue one in Labs → Provenance first.
                 </p>
               ) : (
                 <p className="pt-2 font-mono text-[11px] text-[var(--text-4)]">

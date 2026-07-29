@@ -1801,7 +1801,7 @@ export const costingConfigSaveSchema = costingAdvancedConfigSchema.extend({
   tierRates: tierRatesSchema,
 });
 
-// ── Assay (countermark attestations) ───────────────────────────────────────────────
+// ── Provenance (countermark attestations) ───────────────────────────────────────────────
 export const countermarkIssueSchema = z.object({
   scanId: z.string().min(1),
   /** Defaults to DEFAULT_STANDARD_ID server-side; validated against the registry there. */

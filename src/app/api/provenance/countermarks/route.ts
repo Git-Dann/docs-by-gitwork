@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { assertCan, canIssueCountermark, requireAuthedUser } from "@/server/auth/effective-user";
-import { issueCountermark, listCountermarks } from "@/server/assay/issue";
-import { canSeal } from "@/server/assay/digest";
+import { issueCountermark, listCountermarks } from "@/server/provenance/issue";
+import { canSeal } from "@/server/provenance/digest";
 import { countermarkIssueSchema } from "@/server/validators";
 
 export const dynamic = "force-dynamic";
@@ -23,8 +23,8 @@ export async function GET(request: NextRequest) {
 /**
  * Issue a countermark from a completed Pulse scan.
  *
- * Gated on `assay.issue`, not on the `assay` module: reading the register is a different
- * act from certifying, so holding the module alone leaves Assay read-only.
+ * Gated on `provenance.issue`, not on the `provenance` module: reading the register is a different
+ * act from certifying, so holding the module alone leaves Provenance read-only.
  *
  * `requireAuthedUser` rather than the OrDefault variant, deliberately — that helper falls
  * back to the default workspace owner, so an identity-less caller would issue a certificate

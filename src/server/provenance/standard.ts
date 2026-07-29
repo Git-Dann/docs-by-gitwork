@@ -1,4 +1,4 @@
-// The Assay Standard — the published, versioned document a Countermark asserts against.
+// The Provenance Standard — the published, versioned document a Countermark asserts against.
 //
 // A certificate that does not name its standard is worthless: "certified" means nothing
 // unless a reader can look up exactly what was tested and what the pass condition was.
@@ -21,7 +21,7 @@
 //    data. A critical clause that is UNPROVEN downgrades the whole mark to INCOMPLETE,
 //    so marking something critical has real teeth — don't do it for tidiness.
 
-import type { AssayStandard } from "./types";
+import type { ProvenanceStandard } from "./types";
 
 /**
  * SAS-1 — Software Attestation Standard, revision 1.
@@ -32,19 +32,19 @@ import type { AssayStandard } from "./types";
  * bar the market currently has no instrument for at all.
  *
  * The clause set is drawn from the failure modes that actually recur in AI-built
- * software (see docs/assay.md for the evidence): credentials shipped to the browser,
+ * software (see docs/provenance.md for the evidence): credentials shipped to the browser,
  * databases with authorisation disabled, no tests, no CI, no way to know it broke.
  */
-export const SAS_1: AssayStandard = {
+export const SAS_1: ProvenanceStandard = {
   id: "SAS-1",
-  version: "1.0.0",
+  version: "1.1.0",
   label: "Software Attestation Standard, revision 1",
   summary:
     "The delivery floor for commissioned software: no shipped credentials, enforced data " +
     "authorisation, a working transport layer, a maintainable and inspectable codebase, and " +
     "a way to know when it breaks.",
   // A conditional mark expires sooner than a clean one: more outstanding risk means the
-  // evidence goes stale faster, and the shorter window is what makes re-assay worth
+  // evidence goes stale faster, and the shorter window is what makes re-examination worth
   // buying rather than a formality.
   validityDays: { certified: 90, conditional: 30 },
   clauses: [
@@ -101,7 +101,7 @@ export const SAS_1: AssayStandard = {
       title: "Traffic is encrypted and the certificate is current",
       assertion:
         "The application served valid HTTPS, redirected plain HTTP to it, and its " +
-        "certificate was not near expiry at the time of assay.",
+        "certificate was not near expiry at the time of examination.",
       whyItMatters:
         "Without this, everything your customers type — passwords, card details, personal " +
         "data — crosses the network readable. An expired certificate takes the site down " +
@@ -185,7 +185,7 @@ export const SAS_1: AssayStandard = {
       title: "Dependencies are accounted for",
       assertion:
         "No dependency with a known published vulnerability was reported against the project " +
-        "at the time of assay.",
+        "at the time of examination.",
       whyItMatters:
         "Most of the code in a modern application was written by strangers. This clause is " +
         "about whether anyone is watching those parts for known holes.",
@@ -199,7 +199,7 @@ export const SAS_1: AssayStandard = {
       title: "Ownership and licensing are unambiguous",
       assertion:
         "The repository declares a licence, and its access controls and secret-scanning " +
-        "settings were readable, establishing that the assaying party could see the real " +
+        "settings were readable, establishing that the examinationing party could see the real " +
         "artifact.",
       whyItMatters:
         "If nobody can say who owns the code, you cannot sell the business, raise against " +
@@ -210,6 +210,12 @@ export const SAS_1: AssayStandard = {
         "branch_protection",
         "secret_scanning_github",
         "github_secret_scanning",
+        // Added in v1.1.0. The clause's assertion already claimed the examining party could
+        // see the real artifact, but nothing measured it — so a repository the token could
+        // not read scored this clause on the strength of its OTHER keys. `repo_accessible`
+        // is the canonical "could we even look" signal (§35: a failed lookup must never
+        // read as an absence), so its omission was the clause being under-evidenced.
+        "repo_accessible",
       ],
     },
     {
@@ -261,10 +267,10 @@ export const SAS_1: AssayStandard = {
   ],
 };
 
-export const STANDARDS: Record<string, AssayStandard> = { [SAS_1.id]: SAS_1 };
+export const STANDARDS: Record<string, ProvenanceStandard> = { [SAS_1.id]: SAS_1 };
 
 export const DEFAULT_STANDARD_ID = SAS_1.id;
 
-export function getStandard(id: string): AssayStandard | null {
+export function getStandard(id: string): ProvenanceStandard | null {
   return STANDARDS[id] ?? null;
 }

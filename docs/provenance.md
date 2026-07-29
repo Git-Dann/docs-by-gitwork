@@ -1,10 +1,10 @@
-# Assay — the attestation layer
+# Provenance — the attestation layer
 
 > **Status:** MVP shipped July 2026. Engine + register + public certificate are live; the
-> continuous re-assay agent and the white-label issuer tier are the next two phases.
+> continuous re-examination agent and the white-label issuer tier are the next two phases.
 >
 > **What it is in one line:** every other tool in this market produces a *report for the
-> owner*. Assay produces a **signed, expiring attestation for the counterparty** — the
+> owner*. Provenance produces a **signed, expiring attestation for the counterparty** — the
 > client, insurer, acquirer or procurement officer who did not build the software and
 > cannot read code.
 
@@ -88,10 +88,10 @@ Foundry has already solved that, painfully, inside Pulse:
   as though the family failed.
 
 Every free scanner on the market still has the bug Foundry found and fixed in itself. That
-is a discipline gap, not a feature gap, and it does not get copied in a quarter. Assay is
+is a discipline gap, not a feature gap, and it does not get copied in a quarter. Provenance is
 that discipline pointed at a third-party reader.
 
-Add the naming: Foundry → **assay office** → **countermark**. Metal goes to the assay office,
+Add the naming: Foundry → **provenance record** → **countermark**. Metal goes to the examination office,
 is tested, and is struck with a countermark that travels with the object forever and tells any
 future buyer what it really is. UK countermarking is a ~700-year statutory consumer-protection
 regime. Nobody in software uses it.
@@ -103,7 +103,7 @@ regime. Nobody in software uses it.
 | Moment | What is sold | Notes |
 |---|---|---|
 | **Issue** | A Countermark at a point of commercial consequence — handover, final invoice, insurance renewal, acquisition, procurement | Per-attestation fee. Gitwork's own handovers are the first ones. |
-| **Maintain** | Continuous re-assay so the mark stays valid instead of lapsing | The subscription. Works *because* marks expire — see §4. |
+| **Maintain** | Continuous re-examination so the mark stays valid instead of lapsing | The subscription. Works *because* marks expire — see §4. |
 | **Issue rights** | Licensed-issuer white label: agencies, MSPs, freelance platforms and AI-builder platforms strike marks under their own brand | The Cyber Essentials model. Phase 3. |
 
 It also feeds the agency directly: a mark that comes back `NOT_CERTIFIED` on C1 is a scoped
@@ -117,15 +117,15 @@ remediation job, and Docs already turns that into a proposal.
 Pulse scan (819 checks, deterministic, confidence-annotated)
         │
         ▼
-src/server/assay/evaluate.ts     ← PURE. checks + standard → clause verdicts, grade, blind spots
-src/server/assay/standard.ts     ← SAS-1: the published, versioned clause set
-src/server/assay/lapse.ts        ← PURE. validity window, lapse/revoke/supersede precedence
-src/server/assay/digest.ts       ← canonical serialisation → sha256 digest + HMAC seal
+src/server/provenance/evaluate.ts     ← PURE. checks + standard → clause verdicts, grade, blind spots
+src/server/provenance/standard.ts     ← SAS-1: the published, versioned clause set
+src/server/provenance/lapse.ts        ← PURE. validity window, lapse/revoke/supersede precedence
+src/server/provenance/digest.ts       ← canonical serialisation → sha256 digest + HMAC seal
         │
         ▼
-src/server/assay/issue.ts        ← the only Prisma file: issue / list / get / revoke
+src/server/provenance/issue.ts        ← the only Prisma file: issue / list / get / revoke
         │
-        ├── /app/assay                 the internal register (module perm `assay`)
+        ├── /app/provenance                 the internal register (module perm `provenance`ssay`)
         └── /countermark/[token]          the PUBLIC certificate — no auth, noindex
 ```
 
@@ -162,7 +162,7 @@ exists to avoid.
 
 - **digest** — SHA-256 over a canonical serialisation. Proves the contents were not altered.
   Needs no secret; anyone can recompute it from what the certificate prints.
-- **seal** — HMAC-SHA-256 over the same canonical form, keyed on `ASSAY_SIGNING_SECRET`.
+- **seal** — HMAC-SHA-256 over the same canonical form, keyed on `PROVENANCE_SIGNING_SECRET`.
   Proves *we* issued it.
 
 A digest alone is worthless against forgery — an attacker who edits the contents recomputes
@@ -209,16 +209,16 @@ it fails to say.
 
 ```bash
 # 32+ bytes. Without it every mark is issued UNSEALED and the register warns before you issue.
-ASSAY_SIGNING_SECRET="$(openssl rand -base64 32)"
+PROVENANCE_SIGNING_SECRET="$(openssl rand -base64 32)"
 ```
 
 **It is already wired into the managed secrets sync** in `.github/workflows/deploy.yml` (§35),
-so there is no SSH step: add `ASSAY_SIGNING_SECRET` as a **GitHub Actions repository secret**
+so there is no SSH step: add `PROVENANCE_SIGNING_SECRET` as a **GitHub Actions repository secret**
 and re-run the deploy (`workflow_dispatch` is enabled for exactly this). The deploy upserts it
 into the VPS `.env` and force-recreates the app container so it takes effect.
 
 An unset secret is a **no-op, not a broken deploy** — `upsert_env` leaves `.env` untouched on
-an empty value, and Assay degrades honestly to UNSEALED. So adding it later is safe.
+an empty value, and Provenance degrades honestly to UNSEALED. So adding it later is safe.
 
 ⚠️ **Rotating this secret makes every previously-issued seal report `UNVERIFIABLE`.** The
 digest still verifies, so contents are still provably unaltered, but authenticity can no
@@ -228,17 +228,17 @@ longer be confirmed. Treat it as a long-lived key.
 
 | Id | Category | Default | Meaning |
 |---|---|---|---|
-| `assay` | **feature** (admin-only) | off | Read the register at `/app/assay` |
-| `assay.issue` | action, **high-risk** | off | Strike and revoke marks |
+| `provenance` | **feature** (admin-only) | off | Read the register at `/app/provenance` |
+| `provenance.issue` | action, **high-risk** | off | Strike and revoke marks |
 
 Split on purpose: reading the register is a different act from certifying, and the issuer's
 name goes on the certificate.
 
-⚠️ **`assay` is a `feature`, not a `module`, and that is load-bearing.**
+⚠️ **`provenance` is a `feature`, not a `module`, and that is load-bearing.**
 `DEFAULT_ROLE_PERMISSIONS` grants STAFF `...MODULE_IDS`, so *any* module id is auto-inherited
-by every Staff member — which is how Assay briefly shipped visible to all Staff. A `feature`
+by every Staff member — which is how Provenance briefly shipped visible to all Staff. A `feature`
 defaults off for everyone except ADMIN (holds all ids) and SUPER_ADMIN. Same trap DevSignal
-documents and the same fix applied when Study was demoted (§26). If Assay is ever promoted
+documents and the same fix applied when Study was demoted (§26). If Provenance is ever promoted
 back to a top-level sold product, changing it back to `module` is a deliberate decision to
 expose it to Staff.
 
@@ -250,7 +250,7 @@ are unchanged, so a deep link still works and still gates.
 
 ### Post-deploy verification (the app is auth-gated with no staging, so this is manual)
 
-1. Set `ASSAY_SIGNING_SECRET`, redeploy, open `/app/assay` — the amber "sealing is not
+1. Set `PROVENANCE_SIGNING_SECRET`, redeploy, open `/app/provenance` — the amber "sealing is not
    configured" banner should be **absent**.
 2. Run a Pulse scan to `COMPLETED`, then **Strike a countermark**.
 3. Open the certificate link in a private window (proves no-auth access) and check:
@@ -273,22 +273,22 @@ are unchanged, so a deep link still works and still gates.
   `Hallmark` via `@@map` (and `HallmarkGrade` for the enum). Renaming a model renames its
   table, which Prisma reads as a DROP — and the build's guarded `prisma db push` would then
   skip the *entire* sync (§2's all-or-nothing footgun), leaving the table uncreated and every
-  Assay route erroring. `@@map` made it a pure code rename with no manual DB step. Fixing the
+  Provenance route erroring. `@@map` made it a pure code rename with no manual DB step. Fixing the
   physical name properly is a `prisma migrate` job, not a hand-run `--accept-data-loss` push
   someone can forget.
 - **Commit pinning.** `subjectCommit` is written as `null` because `PulseScan` does not
   record the SHA it read. Recorded as null rather than guessed — a certificate must not imply
   a precision it does not have. Threading the SHA through the code agent is the single
   highest-value next change: without it a mark names a repo, not a version.
-- **Continuous re-assay.** The `CuratorRun`/`ForemanRun` job + cron spine is right there; a
-  `COUNTERMARK_REASSAY` job that re-scans and re-issues before expiry is the subscription.
+- **Continuous re-examination.** The `CuratorRun`/`ForemanRun` job + cron spine is right there; a
+  `COUNTERMARK_RECHECK` job that re-scans and re-issues before expiry is the subscription.
 - **Licensed issuers (white label).** Needs an issuer record, per-issuer branding on the
   certificate, and a public issuer directory so a reader can check the issuer is real.
 - **A public standard page.** `SAS-1` should be readable at a stable URL so a contract can
   cite it. Today the certificate carries the summary and the clause text.
 - **Docs integration.** A handover document should be able to embed its countermark, and the
   e-sign flow should be able to require a live mark before acceptance.
-- **Runtime probing.** The certificate states this limit explicitly and unconditionally: Assay
+- **Runtime probing.** The certificate states this limit explicitly and unconditionally: Provenance
   inspects code, configuration and public responses. It does not sign in, exercise payments,
   or attempt cross-account authorisation breaches.
 - **Insurer / marketplace API.** The obvious distribution channel given evidence-based
@@ -298,7 +298,7 @@ are unchanged, so a deep link still works and still gates.
 
 ## 7. Naming
 
-`Assay` (the instrument) and `Countermark` (the artifact) are one constant each — the product
+`Provenance` (the instrument) and `Countermark` (the artifact) are one constant each — the product
 name lives in `SAS_1.label`, the module label in `PERMISSION_CATALOG`, and the route is
-`/app/assay`. Renaming is cheap and deliberate, following the Deck precedent (§30: "the
+`/app/provenance`. Renaming is cheap and deliberate, following the Deck precedent (§30: "the
 product name is one constant in `brand.ts` if Deck isn't the final call").

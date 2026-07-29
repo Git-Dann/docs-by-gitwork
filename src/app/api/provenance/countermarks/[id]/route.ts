@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { assertCan, canIssueCountermark, requireAuthedUser } from "@/server/auth/effective-user";
-import { getCountermark, revokeCountermark } from "@/server/assay/issue";
+import { getCountermark, revokeCountermark } from "@/server/provenance/issue";
 import { countermarkRevokeSchema } from "@/server/validators";
 
 export const dynamic = "force-dynamic";

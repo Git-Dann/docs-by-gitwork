@@ -6,7 +6,7 @@
 //            certificate's CONTENTS have not been altered. Anyone can recompute it from
 //            what is printed on the certificate; it needs no secret and no trust in us.
 //
-//   seal   — an HMAC-SHA-256 over that same canonical form, keyed on ASSAY_SIGNING_SECRET.
+//   seal   — an HMAC-SHA-256 over that same canonical form, keyed on PROVENANCE_SIGNING_SECRET.
 //            Proves the attestation was ISSUED BY US and not fabricated by someone who
 //            read the format. Requires the secret, so only the issuer can produce one.
 //
@@ -48,7 +48,11 @@ export function computeDigest(payload: AttestationPayload): string {
 }
 
 function signingSecret(): string | null {
-  const secret = process.env.ASSAY_SIGNING_SECRET?.trim();
+  // ASSAY_SIGNING_SECRET is the pre-rename name, read as a fallback so a value already set
+  // on the server keeps working with no ops step — and, more importantly, so seals issued
+  // before the rename still VERIFY. Dropping it would silently turn every existing seal into
+  // UNVERIFIABLE, which is the one thing this file exists to avoid.
+  const secret = (process.env.PROVENANCE_SIGNING_SECRET ?? process.env.ASSAY_SIGNING_SECRET)?.trim();
   return secret && secret.length > 0 ? secret : null;
 }
 

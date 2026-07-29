@@ -52,11 +52,11 @@ const ENTRIES: LabEntry[] = [
     note: "Renders as the signed-in viewer, so everything shows as you. No API key or token to distribute.",
   },
   {
-    name: "Assay",
-    href: "/app/assay",
+    name: "Provenance",
+    href: "/app/provenance",
     blurb:
       "Strike a Countermark from a completed Pulse scan — a signed, expiring certificate of what a piece of software was found to be, and what could not be established. The register is here; the certificate itself is a public link you send to a client, insurer or acquirer.",
-    note: "Marks are UNSEALED until ASSAY_SIGNING_SECRET is set on the server, and say so on the certificate. Issuing needs the assay.issue permission. See docs/assay.md.",
+    note: "Marks are UNSEALED until PROVENANCE_SIGNING_SECRET is set on the server, and say so on the certificate. Issuing needs the provenance.issue permission. See docs/provenance.md.",
   },
 ];
 
@@ -78,7 +78,7 @@ export function LabsPanel() {
           // Every card is laid out identically regardless of how long its copy
           // is: name + Open on one row, then blurb, then note. The previous
           // single flex row wrapped the button onto its own line once the text
-          // block grew — so Mission Control showed Open top-right while Assay,
+          // block grew — so Mission Control showed Open top-right while Provenance,
           // whose note is longer, showed it bottom-left. Both text blocks share
           // one measure (62ch) so a long mono note can't sprawl wider than the
           // blurb above it either.

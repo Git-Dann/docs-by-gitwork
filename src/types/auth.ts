@@ -152,31 +152,31 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
     ],
   },
   {
-    product: "Assay",
+    product: "Provenance",
     permissions: [
       {
         // Deliberately a `feature`, not a `module`. DEFAULT_ROLE_PERMISSIONS gives STAFF
         // `...MODULE_IDS`, so ANY module id is auto-inherited by every Staff member — which
-        // is how Assay briefly shipped visible to all Staff. As a feature it defaults OFF for
+        // is how Provenance briefly shipped visible to all Staff. As a feature it defaults OFF for
         // everyone except ADMIN (holds all ids) + SUPER_ADMIN, matching how Study was
         // re-gated when it was demoted from a top-level module (§26) and how DevSignal
-        // avoids the same trap. Assay lives in Settings → Labs (Super Admin) while it is
+        // avoids the same trap. Provenance lives in Settings → Labs (Super Admin) while it is
         // an experiment; promote it back to `module` if it becomes a sold product.
-        id: "assay",
+        id: "provenance",
         category: "feature",
-        label: "Assay (attestations)",
+        label: "Provenance (attestations)",
         description:
-          "The Assay register — issue and manage Countermark attestations for delivered software. Admin/Super Admin only by default; reachable from Settings → Labs.",
+          "The Provenance register — issue and manage Countermark attestations for delivered software. Admin/Super Admin only by default; reachable from Settings → Labs.",
       },
       {
         // Deliberately high-risk and separate from the module: issuing a countermark is
         // Gitwork putting its name to a claim a client, insurer or acquirer will rely on.
         // Read access to the register is a different thing from the authority to certify.
-        id: "assay.issue",
+        id: "provenance.issue",
         category: "action",
         label: "Issue and revoke countermarks",
         description:
-          "Strike a Countermark from a completed Pulse scan, and withdraw one. Without it, Assay is a read-only register.",
+          "Strike a Countermark from a completed Pulse scan, and withdraw one. Without it, Provenance is a read-only register.",
         highRisk: true,
       },
     ],
