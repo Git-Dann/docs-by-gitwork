@@ -318,6 +318,14 @@ export interface PulseScanListItem {
   status: PulseScanStatus;
   healthScore: number | null;
   generatedProposalId: string | null;
+  /** Whether the tokenised public report (and therefore the score badge) is live. */
+  isShared: boolean;
+  /**
+   * Only populated while `isShared` — an unshared scan's token is never handed
+   * out, and unsharing clears it in the database anyway. Once shared this is no
+   * more secret than the /report/[token] link it belongs to.
+   */
+  shareToken: string | null;
   createdAt: string;
   updatedAt: string;
 }

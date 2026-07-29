@@ -2529,3 +2529,47 @@ database, so it is a post-deploy check (share a scan, hit each `style`, unshare 
 **Deferred:** per-client copy on the static plate/lockup (`AUDITED …` is baked into the art); an
 Inter block in the glyph table (the dynamic `card` sets its grade in mono for that reason); and a
 picker in-app — today you copy a URL out of `docs/badges.md`.
+
+### 39.1 Badge studio (Settings → Labs) + the naming scheme
+
+The marks are now installable from inside Foundry rather than by copying a URL out of a doc.
+
+- **Every mark has a permanent code** — `FA-01`…`FA-05`, `PS-01`…`PS-04` — defined in
+  **`src/lib/badge/catalog.ts`**, the single source of truth for badge identity that the studio,
+  the docs and any review comment all read from. Codes are permanent: retiring a mark retires its
+  code, because reusing a number makes a stale reference resolve to the *wrong* thing instead of
+  failing. `catalog.test.ts` asserts each code is unique, well-formed, and — the useful part —
+  that **every variant the studio can offer actually exists on disk**, so the catalogue can't
+  advertise a file the generator never wrote.
+- **Settings → Labs → Badge studio** (`src/components/settings/labs/badge-studio.tsx`): pick a
+  mark, set the ground, static/animated, then copy a paste-ready snippet. For a Pulse badge it also
+  picks the scan and **shares the report inline** if it isn't shared yet — that share is what mints
+  the token, so the studio is the whole install path rather than step one of three.
+- **It is a modal, not a route, and that is deliberate.** Labs is Super-Admin-gated in the settings
+  shell, but `/app/settings/**` is in `UNGATED_APP_PREFIXES` — a route would have been reachable by
+  any signed-in member. Keeping it in the panel means it inherits the gate it should have. `LabEntry`
+  now takes either an `href` (opens a tab, e.g. `/edge`) or a `panel` (opens in place).
+- **`PulseScanListItem` gained `isShared` + `shareToken`** (additive DTO, no schema change).
+  `shareToken` is populated **only while `isShared`** — an unshared scan's token never leaves the
+  server, and once shared it is no more secret than the `/report/[token]` link it belongs to. The
+  share/unshare hooks now also invalidate `["pulse-scans"]`; they only invalidated the single scan,
+  which left the list's new share state stale.
+
+**Two layout bugs, both caught by rendering the component rather than reading it.** `/app` is
+auth-gated with no staging, so the studio was server-rendered with `renderToStaticMarkup` inside
+the real providers, wrapped in the app's compiled CSS, and screenshotted. That is worth knowing as
+a technique — it does not run effects, but it does check real geometry on gated screens:
+
+1. The **Install block fell below the fold** once the Pulse scan picker was present. The column
+   scrolled, so `audit-clipping` would have passed it — but the snippet is the reason the studio
+   exists and should never be the thing you scroll to find. It is now a pinned, non-scrolling
+   footer with the content above scrolling under it.
+2. Pinning it didn't work at first: the inspector column needed **`min-h-0`**. Without it a grid
+   item's automatic minimum size is its content, so the column grew past the `h-[460px]` track and
+   pushed the footer out of the dialog. Same trap DESIGN.md documents for the Docs editor panes.
+
+**Verified:** `npm run verify` green — tsc + lint clean, **531 tests** (8 new catalogue tests),
+`audit:ui` 0 findings; `npx next build` clean. The studio was rendered and screenshotted in three
+states (FA-01, FA-03, PS-04). **Not verified:** the studio driven live with real scans — effects,
+the scan dropdown and the clipboard need a browser session against a database, so that is a
+post-deploy check.

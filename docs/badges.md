@@ -5,23 +5,44 @@ Two families of embeddable SVG mark:
 - **Foundry Approved** — static art in `public/badge/`, for work Gitwork has built or audited.
 - **Pulse score** — generated per request from a real scan at `/api/badge/pulse/[token]`.
 
+**Install one from Settings → Labs → Badge studio.** Pick a mark, set the ground it will sit
+on, and copy the snippet. For a Pulse badge the studio also picks the scan and, if the report
+isn't shared yet, shares it for you — that is what mints the token the badge needs.
+
 Both are single self-contained SVG files. They fetch nothing, run no script, and carry the brand
 type as outlined paths, so they render identically in an `<img>`, a README, an email, a PDF and a
 social card.
 
 ---
 
+## 0. Names
+
+Every mark has a **permanent code**. Use it — in a review, in Slack, in a commit — rather than
+describing the artwork. `src/lib/badge/catalog.ts` is the source of truth and a unit test keeps
+it honest against what is actually committed.
+
+| Code | Name | Code | Name |
+|---|---|---|---|
+| `FA-01` | The Seal | `PS-01` | Score shield |
+| `FA-02` | Instrument plate | `PS-02` | Score ring |
+| `FA-03` | Certificate lockup | `PS-03` | Score bar |
+| `FA-04` | Shield | `PS-04` | Score card |
+| `FA-05` | Monogram | | |
+
+Codes are permanent. Retiring a mark retires its code with it — never reuse a number, or a stale
+reference resolves to the wrong thing instead of failing.
+
 ## 1. Foundry Approved
 
 Five options, all committed under `public/badge/`. Pick per placement; they are not ranked.
 
-| File stem | What it is | Size | Use it for |
-|---|---|---|---|
-| `foundry-approved-seal` | Circular stamp, rotating legend, drawn tick | 160×160 | The hero mark. Client site footer, case study, proposal cover |
-| `foundry-approved-plate` | The house `01 // WIDGET NAME` widget card | 268×132 | Anywhere it sits beside other Foundry UI — a dashboard, a report |
-| `foundry-approved-shield` | shields.io-proportioned inline bar | auto×22 | READMEs, docs, a footer line beside other badges |
-| `foundry-approved-monogram` | Square mark, Foundry "F" + tick lozenge | 56×56 | Avatar / favicon scale, a compact trust chip |
-| `foundry-approved-lockup` | Horizontal certificate lockup | auto×72 | A site footer with room for a sentence |
+| Code | File stem | What it is | Size | Use it for |
+|---|---|---|---|---|
+| `FA-01` | `foundry-approved-seal` | Circular stamp, rotating legend, drawn tick | 160×160 | The hero mark. Client site footer, case study, proposal cover |
+| `FA-02` | `foundry-approved-plate` | The house `01 // WIDGET NAME` widget card | 268×132 | Anywhere it sits beside other Foundry UI — a dashboard, a report |
+| `FA-03` | `foundry-approved-lockup` | Horizontal certificate lockup | auto×72 | A site footer with room for a sentence |
+| `FA-04` | `foundry-approved-shield` | shields.io-proportioned inline bar | auto×22 | READMEs, docs, a footer line beside other badges |
+| `FA-05` | `foundry-approved-monogram` | Square mark, Foundry "F" + tick lozenge | 56×56 | Avatar / favicon scale, a compact trust chip |
 
 Each has:
 
@@ -74,12 +95,12 @@ sharing a scan in Pulse; the badge and the report are public together and are re
 | `theme` | `light` · `dark` | `light` | Choose for the **host page's** background, not the viewer's OS |
 | `motion` | `1` | off | Opt into the animated build — read §3 first |
 
-| Style | Size | Shows |
-|---|---|---|
-| `shield` | auto×22 | `PULSE 92/100`, colour-banded, pulse-trace glyph |
-| `ring` | 152×184 | Score ring + grade + `GITWORK PULSE` caption |
-| `bar` | 320×62 | Slim footer readout — score, grade, progress track |
-| `card` | 300×200 | Full widget card: ring, project, top four domain bars, VIEW REPORT |
+| Code | Style | Size | Shows |
+|---|---|---|---|
+| `PS-01` | `shield` | auto×22 | `PULSE 92/100`, colour-banded, pulse-trace glyph |
+| `PS-02` | `ring` | 152×184 | Score ring + grade + `GITWORK PULSE` caption |
+| `PS-03` | `bar` | 320×62 | Slim footer readout — score, grade, progress track |
+| `PS-04` | `card` | 300×200 | Full widget card: ring, project, top four domain bars, VIEW REPORT |
 
 ### Behaviour worth knowing
 
