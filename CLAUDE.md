@@ -271,6 +271,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 |---|---|---|---|
 | **Foundry HQ** | `/app` | — | Dashboard overview. `/app/projects/[slug]` hangs off it (project detail; `app-shell.tsx` deliberately highlights HQ for it) |
 | **Pulse** | `/app/pulse` | `src/server/pulse*.ts` + `pulse-agents/` | AI project validation — ~600 checks in `checks-registry.ts`, gap analysis, GitHub fix-agent, continuous monitors. Also hosts the optional **Study** research tool (no longer a top-level module — see §26) |
+| **Assay** | `/app/assay` | `src/server/assay/` | Attestation layer — strikes a **Hallmark** from a completed Pulse scan: a frozen, digest-and-seal-verified certificate of what a piece of software was found to be, what could **not** be established, and how long the mark is valid for. Public certificate at `/hallmark/[token]` (no auth, noindex). Module perm `assay`; issuing/revoking is the separate high-risk `assay.issue`. See §38 + `docs/assay.md` |
 | **Code** | `/app/code` (legacy `/app/codeclear`) | `src/server/codeclear*.ts` | Developer hiring pipeline — GitHub analysis, scoring, candidate management. ⚠️ `candidates/`, `pipeline/` and `devsignal/**` still live ONLY under the legacy `/app/codeclear/*` prefix — moving them is a separate PR, and the `/app/codeclear/devsignal` `MODULE_PATHS` entry must be renamed **in place** or admin-only DevSignal silently regates onto the staff-inherited `codeclear` module |
 | **Studio** | `/app/studio` | — (client-side only, no `/api/studio`) | Brand asset studio — design on-brand social assets and App Store / Play Store screenshots, then batch-export at the exact size each platform needs. ~30 components under `src/components/studio/` (`studio-root.tsx` entry, plus `templates/`, `screenshots/`, `costing/`, `brand.tsx`, `export.ts`). Also now hosts the **Demo builder** (`demo-builder.tsx`), moved out of Settings in July 2026 — this is the `Demo {{Feat}}` workstream in §32. Module permission id `studio` |
 | **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). `/app/proposals/*` are redirect stubs (see §16) |
@@ -1762,7 +1763,7 @@ tags exist. Do not invent a fourth.
 
 | Tag | Means | Current members |
 |---|---|---|
-| `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal** |
+| `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Assay** |
 | `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
@@ -2353,3 +2354,110 @@ a browser-extension repo and an npm CLI, and confirm the `platform_family_covera
 correctly for a deliberate mismatch. **Deferred:** the 116 new checks are validated against unit
 tests, not against real repositories — §34.3's lesson is that validating a family against a real
 codebase is what finds the wrong ones, and that has not happened yet for any of these.
+
+## 38. Recent Changes (July 2026) — Assay: the attestation layer (new product)
+
+A new top-level product at `/app/assay`, sharing Foundry's spine and sellable standalone. It
+inverts what Pulse does: **Pulse produces a report for the owner; Assay produces a signed,
+expiring attestation for the counterparty** — the client accepting handover, the insurer
+underwriting the app, the acquirer, the procurement officer. Someone who did not build the
+software, cannot read code, and is about to rely on it. Full brief, market evidence, revenue
+model and operator runbook: **`docs/assay.md`**.
+
+**Why an attestation and not another scanner.** Scanning commoditised to free during 2026 —
+free no-signup agent-readiness scanners, free vibe-code security scanners, Snyk/Semgrep/OX
+overlapping the rest. What has not commoditised is *standing behind* a measurement, and
+certification lives or dies on one property this repo has already paid to learn: **never
+claiming what you did not check** (§34.2's confidence model, §35's *"a check built on
+`safeGithubRequest` converts 'we couldn't look' into 'it isn't there'"*, §37's
+SKIPPED-not-FAIL). Every free scanner still has the bug Foundry found and fixed in itself.
+The commercial precedent is Cyber Essentials — 200,000+ certificates, 69% micro/small, growth
+driven by contract mandates, ~290 licensed assessment bodies (which is the white-label
+channel, proven at national scale).
+
+**SAS-1 — the standard is the product's contract** (`src/server/assay/standard.ts`). 14
+clauses, each with a plain-English `assertion` (the sentence a counterparty relies on), a
+non-technical `whyItMatters`, a `critical` flag, and the Pulse `checkKeys` that constitute
+evidence. Versioned, and a mark records `standardId` + `standardVersion` — a certificate that
+does not name its standard is worthless. **Never change a clause's meaning in place**; marks
+already issued cite it. A test asserts every `checkKeys` entry exists in
+`checks-registry.ts`, because a clause pointing at a key nothing emits is `UNPROVEN` forever,
+which reads as "we could not check this" when the truth is "we asked the wrong question".
+
+**The verdict rules, and the one that matters** (`evaluate.ts`, pure). `MET` needs every
+covering check to have run *and* passed; `FAILED` needs an adverse check at HIGH or MEDIUM
+confidence; a proven warning is `QUALIFIED`; all-SKIPPED is `NOT_APPLICABLE`. Everything else
+— **no covering check ran, or only LOW-confidence adverse signals** — is `UNPROVEN`. Grades:
+a critical `FAILED` → `NOT_CERTIFIED`; a critical `UNPROVEN` → **`INCOMPLETE`**; non-critical
+problems → `CONDITIONAL`; else `CERTIFIED`.
+⚠️ **`INCOMPLETE` is load-bearing and must not be merged into `NOT_CERTIFIED`.** "We could not
+check this" and "this is broken" are different facts with different fixes. `score-breakdown.ts`
+already excludes a LOW-confidence adverse check from scoring as "an unproven alarm"; here the
+consequence is stronger — it must not earn a *pass* on the way through either.
+
+**Blind spots are first-class and rendered ABOVE the clause list** on the certificate
+(§02, before §03/§04). Derived, never authored: unmeasured clauses, weak-evidence-only
+clauses, clauses met on a partial check set, thin overall coverage — plus an **unconditional**
+`RUNTIME_NOT_PROBED` stating that Assay inspects code, config and public responses and never
+signs in, exercises payments or attempts cross-account authorisation. A reader must never have
+to infer the product's boundary from the absence of a caveat.
+
+**digest ≠ seal, and the honesty rule** (`digest.ts`). The **digest** is a SHA-256 over a
+canonical (recursively key-sorted) serialisation — proves contents unaltered, needs no secret,
+recomputable by anyone from what the certificate prints. The **seal** is an HMAC-SHA-256 over
+the same form under `ASSAY_SIGNING_SECRET` — proves *we* issued it. A digest alone is
+worthless against forgery (an attacker who edits the contents recomputes it). With no secret
+configured, `seal` is `null` and the certificate says **UNSEALED** — there is deliberately
+**no fallback to a derived key**, because a seal anyone can reproduce looks identical to a
+real one to every reader while proving nothing. `verifyAttestation` also keeps
+`UNVERIFIABLE` (seal present, no key here) distinct from `TAMPERED`, so a rotated key does not
+cry forgery. The payload seals clause **verdicts and blind-spot kinds, not prose** — otherwise
+rewording a rationale would invalidate every seal ever issued.
+
+**Marks expire on purpose, and that is the subscription.** 90 days certified / 30 conditional
+(and 30 for failed+incomplete, which still need to be citable in a dispute). Precedence is
+`REVOKED` → `SUPERSEDED` → `LAPSED` → `EXPIRING` → `VALID`, and the order is deliberate: a
+revoked mark that has *also* expired must still say REVOKED, because "we withdrew this"
+outranks "it would have run out anyway" for anyone who relied on it. `LAPSED` explicitly means
+*nobody re-checked*, not *a fault was found*.
+⚠️ **Revocation is `PATCH`, never `DELETE`.** Deleting the row 404s the certificate URL, which
+reads to whoever holds it as a broken link rather than a withdrawal — so the one thing
+revocation exists to communicate would be the one thing it fails to say.
+
+**The Hallmark row is frozen and self-contained** — `clauses`/`blindSpots`/`coverage`/
+`standardVersion`/`checkCount` snapshotted at issue, and `scanId` a **loose indexed id, not an
+FK**. Same precedent as Docs (`formSnapshot`, so editing a template never rewrites a document
+already sent) and `ForemanRun` (frozen findings). An attestation whose contents change when the
+scan is re-run is not an attestation, and the digest is computed over the frozen payload, so
+re-deriving anything on read would break verification too.
+
+**Permissions are split.** `assay` (module) is a read-only register; **`assay.issue`** is a
+separate high-risk action, because the issuer's name goes on a certificate a third party
+relies on. Both default off. The issue route uses `requireAuthedUser`, **not** the OrDefault
+variant — that helper falls back to the default workspace owner, so an identity-less caller
+would issue a certificate in a Super Admin's name, which here is not merely a privilege bug
+but a forged signature.
+
+**Schema (additive → applies via the guarded `prisma db push`):** `Hallmark` + enum
+`HallmarkGrade`; relations on `Workspace` and `WorkspaceClient`. New env
+`ASSAY_SIGNING_SECRET` (optional; absence degrades honestly to UNSEALED). New route
+`/hallmark/[token]` added to `robots.ts`'s disallow list alongside the other token pages.
+
+**Verified:** `npm run verify` green — tsc + lint **0 errors**, **560 tests passing** (66 new
+across evaluate/lapse/digest), `audit:ui` **0 findings** with its self-test passing;
+`npx next build` clean with all four new routes registered. The 66 tests were **proved to
+discriminate** by breaking four things on purpose (§37's discipline): certifying an unmeasured
+clause → 6 failures; letting a LOW-confidence adverse check count as proof → 1; making
+`LAPSED` outrank `REVOKED` → 1; dropping blind spots from the sealed payload → 2.
+**Not visually verified** — `/app/assay` is auth-gated and `/hallmark/[token]` needs a real
+row, and there is no staging or local DB. Post-deploy steps 1-6 in `docs/assay.md` §5.
+
+**Deferred, highest-value first:** **commit pinning** — `subjectCommit` is written `null`
+because `PulseScan` never records the SHA it read, so a mark currently names a repo rather
+than a version (recorded as null rather than guessed, per the no-false-precision rule);
+**continuous re-assay** as a `HALLMARK_REASSAY` job on the existing Curator/Foreman cron spine
+(this is the subscription); **licensed issuers** for white label (issuer record + per-issuer
+certificate branding + a public issuer directory); a **public `SAS-1` page** at a stable URL so
+a contract can cite it; **Docs integration** (embed a mark in a handover; require a live mark
+before e-sign acceptance); and an **insurer/marketplace API**, which needs a partner before it
+needs code.

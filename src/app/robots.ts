@@ -36,6 +36,7 @@ export default function robots(): MetadataRoute.Robots {
           // Client deliverables — the URL token is the only credential.
           "/docs/",
           "/report/",
+          "/hallmark/",
           "/sign/",
           "/onboarding/",
           "/timeline/",

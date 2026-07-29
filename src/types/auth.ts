@@ -152,6 +152,28 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
     ],
   },
   {
+    product: "Assay",
+    permissions: [
+      {
+        id: "assay",
+        category: "module",
+        label: "Assay",
+        description: "Issue and manage Hallmark attestations for delivered software.",
+      },
+      {
+        // Deliberately high-risk and separate from the module: issuing a hallmark is
+        // Gitwork putting its name to a claim a client, insurer or acquirer will rely on.
+        // Read access to the register is a different thing from the authority to certify.
+        id: "assay.issue",
+        category: "action",
+        label: "Issue and revoke hallmarks",
+        description:
+          "Strike a Hallmark from a completed Pulse scan, and withdraw one. Without it, Assay is a read-only register.",
+        highRisk: true,
+      },
+    ],
+  },
+  {
     product: "Code",
     permissions: [
       { id: "codeclear", category: "module", label: "Code", description: "Developer review and validation." },
