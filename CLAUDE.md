@@ -369,6 +369,7 @@ src/
       rate-card/                  ← Rate card CRUD
       settings/                   ← AI integrations + model settings
       report/[token]/             ← Public shareable report
+      badge/pulse/[token]/        ← Public Pulse-score badge SVG (same shareToken; §38)
       webhooks/github/            ← GitHub webhook for Pulse monitors
       dev/seed-demo/              ← Dev: seed Pulse demo data
       dev/seed-study-demo/        ← Dev: seed Study demo data
@@ -2461,3 +2462,70 @@ certificate branding + a public issuer directory); a **public `SAS-1` page** at 
 a contract can cite it; **Docs integration** (embed a mark in a handover; require a live mark
 before e-sign acceptance); and an **insurer/marketplace API**, which needs a partner before it
 needs code.
+
+## 39. Recent Changes (July 2026) — Badges: "Foundry Approved" + an embeddable Pulse score
+
+Two families of self-contained SVG mark, so Gitwork's work can be signed on a client's own site and
+a Pulse score can be published there. **Full usage + parameters: `docs/badges.md`.**
+
+- **"Foundry Approved" — five options, committed under `public/badge/`.** Seal (circular stamp,
+  rotating legend), Instrument plate (the `01 // WIDGET NAME` widget grammar), Shield (inline,
+  shields.io proportions), Monogram (square, the real wordmark's "F"), Certificate lockup
+  (horizontal footer). Each ships light + `-dark` and static + `-anim`; the monogram adds `-sm`.
+  Measured size floors: **seal 64px**, **monogram 24px** (below that its tick lozenge is a smudge —
+  `-sm` drops it and is legible to 16px).
+- **Pulse score — `GET /api/badge/pulse/[token]`** (public, added to `PUBLIC_API_PATHS`). The token
+  is the **existing `PulseScan.shareToken`**, so no schema change, no new auth surface, and nothing
+  is exposed that `/report/[token]` does not already show. It reads through the **same
+  `pulse-report-<token>` cache tag** the share route already revalidates, so unshare revokes the
+  badge with the report. `?style=shield|ring|card|bar`, `?theme=light|dark`, `?motion=1`. A revoked
+  token **404s on purpose** — a badge that kept rendering would advertise a claim nobody can check.
+- **Bands are locked to the report.** `scoreBand`/`scoreGrade` mirror `HealthScoreRing`
+  (`document-cover.tsx`) and a unit test asserts every boundary, so the badge can never contradict
+  the report it links to. The `card`'s domain bars come from `computeScoreBreakdown` — the same
+  maths as the headline score.
+
+**Type is outlined to paths, and that is load-bearing.** An SVG in an `<img>` is an isolated
+document: no webfont fetch, no inherited CSS. `font-family:'DM Serif Display'` there falls back to
+Georgia, whose numerals are **old-style** — a score would render with a descending "9". So
+`scripts/badge/fonttype.py` outlines the brand faces (shaped through HarfBuzz for correct kerning)
+from the base64 woff2 **already vendored for Deck**, keeping one copy of the fonts in the repo.
+⚠️ `TTFont` loaded from `.woff2` keeps `flavor="woff2"` and re-saves compressed; HarfBuzz cannot
+parse that and fails **silently** — every character maps to `.notdef`, giving uniform advances and
+no outlines. Clear `font.flavor` before saving.
+
+**⚠️ The trap that shaped the whole design: a CSS animation inside an `<img>` freezes at frame 0.**
+It is not that the animation "doesn't apply" — the browser *starts* it and never advances the
+timeline, so an entrance animation renders its **hidden** first frame. **No `fill-mode` fixes it**;
+"frame 0" and "finished" are contradictory states. It fires wherever a page is rasterised without
+being scrolled: offscreen images in a full-page screenshot, social/OG card renderers, print-to-PDF.
+Found exactly that way here — the Pulse badges came out blank in a full-page screenshot while the
+same files were perfect in isolation. Consequences, both kept:
+1. **Everything ships in two builds.** Static is the **default** and the one that goes on someone
+   else's site; animated (`-anim`, or `?motion=1`) is for surfaces we control, where a person
+   scrolls it into view. The static build is literally the animated one minus its `<style>`.
+2. **Every base style must equal the finished state.** `entrance()` (in both the Python generator
+   and `pulse-badge.ts`) puts stagger in **keyframe percentages, never `animation-delay`**, because
+   a delay with `fill-mode:backwards` reintroduces a hidden resting state. `prefers-reduced-motion`
+   is deliberately *only* `animation:none`, which makes the invariant self-testing — get it wrong
+   and a reduced-motion render visibly breaks.
+
+**Layout defects the detectors cannot see, found by screenshotting** (the §30 lesson again): the
+ring's caption collided with its own arc, the lockup's serif title ran under the VERIFIED chip, and
+the card's fourth domain bar overlapped the footer rule. All three are geometry, so `audit:ui` and
+`audit-clipping` are blind to them — the lockup now **derives its width from the shaped type**, so
+that class of collision cannot come back when the copy changes.
+
+**Files:** `scripts/badge/{fonttype,generate}.py` (build-time only — `pip install fonttools brotli
+uharfbuzz`; outputs are committed, nothing runs Python at build or request time),
+`src/lib/badge/pulse-badge.ts` (pure, 23 unit tests), `src/lib/badge/glyphs.ts` (generated, ~15KB,
+caps-only), `src/app/api/badge/pulse/[token]/route.ts`, `public/badge/*.svg`, `docs/badges.md`.
+
+**Verified:** `npm run verify` green — tsc + lint clean, **517 tests** (23 new), `audit:ui` 0
+findings; `npx next build` clean with `/api/badge/pulse/[token]` registered. Both builds were
+rendered in headless Chromium at multiple sizes, on light and dark grounds, and under
+`prefers-reduced-motion`. **Not verified:** the live route against a real shared scan — that needs a
+database, so it is a post-deploy check (share a scan, hit each `style`, unshare and confirm 404).
+**Deferred:** per-client copy on the static plate/lockup (`AUDITED …` is baked into the art); an
+Inter block in the glyph table (the dynamic `card` sets its grade in mono for that reason); and a
+picker in-app — today you copy a URL out of `docs/badges.md`.
