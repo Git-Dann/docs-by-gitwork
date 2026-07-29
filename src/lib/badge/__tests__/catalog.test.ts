@@ -5,10 +5,12 @@ import { describe, expect, it } from "vitest";
 import {
   APPROVED_BADGES,
   BADGES,
+  COUNTERMARK_BADGES,
   PULSE_BADGES,
   approvedPath,
   approvedStem,
   badgeByCode,
+  countermarkPath,
   pulsePath,
 } from "../catalog";
 
@@ -22,7 +24,7 @@ describe("identity", () => {
   it("gives every badge a unique, permanently-shaped code", () => {
     const codes = BADGES.map((b) => b.code);
     expect(new Set(codes).size).toBe(codes.length);
-    for (const code of codes) expect(code).toMatch(/^(FA|PS)-\d{2}$/);
+    for (const code of codes) expect(code).toMatch(/^(FA|PS|CM)-\d{2}$/);
   });
 
   it("resolves a badge by its code", () => {
@@ -31,10 +33,12 @@ describe("identity", () => {
     expect(badgeByCode("nope")).toBeUndefined();
   });
 
-  it("splits cleanly into the two families", () => {
-    expect(APPROVED_BADGES.length + PULSE_BADGES.length).toBe(BADGES.length);
+  it("splits cleanly into its families, each carrying what its family needs", () => {
+    expect(APPROVED_BADGES.length + PULSE_BADGES.length + COUNTERMARK_BADGES.length)
+      .toBe(BADGES.length);
     for (const b of APPROVED_BADGES) expect(b.stem).toBeTruthy();
     for (const b of PULSE_BADGES) expect(b.style).toBeTruthy();
+    for (const b of COUNTERMARK_BADGES) expect(b.cmStyle).toBeTruthy();
   });
 });
 
@@ -78,6 +82,12 @@ describe("paths", () => {
   it("omits the default style so the commonest URL stays short", () => {
     expect(pulsePath(badgeByCode("PS-01")!, "tok")).toBe("/api/badge/pulse/tok.svg");
     expect(pulsePath(badgeByCode("PS-02")!, "tok")).toBe("/api/badge/pulse/tok.svg?style=ring");
+  });
+
+  it("builds the countermark path, omitting the default style", () => {
+    expect(countermarkPath(badgeByCode("CM-01")!, "tok")).toBe("/api/badge/countermark/tok.svg");
+    expect(countermarkPath(badgeByCode("CM-03")!, "tok", { dark: true }))
+      .toBe("/api/badge/countermark/tok.svg?style=card&theme=dark");
   });
 
   it("carries theme and motion through", () => {

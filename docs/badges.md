@@ -1,9 +1,11 @@
 # Badges — "Foundry Approved" and the Pulse score
 
-Two families of embeddable SVG mark:
+Three families of embeddable SVG mark:
 
 - **Foundry Approved** — static art in `public/badge/`, for work Gitwork has built or audited.
 - **Pulse score** — generated per request from a real scan at `/api/badge/pulse/[token]`.
+- **Countermark** — the embeddable face of an Assay attestation, at
+  `/api/badge/countermark/[token]`. See `docs/assay.md` for the product itself.
 
 **Install one from Settings → Labs → Badge studio.** Pick a mark, set the ground it will sit
 on, and copy the snippet. For a Pulse badge the studio also picks the scan and, if the report
@@ -28,6 +30,8 @@ it honest against what is actually committed.
 | `FA-03` | Certificate lockup | `PS-03` | Score bar |
 | `FA-04` | Shield | `PS-04` | Score card |
 | `FA-05` | Monogram | | |
+| `CM-01` | Mark shield | `CM-03` | Certificate card |
+| `CM-02` | Validity disc | | |
 
 Codes are permanent. Retiring a mark retires its code with it — never reuse a number, or a stale
 reference resolves to the wrong thing instead of failing.
@@ -118,6 +122,50 @@ sharing a scan in Pulse; the badge and the report are public together and are re
   rounded number.
 - The `card`'s domain bars are the top four domains by scored weight, from
   `computeScoreBreakdown` — the same maths as the headline score.
+
+---
+
+## 2b. Countermark
+
+`GET /api/badge/countermark/<token>[.svg]` — public, no API key. `<token>` is the
+`Countermark.token` that serves `/countermark/<token>`, so the badge is exactly as public as the
+certificate and shows strictly less.
+
+`?style=shield|disc|card` · `?theme=light|dark` · `?motion=1`
+
+| Code | Style | Size | Shows |
+|---|---|---|---|
+| `CM-01` | `shield` | auto×22 | `COUNTERMARK · CERTIFIED`, or the status word once it stops asserting |
+| `CM-02` | `disc` | 152×184 | A ring burning down the validity window, days left in the middle |
+| `CM-03` | `card` | 300×200 | Grade, subject, standard, seal state, link to verify |
+
+### Three rules the renderer enforces, and why
+
+Assay exists because an unverifiable claim about software is worth nothing, and a badge is the
+most likely place for such a claim to get overstated. So:
+
+1. **Validity dominates grade.** A LAPSED, REVOKED or SUPERSEDED mark asserts nothing, so it
+   never leads with its grade — it leads with the status word, muted, and the shield is struck
+   through. A badge still reading CERTIFIED three months after expiry is the exact failure the
+   product prevents.
+2. **INCOMPLETE is not NOT_CERTIFIED.** "We could not establish this" and "this is provably
+   broken" never share a colour — INCOMPLETE is neutral, NOT_CERTIFIED is danger. Same rule as
+   `CLAUDE.md` §35.
+3. **An unsealed mark says so.** With no `ASSAY_SIGNING_SECRET` configured the certificate cannot
+   be verified, so the badge carries an UNSEALED marker instead of passing for a signed one.
+
+Each rule has unit tests named after it.
+
+### It is cached for 60 seconds, not 5 minutes
+
+Unlike the Pulse badge, this one is **time-dependent**: it renders days remaining and flips
+VALID → EXPIRING → LAPSED on its own, with no write to invalidate against. `max-age=60,
+must-revalidate`, and deliberately no `s-maxage` — a CDN holding a lapsed mark as certified is
+the failure mode that matters.
+
+A revoked mark keeps resolving and says REVOKED rather than 404ing. That is Assay's behaviour and
+is preserved here: someone handed a mark needs to discover it was withdrawn, not get a 404 they
+might read as a mistake.
 
 ---
 

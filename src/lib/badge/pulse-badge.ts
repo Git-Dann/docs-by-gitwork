@@ -27,10 +27,29 @@
  *    `HealthScoreRing` in `src/components/document-cover.tsx`. A badge that
  *    disagreed with the report it links to would be worse than no badge.
  */
-import { MONO_ADVANCE, MONO_GLYPHS, MONO_UPEM, SERIF_GLYPHS, SERIF_UPEM } from "./glyphs";
+import {
+  cardFace,
+  entrance,
+  mono,
+  monoWidth,
+  PING,
+  serif,
+  serifWidth,
+  sheenDef,
+  tokensFor,
+  wrap,
+  INK,
+  WHITE,
+  type BadgeTheme,
+  type RenderedBadge,
+  type Tokens,
+} from "./svg-kit";
+
+// Re-exported so callers (and the studio) import badge concepts from one place.
+export { monoWidth, serifWidth };
+export type { BadgeTheme, RenderedBadge };
 
 export type BadgeStyle = "shield" | "ring" | "card" | "bar";
-export type BadgeTheme = "light" | "dark";
 
 export interface BadgeBar {
   label: string;
@@ -49,39 +68,8 @@ export interface PulseBadgeInput {
   bars?: BadgeBar[];
 }
 
-export interface RenderedBadge {
-  svg: string;
-  width: number;
-  height: number;
-}
-
-// ── tokens (DESIGN.md) ──────────────────────────────────────────────────────
-const BLUE = "#1D4ED8";
-const WHITE = "#FFFFFF";
-const INK = "#0F172A";
-
-interface Tokens {
-  face: string; ink: string; muted: string; faint: string;
-  hair: string; track: string; accent: string;
-  ok: string; warn: string; bad: string;
-}
-
-const LIGHT: Tokens = {
-  face: WHITE, ink: INK, muted: "#64748B", faint: "#94A3B8",
-  hair: "rgba(0,0,0,0.08)", track: "rgba(0,0,0,0.09)", accent: BLUE,
-  ok: "#16A34A", warn: "#D97706", bad: "#DC2626",
-};
-
-// Accent and semantics lift on dark: #1D4ED8 / #16A34A on a near-black surface
-// fail contrast. Same rule DESIGN.md § Deck applies to the editor chrome.
-const DARK: Tokens = {
-  face: "#1E293B", ink: "#F8FAFC", muted: "#CBD5E1", faint: "#64748B",
-  hair: "rgba(255,255,255,0.10)", track: "rgba(255,255,255,0.13)", accent: "#6BA0FF",
-  ok: "#4ADE80", warn: "#FBBF24", bad: "#F87171",
-};
-
 /** Mirrors HealthScoreRing in src/components/document-cover.tsx. */
-export function scoreBand(score: number, t: Tokens = LIGHT): string {
+export function scoreBand(score: number, t: Tokens = tokensFor("light")): string {
   return score >= 75 ? t.ok : score >= 50 ? t.warn : t.bad;
 }
 
@@ -91,110 +79,6 @@ export function scoreGrade(score: number): string {
   if (score >= 75) return "GOOD";
   if (score >= 50) return "NEEDS WORK";
   return "AT RISK";
-}
-
-// ── type composition ────────────────────────────────────────────────────────
-type Anchor = "start" | "middle" | "end";
-
-function offset(x: number, width: number, anchor: Anchor): number {
-  return anchor === "middle" ? x - width / 2 : anchor === "end" ? x - width : x;
-}
-
-/** Width in px of a mono run. Monospaced, so this is exact without shaping. */
-export function monoWidth(text: string, size: number, tracking = 0): number {
-  const n = [...text].length;
-  if (n === 0) return 0;
-  return n * ((MONO_ADVANCE * size) / MONO_UPEM + tracking) - tracking;
-}
-
-/**
- * A JetBrains Mono run. Uppercased because the table is caps-only — every label
- * on these badges is a mono caps readout per DESIGN.md, and halving the charset
- * halves the generated module.
- */
-function mono(
-  text: string, size: number, x: number, y: number, fill: string,
-  { tracking = 0, anchor = "start" as Anchor, cls = "" } = {},
-): string {
-  const k = size / MONO_UPEM;
-  const step = (MONO_ADVANCE * size) / MONO_UPEM + tracking;
-  const chars = [...text.toUpperCase()];
-  const ox = offset(x, monoWidth(text, size, tracking), anchor);
-  const paths = chars
-    .map((ch, i) => {
-      const d = MONO_GLYPHS[ch];
-      // An unmapped character advances but draws nothing, so spacing of the rest
-      // of the run is unaffected — better than dropping it and shifting the line.
-      return d ? `<path transform="translate(${((i * step) / k).toFixed(0)} 0)" d="${d}"/>` : "";
-    })
-    .join("");
-  const c = cls ? ` class="${cls}"` : "";
-  return `<g transform="translate(${ox.toFixed(2)} ${y}) scale(${k.toFixed(5)} ${(-k).toFixed(5)})" fill="${fill}"${c}>${paths}</g>`;
-}
-
-/** Width in px of a DM Serif run (digits only). */
-export function serifWidth(text: string, size: number): number {
-  let u = 0;
-  for (const ch of text) u += SERIF_GLYPHS[ch]?.adv ?? 0;
-  return (u * size) / SERIF_UPEM;
-}
-
-/**
- * A DM Serif Display run — the score figure. Digits only; no kerning table is
- * carried, which is immaterial for two- and three-digit figures.
- */
-function serif(
-  text: string, size: number, x: number, y: number, fill: string,
-  { anchor = "start" as Anchor, cls = "" } = {},
-): string {
-  const k = size / SERIF_UPEM;
-  const ox = offset(x, serifWidth(text, size), anchor);
-  let cursor = 0;
-  const paths = [...text]
-    .map((ch) => {
-      const g = SERIF_GLYPHS[ch];
-      if (!g) return "";
-      const p = `<path transform="translate(${cursor.toFixed(0)} 0)" d="${g.d}"/>`;
-      cursor += g.adv;
-      return p;
-    })
-    .join("");
-  const c = cls ? ` class="${cls}"` : "";
-  return `<g transform="translate(${ox.toFixed(2)} ${y}) scale(${k.toFixed(5)} ${(-k).toFixed(5)})" fill="${fill}"${c}>${paths}</g>`;
-}
-
-// ── shared chrome ───────────────────────────────────────────────────────────
-const REDUCED = "@media (prefers-reduced-motion:reduce){*{animation:none!important}}";
-
-/**
- * A keyframe that holds `start` for the first `hold`% of its run then settles on
- * `end`. No fill-mode, and `end` is always the element's base style, so the
- * un-animated render is the finished one — see the file header, point 2.
- * Staggering lives in the percentages for the same reason: a delay with
- * fill-mode `backwards` would reintroduce a hidden resting state.
- */
-function entrance(name: string, hold: number, start: string, end: string, mid = ""): string {
-  const from = hold > 0 ? `0%,${hold}%` : "0%";
-  return `@keyframes ${name}{${from}{${start}}${mid}100%{${end}}}`;
-}
-
-function esc(s: string): string {
-  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-}
-
-function wrap(w: number, h: number, body: string, style: string, title: string, motion: boolean): RenderedBadge {
-  const st = motion && style ? `<style>${REDUCED}${style}</style>` : "";
-  return {
-    svg:
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" ` +
-      `role="img" aria-label="${esc(title)}"><title>${esc(title)}</title>${st}${body}</svg>`,
-    width: w,
-    height: h,
-  };
-}
-
-function cardFace(w: number, h: number, t: Tokens): string {
-  return `<rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="10" fill="${t.face}" stroke="${t.hair}"/>`;
 }
 
 // ── styles ──────────────────────────────────────────────────────────────────
@@ -219,13 +103,11 @@ function renderShield(score: number, motion: boolean): RenderedBadge {
     `stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="ecg"/>` +
     mono(label, FS, PAD + 12, 14.6, "#E2E8F0", { tracking: TR }) +
     mono(value, FS, left + right / 2, 14.6, WHITE, { tracking: TR, anchor: "middle" }) +
-    `<defs><linearGradient id="sh" x1="0" y1="0" x2="0" y2="1">` +
-    `<stop offset="0" stop-color="#FFFFFF" stop-opacity="0.13"/>` +
-    `<stop offset="1" stop-color="#000000" stop-opacity="0.13"/></linearGradient></defs>`;
+    `<defs>${sheenDef()}</defs>`;
 
   const style =
     entrance("ecg", 0, "stroke-dashoffset:26", "stroke-dashoffset:0") +
-    "@keyframes ping{0%,100%{opacity:1}50%{opacity:.4}}" +
+    PING +
     ".ecg{stroke-dasharray:26;animation:ecg 1s ease-out,ping 3s 1.4s ease-in-out infinite}";
 
   return wrap(W, H, body, style, `Gitwork Pulse score ${score} of 100`, motion);
@@ -337,7 +219,7 @@ function renderCard(
   const style =
     entrance("sweep", 15, `stroke-dasharray:0 ${circ.toFixed(2)}`, `stroke-dasharray:${filled.toFixed(2)} ${circ.toFixed(2)}`) +
     entrance("figp", 52, "opacity:0;transform:scale(.82)", "opacity:1;transform:scale(1)", "80%{transform:scale(1.04)}") +
-    "@keyframes ping{0%,100%{opacity:1}50%{opacity:.4}}" +
+    PING +
     ".arc{animation:sweep 1.3s cubic-bezier(.3,.9,.3,1)}" +
     `.figg{transform-origin:${cx}px ${cy}px;animation:figp 1.05s cubic-bezier(.2,.8,.3,1)}` +
     ".bar{transform-origin:196px 0}" + barKf +
@@ -351,7 +233,7 @@ export function renderPulseBadge(input: PulseBadgeInput): RenderedBadge {
   // Clamp rather than reject: a badge is decoration on someone else's page, and
   // a 500 there is worse than a rounded number.
   const score = Math.max(0, Math.min(100, Math.round(input.score)));
-  const t = input.theme === "dark" ? DARK : LIGHT;
+  const t = tokensFor(input.theme);
   const motion = input.motion === true;
 
   switch (input.style ?? "shield") {
