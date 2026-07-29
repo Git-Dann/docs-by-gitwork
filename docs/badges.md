@@ -100,6 +100,24 @@ sharing a scan in Pulse; the badge and the report are public together and are re
 
 ---
 
+## 2a. Embed with `<img>`, not by pasting the SVG inline
+
+Every badge is authored assuming it is **its own document**, which is what `<img src="…">` gives
+it. Pasting the SVG source straight into a page breaks that assumption twice over, and both
+failures are silent:
+
+- **`id` collisions.** Badges carry internal ids (`#c` clip path, `#sh`/`#g`/`#mg` gradients). Two
+  inlined badges on one page means every `url(#c)` resolves to the *first* `#c` in the document, so
+  the second badge picks up the first one's clip and gradients.
+- **class collisions.** Animation targets are plain class names — `mark`, `ring`, `bar`, `fig`,
+  `tick`, `dot`. A host page with its own `.mark` or `.bar` rule will restyle the badge's insides,
+  and a host script doing `querySelectorAll(".mark")` will match `<g>` elements inside the badge.
+  (This is not hypothetical — it bit the showcase page built for these badges, where a card class
+  and a badge's internal class shared a name.)
+
+If a surface genuinely needs inline SVG — a React component, an email template — namespace the ids
+and scope the selectors at the point of inlining. Everywhere else, use `<img>`.
+
 ## 3. Static vs animated — the one real gotcha
 
 **Motion is off by default, and that is not conservatism.**
