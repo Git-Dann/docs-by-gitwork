@@ -462,6 +462,7 @@ model Workspace {
   golfClubs                   GolfClub[]
   pulseCheckStats             PulseCheckStat[]
   curatorRuns                 CuratorRun[]
+  hallmarks                   Hallmark[]
   aiUsageLogs                 AiUsageLog[]
   /// Master switch for per-call AI usage logging (feeds the Super-Admin Analytics → AI usage
   /// scope). Default ON; a Super Admin can disable per-workspace. Never blocks the AI call.
@@ -1111,6 +1112,7 @@ model WorkspaceClient {
   updatedAt                DateTime                  @updatedAt
   workspace                Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   pulseScans               PulseScan[]
+  hallmarks                Hallmark[]
   platforms                ClientPlatform[]
   designs                  ClientDesign[]
   documentLinks            ClientDocumentLink[]
@@ -4385,4 +4387,91 @@ model DevSignalNotice {
 
   @@unique([workspaceId, version])
   @@index([workspaceId, isActive])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────
+// Assay — the attestation layer (CLAUDE.md §38).
+//
+// A Hallmark is the counterparty-facing artifact: what a specific piece of software was
+// found to be, at a specific commit, against a named standard version, by a named issuer,
+// with an explicit list of what could NOT be established.
+//
+// It is FROZEN AND SELF-CONTAINED, which is the single most important thing about this
+// model. `clauses`, `blindSpots`, `coverage`, `standardVersion` and `checkCount` are all
+// snapshotted at issue time rather than re-derived on read, and `scanId` is a loose
+// indexed id rather than a foreign key. Three reasons, all learned from this repo:
+//   • Docs already does exactly this (a share link renders from `formSnapshot`, not the
+//     live template) so that editing a template never rewrites a document already sent.
+//   • ForemanRun freezes its findings for the same reason — the Desk renders the report as
+//     it was, not as it would be recomputed now.
+//   • An attestation whose contents change when the underlying scan is re-run or deleted
+//     is not an attestation. Someone accepted delivery on this text; it has to survive.
+// The `digest` is computed over the frozen payload, so re-deriving anything on read would
+// also break verification.
+model Hallmark {
+  id            String           @id @default(cuid())
+  workspaceId   String
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  clientId      String?
+  client        WorkspaceClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  // What the mark is about. Recorded verbatim so the certificate names the exact artifact
+  // even if the client record is later renamed or the repo moved.
+  subjectName   String
+  subjectRepo   String?
+  subjectCommit String?
+  subjectUrl    String?
+
+  // Evidence provenance. Loose id by design (see the note above) — the scan may be pruned.
+  scanId        String
+  scanVersion   String
+  checkCount    Int
+
+  standardId      String
+  standardVersion String
+  grade           HallmarkGrade
+  gradeReason     String        @db.Text
+
+  clauses    Json // ClauseOutcome[] — frozen per-clause verdicts + rationale
+  blindSpots Json // AssayBlindSpot[] — what this mark does NOT establish
+  coverage   Json // { measured, unmeasured, total, pct }
+
+  issuerName String
+  issuedAt   DateTime @default(now())
+  // Absolute, not derived from issuedAt + a live config read: shortening a standard's
+  // validity window must not retroactively expire marks already issued.
+  expiresAt  DateTime
+
+  // Revocation is a state change, never a delete. A revoked mark stays publicly resolvable
+  // and says REVOKED — otherwise withdrawing one is invisible to whoever holds the link,
+  // which defeats the point of being able to withdraw it.
+  revokedAt     DateTime?
+  revokedReason String?   @db.Text
+  revokedByName String?
+
+  // Set when a newer mark is issued for the same subject, so an old link points forward
+  // instead of quietly contradicting the current one.
+  supersededById String?
+
+  digest String // sha256 of the canonical payload — recomputable by anyone from the certificate
+  seal   String? // HMAC-SHA256 under ASSAY_SIGNING_SECRET; null = unsealed, shown as such
+
+  token String @unique // the public certificate URL credential (/hallmark/[token])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId, issuedAt])
+  @@index([workspaceId, grade])
+  @@index([clientId, issuedAt])
+  @@index([scanId])
+  // Supersession looks up the previous live mark for a subject on every issue.
+  @@index([workspaceId, subjectName, issuedAt])
+}
+
+enum HallmarkGrade {
+  CERTIFIED
+  CONDITIONAL
+  NOT_CERTIFIED
+  INCOMPLETE
 }

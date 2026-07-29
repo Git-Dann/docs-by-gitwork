@@ -16,6 +16,7 @@ import {
   PhotoIcon,
   RectangleStackIcon,
   SignalIcon,
+  CheckBadgeIcon,
   UserGroupIcon,
   WrenchScrewdriverIcon,
   XMarkIcon,
@@ -177,6 +178,13 @@ export function AppShell({
         description: "Health and delivery tracking",
         icon: SignalIcon,
         module: "pulse",
+      },
+      {
+        href: "/app/assay",
+        label: "Assay",
+        description: "Hallmark attestations for delivered software",
+        icon: CheckBadgeIcon,
+        module: "assay",
       },
       {
         href: "/app/code",

@@ -7,6 +7,7 @@ import { MODULE_PATHS, hasModuleAccess, matchesPrefix, moduleForPath } from "../
 const APP_ROUTE_SEGMENTS = [
   "account-settings",
   "analytics",
+  "assay",
   "backstage",
   "care",
   "clients",

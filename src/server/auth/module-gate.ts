@@ -19,6 +19,7 @@
  */
 export const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
   { prefix: "/app/pulse", module: "pulse" },
+  { prefix: "/app/assay", module: "assay" },
   // DevSignal — MUST precede the /app/code(clear) entries so it wins the first-match
   // loop. Admin-only feature perm (default-off), not `codeclear`.
   { prefix: "/app/codeclear/devsignal", module: "devsignal" },
