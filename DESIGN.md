@@ -181,27 +181,68 @@ In dark mode, layering is expressed through sequential navy tones — no shadow 
 
 ## Components
 
+> ### How to read this section — notation
+>
+> **This section uses one notation for two different things, and confusing them is how
+> buttons shipped with no chrome in July 2026.** A name in **`bold backticks`** is either:
+>
+> - **a CSS class you literally type** — these are prefixed `app-*` or `widget-*` and are
+>   defined in `src/app/globals.css`; or
+> - **a pattern or component name** — `task-card`, `gantt-chart`, `doc-card`, `my-day`,
+>   `calendar-grid`, `collections-rail`, `task-board`, `task-detail-drawer`,
+>   `statement-cover`, `cta-banner-blue`. These are *shapes to build*, not classes that
+>   exist. Several correspond to a component file of the same name.
+>
+> **If a name has no `app-` / `widget-` prefix, assume it is a pattern name and do NOT put it
+> in a `className`.** When in doubt, grep `globals.css` — and `npm run audit:ui` now fails on
+> any undefined `app-*` / `widget-*` / `button-*` class (rule `UNDEFINED-CLASS`), so a wrong
+> guess is caught before review rather than after deploy.
+
 ### Buttons
 
-**`button-primary`** — Gitwork Blue primary CTA.
-- Background `{colors.primary}`, text white, typography `{typography.button-md}`, padding `9px 18px`, rounded `{rounded.md}`.
-- Pressed: background `{colors.primary-deep}`.
-- Disabled: background `{colors.muted}`, text `{colors.stone}`.
+> ⚠️ **This section documented class names that were never implemented.** It named
+> `button-primary`, `button-secondary`, `button-ghost`, `button-danger`, `button-dark` and
+> `icon-button`; **none of those exist in `globals.css`.** A button written from the old spec
+> rendered with *no chrome at all* — no background, no border, no padding, and icons stacking
+> above their label, because the missing base class is what supplies `inline-flex`. It shipped
+> that way in the Provenance register (July 2026) and nothing caught it: an undefined class
+> name is invisible to `tsc`, `eslint`, `vitest` and every existing `audit:ui` rule. There is
+> now a rule for it — **`UNDEFINED-CLASS`** (see `docs/build-checklist.md`) — which fails on
+> any `app-*` / `widget-*` / `button-*` class that `globals.css` does not define.
 
-**`button-secondary`** — Outlined secondary action.
-- Background transparent, text `{colors.ink}`, border `1px solid {colors.hairline-strong}`, padding `9px 18px`, rounded `{rounded.md}`.
+**Every button is three classes: `app-button` + a variant + a size.**
 
-**`button-ghost`** — Low-emphasis tertiary action.
-- Background transparent, text `{colors.slate}`, no border, padding `9px 18px`, rounded `{rounded.md}`.
+```html
+<button class="app-button app-button-primary app-button-sm">Strike a countermark</button>
+```
 
-**`button-danger`** — Destructive confirmation.
-- Background `{colors.danger}`, text white, padding `9px 18px`, rounded `{rounded.md}`.
+**`app-button` is mandatory and comes first.** It carries `inline-flex`, `gap: 4px`,
+`font-weight: 600`, the focus ring, the active-press transform and the disabled cursor. A
+variant on its own is not a button — it is coloured text.
 
-**`button-dark`** — Dark CTA on light marketing surfaces.
-- Background `{colors.ink}`, text white, padding `9px 18px`, rounded `{rounded.md}`.
+| Variant | Use |
+|---|---|
+| **`app-button-primary`** | The one main action. `--brand-700`, white text, skeuomorphic shadow. |
+| **`app-button-secondary`** | Default choice for everything else. Surface face, `--border-1` hairline. |
+| **`app-button-tertiary`** | Low-emphasis / inline action. Transparent, `--text-3`, no border. (This is what the old spec called `button-ghost`.) |
+| **`app-button-danger`** | Destructive confirmation. **Outlined red on a light face** — `#b42318` text on `--surface-0` with a `#fecdca` border, *not* a solid red fill. |
+| **`app-button-dark`** | Dark CTA on light marketing surfaces. |
+| **`app-button-utility`** | Toolbar/utility control — like secondary but `--text-3`. |
+| **`app-button-hyperlink`** | Renders as a link: no padding, border or radius. |
 
-**`icon-button`** — Square icon-only control.
-- Background transparent, border `1px solid {colors.hairline}`, size 32×32px, rounded `{rounded.md}`.
+| Size | Height | Notes |
+|---|---|---|
+| **`app-button-xs`** | 32px | Dense toolbars. |
+| **`app-button-sm`** | 36px | **The default** for in-panel actions. |
+| **`app-button-md`** | 40px | Forms. |
+| **`app-button-lg`** | 44px | Page-level CTA. |
+| **`app-button-icon-sm` / `-icon-md`** | 36 / 40px square | Icon-only. Replaces the old `icon-button`. Always give it an `aria-label`. |
+
+Radius is **6px** on every size — set by the size class, so omitting the size also loses the
+radius. Icons go in as siblings of the label; `app-button`'s own `gap` spaces them, so do
+**not** add `ml-*` to the text (that double-spaces it).
+
+Reference implementation: `src/components/settings/labs-panel.tsx`.
 
 ### Widget Cards (Dashboard Signature)
 
@@ -227,7 +268,9 @@ The widget card is the fundamental unit of the Foundry dashboard. Every widget f
 **`widget-stat`** — Large single metric display.
 - Figure in `{typography.stat-display}` (DM Serif Display), unit in `{typography.data-label}` (JetBrains Mono).
 
-**`widget-progress-bar`** — Horizontal progress fill.
+**`widget-progress`** — Horizontal progress fill. ⚠️ **The class is `widget-progress`; this
+was documented as `widget-progress-bar`, which does not exist.** `devsignal-ui.tsx` still
+carries a comment citing the wrong name, so at least one other build read the old spec.
 - Track: `{colors.hairline}`, height 4px, rounded full.
 - Fill: `{colors.primary}`.
 
@@ -246,24 +289,46 @@ The widget card is the fundamental unit of the Foundry dashboard. Every widget f
 
 ### Inputs & Forms
 
-**`text-input`** — Standard text field.
+**`app-input`** — Standard text field. ⚠️ **Documented as `text-input`, which does not
+exist.** Note ~8 hand-rolled field constants still diverge from it (CLAUDE.md §31) — use
+`app-input` in anything new.
 - Background `{colors.surface-raised}`, border `1px solid {colors.hairline-strong}`, rounded `{rounded.md}`, height 40px, padding `0 14px`.
 - Focused: border `2px solid {colors.primary}`, outline `3px solid {colors.primary-soft}`.
 - Error: border `2px solid {colors.danger}`, outline `3px solid {colors.danger-soft}`.
 
 ### Badges & Status
 
-**`badge-blue`** — Background `{colors.primary-soft}`, text `{colors.primary-deep}`, rounded `{rounded.sm}`, padding `3px 8px`, typography `{typography.caption-bold}`.
+> ⚠️ **There is no badge class.** `badge-blue` / `badge-green` / `badge-amber` / `badge-red` /
+> `badge-neutral` were documented here but **never implemented** — nothing in `globals.css`
+> defines any of them. Every badge in the app is composed inline with Tailwind, which is why
+> they drift. Written below as the shape to match, not as classes you can use.
 
-**`badge-green`** — Background `{colors.success-soft}`, text `{colors.success}`.
+The recipe in use across the app — match it rather than inventing a fifth variant:
 
-**`badge-amber`** — Background `{colors.warning-soft}`, text `{colors.warning}`.
+```tsx
+<span className="inline-flex shrink-0 items-center rounded-[4px] border px-2 py-0.5
+                 text-[11px] font-semibold uppercase tracking-wide
+                 border-emerald-200 bg-emerald-50 text-emerald-700">
+```
 
-**`badge-red`** — Background `{colors.danger-soft}`, text `{colors.danger}`.
+| Tone | Border / background / text |
+|---|---|
+| **Blue** (info, in-progress) | `border-blue-200 bg-blue-50 text-blue-700` |
+| **Green** (success, met) | `border-emerald-200 bg-emerald-50 text-emerald-700` |
+| **Amber** (warning, partial) | `border-amber-200 bg-amber-50 text-amber-700` |
+| **Red** (failure, revoked) | `border-red-200 bg-red-50 text-red-700` |
+| **Neutral** (unknown, not established) | `border-slate-300 bg-slate-100 text-slate-600` |
 
-**`badge-neutral`** — Background `{colors.surface}`, text `{colors.slate}`, border `1px solid {colors.hairline}`.
+4px radius, never a pill — the status dot below is the only full-radius element in the system.
 
-**`status-dot`** — 6px circle, `{rounded.full}`. Colors: success (online), warning (away), danger (offline), muted (unknown). THE ONLY USE OF FULL/PILL RADIUS.
+**Worth doing properly:** an `app-badge` + `app-badge-<tone>` pair in `globals.css` would make
+this checkable by the `UNDEFINED-CLASS` audit rule instead of relying on everyone copying the
+same five Tailwind strings. Not done here; recorded so it is a decision rather than an
+oversight.
+
+**`widget-status-dot`** — 6px circle, `{rounded.full}`. ⚠️ **Documented as `status-dot`,
+which does not exist**; the class is `widget-status-dot`, with tone modifiers
+`widget-status-dot--success` / `--warning` / `--danger` / `--info` (double dash). Colors: success (online), warning (away), danger (offline), muted (unknown). THE ONLY USE OF FULL/PILL RADIUS.
 
 ### Navigation
 
@@ -304,7 +369,9 @@ The widget card is the fundamental unit of the Foundry dashboard. Every widget f
 - Headline in `{typography.heading-1}` (DM Serif Display), subtitle in `{typography.subtitle}` (Inter).
 - Padding `{spacing.section}`.
 
-**`footer-region`** — Multi-column footer.
+**Footer** — Multi-column footer. ⚠️ **Documented as `footer-region`, which is not defined in
+`globals.css` and is used nowhere in `src/`.** The public pages each build their footer inline.
+Treat the below as the target shape, not a class.
 - Background `{colors.surface}`, padding `{spacing.section} {spacing.xxl}`, top border `1px solid {colors.hairline}`.
 
 ---
