@@ -2574,9 +2574,9 @@ states (FA-01, FA-03, PS-04). **Not verified:** the studio driven live with real
 the scan dropdown and the clipboard need a browser session against a database, so that is a
 post-deploy check.
 
-### 39.2 The Countermark badge — the embeddable face of an Assay attestation
+### 39.2 The Countermark badge — the embeddable face of an Provenance attestation
 
-Assay (§38) publishes a Countermark as a **page**; it had no embeddable mark. This adds one, so a
+Provenance (§38) publishes a Countermark as a **page**; it had no embeddable mark. This adds one, so a
 client can put the attestation in their own footer rather than only linking to it. Three styles —
 **`CM-01` Mark shield**, **`CM-02` Validity disc**, **`CM-03` Certificate card** — served from
 `GET /api/badge/countermark/[token]` (public; `/api/badge` was already in `PUBLIC_API_PATHS`), keyed
@@ -2593,7 +2593,7 @@ tests named after it, because a badge is the likeliest place for an attestation 
 
 1. **Validity dominates grade.** A LAPSED / REVOKED / SUPERSEDED mark asserts nothing, so it never
    leads with its grade — the status word, muted, and the shield is struck through rather than
-   merely greyed. A badge still reading CERTIFIED three months after expiry is precisely what Assay
+   merely greyed. A badge still reading CERTIFIED three months after expiry is precisely what Provenance
    exists to prevent.
 2. **INCOMPLETE is not NOT_CERTIFIED.** "Could not establish" and "provably broken" never share a
    colour — neutral vs danger. The same distinction as §35, one layer out.
@@ -2615,4 +2615,4 @@ guard extended to `CM-`), `audit:ui` 0 findings; `npx next build` clean with bot
 registered. All fifteen grade × status × seal × theme combinations were rendered and inspected —
 which caught the UNSEALED marker sitting on the disc's 9px ring stroke and being cut in half.
 **Not verified:** the route against a real struck countermark (needs a database) — post-deploy,
-issue a mark in Labs → Assay, hit each style, then revoke it and confirm the badge flips.
+issue a mark in Labs → Provenance, hit each style, then revoke it and confirm the badge flips.

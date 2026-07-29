@@ -1,13 +1,13 @@
 /**
- * Renders the public Countermark badge — the embeddable face of an Assay
- * attestation (`src/server/assay/`, `docs/assay.md`).
+ * Renders the public Countermark badge — the embeddable face of an Provenance
+ * attestation (`src/server/provenance/`, `docs/provenance.md`).
  *
  * Pure and dependency-free: it takes plain values, never a Prisma row, so every
  * state below is unit-testable without a database.
  *
  * ## The three honesty rules, which are the whole point
  *
- * Assay exists because an unverifiable claim about software is worth nothing. A
+ * Provenance exists because an unverifiable claim about software is worth nothing. A
  * badge is the most likely place for that claim to get overstated, so:
  *
  * 1. **Validity dominates grade.** A LAPSED, REVOKED or SUPERSEDED mark asserts
@@ -44,10 +44,10 @@ import {
 
 export type CountermarkStyle = "shield" | "disc" | "card";
 
-/** Mirrors CountermarkGrade in src/server/assay/types.ts. */
+/** Mirrors CountermarkGrade in src/server/provenance/types.ts. */
 export type CountermarkBadgeGrade = "CERTIFIED" | "CONDITIONAL" | "NOT_CERTIFIED" | "INCOMPLETE";
 
-/** Mirrors CountermarkStatus in src/server/assay/types.ts. */
+/** Mirrors CountermarkStatus in src/server/provenance/types.ts. */
 export type CountermarkBadgeStatus = "VALID" | "EXPIRING" | "LAPSED" | "REVOKED" | "SUPERSEDED";
 
 export interface CountermarkBadgeInput {
@@ -224,7 +224,7 @@ function renderCard(input: CountermarkBadgeInput, t: Tokens, motion: boolean): R
         `width="${monoWidth("UNSEALED", 8.5, 0.6) + 10}" height="12" rx="3" fill="${t.warn}" opacity="0.14"/>` +
         mono("UNSEALED", 8.5, W - 16, 150, t.warn, { tracking: 0.6, anchor: "end" })) +
     `<path d="M16 172 H${W - 16}" stroke="${t.hair}"/>` +
-    mono("GITWORK ASSAY · FOUNDRY", 7.5, 16, 186, t.faint, { tracking: 1 }) +
+    mono("GITWORK PROVENANCE · FOUNDRY", 7.5, 16, 186, t.faint, { tracking: 1 }) +
     mono("VERIFY", 7.5, W - 26, 186, t.accent, { tracking: 1, anchor: "end" }) +
     // Drawn, not typed: the mono table is caps-only and carries no arrow glyph.
     `<path d="M${W - 23} 183.4 h6 m-2.4 -2.4 l2.4 2.4 l-2.4 2.4" fill="none" stroke="${t.accent}" stroke-width="1"/>`;

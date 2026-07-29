@@ -4,13 +4,13 @@ import {
   renderCountermarkBadge,
   type CountermarkStyle,
 } from "@/lib/badge/countermark-badge";
-import { getCountermarkByToken } from "@/server/assay/issue";
+import { getCountermarkByToken } from "@/server/provenance/issue";
 import type { BadgeTheme } from "@/lib/badge/svg-kit";
 
 /**
  * GET /api/badge/countermark/[token]  (PUBLIC — no API key)
  *
- * The embeddable face of an Assay Countermark: an `<img>`-able SVG a client can
+ * The embeddable face of an Provenance Countermark: an `<img>`-able SVG a client can
  * put in their own footer, beside the certificate it links to.
  *
  *   <a href="https://foundry.gitwork.co.uk/countermark/<token>">
@@ -22,7 +22,7 @@ import type { BadgeTheme } from "@/lib/badge/svg-kit";
  * `token` is the same `Countermark.token` that serves the public certificate at
  * `/countermark/[token]`, so the badge is exactly as public as the page it
  * points at and shows strictly less. A withdrawn mark keeps resolving and says
- * REVOKED — that is deliberate in Assay and is preserved here, because a
+ * REVOKED — that is deliberate in Provenance and is preserved here, because a
  * counterparty who was handed a mark needs to be able to discover that it was
  * withdrawn, not get a 404 they might read as a mistake.
  *
