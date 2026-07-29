@@ -10,7 +10,10 @@ import {
   approvedPath,
   approvedStem,
   badgeByCode,
+  badgeHref,
+  badgeSrc,
   countermarkPath,
+  installSnippet,
   pulsePath,
 } from "../catalog";
 
@@ -97,5 +100,53 @@ describe("paths", () => {
 
   it("refuses to build an approved path for a Pulse badge", () => {
     expect(() => approvedStem(badgeByCode("PS-01")!)).toThrow(/not a Foundry Approved mark/);
+  });
+});
+
+describe("install helpers cover every badge", () => {
+  // The regression these exist for: the studio branched on `!isPulse`, so a
+  // Countermark badge took the Foundry Approved path, `approvedStem` threw, and
+  // the whole settings page white-screened. A switch over `family` cannot drift
+  // that way — and this suite walks the entire catalogue, so a fourth family
+  // added without a branch fails here rather than in production.
+  it.each(BADGES)("$code resolves a src without throwing", (badge) => {
+    expect(() => badgeSrc(badge, { token: "tok" })).not.toThrow();
+    expect(badgeSrc(badge, { token: "tok" })).toMatch(/^\/(badge|api\/badge)\//);
+  });
+
+  it.each(BADGES)("$code builds a snippet without throwing", (badge) => {
+    expect(() => installSnippet(badge, "https://x.test", { token: "tok" })).not.toThrow();
+    const out = installSnippet(badge, "https://x.test", { token: "tok" });
+    expect(out).toContain("<img src=\"https://x.test/");
+    expect(out).toContain("alt=");
+  });
+
+  it("returns null rather than a broken URL when a token-backed badge has no token", () => {
+    for (const badge of [...PULSE_BADGES, ...COUNTERMARK_BADGES]) {
+      expect(badgeSrc(badge, {})).toBeNull();
+      expect(installSnippet(badge, "https://x.test", {})).toBe("");
+    }
+    // Foundry Approved needs no token and must still resolve.
+    for (const badge of APPROVED_BADGES) expect(badgeSrc(badge, {})).not.toBeNull();
+  });
+
+  it("links a token-backed badge to what it asserts, and leaves static marks bare", () => {
+    // A score or a grade with nothing to check is just a claim.
+    expect(badgeHref(badgeByCode("PS-02")!, "tok")).toBe("/report/tok");
+    expect(badgeHref(badgeByCode("CM-03")!, "tok")).toBe("/countermark/tok");
+    expect(badgeHref(badgeByCode("FA-01")!, "tok")).toBeNull();
+    expect(installSnippet(badgeByCode("CM-03")!, "https://x.test", { token: "tok" }))
+      .toContain('<a href="https://x.test/countermark/tok">');
+    expect(installSnippet(badgeByCode("FA-01")!, "https://x.test")).not.toContain("<a ");
+  });
+
+  it("returns nothing until the origin is known, without throwing", () => {
+    // The studio reads window.location.origin in an effect, so the first render
+    // has none — and that early return is exactly why the crash above survived
+    // a server-render check.
+    for (const badge of BADGES) {
+      expect(() => installSnippet(badge, "", { token: "tok" })).not.toThrow();
+      expect(installSnippet(badge, "", { token: "tok" })).toBe("");
+    }
   });
 });

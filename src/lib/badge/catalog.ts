@@ -229,3 +229,64 @@ export function pulsePath(
   const qs = q.toString();
   return `/api/badge/pulse/${token}.svg${qs ? `?${qs}` : ""}`;
 }
+
+// ── install helpers ─────────────────────────────────────────────────────────
+// These live here, pure and exhaustive over `family`, because the studio's
+// inline version branched on `!isPulse` and so sent Countermark badges down the
+// Foundry Approved path — `approvedStem` threw and white-screened the page. A
+// switch over the family cannot drift that way, and every badge is covered by a
+// test below.
+
+export interface BadgeUrlOptions {
+  dark?: boolean;
+  motion?: boolean;
+  /** Required for the token-backed families; ignored by Foundry Approved. */
+  token?: string | null;
+}
+
+/** The badge's own URL, or null when a token-backed family has no token yet. */
+export function badgeSrc(badge: BadgeDef, opts: BadgeUrlOptions = {}): string | null {
+  switch (badge.family) {
+    case "approved":
+      return approvedPath(badge, { dark: opts.dark, motion: opts.motion });
+    case "pulse":
+      return opts.token ? pulsePath(badge, opts.token, opts) : null;
+    case "countermark":
+      return opts.token ? countermarkPath(badge, opts.token, opts) : null;
+  }
+}
+
+/** Where a token-backed badge should link to, so a claim is always checkable. */
+export function badgeHref(badge: BadgeDef, token: string): string | null {
+  switch (badge.family) {
+    case "approved":
+      return null;
+    case "pulse":
+      return `/report/${token}`;
+    case "countermark":
+      return `/countermark/${token}`;
+  }
+}
+
+const ALT: Record<BadgeFamily, string> = {
+  approved: "Foundry Approved",
+  pulse: "Gitwork Pulse score",
+  countermark: "Gitwork Countermark",
+};
+
+/**
+ * The paste-ready snippet. Token-backed badges are wrapped in a link to what
+ * they assert — a score or a grade with nothing to check is just a claim.
+ */
+export function installSnippet(
+  badge: BadgeDef,
+  origin: string,
+  opts: BadgeUrlOptions = {},
+): string {
+  const src = badgeSrc(badge, opts);
+  if (!src || !origin) return "";
+  const size = badge.width ? ` width="${badge.width}" height="${badge.height}"` : "";
+  const img = `<img src="${origin}${src}"${size} alt="${ALT[badge.family]}">`;
+  const href = opts.token ? badgeHref(badge, opts.token) : null;
+  return href ? [`<a href="${origin}${href}">`, `  ${img}`, `</a>`].join("\n") : img;
+}

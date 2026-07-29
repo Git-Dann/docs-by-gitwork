@@ -4,7 +4,7 @@ Three families of embeddable SVG mark:
 
 - **Foundry Approved** — static art in `public/badge/`, for work Gitwork has built or audited.
 - **Pulse score** — generated per request from a real scan at `/api/badge/pulse/[token]`.
-- **Countermark** — the embeddable face of an Provenance attestation, at
+- **Countermark** — the embeddable face of a Provenance attestation, at
   `/api/badge/countermark/[token]`. See `docs/provenance.md` for the product itself.
 
 **Install one from Settings → Labs → Badge studio.** Pick a mark, set the ground it will sit

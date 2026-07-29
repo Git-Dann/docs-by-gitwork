@@ -34,9 +34,8 @@ import {
   APPROVED_BADGES,
   COUNTERMARK_BADGES,
   PULSE_BADGES,
-  approvedPath,
-  countermarkPath,
-  pulsePath,
+  badgeSrc,
+  installSnippet,
 } from "@/lib/badge/catalog";
 import { cn } from "@/lib/format";
 
@@ -184,41 +183,20 @@ export function BadgeStudio({
 
   const bust = (path: string) =>
     motion ? `${path}${path.includes("?") ? "&" : "?"}r=${replay}` : path;
-  const src = isPulse
-    ? scan?.shareToken
-      ? bust(pulsePath(badge, scan.shareToken, { dark: ground === "dark", motion }))
-      : null
-    : isCm
-      ? mark
-        ? bust(countermarkPath(badge, mark.token, { dark: ground === "dark", motion }))
-        : null
-      : bust(approvedPath(badge, { dark: ground === "dark", motion }));
 
-  const snippet = useMemo(() => {
-    if (!origin) return "";
-    const size = badge.width ? ` width="${badge.width}" height="${badge.height}"` : "";
-    if (!isPulse) {
-      const path = approvedPath(badge, { dark: ground === "dark", motion });
-      return `<img src="${origin}${path}"${size} alt="Foundry Approved">`;
-    }
-    if (isCm) {
-      if (!mark) return "";
-      const path = countermarkPath(badge, mark.token, { dark: ground === "dark", motion });
-      return [
-        `<a href="${origin}/countermark/${mark.token}">`,
-        `  <img src="${origin}${path}"${size} alt="Gitwork Countermark">`,
-        `</a>`,
-      ].join("\n");
-    }
-    if (!scan?.shareToken) return "";
-    const path = pulsePath(badge, scan.shareToken, { dark: ground === "dark", motion });
-    // Linked to the report by default: a score with nothing to check is a claim.
-    return [
-      `<a href="${origin}/report/${scan.shareToken}">`,
-      `  <img src="${origin}${path}"${size} alt="Gitwork Pulse score">`,
-      `</a>`,
-    ].join("\n");
-  }, [origin, badge, isPulse, isCm, ground, motion, scan, mark]);
+  // One source of truth for both the preview and the snippet, exhaustive over
+  // the family — the previous inline `!isPulse` branch sent Countermark badges
+  // down the Foundry Approved path and threw.
+  const token = isPulse ? scan?.shareToken ?? null : isCm ? mark?.token ?? null : null;
+  const urlOpts = { dark: ground === "dark", motion, token };
+  const rawSrc = badgeSrc(badge, urlOpts);
+  const src = rawSrc ? bust(rawSrc) : null;
+
+  const snippet = useMemo(
+    () => installSnippet(badge, origin, urlOpts),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [badge, origin, ground, motion, token],
+  );
 
   const copy = useCallback(async () => {
     if (!snippet) return;
