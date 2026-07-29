@@ -212,8 +212,13 @@ it fails to say.
 ASSAY_SIGNING_SECRET="$(openssl rand -base64 32)"
 ```
 
-Add it to the VPS `.env` via the managed secrets sync in `deploy.yml` (§35) so it survives a
-rebuild, then re-run the deploy — `workflow_dispatch` is enabled for exactly this.
+**It is already wired into the managed secrets sync** in `.github/workflows/deploy.yml` (§35),
+so there is no SSH step: add `ASSAY_SIGNING_SECRET` as a **GitHub Actions repository secret**
+and re-run the deploy (`workflow_dispatch` is enabled for exactly this). The deploy upserts it
+into the VPS `.env` and force-recreates the app container so it takes effect.
+
+An unset secret is a **no-op, not a broken deploy** — `upsert_env` leaves `.env` untouched on
+an empty value, and Assay degrades honestly to UNSEALED. So adding it later is safe.
 
 ⚠️ **Rotating this secret makes every previously-issued seal report `UNVERIFIABLE`.** The
 digest still verifies, so contents are still provably unaltered, but authenticity can no
