@@ -1,6 +1,6 @@
 "use client";
 
-// The register — the internal side of Assay. Two jobs: strike a mark from a completed
+// The register — the internal side of Provenance. Two jobs: strike a mark from a completed
 // Pulse scan, and see the standing of every mark already issued (including the ones that
 // have lapsed, which is the state that actually needs chasing).
 
@@ -20,7 +20,7 @@ import {
   type Countermark,
   type CountermarkGrade,
   type CountermarkStatus,
-} from "@/hooks/use-assay";
+} from "@/hooks/use-provenance";
 import { Modal } from "@/components/ui/modal";
 import { cn, formatDate } from "@/lib/format";
 
@@ -59,7 +59,7 @@ function Badge({ grade }: { grade: CountermarkGrade }) {
   );
 }
 
-export function AssayRegister() {
+export function ProvenanceRegister() {
   const { canIssueCountermark } = usePermissions();
   const { data, isPending, error } = useCountermarks();
   const scans = usePulseScans();
@@ -112,7 +112,7 @@ export function AssayRegister() {
             <span>
               <span className="font-semibold">Sealing is not configured.</span> Marks issued now
               carry a digest but no issuer seal, so a reader cannot confirm they came from
-              Gitwork. Set <code className="font-mono text-[12px]">ASSAY_SIGNING_SECRET</code> on
+              Gitwork. Set <code className="font-mono text-[12px]">PROVENANCE_SIGNING_SECRET</code> on
               the server before issuing anything a client will rely on.
             </span>
           </p>
@@ -237,19 +237,19 @@ export function AssayRegister() {
       <Modal open={issueOpen} onClose={() => setIssueOpen(false)} title="Strike a countermark">
         <div className="space-y-4 p-4">
           <p className="text-sm leading-relaxed text-[var(--text-2)]">
-            The mark is assayed from a completed Pulse scan and frozen at issue. Re-running the
+            The mark is examined from a completed Pulse scan and frozen at issue. Re-running the
             scan later does not change a mark already handed over.
           </p>
 
           <div>
             <label
-              htmlFor="assay-scan"
+              htmlFor="provenance-scan"
               className="mb-1.5 block font-mono text-[10px] font-medium uppercase tracking-[0.6px] text-[var(--text-4)]"
             >
               Completed scan
             </label>
             <select
-              id="assay-scan"
+              id="provenance-scan"
               className="app-select-chevron w-full pr-9"
               value={scanId}
               onChange={(e) => setScanId(e.target.value)}
@@ -283,7 +283,7 @@ export function AssayRegister() {
               }}
             >
               <CheckBadgeIcon className="h-4 w-4" />
-              <span className="ml-1.5">{issue.isPending ? "Assaying…" : "Strike"}</span>
+              <span className="ml-1.5">{issue.isPending ? "Examining…" : "Strike"}</span>
             </button>
           </div>
         </div>
@@ -299,13 +299,13 @@ export function AssayRegister() {
           </p>
           <div>
             <label
-              htmlFor="assay-revoke-reason"
+              htmlFor="provenance-revoke-reason"
               className="mb-1.5 block font-mono text-[10px] font-medium uppercase tracking-[0.6px] text-[var(--text-4)]"
             >
               Reason (shown publicly)
             </label>
             <textarea
-              id="assay-revoke-reason"
+              id="provenance-revoke-reason"
               className="app-input min-h-[96px] w-full px-3 py-2"
               value={revokeReason}
               onChange={(e) => setRevokeReason(e.target.value)}

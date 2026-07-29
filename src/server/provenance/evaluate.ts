@@ -1,4 +1,4 @@
-// The assay itself — PURE. No Prisma, no network, no clock. Everything here is a
+// The examination itself — PURE. No Prisma, no network, no clock. Everything here is a
 // function of (checks, standard), which is what makes the verdict testable and what
 // makes it defensible: an attestation nobody can reproduce is a marketing claim.
 //
@@ -20,15 +20,15 @@
 // the consequence is stronger: it shouldn't earn a pass either.
 
 import type { CheckConfidence } from "@/server/pulse-checks/confidence";
-import type { AssayBlindSpot, AssayResult, AssayStandard, ClauseOutcome, ClauseVerdict } from "./types";
+import type { ProvenanceBlindSpot, ProvenanceResult, ProvenanceStandard, ClauseOutcome, ClauseVerdict } from "./types";
 
 /**
- * The minimum shape the assay needs from a check. Structurally satisfied by both
+ * The minimum shape the examination needs from a check. Structurally satisfied by both
  * `PulseScanCheckInput` (fresh from a scan) and `PulseScanCheckRecord` (read back from
  * the DB, where `detail`/`confidence` are nullable) — so the engine works on either
  * without a mapping layer.
  */
-export interface AssayCheckEvidence {
+export interface ProvenanceCheckEvidence {
   checkKey: string;
   status: "PASS" | "WARN" | "FAIL" | "SKIPPED";
   confidence?: CheckConfidence | null;
@@ -57,8 +57,8 @@ function countsAsProof(confidence: CheckConfidence | null | undefined): boolean 
 }
 
 function evaluateClause(
-  clause: AssayStandard["clauses"][number],
-  byKey: Map<string, AssayCheckEvidence[]>,
+  clause: ProvenanceStandard["clauses"][number],
+  byKey: Map<string, ProvenanceCheckEvidence[]>,
 ): ClauseOutcome {
   const evidenceKeys: string[] = [];
   const missingKeys: string[] = [];
@@ -107,7 +107,7 @@ function evaluateClause(
       verdict: "UNPROVEN",
       rationale:
         `Not established. None of the ${clause.checkKeys.length} checks this clause relies on ` +
-        `produced a result in this assay, so it is neither met nor failed.`,
+        `produced a result in this examination, so it is neither met nor failed.`,
       confidence: null,
     };
   }
@@ -183,16 +183,16 @@ function describeKeys(keys: string[]): string {
   return `${unique.slice(0, 3).join(", ")} and ${unique.length - 3} more`;
 }
 
-/** Every question this assay could not answer, stated for a non-technical reader. */
-function deriveBlindSpots(clauses: ClauseOutcome[], coveragePct: number): AssayBlindSpot[] {
-  const spots: AssayBlindSpot[] = [];
+/** Every question this examination could not answer, stated for a non-technical reader. */
+function deriveBlindSpots(clauses: ClauseOutcome[], coveragePct: number): ProvenanceBlindSpot[] {
+  const spots: ProvenanceBlindSpot[] = [];
 
   const notMeasured = clauses.filter((c) => c.verdict === "UNPROVEN" && c.evidenceKeys.length === 0);
   if (notMeasured.length > 0) {
     spots.push({
       kind: "CLAUSE_NOT_MEASURED",
       statement:
-        `${notMeasured.length} clause(s) were not tested at all in this assay, so this mark says ` +
+        `${notMeasured.length} clause(s) were not tested at all in this examination, so this mark says ` +
         `nothing either way about them: ${notMeasured.map((c) => c.title).join("; ")}.`,
       clauseIds: notMeasured.map((c) => c.clauseId),
     });
@@ -225,7 +225,7 @@ function deriveBlindSpots(clauses: ClauseOutcome[], coveragePct: number): AssayB
       kind: "SOURCE_NOT_READ",
       statement:
         `Only ${coveragePct}% of the standard's clauses produced a verdict. Treat this mark as a ` +
-        `partial assay: re-run against a reachable repository and a live URL for full coverage.`,
+        `partial examination: re-run against a reachable repository and a live URL for full coverage.`,
       clauseIds: [],
     });
   }
@@ -235,7 +235,7 @@ function deriveBlindSpots(clauses: ClauseOutcome[], coveragePct: number): AssayB
   spots.push({
     kind: "RUNTIME_NOT_PROBED",
     statement:
-      "This assay inspects code, configuration and public responses. It does not sign in as a " +
+      "This examination inspects code, configuration and public responses. It does not sign in as a " +
       "user, exercise payment flows, or attempt to breach authorisation between two accounts — " +
       "so it cannot rule out a logic flaw that only appears once signed in.",
     clauseIds: [],
@@ -244,12 +244,12 @@ function deriveBlindSpots(clauses: ClauseOutcome[], coveragePct: number): AssayB
   return spots;
 }
 
-/** Assay a set of checks against a standard. Pure — same inputs, same result, always. */
+/** Provenance a set of checks against a standard. Pure — same inputs, same result, always. */
 export function evaluateStandard(
-  checks: readonly AssayCheckEvidence[],
-  standard: AssayStandard,
-): AssayResult {
-  const byKey = new Map<string, AssayCheckEvidence[]>();
+  checks: readonly ProvenanceCheckEvidence[],
+  standard: ProvenanceStandard,
+): ProvenanceResult {
+  const byKey = new Map<string, ProvenanceCheckEvidence[]>();
   for (const check of checks) {
     const list = byKey.get(check.checkKey);
     if (list) list.push(check);
@@ -280,7 +280,7 @@ export function evaluateStandard(
   const criticalFailed = clauses.filter((c) => c.critical && c.verdict === "FAILED");
   const criticalUnproven = clauses.filter((c) => c.critical && c.verdict === "UNPROVEN");
 
-  let grade: AssayResult["grade"];
+  let grade: ProvenanceResult["grade"];
   let gradeReason: string;
 
   if (criticalFailed.length > 0) {

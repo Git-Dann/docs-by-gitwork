@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { evaluateStandard, type AssayCheckEvidence } from "../evaluate";
+import { evaluateStandard, type ProvenanceCheckEvidence } from "../evaluate";
 import { SAS_1, STANDARDS } from "../standard";
-import type { AssayStandard } from "../types";
+import type { ProvenanceStandard } from "../types";
 import { CHECKS_REGISTRY } from "@/server/checks-registry";
 
 // A tiny standard so the verdict rules are tested in isolation from SAS-1's clause set.
-const TEST_STANDARD: AssayStandard = {
+const TEST_STANDARD: ProvenanceStandard = {
   id: "TEST-1",
   version: "1.0.0",
   label: "Test standard",
@@ -33,9 +33,9 @@ const TEST_STANDARD: AssayStandard = {
 
 const check = (
   checkKey: string,
-  status: AssayCheckEvidence["status"],
-  confidence: AssayCheckEvidence["confidence"] = "HIGH",
-): AssayCheckEvidence => ({ checkKey, status, confidence });
+  status: ProvenanceCheckEvidence["status"],
+  confidence: ProvenanceCheckEvidence["confidence"] = "HIGH",
+): ProvenanceCheckEvidence => ({ checkKey, status, confidence });
 
 describe("clause verdicts", () => {
   it("is MET when every covering check passed", () => {
@@ -128,7 +128,7 @@ describe("grades", () => {
 
   it("reports a confirmed failure ahead of an unproven one", () => {
     // Both conditions hold: A fails, and there is nothing for a second critical clause.
-    const twoCritical: AssayStandard = {
+    const twoCritical: ProvenanceStandard = {
       ...TEST_STANDARD,
       clauses: [TEST_STANDARD.clauses[0], { ...TEST_STANDARD.clauses[1], critical: true }],
     };
@@ -168,14 +168,14 @@ describe("coverage and blind spots", () => {
     expect(r.blindSpots.some((b) => b.kind === "THIN_EVIDENCE")).toBe(true);
   });
 
-  it("always states the runtime limit, even on a fully clean assay", () => {
+  it("always states the runtime limit, even on a fully clean examination", () => {
     // Unconditional on purpose: a reader must never have to infer the product's boundary
     // from the absence of a caveat.
     const r = evaluateStandard([check("k1", "PASS"), check("k2", "PASS"), check("k3", "PASS")], TEST_STANDARD);
     expect(r.blindSpots.some((b) => b.kind === "RUNTIME_NOT_PROBED")).toBe(true);
   });
 
-  it("warns when coverage is too thin to read the mark as a full assay", () => {
+  it("warns when coverage is too thin to read the mark as a full examination", () => {
     const r = evaluateStandard([check("k3", "PASS")], TEST_STANDARD);
     expect(r.coverage.pct).toBe(50);
     expect(r.blindSpots.some((b) => b.kind === "SOURCE_NOT_READ")).toBe(true);

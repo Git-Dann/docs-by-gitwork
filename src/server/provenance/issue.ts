@@ -1,4 +1,4 @@
-// Assay — the persistence layer. The only file here that touches Prisma; everything the
+// Provenance — the persistence layer. The only file here that touches Prisma; everything the
 // verdict depends on lives in the pure modules (evaluate/lapse/digest) so it stays testable.
 
 import { randomBytes } from "node:crypto";
@@ -6,12 +6,12 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { CheckConfidence } from "@/server/pulse-checks/confidence";
 import { computeDigest, computeSeal } from "./digest";
-import { evaluateStandard, type AssayCheckEvidence } from "./evaluate";
+import { evaluateStandard, type ProvenanceCheckEvidence } from "./evaluate";
 import { expiryFor, countermarkStatus } from "./lapse";
 import { DEFAULT_STANDARD_ID, getStandard } from "./standard";
 import type {
-  AssayBlindSpot,
-  AssayResult,
+  ProvenanceBlindSpot,
+  ProvenanceResult,
   AttestationPayload,
   ClauseOutcome,
   CountermarkGrade,
@@ -44,7 +44,7 @@ export function buildPayload(input: {
   standardVersion: string;
   grade: CountermarkGrade;
   clauses: ClauseOutcome[];
-  blindSpots: AssayBlindSpot[];
+  blindSpots: ProvenanceBlindSpot[];
   scanId: string;
   scanVersion: string;
   checkCount: number;
@@ -85,7 +85,7 @@ function narrowConfidence(value: string | null): CheckConfidence | null {
   return value === "HIGH" || value === "MEDIUM" || value === "LOW" ? value : null;
 }
 
-export class AssayError extends Error {
+export class ProvenanceError extends Error {
   status: number;
   constructor(message: string, status = 400) {
     super(message);
@@ -94,7 +94,7 @@ export class AssayError extends Error {
 }
 
 /**
- * Assay a completed Pulse scan and issue a countermark against it.
+ * Provenance a completed Pulse scan and issue a countermark against it.
  *
  * Refuses an incomplete scan outright. Attesting on partial evidence is the exact mistake
  * this product exists to prevent, and a `RUNNING` scan's checks are still arriving — a mark
@@ -107,7 +107,7 @@ export async function issueCountermark(input: {
   issuerName: string;
 }): Promise<CountermarkRecord> {
   const standard = getStandard(input.standardId ?? DEFAULT_STANDARD_ID);
-  if (!standard) throw new AssayError(`Unknown standard "${input.standardId}".`, 400);
+  if (!standard) throw new ProvenanceError(`Unknown standard "${input.standardId}".`, 400);
 
   const scan = await prisma.pulseScan.findFirst({
     where: { id: input.scanId, workspaceId: input.workspaceId },
@@ -116,19 +116,19 @@ export async function issueCountermark(input: {
       client: { select: { id: true, name: true } },
     },
   });
-  if (!scan) throw new AssayError("Scan not found in this workspace.", 404);
+  if (!scan) throw new ProvenanceError("Scan not found in this workspace.", 404);
   if (scan.status !== "COMPLETED") {
-    throw new AssayError(
+    throw new ProvenanceError(
       `This scan is ${scan.status.toLowerCase()}. A countermark can only be issued from a completed ` +
-        `assay — issuing from a partial one would report clauses as unestablished that were still being checked.`,
+        `examination — issuing from a partial one would report clauses as unestablished that were still being checked.`,
       409,
     );
   }
   if (scan.checks.length === 0) {
-    throw new AssayError("This scan recorded no checks, so there is nothing to attest to.", 409);
+    throw new ProvenanceError("This scan recorded no checks, so there is nothing to attest to.", 409);
   }
 
-  const evidence: AssayCheckEvidence[] = scan.checks.map((c) => ({
+  const evidence: ProvenanceCheckEvidence[] = scan.checks.map((c) => ({
     checkKey: c.checkKey,
     status: c.status,
     confidence: narrowConfidence(c.confidence),
@@ -150,7 +150,7 @@ export async function issueCountermark(input: {
         clientId: scan.client?.id ?? null,
         subjectName: scan.projectName,
         subjectRepo: scan.inputGithubRepo,
-        // No commit pinning yet — see docs/assay.md "Deferred". Recorded as null rather
+        // No commit pinning yet — see docs/provenance.md "Deferred". Recorded as null rather
         // than guessed, so the certificate does not imply a precision we do not have.
         subjectCommit: null,
         subjectUrl: scan.inputUrl,
@@ -239,8 +239,8 @@ export function serializeCountermark(row: CountermarkRow, now: Date = new Date()
     grade: row.grade,
     gradeReason: row.gradeReason,
     clauses: (row.clauses as unknown as ClauseOutcome[]) ?? [],
-    blindSpots: (row.blindSpots as unknown as AssayBlindSpot[]) ?? [],
-    coverage: (row.coverage as unknown as AssayResult["coverage"]) ?? {
+    blindSpots: (row.blindSpots as unknown as ProvenanceBlindSpot[]) ?? [],
+    coverage: (row.coverage as unknown as ProvenanceResult["coverage"]) ?? {
       measured: 0,
       unmeasured: 0,
       total: 0,
@@ -299,7 +299,7 @@ export async function revokeCountermark(input: {
     where: { id: input.id, workspaceId: input.workspaceId },
     include: withClient,
   });
-  if (!existing) throw new AssayError("Countermark not found in this workspace.", 404);
+  if (!existing) throw new ProvenanceError("Countermark not found in this workspace.", 404);
   if (existing.revokedAt) return serializeCountermark(existing);
 
   const updated = await prisma.countermark.update({

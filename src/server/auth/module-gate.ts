@@ -19,11 +19,11 @@
  */
 export const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
   { prefix: "/app/pulse", module: "pulse" },
-  // Assay — gated on the admin-only `assay` FEATURE perm (default-off), not a module id.
+  // Provenance — gated on the admin-only `provenance` FEATURE perm (default-off), not a module id.
   // Same shape as /app/study below: the gate only asks whether the permission set contains
   // the id, so a feature works here; what matters is that a feature is NOT in MODULE_IDS and
   // therefore is not auto-inherited by STAFF.
-  { prefix: "/app/assay", module: "assay" },
+  { prefix: "/app/provenance", module: "provenance" },
   // DevSignal — MUST precede the /app/code(clear) entries so it wins the first-match
   // loop. Admin-only feature perm (default-off), not `codeclear`.
   { prefix: "/app/codeclear/devsignal", module: "devsignal" },

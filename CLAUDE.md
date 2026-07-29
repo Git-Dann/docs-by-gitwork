@@ -271,7 +271,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 |---|---|---|---|
 | **Foundry HQ** | `/app` | — | Dashboard overview. `/app/projects/[slug]` hangs off it (project detail; `app-shell.tsx` deliberately highlights HQ for it) |
 | **Pulse** | `/app/pulse` | `src/server/pulse*.ts` + `pulse-agents/` | AI project validation — ~600 checks in `checks-registry.ts`, gap analysis, GitHub fix-agent, continuous monitors. Also hosts the optional **Study** research tool (no longer a top-level module — see §26) |
-| **Assay** (lab) | `/app/assay` | `src/server/assay/` | Attestation layer — strikes a **Countermark** from a completed Pulse scan: a frozen, digest-and-seal-verified certificate of what a piece of software was found to be, what could **not** be established, and how long the mark is valid for. Public certificate at `/countermark/[token]` (no auth, noindex). **No sidebar item** — entry point is Settings → Labs (§4a) while it's an experiment. Gated by the **admin-only `assay` feature perm** (default-off, NOT a module id — see §38); issuing/revoking is the separate high-risk `assay.issue`. See §38 + `docs/assay.md` |
+| **Provenance** (lab) | `/app/provenance` | `src/server/provenance/` | Attestation layer — strikes a **Countermark** from a completed Pulse scan: a frozen, digest-and-seal-verified certificate of what a piece of software was found to be, what could **not** be established, and how long the mark is valid for. Public certificate at `/countermark/[token]` (no auth, noindex). **No sidebar item** — entry point is Settings → Labs (§4a) while it's an experiment. Gated by the **admin-only `provenance` feature perm** (default-off, NOT a module id — see §38); issuing/revoking is the separate high-risk `provenance.issue`. See §38 + `docs/provenance.md` |
 | **Code** | `/app/code` (legacy `/app/codeclear`) | `src/server/codeclear*.ts` | Developer hiring pipeline — GitHub analysis, scoring, candidate management. ⚠️ `candidates/`, `pipeline/` and `devsignal/**` still live ONLY under the legacy `/app/codeclear/*` prefix — moving them is a separate PR, and the `/app/codeclear/devsignal` `MODULE_PATHS` entry must be renamed **in place** or admin-only DevSignal silently regates onto the staff-inherited `codeclear` module |
 | **Studio** | `/app/studio` | — (client-side only, no `/api/studio`) | Brand asset studio — design on-brand social assets and App Store / Play Store screenshots, then batch-export at the exact size each platform needs. ~30 components under `src/components/studio/` (`studio-root.tsx` entry, plus `templates/`, `screenshots/`, `costing/`, `brand.tsx`, `export.ts`). Also now hosts the **Demo builder** (`demo-builder.tsx`), moved out of Settings in July 2026 — this is the `Demo {{Feat}}` workstream in §32. Module permission id `studio` |
 | **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). `/app/proposals/*` are redirect stubs (see §16) |
@@ -1764,7 +1764,7 @@ tags exist. Do not invent a fourth.
 
 | Tag | Means | Current members |
 |---|---|---|
-| `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Assay** |
+| `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance** |
 | `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
@@ -2356,14 +2356,14 @@ correctly for a deliberate mismatch. **Deferred:** the 116 new checks are valida
 tests, not against real repositories — §34.3's lesson is that validating a family against a real
 codebase is what finds the wrong ones, and that has not happened yet for any of these.
 
-## 38. Recent Changes (July 2026) — Assay: the attestation layer (new product)
+## 38. Recent Changes (July 2026) — Provenance: the attestation layer (new product)
 
-A new top-level product at `/app/assay`, sharing Foundry's spine and sellable standalone. It
-inverts what Pulse does: **Pulse produces a report for the owner; Assay produces a signed,
+A new top-level product at `/app/provenance`, sharing Foundry's spine and sellable standalone. It
+inverts what Pulse does: **Pulse produces a report for the owner; Provenance produces a signed,
 expiring attestation for the counterparty** — the client accepting handover, the insurer
 underwriting the app, the acquirer, the procurement officer. Someone who did not build the
 software, cannot read code, and is about to rely on it. Full brief, market evidence, revenue
-model and operator runbook: **`docs/assay.md`**.
+model and operator runbook: **`docs/provenance.md`**.
 
 **Why an attestation and not another scanner.** Scanning commoditised to free during 2026 —
 free no-signup agent-readiness scanners, free vibe-code security scanners, Snyk/Semgrep/OX
@@ -2376,7 +2376,7 @@ The commercial precedent is Cyber Essentials — 200,000+ certificates, 69% micr
 driven by contract mandates, ~290 licensed assessment bodies (which is the white-label
 channel, proven at national scale).
 
-**SAS-1 — the standard is the product's contract** (`src/server/assay/standard.ts`). 14
+**SAS-1 — the standard is the product's contract** (`src/server/provenance/standard.ts`). 14
 clauses, each with a plain-English `assertion` (the sentence a counterparty relies on), a
 non-technical `whyItMatters`, a `critical` flag, and the Pulse `checkKeys` that constitute
 evidence. Versioned, and a mark records `standardId` + `standardVersion` — a certificate that
@@ -2399,14 +2399,14 @@ consequence is stronger — it must not earn a *pass* on the way through either.
 **Blind spots are first-class and rendered ABOVE the clause list** on the certificate
 (§02, before §03/§04). Derived, never authored: unmeasured clauses, weak-evidence-only
 clauses, clauses met on a partial check set, thin overall coverage — plus an **unconditional**
-`RUNTIME_NOT_PROBED` stating that Assay inspects code, config and public responses and never
+`RUNTIME_NOT_PROBED` stating that Provenance inspects code, config and public responses and never
 signs in, exercises payments or attempts cross-account authorisation. A reader must never have
 to infer the product's boundary from the absence of a caveat.
 
 **digest ≠ seal, and the honesty rule** (`digest.ts`). The **digest** is a SHA-256 over a
 canonical (recursively key-sorted) serialisation — proves contents unaltered, needs no secret,
 recomputable by anyone from what the certificate prints. The **seal** is an HMAC-SHA-256 over
-the same form under `ASSAY_SIGNING_SECRET` — proves *we* issued it. A digest alone is
+the same form under `PROVENANCE_SIGNING_SECRET` — proves *we* issued it. A digest alone is
 worthless against forgery (an attacker who edits the contents recomputes it). With no secret
 configured, `seal` is `null` and the certificate says **UNSEALED** — there is deliberately
 **no fallback to a derived key**, because a seal anyone can reproduce looks identical to a
@@ -2432,7 +2432,7 @@ already sent) and `ForemanRun` (frozen findings). An attestation whose contents 
 scan is re-run is not an attestation, and the digest is computed over the frozen payload, so
 re-deriving anything on read would break verification too.
 
-**Permissions are split.** `assay` (module) is a read-only register; **`assay.issue`** is a
+**Permissions are split.** `provenance` (module) is a read-only register; **`provenance.issue`** is a
 separate high-risk action, because the issuer's name goes on a certificate a third party
 relies on. Both default off. The issue route uses `requireAuthedUser`, **not** the OrDefault
 variant — that helper falls back to the default workspace owner, so an identity-less caller
@@ -2441,7 +2441,7 @@ but a forged signature.
 
 **Schema (additive → applies via the guarded `prisma db push`):** `Countermark` + enum
 `CountermarkGrade`; relations on `Workspace` and `WorkspaceClient`. New env
-`ASSAY_SIGNING_SECRET` (optional; absence degrades honestly to UNSEALED). New route
+`PROVENANCE_SIGNING_SECRET` (optional; absence degrades honestly to UNSEALED). New route
 `/countermark/[token]` added to `robots.ts`'s disallow list alongside the other token pages.
 
 **Verified:** `npm run verify` green — tsc + lint **0 errors**, **560 tests passing** (66 new
@@ -2450,13 +2450,13 @@ across evaluate/lapse/digest), `audit:ui` **0 findings** with its self-test pass
 discriminate** by breaking four things on purpose (§37's discipline): certifying an unmeasured
 clause → 6 failures; letting a LOW-confidence adverse check count as proof → 1; making
 `LAPSED` outrank `REVOKED` → 1; dropping blind spots from the sealed payload → 2.
-**Not visually verified** — `/app/assay` is auth-gated and `/countermark/[token]` needs a real
-row, and there is no staging or local DB. Post-deploy steps 1-6 in `docs/assay.md` §5.
+**Not visually verified** — `/app/provenance` is auth-gated and `/countermark/[token]` needs a real
+row, and there is no staging or local DB. Post-deploy steps 1-6 in `docs/provenance.md` §5.
 
 **Deferred, highest-value first:** **commit pinning** — `subjectCommit` is written `null`
 because `PulseScan` never records the SHA it read, so a mark currently names a repo rather
 than a version (recorded as null rather than guessed, per the no-false-precision rule);
-**continuous re-assay** as a `COUNTERMARK_REASSAY` job on the existing Curator/Foreman cron spine
+**continuous re-examination** as a `COUNTERMARK_RECHECK` job on the existing Curator/Foreman cron spine
 (this is the subscription); **licensed issuers** for white label (issuer record + per-issuer
 certificate branding + a public issuer directory); a **public `SAS-1` page** at a stable URL so
 a contract can cite it; **Docs integration** (embed a mark in a handover; require a live mark

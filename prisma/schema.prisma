@@ -4390,7 +4390,7 @@ model DevSignalNotice {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────
-// Assay — the attestation layer (CLAUDE.md §38).
+// Provenance — the attestation layer (CLAUDE.md §38).
 //
 // A Countermark is the counterparty-facing artifact: what a specific piece of software was
 // found to be, at a specific commit, against a named standard version, by a named issuer,
@@ -4433,7 +4433,7 @@ model Countermark {
   gradeReason     String        @db.Text
 
   clauses    Json // ClauseOutcome[] — frozen per-clause verdicts + rationale
-  blindSpots Json // AssayBlindSpot[] — what this mark does NOT establish
+  blindSpots Json // ProvenanceBlindSpot[] — what this mark does NOT establish
   coverage   Json // { measured, unmeasured, total, pct }
 
   issuerName String
@@ -4454,7 +4454,7 @@ model Countermark {
   supersededById String?
 
   digest String // sha256 of the canonical payload — recomputable by anyone from the certificate
-  seal   String? // HMAC-SHA256 under ASSAY_SIGNING_SECRET; null = unsealed, shown as such
+  seal   String? // HMAC-SHA256 under PROVENANCE_SIGNING_SECRET; null = unsealed, shown as such
 
   token String @unique // the public certificate URL credential (/countermark/[token])
 
@@ -4472,7 +4472,7 @@ model Countermark {
   // model renames its table. That reads to Prisma as "create Countermark, DROP Hallmark",
   // and the build's `prisma db push` runs WITHOUT --accept-data-loss, so per the §2
   // all-or-nothing footgun the ENTIRE sync would be skipped — additive parts included —
-  // leaving the new table uncreated and every Assay route erroring on a missing relation.
+  // leaving the new table uncreated and every Provenance route erroring on a missing relation.
   //
   // `@@map` keeps this a pure code-level rename: zero schema diff, applies through the
   // guarded push with no manual DB step and no data-loss flag. The legacy physical name

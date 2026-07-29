@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 
-// Client-facing DTOs — redeclared here rather than imported from src/server/assay/types so
+// Client-facing DTOs — redeclared here rather than imported from src/server/provenance/types so
 // client components never pull in a server-only module. Same convention as use-foreman.ts
 // and use-curator.ts.
 
@@ -23,7 +23,7 @@ export interface ClauseOutcome {
   missingKeys: string[];
 }
 
-export interface AssayBlindSpot {
+export interface ProvenanceBlindSpot {
   kind: string;
   statement: string;
   clauseIds: string[];
@@ -45,7 +45,7 @@ export interface Countermark {
   grade: CountermarkGrade;
   gradeReason: string;
   clauses: ClauseOutcome[];
-  blindSpots: AssayBlindSpot[];
+  blindSpots: ProvenanceBlindSpot[];
   coverage: { measured: number; unmeasured: number; total: number; pct: number };
   issuerName: string;
   issuedAt: string;
@@ -65,12 +65,12 @@ interface CountermarkListResponse {
   sealingConfigured: boolean;
 }
 
-const KEY = ["assay", "countermarks"];
+const KEY = ["provenance", "countermarks"];
 
 export function useCountermarks(enabled = true) {
   return useQuery<CountermarkListResponse>({
     queryKey: KEY,
-    queryFn: () => apiFetch<CountermarkListResponse>("/api/assay/countermarks"),
+    queryFn: () => apiFetch<CountermarkListResponse>("/api/provenance/countermarks"),
     enabled,
   });
 }
@@ -79,7 +79,7 @@ export function useIssueCountermark() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { scanId: string; standardId?: string }) =>
-      apiFetch<{ countermark: Countermark }>("/api/assay/countermarks", {
+      apiFetch<{ countermark: Countermark }>("/api/provenance/countermarks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -94,7 +94,7 @@ export function useRevokeCountermark() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      apiFetch<{ countermark: Countermark }>(`/api/assay/countermarks/${id}`, {
+      apiFetch<{ countermark: Countermark }>(`/api/provenance/countermarks/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason }),

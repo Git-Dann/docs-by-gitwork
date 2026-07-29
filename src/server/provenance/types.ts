@@ -1,4 +1,4 @@
-// Assay — the attestation layer. Types shared by the pure engine, the DB layer, the
+// Provenance — the attestation layer. Types shared by the pure engine, the DB layer, the
 // API and the public certificate page.
 //
 // The distinction that drives every shape here: a Pulse scan is a REPORT (for the person
@@ -55,8 +55,8 @@ export type CountermarkStatus =
   /** A newer countermark has been issued for the same subject. */
   | "SUPERSEDED";
 
-/** A named question the assay could not answer. Mirrors Dispatch/Foreman blind spots. */
-export interface AssayBlindSpot {
+/** A named question the examination could not answer. Mirrors Dispatch/Foreman blind spots. */
+export interface ProvenanceBlindSpot {
   kind:
     | "CLAUSE_NOT_MEASURED"
     | "LOW_CONFIDENCE_ONLY"
@@ -70,7 +70,7 @@ export interface AssayBlindSpot {
 }
 
 /** One clause of a standard — the unit a countermark makes a claim about. */
-export interface AssayClause {
+export interface ProvenanceClause {
   id: string;
   /** Short title, e.g. "Secrets are not shipped to the browser". */
   title: string;
@@ -90,7 +90,7 @@ export interface AssayClause {
   checkKeys: string[];
 }
 
-export interface AssayStandard {
+export interface ProvenanceStandard {
   /** Stable id, versioned. A certificate is meaningless without naming its standard. */
   id: string;
   version: string;
@@ -98,7 +98,7 @@ export interface AssayStandard {
   summary: string;
   /** Days a mark issued against this standard stays valid, by grade. */
   validityDays: { certified: number; conditional: number };
-  clauses: AssayClause[];
+  clauses: ProvenanceClause[];
 }
 
 /** Per-clause outcome, frozen onto the countermark at issue time. */
@@ -118,15 +118,15 @@ export interface ClauseOutcome {
   missingKeys: string[];
 }
 
-/** The result of assaying a set of checks against a standard. Pure. */
-export interface AssayResult {
+/** The result of examining a set of checks against a standard. Pure. */
+export interface ProvenanceResult {
   standardId: string;
   standardVersion: string;
   grade: CountermarkGrade;
   /** One line explaining the grade, derived from the clause outcomes. */
   gradeReason: string;
   clauses: ClauseOutcome[];
-  blindSpots: AssayBlindSpot[];
+  blindSpots: ProvenanceBlindSpot[];
   coverage: {
     /** Clauses with at least one contributing check. */
     measured: number;
@@ -185,8 +185,8 @@ export interface CountermarkRecord {
   grade: CountermarkGrade;
   gradeReason: string;
   clauses: ClauseOutcome[];
-  blindSpots: AssayBlindSpot[];
-  coverage: AssayResult["coverage"];
+  blindSpots: ProvenanceBlindSpot[];
+  coverage: ProvenanceResult["coverage"];
   issuerName: string;
   issuedAt: string;
   expiresAt: string;

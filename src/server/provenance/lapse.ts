@@ -3,7 +3,7 @@
 // A countermark that never expires is a lie about software. The artifact it describes gets
 // commits, its dependencies acquire published vulnerabilities, its certificate expires.
 // So the mark carries a window, and past that window it stops asserting anything — which
-// is also precisely why continuous re-assay is worth paying for rather than a formality.
+// is also precisely why continuous re-examination is worth paying for rather than a formality.
 //
 // Four things a reader must be able to tell apart, because they mean different things:
 //   VALID / EXPIRING — the mark stands. EXPIRING is a nudge, not a caveat.
@@ -30,7 +30,7 @@ export function validityDaysFor(standardId: string, grade: CountermarkGrade): nu
   if (grade === "CERTIFIED") return standard.validityDays.certified;
   if (grade === "CONDITIONAL") return standard.validityDays.conditional;
   // NOT_CERTIFIED and INCOMPLETE get the shorter window too: the mark still needs to
-  // exist and be citable (it is the record of a failed assay, which a buyer may be
+  // exist and be citable (it is the record of a failed examination, which a buyer may be
   // relying on in a dispute), but it should go stale quickly.
   return standard.validityDays.conditional;
 }

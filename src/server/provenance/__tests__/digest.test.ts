@@ -38,11 +38,11 @@ const PAYLOAD_INPUT = {
   checkCount: 412,
 };
 
-const ORIGINAL_SECRET = process.env.ASSAY_SIGNING_SECRET;
+const ORIGINAL_SECRET = process.env.PROVENANCE_SIGNING_SECRET;
 
 afterEach(() => {
-  if (ORIGINAL_SECRET === undefined) delete process.env.ASSAY_SIGNING_SECRET;
-  else process.env.ASSAY_SIGNING_SECRET = ORIGINAL_SECRET;
+  if (ORIGINAL_SECRET === undefined) delete process.env.PROVENANCE_SIGNING_SECRET;
+  else process.env.PROVENANCE_SIGNING_SECRET = ORIGINAL_SECRET;
 });
 
 describe("canonicalise", () => {
@@ -127,20 +127,20 @@ describe("computeDigest", () => {
 
 describe("sealing", () => {
   it("emits no seal when no secret is configured, rather than a fake one", () => {
-    delete process.env.ASSAY_SIGNING_SECRET;
+    delete process.env.PROVENANCE_SIGNING_SECRET;
     expect(canSeal()).toBe(false);
     expect(computeSeal(buildPayload(PAYLOAD_INPUT))).toBeNull();
   });
 
   it("treats an empty or whitespace secret as absent", () => {
     for (const v of ["", "   "]) {
-      process.env.ASSAY_SIGNING_SECRET = v;
+      process.env.PROVENANCE_SIGNING_SECRET = v;
       expect(canSeal()).toBe(false);
     }
   });
 
   it("produces a stable seal under a configured secret", () => {
-    process.env.ASSAY_SIGNING_SECRET = "s3cret";
+    process.env.PROVENANCE_SIGNING_SECRET = "s3cret";
     const p = buildPayload(PAYLOAD_INPUT);
     expect(computeSeal(p)).toBe(computeSeal(p));
     expect(computeSeal(p)).toMatch(/^[0-9a-f]{64}$/);
@@ -148,9 +148,9 @@ describe("sealing", () => {
 
   it("produces a different seal under a different secret", () => {
     const p = buildPayload(PAYLOAD_INPUT);
-    process.env.ASSAY_SIGNING_SECRET = "one";
+    process.env.PROVENANCE_SIGNING_SECRET = "one";
     const a = computeSeal(p);
-    process.env.ASSAY_SIGNING_SECRET = "two";
+    process.env.PROVENANCE_SIGNING_SECRET = "two";
     expect(computeSeal(p)).not.toBe(a);
   });
 });
@@ -162,18 +162,18 @@ describe("verifyAttestation", () => {
   });
 
   it("reports SEALED for an untouched sealed attestation", () => {
-    process.env.ASSAY_SIGNING_SECRET = "s3cret";
+    process.env.PROVENANCE_SIGNING_SECRET = "s3cret";
     const r = verifyAttestation(payload, computeDigest(payload), computeSeal(payload));
     expect(r).toEqual({ verdict: "SEALED", digestMatches: true });
   });
 
   it("reports UNSEALED when the attestation was issued without a secret", () => {
-    delete process.env.ASSAY_SIGNING_SECRET;
+    delete process.env.PROVENANCE_SIGNING_SECRET;
     expect(verifyAttestation(payload, computeDigest(payload), null).verdict).toBe("UNSEALED");
   });
 
   it("reports TAMPERED when the contents no longer match the digest", () => {
-    process.env.ASSAY_SIGNING_SECRET = "s3cret";
+    process.env.PROVENANCE_SIGNING_SECRET = "s3cret";
     const sealed = computeSeal(payload);
     const digest = computeDigest(payload);
     const altered = { ...payload, grade: "CERTIFIED" as const };
@@ -181,7 +181,7 @@ describe("verifyAttestation", () => {
   });
 
   it("reports TAMPERED for a forged seal on genuine contents", () => {
-    process.env.ASSAY_SIGNING_SECRET = "s3cret";
+    process.env.PROVENANCE_SIGNING_SECRET = "s3cret";
     const r = verifyAttestation(payload, computeDigest(payload), "a".repeat(64));
     expect(r).toEqual({ verdict: "TAMPERED", digestMatches: true });
   });
@@ -189,15 +189,15 @@ describe("verifyAttestation", () => {
   it("reports UNVERIFIABLE — not TAMPERED — when the key is missing or rotated", () => {
     // Crying forgery over a config change would make the verdict useless. Same
     // "we couldn't look ≠ it isn't there" distinction as the rest of the platform.
-    process.env.ASSAY_SIGNING_SECRET = "s3cret";
+    process.env.PROVENANCE_SIGNING_SECRET = "s3cret";
     const sealed = computeSeal(payload);
     const digest = computeDigest(payload);
-    delete process.env.ASSAY_SIGNING_SECRET;
+    delete process.env.PROVENANCE_SIGNING_SECRET;
     expect(verifyAttestation(payload, digest, sealed).verdict).toBe("UNVERIFIABLE");
   });
 
   it("does not throw on a hand-edited non-hex seal", () => {
-    process.env.ASSAY_SIGNING_SECRET = "s3cret";
+    process.env.PROVENANCE_SIGNING_SECRET = "s3cret";
     expect(verifyAttestation(payload, computeDigest(payload), "not-hex-at-all").verdict).toBe("TAMPERED");
   });
 
