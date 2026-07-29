@@ -200,7 +200,13 @@ export function BadgeStudio({
 
   return (
     <Modal open={open} onClose={onClose} title="Badge studio" panelClassName="w-full max-w-4xl">
-      <div className="grid h-[460px] grid-cols-[minmax(0,240px)_minmax(0,1fr)] divide-x divide-[var(--border-2)]">
+      {/* Taller than the stock 460px popup body: this panel carries a preview,
+          two control rows and the install snippet, and at 460px the guidance
+          line under the controls was cut mid-sentence with INSTALL squeezed
+          against the bottom. Scales with the viewport but is capped so it can't
+          run off a short laptop screen — 78vh gives ~700px at 900px tall and
+          still fits a 620px viewport. */}
+      <div className="grid h-[min(78vh,700px)] grid-cols-[minmax(0,240px)_minmax(0,1fr)] divide-x divide-[var(--border-2)]">
         {/* Left — the catalogue. Codes are permanent; call badges by them. */}
         <div className="overflow-y-auto p-2 [scrollbar-gutter:stable]">
           {[

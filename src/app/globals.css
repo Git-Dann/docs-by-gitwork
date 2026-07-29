@@ -1282,11 +1282,22 @@ h2, h3, h4, h5 {
   }
 }
 
-input,
-textarea,
-select,
-button {
-  font: inherit;
+/* Form/control font reset — MUST stay inside `@layer base`.
+   Unlayered CSS beats every cascade layer in Tailwind v4, so while this rule sat
+   unlayered its `font` shorthand overrode `.app-button`'s `font-weight: 600` and
+   the `app-button-sm/md` `font-size` — but ONLY on <button> elements, since the
+   selector doesn't match <a>. Result: `<a class="app-button">` rendered semibold
+   at the right size while an identically-classed `<button>` rendered at the
+   inherited weight and size. Same trap as the anchor reset documented in
+   CLAUDE.md §8. In `base`, component classes and utilities win as intended,
+   and a plain <button> still inherits the page font. */
+@layer base {
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+  }
 }
 
 /* ── Document render (Docs) — editorial financial-statement look, per Harry's reference ──

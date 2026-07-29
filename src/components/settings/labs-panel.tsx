@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
+import { ArrowsPointingOutIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 
 import { BadgeStudio } from "@/components/settings/labs/badge-studio";
 
@@ -104,6 +104,11 @@ export function LabsPanel() {
                   className="app-button app-button-secondary app-button-sm shrink-0 whitespace-nowrap"
                 >
                   Open
+                  {/* Deliberately NOT the external-link arrow the href entries
+                      use — this one opens in place, and that glyph would promise
+                      a new tab. Same button otherwise, so the row still reads as
+                      one set. */}
+                  <ArrowsPointingOutIcon className="ml-1.5 h-3.5 w-3.5" />
                 </button>
               )}
             </div>
