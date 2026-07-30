@@ -1,309 +1,381 @@
-# Foundry staging environment — setup runbook
+# Foundry staging environment — build runbook
 
-Staging lives at **`staging.foundry.gitwork.tech`** (Fasthosts VPS, Docker Compose — same shape as
-production, see CLAUDE.md §23). This file is what to set, what **not** to copy from production, and
-the five things that will silently break if you copy the production `.env` verbatim.
+Staging is **`https://staging.foundry.gitwork.tech`** on the Fasthosts VPS, Docker Compose, same
+shape as production (CLAUDE.md §23). Once it's up, **all development targets staging** and only
+verified work reaches `main`.
 
-> **Status:** CLAUDE.md, `ONBOARDING.md` §"Deploying" and `docs/build-checklist.md` all still state
-> *"there is no staging environment and there are no branch preview URLs."* That was true until now.
-> Those three claims want updating **once staging is verified live** — not before, or a new builder
-> will trust an environment that isn't answering yet.
+**Part 1 is the build, step by step, tagged with who does each step.** Everything after it is
+reference you only need when something misbehaves.
+
+Committed artefacts this runbook uses — they exist, you don't write them:
+
+| File | What it is |
+|---|---|
+| `deploy/staging/generate-env.sh` | Generates the staging `.env` with fresh secrets, **on the box** |
+| `deploy/staging/docker-compose.yml` | Staging's Compose project (own network, own volume, port 3001, `:staging` tag) |
+| `deploy/staging/nginx/staging.foundry.conf` | nginx site config incl. a blanket `Disallow: /` |
+| `.github/workflows/deploy-staging.yml` | Build → GHCR `:staging` → deploy. Deploys **any branch** on demand |
+
+> **Doc debt this creates.** CLAUDE.md §2, `ONBOARDING.md` §"Deploying" and
+> `docs/build-checklist.md` all still state *"there is no staging environment and there are no
+> branch preview URLs."* Update all three **once step 12 passes** — not before, or a new builder
+> trusts an environment that isn't answering. See §9 for what changes when they do.
 
 ---
 
-## 0. 🔴 Before anything else — rotate what leaked
+## 0. 🔴 First — rotate what leaked
 
-A full production `.env` was pasted into Slack on 2026-07-30 to seed this work. Slack is not a
-secret store: that message is in channel history, in Slack's search index, in every member's local
-cache, and in any export. **Every value in it is now burned and must be rotated in production**,
-independently of whether staging ever goes live.
+A full production `.env` was pasted into Slack on 2026-07-30 to start this work. Slack is not a
+secret store: that message is in channel history, its search index, every member's local cache, and
+any export. **Every value in it is burned and must be rotated in production**, whether or not
+staging proceeds. This is independent of everything below — do it in parallel.
 
-Most urgent first — the top three are live credentials to systems outside Foundry:
+Most urgent first; the top three are live credentials to systems outside Foundry.
 
-| Secret | Why it's urgent | Rotate at |
+| Secret | Why urgent | Rotate at |
 |---|---|---|
-| `GITHUB_TOKEN` (`github_pat_11BPN2ODY0…`) | Full PAT. Grants repo read/write to `Git-Dann/*` — source, and fix-agent PR creation | GitHub → Settings → Developer settings → PAT. **Revoke the old one.** Re-add as Actions secret `FOUNDRY_GITHUB_TOKEN` (§35 — GitHub rejects secret names starting with `GITHUB_`) |
-| `AUTH_GOOGLE_SECRET` | OAuth client secret for team sign-in | Google Cloud Console → Credentials → "Foundry Login" → Reset secret |
-| `APNS_AUTH_KEY` | Apple push signing key (`.p8` contents). Signs push to real devices | Apple Developer → Keys → revoke, create new, note the new `APNS_KEY_ID` |
-| `POSTGRES_PASSWORD` | Production database password | Change in Postgres + the VPS `.env`. (§23 already flagged this one as pending rotation from the migration — it is now overdue twice) |
-| `AUTH_SECRET` | Signs NextAuth sessions. A holder can forge a session cookie | `openssl rand -base64 33`. Everyone is logged out once — harmless |
-| `NEXT_PUBLIC_API_KEY` | Gates all `/api/*` except `/api/health` | Generate fresh. Already public-by-design (inlined in the client bundle) but still the API gate |
-| `CRON_SECRET` | Guards `/api/cron/*` — lets a caller trigger retention sweeps, digests | `openssl rand -hex 32` |
-| `VAPID_PRIVATE_KEY` | Signs browser push | Regenerate the pair (`npx web-push generate-vapid-keys`); existing subscriptions re-subscribe |
-| `WEDGE_*` credentials | Client system logins | Coordinate with Big Wedge before changing |
+| `GITHUB_TOKEN` (`github_pat_11BPN2ODY0…`) | Full PAT — repo read/write across `Git-Dann/*` | GitHub → Settings → Developer settings → PAT. **Revoke the old one.** Re-add as Actions secret `FOUNDRY_GITHUB_TOKEN` (§35 — GitHub rejects names starting `GITHUB_`) |
+| `AUTH_GOOGLE_SECRET` | OAuth client secret for all team sign-in | Cloud Console → Credentials → "Foundry Login" → **Reset secret** |
+| `APNS_AUTH_KEY` | Apple push signing key — signs push to real devices | Apple Developer → Keys → revoke, create new, note the new `APNS_KEY_ID` |
+| `POSTGRES_PASSWORD` | Production database password | Change in Postgres + the VPS `.env`. §23 already flagged this as pending from the migration — now overdue twice |
+| `AUTH_SECRET` | Signs NextAuth sessions — a holder can forge a session cookie | `openssl rand -base64 33`. Logs everyone out once; harmless |
+| `NEXT_PUBLIC_API_KEY` | Gates all `/api/*` except `/api/health` | Generate fresh |
+| `CRON_SECRET` | Guards `/api/cron/*` — can trigger retention sweeps and digests | `openssl rand -hex 32` |
+| `VAPID_PRIVATE_KEY` | Signs browser push | `npx web-push generate-vapid-keys`; subscriptions re-subscribe |
+| `WEDGE_*` | Real client system logins | Coordinate with Big Wedge first |
 
-### `ENCRYPTION_KEY` is the exception — and the reason it must not go on staging
+### `ENCRYPTION_KEY` is the deliberate exception
 
-Do **not** rotate it, and do **not** put the production value on staging.
+**Do not rotate it. Do not copy it to staging.** It's the AES-256-GCM key (`src/lib/encryption.ts`)
+encrypting client **bank details** from onboarding — rotating it makes every stored bank record
+permanently unreadable (`docs/fasthosts-secrets-recovery.md` marks it 🔴 for this). But the
+production value on staging means anyone with staging shell access decrypts real client banking
+data.
 
-It is the AES-256-GCM key (`src/lib/encryption.ts`) that encrypts **client bank details** captured
-in onboarding. Rotating it makes every stored bank record permanently unreadable
-(`docs/fasthosts-secrets-recovery.md` marks it 🔴 for exactly this). But putting it on staging means
-anyone with staging shell access can decrypt real client banking data — so staging gets its **own
-fresh key**, and staging holds no real bank records.
-
-That combination is uncomfortable and it is the correct call: the prod key stays where it is,
-access to the prod box gets tightened, and the leak is logged. Flag it to Dan as a known
-accepted risk rather than quietly rotating.
+So: production keeps its key, staging generates its own, access to the prod box gets tightened, and
+the exposure is logged as an accepted risk. That's a decision to record, not a config change.
 
 ---
 
-## 1. What staging must never share with production
+## 1. Build it — step by step
 
-Five things. Each has bitten a staging environment somewhere before.
+**[DAN]** = needs your Google/GitHub access · **[SHAHAB]** = on the VPS · **[EITHER]**
 
-1. **The database.** Not the same server, not the same volume, not just a different database name on
-   the same container.
-2. **`ENCRYPTION_KEY`** — see above.
-3. **Live third-party write tokens** — Slack bot token, Google refresh tokens, Resend email key,
-   Care connector API tokens. These live in the **database**, not the `.env`, so restoring a
-   production dump carries them across silently. §4 has the scrub.
-4. **`NEXTAUTH_URL`** — must be the staging host, or login and every OAuth redirect goes to prod.
-5. **The `:latest` image tag and the `/opt/apps/foundry` directory** — sharing either means a
-   staging deploy restarts production. §6.
+Steps 1–3 are independent of 4–6, so they can run in parallel. Step 7 needs both done.
 
 ---
 
-## 2. The staging `.env`
+### Step 1 — DNS **[DAN]**
 
-Annotated. `⚠️` marks a value that differs from production and will break staging if copied.
+Point the staging hostname at the VPS.
+
+```
+Type: A     Name: staging.foundry     Value: 194.164.127.222     TTL: default
+```
+
+⚠️ **This is the `gitwork.tech` zone, not `gitwork.co.uk`.** §23 records that `gitwork.co.uk` is
+Squarespace-managed; `.tech` may well be somewhere else entirely. Confirm who holds that zone before
+assuming the record goes in the same place.
+
+Check it before moving on — certbot in step 6 fails on an unresolved name:
 
 ```bash
-NODE_ENV=production          # correct — this is a production Next build, not dev mode
-
-# ── Database ─────────────────────────────────────────────────────────────────
-# ⚠️ Its OWN Postgres, not a second database on the production container.
-# See §3 for the compose project that provides this host.
-DATABASE_URL="postgresql://foundry:<staging-db-password>@db:5432/foundry?sslmode=disable"
-DIRECT_URL="postgresql://foundry:<staging-db-password>@db:5432/foundry?sslmode=disable"
-POSTGRES_PASSWORD="<staging-db-password>"     # ⚠️ not the production one
-
-# ── Auth ─────────────────────────────────────────────────────────────────────
-# ⚠️ THE SINGLE MOST IMPORTANT LINE IN THIS FILE. Anything else here and Google
-# login bounces to production, the Gmail connector's redirect_uri is rejected,
-# middleware's resolve-host call (src/middleware.ts:45) queries prod, and Pulse
-# monitor webhooks register prod callback URLs.
-NEXTAUTH_URL="https://staging.foundry.gitwork.tech"
-AUTH_SECRET="<openssl rand -base64 33>"       # ⚠️ staging's own — never the prod value
-AUTH_TRUST_HOST=true
-
-# Add https://staging.foundry.gitwork.tech/api/auth/callback/google to the
-# "Foundry Login" OAuth client's authorised redirect URIs first — see §5.
-AUTH_GOOGLE_ID="<login client id>"
-AUTH_GOOGLE_SECRET="<login client secret>"
-
-# "Foundry Care" client — Gmail/Calendar/Drive connector. Separate client from the
-# login one. Leave BLANK unless you're testing the Care/Scribe connectors; blank
-# means those features are simply unavailable, which is the right staging default.
-GOOGLE_CLIENT_ID=""
-GOOGLE_CLIENT_SECRET=""
-GOOGLE_IOS_SERVER_CLIENT_ID=""                # only for iOS Google sign-in
-
-# ── App / API auth + encryption ──────────────────────────────────────────────
-API_KEY="<openssl rand -base64 32>"           # ⚠️ staging's own
-NEXT_PUBLIC_API_KEY="<same value as API_KEY>" # middleware falls back to this
-ENCRYPTION_KEY="<openssl rand -base64 32>"    # ⚠️ MUST differ from prod — §0
-
-# ── URLs used in outbound links ──────────────────────────────────────────────
-# ⚠️ Set these. Unset, both DEFAULT TO THE PRODUCTION URL
-# (src/server/notifications.ts:137, src/server/slack/blocks.ts:16,
-# src/app/layout.tsx:59) — so staging notifications deep-link into prod.
-# Read server-side only, so runtime .env is enough; no Docker build arg needed.
-NEXT_PUBLIC_APP_URL="https://staging.foundry.gitwork.tech"
-NEXT_PUBLIC_SITE_URL="https://staging.foundry.gitwork.tech"
-
-# ── Initial admin ────────────────────────────────────────────────────────────
-# ⚠️ THESE DO NOT GIVE YOU A LOGIN. Setting them is near-pointless — see §5.
-# Two independent reasons:
-#   1. admin@example.com specifically creates NOTHING: ensureInitialAdmin() calls
-#      isSeedAccountEmail() (src/server/seed-accounts.ts:60), which rejects the
-#      whole @example.com domain and returns early, silently.
-#   2. Even with a valid address, there is NO password login to /app. The user row
-#      gets a passwordHash that nothing in the auth flow ever compares —
-#      Google is the only NextAuth provider (src/auth.ts:14).
-# Google OAuth is the ONLY way in. §5 is therefore not optional setup.
-INITIAL_ADMIN_EMAIL=""
-INITIAL_ADMIN_PASSWORD=""
-
-# ── AI ───────────────────────────────────────────────────────────────────────
-# Per-workspace keys also live in the DB (Settings → AI provider); these are the
-# fallback. A staging key with its own spend cap keeps staging scans off the
-# production budget.
-ANTHROPIC_API_KEY=""
-ANTHROPIC_ADMIN_KEY=""
-OPENAI_API_KEY=""                             # optional alt provider
-GEMINI_API_KEY=""                             # optional alt provider
-
-# ── Crons ────────────────────────────────────────────────────────────────────
-CRON_SECRET="<openssl rand -hex 32>"          # ⚠️ staging's own. See §7 first
-
-# ── Optional / feature-gated — safe to leave blank ───────────────────────────
-GITHUB_TOKEN=""                    # Pulse repo scans. Use a read-only staging PAT
-PROVENANCE_SIGNING_SECRET=""       # blank ⇒ Countermarks issue UNSEALED and say so (§38)
-GOOGLE_PSI_API_KEY=""              # better Pulse PageSpeed quota
-DEEPGRAM_API_KEY=""                # DevSignal transcription
-DEVSIGNAL_ACCESS_PASSWORD=""       # defaults to "gitwork-devsignal" if unset
-NEXT_PUBLIC_TURNSTILE_SITE_KEY=""  # public Pulse embed bot-gate
-TURNSTILE_SECRET_KEY=""
-COLD_STORE_DIR=""                  # retention cold store; unset ⇒ feature off
-
-# ── iOS push (APNs) ──────────────────────────────────────────────────────────
-# ⚠️ Leave blank unless testing push. If you do set it, APNS_PRODUCTION MUST be
-# "false" — sandbox tokens from a dev/TestFlight build are rejected outright by
-# the production APNs endpoint, which looks like "push is broken".
-APNS_AUTH_KEY=""
-APNS_KEY_ID=""
-APNS_TEAM_ID=""
-APNS_BUNDLE_ID="uk.co.gitwork.axisapp"
-APNS_PRODUCTION="false"
-
-# ── Web push (VAPID) ─────────────────────────────────────────────────────────
-# ⚠️ Generate a staging pair (npx web-push generate-vapid-keys) — sharing the
-# prod pair lets staging push to browsers subscribed via production.
-VAPID_PUBLIC_KEY=""
-VAPID_PRIVATE_KEY=""
-VAPID_SUBJECT="mailto:dan@gitwork.co.uk"
-
-# ── Client system credentials ────────────────────────────────────────────────
-# ⚠️ Leave BLANK. These are real logins to a real client's systems; staging has
-# no business holding them.
-WEDGE_APP_API_USER=""
-WEDGE_APP_API_PASSWORD=""
-WEDGE_COURSE_API_USER=""
-WEDGE_COURSE_API_PASSWORD=""
+dig +short staging.foundry.gitwork.tech      # expect 194.164.127.222
 ```
-
-### Not in the pasted file, and not needed
-
-`NEXTAUTH_SECRET` is read as a legacy alias — set it to the same value as `AUTH_SECRET` only if
-something complains. `ASSAY_SIGNING_SECRET` is the pre-rename fallback for
-`PROVENANCE_SIGNING_SECRET` (see `deploy.yml`); on a new environment just set the new name.
-`BASE_URL`, `PULSE_API_URL` and `PULSE_API_KEY` appear in a grep of `process.env` but have no live
-read in `src/` — ignore them.
 
 ---
 
-## 3. Compose — a separate project, not a second database
+### Step 2 — Google OAuth redirect URI **[DAN]**
 
-The pasted config used `foundry_staging` as a database name on host `db`. Two problems: the
-committed `docker-compose.yml` hardcodes `POSTGRES_DB: foundry`, so `foundry_staging` **does not
-exist** and never gets created; and if `db` resolves to the production container, staging is one
-typo away from writing to production.
+**Nothing else unblocks login.** Google is the only NextAuth provider (`src/auth.ts:14`;
+`auth.config.ts:80` is `providers: []`) — there is no password login to `/app` at all (§5).
 
-Run staging as its own Compose project in its own directory (`/opt/apps/foundry-staging`), which
-gives it its own network, its own `postgres_data` volume, and its own `db` hostname.
+Cloud Console → the Gitwork project → **APIs & Services → Credentials** → OAuth 2.0 Client IDs →
+the **"Foundry Login"** web client (Client ID begins `863801453214-1dv17p3eqf94nclttq9cig14uka7n1u6`).
 
-### ⚠️ `postgres:17-alpine` has no pgvector
+**Authorised redirect URIs** — add (exact, no trailing slash):
 
-`src/server/bootstrap.ts:134` runs, on every boot:
-
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-ALTER TABLE "SupportConversation" ADD COLUMN IF NOT EXISTS embedding vector(1536);
-CREATE INDEX IF NOT EXISTS "SupportConversation_embedding_hnsw" ON "SupportConversation" USING hnsw (embedding vector_cosine_ops);
+```
+https://staging.foundry.gitwork.tech/api/auth/callback/google
 ```
 
-All three statements sit inside a swallow-everything `try/catch` (bootstrap.ts:155-161), so with the
-stock `postgres:17-alpine` image **boot succeeds, logs nothing, and the column is never created** —
-Care semantic search then fails at query time, far from the cause. Use `pgvector/pgvector:pg17`.
+**Authorised JavaScript origins** — add:
 
-> This is worth checking on **production** too. The committed compose pins `postgres:17-alpine`
-> while CLAUDE.md §23 says the image "must ship the `vector` extension". Either the box is running
-> something other than the committed file, or Care semantic search has never worked in production.
-> `docker compose exec db psql -U foundry -c '\dx'` settles it — that is a question for Dan, not a
-> change to make from here.
-
-```yaml
-# /opt/apps/foundry-staging/docker-compose.yml
-name: foundry-staging            # own project ⇒ own network + volume namespace
-
-services:
-  db:
-    image: pgvector/pgvector:pg17     # NOT postgres:17-alpine — see above
-    container_name: foundry-staging-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: foundry
-      POSTGRES_USER: foundry
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U foundry"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  app:
-    # Pin a tag, don't track :latest — staging should move when you choose.
-    image: ghcr.io/git-dann/docs-by-gitwork:latest
-    container_name: foundry-staging
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    ports:
-      - "3001:3000"          # 3000 is production's. Nginx proxies staging here
-    env_file:
-      - .env
-
-volumes:
-  postgres_data:
+```
+https://staging.foundry.gitwork.tech
 ```
 
-### Nginx + DNS + certificate
+**Add, don't replace.** Leave the production URI in place. A second OAuth client would mean a second
+consent screen and a second secret to keep in step.
 
-`deploy/nginx/foundry.conf` is production-only (`server_name foundry.gitwork.co.uk`, proxying
-`127.0.0.1:3000`). Staging needs its own server block: copy that file, change `server_name` to
-`staging.foundry.gitwork.tech`, change `proxy_pass` to `http://127.0.0.1:3001`, keep
-`server_tokens off` and the `gzip on`/security-header blocks.
-
-- **DNS** — `staging.foundry.gitwork.tech` needs an A record at the VPS IP. Note this is
-  `gitwork.tech`, a different zone from the Squarespace-managed `gitwork.co.uk` (§23) — confirm who
-  manages `.tech` before assuming the record can be added the same way.
-- **Certificate** — its own Let's Encrypt cert: `certbot --nginx -d staging.foundry.gitwork.tech`.
-- **Keep it out of search results.** `src/app/robots.ts` is written for the production host. Add a
-  blanket `Disallow: /` for the staging host at the nginx layer, or staging pages get indexed and
-  compete with production.
+While you're there, copy the **Client ID** and **Client secret** — step 5 needs them. (The secret
+can't be viewed after creation; if you don't have it, **Reset secret**, which you're doing anyway
+per §0.)
 
 ---
 
-## 4. Database — fresh, or a scrubbed restore
+### Step 3 — ⚠️ Confirm who can actually sign in **[DAN]**
 
-**Prefer starting empty.** `bootstrap.ts` creates the base workspace and the default records; your
-own `User` + `WorkspaceMember` row is then created automatically on first Google sign-in
-(`src/auth.ts` `jwt` callback), so an empty database needs no admin seeding — which is just as well,
-since `INITIAL_ADMIN_*` cannot produce a working login (§5).
+`src/auth.ts:47-51` hard-restricts sign-in:
 
-⚠️ **On a fresh database, Dan has to sign in first.** `KNOWN_SUPER_ADMIN_EMAILS`
-(`src/server/permissions.ts:30`) is `["dan@gitwork.co.uk"]` — the only address auto-promoted to
-Super Admin. Anyone else signing into an empty staging workspace lands on the default role, with
-nobody above them to grant anything, so most of the app reads as missing rather than gated. Order
-matters: Dan signs in, then grants from Settings → Team.
+```ts
+async signIn({ user }) {
+  // Restrict to @gitwork.co.uk accounts only
+  if (!user.email?.endsWith("@gitwork.co.uk")) {
+    return false;
+  }
+  return true;
+}
+```
 
-Schema is applied the same way production does it — a throwaway container running `prisma db push`
-(never `npm run build`, which does a `db push` against whatever `DATABASE_URL` it finds):
+A non-`@gitwork.co.uk` account is refused **after** a successful Google consent, so it surfaces as a
+generic error resembling a broken config. No allow-list, no env var. **The staging host being
+`gitwork.tech` is irrelevant — the check is on the email.**
+
+**If Shahab isn't on `@gitwork.co.uk` he cannot log in at all**, no matter what else is configured.
+Two options, and it's your call:
+
+- **Issue him a `@gitwork.co.uk` Google account** — much the cleaner option, no code change, no
+  production impact.
+- **Widen the check** — a real code change that widens **production** too unless made host-aware.
+  That wants its own PR and thought, not a quick edit.
+
+Also check the **OAuth consent screen publishing status**: if it's *External* + *Testing*, only
+listed test users can sign in regardless of domain. Setting it to **Internal** is separately the
+prerequisite for the held PR #354 (§33), so it may be worth doing once, now.
+
+---
+
+### Step 4 — Create the staging directory **[SHAHAB]**
+
+On the VPS, as the `deploy` user:
+
+```bash
+sudo mkdir -p /opt/apps/foundry-staging
+sudo chown "$USER":"$USER" /opt/apps/foundry-staging
+cd /opt/apps/foundry-staging
+
+# Pull the three files this runbook ships. Adjust the ref if not on main yet.
+BASE=https://raw.githubusercontent.com/Git-Dann/docs-by-gitwork/main/deploy/staging
+curl -fsSLO "$BASE/docker-compose.yml"
+curl -fsSLO "$BASE/generate-env.sh"
+
+ls -la      # expect docker-compose.yml and generate-env.sh
+```
+
+⚠️ **`/opt/apps/foundry-staging`, never `/opt/apps/foundry`.** The second is production. Every
+command below assumes you are in the staging directory — check with `pwd` if unsure.
+
+---
+
+### Step 5 — Generate the `.env` **[SHAHAB]**
 
 ```bash
 cd /opt/apps/foundry-staging
+bash generate-env.sh
+```
+
+This generates **every** random secret locally and writes `.env` at mode `600`, so no secret value
+travels through Slack or a chat window — which is exactly how the production `.env` leaked. Generated
+for you, none matching production:
+
+`POSTGRES_PASSWORD` · `AUTH_SECRET` · `API_KEY` · `NEXT_PUBLIC_API_KEY` · `ENCRYPTION_KEY`
+(verified to decode to 32 bytes, which the app requires) · `CRON_SECRET` ·
+`PROVENANCE_SIGNING_SECRET`
+
+It refuses to overwrite an existing `.env` — regenerating `ENCRYPTION_KEY` would orphan any data
+already encrypted under the old one.
+
+Then paste in the two values from step 2:
+
+```bash
+nano .env
+#   AUTH_GOOGLE_ID="…"
+#   AUTH_GOOGLE_SECRET="…"
+```
+
+Optional, only if you want the feature: `ANTHROPIC_API_KEY` (AI — use a staging key with its own
+spend cap) and `GITHUB_TOKEN` (Pulse repo scans — a **read-only** PAT here). Both can also be set
+later from GitHub Actions secrets; see step 8.
+
+Sanity-check without printing anything secret:
+
+```bash
+grep -c '^AUTH_GOOGLE_ID=""' .env    # expect 0 — i.e. no longer empty
+stat -c '%a' .env                    # expect 600
+```
+
+---
+
+### Step 6 — TLS certificate and nginx **[SHAHAB]**
+
+Certbot first — the nginx config references a certificate path, so pasting it in before the cert
+exists makes `nginx -t` fail on an unresolvable file.
+
+```bash
+sudo certbot --nginx -d staging.foundry.gitwork.tech
+```
+
+Then take the committed config, which adds a blanket `Disallow: /` so staging can't be indexed
+alongside production:
+
+```bash
+sudo curl -fsSL \
+  https://raw.githubusercontent.com/Git-Dann/docs-by-gitwork/main/deploy/staging/nginx/staging.foundry.conf \
+  -o /etc/nginx/sites-available/staging.foundry.gitwork.tech
+sudo ln -sf /etc/nginx/sites-available/staging.foundry.gitwork.tech /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+⚠️ **If `nginx -t` reports `duplicate listen options for [::]:443`:** production's config carries
+`ipv6only=on` on that socket, and the flag may only be set once per address:port. The staging file
+deliberately omits it — if certbot re-added it during step 6, delete it from the **staging** file,
+not from production's.
+
+---
+
+### Step 7 — First deploy **[EITHER]**
+
+The image needs building once before the box has anything to pull.
+
+**Option A — via GitHub Actions (preferred; this is the path you'll use from now on).**
+Actions tab → **"Build, Push & Deploy — STAGING"** → *Run workflow* → pick a branch.
+
+First it needs three repository secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `STAGING_VPS_HOST` | `194.164.127.222` |
+| `STAGING_VPS_USER` | the `deploy` user |
+| `STAGING_VPS_SSH_KEY` | the same private key production's deploy uses |
+
+**Option B — by hand on the box**, if you'd rather not wait on CI:
+
+```bash
+cd /opt/apps/foundry-staging
+docker compose pull app        # needs the :staging tag to exist — run Option A once first
 docker compose up -d db
 docker compose run --rm --no-deps --user root --entrypoint sh app \
   -c "npx --yes prisma@6.16.2 db push --schema=prisma/schema.prisma --skip-generate"
-docker compose up -d app
+docker compose up -d --no-deps --force-recreate app
 ```
+
+⚠️ **Never `npm run build` against a live `DATABASE_URL`** — that npm script runs `prisma db push`
+first and mutates whatever database it's pointed at. The throwaway-container form above is what
+production uses, and it omits `--accept-data-loss` on purpose.
+
+---
+
+### Step 8 — Optional: managed secrets from CI **[DAN]**
+
+So rotating a staging key doesn't need SSH. Same mechanism as production (§35), distinct names so a
+production value can never be synced into staging:
+
+| Actions secret | Written to the box as |
+|---|---|
+| `STAGING_GITHUB_TOKEN` | `GITHUB_TOKEN` |
+| `STAGING_ANTHROPIC_API_KEY` | `ANTHROPIC_API_KEY` |
+
+An unset secret is a **no-op**, not a delete — it leaves whatever's in the box's `.env` alone. Add
+more by adding one `upsert_env` line to `deploy-staging.yml`.
+
+`AUTH_GOOGLE_*` are deliberately **not** managed this way: they're shared with production's OAuth
+client, and a second copy in Actions secrets would drift.
+
+---
+
+### Step 9 — Sign in, in this order **[DAN first, then everyone]**
+
+⚠️ **Dan must sign in first.** `KNOWN_SUPER_ADMIN_EMAILS` (`src/server/permissions.ts:30`) is
+`["dan@gitwork.co.uk"]` — the only address auto-promoted to Super Admin. Anyone else signing into an
+empty workspace lands on the default role with nobody above them to grant anything, and most of the
+app reads as *missing* rather than gated.
+
+1. Dan → `https://staging.foundry.gitwork.tech` → sign in with Google.
+2. Confirm you're Super Admin (Settings → Team shows the full matrix).
+3. Grant everyone else from **Settings → Team** as they sign in.
+
+Your `User` + `WorkspaceMember` row is created automatically on first sign-in (`src/auth.ts` `jwt`
+callback), so an empty database needs no admin seeding — which is just as well, since
+`INITIAL_ADMIN_*` cannot produce a login (§5).
+
+Being asked to consent on every sign-in is expected: `prompt: "consent"` is forced
+(`src/auth.ts:40`) so Google always returns a refresh token.
+
+---
+
+### Steps 10–12 — Verify
+
+Run the checklist in **§8**. Step 12 passing is the point at which staging is real and the three
+docs in the header should be updated.
+
+---
+
+## 2. The `.env`, explained
+
+`generate-env.sh` writes this and annotates each line. The five that differ from production and will
+break staging silently if copied:
+
+| Variable | Set to | If wrong |
+|---|---|---|
+| `NEXTAUTH_URL` | `https://staging.foundry.gitwork.tech` | The OAuth flow **completes and lands the user on production**. Nothing errors. Also breaks the Gmail connector redirect, middleware's resolve-host call (`middleware.ts:45`) and Pulse monitor webhook URLs |
+| `ENCRYPTION_KEY` | staging's own | Prod value ⇒ staging can decrypt real client bank details |
+| `NEXT_PUBLIC_APP_URL`<br>`NEXT_PUBLIC_SITE_URL` | staging URL | **Unset defaults to the production URL** (`notifications.ts:137`, `slack/blocks.ts:16`, `layout.tsx:59`) ⇒ staging notifications deep-link into prod. Read server-side only, so runtime env is enough — no build arg |
+| `DATABASE_URL` | staging's own Compose `db` | A `foundry_staging` database on production's container doesn't exist (prod compose hardcodes `POSTGRES_DB: foundry`) and puts you one typo from writing to production |
+| `APNS_PRODUCTION` | `"false"` | Sandbox tokens from a dev/TestFlight build are rejected outright by the production APNs endpoint — presents as "push is broken" |
+
+### `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD` — intentionally blank
+
+They cannot produce a login, for two independent reasons:
+
+1. `admin@example.com` specifically creates **nothing**: `ensureInitialAdmin` calls
+   `isSeedAccountEmail` (`src/server/seed-accounts.ts:60`), which rejects the whole `@example.com`
+   domain and returns early, silently.
+2. Even with a valid address, **there is no password login to `/app`.** `User.passwordHash` is
+   written by team invites, `forgot-password` and `ensureInitialAdmin`, but the only
+   `bcrypt.compare` in the codebase is `src/server/wiki-access.ts`, which gates the separate public
+   wiki. Nothing ever compares it for `/app`.
+
+### Read by the code but not worth setting
+
+`NEXTAUTH_SECRET` (legacy alias — set to `AUTH_SECRET` only if something complains),
+`ASSAY_SIGNING_SECRET` (pre-rename fallback for `PROVENANCE_SIGNING_SECRET`; on a new environment
+just set the new name), `BASE_URL` / `PULSE_API_URL` / `PULSE_API_KEY` (appear in a `process.env`
+grep but have no live read in `src/`).
+
+---
+
+## 3. What staging must never share with production
+
+1. **The database** — not the same server, not the same volume, not a second database name on the
+   same container.
+2. **`ENCRYPTION_KEY`** — §0.
+3. **Live third-party write tokens** — Slack bot token, Google refresh tokens, Resend key, Care
+   connector tokens. These live in the **database**, not the `.env`, so a restored dump carries them
+   silently. §4.
+4. **`NEXTAUTH_URL`** — §2.
+5. **The `:latest` tag and `/opt/apps/foundry`** — sharing either means a staging deploy restarts
+   production. Staging uses `:staging` and `/opt/apps/foundry-staging`.
+
+---
+
+## 4. Database
+
+**Start empty** unless you specifically need production data. Step 7 applies the schema; step 9
+creates your user.
 
 ### If you restore a production dump, scrub it in the same session
 
-A dump carries **live third-party write credentials in the database**, not in the `.env`. Left in
-place, staging will post to real client Slack channels (Foreman digests, Dispatch replies, task
-standups), write to the real Google Drive (`docs-gdrive-backup`), read real mailboxes, and email
-real admins from Backstage. Run this immediately after restore, before starting the app:
+A dump carries live third-party write credentials **in the database**. Left in place, staging posts
+to real client Slack channels (Foreman digests, Dispatch replies, task standups), writes to the real
+Google Drive (`docs-gdrive-backup`), reads real mailboxes, and emails real admins from Backstage.
 
-Column names below are checked against `prisma/schema.prisma` at the time of writing. **Re-check
-before running** — a silently-missed column is exactly the failure this scrub exists to prevent.
+Run this immediately after restore, **before starting the app**. Column names checked against
+`prisma/schema.prisma` — re-check before running, since a silently-missed column is the exact failure
+this exists to prevent.
 
 ```sql
--- Slack. NOTE both: slackBotToken is the LEGACY PLAINTEXT column (kept for
+-- Slack. NOTE BOTH: slackBotToken is the LEGACY PLAINTEXT column (kept for
 -- migration), slackBotTokenEncrypted is what new reads go through. Nulling only
 -- one leaves a working token behind.
 UPDATE "Workspace" SET
@@ -320,7 +392,7 @@ UPDATE "Workspace" SET
 -- Email (Resend / SMTP) — stops Backstage + digests mailing real people
 UPDATE "Workspace" SET "emailApiKey" = NULL, "emailSmtpPassword" = NULL;
 
--- AI keys: staging should spend against its own budget, not production's
+-- AI keys: staging spends against its own budget, not production's
 UPDATE "Workspace" SET
   "anthropicApiKey"      = NULL,
   "openaiApiKey"         = NULL,
@@ -330,15 +402,14 @@ UPDATE "Workspace" SET
   "externalApiKey"       = NULL,
   "turnstileSecretKeyEncrypted" = NULL;
 
--- Google OAuth refresh tokens — on BOTH tables (Calendar/Gmail/Drive: Scribe,
--- the docs backup, the Care connector)
+-- Google OAuth refresh tokens — on BOTH tables (Scribe, docs backup, Care)
 UPDATE "User"      SET "googleOAuthRefreshToken" = NULL;
 UPDATE "Workspace" SET "googleOAuthRefreshToken" = NULL;
 
 -- Drive backup off + folder forgotten
 UPDATE "Workspace" SET "docsBackupEnabled" = false, "docsBackupFolderId" = NULL;
 
--- Care connector tokens (analytics APIs, mailboxes) live on scraperConfig
+-- Care connector tokens (analytics APIs, mailboxes)
 UPDATE "AccountConnection" SET "scraperConfig" = NULL;
 
 -- Client platform logins — real credentials to real client systems
@@ -353,155 +424,121 @@ UPDATE "PulseScan"       SET "shareToken" = NULL;
 UPDATE "WorkspaceClient" SET "timelineShareToken" = NULL;
 ```
 
-Any client bank details in the onboarding tables will be undecryptable under staging's own
-`ENCRYPTION_KEY` — that is the intended outcome, not a fault to work around.
+Bank details in the onboarding tables will be undecryptable under staging's own `ENCRYPTION_KEY` —
+intended, not a fault to work around.
 
 ---
 
-## 5. Google OAuth — the only way into staging
+## 5. OAuth — the only way in
 
-**Google is the only NextAuth provider** (`src/auth.ts:14` — `providers: [Google({…})]`, and
-`auth.config.ts:80` is `providers: []`). There is no Credentials provider and no password login
-route for `/app`: `User.passwordHash` is written by team invites, `forgot-password` and
-`ensureInitialAdmin`, but the only `bcrypt.compare` in the codebase is `src/server/wiki-access.ts`,
-which gates the separate public wiki. So OAuth is not one option among several — without it staging
-has no reachable UI at all.
+Covered in steps 2, 3 and 9. Three things must line up, and each fails differently:
 
-Three things must line up, and each fails differently.
+| Symptom | Cause | Fix |
+|---|---|---|
+| Google's own `redirect_uri_mismatch` page, before Foundry loads | Redirect URI missing | Step 2 |
+| Flow completes but you land on `foundry.gitwork.co.uk` | `NEXTAUTH_URL` still production | Step 5 |
+| Generic error **after** a successful Google consent | Email isn't `@gitwork.co.uk` | Step 3 |
+| Signed in, but the app looks half-empty | Not Super Admin; Dan hasn't signed in first | Step 9 |
 
-### 5.1 The redirect URI — Dan's action, in Google Cloud Console
-
-Console → the Gitwork project → **APIs & Services → Credentials** → OAuth 2.0 Client IDs → the
-**"Foundry Login"** web client (id begins `863801453214-1dv17p3eqf94nclttq9cig14uka7n1u6`).
-
-Add to **Authorised redirect URIs** — exact string, no trailing slash:
-
-```
-https://staging.foundry.gitwork.tech/api/auth/callback/google
-```
-
-And to **Authorised JavaScript origins**:
-
-```
-https://staging.foundry.gitwork.tech
-```
-
-Path confirmed from the code, not assumed: `src/app/api/auth/[...nextauth]/route.ts` with no
-`basePath` override, so the NextAuth default applies.
-
-**Add, don't replace.** Leave the production URI in place — a second OAuth client would mean a
-second consent screen and a second secret to keep in step. Failure mode if this is missed:
-Google's own `redirect_uri_mismatch` error page, before Foundry is ever reached.
-
-### 5.2 `NEXTAUTH_URL` — Shahab's action, on the box
-
-Must be `https://staging.foundry.gitwork.tech`. NextAuth builds the `redirect_uri` it sends to
-Google from this, so if it still reads `foundry.gitwork.co.uk` the flow completes and lands the
-user **on production** — which looks like "staging login is broken" while nothing errors.
-
-### 5.3 ⚠️ The signing-in account must be `@gitwork.co.uk`
-
-`src/auth.ts:47-51`:
-
-```ts
-async signIn({ user }) {
-  // Restrict to @gitwork.co.uk accounts only
-  if (!user.email?.endsWith("@gitwork.co.uk")) {
-    return false;
-  }
-  return true;
-}
-```
-
-Any other domain — `@gitwork.tech`, a personal Gmail, a contractor's own domain — is refused
-**after** a successful Google consent, so the user sees a generic NextAuth error having apparently
-signed in fine. There is no allow-list to add an exception to and no env var to relax it.
-
-If the person setting staging up is not on `@gitwork.co.uk`, that is a decision for Dan, not a
-config change: either issue them a Gitwork Google account, or widen the check (a real code change,
-and it widens **production** too unless it's made host-aware — so it wants its own PR and thought,
-not a quick edit).
-
-### 5.4 Also worth checking
-
-- **OAuth consent screen publishing status.** If it is *External* and still in *Testing*, only
-  listed test users can sign in at all, regardless of domain. Setting it to **Internal** is
-  separately a prerequisite for the held PR #354 (CLAUDE.md §33), so it may be worth doing once.
-- **The Care/Gmail connector** (a different client, "Foundry Care") needs the staging host on its
-  redirect URIs too — `/api/integrations/gmail/callback` — but only if you're testing Care.
-- `prompt: "consent"` is forced on every sign-in (`src/auth.ts:40`) so Google always returns a
-  refresh token. Being asked to consent each time on staging is expected, not a fault.
+The **"Foundry Care"** client (a different one) needs the staging host on its redirect URIs too —
+`/api/integrations/gmail/callback` — but only if you're testing Care.
 
 ---
 
-## 6. Deploying to staging
+## 6. Deploying from now on
 
-`.github/workflows/deploy.yml` is production-only and must stay that way. It triggers on push to
-`main`, pushes `:latest`, and SSHes to `/opt/apps/foundry`. Three things to get right if you add a
-staging workflow:
+`.github/workflows/deploy-staging.yml`:
 
-1. **A different `concurrency` group.** The current group is `deploy-production`; reusing it makes
-   staging deploys queue behind production ones and vice versa.
-2. **A different image tag and directory** — e.g. `:staging` into `/opt/apps/foundry-staging`.
-   Sharing `:latest` means a staging build overwrites the tag production pulls from. The header
-   comment on `deploy.yml` records a real incident (2026-07-28) where two runs racing on `:latest`
-   silently reverted production — the same hazard, one environment wider.
-3. **Its own managed-secret sync.** The `upsert_env` block writes into `/opt/apps/foundry/.env`;
-   staging's path and its own Actions secrets (`STAGING_VPS_*`) need to be distinct.
+- **push to `staging`** → auto-deploy.
+- **`workflow_dispatch`** → deploy **any branch**. This is the one that makes staging worth having:
+  a feature branch can be opened in a browser, which nothing else allows.
 
-The simplest start needs no workflow at all — pin a tag by hand:
+Three deliberate differences from production's `deploy.yml`, each a safety boundary:
 
-```bash
-cd /opt/apps/foundry-staging
-docker compose pull app && docker compose up -d --no-deps --force-recreate app
-```
+1. **`concurrency: deploy-staging`** — sharing `deploy-production` would couple the two environments
+   for no reason. `cancel-in-progress` is **true** here (you're iterating; newest push wins) and
+   **false** in production (cancelling mid-run can leave the box half-deployed).
+2. **Tags `:staging` / `:staging-<sha>`, never `:latest`** — `:latest` is what production's compose
+   pulls, so pushing it from here would deploy staging code to production on its next restart.
+   `deploy.yml`'s header records the 2026-07-28 incident where two runs racing on `:latest` silently
+   reverted production; this is that hazard across environments, and much harder to spot.
+3. **`/opt/apps/foundry-staging`**, and it fails loudly if `.env` has no `DATABASE_URL` rather than
+   starting a container that 500s on every page.
+
+The version string carries a `-staging` suffix so the sidebar footer makes the environment obvious.
 
 ---
 
 ## 7. Crons — install nothing at first
 
-The app ships **17** `/api/cron/*` routes. None fire on their own; the VPS crontab drives them
-(`docs/vps-crons.md`). Leave staging's crontab empty until you've decided per-route what should run,
-because several have outbound side-effects: `docs-gdrive-backup` writes to Drive, `support-sync`
-reads mailboxes, `foreman`/`care-digest`/`availability-digest` notify people, `meet-transcripts`
-reads Drive.
+17 `/api/cron/*` routes ship; none fire on their own (`docs/vps-crons.md`). Leave staging's crontab
+**empty** until you've decided per route, because several have outbound side-effects:
+`docs-gdrive-backup` writes to Drive, `support-sync` reads mailboxes, `foreman` / `care-digest` /
+`availability-digest` notify people, `meet-transcripts` reads Drive.
 
-Two things worth knowing before you copy production's crontab, both recorded in
-`docs/vps-crons.md`:
-
-- **`foreman`, `curator`, `retention` and `wedge-keepwarm` have never run in production.** They are
-  in the docs and absent from the live crontab.
-- **`retention` is not a no-op on first run** — it sweeps the entire accumulated backlog in one
-  pass. Staging is genuinely the right place to find out what that does, on a scrubbed dump, before
-  it is ever installed in production. That's the first real payoff from having staging at all.
-
-Test a route by hand instead:
+Test one by hand instead:
 
 ```bash
 curl -H "Authorization: Bearer $CRON_SECRET" \
   https://staging.foundry.gitwork.tech/api/cron/jobs
 ```
 
+Two things worth knowing before copying production's crontab, both from `docs/vps-crons.md`:
+
+- **`foreman`, `curator`, `retention` and `wedge-keepwarm` have never run in production.** Documented,
+  absent from the live crontab.
+- **`retention`'s first run is not a no-op** — it sweeps the entire accumulated backlog in one pass.
+  Staging on a scrubbed dump is the right place to find out what that does before it's ever installed
+  in production. That's the first concrete payoff from having staging.
+
 ---
 
 ## 8. Verification checklist
 
-In order — each step's failure mode is distinct, so don't skip ahead.
+In order — each failure mode is distinct, so don't skip ahead.
 
 | # | Check | Expected |
 |---|---|---|
-| 1 | `curl https://staging.foundry.gitwork.tech/api/health` | 200, with `commitSha` / `buildTime` |
-| 2 | `docker compose exec db psql -U foundry -c '\dx'` | lists `vector` — if not, §3's image is wrong |
-| 3 | `docker compose logs app \| grep -i bootstrap` | no repeated errors |
-| 4 | Visit `/` | 307 → `/portal/login` (CLAUDE.md §4) |
-| 5 | Sign in with Google, using an **`@gitwork.co.uk`** account | lands on staging, **not** redirected to `foundry.gitwork.co.uk`. `redirect_uri_mismatch` ⇒ §5.1; landing on prod ⇒ §5.2; generic error after consent ⇒ §5.3 (wrong email domain) |
-| 6 | — | *(there is no password login to `/app` — see §5)* |
-| 7 | `curl -I https://staging.foundry.gitwork.tech` | valid cert, no `Server: nginx/<version>` |
-| 8 | Open `/app` | sidebar renders; footer version matches the tag you pulled |
-| 9 | Settings → AI provider | staging's own key, or blank |
-| 10 | Send a test notification | link points at `staging.…`, not production |
+| 1 | `dig +short staging.foundry.gitwork.tech` | `194.164.127.222` |
+| 2 | `curl -I https://staging.foundry.gitwork.tech` | valid cert, **no** `Server: nginx/<version>` |
+| 3 | `curl https://staging.foundry.gitwork.tech/api/health` | 200 with `commitSha` / `buildTime` |
+| 4 | `curl https://staging.foundry.gitwork.tech/robots.txt` | `Disallow: /` |
+| 5 | `docker compose exec db psql -U foundry -c '\dx'` | lists **`vector`** — if not, the db image is wrong (§2 of the compose file) |
+| 6 | `docker compose logs app \| tail -50` | no repeated errors |
+| 7 | Visit `/` | 307 → `/portal/login` |
+| 8 | **Dan** signs in with Google | lands on staging, **not** `foundry.gitwork.co.uk`. Symptom table in §5 |
+| 9 | Settings → Team | Dan is Super Admin, full matrix visible |
+| 10 | Sidebar footer | version ends `-staging` |
 | 11 | Care → semantic search | returns results (proves pgvector end to end) |
-| 12 | Grep the staging `.env` for the production `ENCRYPTION_KEY` | **no match** |
+| 12 | `grep -c '<prod ENCRYPTION_KEY>' .env` | **0** |
 
-Steps 5, 6 and 11 are the three that fail from copying the production `.env` verbatim, and none of
-them announces its cause.
+Checks 8, 11 and 12 are the three that fail from copying the production `.env` verbatim, and none
+announces its cause.
+
+---
+
+## 9. What staging unlocks — and the docs to update
+
+Once step 12 passes, update the three "there is no staging" claims in CLAUDE.md §2,
+`ONBOARDING.md` §"Deploying" and `docs/build-checklist.md`. Two of them are load-bearing beyond the
+wording:
+
+**`npm run audit:clipping` can finally run against `/app`.** §31 and `docs/build-checklist.md`
+record this as deferred with a specific reason: the runtime clipping audit "needs a reachable page
+and those are auth-gated", so the screens where most layout defects actually live have only ever had
+the *static* `audit:ui` over them. §30 lists what that gap cost — two `/app` layout defects found by
+screenshot rather than by any detector, and §30 pass 4's radius bugs found from a screenshot Dan
+took. Staging is a reachable `/app`. Wiring `audit:clipping` at it is the highest-value follow-up
+here and should be its own PR.
+
+**Verification honesty changes.** `docs/build-checklist.md`'s "no staging, no branch previews,
+`/app` can't be self-screenshotted" section is the basis for a lot of "verified via `tsc` + `eslint`,
+not visually verified" notes throughout CLAUDE.md. That caveat stops being necessary for anything
+reachable on staging — but only once the environment is genuinely up, which is why the update waits
+for step 12 rather than shipping with this runbook.
+
+Also worth settling while you're here: **production may have the same pgvector gap.** The committed
+root `docker-compose.yml` pins `postgres:17-alpine`, which has no `vector`, while §23 says the image
+must ship it. Either the box runs something other than the committed file, or Care semantic search
+has never worked in production. `docker compose exec db psql -U foundry -c '\dx'` in
+`/opt/apps/foundry` settles it in one command.

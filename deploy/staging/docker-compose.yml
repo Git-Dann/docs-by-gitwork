@@ -1,0 +1,62 @@
+# Foundry STAGING — Docker Compose
+#
+# Lives on the VPS at /opt/apps/foundry-staging/docker-compose.yml.
+# Production's equivalent is the repo-root docker-compose.yml; this file is
+# deliberately a separate one rather than a shared file with overrides, because
+# every difference below is a safety boundary and an override file makes it easy
+# to lose one silently.
+#
+# Four differences from production, all load-bearing:
+#   1. `name:` sets its own Compose project — own network, own volume namespace,
+#      own `db` hostname. Without it, `db` could resolve to production's database.
+#   2. pgvector image, not postgres:17-alpine — see the note below.
+#   3. Port 3001, not 3000. 3000 is production's.
+#   4. Image tag :staging, not :latest. Sharing :latest means a staging build
+#      overwrites the tag production pulls from. deploy.yml's header records a
+#      real incident (2026-07-28) where two runs racing on :latest silently
+#      reverted production; sharing the tag across environments is that same
+#      hazard, one environment wider.
+
+name: foundry-staging
+
+services:
+  db:
+    # ⚠️ NOT postgres:17-alpine. src/server/bootstrap.ts runs, on every boot:
+    #      CREATE EXTENSION IF NOT EXISTS vector
+    #      ALTER TABLE "SupportConversation" ADD COLUMN ... embedding vector(1536)
+    #      CREATE INDEX ... USING hnsw (embedding vector_cosine_ops)
+    #    All three sit inside a swallow-everything try/catch, so on an image with
+    #    no pgvector the boot SUCCEEDS, logs nothing, and the column is never
+    #    created — Care semantic search then fails at query time, far from the
+    #    cause. This image ships the extension.
+    image: pgvector/pgvector:pg17
+    container_name: foundry-staging-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: foundry
+      POSTGRES_USER: foundry
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foundry"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: ghcr.io/git-dann/docs-by-gitwork:staging
+    container_name: foundry-staging
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      # host:container — 3001 on the host so it can't collide with production's
+      # 3000. nginx proxies staging.foundry.gitwork.tech here.
+      - "3001:3000"
+    env_file:
+      - .env
+
+volumes:
+  postgres_data:
