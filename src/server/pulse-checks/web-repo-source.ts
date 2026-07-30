@@ -89,6 +89,7 @@ function buildContext(snapshot: RepoSnapshot): WebContext {
       docsAndScripts += "\n" + text;
     } else if (
       /(^|\/)\.github\/workflows\/[^/]+\.ya?ml$/i.test(path) ||
+      /(^|\/)(Dockerfile|docker-compose[^/]*\.ya?ml)$/i.test(path) ||
       /(^|\/)(?:\.?security|\.?quality|\.?audit|\.?static[-_ ]analysis|\.?secret[-_ ]scan|\.?supply[-_ ]chain|\.?accessibility|\.?browser[-_ ]tests?|\.?dynamic[-_ ]security)\.(ya?ml|json|toml)$/i.test(path)
     ) {
       automation += "\n" + text;
@@ -620,6 +621,8 @@ function deliverySafetyChecks(ctx: WebContext): PulseScanCheckInput[] {
   const checks: PulseScanCheckInput[] = [];
   const workflow = ctx.automation;
   if (workflow) {
+    const unsafeCheckout = /\bpull_request_target\b/i.test(workflow) && /actions\/checkout[\s\S]{0,240}(?:github\.event\.pull_request\.head|ref\s*:)/i.test(workflow);
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "pulse_ci_untrusted_checkout", label: "Privileged CI does not check out contributor-controlled code", status: unsafeCheckout ? "FAIL" : "PASS", confidence: "HIGH", detail: unsafeCheckout ? "A privileged pull-request workflow checks out a contributor-controlled ref. Keep untrusted code in an unprivileged workflow." : "No unsafe privileged pull-request checkout pattern found." });
     const privilegedUntrusted = /\b(?:pull_request_target|workflow_run)\b/i.test(workflow) &&
       (/(?:permissions\s*:\s*(?:write-all|[\s\S]{0,100}\bwrite\b)|secrets\.|github\.event\.pull_request\.head)/i.test(workflow));
     checks.push({ category: CATEGORIES.SECURITY, checkKey: "pulse_ci_untrusted_privilege", label: "Untrusted CI code cannot access write privileges or secrets", status: privilegedUntrusted ? "FAIL" : "PASS", confidence: "HIGH", detail: privilegedUntrusted ? "A workflow triggered by untrusted contribution activity can access write privileges, secrets, or contributor-controlled code. Split review and privileged deployment work into separate workflows." : "No unsafe untrusted-contribution privilege pattern found in scanned workflows." });
@@ -630,6 +633,21 @@ function deliverySafetyChecks(ctx: WebContext): PulseScanCheckInput[] {
     const remoteBootstrap = /\b(?:curl|wget)\b[^\n|]{0,200}\|\s*(?:ba)?sh\b/i.test(workflow);
     checks.push({ category: CATEGORIES.SECURITY, checkKey: "pulse_ci_remote_shell", label: "CI does not pipe remote downloads into a shell", status: remoteBootstrap ? "FAIL" : "PASS", confidence: "HIGH", detail: remoteBootstrap ? "A workflow pipes a remote download directly into a shell. Fetch, checksum, review, and execute a pinned artifact instead." : "No remote-download-to-shell pattern found in scanned workflows." });
   }
+
+  const docker = workflow;
+  if (/\bFROM\b/i.test(docker)) {
+    const root = /\bUSER\s+root\b/i.test(docker) || !/\bUSER\s+[^\s]+/i.test(docker);
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "pulse_container_nonroot", label: "Container runtime does not default to root", status: root ? "WARN" : "PASS", confidence: "HIGH", detail: root ? "Container configuration runs as root or declares no non-root user." : "Container configuration declares a non-root runtime user." });
+    const secretLayer = /\b(?:ARG|ENV)\s+\w*(?:SECRET|TOKEN|PASSWORD|API_KEY)\w*=/i.test(docker);
+    checks.push({ category: CATEGORIES.SECRETS_KEYS, checkKey: "pulse_container_secret_layer", label: "Container layers do not embed secrets", status: secretLayer ? "FAIL" : "PASS", confidence: "HIGH", detail: secretLayer ? "A container build argument or environment layer appears to embed a secret." : "No secret-like container layer declaration found." });
+  }
+  const checksSource = ctx.source;
+  const addFail = (key: string, label: string, pattern: RegExp, detail: string) => { const sites = sitesMatching(ctx, pattern); if (sites.count) checks.push({ category: CATEGORIES.SECURITY, checkKey: key, label, status: "FAIL", confidence: "HIGH", detail, evidence: sites.where }); };
+  addFail("pulse_public_storage_policy", "Storage policies do not expose public write access", /(?:storage|bucket)[\s\S]{0,120}(?:public\s*:\s*true|allow\s+(?:read|write)[\s\S]{0,60}\btrue\b)/i, "Source contains a public storage policy pattern.");
+  addFail("pulse_open_redirect", "Redirect targets are allow-listed", /(?:redirect|location)\s*\(\s*(?:req\.(?:query|body|params)|request\.)/i, "A redirect target appears to come directly from request input.");
+  addFail("pulse_ssrf", "Server-side fetch targets are not user-controlled", /(?:fetch|axios\.(?:get|post)|request)\s*\(\s*(?:req\.(?:query|body|params)|request\.)/i, "A server-side request target appears to come directly from request input.");
+  if (/\b(?:webhook|onWebhook)\b/i.test(checksSource)) checks.push(absence(ctx, { category: CATEGORIES.SECURITY, checkKey: "pulse_webhook_replay", label: "Webhooks verify signatures and replay windows", status: /\b(?:signature|hmac|timestamp|replay)\b/i.test(checksSource) ? "PASS" : "WARN", detail: "Webhook handling needs signature and replay-window verification evidence." }));
+  if (/\b(?:toolCall|tools\s*:|function_call)\b/i.test(checksSource)) checks.push(absence(ctx, { category: CATEGORIES.AI_READINESS, checkKey: "pulse_ai_tool_controls", label: "AI tool calls require approval, budget, timeout, and audit controls", status: /\b(?:approval|confirm|budget|timeout|audit)\b/i.test(checksSource) ? "PASS" : "WARN", detail: "AI tool-call handling needs approval, budget, timeout, and audit evidence." }));
 
   const scripts = ctx.pkg?.scripts ?? {};
   const riskyLifecycle = Object.entries(scripts).some(([name, command]) => /^(?:preinstall|install|postinstall|prepare)$/i.test(name) && /\b(?:curl|wget|powershell|bash|sh|node\s+-e)\b/i.test(command));

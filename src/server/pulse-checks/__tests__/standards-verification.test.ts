@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PULSE_CHECK_TOTAL } from "@/config/pulse-framework";
+import { PULSE_EVIDENCE_COVERAGE_ROWS, PULSE_EVIDENCE_REQUIREMENT_TOTAL, PULSE_EXECUTABLE_CHECK_TOTAL } from "@/config/pulse-framework";
 import { computeScoreBreakdown } from "../score-breakdown";
 import {
   PLATFORM_VALIDATION_PROFILES,
@@ -29,7 +29,9 @@ describe("standards verification catalogue", () => {
     expect(computeScoreBreakdown(checks).totalWeight).toBe(0);
   });
 
-  it("takes Pulse above the 5,000-check target", () => {
-    expect(PULSE_CHECK_TOTAL).toBeGreaterThanOrEqual(5000);
+  it("reports evidence coverage separately from executable checks", () => {
+    expect(PULSE_EVIDENCE_REQUIREMENT_TOTAL).toBe(391);
+    expect(PULSE_EVIDENCE_COVERAGE_ROWS).toBe(4301);
+    expect(PULSE_EXECUTABLE_CHECK_TOTAL).toBeGreaterThan(800);
   });
 });

@@ -123,6 +123,7 @@ const CONFIG_PATTERNS: RegExp[] = [
   // Read for the CLI family (usage docs) and the desktop signing check.
   /^README(\.md|\.markdown|\.rst|\.txt)?$/i,
   /^\.github\/workflows\/[^/]+\.ya?ml$/i,
+  /(^|\/)(Dockerfile|docker-compose[^/]*\.ya?ml)$/i,
   // Read Pulse audit policy/configuration alongside workflows. The recognisers
   // deliberately describe outcomes rather than coupling Pulse to any vendor.
   /(^|\/)(?:\.?security|\.?quality|\.?audit|\.?static[-_ ]analysis|\.?secret[-_ ]scan|\.?supply[-_ ]chain|\.?accessibility|\.?browser[-_ ]tests?|\.?dynamic[-_ ]security)\.(ya?ml|json|toml)$/i,

@@ -92,6 +92,18 @@ describe("delivery and abuse safeguards", () => {
     expect(statusOf(checks, "pulse_request_body_limit")).toBe("PASS");
     expect(statusOf(checks, "pulse_upload_limit")).toBe("PASS");
   });
+
+  it("finds unsafe checkout, container, redirect, SSRF, storage, webhook, and AI tool patterns", () => {
+    const checks = evaluateWebSourceChecks(snapshot({
+      "Dockerfile": `FROM node:22\nARG API_TOKEN=value`,
+      ".github/workflows/review.yml": `on: pull_request_target\nsteps:\n - uses: actions/checkout@v4\n   with:\n    ref: \${{ github.event.pull_request.head.sha }}`,
+      "src/app.ts": `bucket({ public: true }); redirect(req.query.next); fetch(req.body.url); webhook(event); toolCall({});`,
+    }));
+    for (const key of ["pulse_ci_untrusted_checkout", "pulse_container_secret_layer", "pulse_public_storage_policy", "pulse_open_redirect", "pulse_ssrf"]) expect(statusOf(checks, key)).toBe("FAIL");
+    expect(statusOf(checks, "pulse_container_nonroot")).toBe("WARN");
+    expect(statusOf(checks, "pulse_webhook_replay")).toBe("WARN");
+    expect(statusOf(checks, "pulse_ai_tool_controls")).toBe("WARN");
+  });
 });
 
 describe("injection — presence findings", () => {
