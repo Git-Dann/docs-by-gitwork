@@ -31,8 +31,64 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
       ["wcag22_dragging_alternative", "Dragging movements have an alternative (WCAG 2.5.7)"],
       ["wcag22_consistent_help", "Consistent help mechanism (WCAG 3.3.6)"],
       ["accessibility_statement_eaa", "Accessibility statement (EU Accessibility Act)"],
+      ["images_have_alt", "Informative images have alternative text"],
+      ["buttons_have_names", "Buttons have accessible names"],
+      ["iframes_have_titles", "Embedded frames have descriptive titles"],
+      ["dialogs_have_names", "Dialogs have accessible names"],
+      ["aria_hidden_not_focusable", "aria-hidden content contains no focusable controls"],
     ], "Not applicable for non-web interfaces.");
   }
+
+  // Decorative images may deliberately use alt=""; every other image needs a
+  // programmatic alternative (WCAG 1.1.1).
+  const images = html.match(/<img\b[^>]*>/gi) ?? [];
+  const imagesWithoutAlt = images.filter((image) => !/\balt\s*=\s*["'][^"']*["']/i.test(image));
+  checks.push({
+    category: CATEGORIES.ACCESSIBILITY, checkKey: "images_have_alt", label: "Informative images have alternative text",
+    status: imagesWithoutAlt.length === 0 ? "PASS" : "FAIL",
+    detail: imagesWithoutAlt.length === 0 ? (images.length === 0 ? "No image elements detected." : `All ${images.length} image element(s) declare an alt attribute.`) : `${imagesWithoutAlt.length} of ${images.length} image element(s) have no alt attribute. Add meaningful alternatives for informative images and alt=\"\" only for decoration (WCAG 1.1.1).`,
+    evidence: imagesWithoutAlt.length ? imagesWithoutAlt.slice(0, 3).join("\n").slice(0, 500) : undefined,
+  });
+
+  // Icon-only controls are especially easy to ship without an accessible name.
+  const buttons = html.match(/<button\b[^>]*>[\s\S]*?<\/button>/gi) ?? [];
+  const unnamedButtons = buttons.filter((button) => {
+    if (/\baria-(?:label|labelledby)\s*=|\btitle\s*=/i.test(button)) return false;
+    return button.replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").trim().length === 0;
+  });
+  checks.push({
+    category: CATEGORIES.ACCESSIBILITY, checkKey: "buttons_have_names", label: "Buttons have accessible names",
+    status: unnamedButtons.length === 0 ? "PASS" : "FAIL",
+    detail: unnamedButtons.length === 0 ? (buttons.length === 0 ? "No button elements detected." : "Every button has visible text or an explicit accessible name.") : `${unnamedButtons.length} button(s) contain no text, aria-label, aria-labelledby, or title. Give icon-only controls a programmatic name (WCAG 4.1.2).`,
+    evidence: unnamedButtons.length ? unnamedButtons.slice(0, 3).join("\n").slice(0, 500) : undefined,
+  });
+
+  const frames = html.match(/<iframe\b[^>]*>/gi) ?? [];
+  const untitledFrames = frames.filter((frame) => !/\btitle\s*=\s*["'][^"']+\S[^"']*["']/i.test(frame));
+  checks.push({
+    category: CATEGORIES.ACCESSIBILITY, checkKey: "iframes_have_titles", label: "Embedded frames have descriptive titles",
+    status: untitledFrames.length === 0 ? "PASS" : "WARN",
+    detail: untitledFrames.length === 0 ? (frames.length === 0 ? "No iframe elements detected." : "Every embedded frame has a non-empty title.") : `${untitledFrames.length} embedded frame(s) have no descriptive title. Screen-reader users need the title to decide whether to enter an embedded document (WCAG 4.1.2).`,
+    evidence: untitledFrames.length ? untitledFrames.slice(0, 3).join("\n").slice(0, 500) : undefined,
+  });
+
+  const dialogs = html.match(/<(?:dialog\b|[^>]+\brole=["']dialog["'][^>]*)>/gi) ?? [];
+  const unnamedDialogs = dialogs.filter((dialog) => !/\baria-(?:label|labelledby)\s*=|\btitle\s*=/i.test(dialog));
+  checks.push({
+    category: CATEGORIES.ACCESSIBILITY, checkKey: "dialogs_have_names", label: "Dialogs have accessible names",
+    status: unnamedDialogs.length === 0 ? "PASS" : "FAIL",
+    detail: unnamedDialogs.length === 0 ? (dialogs.length === 0 ? "No dialog elements detected." : "Every dialog has an accessible name.") : `${unnamedDialogs.length} dialog(s) have no aria-label, aria-labelledby, or title. A modal must announce its purpose before a user can decide how to proceed (WCAG 4.1.2).`,
+    evidence: unnamedDialogs.length ? unnamedDialogs.slice(0, 3).join("\n").slice(0, 500) : undefined,
+  });
+
+  const hiddenBlocks = html.match(/<([a-z][\w-]*)\b[^>]*\baria-hidden=["']true["'][^>]*>[\s\S]*?<\/\1>/gi) ?? [];
+  const hiddenFocusable = hiddenBlocks.filter((block) => /<(?:a\b[^>]*\bhref\s*=|button\b|input\b(?![^>]*\btype=["']hidden)|select\b|textarea\b)|\btabindex\s*=\s*["']?(?!-1\b)\d+/i.test(block));
+  checks.push({
+    category: CATEGORIES.ACCESSIBILITY, checkKey: "aria_hidden_not_focusable", label: "aria-hidden content contains no focusable controls",
+    status: hiddenFocusable.length === 0 ? "PASS" : "FAIL",
+    detail: hiddenFocusable.length === 0 ? "No focusable control was found inside aria-hidden content." : `${hiddenFocusable.length} aria-hidden region(s) contain focusable controls. Keyboard users can land on controls that screen readers are instructed to ignore; remove the control from tab order or do not hide its parent (WCAG 4.1.2).`,
+    evidence: hiddenFocusable.length ? hiddenFocusable.slice(0, 2).join("\n").slice(0, 500) : undefined,
+  });
 
   // Skip to main content
   const hasSkipLink = /href=["']#(main|content|skip|maincontent)/i.test(html) || /skip.*to.*main|skip.*navigation/i.test(html);
