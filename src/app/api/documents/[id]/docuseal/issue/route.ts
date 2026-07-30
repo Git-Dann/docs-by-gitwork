@@ -52,11 +52,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       send_email: false, // Foundry handles the emails via mailto:
       order: "preserved", // Client signs first, then Gitwork
       external_id: document.id,
-<<<<<<< HEAD
       completed_redirect_url: `${process.env.NEXT_PUBLIC_CLIENT_PORTAL_URL || "https://staging.foundry.gitwork.tech"}/login`, // Fallback if they finish outside the embed
-=======
-      completed_redirect_url: `https://foundry.gitwork.co.uk/docs/${document.shareToken || document.id}`, // Fallback if they finish
->>>>>>> origin/staging
       submitters: [
         {
           role: "Client",

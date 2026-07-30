@@ -18,11 +18,7 @@ export default function SignDocumentPage() {
   if (!slug) return null;
 
   return (
-<<<<<<< HEAD
     <main className="h-screen bg-[#f3f4f6] flex flex-col">
-=======
-    <main className="min-h-screen bg-[#f3f4f6] flex flex-col">
->>>>>>> origin/staging
       {/* Branded Header */}
       <div className="bg-[#111827] text-white px-6 py-4 flex items-center shadow-md">
         <span className="font-semibold text-lg tracking-tight">Gitwork Foundry</span>
@@ -32,17 +28,11 @@ export default function SignDocumentPage() {
       </div>
 
       {/* Main Content */}
-<<<<<<< HEAD
       <div className="flex-1 w-full max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col min-h-0">
         {/* DocuSeal Embed Container */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden w-full flex-1 relative">
-=======
-      <div className="flex-1 w-full max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
-        {/* DocuSeal Embed Container */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden w-full h-[800px]">
->>>>>>> origin/staging
-          <DocusealForm 
-            src={`https://docuseal.com/s/${slug}`} 
+          <DocusealForm
+            src={`https://docuseal.com/s/${slug}`}
             style={{ width: "100%", height: "100%" }}
             onComplete={(e) => {
               // The webhook handles the actual backend state update.
@@ -55,12 +45,12 @@ export default function SignDocumentPage() {
           />
         </div>
       </div>
-      
+
       {/* Footer */}
       <div className="py-8 text-center">
-         <p className="text-xs text-gray-500">
-           Secured by DocuSeal &bull; Powered by Foundry
-         </p>
+        <p className="text-xs text-gray-500">
+          Secured by DocuSeal &bull; Powered by Foundry
+        </p>
       </div>
     </main>
   );
