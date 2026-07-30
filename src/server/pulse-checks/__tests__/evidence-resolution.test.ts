@@ -34,7 +34,7 @@ describe("evidence-backed verification controls", () => {
       [observed("ssl_valid", "PASS")],
     );
 
-    const check = byKey(resolved, "standards_web_app_deep_network_01");
+    const check = byKey(resolved, "standards_deep_network_01");
     expect(check.status).toBe("PASS");
     expect(check.confidence).toBe("HIGH");
     expect(check.detail).toContain("Pulse runtime evidence");
@@ -46,7 +46,7 @@ describe("evidence-backed verification controls", () => {
       [observed("ssl_valid", "FAIL")],
     );
 
-    const check = byKey(resolved, "standards_web_app_deep_network_01");
+    const check = byKey(resolved, "standards_deep_network_01");
     expect(check.status).toBe("FAIL");
     expect(check.confidence).toBe("HIGH");
     expect(check.evidence).toContain("ssl_valid");
@@ -57,7 +57,7 @@ describe("evidence-backed verification controls", () => {
     const low = resolveEvidenceBackedControls("WEB_APP", [observed("ssl_valid", "PASS", "LOW")]);
 
     for (const result of [weak, low]) {
-      const check = byKey(result, "standards_web_app_deep_network_01");
+      const check = byKey(result, "standards_deep_network_01");
       expect(check.status).toBe("WARN");
       expect(check.confidence).toBe("LOW");
     }
@@ -65,8 +65,8 @@ describe("evidence-backed verification controls", () => {
 
   it("leaves unrelated controls as manual evidence requirements", () => {
     const resolved = resolveEvidenceBackedControls("WEB_APP", [observed("ssl_valid", "PASS")]);
-    const unrelated = byKey(resolved, "standards_web_app_deep_ai_behavior_01");
-    const original = byKey(runStandardsVerificationCatalog("WEB_APP"), "standards_web_app_deep_ai_behavior_01");
+    const unrelated = byKey(resolved, "standards_deep_ai_behavior_01");
+    const original = byKey(runStandardsVerificationCatalog("WEB_APP"), "standards_deep_ai_behavior_01");
 
     expect(unrelated.status).toBe(original.status);
     expect(unrelated.confidence).toBe(original.confidence);

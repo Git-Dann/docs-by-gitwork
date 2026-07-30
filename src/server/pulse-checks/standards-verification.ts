@@ -150,25 +150,37 @@ export const PULSE_DEEP_AUDIT_CONTROLS: Control[] = [
 export const STANDARDS_VALIDATION_CONTROL_COUNT = STANDARDS_VALIDATION_CONTROLS.length;
 export const PULSE_DEEP_AUDIT_CONTROL_COUNT = PULSE_DEEP_AUDIT_CONTROLS.length;
 export const PULSE_VERIFICATION_CONTROLS = [...STANDARDS_VALIDATION_CONTROLS, ...PULSE_DEEP_AUDIT_CONTROLS];
-export const STANDARDS_VALIDATION_CATALOGUE_COUNT = PULSE_VERIFICATION_CONTROLS.length * PLATFORM_VALIDATION_PROFILES.length;
+/**
+ * The catalogue is 391 CONTROLS. It used to also export controls × platforms as a
+ * "catalogue count", which is what put 4,301 rows in the registry and made the
+ * framework panel read as though Pulse had four thousand additional checks. It
+ * never did: the same control was registered once per platform profile, differing
+ * only in a label prefix. Counting inventory as coverage is precisely the claim
+ * this product exists to refuse, so the multiplication is gone.
+ */
+export const STANDARDS_VALIDATION_CATALOGUE_COUNT = PULSE_VERIFICATION_CONTROLS.length;
 
 function profileFor(platform?: string) {
   return PLATFORM_VALIDATION_PROFILES.find(([id]) => id === platform?.toUpperCase())
     ?? PLATFORM_VALIDATION_PROFILES.find(([id]) => id === "OTHER")!;
 }
 
-function keyFor(platform: PlatformId, control: Control) {
-  return `standards_${platform.toLowerCase()}_${control.id}`;
+/**
+ * A control's key is platform-independent. "Rotate sessions after login" is one
+ * control whether the surface is a web app or an iOS build; the PLATFORM belongs
+ * in the label and the instruction, which is where a reader needs it, not in the
+ * identity — which is where it multiplied the catalogue elevenfold.
+ */
+function keyFor(control: Control) {
+  return `standards_${control.id}`;
 }
 
-/** The full cross-platform inventory used by the settings panel and framework count. */
-export const STANDARDS_VALIDATION_REGISTRY = PLATFORM_VALIDATION_PROFILES.flatMap(([platform, label]) =>
-  PULSE_VERIFICATION_CONTROLS.map((control) => ({
-    key: keyFor(platform, control),
-    category: CATEGORIES.STANDARDS_VERIFICATION,
-    label: `${label}: ${control.label}`,
-  })),
-);
+/** One row per control — the settings panel and framework count show 391, not 4,301. */
+export const STANDARDS_VALIDATION_REGISTRY = PULSE_VERIFICATION_CONTROLS.map((control) => ({
+  key: keyFor(control),
+  category: CATEGORIES.STANDARDS_VERIFICATION,
+  label: control.label,
+}));
 
 type EvidenceBinding = {
   controlId: string;
@@ -218,8 +230,7 @@ function evidenceIsDecisive(check: PulseScanCheckInput): check is PulseScanCheck
 export function resolveEvidenceBackedControls(platform: string | undefined, observations: PulseScanCheckInput[]): PulseScanCheckInput[] {
   const bySourceKey = new Map(observations.filter(evidenceIsDecisive).map((check) => [check.checkKey, check]));
   const resolved = new Map<string, PulseScanCheckInput>();
-  const [platformId] = profileFor(platform);
-  const keyPrefix = `standards_${platformId.toLowerCase()}_`;
+  const keyPrefix = "standards_";
 
   for (const binding of EVIDENCE_BINDINGS) {
     const observation = bySourceKey.get(binding.sourceKey);
@@ -252,7 +263,7 @@ export function runStandardsVerificationCatalog(platform?: string): PulseScanChe
   const [id, label, environment] = profileFor(platform);
   return PULSE_VERIFICATION_CONTROLS.map((control) => ({
     category: CATEGORIES.STANDARDS_VERIFICATION,
-    checkKey: keyFor(id, control),
+    checkKey: keyFor(control),
     label: `${label}: ${control.label}`,
     status: "WARN",
     confidence: "LOW",
