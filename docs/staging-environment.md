@@ -372,6 +372,37 @@ neither signs you into production nor signs you out of it. (`prompt: "consent"` 
 Sharing the client is the deliberate choice: a second one would mean a second consent screen and a
 second secret to keep in step, for no isolation gain given the three boundaries above.
 
+### ⚠️ Sharing production's `AUTH_SECRET` destroys boundary 2 — and it is not obvious
+
+The three boundaries above assume staging has its **own** `AUTH_SECRET`. "Let's just reuse the same
+`.env` for now" is the natural shortcut and it breaks the most important one, in a way domain
+separation does **not** cover:
+
+The session is a **JWT signed with `AUTH_SECRET`** — it carries the user id, role and permissions,
+and it is verified by signature, not looked up in a table. With the same secret on both hosts, **a
+token minted by staging is cryptographically valid on production.** Different registrable domains
+stop a browser *automatically* sending it, but nothing stops anyone reading a staging cookie and
+setting it manually on the production domain. Staging is the box where a half-finished feature, a
+debug endpoint or a `console.log` is most likely to expose one.
+
+So a shared `AUTH_SECRET` turns "staging access" into "production access". Same reasoning, decreasing
+severity, for the others:
+
+| Shared value | What it grants on production |
+|---|---|
+| `AUTH_SECRET` | **Session forgery — a staging token authenticates as that user on prod** |
+| `ENCRYPTION_KEY` | Decryption of real client bank details (§0) |
+| `API_KEY` | Every `/api/*` route except `/api/health` |
+| `CRON_SECRET` | Ability to fire `/api/cron/*` — retention sweeps, digests |
+| `VAPID_PRIVATE_KEY` / APNs key | Push to devices subscribed via production |
+| `POSTGRES_PASSWORD` | Nothing extra by itself, but removes a layer if the network is ever reachable |
+
+**Genuinely fine to share:** the Google OAuth client id + secret. One client serving both hosts is the
+deliberate design (§5), and it grants no cross-environment session.
+
+There is no effort saved by sharing: `generate-env.sh` produces all of these in one command, on the
+box, in seconds.
+
 ### The only realistic route to a crossover is `NEXTAUTH_URL`
 
 Which is why it's called out in step 5 and §2. Several places build URLs from it directly, and each
@@ -524,6 +555,68 @@ Three deliberate differences from production's `deploy.yml`, each a safety bound
    starting a container that 500s on every page.
 
 The version string carries a `-staging` suffix so the sidebar footer makes the environment obvious.
+
+---
+
+## 6a. Wiki and client portal — how they actually work
+
+Not staging-specific, but the first two things anyone testing a fresh workspace trips over.
+
+### The `/wiki/<slug>` 404
+
+**`/wiki/<something>` treats that segment as a SHARE TOKEN, not a client slug.** It's a legacy
+redirect (`src/app/wiki/[slug]/page.tsx` — the directory is named `[slug]` to match the canonical
+two-segment route, but the comment says outright that it "actually holds the share token"). So
+visiting `/wiki/my-dummy-client` calls `resolvePublicWiki("my-dummy-client")`, finds nothing, and
+`notFound()`s. **A 404 there is correct behaviour, not a broken client.**
+
+The three URLs that matter:
+
+| URL | What it is | Auth |
+|---|---|---|
+| `/app/portal/<slug>/wiki` | **Internal** wiki workspace — where the team edits | Team Google sign-in |
+| `/wiki/<slug>/<token>` | **Public** client-facing wiki — the canonical form | The token, plus a portal login for gated sections |
+| `/wiki/<token>` | Legacy single-segment share links | 307s to the canonical form |
+
+Get the token by enabling the share: `POST /api/clients/<slug>/wiki/share`, or the share control on
+the wiki workspace.
+
+**The wiki record itself never needs creating.** `getWikiBySlug` → `getOrCreateWiki(clientId)`, and
+`ensureWikiId` upserts — so it materialises on first access. If `/app/portal/<slug>/wiki` 404s, the
+*client* lookup failed (`workspaceId_slug`), not the wiki: check the slug in the URL matches
+`WorkspaceClient.slug`, which is `slugifyClientName(name)` and not always what you'd guess from the
+display name.
+
+### Client portal login is NOT Google
+
+A different auth system from the team's, and the distinction matters when making test accounts:
+
+- **Team** (`/app/**`) → Google OAuth, restricted to `@gitwork.co.uk` (§5).
+- **Clients** (`/portal/login`) → **email + password**, stored as a `ClientWikiUser` row with a bcrypt
+  hash, scoped to one client's wiki. No Google, no domain restriction — so a client can be on any
+  email.
+
+`POST /api/portal/login` checks the credentials across **every** client wiki, sets an access cookie
+per wiki the user can reach, and returns the list — one match goes straight in, several show a
+chooser. That's why there's no client picker on the login form.
+
+### Making a test client login
+
+Create the user against the client (password **min 8 characters**; requires `canManageClients`):
+
+```bash
+curl -X POST https://staging.foundry.gitwork.tech/api/clients/<slug>/wiki/users \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"usman@example.com","password":"<8+ chars>","name":"Usman"}'
+```
+
+Then they sign in at `/portal/login`. List or remove them via `GET` / `DELETE` on the same route.
+There is also a UI for this on the wiki workspace's users panel — prefer that if you're already in
+the app.
+
+⚠️ **Use a throwaway address, not a real client's.** On staging this is harmless; the same call
+against production creates a real portal account with a real password.
 
 ---
 
