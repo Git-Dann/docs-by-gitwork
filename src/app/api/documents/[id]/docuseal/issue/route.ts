@@ -12,7 +12,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // 1. Authorize user
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canShareDocs, "issue DocuSeal MSA");
-    
+
     const { id } = await context.params;
     if (!id) return apiError("Missing document id", 400);
 
@@ -26,15 +26,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (!document.client) return apiError("Document must be assigned to a client to issue an MSA", 400);
     // Let's allow PROPOSAL and MSA types to be flexible
     if (document.documentType !== "MSA" && document.documentType !== "PROPOSAL") {
-       return apiError("This document type is not supported for DocuSeal right now", 400);
+      return apiError("This document type is not supported for DocuSeal right now", 400);
     }
 
     const client = document.client;
-    
+
     // 3. Extract required DocuSeal payload data
     const DOCUSEAL_API_KEY = process.env.DOCUSEAL_API_KEY;
     if (!DOCUSEAL_API_KEY) return apiError("DocuSeal integration is not configured", 500);
-    
+
     // We assume the template ID is stored in env, or hardcoded for the MSA
     const MSA_TEMPLATE_ID = process.env.DOCUSEAL_MSA_TEMPLATE_ID;
     if (!MSA_TEMPLATE_ID) return apiError("DocuSeal MSA template ID is not configured", 500);
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         {
           role: "Gitwork",
           name: user?.name || "Gitwork Admin",
-          email: user?.email || "admin@gitwork.co.uk",
+          email: user?.email || "muhammad.usman@gitwork.co.uk",
           external_id: `${document.id}:gitwork`,
           send_email: false
         }
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       slug?: string;
     }
     const submitters = (await response.json()) as DocuSealSubmitterResponse[];
-    
+
     const clientSubmitter = submitters.find((s) => s.role === "Client");
     const gitworkSubmitter = submitters.find((s) => s.role === "Gitwork");
 
