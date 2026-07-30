@@ -85,6 +85,16 @@ export interface BuildStandupCardInput {
   note?: string | null;
   /** Tasks to show as expandable rows. Phase 2 caps at 8 per card. */
   tasks: StandupTaskCardInput[];
+  /**
+   * Optional headed groups, rendered in order INSTEAD of the single
+   * phase-labelled `tasks` list. The standup uses this so a PM update can say
+   * what shipped, what is waiting on sign-off and what is still moving — one
+   * list labelled "Done today" couldn't express that, and lumping In Review in
+   * with it reported unreviewed work as finished. Callers that post a single
+   * task (a manual push, a Slack re-render) keep passing `tasks` and are
+   * unaffected.
+   */
+  sections?: Array<{ label: string; tasks: StandupTaskCardInput[] }>;
 }
 
 const MAX_TASKS_PER_CARD = 12;
@@ -204,8 +214,15 @@ export function buildStandupCard(input: BuildStandupCardInput): { text: string; 
   const phaseLabel = input.phase === "AM" ? "In progress" : "Done today";
   const today = input.workdayLabel.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
   const friendlyDate = formatFriendlyDate(input.workdayLabel);
-  const text = `${input.phase === "AM" ? "Standup" : "Done today"} — ${input.who} (${friendlyDate})`;
-  const clientSlug = input.tasks[0]?.clientSlug ?? null;
+  // Notification/fallback line. A sectioned PM card covers more than what shipped,
+  // so "End of day" is accurate where "Done today" would undersell it.
+  const headline =
+    input.phase === "AM" ? "Standup" : input.sections?.length ? "End of day" : "Done today";
+  const text = `${headline} — ${input.who} (${friendlyDate})`;
+  const clientSlug =
+    input.tasks[0]?.clientSlug ??
+    input.sections?.flatMap((s) => s.tasks)[0]?.clientSlug ??
+    null;
 
   // ─── Owner + date header — narrative style, mirrors how the team writes
   //     standups in chat ("Owner: @Dan / Date: Friday, 12 June / In progress").
@@ -235,7 +252,25 @@ export function buildStandupCard(input: BuildStandupCardInput): { text: string; 
   // ─── Tasks — one tidy bulleted list under a labelled heading. No per-task
   //     links or overflow menus (cleaner + easier to read); the single board
   //     button below covers "open in Foundry".
-  if (input.tasks.length > 0) {
+  if (input.sections?.length) {
+    // Headed groups. Meta (due dates) is useful on work still in flight and just
+    // noise on what already shipped, so it's suppressed on the "done" group.
+    for (const group of input.sections) {
+      if (group.tasks.length === 0) continue;
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            `*${escapeMrkdwn(group.label)}*\n` +
+            taskListText(group.tasks, {
+              today,
+              withMeta: !/^done/i.test(group.label),
+            }),
+        },
+      });
+    }
+  } else if (input.tasks.length > 0) {
     blocks.push({
       type: "section",
       text: {
