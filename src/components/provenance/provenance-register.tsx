@@ -11,6 +11,8 @@ import {
   ClipboardDocumentIcon,
   LockOpenIcon,
   BeakerIcon,
+  CheckIcon,
+  NoSymbolIcon,
 } from "@heroicons/react/24/outline";
 import { usePulseScans } from "@/hooks/use-pulse";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -38,6 +40,20 @@ const GRADE_TONE: Record<CountermarkGrade, string> = {
   CONDITIONAL: "border-amber-200 bg-amber-50 text-amber-700",
   NOT_CERTIFIED: "border-red-200 bg-red-50 text-red-700",
   INCOMPLETE: "border-slate-300 bg-slate-100 text-slate-600",
+};
+
+/** 2px left rail per grade — the register's scan line. Deliberately muted versions of the
+ *  chip tones: the chip states the verdict, the rail only has to group the rows. */
+const GRADE_RAIL: Record<CountermarkGrade, string> = {
+  // ⚠️ Side-specific (`border-l-<colour>`), NOT `border-<colour>`. The list uses `divide-y`,
+  // which puts a top border on each sibling and colours it from the element's own
+  // border-color — so a whole-element colour here tinted every row DIVIDER with that row's
+  // grade. Caught by screenshotting: it drew an amber line under the conditional row and a
+  // green one under the certified rows.
+  CERTIFIED: "border-l-emerald-300",
+  CONDITIONAL: "border-l-amber-300",
+  NOT_CERTIFIED: "border-l-red-300",
+  INCOMPLETE: "border-l-slate-300",
 };
 
 const STATUS_TONE: Record<CountermarkStatus, string> = {
@@ -135,7 +151,10 @@ export function ProvenanceRegister() {
             A Countermark is the certificate you hand to a client, insurer or acquirer. It states what
             was checked, what passed, and what could not be established.
           </p>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {/* No `shrink-0`: it stops `flex-wrap` from ever engaging, so at 390px both buttons
+              overflowed the card and widget-card's `overflow-hidden` clipped the primary one.
+              Allowed to shrink, they stack instead. */}
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {/* Super Admin only, and last in the row so it never sits where "Strike" is
                 expected. Demoing previously needed a devtools fetch or the workspace API
                 key; neither is something to do in front of an audience. */}
@@ -206,72 +225,99 @@ export function ProvenanceRegister() {
         ) : (
           <ul className="divide-y divide-[var(--border-2)]">
             {countermarks.map((h) => (
-              <li key={h.id} className="px-4 py-3.5">
+              <li
+                key={h.id}
+                className={cn(
+                  // 2px grade rail. Makes the register scannable down the left edge without
+                  // colouring whole rows, which at seven-plus marks reads as an error state.
+                  "border-l-2 py-3.5 pr-4 pl-[14px] transition-colors hover:bg-[var(--surface-1)]",
+                  GRADE_RAIL[h.grade],
+                )}
+              >
                 <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium text-[var(--text-1)] [overflow-wrap:break-word]">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="text-[14.5px] font-medium text-[var(--text-1)] [overflow-wrap:anywhere]">
                         {h.subjectName}
                       </span>
                       <Badge grade={h.grade} />
-                      <span className={cn("font-mono text-[10px] uppercase tracking-wide", STATUS_TONE[h.status])}>
+                    </div>
+
+                    {/* One meta rail, not three competing treatments. Status keeps its tone
+                        because it is the thing that changes; everything else is muted, so the
+                        eye lands on VALID / LAPSED / REVOKED rather than on the standard id. */}
+                    <p className="mt-1 font-mono text-[10.5px] tracking-wide text-[var(--text-4)]">
+                      <span className={cn("uppercase", STATUS_TONE[h.status])}>
                         {h.status}
                         {(h.status === "VALID" || h.status === "EXPIRING") && ` · ${h.daysRemaining}d`}
                       </span>
-                      {!h.seal && (
-                        <span className="font-mono text-[10px] uppercase tracking-wide text-amber-600">
-                          UNSEALED
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-3)] [overflow-wrap:break-word]">
+                      {!h.seal && <span className="text-amber-600"> · UNSEALED</span>}
+                      {" · "}
+                      {h.standardId} v{h.standardVersion} · {h.coverage.measured}/{h.coverage.total} clauses ·{" "}
+                      {h.checkCount} checks · {formatDate(h.issuedAt)} · {h.issuerName}
+                    </p>
+
+                    <p className="mt-1.5 text-[12.5px] leading-relaxed text-[var(--text-3)] [overflow-wrap:anywhere]">
                       {h.gradeReason}
                     </p>
-                    <p className="mt-1 font-mono text-[11px] text-[var(--text-4)]">
-                      {h.standardId} v{h.standardVersion} · {h.coverage.measured}/{h.coverage.total} clauses ·{" "}
-                      {h.checkCount} checks · issued {formatDate(h.issuedAt)} by {h.issuerName}
-                    </p>
+
+                    {/* Left-ruled rather than a filled slab: still unmissable, but it no longer
+                        outweighs the verdict it is annotating. */}
+                    {h.revokedReason && (
+                      <p className="mt-2 border-l-2 border-red-300 pl-2.5 text-[12.5px] leading-relaxed text-red-700">
+                        <span className="font-medium">Revoked.</span> {h.revokedReason}
+                      </p>
+                    )}
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-2">
+                  {/* Fixed-width action column so the icons form a straight edge down the list.
+                      Previously the revoked row dropped its Revoke button and the whole cluster
+                      shifted right, which is what made the list look misaligned. */}
+                  <div className="flex w-auto shrink-0 items-center justify-end gap-1 sm:w-[116px]">
                     <button
                       type="button"
-                      className="app-button app-button-secondary app-button-sm"
+                      className="app-button app-button-tertiary app-button-icon-sm"
                       onClick={() => void copyLink(h.token)}
                       title="Copy the public certificate link"
+                      aria-label={`Copy the certificate link for ${h.subjectName}`}
                     >
-                      <ClipboardDocumentIcon className="h-4 w-4" />
-                      <span className="ml-1.5">{copied === h.token ? "Copied" : "Copy link"}</span>
+                      {copied === h.token ? (
+                        <CheckIcon className="h-4 w-4 text-emerald-600" />
+                      ) : (
+                        <ClipboardDocumentIcon className="h-4 w-4" />
+                      )}
                     </button>
                     <a
-                      className="app-button app-button-secondary app-button-sm"
+                      className="app-button app-button-tertiary app-button-icon-sm"
                       href={`/countermark/${h.token}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       title="Open the public certificate"
+                      aria-label={`Open the public certificate for ${h.subjectName}`}
                     >
                       <ArrowTopRightOnSquareIcon className="h-4 w-4" />
                     </a>
-                    {canIssueCountermark && !h.revokedAt && (
-                      <button
-                        type="button"
-                        className="app-button app-button-tertiary app-button-sm"
-                        onClick={() => {
-                          setRevoking(h);
-                          setRevokeReason("");
-                        }}
-                      >
-                        Revoke
-                      </button>
-                    )}
+                    {canIssueCountermark &&
+                      (h.revokedAt ? (
+                        // Holds the slot so the column stays aligned. aria-hidden because it
+                        // is pure spacing — announcing an empty control would be noise.
+                        <span className="h-9 w-9" aria-hidden="true" />
+                      ) : (
+                        <button
+                          type="button"
+                          className="app-button app-button-tertiary app-button-icon-sm hover:!bg-[var(--danger-50)] hover:!text-[#b42318]"
+                          onClick={() => {
+                            setRevoking(h);
+                            setRevokeReason("");
+                          }}
+                          title="Withdraw this countermark"
+                          aria-label={`Withdraw the countermark for ${h.subjectName}`}
+                        >
+                          <NoSymbolIcon className="h-4 w-4" />
+                        </button>
+                      ))}
                   </div>
                 </div>
-
-                {h.revokedReason && (
-                  <p className="mt-2 rounded-[6px] border border-red-200 bg-red-50 px-3 py-2 text-xs leading-relaxed text-red-700">
-                    Revoked: {h.revokedReason}
-                  </p>
-                )}
               </li>
             ))}
           </ul>
