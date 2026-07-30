@@ -16,6 +16,7 @@ import { WikiDashboard } from "./wiki-dashboard";
 import { DesignSystemViewer } from "@/components/clients/design-system/design-system-viewer";
 import { MonitorStatusBoard } from "./monitors-section";
 import { DocumentsList } from "./documents-section";
+import { WikiAgreementsSection } from "./wiki-agreements-section";
 import { apiFetch } from "@/lib/api";
 
 type WikiPageType =
@@ -63,6 +64,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   changelog: "Changelog",
   "course-requests": "Course Requests",
   "golf-data": "Golf Data",
+  agreements: "Agreements",
 };
 
 // JetBrains Mono stack — consistent with wiki-workspace.tsx
@@ -105,6 +107,7 @@ export function WikiPublicView({
     ...(wiki.documents.enabled && wiki.documents.documents.length > 0
       ? (["documents"] as const)
       : []),
+    "agreements",
     // Requests shows when intake is on OR there are dev-raised blockers to action.
     ...(wiki.intakeEnabled || wiki.blockers.length > 0 ? (["intake"] as const) : []),
     ...(wiki.codeHandover.enabled && wiki.codeHandover.modules.length > 0
@@ -186,6 +189,10 @@ export function WikiPublicView({
 
     if (activeSection === "documents") {
       return <DocumentsList documents={wiki.documents.documents} fileBase={`/api/wiki/${token}`} />;
+    }
+
+    if (activeSection === "agreements") {
+      return <WikiAgreementsSection token={token} />;
     }
 
     if (activeSection === "intake") {

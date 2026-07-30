@@ -40,8 +40,9 @@ const SECTION_ICON: Record<WikiSection, IconType> = {
   runbook: WrenchScrewdriverIcon,
   "data-model": CircleStackIcon,
   changelog: ClockIcon,
-  "course-requests": FlagIcon,
+  "course-requests": BookOpenIcon,
   "golf-data": ChartBarIcon,
+  agreements: DocumentTextIcon,
   settings: Cog6ToothIcon,
 };
 

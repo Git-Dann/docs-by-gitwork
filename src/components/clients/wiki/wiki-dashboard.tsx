@@ -60,6 +60,7 @@ const SECTION_META: Record<
   changelog: { label: "Changelog", icon: ClockIcon },
   "course-requests": { label: "Course Requests", icon: FlagIcon },
   "golf-data": { label: "Golf Data", icon: ChartBarIcon },
+  agreements: { label: "Agreements", icon: DocumentTextIcon },
 };
 
 const SECTION_PAGE_TYPE: Record<DocSection, string> = {

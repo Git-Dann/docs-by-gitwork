@@ -18,7 +18,7 @@ export default function SignDocumentPage() {
   if (!slug) return null;
 
   return (
-    <main className="min-h-screen bg-[#f3f4f6] flex flex-col">
+    <main className="h-screen bg-[#f3f4f6] flex flex-col">
       {/* Branded Header */}
       <div className="bg-[#111827] text-white px-6 py-4 flex items-center shadow-md">
         <span className="font-semibold text-lg tracking-tight">Gitwork Foundry</span>
@@ -28,9 +28,9 @@ export default function SignDocumentPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 w-full max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
+      <div className="flex-1 w-full max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col min-h-0">
         {/* DocuSeal Embed Container */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden w-full h-[800px]">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden w-full flex-1 relative">
           <DocusealForm 
             src={`https://docuseal.com/s/${slug}`} 
             style={{ width: "100%", height: "100%" }}

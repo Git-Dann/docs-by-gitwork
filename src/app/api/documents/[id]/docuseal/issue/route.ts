@@ -19,7 +19,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // 2. Fetch Document and Client details
     const document = await prisma.document.findUnique({
       where: { id },
-      include: { client: true },
+      include: { client: { include: { wiki: true } } },
     });
 
     if (!document) return apiError("Document not found", 404);
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       send_email: false, // Foundry handles the emails via mailto:
       order: "preserved", // Client signs first, then Gitwork
       external_id: document.id,
-      completed_redirect_url: `https://foundry.gitwork.co.uk/docs/${document.shareToken || document.id}`, // Fallback if they finish
+      completed_redirect_url: `${process.env.NEXT_PUBLIC_CLIENT_PORTAL_URL || "https://staging.foundry.gitwork.tech"}/login`, // Fallback if they finish outside the embed
       submitters: [
         {
           role: "Client",
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           name: user?.name || "Gitwork Admin",
           email: user?.email || "muhammad.usman@gitwork.co.uk",
           external_id: `${document.id}:gitwork`,
-          send_email: false
+          send_email: true
         }
       ]
     };
@@ -131,10 +131,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
     });
 
-    // 6. Return the slug back to the frontend
+    // 6. Return the slug and wiki details back to the frontend
+    const wiki = document.client.wiki;
     return apiOk({
       submissionId: docusealSubmission.submissionId,
       clientSlug: docusealSubmission.slug,
+      wikiSlug: document.client.slug,
+      wikiToken: wiki?.courseIngestToken,
       message: "DocuSeal submission created successfully."
     });
 
