@@ -8,7 +8,10 @@
 
 import { CATEGORY_META } from "@/server/pulse-checks/categories";
 import { CHECKS_REGISTRY, getChecksByCategory } from "@/server/checks-registry";
-import { PULSE_DEEP_AUDIT_CONTROL_COUNT, STANDARDS_VALIDATION_CATALOGUE_COUNT } from "@/server/pulse-checks/standards-verification";
+import {
+  PULSE_VERIFICATION_CONTROLS,
+  STANDARDS_VALIDATION_CATALOGUE_COUNT,
+} from "@/server/pulse-checks/standards-verification";
 
 export interface PulseFrameworkCategory {
   name: string;
@@ -27,8 +30,17 @@ export const PULSE_FRAMEWORK: PulseFrameworkCategory[] = CATEGORY_META.map((m) =
 
 /** Checks backed by executable URL/repository/source collectors today. */
 export const PULSE_EXECUTABLE_CHECK_TOTAL = CHECKS_REGISTRY.filter((check) => !check.key.startsWith("standards_")).length;
-/** Evidence requirements awaiting authenticated, device, CI-artifact, or release proof. */
-export const PULSE_EVIDENCE_REQUIREMENT_TOTAL = PULSE_DEEP_AUDIT_CONTROL_COUNT + 116;
+/**
+ * Evidence requirements awaiting authenticated, device, CI-artifact, or release proof.
+ *
+ * Derived from the control list rather than added up by hand. This was
+ * `PULSE_DEEP_AUDIT_CONTROL_COUNT + 116`, where 116 was the size of the other
+ * control group written in as a literal — correct on the day, and silently wrong
+ * the first time anyone adds a control to that group. The number is quoted to
+ * customers on the overview and the public product pages, which is exactly where
+ * a stale literal does damage.
+ */
+export const PULSE_EVIDENCE_REQUIREMENT_TOTAL = PULSE_VERIFICATION_CONTROLS.length;
 /** Platform-specific display rows; this is coverage inventory, never an executable-test count. */
 export const PULSE_EVIDENCE_COVERAGE_ROWS = STANDARDS_VALIDATION_CATALOGUE_COUNT;
 /** @deprecated Use PULSE_EXECUTABLE_CHECK_TOTAL for customer-facing claims. */

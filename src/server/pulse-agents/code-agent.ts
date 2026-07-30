@@ -2,7 +2,17 @@ import { CATEGORIES } from "../pulse-checks/categories";
 import { githubGraphQL, hasGithubToken, parseGithubRepo } from "@/lib/github";
 import type { PulseScanCheckInput, CodeAgentInsights } from "@/types/pulse";
 import { scanRepoSecrets, type SecretFinding } from "./secret-scanner";
-import { runNativeMobileChecks, runChromeExtensionChecks, runDesktopChecks, runCliChecks, runWebSourceChecks, runCleanlinessChecks } from "@/server/pulse-checks/native-repo";
+import {
+  runNativeMobileChecks,
+  runChromeExtensionChecks,
+  runDesktopChecks,
+  runCliChecks,
+  runWebSourceChecks,
+  runCleanlinessChecks,
+  runCiWorkflowChecks,
+  runContainerChecks,
+  runServiceDepthChecks,
+} from "@/server/pulse-checks/native-repo";
 
 const CODE_AGENT_QUERY = `
   query RepoIntelligence($owner: String!, $name: String!) {
@@ -405,7 +415,18 @@ async function runRestOnlyFamilies(
   // them must not delete the others' findings, which is the §35.1 failure mode.
   // Each returns [] for a repo of the wrong shape, so this is a no-op for a plain
   // web service beyond the secret scan.
-  const [secretResult, nativeResult, extensionResult, desktopResult, cliResult, webResult, cleanResult] = await Promise.allSettled([
+  const [
+    secretResult,
+    nativeResult,
+    extensionResult,
+    desktopResult,
+    cliResult,
+    webResult,
+    cleanResult,
+    ciResult,
+    containerResult,
+    serviceResult,
+  ] = await Promise.allSettled([
     scanRepoSecrets(parsed.owner, parsed.repo),
     runNativeMobileChecks(repoInput),
     runChromeExtensionChecks(repoInput),
@@ -413,6 +434,11 @@ async function runRestOnlyFamilies(
     runCliChecks(repoInput),
     runWebSourceChecks(repoInput),
     runCleanlinessChecks(repoInput),
+    // Shape-agnostic: both grade config that any repo can carry, so they run for
+    // every shape rather than being gated on one.
+    runCiWorkflowChecks(repoInput),
+    runContainerChecks(repoInput),
+    runServiceDepthChecks(repoInput),
   ]);
 
   if (secretResult.status === "fulfilled") {
@@ -420,7 +446,17 @@ async function runRestOnlyFamilies(
     exposedSecrets = secretResult.value.secrets;
   }
 
-  for (const result of [nativeResult, extensionResult, desktopResult, cliResult, webResult, cleanResult]) {
+  for (const result of [
+    nativeResult,
+    extensionResult,
+    desktopResult,
+    cliResult,
+    webResult,
+    cleanResult,
+    ciResult,
+    containerResult,
+    serviceResult,
+  ]) {
     if (result.status === "fulfilled") checks.push(...result.value.checks);
   }
 

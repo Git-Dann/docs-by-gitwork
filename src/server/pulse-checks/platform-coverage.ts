@@ -40,8 +40,19 @@ interface FamilySpec {
   shapes: CoverageShape[];
   /** Human name for the family, used in the message. */
   label: string;
-  /** Approximate size of the family, so the message quantifies what was missed. */
+  /**
+   * Exact size of the family — the number of distinct checkKeys its module(s)
+   * emit. This is QUOTED TO THE USER ("the 25 browser extension checks did NOT
+   * run"), so an overstatement is the same defect class this whole module was
+   * built to fix: claiming something about checks that do not exist.
+   *
+   * ⚠️ Hand-maintained numbers drift. `platform-coverage.reconcile.test.ts`
+   * counts the keys in `sourceFiles` and fails if this disagrees — which is how
+   * the browser-extension count was caught reading 26 against a family of 25.
+   */
   count: number;
+  /** The module(s) that emit this family, so the drift test can count them. */
+  sourceFiles: string[];
 }
 
 /**
@@ -51,12 +62,22 @@ interface FamilySpec {
  * URL suite, which needs no repo — so there is nothing to warn about.
  */
 export const PLATFORM_FAMILIES: Record<string, FamilySpec> = {
-  IOS_APP: { shapes: ["ios"], label: "iOS", count: 39 },
-  ANDROID_APP: { shapes: ["android"], label: "Android", count: 33 },
-  CROSS_PLATFORM_MOBILE: { shapes: ["flutter", "react-native"], label: "Flutter / React Native", count: 43 },
-  DESKTOP_APP: { shapes: ["electron", "tauri"], label: "Electron / Tauri", count: 33 },
-  CHROME_EXTENSION: { shapes: ["chrome-extension"], label: "browser extension", count: 26 },
-  CLI_TOOL: { shapes: ["cli"], label: "CLI / published package", count: 22 },
+  IOS_APP: { shapes: ["ios"], label: "iOS", count: 55, sourceFiles: ["ios-app.ts", "ios-app-extended.ts"] },
+  ANDROID_APP: { shapes: ["android"], label: "Android", count: 49, sourceFiles: ["android-app.ts", "android-app-extended.ts"] },
+  CROSS_PLATFORM_MOBILE: {
+    shapes: ["flutter", "react-native"],
+    label: "Flutter / React Native",
+    count: 59,
+    sourceFiles: ["flutter-app.ts", "react-native-app.ts", "cross-platform-extended.ts"],
+  },
+  DESKTOP_APP: { shapes: ["electron", "tauri"], label: "Electron / Tauri", count: 46, sourceFiles: ["desktop-app.ts", "desktop-app-extended.ts"] },
+  CHROME_EXTENSION: {
+    shapes: ["chrome-extension"],
+    label: "browser extension",
+    count: 38,
+    sourceFiles: ["chrome-extension.ts", "chrome-extension-extended.ts"],
+  },
+  CLI_TOOL: { shapes: ["cli"], label: "CLI / published package", count: 22, sourceFiles: ["cli-tool.ts"] },
 };
 
 /** Friendly name for a detected shape, for the "we found X instead" message. */

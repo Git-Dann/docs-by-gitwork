@@ -52,6 +52,11 @@ function emittedCheckKeys(): Set<string> {
     for (const m of src.matchAll(/checkKey:\s*"([^"]+)"/g)) keys.add(m[1]);
     // skipAllChecks / failedChecks 3-tuples: ["Category", "check_key", "label"]
     for (const m of src.matchAll(/\[\s*"[^"]+"\s*,\s*"([a-z0-9_]+)"\s*,\s*"[^"]+"\s*\]/g)) keys.add(m[1]);
+    // Catalogue form: ["check_key", "Label"]. Families that must emit the same key
+    // set whether or not they found evidence (CI, containers, the extended mobile
+    // families) drive both paths from one table, so their keys never appear as a
+    // `checkKey:` literal. Without this line the drift guard cannot see them at all.
+    for (const m of src.matchAll(/\[\s*"([a-z0-9]+_[a-z0-9_]+)"\s*,\s*"[^"]{4,}"\s*\]/g)) keys.add(m[1]);
   }
   return keys;
 }

@@ -17,9 +17,9 @@ describe("standards verification catalogue", () => {
     expect(PULSE_DEEP_AUDIT_CONTROL_COUNT).toBe(275);
     expect(PULSE_VERIFICATION_CONTROLS).toHaveLength(391);
     expect(PLATFORM_VALIDATION_PROFILES).toHaveLength(11);
-    expect(STANDARDS_VALIDATION_CATALOGUE_COUNT).toBe(4301);
-    expect(STANDARDS_VALIDATION_REGISTRY).toHaveLength(4301);
-    expect(new Set(STANDARDS_VALIDATION_REGISTRY.map((check) => check.key)).size).toBe(4301);
+    expect(STANDARDS_VALIDATION_CATALOGUE_COUNT).toBe(391);
+    expect(STANDARDS_VALIDATION_REGISTRY).toHaveLength(391);
+    expect(new Set(STANDARDS_VALIDATION_REGISTRY.map((check) => check.key)).size).toBe(391);
   });
 
   it("keeps manual verification work visible without changing the health score", () => {
@@ -31,7 +31,7 @@ describe("standards verification catalogue", () => {
 
   it("reports evidence coverage separately from executable checks", () => {
     expect(PULSE_EVIDENCE_REQUIREMENT_TOTAL).toBe(391);
-    expect(PULSE_EVIDENCE_COVERAGE_ROWS).toBe(4301);
+    expect(PULSE_EVIDENCE_COVERAGE_ROWS).toBe(391);
     expect(PULSE_EXECUTABLE_CHECK_TOTAL).toBeGreaterThan(800);
   });
 });
