@@ -11,6 +11,8 @@ export async function runPaymentsExtended(ctx: ExtendedCheckContext): Promise<Pu
       "sepa_bank_transfer", "paypal_integration", "three_ds_sca_compliant",
       "fraud_detection_tool", "pci_saq_evidence", "regional_payment_methods",
       "chargeback_prevention", "subscription_proration", "invoicing_capability", "tax_automation",
+      "payment_refund_policy", "payment_recurring_terms", "payment_checkout_provider",
+      "payment_billing_support", "payment_price_currency",
     ].map((checkKey) => ({
       category: CATEGORIES.PAYMENTS, checkKey, label: checkKey.replace(/_/g, " "),
       status: "SKIPPED" as const, detail: "Not applicable — no payment processing detected.",
@@ -47,6 +49,21 @@ export async function runPaymentsExtended(ctx: ExtendedCheckContext): Promise<Pu
 
   const hasTaxAutomation = /taxjar|avalara|stripe.*tax|tax.*calculation.*automatic|automatic.*tax|vat.*calculation/i.test(html);
   checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "tax_automation", label: "Tax automation (Avalara / Stripe Tax)", status: hasTaxAutomation ? "PASS" : "WARN", detail: hasTaxAutomation ? "Tax automation signals detected." : "No tax automation signals — manual tax calculation is a liability risk. Stripe Tax or Avalara handle US sales tax and EU VAT automatically." });
+
+  const hasRefundPolicy = /refund(?:s| policy)?|money.back|satisfaction guarantee|cancel.*within.*day/i.test(html);
+  checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "payment_refund_policy", label: "Refund or cancellation policy is discoverable", status: hasRefundPolicy ? "PASS" : "WARN", detail: hasRefundPolicy ? "Refund/cancellation policy signals detected." : "No refund or cancellation policy found on the scanned payment surface. Make the terms discoverable before checkout so customers and support can resolve disputes consistently." });
+
+  const hasRecurringTerms = /renew(?:s|al|ed)?s+(?:automatically|each|monthly|annually)|recurring (?:billing|charge)|cancel (?:anytime|at any time)|subscription terms/i.test(html);
+  checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "payment_recurring_terms", label: "Recurring billing terms are disclosed", status: hasSubs ? (hasRecurringTerms ? "PASS" : "WARN") : "SKIPPED", detail: hasSubs ? (hasRecurringTerms ? "Recurring billing disclosure signals detected." : "No recurring-billing disclosure was found. State renewal cadence, price, and cancellation route before a customer starts a subscription.") : "Not applicable — no subscription product detected." });
+
+  const hasHostedCheckout = /checkout\.stripe\.com|js\.stripe\.com|paypal\.com\/checkout|braintree|adyen|checkout\.paddle\.com|lemon\.squeezy/i.test(html);
+  checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "payment_checkout_provider", label: "Checkout provider integration is identifiable", status: hasHostedCheckout ? "PASS" : "WARN", detail: hasHostedCheckout ? "Hosted/tokenized checkout provider signals detected." : "No hosted or tokenized checkout provider signal was found. Do not collect raw card details in your own form unless you deliberately operate within the resulting PCI scope." });
+
+  const hasBillingSupport = /(?:billing|payment|invoice).{0,40}(?:support|help|contact)|href=["'][^"']*(?:billing|support|help|contact)[^"']*["']|mailto:/i.test(html);
+  checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "payment_billing_support", label: "Billing support route is discoverable", status: hasBillingSupport ? "PASS" : "WARN", detail: hasBillingSupport ? "Billing support/contact signal detected." : "No billing support route was found on the scanned surface. Make invoice, renewal, and payment-failure help reachable before they become chargebacks." });
+
+  const hasPriceCurrency = /(?:£|€|\$|USD|EUR|GBP|AUD|CAD)\s?\d|\d+(?:\.\d{2})?\s?(?:USD|EUR|GBP|AUD|CAD)/i.test(html);
+  checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "payment_price_currency", label: "Prices display a currency", status: hasPriceCurrency ? "PASS" : "WARN", detail: hasPriceCurrency ? "A priced amount with a currency indicator was detected." : "No price-and-currency pairing was found on the scanned surface. Where prices are shown, make the currency explicit so international customers are not surprised at checkout." });
 
   return checks;
 }
