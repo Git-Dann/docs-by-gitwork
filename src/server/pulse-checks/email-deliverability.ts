@@ -19,6 +19,11 @@ const ALL_CHECKS: Array<[string, string]> = [
   ["email_preview_configured", "Email preview text configured"],
   ["email_warm_up_signals", "Reputable ESP detected"],
   ["mailing_list_segmentation", "Email segmentation / tagging signals"],
+  ["email_mx_present", "Domain accepts email through MX records"],
+  ["spf_single_record", "Exactly one SPF policy is published"],
+  ["dmarc_aggregate_reporting", "DMARC aggregate reports have a destination"],
+  ["dmarc_full_coverage", "DMARC policy applies to 100% of messages"],
+  ["tls_rpt_destination", "TLS-RPT reports have a destination"],
 ];
 
 export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
@@ -62,16 +67,18 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
 
   // TLS-RPT
   let hasTlsRpt = false;
+  let tlsRptRecords: string[] = [];
   try {
-    const tlsRptRecords = await checkDnsRecord(`_smtp._tls.${hostname}`, "TXT");
+    tlsRptRecords = await checkDnsRecord(`_smtp._tls.${hostname}`, "TXT");
     hasTlsRpt = tlsRptRecords.some((r) => r.includes("v=TLSRPTv1"));
   } catch { /* ignore */ }
   checks.push({ category: CATEGORY, checkKey: "tls_rpt_record", label: "TLS-RPT reporting record", status: hasTlsRpt ? "PASS" : "WARN", detail: hasTlsRpt ? "TLS-RPT record detected — TLS connection failures are reported." : "No TLS-RPT record — TLS reporting (RFC 8460) sends reports when email delivery fails due to TLS negotiation issues." });
 
   // SPF hardfail
   let hasSpfHardfail = false;
+  let spfRecords: string[] = [];
   try {
-    const spfRecords = await checkDnsRecord(hostname, "TXT");
+    spfRecords = await checkDnsRecord(hostname, "TXT");
     const spf = spfRecords.find((r) => r.includes("v=spf1"));
     hasSpfHardfail = spf ? spf.includes("-all") : false;
     const hasSpfSoftfail = spf ? spf.includes("~all") : false;
@@ -82,8 +89,9 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
 
   // DMARC quarantine/reject
   let hasDmarcStrict = false;
+  let dmarcRecords: string[] = [];
   try {
-    const dmarcRecords = await checkDnsRecord(`_dmarc.${hostname}`, "TXT");
+    dmarcRecords = await checkDnsRecord(`_dmarc.${hostname}`, "TXT");
     const dmarc = dmarcRecords.find((r) => r.includes("v=DMARC1"));
     hasDmarcStrict = dmarc ? (dmarc.includes("p=quarantine") || dmarc.includes("p=reject")) : false;
     const hasDmarcNone = dmarc ? dmarc.includes("p=none") : false;
@@ -91,6 +99,27 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
   } catch {
     checks.push({ category: CATEGORY, checkKey: "dmarc_quarantine_reject", label: "DMARC policy: quarantine or reject", status: "WARN", detail: "Could not verify DMARC record — DNS lookup failed." });
   }
+
+  let mxRecords: string[] = [];
+  try { mxRecords = await checkDnsRecord(hostname, "MX"); } catch { /* handled as unavailable below */ }
+  checks.push({ category: CATEGORY, checkKey: "email_mx_present", label: "Domain accepts email through MX records", status: mxRecords.length > 0 ? "PASS" : "WARN", detail: mxRecords.length > 0 ? `${mxRecords.length} MX record${mxRecords.length === 1 ? "" : "s"} detected for the domain.` : "No MX record was found. If this domain sends customer email, configure a monitored receiving route for replies, abuse reports, and delivery failures." });
+
+  // DNS-over-HTTPS commonly returns TXT RDATA wrapped in quotes. Match the
+  // version token itself instead of assuming it is the first raw character.
+  const publishedSpf = spfRecords.filter((record) => /\bv=spf1\b/i.test(record));
+  checks.push({ category: CATEGORY, checkKey: "spf_single_record", label: "Exactly one SPF policy is published", status: publishedSpf.length === 1 ? "PASS" : "WARN", detail: publishedSpf.length === 1 ? "Exactly one SPF policy is published, so receivers have an unambiguous sender-authorisation rule." : publishedSpf.length > 1 ? `${publishedSpf.length} SPF policies are published. Multiple SPF records cause a permanent evaluation error; merge them into one policy.` : "No SPF policy was found." });
+
+  const dmarc = dmarcRecords.find((record) => /\bv=DMARC1\b/i.test(record));
+  const hasDmarcReporting = Boolean(dmarc && /(?:^|;)\s*rua=mailto:[^;\s]+/i.test(dmarc));
+  checks.push({ category: CATEGORY, checkKey: "dmarc_aggregate_reporting", label: "DMARC aggregate reports have a destination", status: hasDmarcReporting ? "PASS" : "WARN", detail: hasDmarcReporting ? "DMARC aggregate reports have a mailto destination, enabling visibility into legitimate and spoofed senders." : "No DMARC aggregate-report destination (rua=mailto:…) was found. Without reports, enforcement changes are difficult to validate safely." });
+
+  const pctMatch = dmarc?.match(/(?:^|;)\s*pct=(\d{1,3})\b/i);
+  const dmarcPct = pctMatch ? Number(pctMatch[1]) : dmarc ? 100 : 0;
+  checks.push({ category: CATEGORY, checkKey: "dmarc_full_coverage", label: "DMARC policy applies to 100% of messages", status: dmarcPct === 100 ? "PASS" : "WARN", detail: dmarcPct === 100 ? "DMARC applies to 100% of evaluated messages." : dmarc ? `DMARC currently applies to ${dmarcPct}% of messages. Increase pct to 100 after reports confirm all legitimate senders align.` : "No DMARC policy was found, so enforcement coverage cannot be verified." });
+
+  const tlsRpt = tlsRptRecords.find((record) => /v=TLSRPTv1/i.test(record));
+  const hasTlsDestination = Boolean(tlsRpt && /(?:^|;)\s*rua=mailto:[^;\s]+/i.test(tlsRpt));
+  checks.push({ category: CATEGORY, checkKey: "tls_rpt_destination", label: "TLS-RPT reports have a destination", status: hasTlsDestination ? "PASS" : "WARN", detail: hasTlsDestination ? "TLS-RPT publishes a mailto reporting destination." : "TLS-RPT has no valid mailto reporting destination. A version tag alone cannot deliver reports about failed or downgraded TLS sessions." });
 
   // Unsubscribe signal
   const hasUnsubscribe = /unsubscribe|list.unsubscribe|opt.out.*email|email.*preferences/i.test(html);

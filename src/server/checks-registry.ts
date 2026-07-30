@@ -568,6 +568,11 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "otp_expiry_configured", category: CATEGORIES.AUTHENTICATION, label: "OTP code expiry" },
   { key: "otp_resend_cooldown", category: CATEGORIES.AUTHENTICATION, label: "OTP resend cooldown" },
   { key: "otp_attempt_limiting", category: CATEGORIES.AUTHENTICATION, label: "OTP attempt / brute-force limiting" },
+  { key: "auth_login_autocomplete", category: CATEGORIES.AUTHENTICATION, label: "Login password identifies its autocomplete purpose" },
+  { key: "auth_signup_autocomplete", category: CATEGORIES.AUTHENTICATION, label: "New password identifies its autocomplete purpose" },
+  { key: "auth_password_reset", category: CATEGORIES.AUTHENTICATION, label: "Password reset flow is discoverable" },
+  { key: "auth_logout_control", category: CATEGORIES.AUTHENTICATION, label: "Sign-out control is discoverable" },
+  { key: "auth_security_notifications", category: CATEGORIES.AUTHENTICATION, label: "Security-event notifications are disclosed" },
 
   // ─── Roles & Permissions (20) ───────────────────────────────────────────────
   { key: "rbac_signals", category: CATEGORIES.ROLES, label: "Role-based access control (RBAC) UI" },
@@ -590,6 +595,11 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "workspace_tenant_isolation", category: CATEGORIES.ROLES, label: "Workspace / tenant isolation" },
   { key: "permission_inheritance", category: CATEGORIES.ROLES, label: "Permission inheritance (groups)" },
   { key: "gdpr_data_access_control", category: CATEGORIES.ROLES, label: "GDPR data access controlled by role" },
+  { key: "invite_expiry", category: CATEGORIES.ROLES, label: "Invitations expire automatically" },
+  { key: "invite_revocation", category: CATEGORIES.ROLES, label: "Pending invitations can be revoked" },
+  { key: "ownership_transfer", category: CATEGORIES.ROLES, label: "Workspace ownership can be transferred safely" },
+  { key: "last_admin_protection", category: CATEGORIES.ROLES, label: "Last administrator cannot be removed" },
+  { key: "custom_roles", category: CATEGORIES.ROLES, label: "Custom roles can be defined" },
 
   // ─── Email Deliverability (15) ───────────────────────────────────────────────
   { key: "dkim_record_present", category: CATEGORIES.EMAIL, label: "DKIM record configured" },
@@ -607,6 +617,11 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "email_preview_configured", category: CATEGORIES.EMAIL, label: "Email preview text configured" },
   { key: "email_warm_up_signals", category: CATEGORIES.EMAIL, label: "Reputable ESP detected" },
   { key: "mailing_list_segmentation", category: CATEGORIES.EMAIL, label: "Email segmentation / tagging signals" },
+  { key: "email_mx_present", category: CATEGORIES.EMAIL, label: "Domain accepts email through MX records" },
+  { key: "spf_single_record", category: CATEGORIES.EMAIL, label: "Exactly one SPF policy is published" },
+  { key: "dmarc_aggregate_reporting", category: CATEGORIES.EMAIL, label: "DMARC aggregate reports have a destination" },
+  { key: "dmarc_full_coverage", category: CATEGORIES.EMAIL, label: "DMARC policy applies to 100% of messages" },
+  { key: "tls_rpt_destination", category: CATEGORIES.EMAIL, label: "TLS-RPT reports have a destination" },
 
   // ─── Observability Extended (15) ────────────────────────────────────────────
   { key: "alert_pagerduty_opsgenie", category: CATEGORIES.OBSERVABILITY, label: "PagerDuty / OpsGenie / alerting configured" },
@@ -624,6 +639,11 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "incident_runbooks", category: CATEGORIES.OBSERVABILITY, label: "Incident runbooks / playbooks" },
   { key: "post_mortem_culture", category: CATEGORIES.OBSERVABILITY, label: "Post-mortem / incident review culture" },
   { key: "deployment_frequency_tracking", category: CATEGORIES.OBSERVABILITY, label: "Deployment frequency / DORA metrics tracked" },
+  { key: "public_status_page", category: CATEGORIES.OBSERVABILITY, label: "Public service status page" },
+  { key: "incident_subscriptions", category: CATEGORIES.OBSERVABILITY, label: "Customers can subscribe to incident updates" },
+  { key: "trace_correlation", category: CATEGORIES.OBSERVABILITY, label: "Requests expose trace or correlation identifiers" },
+  { key: "release_health", category: CATEGORIES.OBSERVABILITY, label: "Errors are correlated with releases" },
+  { key: "alert_escalation", category: CATEGORIES.OBSERVABILITY, label: "Alerts have an escalation path" },
 
   // ─── Infrastructure Extended (15) ───────────────────────────────────────────
   { key: "ipv6_dns_record", category: CATEGORIES.INFRASTRUCTURE, label: "IPv6 (AAAA) DNS record present" },

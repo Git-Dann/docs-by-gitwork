@@ -26,6 +26,11 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
       ["otp_expiry_configured", "OTP code expiry"],
       ["otp_resend_cooldown", "OTP resend cooldown"],
       ["otp_attempt_limiting", "OTP attempt / brute-force limiting"],
+      ["auth_login_autocomplete", "Login password identifies its autocomplete purpose"],
+      ["auth_signup_autocomplete", "New password identifies its autocomplete purpose"],
+      ["auth_password_reset", "Password reset flow is discoverable"],
+      ["auth_logout_control", "Sign-out control is discoverable"],
+      ["auth_security_notifications", "Security-event notifications are disclosed"],
     ];
     return authChecks.map(([checkKey, label]) => ({
       category: CATEGORIES.AUTHENTICATION, checkKey, label, status: "SKIPPED" as const,
@@ -110,6 +115,21 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
 
   const hasOtpAttemptLimiting = /too many.*(?:attempt|code|tries)|invalid.*code.*(?:attempt|remaining)|locked.*out.*(?:attempt|code)|maximum.*attempt/i.test(html);
   checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "otp_attempt_limiting", label: "OTP attempt / brute-force limiting", status: !isOtpRelevant ? "SKIPPED" : (hasOtpAttemptLimiting ? "PASS" : "WARN"), detail: !isOtpRelevant ? "Not applicable — no OTP/magic-link authentication detected." : (hasOtpAttemptLimiting ? "OTP attempt-limiting signals detected." : "No attempt-limiting signals visible — a short numeric OTP without a cap on guesses is brute-forceable; lock out or invalidate the code after a handful of failed attempts.") });
+
+  const hasCurrentPasswordAutocomplete = /<input(?=[^>]*\btype=["']password["'])(?=[^>]*\bautocomplete=["']current-password["'])[^>]*>/i.test(html);
+  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "auth_login_autocomplete", label: "Login password identifies its autocomplete purpose", status: isOtpOnly ? "SKIPPED" : hasCurrentPasswordAutocomplete ? "PASS" : "WARN", detail: isOtpOnly ? "Not applicable — passwordless authentication detected." : hasCurrentPasswordAutocomplete ? "A password field declares autocomplete=current-password, enabling password managers to fill the correct credential safely." : "No password field with autocomplete=current-password was observed. Identify login credentials explicitly so password managers do not guess from surrounding markup." });
+
+  const hasNewPasswordAutocomplete = /<input(?=[^>]*\btype=["']password["'])(?=[^>]*\bautocomplete=["']new-password["'])[^>]*>/i.test(html);
+  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "auth_signup_autocomplete", label: "New password identifies its autocomplete purpose", status: isOtpOnly ? "SKIPPED" : hasNewPasswordAutocomplete ? "PASS" : "WARN", detail: isOtpOnly ? "Not applicable — passwordless authentication detected." : hasNewPasswordAutocomplete ? "A password-creation field declares autocomplete=new-password, allowing password managers to generate and save a strong credential." : "No password-creation field with autocomplete=new-password was observed. Add it to signup and password-change forms." });
+
+  const hasPasswordReset = /forgot(?:ten)?[\s_-]*password|reset[\s_-]*password|password[\s_-]*recovery/i.test(html);
+  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "auth_password_reset", label: "Password reset flow is discoverable", status: isOtpOnly ? "SKIPPED" : hasPasswordReset ? "PASS" : "WARN", detail: isOtpOnly ? "Not applicable — passwordless authentication detected." : hasPasswordReset ? "A password recovery/reset route or control is visible." : "No password reset control was observed. Users need a discoverable recovery route that does not require support intervention." });
+
+  const hasLogout = /(?:sign|log)[\s_-]*out|end[\s_-]*session/i.test(html);
+  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "auth_logout_control", label: "Sign-out control is discoverable", status: hasLogout ? "PASS" : "WARN", detail: hasLogout ? "A sign-out/end-session control is visible." : "No sign-out control was observed. Authenticated users need an obvious way to invalidate their current session." });
+
+  const hasSecurityNotifications = /security (?:alert|notification)|new (?:device|login|sign.in).*(?:alert|email|notify)|password (?:change|reset).*(?:alert|email|notify)/i.test(html);
+  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "auth_security_notifications", label: "Security-event notifications are disclosed", status: hasSecurityNotifications ? "PASS" : "WARN", detail: hasSecurityNotifications ? "Security notification signals were found for account-sensitive events." : "No security-event notification signal was observed. Notify users about new-device sign-ins, password changes, and recovery events so account takeover is detectable." });
 
   return checks;
 }

@@ -50,5 +50,20 @@ export async function runObservabilityExtended(ctx: ExtendedCheckContext): Promi
   const hasDeployFreq = /dora.*metric|deploy.*frequency|deployment.*frequency|lead.*time|change.*fail|mean.*time.*recover/i.test(html);
   checks.push({ category: CATEGORIES.OBSERVABILITY, checkKey: "deployment_frequency_tracking", label: "Deployment frequency / DORA metrics tracked", status: hasDeployFreq ? "PASS" : "WARN", detail: hasDeployFreq ? "DORA metric signals detected." : "No deployment frequency tracking — DORA metrics (deploy frequency, lead time, change fail rate, MTTR) are the industry standard for engineering performance." });
 
+  const hasStatusPage = /href=["']https?:\/\/[^"']*(?:status|uptime)[^"']*["']|system status|service status/i.test(html);
+  checks.push({ category: CATEGORIES.OBSERVABILITY, checkKey: "public_status_page", label: "Public service status page", status: hasStatusPage ? "PASS" : "WARN", detail: hasStatusPage ? "A public status or uptime page is linked." : "No public status page was observed. Publish current component health and incident history so customers can self-diagnose outages." });
+
+  const hasIncidentSubscriptions = /subscribe.{0,40}(?:incident|status|outage)|(?:incident|status) updates|notify me.{0,30}(?:incident|outage)/i.test(html);
+  checks.push({ category: CATEGORIES.OBSERVABILITY, checkKey: "incident_subscriptions", label: "Customers can subscribe to incident updates", status: hasIncidentSubscriptions ? "PASS" : "WARN", detail: hasIncidentSubscriptions ? "Incident-update subscription evidence detected." : "No incident subscription mechanism was observed. Let customers opt into outage and recovery notifications instead of repeatedly checking a page." });
+
+  const hasTraceCorrelation = /trace[\s_-]*id|correlation[\s_-]*id|request[\s_-]*id|traceparent/i.test(html);
+  checks.push({ category: CATEGORIES.OBSERVABILITY, checkKey: "trace_correlation", label: "Requests expose trace or correlation identifiers", status: hasTraceCorrelation ? "PASS" : "WARN", detail: hasTraceCorrelation ? "Trace/correlation identifier evidence detected." : "No trace or correlation identifier signal was observed. Carry one identifier through logs and responses so a customer report maps to a single request path." });
+
+  const hasReleaseHealth = /release health|deploy(?:ment)?.{0,30}(?:error|regression|health)|errors?.{0,30}(?:release|version|commit)/i.test(html);
+  checks.push({ category: CATEGORIES.OBSERVABILITY, checkKey: "release_health", label: "Errors are correlated with releases", status: hasReleaseHealth ? "PASS" : "WARN", detail: hasReleaseHealth ? "Release-health monitoring evidence detected." : "No release-health signal was observed. Tag telemetry with release or commit identifiers so regressions can be tied to a deployment quickly." });
+
+  const hasEscalation = /escalation policy|secondary on.call|backup on.call|escalat.{0,30}(?:pager|incident|alert)/i.test(html);
+  checks.push({ category: CATEGORIES.OBSERVABILITY, checkKey: "alert_escalation", label: "Alerts have an escalation path", status: hasEscalation ? "PASS" : "WARN", detail: hasEscalation ? "Alert escalation evidence detected." : "No alert escalation path was observed. Critical alerts need a timed secondary route when the primary responder does not acknowledge them." });
+
   return checks;
 }

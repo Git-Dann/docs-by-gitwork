@@ -24,6 +24,11 @@ const ALL_CHECKS: Array<[string, string]> = [
   ["workspace_tenant_isolation", "Workspace / tenant isolation"],
   ["permission_inheritance", "Permission inheritance (groups)"],
   ["gdpr_data_access_control", "GDPR data access controlled by role"],
+  ["invite_expiry", "Invitations expire automatically"],
+  ["invite_revocation", "Pending invitations can be revoked"],
+  ["ownership_transfer", "Workspace ownership can be transferred safely"],
+  ["last_admin_protection", "Last administrator cannot be removed"],
+  ["custom_roles", "Custom roles can be defined"],
 ];
 
 export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
@@ -126,6 +131,21 @@ export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Prom
   // GDPR data access control
   const hasGdprAccess = /data.*access.*request|subject.*access|access.*personal.*data|export.*personal.*data/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "gdpr_data_access_control", label: "GDPR data access controlled by role", status: hasGdprAccess ? "PASS" : "WARN", detail: hasGdprAccess ? "GDPR data access request signals detected." : "No GDPR data access controls detected — GDPR requires that personal data access (subject access requests) is controlled and auditable." });
+
+  const hasInviteExpiry = /invit(?:e|ation).{0,60}expir|expir.{0,60}invit(?:e|ation)|invite valid for/i.test(html);
+  checks.push({ category: CATEGORY, checkKey: "invite_expiry", label: "Invitations expire automatically", status: hasInviteExpiry ? "PASS" : "WARN", detail: hasInviteExpiry ? "Invitation-expiry evidence detected." : "No invitation expiry was observed. Time-bound invitation tokens reduce the window in which a forwarded or leaked link can be used." });
+
+  const hasInviteRevocation = /(?:revoke|cancel|delete).{0,40}(?:pending )?invit|pending invit.{0,40}(?:revoke|cancel|delete)/i.test(html);
+  checks.push({ category: CATEGORY, checkKey: "invite_revocation", label: "Pending invitations can be revoked", status: hasInviteRevocation ? "PASS" : "WARN", detail: hasInviteRevocation ? "Pending-invitation revocation evidence detected." : "No way to revoke a pending invitation was observed. Administrators need to invalidate an invite sent to the wrong person or address." });
+
+  const hasOwnershipTransfer = /transfer.{0,40}(?:workspace|organisation|organization|account).{0,20}owner|transfer ownership/i.test(html);
+  checks.push({ category: CATEGORY, checkKey: "ownership_transfer", label: "Workspace ownership can be transferred safely", status: hasOwnershipTransfer ? "PASS" : "WARN", detail: hasOwnershipTransfer ? "Ownership-transfer workflow evidence detected." : "No ownership-transfer workflow was observed. A workspace must not become stranded when its original owner leaves." });
+
+  const hasLastAdminProtection = /(?:cannot|can.?t|must not|prevent).{0,50}(?:last|only).{0,20}(?:admin|owner)|(?:last|only).{0,20}(?:admin|owner).{0,50}(?:cannot|can.?t|remove|delete)/i.test(html);
+  checks.push({ category: CATEGORY, checkKey: "last_admin_protection", label: "Last administrator cannot be removed", status: hasLastAdminProtection ? "PASS" : "WARN", detail: hasLastAdminProtection ? "Last-admin/owner protection evidence detected." : "No protection against removing the final administrator was observed. Enforce this invariant server-side to prevent an unmanageable workspace." });
+
+  const hasCustomRoles = /custom role|create.{0,20}role|role builder|define.{0,20}permissions/i.test(html);
+  checks.push({ category: CATEGORY, checkKey: "custom_roles", label: "Custom roles can be defined", status: hasCustomRoles ? "PASS" : "WARN", detail: hasCustomRoles ? "Custom-role configuration evidence detected." : "No custom-role support was observed. For larger teams, fixed roles often force unnecessary privileges; custom roles allow a closer least-privilege fit." });
 
   return checks;
 }
