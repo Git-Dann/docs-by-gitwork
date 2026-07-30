@@ -113,14 +113,17 @@ NEXT_PUBLIC_APP_URL="https://staging.foundry.gitwork.tech"
 NEXT_PUBLIC_SITE_URL="https://staging.foundry.gitwork.tech"
 
 # ── Initial admin ────────────────────────────────────────────────────────────
-# ⚠️ NOT admin@example.com. ensureInitialAdmin() calls isSeedAccountEmail()
-# (src/server/seed-accounts.ts:60) which rejects the whole @example.com domain
-# and RETURNS EARLY WITHOUT CREATING ANYTHING. On a fresh staging database that
-# leaves no way to sign in, with no error to tell you why.
-# Note: whatever address you set is added to seedAccountEmails(), so this account
-# is hidden from people-pickers and rosters by design. Login still works.
-INITIAL_ADMIN_EMAIL="staging-admin@gitwork.co.uk"
-INITIAL_ADMIN_PASSWORD="<a real password, changed in-app after first login>"
+# ⚠️ THESE DO NOT GIVE YOU A LOGIN. Setting them is near-pointless — see §5.
+# Two independent reasons:
+#   1. admin@example.com specifically creates NOTHING: ensureInitialAdmin() calls
+#      isSeedAccountEmail() (src/server/seed-accounts.ts:60), which rejects the
+#      whole @example.com domain and returns early, silently.
+#   2. Even with a valid address, there is NO password login to /app. The user row
+#      gets a passwordHash that nothing in the auth flow ever compares —
+#      Google is the only NextAuth provider (src/auth.ts:14).
+# Google OAuth is the ONLY way in. §5 is therefore not optional setup.
+INITIAL_ADMIN_EMAIL=""
+INITIAL_ADMIN_PASSWORD=""
 
 # ── AI ───────────────────────────────────────────────────────────────────────
 # Per-workspace keys also live in the DB (Settings → AI provider); these are the
@@ -267,10 +270,19 @@ volumes:
 
 ## 4. Database — fresh, or a scrubbed restore
 
-**Prefer starting empty.** `bootstrap.ts` creates the base workspace and, with a valid
-`INITIAL_ADMIN_EMAIL`, an admin. Schema is applied the same way production does it — a throwaway
-container running `prisma db push` (never `npm run build`, which does a `db push` against whatever
-`DATABASE_URL` it finds):
+**Prefer starting empty.** `bootstrap.ts` creates the base workspace and the default records; your
+own `User` + `WorkspaceMember` row is then created automatically on first Google sign-in
+(`src/auth.ts` `jwt` callback), so an empty database needs no admin seeding — which is just as well,
+since `INITIAL_ADMIN_*` cannot produce a working login (§5).
+
+⚠️ **On a fresh database, Dan has to sign in first.** `KNOWN_SUPER_ADMIN_EMAILS`
+(`src/server/permissions.ts:30`) is `["dan@gitwork.co.uk"]` — the only address auto-promoted to
+Super Admin. Anyone else signing into an empty staging workspace lands on the default role, with
+nobody above them to grant anything, so most of the app reads as missing rather than gated. Order
+matters: Dan signs in, then grants from Settings → Team.
+
+Schema is applied the same way production does it — a throwaway container running `prisma db push`
+(never `npm run build`, which does a `db push` against whatever `DATABASE_URL` it finds):
 
 ```bash
 cd /opt/apps/foundry-staging
@@ -346,24 +358,79 @@ Any client bank details in the onboarding tables will be undecryptable under sta
 
 ---
 
-## 5. Google OAuth
+## 5. Google OAuth — the only way into staging
 
-Login is the first thing you'll test and the first thing that will fail. In Google Cloud Console →
-the Gitwork project → APIs & Services → Credentials → the **"Foundry Login"** web client, add to
-*Authorised redirect URIs*:
+**Google is the only NextAuth provider** (`src/auth.ts:14` — `providers: [Google({…})]`, and
+`auth.config.ts:80` is `providers: []`). There is no Credentials provider and no password login
+route for `/app`: `User.passwordHash` is written by team invites, `forgot-password` and
+`ensureInitialAdmin`, but the only `bcrypt.compare` in the codebase is `src/server/wiki-access.ts`,
+which gates the separate public wiki. So OAuth is not one option among several — without it staging
+has no reachable UI at all.
+
+Three things must line up, and each fails differently.
+
+### 5.1 The redirect URI — Dan's action, in Google Cloud Console
+
+Console → the Gitwork project → **APIs & Services → Credentials** → OAuth 2.0 Client IDs → the
+**"Foundry Login"** web client (id begins `863801453214-1dv17p3eqf94nclttq9cig14uka7n1u6`).
+
+Add to **Authorised redirect URIs** — exact string, no trailing slash:
 
 ```
 https://staging.foundry.gitwork.tech/api/auth/callback/google
 ```
 
-Adding a URI to the existing client is deliberate — a second OAuth client would mean a second
-consent screen and a second secret to manage. Do **not** remove the production URI.
+And to **Authorised JavaScript origins**:
 
-If you test the Care/Gmail connector, the **"Foundry Care"** client needs the staging host on its
-redirect URIs too (`/api/integrations/gmail/callback`).
+```
+https://staging.foundry.gitwork.tech
+```
 
-Note `src/auth.config.ts` carries a `SESSION_VERSION`; bumping it forces re-consent. Staging
-signing in for the first time will consent anyway.
+Path confirmed from the code, not assumed: `src/app/api/auth/[...nextauth]/route.ts` with no
+`basePath` override, so the NextAuth default applies.
+
+**Add, don't replace.** Leave the production URI in place — a second OAuth client would mean a
+second consent screen and a second secret to keep in step. Failure mode if this is missed:
+Google's own `redirect_uri_mismatch` error page, before Foundry is ever reached.
+
+### 5.2 `NEXTAUTH_URL` — Shahab's action, on the box
+
+Must be `https://staging.foundry.gitwork.tech`. NextAuth builds the `redirect_uri` it sends to
+Google from this, so if it still reads `foundry.gitwork.co.uk` the flow completes and lands the
+user **on production** — which looks like "staging login is broken" while nothing errors.
+
+### 5.3 ⚠️ The signing-in account must be `@gitwork.co.uk`
+
+`src/auth.ts:47-51`:
+
+```ts
+async signIn({ user }) {
+  // Restrict to @gitwork.co.uk accounts only
+  if (!user.email?.endsWith("@gitwork.co.uk")) {
+    return false;
+  }
+  return true;
+}
+```
+
+Any other domain — `@gitwork.tech`, a personal Gmail, a contractor's own domain — is refused
+**after** a successful Google consent, so the user sees a generic NextAuth error having apparently
+signed in fine. There is no allow-list to add an exception to and no env var to relax it.
+
+If the person setting staging up is not on `@gitwork.co.uk`, that is a decision for Dan, not a
+config change: either issue them a Gitwork Google account, or widen the check (a real code change,
+and it widens **production** too unless it's made host-aware — so it wants its own PR and thought,
+not a quick edit).
+
+### 5.4 Also worth checking
+
+- **OAuth consent screen publishing status.** If it is *External* and still in *Testing*, only
+  listed test users can sign in at all, regardless of domain. Setting it to **Internal** is
+  separately a prerequisite for the held PR #354 (CLAUDE.md §33), so it may be worth doing once.
+- **The Care/Gmail connector** (a different client, "Foundry Care") needs the staging host on its
+  redirect URIs too — `/api/integrations/gmail/callback` — but only if you're testing Care.
+- `prompt: "consent"` is forced on every sign-in (`src/auth.ts:40`) so Google always returns a
+  refresh token. Being asked to consent each time on staging is expected, not a fault.
 
 ---
 
@@ -427,8 +494,8 @@ In order — each step's failure mode is distinct, so don't skip ahead.
 | 2 | `docker compose exec db psql -U foundry -c '\dx'` | lists `vector` — if not, §3's image is wrong |
 | 3 | `docker compose logs app \| grep -i bootstrap` | no repeated errors |
 | 4 | Visit `/` | 307 → `/portal/login` (CLAUDE.md §4) |
-| 5 | Sign in with Google | lands on staging, **not** redirected to `foundry.gitwork.co.uk` |
-| 6 | Sign in with `INITIAL_ADMIN_EMAIL` + password | works — if not, re-read §2's admin note |
+| 5 | Sign in with Google, using an **`@gitwork.co.uk`** account | lands on staging, **not** redirected to `foundry.gitwork.co.uk`. `redirect_uri_mismatch` ⇒ §5.1; landing on prod ⇒ §5.2; generic error after consent ⇒ §5.3 (wrong email domain) |
+| 6 | — | *(there is no password login to `/app` — see §5)* |
 | 7 | `curl -I https://staging.foundry.gitwork.tech` | valid cert, no `Server: nginx/<version>` |
 | 8 | Open `/app` | sidebar renders; footer version matches the tag you pulled |
 | 9 | Settings → AI provider | staging's own key, or blank |
