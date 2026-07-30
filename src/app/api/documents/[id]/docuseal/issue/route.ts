@@ -19,11 +19,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // 2. Fetch Document and Client details
     const document = await prisma.document.findUnique({
       where: { id },
-<<<<<<< HEAD
       include: { client: { include: { wiki: true } } },
-=======
-      include: { client: true },
->>>>>>> origin/staging
     });
 
     if (!document) return apiError("Document not found", 404);
@@ -89,11 +85,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           name: user?.name || "Gitwork Admin",
           email: user?.email || "muhammad.usman@gitwork.co.uk",
           external_id: `${document.id}:gitwork`,
-<<<<<<< HEAD
           send_email: true
-=======
-          send_email: false
->>>>>>> origin/staging
         }
       ]
     };
@@ -139,7 +131,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
     });
 
-<<<<<<< HEAD
     // 6. Return the slug and wiki details back to the frontend
     const wiki = document.client.wiki;
     return apiOk({
@@ -147,12 +138,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
       clientSlug: docusealSubmission.slug,
       wikiSlug: document.client.slug,
       wikiToken: wiki?.courseIngestToken,
-=======
-    // 6. Return the slug back to the frontend
-    return apiOk({
-      submissionId: docusealSubmission.submissionId,
-      clientSlug: docusealSubmission.slug,
->>>>>>> origin/staging
       message: "DocuSeal submission created successfully."
     });
 

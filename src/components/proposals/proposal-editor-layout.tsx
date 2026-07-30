@@ -1213,7 +1213,6 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                       Export
                     </Button>
                   </div>
-
                   {true && (
                     <div className="mt-2 flex items-center gap-2 border-t border-[var(--border-2)] pt-2">
                       <Button
