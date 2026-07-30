@@ -799,7 +799,7 @@ export async function attachReceipt(
   const row = await prisma.expense.update({
     where: { id: expenseId },
     data: {
-      receiptImage: storedBytes,
+      receiptImage: storedBytes ? new Uint8Array(storedBytes) : storedBytes,
       receiptMime: storedMime,
       // Clear any stale thumb so the lifecycle is unambiguous.
       receiptThumb: null,
@@ -879,7 +879,7 @@ export async function reviewExpense(
       reviewedAt: new Date(),
       reviewNote: note ?? null,
       ...(thumbBytes
-        ? { receiptImage: null, receiptThumb: thumbBytes, receiptMime: "image/jpeg" }
+        ? { receiptImage: null, receiptThumb: new Uint8Array(thumbBytes), receiptMime: "image/jpeg" }
         : {}),
     },
     include: {

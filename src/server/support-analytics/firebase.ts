@@ -69,7 +69,8 @@ async function countSpec(
     .where(spec.timestampField, "<", Timestamp.fromDate(end));
 
   // count() aggregation — cheap, doesn't read every document.
-  const snap = await q.count().get();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const snap = await (q as any).count().get();
   return snap.data().count;
 }
 

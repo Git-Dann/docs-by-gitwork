@@ -159,7 +159,7 @@ export async function createFileDocument(
       wikiId,
       title: input.title.trim() || input.fileName,
       kind: "FILE",
-      fileData: input.data,
+      fileData: new Uint8Array(input.data),
       fileName: input.fileName,
       fileMime: input.fileMime,
       fileSize: input.data.byteLength,
@@ -237,7 +237,7 @@ export async function listLinkableDocuments(clientId: string): Promise<
         select: { documentId: true },
       })
     : [];
-  const linkedIds = new Set(alreadyLinked.map((row) => row.documentId).filter(Boolean) as string[]);
+  const linkedIds = new Set(alreadyLinked.map((row: { documentId: string | null }) => row.documentId).filter(Boolean) as string[]);
 
   const docs = await prisma.document.findMany({
     where: {
@@ -251,7 +251,7 @@ export async function listLinkableDocuments(clientId: string): Promise<
     take: 100,
   });
 
-  return docs.map((doc) => ({
+  return docs.map((doc: { id: string, title: string, documentType: any, clientName: string | null, clientId: string | null }) => ({
     id: doc.id,
     title: doc.title,
     documentType: String(doc.documentType),

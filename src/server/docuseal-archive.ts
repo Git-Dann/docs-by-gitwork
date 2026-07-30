@@ -24,7 +24,13 @@ function computeSha256(buffer: Buffer): string {
  * @param submissionDbId The local database ID of the DocusealSubmission
  * @param verifiedData The verified submission payload from the DocuSeal API
  */
-export async function archiveDocusealSubmission(submissionDbId: string, verifiedData: any) {
+export interface DocuSealSubmitterData {
+  documents?: { url: string }[];
+  document_url?: string;
+  audit_log_url?: string;
+}
+
+export async function archiveDocusealSubmission(submissionDbId: string, verifiedData: DocuSealSubmitterData | DocuSealSubmitterData[]) {
   // 1. Fetch the submission to ensure it's still waiting to be archived
   const submission = await prisma.docusealSubmission.findUnique({
     where: { id: submissionDbId },
