@@ -82,8 +82,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         },
         {
           role: "Gitwork",
-          name: user.name || "Gitwork Admin",
-          email: user.email,
+          name: user?.name || "Gitwork Admin",
+          email: user?.email || "admin@gitwork.co.uk",
           external_id: `${document.id}:gitwork`,
           send_email: false
         }
@@ -106,10 +106,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return apiError(`DocuSeal API Error: ${response.statusText}`, 502);
     }
 
-    const submitters = await response.json();
+    interface DocuSealSubmitterResponse {
+      role: string;
+      submission_id?: number;
+      slug?: string;
+    }
+    const submitters = (await response.json()) as DocuSealSubmitterResponse[];
     
-    const clientSubmitter = submitters.find((s: any) => s.role === "Client");
-    const gitworkSubmitter = submitters.find((s: any) => s.role === "Gitwork");
+    const clientSubmitter = submitters.find((s) => s.role === "Client");
+    const gitworkSubmitter = submitters.find((s) => s.role === "Gitwork");
 
     if (!clientSubmitter || !clientSubmitter.submission_id) {
       return apiError("Invalid response from DocuSeal API", 502);
@@ -120,7 +125,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       data: {
         documentId: document.id,
         submissionId: clientSubmitter.submission_id,
-        slug: clientSubmitter.slug,
+        slug: clientSubmitter.slug || "",
         gitworkSlug: gitworkSubmitter?.slug,
         status: "PENDING"
       }

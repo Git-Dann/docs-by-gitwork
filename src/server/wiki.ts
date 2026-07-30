@@ -1380,7 +1380,7 @@ export async function attachWikiIntakeItemImage(
   const transcoded = await transcodeIntakeImage(bytes, mime);
   const row = await prisma.clientWikiIntakeItem.update({
     where: { id: itemId },
-    data: { image: transcoded.bytes, thumb: transcoded.thumb, mime: transcoded.mime, filename },
+    data: { image: new Uint8Array(transcoded.bytes), thumb: new Uint8Array(transcoded.thumb), mime: transcoded.mime, filename },
   });
   return serializeWikiIntakeItem(row);
 }
@@ -1406,7 +1406,7 @@ export async function attachWikiIntakeItemImageByToken(
   const transcoded = await transcodeIntakeImage(bytes, mime);
   const row = await prisma.clientWikiIntakeItem.update({
     where: { id: itemId },
-    data: { image: transcoded.bytes, thumb: transcoded.thumb, mime: transcoded.mime, filename },
+    data: { image: new Uint8Array(transcoded.bytes), thumb: new Uint8Array(transcoded.thumb), mime: transcoded.mime, filename },
   });
   return serializeWikiIntakeItem(row);
 }
@@ -1552,7 +1552,7 @@ export async function createWikiUser(
       select: { id: true, email: true, name: true, createdAt: true },
     });
     return serializeWikiUser(user);
-  } catch (err) {
+  } catch (err: any) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       throw new WikiUserEmailTakenError();
     }
@@ -1587,7 +1587,7 @@ export async function updateWikiUser(
       select: { id: true, email: true, name: true, createdAt: true },
     });
     return serializeWikiUser(user);
-  } catch (err) {
+  } catch (err: any) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       throw new WikiUserEmailTakenError();
     }

@@ -1368,8 +1368,8 @@ export async function addTaskAttachment(
     data: {
       taskId,
       uploadedById: user.id,
-      image: storedBytes,
-      thumb,
+      image: new Uint8Array(storedBytes),
+      thumb: new Uint8Array(thumb),
       mime: storedMime,
       filename,
     },
