@@ -44,6 +44,13 @@ describe("snapshot reachability", () => {
     const entries = [
       { path: ".gitignore", size: 200 },
       { path: ".github/workflows/ci.yml", size: 1200 },
+      { path: "openapi.yaml", size: 1800 },
+      { path: "infra/main.tf", size: 1600 },
+      { path: "k8s/deployment.yaml", size: 1400 },
+      { path: "slo.yaml", size: 700 },
+      { path: "tsconfig.json", size: 650 },
+      { path: "docs/ADR-001.md", size: 900 },
+      { path: "locales/fr.json", size: 1100 },
       { path: "package.json", size: 800 },
       { path: "README.md", size: 3000 },
       { path: "src/index.ts", size: 4000 },
@@ -54,6 +61,13 @@ describe("snapshot reachability", () => {
     // Each of these backs a specific check that silently passed while unreachable.
     expect(config, ".gitignore CONTENTS back the web-source env check").toContain(".gitignore");
     expect(config, "workflow files back the whole CI/CD family").toContain(".github/workflows/ci.yml");
+    expect(config, "API contract checks need the OpenAPI contents").toContain("openapi.yaml");
+    expect(config, "IaC controls need Terraform contents").toContain("infra/main.tf");
+    expect(config, "runtime controls need orchestration manifests").toContain("k8s/deployment.yaml");
+    expect(config, "observability controls need versioned SLOs").toContain("slo.yaml");
+    expect(config, "vibe controls need compiler configuration").toContain("tsconfig.json");
+    expect(config, "business controls need decision records").toContain("docs/ADR-001.md");
+    expect(config, "global controls need translation catalogues").toContain("locales/fr.json");
     expect(config, "SQL migrations back the repo-side RLS check").toContain("supabase/migrations/0001_init.sql");
     expect(source, "web source backs the injection + cleanliness families").toContain("src/index.ts");
   });

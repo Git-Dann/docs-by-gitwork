@@ -12,6 +12,7 @@ import {
   runCiWorkflowChecks,
   runContainerChecks,
   runServiceDepthChecks,
+  runOperationalDepthChecks,
 } from "@/server/pulse-checks/native-repo";
 
 const CODE_AGENT_QUERY = `
@@ -426,6 +427,7 @@ async function runRestOnlyFamilies(
     ciResult,
     containerResult,
     serviceResult,
+    operationalResult,
   ] = await Promise.allSettled([
     scanRepoSecrets(parsed.owner, parsed.repo),
     runNativeMobileChecks(repoInput),
@@ -439,6 +441,7 @@ async function runRestOnlyFamilies(
     runCiWorkflowChecks(repoInput),
     runContainerChecks(repoInput),
     runServiceDepthChecks(repoInput),
+    runOperationalDepthChecks(repoInput),
   ]);
 
   if (secretResult.status === "fulfilled") {
@@ -456,6 +459,7 @@ async function runRestOnlyFamilies(
     ciResult,
     containerResult,
     serviceResult,
+    operationalResult,
   ]) {
     if (result.status === "fulfilled") checks.push(...result.value.checks);
   }

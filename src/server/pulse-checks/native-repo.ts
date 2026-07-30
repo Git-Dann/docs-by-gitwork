@@ -37,6 +37,7 @@ import { evaluateCleanlinessChecks } from "./code-cleanliness";
 import { evaluateCiWorkflowChecks } from "./ci-workflows";
 import { evaluateContainerChecks } from "./containers";
 import { evaluateServiceDepthChecks } from "./service-depth";
+import { evaluateOperationalDepthChecks } from "./operational-depth";
 
 /**
  * Every repo shape the snapshot builder knows how to feed. This is deliberately a
@@ -170,6 +171,18 @@ const CONFIG_PATTERNS: RegExp[] = [
   /(^|\/)(nginx|default)\.conf$/i,
   /(^|\/)(vercel|netlify|fly|railway|render)\.(json|toml|ya?ml)$/i,
   /(^|\/)wrangler\.(toml|jsonc?)$/i,
+  // Operational-depth evidence: API contracts, IaC, orchestration, service
+  // objectives and performance budgets. These files carry executable settings,
+  // not prose guesses, and are read for every repository shape.
+  /(^|\/)(openapi|swagger|asyncapi)\.(json|ya?ml)$/i,
+  /(^|\/)(?:terraform|tofu)\/.*\.tf$/i,
+  /(^|\/)[^/]+\.tf$/i,
+  /(^|\/)(?:k8s|kubernetes|deploy|infra)\/.*\.ya?ml$/i,
+  /(^|\/)(?:slo|slos|service-level-objectives|error-budget)\.(json|ya?ml|md)$/i,
+  /(^|\/)(?:size-limit|bundlewatch|performance-budget)\.(json|js|cjs|mjs|ts|ya?ml)$/i,
+  /(^|\/)(?:tsconfig(?:\.[^/]+)?\.json|eslint\.config\.(?:js|mjs|cjs|ts)|biome\.json|ruff\.toml)$/i,
+  /(^|\/)(?:CODEOWNERS|SECURITY\.md|INCIDENT[^/]*\.md|RUNBOOK[^/]*\.md|SUPPORT[^/]*\.md|ARCHITECTURE[^/]*\.md|ADR-[^/]*\.md|BUSINESS-CONTINUITY[^/]*\.md|DISASTER-RECOVERY[^/]*\.md|DATA-CLASSIFICATION[^/]*\.md|VENDOR[^/]*\.(?:md|csv|json|ya?ml))$/i,
+  /(^|\/)(?:locales?|translations?|i18n)\/[^/]+\.(?:json|ya?ml)$/i,
 ];
 
 /**
@@ -661,6 +674,21 @@ export async function runServiceDepthChecks(
   const snapshot = await getRepoSnapshot(repoInput);
   if (!snapshot || !snapshot.accessible) return { checks: [] };
   return { checks: evaluateServiceDepthChecks(snapshot) };
+}
+
+/**
+ * Run the operational-depth family.
+ *
+ * Shape-agnostic and evidence-gated: each rule determines its own subject
+ * applicability, so a repo without payments, AI, queues, or auth receives SKIPs
+ * for those controls rather than fabricated findings.
+ */
+export async function runOperationalDepthChecks(
+  repoInput: string,
+): Promise<{ checks: PulseScanCheckInput[] }> {
+  const snapshot = await getRepoSnapshot(repoInput);
+  if (!snapshot || !snapshot.accessible) return { checks: [] };
+  return { checks: evaluateOperationalDepthChecks(snapshot) };
 }
 
 /** The resolved snapshot shape for a repo, for callers that need it for labelling. */

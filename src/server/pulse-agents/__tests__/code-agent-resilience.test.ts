@@ -13,6 +13,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const graphQL = vi.fn();
 const secretScan = vi.fn();
 const nativeChecks = vi.fn();
+const operationalChecks = vi.fn();
 
 vi.mock("@/lib/github", () => ({
   githubGraphQL: (...args: unknown[]) => graphQL(...args),
@@ -45,6 +46,7 @@ vi.mock("@/server/pulse-checks/native-repo", () => ({
   runCiWorkflowChecks: async () => ({ checks: [] }),
   runContainerChecks: async () => ({ checks: [] }),
   runServiceDepthChecks: async () => ({ checks: [] }),
+  runOperationalDepthChecks: (...args: unknown[]) => operationalChecks(...args),
 }));
 
 const { runCodeAgent } = await import("../code-agent");
@@ -57,10 +59,19 @@ const IOS_CHECK = {
   detail: "Passwords and auth tokens are written to the device console in Release builds.",
 };
 
+const OPERATIONAL_CHECK = {
+  category: "API Quality" as const,
+  checkKey: "api_depth_request_deadline",
+  label: "Inbound requests have a bounded execution deadline",
+  status: "PASS" as const,
+  detail: "Request deadline evidence found.",
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   secretScan.mockResolvedValue({ checks: [], secrets: [] });
   nativeChecks.mockResolvedValue({ checks: [IOS_CHECK] });
+  operationalChecks.mockResolvedValue({ checks: [OPERATIONAL_CHECK] });
 });
 
 describe("runCodeAgent — source analysis survives a metadata failure", () => {
@@ -75,6 +86,14 @@ describe("runCodeAgent — source analysis survives a metadata failure", () => {
     // And the loss of metadata is reported rather than hidden.
     expect(keys).toContain("repo_intelligence");
     expect(result.checks.find((c) => c.checkKey === "repo_intelligence")?.status).toBe("SKIPPED");
+  });
+
+  it("still emits operational-depth controls when repository metadata fails", async () => {
+    graphQL.mockRejectedValue(new Error("GraphQL unavailable"));
+
+    const result = await runCodeAgent("Git-Dann/FellasRebuild");
+    expect(result.checks.map((check) => check.checkKey)).toContain("api_depth_request_deadline");
+    expect(operationalChecks).toHaveBeenCalledWith("Git-Dann/FellasRebuild");
   });
 
   it("still emits the native family when the repo itself resolves to null", async () => {
