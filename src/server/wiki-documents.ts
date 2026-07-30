@@ -251,7 +251,7 @@ export async function listLinkableDocuments(clientId: string): Promise<
     take: 100,
   });
 
-  return docs.map((doc: { id: string, title: string, documentType: any, clientName: string | null, clientId: string | null }) => ({
+  return docs.map((doc: { id: string, title: string, documentType: unknown, clientName: string | null, clientId: string | null }) => ({
     id: doc.id,
     title: doc.title,
     documentType: String(doc.documentType),

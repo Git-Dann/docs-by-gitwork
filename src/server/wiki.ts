@@ -1552,7 +1552,7 @@ export async function createWikiUser(
       select: { id: true, email: true, name: true, createdAt: true },
     });
     return serializeWikiUser(user);
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       throw new WikiUserEmailTakenError();
     }
@@ -1587,7 +1587,7 @@ export async function updateWikiUser(
       select: { id: true, email: true, name: true, createdAt: true },
     });
     return serializeWikiUser(user);
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       throw new WikiUserEmailTakenError();
     }
