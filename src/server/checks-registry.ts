@@ -1,5 +1,6 @@
 import { CATEGORIES, ORDERED_CATEGORIES, type CheckCategory } from "./pulse-checks/categories";
 import { STANDARDS_VALIDATION_REGISTRY } from "./pulse-checks/standards-verification";
+import { SERVICE_DEPTH_REGISTRY } from "./pulse-checks/service-depth";
 
 /**
  * Static registry of every Pulse check (key + category + label). This is the
@@ -183,6 +184,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "ci_dependency_cache", category: CATEGORIES.BUILD_PIPELINE, label: "CI caches dependencies between runs" },
   { key: "ci_security_scanning", category: CATEGORIES.BUILD_PIPELINE, label: "CI runs a security or dependency scan" },
   ...STANDARDS_VALIDATION_REGISTRY,
+  ...SERVICE_DEPTH_REGISTRY,
   { key: "pulse_static_analysis_gate", category: CATEGORIES.CODE_QUALITY, label: "Static analysis runs in CI" },
   { key: "pulse_static_analysis_policy", category: CATEGORIES.CODE_QUALITY, label: "Static-analysis rules are versioned" },
   { key: "pulse_static_analysis_blocking", category: CATEGORIES.CODE_QUALITY, label: "Static-analysis findings block unsafe changes" },

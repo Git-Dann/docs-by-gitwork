@@ -36,6 +36,7 @@ import { evaluateBackendServiceChecks } from "./backend-service";
 import { evaluateCleanlinessChecks } from "./code-cleanliness";
 import { evaluateCiWorkflowChecks } from "./ci-workflows";
 import { evaluateContainerChecks } from "./containers";
+import { evaluateServiceDepthChecks } from "./service-depth";
 
 /**
  * Every repo shape the snapshot builder knows how to feed. This is deliberately a
@@ -645,6 +646,21 @@ export async function runContainerChecks(
   const snapshot = await getRepoSnapshot(repoInput);
   if (!snapshot || !snapshot.accessible) return { checks: [] };
   return { checks: evaluateContainerChecks(snapshot) };
+}
+
+/**
+ * Run the service-depth family (auth, observability, API, payments, email).
+ *
+ * Shape-agnostic: a Django service and a Node one hash passwords, log, retry and
+ * take payments in the same shapes, and every rule SKIPs when its subject is not
+ * present in the repo.
+ */
+export async function runServiceDepthChecks(
+  repoInput: string,
+): Promise<{ checks: PulseScanCheckInput[] }> {
+  const snapshot = await getRepoSnapshot(repoInput);
+  if (!snapshot || !snapshot.accessible) return { checks: [] };
+  return { checks: evaluateServiceDepthChecks(snapshot) };
 }
 
 /** The resolved snapshot shape for a repo, for callers that need it for labelling. */
