@@ -170,6 +170,83 @@ export const STANDARDS_VALIDATION_REGISTRY = PLATFORM_VALIDATION_PROFILES.flatMa
   })),
 );
 
+type EvidenceBinding = {
+  controlId: string;
+  sourceKey: string;
+  /** A source check may safely prove only the negative case. */
+  outcomes: readonly ("PASS" | "FAIL")[];
+};
+
+/**
+ * Deterministic observations already collected in a Pulse URL/repository scan
+ * can settle a small, exact subset of the evidence-required catalogue. We bind
+ * only controls where the source observation directly proves the stated
+ * outcome; broad controls remain manual until a dedicated authenticated or
+ * release collector exists.
+ */
+const EVIDENCE_BINDINGS: readonly EvidenceBinding[] = [
+  { controlId: "deep_network_01", sourceKey: "ssl_valid", outcomes: ["PASS", "FAIL"] },
+  { controlId: "deep_network_02", sourceKey: "web_tls_verification_disabled", outcomes: ["FAIL"] },
+  { controlId: "deep_network_07", sourceKey: "api_cors_credentials", outcomes: ["FAIL"] },
+  { controlId: "deep_network_07", sourceKey: "api_cors_origin_reflection", outcomes: ["FAIL"] },
+  { controlId: "security_core_09", sourceKey: "web_raw_html_injection", outcomes: ["FAIL"] },
+  { controlId: "security_core_09", sourceKey: "web_sql_string_building", outcomes: ["FAIL"] },
+  { controlId: "security_core_09", sourceKey: "web_dynamic_code_execution", outcomes: ["FAIL"] },
+  { controlId: "deep_input_07", sourceKey: "web_shell_injection", outcomes: ["FAIL"] },
+  { controlId: "deep_input_06", sourceKey: "web_unsafe_deserialization", outcomes: ["FAIL"] },
+  { controlId: "deep_supply_01", sourceKey: "web_dependency_pinning", outcomes: ["PASS"] },
+  { controlId: "deep_supply_01", sourceKey: "cli_lockfile_committed", outcomes: ["PASS"] },
+  { controlId: "deep_secrets_09", sourceKey: "web_hardcoded_password", outcomes: ["FAIL"] },
+  { controlId: "deep_secrets_09", sourceKey: "desktop_embedded_secret", outcomes: ["FAIL"] },
+  { controlId: "deep_secrets_09", sourceKey: "rn_bundled_secret", outcomes: ["FAIL"] },
+  { controlId: "deep_secrets_09", sourceKey: "cli_embedded_secret", outcomes: ["FAIL"] },
+  { controlId: "security_core_15", sourceKey: "api_verbose_errors", outcomes: ["FAIL"] },
+  { controlId: "deep_host_03", sourceKey: "tauri_remote_ipc_access", outcomes: ["FAIL"] },
+  { controlId: "deep_host_07", sourceKey: "electron_context_isolation", outcomes: ["FAIL"] },
+];
+
+function evidenceIsDecisive(check: PulseScanCheckInput): check is PulseScanCheckInput & { status: "PASS" | "FAIL" } {
+  return (check.status === "PASS" || check.status === "FAIL") && check.confidence !== "LOW";
+}
+
+/**
+ * Replaces a manual evidence requirement only when this scan has a direct,
+ * decisive observation for it. This function is pure so every collector
+ * (public URL, repository source, authenticated browser, mobile build, or CI
+ * artifact) shares exactly the same promotion rules.
+ */
+export function resolveEvidenceBackedControls(platform: string | undefined, observations: PulseScanCheckInput[]): PulseScanCheckInput[] {
+  const bySourceKey = new Map(observations.filter(evidenceIsDecisive).map((check) => [check.checkKey, check]));
+  const resolved = new Map<string, PulseScanCheckInput>();
+  const [platformId] = profileFor(platform);
+  const keyPrefix = `standards_${platformId.toLowerCase()}_`;
+
+  for (const binding of EVIDENCE_BINDINGS) {
+    const observation = bySourceKey.get(binding.sourceKey);
+    if (!observation || !binding.outcomes.includes(observation.status)) continue;
+    const current = resolved.get(binding.controlId);
+    // A confirmed failure is always more important than a prior pass from a
+    // different source. Otherwise preserve the first exact observation.
+    if (!current || observation.status === "FAIL") resolved.set(binding.controlId, observation);
+  }
+
+  return runStandardsVerificationCatalog(platform).map((control) => {
+    const controlId = control.checkKey.slice(keyPrefix.length);
+    const observation = resolved.get(controlId);
+    if (!observation) return control;
+
+    const sourceEvidence = [observation.checkKey, observation.evidence].filter(Boolean).join(" · ");
+    return {
+      ...control,
+      status: observation.status,
+      confidence: observation.confidence ?? "MEDIUM",
+      confidenceReason: `Verified from Pulse runtime evidence: ${observation.checkKey}.`,
+      detail: `Pulse runtime evidence resolved this control: ${observation.detail}`,
+      evidence: sourceEvidence || `Pulse runtime evidence · ${observation.checkKey}`,
+    };
+  });
+}
+
 /** Evidence-required selected-surface checks. LOW confidence keeps manual work score-neutral. */
 export function runStandardsVerificationCatalog(platform?: string): PulseScanCheckInput[] {
   const [id, label, environment] = profileFor(platform);
