@@ -1,3 +1,18 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// ⚠️ DEAD CODE — runOrchestratedScan has NO CALLERS.
+//
+// The live scan path is src/server/pulse-lite/run-lite-scan.ts, which pulse.ts's
+// runAnalysis calls directly. This file is kept because it is the older, simpler
+// expression of the same flow and is useful to read — but a change made HERE does
+// not affect a single scan.
+//
+// This is not hypothetical: in July 2026 the mobile-repo web-suite guard was
+// written here, reviewed, CI'd and merged to production as a fix for a real 0/100
+// scan. It never executed. Grep for callers before editing, and put the change in
+// run-lite-scan.ts. src/server/pulse-lite/__tests__/live-path-guards.test.ts
+// enforces that this banner stays until something actually calls it.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { runUrlChecks, runGithubChecks, skipAllChecks } from "@/server/pulse-scan";
 import { runCodeAgent } from "./code-agent";
 import { runDeployAgent } from "./deploy-agent";

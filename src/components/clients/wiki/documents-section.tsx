@@ -18,8 +18,8 @@ import {
   useUploadWikiFileDoc,
   useDeleteWikiDoc,
   useAddDocToWiki,
+  useLinkableWikiDocuments,
 } from "@/hooks/use-wiki";
-import { useClientDetail } from "@/hooks/use-proposals";
 import type { WikiDocumentDTO } from "@/lib/api";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -188,9 +188,6 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
   const uploadFile = useUploadWikiFileDoc(slug);
   const remove = useDeleteWikiDoc(slug);
   const addFoundry = useAddDocToWiki(slug);
-  // The client's Foundry docs, for the "Add Foundry doc" picker — reuses the cached client detail.
-  const clientDetail = useClientDetail(slug);
-  const candidateDocs = (clientDetail.data?.proposals ?? []).filter((doc) => !doc.inWiki);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const [mode, setMode] = useState<"link" | "foundry" | null>(null);
@@ -198,6 +195,15 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
+
+  // Everything the server will actually accept: this client's docs plus any doc
+  // not yet assigned to a client. Previously this read the client-detail
+  // `proposals` array — docs matched to the client by FK or name — so a doc with
+  // no client set was never offered even though adding one is exactly how it gets
+  // associated. With most docs unassigned in practice, the picker looked empty
+  // and claimed everything was "already here". Lazy: only fetched when open.
+  const linkable = useLinkableWikiDocuments(slug, mode === "foundry");
+  const candidateDocs = linkable.data?.documents ?? [];
 
   const pages = Math.ceil(documents.length / PAGE_SIZE) || 1;
   const shown = useMemo(
@@ -299,11 +305,20 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
             <p className="text-[12px] text-[var(--text-4)]">
               Adding shares the document so the client can open it, and lists it on this view-only page.
             </p>
-            {clientDetail.isPending ? (
+            {linkable.isPending ? (
               <p className="py-2 text-[13px] text-[var(--text-4)]">Loading documents…</p>
+            ) : linkable.isError ? (
+              <p className="py-2 text-[13px] text-[var(--danger-500)]">
+                Couldn&rsquo;t load documents. Close and reopen to retry.
+              </p>
             ) : candidateDocs.length === 0 ? (
+              // Distinguish "nothing exists to add" from "everything's added" —
+              // the old copy always claimed the latter, which read as a dead end
+              // on a client that simply has no Foundry documents yet.
               <p className="py-2 text-[13px] text-[var(--text-4)]">
-                No more documents to add — this client&rsquo;s docs are already here.
+                {documents.some((d) => d.kind === "FOUNDRY")
+                  ? "Every Foundry document is already listed here."
+                  : "No Foundry documents available to add. Create one in Docs, then come back — documents that aren’t assigned to a client will show up here too."}
               </p>
             ) : (
               <ul className="max-h-64 space-y-1 overflow-auto">
@@ -316,6 +331,16 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
                     <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-1)]">
                       {doc.title}
                     </span>
+                    {/* Adding an unassigned doc also assigns it to this client —
+                        say so, rather than surprising the reader after the fact. */}
+                    {doc.unassigned ? (
+                      <span
+                        title="Not assigned to a client yet — adding it assigns it to this one"
+                        className="shrink-0 rounded-full bg-[var(--surface-2)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--text-4)]"
+                      >
+                        Unassigned
+                      </span>
+                    ) : null}
                     <button
                       type="button"
                       disabled={addFoundry.isPending}

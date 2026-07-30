@@ -94,12 +94,25 @@ jobs:
           # for months while still reporting a plausible score. A secret that only
           # lives in one hand-edited file is a secret that silently goes missing.
           FOUNDRY_GITHUB_TOKEN: ${{ secrets.FOUNDRY_GITHUB_TOKEN }}
+          # Provenance's issuer seal (CLAUDE.md §38). Optional: with it absent every Hallmark
+          # is issued UNSEALED and says so on the certificate, which is a deliberate
+          # honest degrade rather than a failure — so an unset secret is a no-op here,
+          # not a broken deploy.
+          #
+          # ⚠️ Rotating this makes every previously-issued seal report UNVERIFIABLE. The
+          # digest still verifies (contents provably unaltered) but authenticity can no
+          # longer be confirmed. Treat it as long-lived: `openssl rand -base64 32`.
+          PROVENANCE_SIGNING_SECRET: ${{ secrets.PROVENANCE_SIGNING_SECRET }}
+          # Pre-rename name, still synced so a secret set under it keeps working — digest.ts
+          # reads it as a fallback specifically so seals issued before the rename still
+          # VERIFY rather than silently becoming UNVERIFIABLE. Drop once PROVENANCE_ is set.
+          ASSAY_SIGNING_SECRET: ${{ secrets.ASSAY_SIGNING_SECRET }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           # Passed over the SSH channel, never interpolated into a logged command line.
-          envs: FOUNDRY_GITHUB_TOKEN
+          envs: FOUNDRY_GITHUB_TOKEN,PROVENANCE_SIGNING_SECRET,ASSAY_SIGNING_SECRET
           script: |
             cd /opt/apps/foundry
 
@@ -132,6 +145,8 @@ jobs:
 
             echo "Syncing managed secrets into .env"
             upsert_env GITHUB_TOKEN "${FOUNDRY_GITHUB_TOKEN:-}"
+            upsert_env PROVENANCE_SIGNING_SECRET "${PROVENANCE_SIGNING_SECRET:-}"
+            upsert_env ASSAY_SIGNING_SECRET "${ASSAY_SIGNING_SECRET:-}"
 
             docker compose pull app
             docker compose up -d db

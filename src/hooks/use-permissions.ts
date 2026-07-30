@@ -45,6 +45,11 @@ export function usePermissions() {
     canManageClients: can("clients.manage"),
     canShareClientTimeline: can("clients.shareTimeline"),
     canViewPulse: can("pulse"),
+    // Provenance: holding the module is a read-only register. Striking or withdrawing a Countermark
+    // is a separate high-risk action, because the issuer's name goes on a certificate a
+    // client, insurer or acquirer relies on.
+    canViewProvenance: can("provenance"),
+    canIssueCountermark: can("provenance.issue"),
     canViewSupport: can("support"),
     canManageSupport: can("support.manage"),
     // Study is an optional tool under Pulse, gated by the admin-only `study` feature perm

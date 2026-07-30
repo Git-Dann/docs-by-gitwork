@@ -8,6 +8,7 @@
 export {
   authTest,
   connectInvite,
+  conversationsInfo,
   createConversation,
   getSlackBotToken,
   listConversations,
@@ -16,6 +17,7 @@ export {
   setConversationTopic,
   updateMessage,
   updateView,
+  usersInfo,
 } from "./client";
 export type {
   PostMessageInput,
@@ -23,6 +25,7 @@ export type {
   SlackAuthTest,
   SlackChannel,
   SlackResponse,
+  SlackUser,
 } from "./client";
 
 export { verifySlackSignature } from "./signature";
@@ -30,6 +33,8 @@ export type { SlackSignatureCheckInput, SlackSignatureResult } from "./signature
 
 export {
   SLACK_ACTIONS,
+  buildDispatchAnswer,
+  buildDispatchNotice,
   decodeActionValue,
   encodeActionValue,
 } from "./blocks";

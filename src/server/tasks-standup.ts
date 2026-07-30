@@ -90,12 +90,16 @@ function isDoneOn(task: TaskDTO, workDate: Date): boolean {
 }
 
 function partition(tasks: TaskDTO[], workDate: Date) {
-  const doing = tasks.filter(
-    (t) => t.status === "DOING" || t.status === "IN_REVIEW" || t.status === "UI_DONE",
-  );
+  // `doing` stays INCLUSIVE of In Review — My Day renders it as one "Doing" list
+  // and narrowing it would silently drop those cards off the dev's own view.
+  // `active` / `inReview` are the finer split the Slack standup needs: reporting
+  // unreviewed work as finished is what made the updates misleading.
+  const active = tasks.filter((t) => t.status === "DOING");
+  const inReview = tasks.filter((t) => t.status === "IN_REVIEW" || t.status === "UI_DONE");
+  const doing = [...active, ...inReview];
   const done = tasks.filter((t) => isDoneOn(t, workDate));
   const upcoming = tasks.filter((t) => t.status === "TODO" || t.status === "BACKLOG");
-  return { doing, done, upcoming };
+  return { doing, active, inReview, done, upcoming };
 }
 
 function dueThisWeek(tasks: TaskDTO[], workDate: Date): TaskDTO[] {
@@ -286,8 +290,34 @@ async function postStandupToSlack(
   if (!botToken) return { posted: 0, failures: [] };
 
   const tasks = await listTasks(user, { assigneeId: "me", includeSubtasks: true });
-  const { doing, done } = partition(tasks, workDate);
-  const sectionTasks = input.phase === "AM" ? doing : done;
+  const { active, inReview, done } = partition(tasks, workDate);
+
+  /**
+   * What each phase reports, as ordered groups.
+   *
+   * AM — what's moving, then what's sitting with a reviewer.
+   * PM — what shipped, then what's waiting on sign-off, then what's still in
+   * flight. The PM update used to be the `done` list alone, so an end-of-day
+   * post said nothing about work in progress; and In Review was folded into
+   * "in progress"/"done" depending on the phase, which reported unreviewed work
+   * as finished. Sign-off is now its own line and never counts as done.
+   */
+  const groups: Array<{ label: string; tasks: TaskDTO[] }> =
+    input.phase === "AM"
+      ? [
+          { label: "In progress", tasks: active },
+          { label: "In review — waiting on sign-off", tasks: inReview },
+        ]
+      : [
+          { label: "Done today", tasks: done },
+          { label: "In review — waiting on sign-off", tasks: inReview },
+          { label: "Still in progress", tasks: active },
+        ];
+
+  // Everything referenced by any group — drives the client fan-out, the parent
+  // title lookup and the "nothing to say" check, so a task can't be posted to a
+  // channel we never resolved.
+  const sectionTasks = groups.flatMap((g) => g.tasks);
 
   // Resolve parent titles so an updated subtask reads "Parent → Subtask" in the card
   // (rather than a bare subtask title with no context).
@@ -347,19 +377,27 @@ async function postStandupToSlack(
     const parentIdsWithSubs = new Set(
       mine.filter((t) => t.parentId).map((t) => t.parentId as string),
     );
-    const cardTasks: StandupTaskCardInput[] = mine
-      .filter((t) => !(t.parentId === null && parentIdsWithSubs.has(t.id)))
-      .map((t) => ({
-        taskId: t.id,
-        title: t.title,
-        parentTitle: t.parentId ? parentTitleById.get(t.parentId) ?? "Task" : null,
-        clientName: t.client.name,
-        clientSlug: t.client.slug,
-        blockName: t.featureBlock?.name ?? null,
-        dueDate: t.dueDate ? t.dueDate.slice(0, 10) : null,
-        status: t.status,
-        description: t.description,
-      }));
+    const toCardTask = (t: TaskDTO): StandupTaskCardInput => ({
+      taskId: t.id,
+      title: t.title,
+      parentTitle: t.parentId ? parentTitleById.get(t.parentId) ?? "Task" : null,
+      clientName: t.client.name,
+      clientSlug: t.client.slug,
+      blockName: t.featureBlock?.name ?? null,
+      dueDate: t.dueDate ? t.dueDate.slice(0, 10) : null,
+      status: t.status,
+      description: t.description,
+    });
+    // Drop a parent line when its own subtasks are in the same update — they
+    // render grouped under the parent heading, so the standalone line is a dupe.
+    const keep = (t: TaskDTO) => !(t.parentId === null && parentIdsWithSubs.has(t.id));
+
+    const cardSections = groups
+      .map((g) => ({
+        label: g.label,
+        tasks: g.tasks.filter((t) => t.client.id === clientId && keep(t)).map(toCardTask),
+      }))
+      .filter((g) => g.tasks.length > 0);
 
     const card = buildStandupCard({
       phase: input.phase,
@@ -367,7 +405,8 @@ async function postStandupToSlack(
       workdayLabel,
       weekPlan: isMon ? input.weekPlan ?? null : null,
       note: input.note ?? null,
-      tasks: cardTasks,
+      tasks: cardSections.flatMap((g) => g.tasks),
+      sections: cardSections,
     });
 
     // Post to the internal channel and, when linked, the client's external

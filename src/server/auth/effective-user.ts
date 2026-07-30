@@ -331,6 +331,17 @@ export function canManagePulse(user: EffectiveUser): boolean {
 export function canRunFixAgent(user: EffectiveUser): boolean {
   return can(user, "pulse.fixAgent");
 }
+/**
+ * Strike or withdraw a Countermark attestation (Provenance).
+ *
+ * Separate from the `provenance` module permission on purpose: reading the register is a
+ * different act from certifying. Issuing puts the workspace's name to a claim a client,
+ * insurer or acquirer relies on, and the issuer's name goes on the certificate — so it is
+ * a high-risk action permission that has to be granted deliberately.
+ */
+export function canIssueCountermark(user: EffectiveUser): boolean {
+  return can(user, "provenance.issue");
+}
 /** Add/edit/delete candidates + run analysis in Code. */
 export function canManageCode(user: EffectiveUser): boolean {
   return can(user, "code.manage");

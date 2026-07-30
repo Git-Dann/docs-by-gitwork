@@ -179,6 +179,21 @@ export function updateView(token: string, input: UpdateViewInput): Promise<Slack
   return call(token, "views.update", input);
 }
 
+// ─── users.* ────────────────────────────────────────────────────────────────
+
+export interface SlackUser {
+  id: string;
+  name?: string;
+  real_name?: string;
+  is_bot?: boolean;
+  profile?: { email?: string; real_name?: string; display_name?: string };
+}
+
+/** users.info — resolve a Slack user id to a name/email. Needs `users:read.email` for the email. */
+export function usersInfo(token: string, user: string): Promise<SlackResponse<{ user?: SlackUser }>> {
+  return call<{ user?: SlackUser }>(token, "users.info", { user });
+}
+
 // ─── conversations.* ────────────────────────────────────────────────────────
 
 export interface ListConversationsInput {
@@ -207,6 +222,18 @@ export function listConversations(
     limit: 200,
     ...input,
   });
+}
+
+/**
+ * conversations.info — used by Dispatch to learn whether a channel is externally shared
+ * (Slack Connect) BEFORE it posts anything. `is_ext_shared` is the authoritative signal;
+ * `is_shared` is also true for internal multi-workspace org shares, so don't gate on it.
+ */
+export function conversationsInfo(
+  token: string,
+  channel: string,
+): Promise<SlackResponse<{ channel?: SlackChannel }>> {
+  return call<{ channel?: SlackChannel }>(token, "conversations.info", { channel });
 }
 
 export interface CreateConversationInput {

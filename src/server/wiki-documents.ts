@@ -206,6 +206,60 @@ export async function updateDocument(
  * client by name only in the Portal list) is linked here, since adding it is an explicit
  * association. Returns null if the document doesn't exist / isn't this client's.
  */
+/**
+ * Documents that can be added to this client's wiki — deliberately the exact set
+ * `addDocumentToWiki` accepts: docs already FK-linked to this client, PLUS docs
+ * not yet assigned to any client (adding one is the explicit association, and the
+ * add path assigns it).
+ *
+ * Why this exists: the picker used to list only the client-detail `proposals`
+ * array, which is docs matched to the client by FK or by name. Most documents in
+ * practice have no client set at all, so they were never offered even though the
+ * server would happily accept them — the "I can't link Foundry docs" dead end.
+ * A doc belonging to a DIFFERENT client is still excluded: the add path rejects
+ * it, and silently reassigning another client's document would be wrong.
+ *
+ * Already-mirrored docs are filtered out so the list is only things you can act on.
+ */
+export async function listLinkableDocuments(clientId: string): Promise<
+  Array<{ id: string; title: string; documentType: string; clientName: string | null; unassigned: boolean }>
+> {
+  const client = await prisma.workspaceClient.findUnique({
+    where: { id: clientId },
+    select: { workspaceId: true },
+  });
+  if (!client) return [];
+
+  const wiki = await prisma.clientWiki.findUnique({ where: { clientId }, select: { id: true } });
+  const alreadyLinked = wiki
+    ? await prisma.wikiDocument.findMany({
+        where: { wikiId: wiki.id, documentId: { not: null } },
+        select: { documentId: true },
+      })
+    : [];
+  const linkedIds = new Set(alreadyLinked.map((row) => row.documentId).filter(Boolean) as string[]);
+
+  const docs = await prisma.document.findMany({
+    where: {
+      workspaceId: client.workspaceId,
+      archivedAt: null,
+      OR: [{ clientId }, { clientId: null }],
+      ...(linkedIds.size > 0 ? { id: { notIn: [...linkedIds] } } : {}),
+    },
+    select: { id: true, title: true, documentType: true, clientId: true, clientName: true },
+    orderBy: [{ clientId: "asc" }, { updatedAt: "desc" }],
+    take: 100,
+  });
+
+  return docs.map((doc) => ({
+    id: doc.id,
+    title: doc.title,
+    documentType: String(doc.documentType),
+    clientName: doc.clientName,
+    unassigned: doc.clientId === null,
+  }));
+}
+
 export async function addDocumentToWiki(
   clientId: string,
   documentId: string,

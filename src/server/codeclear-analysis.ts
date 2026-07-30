@@ -41,15 +41,6 @@ type GitHubRepoResponse = {
   topics?: string[];
 };
 
-type GitHubContentResponse =
-  | Array<{
-      name: string;
-      type: "file" | "dir";
-    }>
-  | {
-      message?: string;
-    };
-
 export class GitHubAnalysisError extends Error {
   code: string;
 
@@ -109,6 +100,61 @@ async function safeGithubRequest<T>(path: string, fallback: T): Promise<T> {
   }
 }
 
+/** A repo's full file tree, or null when it could not be read. */
+export interface RepoTree {
+  /** Every path in the repo, POSIX, repo-relative. Lowercased for matching. */
+  paths: string[];
+  /** GitHub truncates very large trees — signals stay best-effort when true. */
+  truncated: boolean;
+}
+
+/**
+ * Read the repo's WHOLE file tree in one request.
+ *
+ * TWO REASONS THIS IS NOT safeGithubRequest, and both were live bugs:
+ *
+ * (1) That helper collapses every failure into its fallback, so a 404 (private repo,
+ * or no GITHUB_TOKEN), a 403 (rate limit) and a genuinely empty repository all became
+ * the same value. detectRepoSignals then reported no tests/CI/lint/docs — worth 50 of
+ * the ~100 health-score points — so an unreadable repository was scored as a
+ * deficient one. Same defect class as the Pulse bug in #463: "we could not look"
+ * rendering as "it is not there", except this fed CodeClearScore and shaped
+ * assessments of people. A distinguishable null is the whole point.
+ *
+ * Previously this read only `/contents`, which returns the ROOT directory. Every
+ * signal was therefore a root-level filename test, which is a JavaScript assumption:
+ * a JS project really does keep package.json, .eslintrc and tests/ at the root.
+ * Almost nothing else does.
+ *
+ *   • Android/Kotlin puts tests in `app/src/test/` and `app/src/androidTest/`
+ *   • Flutter/Dart uses `analysis_options.yaml` for lint and `test/` for tests
+ *   • Swift keeps `Tests/` (SwiftPM) or a `*Tests/` target directory
+ *   • Python's linter config lives in `pyproject.toml`, Go's in `.golangci.yml`
+ *
+ * So a perfectly readable Android repo reported no tests and no linter — the same
+ * unfairness the readability fix removed, arriving by a different route, and aimed at
+ * developers working on exactly those stacks.
+ *
+ * The recursive trees endpoint costs the same one request as the root listing and
+ * returns the entire tree. `truncated` is surfaced rather than treated as failure:
+ * a huge repo is still readable, its signals are just best-effort.
+ */
+async function readRepoTree(fullName: string): Promise<RepoTree | null> {
+  try {
+    const data = await githubRequest<{
+      tree?: Array<{ path: string; type: string }>;
+      truncated?: boolean;
+    }>(`/repos/${fullName}/git/trees/HEAD?recursive=1`);
+
+    return {
+      paths: (data.tree ?? []).map((entry) => entry.path.toLowerCase()),
+      truncated: Boolean(data.truncated),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function isRecent(dateString: string) {
   const ageMs = Date.now() - new Date(dateString).getTime();
   return ageMs <= RECENT_ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000;
@@ -128,31 +174,120 @@ function aggregateLanguages(languageMaps: Array<Record<string, number>>) {
     .map(([language, bytes]) => ({ language, bytes }));
 }
 
-function detectRepoSignals(contents: GitHubContentResponse) {
-  const entries = Array.isArray(contents) ? contents : [];
-  const names = entries.map((entry) => entry.name.toLowerCase());
+/**
+ * Read the repo's root listing into boolean signals.
+ *
+ * `contents` is null when the listing could not be read — private repo, missing
+ * token, rate limit. In that case every signal is false AND `readable` is false, and
+ * the caller must use `readable` to decide whether those falses mean anything. They
+ * do not: an unread repo is unassessed, not deficient.
+ */
+/** Test seam — the readable/unreadable distinction is the whole point of the fix. */
+export function detectRepoSignalsForTest(tree: RepoTree | null) {
+  return detectRepoSignals(tree);
+}
 
-  const hasReadme = names.some((name) => name.startsWith("readme"));
-  const hasDocs = hasReadme || names.includes("docs") || names.includes("documentation");
-  const hasTests = names.includes("test") || names.includes("tests") || names.includes("__tests__");
-  const hasCi = names.includes(".github") || names.includes(".circleci");
-  const hasLint =
-    names.includes("eslint.config.js") ||
-    names.includes(".eslintrc") ||
-    names.includes(".eslintrc.js") ||
-    names.includes(".eslintrc.cjs") ||
-    names.includes("biome.json") ||
-    names.includes("ruff.toml");
-  const hasManifest =
-    names.includes("package.json") ||
-    names.includes("pyproject.toml") ||
-    names.includes("cargo.toml") ||
-    names.includes("go.mod") ||
-    names.includes("composer.json") ||
-    names.includes("gemfile") ||
-    names.includes("requirements.txt");
+/** Test seam — an unread repo must not be scored as a deficient one. */
+export function buildHealthScoreForTest(input: Parameters<typeof buildHealthScore>[0]) {
+  return buildHealthScore(input);
+}
+
+/**
+ * Vendored/generated trees. A repo that merely CONTAINS a dependency's tests must not
+ * be credited with having tests — otherwise any project with a committed Pods/ or
+ * node_modules/ directory scores as well-tested.
+ */
+const VENDORED = /(^|\/)(pods|carthage|vendor|node_modules|\.build|deriveddata|third_party|\.dart_tool|build\/generated)\//;
+
+/**
+ * Signal patterns, matched against FULL repo-relative paths, per language family.
+ *
+ * Each list is deliberately explicit rather than clever: a wrong pattern here is
+ * invisible in tests and quietly unfair to a candidate, so a reader must be able to
+ * check each entry against a language they know.
+ */
+const TEST_PATTERNS: RegExp[] = [
+  /(^|\/)(test|tests|__tests__|spec|specs)\//,          // JS/TS, Python, Dart, Go, generic
+  /(^|\/)src\/test\//,                                   // Gradle/Maven — Kotlin, Java
+  /(^|\/)src\/androidtest\//,                            // Android instrumentation tests
+  /(^|\/)[^/]*tests?\/[^/]+\.(swift|kt|java)$/,          // SwiftPM Tests/, *Tests/ targets
+  /\.(test|spec)\.(js|jsx|ts|tsx|mjs|cjs)$/,             // co-located JS/TS tests
+  /_test\.(go|py|dart|rb)$/,                             // Go, Python, Dart, Ruby convention
+  /test_[^/]+\.py$/,                                     // pytest convention
+  /[^/]+tests?\.(kt|java|swift|cs)$/,                    // FooTest.kt / FooTests.swift
+];
+
+const LINT_PATTERNS: RegExp[] = [
+  /(^|\/)(eslint\.config\.[mc]?js|\.eslintrc(\.(js|cjs|json|ya?ml))?)$/, // JS/TS
+  /(^|\/)biome\.jsonc?$/,
+  /(^|\/)(ruff\.toml|\.ruff\.toml|setup\.cfg|\.flake8|\.pylintrc)$/,     // Python
+  /(^|\/)analysis_options\.ya?ml$/,                                      // Dart / Flutter
+  /(^|\/)(detekt\.ya?ml|\.editorconfig|ktlint\.ya?ml)$/,                 // Kotlin
+  /(^|\/)\.swiftlint\.ya?ml$/,                                           // Swift
+  /(^|\/)\.golangci\.ya?ml$/,                                            // Go
+  /(^|\/)(rustfmt\.toml|clippy\.toml)$/,                                 // Rust
+  /(^|\/)(phpcs\.xml(\.dist)?|\.php-cs-fixer(\.dist)?\.php)$/,           // PHP
+  /(^|\/)\.rubocop\.ya?ml$/,                                             // Ruby
+  /(^|\/)\.editorconfig$/,
+];
+
+const MANIFEST_PATTERNS: RegExp[] = [
+  /(^|\/)package\.json$/,                                 // JS/TS
+  /(^|\/)(pyproject\.toml|requirements\.txt|setup\.py|pipfile)$/, // Python
+  /(^|\/)cargo\.toml$/,                                   // Rust
+  /(^|\/)go\.mod$/,                                       // Go
+  /(^|\/)(composer\.json|gemfile)$/,                      // PHP, Ruby
+  /(^|\/)pubspec\.ya?ml$/,                                // Dart / Flutter
+  /(^|\/)build\.gradle(\.kts)?$/,                         // Gradle — Kotlin, Java, Android
+  /(^|\/)pom\.xml$/,                                      // Maven
+  /(^|\/)package\.swift$/,                                // SwiftPM
+  /(^|\/)podfile$/,                                       // CocoaPods
+  /(^|\/)[^/]+\.csproj$/,                                 // .NET
+];
+
+const CI_PATTERNS: RegExp[] = [
+  /(^|\/)\.github\/workflows\//,
+  /(^|\/)\.circleci\//,
+  /(^|\/)\.gitlab-ci\.ya?ml$/,
+  /(^|\/)(bitrise\.ya?ml|codemagic\.ya?ml|fastlane\/fastfile)$/, // mobile CI
+  /(^|\/)(azure-pipelines\.ya?ml|jenkinsfile|\.travis\.ya?ml)$/,
+];
+
+const DOCS_PATTERNS: RegExp[] = [
+  /(^|\/)(docs?|documentation)\//,
+  /(^|\/)[^/]+\.mdx?$/,
+];
+
+function matchesAny(paths: string[], patterns: RegExp[]): boolean {
+  return paths.some((path) => !VENDORED.test(path) && patterns.some((re) => re.test(path)));
+}
+
+/**
+ * Read the repo's file tree into boolean signals.
+ *
+ * `tree` is null when it could not be read — private repo, missing token, rate limit.
+ * Every signal is then false AND `readable` is false, and the caller must use
+ * `readable` to decide whether those falses mean anything. They do not: an unread
+ * repo is unassessed, not deficient.
+ *
+ * Matching is over FULL PATHS and covers the language families Gitwork actually
+ * assesses — see readRepoTree for why root-level filename tests were a JavaScript
+ * assumption that penalised every mobile developer.
+ */
+function detectRepoSignals(tree: RepoTree | null) {
+  const readable = tree !== null;
+  const paths = tree?.paths ?? [];
+
+  const hasReadme = paths.some((path) => /(^|\/)readme(\.[a-z]+)?$/.test(path));
+  const hasDocs = hasReadme || matchesAny(paths, DOCS_PATTERNS);
+  const hasTests = matchesAny(paths, TEST_PATTERNS);
+  const hasCi = matchesAny(paths, CI_PATTERNS);
+  const hasLint = matchesAny(paths, LINT_PATTERNS);
+  const hasManifest = matchesAny(paths, MANIFEST_PATTERNS);
 
   return {
+    readable,
+    truncated: tree?.truncated ?? false,
     hasReadme,
     hasDocs,
     hasTests,
@@ -162,10 +297,14 @@ function detectRepoSignals(contents: GitHubContentResponse) {
   };
 }
 
+/** Points the five file-tree signals are worth — only awardable if we read the tree. */
+const FILE_SIGNAL_POINTS = 10 + 14 + 10 + 8 + 8; // docs, tests, CI, lint, manifest
+
 function buildHealthScore(input: {
   stars: number;
   forks: number;
   recentActivity: boolean;
+  readable: boolean;
   hasDocs: boolean;
   hasTests: boolean;
   hasCi: boolean;
@@ -185,6 +324,17 @@ function buildHealthScore(input: {
   score += Math.min(10, Math.round(input.stars / 40));
   score += Math.min(7, Math.round(input.forks / 25));
   score += Math.min(10, input.recentCommitCount);
+
+  // Repo tree unreadable — the five file signals were not observed, so they must not
+  // be scored as absent. Rescale what WAS observed over the points that were actually
+  // available, the same way Pulse's score-breakdown excludes SKIPPED checks from both
+  // sides of the ratio. Without this an unreadable repo lost 50 of ~100 points for
+  // reasons that have nothing to do with the candidate.
+  if (!input.readable) {
+    const observed = score; // no file-signal points can have been added above
+    const available = 100 - FILE_SIGNAL_POINTS;
+    return clampScore(Math.round((observed / available) * 100));
+  }
 
   return clampScore(score);
 }
@@ -254,7 +404,9 @@ export async function analyzeGitHubProfile(githubHandle: string) {
     selectedRepos.map(async (repo) => {
       const [languages, contents, commits] = await Promise.all([
         safeGithubRequest<Record<string, number>>(`/repos/${repo.full_name}/languages`, {}),
-        safeGithubRequest<GitHubContentResponse>(`/repos/${repo.full_name}/contents`, []),
+        // NOT safeGithubRequest: an unreadable tree must stay distinguishable from an
+        // empty one, or its signals get scored as absent. See readRepoTree.
+        readRepoTree(repo.full_name),
         safeGithubRequest<Array<{ sha: string }>>(
           `/repos/${repo.full_name}/commits?per_page=20`,
           [],
@@ -287,6 +439,7 @@ export async function analyzeGitHubProfile(githubHandle: string) {
         size: repo.size,
         recentCommitCount,
         recentActivity,
+        treeReadable: signals.readable,
         hasReadme: signals.hasReadme,
         hasDocs: signals.hasDocs,
         hasTests: signals.hasTests,
@@ -312,7 +465,13 @@ export async function analyzeGitHubProfile(githubHandle: string) {
     return map;
   }));
 
-  const coverageCount = repoDetails.length || 1;
+  // Coverage is measured over the repos we could actually READ. Using every selected
+  // repo made an unreadable one count as a repo without docs/tests/CI, which then
+  // produced red flags like "Limited visible test coverage" about repositories nobody
+  // had looked inside. Same defect as the per-repo score, one level up.
+  const readableRepos = repoDetails.filter((repo) => repo.treeReadable);
+  const unreadableCount = repoDetails.length - readableRepos.length;
+  const coverageCount = readableRepos.length || 1;
   const metrics: GitHubAnalysisMetrics = {
     publicRepoCount: reposResponse.length,
     selectedRepoCount: repoDetails.length,
@@ -328,19 +487,19 @@ export async function analyzeGitHubProfile(githubHandle: string) {
         )
       : 0,
     docsCoverage: Math.round(
-      (repoDetails.filter((repo) => repo.hasDocs).length / coverageCount) * 100,
+      (readableRepos.filter((repo) => repo.hasDocs).length / coverageCount) * 100,
     ),
     testsCoverage: Math.round(
-      (repoDetails.filter((repo) => repo.hasTests).length / coverageCount) * 100,
+      (readableRepos.filter((repo) => repo.hasTests).length / coverageCount) * 100,
     ),
     ciCoverage: Math.round(
-      (repoDetails.filter((repo) => repo.hasCi).length / coverageCount) * 100,
+      (readableRepos.filter((repo) => repo.hasCi).length / coverageCount) * 100,
     ),
     lintCoverage: Math.round(
-      (repoDetails.filter((repo) => repo.hasLint).length / coverageCount) * 100,
+      (readableRepos.filter((repo) => repo.hasLint).length / coverageCount) * 100,
     ),
     manifestCoverage: Math.round(
-      (repoDetails.filter((repo) => repo.hasManifest).length / coverageCount) * 100,
+      (readableRepos.filter((repo) => repo.hasManifest).length / coverageCount) * 100,
     ),
     averageRecentCommitCount: repoDetails.length
       ? Math.round(
@@ -361,14 +520,32 @@ export async function analyzeGitHubProfile(githubHandle: string) {
   if (metrics.recentRepoRatio < 35) {
     redFlags.push("Low recent public activity.");
   }
-  if (metrics.docsCoverage < 30) {
-    redFlags.push("Limited documentation coverage.");
-  }
-  if (metrics.testsCoverage < 25) {
-    redFlags.push("Limited visible test coverage.");
-  }
-  if (metrics.ciCoverage < 25) {
-    redFlags.push("Limited visible CI coverage.");
+  // Coverage-based flags are statements about what we READ. When no repo tree could
+  // be read they would be statements about nothing, so they are replaced by one flag
+  // naming the actual problem — which is ours, not the candidate's. Emitting
+  // "Limited visible test coverage" for repositories nobody could open is how a
+  // scoring bug turns into an unfair assessment of a person.
+  if (readableRepos.length === 0) {
+    redFlags.push(
+      repoDetails.length === 0
+        ? "No public repositories to assess."
+        : "Repository contents could not be read, so documentation, test, CI and linter coverage are UNASSESSED — not absent. Check GITHUB_TOKEN is configured and can see these repos.",
+    );
+  } else {
+    if (metrics.docsCoverage < 30) {
+      redFlags.push("Limited documentation coverage.");
+    }
+    if (metrics.testsCoverage < 25) {
+      redFlags.push("Limited visible test coverage.");
+    }
+    if (metrics.ciCoverage < 25) {
+      redFlags.push("Limited visible CI coverage.");
+    }
+    if (unreadableCount > 0) {
+      redFlags.push(
+        `${unreadableCount} of ${repoDetails.length} sampled repositories could not be read; coverage figures above cover the rest.`,
+      );
+    }
   }
 
   const recommendedTechnicalDepth = clampScore(

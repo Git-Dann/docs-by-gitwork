@@ -1,10 +1,10 @@
 {
-  "_comment": "Slack App manifest for Foundry by Gitwork. Source of truth for the app's scopes + URLs. Copy the contents (minus this _comment field, Slack rejects unknown top-level keys) into https://api.slack.com/apps → Create New App → From an app manifest. Scope changes ship via PRs against this file; the Settings → Integrations page renders the manifest as a copy block.",
+  "_comment": "Slack App manifest for Foundry by Gitwork. Source of truth for the app's scopes + URLs. Copy the contents (minus this _comment field, Slack rejects unknown top-level keys) into https://api.slack.com/apps → Create New App → From an app manifest. Scope changes ship via PRs against this file; the Settings → Integrations page renders the manifest as a copy block. NOTE: adding event_subscriptions or bot scopes requires the workspace admin to REINSTALL the app — Slack does not grant new scopes to an existing token. After reinstalling, re-save the bot token in Settings → Integrations.",
   "display_information": {
     "name": "Foundry by Gitwork",
-    "description": "Foundry's standup, roll-up and client-channel automation for the Gitwork team.",
+    "description": "Foundry's standup, roll-up, client-channel and Dispatch automation for the Gitwork team.",
     "background_color": "#1A1A1A",
-    "long_description": "Foundry posts the daily standup as rich Block Kit cards (with task drill-down, mark-done, add-comment), publishes the DevOps roll-up, and provisions per-client internal + Slack Connect channels when a new client is onboarded. All credentials live in Foundry's Settings → Integrations panel; nothing is stored client-side."
+    "long_description": "Foundry posts the daily standup as rich Block Kit cards (with task drill-down, mark-done, add-comment), publishes the DevOps roll-up, and provisions per-client internal + Slack Connect channels when a new client is onboarded. Mention @Foundry in a channel — or DM it — and Dispatch answers delivery questions (\"where are we with Acme?\", \"what has Priya been working on?\") from Foundry's own records, always stating what it could not confirm. All credentials live in Foundry's Settings → Integrations panel; nothing is stored client-side."
   },
   "features": {
     "bot_user": {
@@ -15,6 +15,7 @@
   "oauth_config": {
     "scopes": {
       "bot": [
+        "app_mentions:read",
         "chat:write",
         "chat:write.public",
         "chat:write.customize",
@@ -22,6 +23,9 @@
         "channels:manage",
         "groups:read",
         "groups:write",
+        "im:history",
+        "im:read",
+        "im:write",
         "users:read",
         "users:read.email",
         "team:read",
@@ -32,6 +36,13 @@
     }
   },
   "settings": {
+    "event_subscriptions": {
+      "request_url": "https://foundry.gitwork.co.uk/api/webhooks/slack/events",
+      "bot_events": [
+        "app_mention",
+        "message.im"
+      ]
+    },
     "interactivity": {
       "is_enabled": true,
       "request_url": "https://foundry.gitwork.co.uk/api/webhooks/slack/interactions"

@@ -2,7 +2,7 @@ import { CATEGORIES } from "../pulse-checks/categories";
 import { githubGraphQL, hasGithubToken, parseGithubRepo } from "@/lib/github";
 import type { PulseScanCheckInput, CodeAgentInsights } from "@/types/pulse";
 import { scanRepoSecrets, type SecretFinding } from "./secret-scanner";
-import { runNativeMobileChecks } from "@/server/pulse-checks/native-repo";
+import { runNativeMobileChecks, runChromeExtensionChecks, runDesktopChecks, runCliChecks, runWebSourceChecks, runCleanlinessChecks } from "@/server/pulse-checks/native-repo";
 
 const CODE_AGENT_QUERY = `
   query RepoIntelligence($owner: String!, $name: String!) {
@@ -400,12 +400,19 @@ async function runRestOnlyFamilies(
   const checks: PulseScanCheckInput[] = [];
   let exposedSecrets: SecretFinding[] = [];
 
-  const [secretResult, nativeResult] = await Promise.allSettled([
+  // Every family is settled independently and on ONE shared memoized tree fetch
+  // (pulse-checks/native-repo.ts). Independence is the point: a throw in any one of
+  // them must not delete the others' findings, which is the §35.1 failure mode.
+  // Each returns [] for a repo of the wrong shape, so this is a no-op for a plain
+  // web service beyond the secret scan.
+  const [secretResult, nativeResult, extensionResult, desktopResult, cliResult, webResult, cleanResult] = await Promise.allSettled([
     scanRepoSecrets(parsed.owner, parsed.repo),
-    // Shares one memoized tree fetch with runGithubChecks, which runs in parallel —
-    // see pulse-checks/native-repo.ts. Returns [] for anything that is not a native
-    // or Flutter app, so this is a no-op for every web repo.
     runNativeMobileChecks(repoInput),
+    runChromeExtensionChecks(repoInput),
+    runDesktopChecks(repoInput),
+    runCliChecks(repoInput),
+    runWebSourceChecks(repoInput),
+    runCleanlinessChecks(repoInput),
   ]);
 
   if (secretResult.status === "fulfilled") {
@@ -413,8 +420,8 @@ async function runRestOnlyFamilies(
     exposedSecrets = secretResult.value.secrets;
   }
 
-  if (nativeResult.status === "fulfilled") {
-    checks.push(...nativeResult.value.checks);
+  for (const result of [nativeResult, extensionResult, desktopResult, cliResult, webResult, cleanResult]) {
+    if (result.status === "fulfilled") checks.push(...result.value.checks);
   }
 
   return { checks, exposedSecrets };

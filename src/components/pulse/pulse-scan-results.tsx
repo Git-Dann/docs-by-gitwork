@@ -2853,6 +2853,18 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       )}
 
       {activeTab === "checks" && (() => {
+        // Checks the jurisdiction filter excluded. Identified by the marker phrase
+        // applyJurisdictionFilter writes into `detail` — the only signal that
+        // survives onto the persisted check, since there is no separate skip-reason
+        // field on the record.
+        const jurisdictionSkipped = scan.checks.filter(
+          (c) => c.status === "SKIPPED" && (c.detail ?? "").startsWith("Not applicable to your selected markets"),
+        );
+        const declared = scan.targetMarkets ?? [];
+        const marketLabel = declared.length > 0
+          ? declared.join(", ")
+          : (scan.detectedMarkets ?? []).join(", ") || "your markets";
+
         const failCount = scan.checks.filter((c) => c.status === "FAIL").length;
         const warnCount = scan.checks.filter((c) => c.status === "WARN").length;
         const passCount = scan.checks.filter((c) => c.status === "PASS").length;
@@ -2877,6 +2889,39 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               <span className="widget-header-right">{failCount} failed · {warnCount} warn · {passCount} pass</span>
             </div>
             <div className="widget-body space-y-3">
+            {/* Selected markets — shown HERE, beside the checks, not only as a
+                separate Compliance tab. Declaring a market genuinely changes which
+                checks count: applyJurisdictionFilter marks the ones that target
+                other regions SKIPPED, so they stop affecting the score. Without
+                this strip that filtering was invisible and the selection looked
+                like it had only added a tab. */}
+            {jurisdictionSkipped.length > 0 && (
+              <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+                <p className="widget-data-label mb-1.5">
+                  {scan.targetMarkets && scan.targetMarkets.length > 0 ? "Your selected markets" : "Detected markets"}
+                </p>
+                <p className="text-sm text-[var(--text-2)]">
+                  <span className="font-semibold text-[var(--text-1)]">{marketLabel}</span>
+                  {" — "}
+                  {jurisdictionSkipped.length} check{jurisdictionSkipped.length === 1 ? "" : "s"} that target other
+                  regions {jurisdictionSkipped.length === 1 ? "was" : "were"} excluded from the score.
+                </p>
+                <details className="mt-1.5">
+                  <summary className="cursor-pointer text-xs text-[var(--text-4)] hover:text-[var(--text-2)]">
+                    Show what was excluded
+                  </summary>
+                  <div className="mt-1.5 space-y-1">
+                    {jurisdictionSkipped.map((c) => (
+                      <div key={c.checkKey} className="flex items-baseline gap-2 text-xs">
+                        <span className="min-w-0 flex-1 text-[var(--text-3)]">{c.label}</span>
+                        <span className="shrink-0 text-[var(--text-4)]">{c.category}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              </div>
+            )}
+
             {/* Fix first — priority-ranked top findings (exploitability: severity × confidence × weight) */}
             {topPriorities.length > 0 && (
               <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">

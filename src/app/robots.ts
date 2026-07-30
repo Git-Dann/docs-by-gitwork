@@ -36,6 +36,7 @@ export default function robots(): MetadataRoute.Robots {
           // Client deliverables — the URL token is the only credential.
           "/docs/",
           "/report/",
+          "/countermark/",
           "/sign/",
           "/onboarding/",
           "/timeline/",
@@ -56,6 +57,7 @@ export default function robots(): MetadataRoute.Robots {
           // Internal-only surfaces.
           "/download",
           "/context",
+          "/provenance-overview",
           // Tombstone for pre-token document links.
           "/preview/",
         ],

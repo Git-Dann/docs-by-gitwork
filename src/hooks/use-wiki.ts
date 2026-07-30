@@ -18,6 +18,7 @@ import {
   getGolfDataConsole,
   getGolfCourseBackend,
   getGolfIntegrations,
+  getLinkableWikiDocumentsApi,
   getGolfClubsList,
   getGolfUserData,
   runGolfJob,
@@ -67,6 +68,17 @@ export function useClientWiki(slug: string) {
     enabled: Boolean(slug),
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
+  });
+}
+
+/** The Foundry docs addable to this client's wiki. Lazy — pass `enabled` so it only
+ *  fetches when the picker is actually open. */
+export function useLinkableWikiDocuments(slug: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["client-wiki", slug, "linkable-docs"],
+    queryFn: () => getLinkableWikiDocumentsApi(slug),
+    enabled: Boolean(slug) && enabled,
+    staleTime: 30_000,
   });
 }
 

@@ -349,6 +349,7 @@ model Workspace {
   expenseCategories           Json? // Optional override of the hardcoded category list
   curatorConfig               Json? // Curator settings: { enabled, staleAfterDays, archiveAfterDays, consolidate, intervalDays }
   foremanConfig               Json? // Foreman settings: { enabled, dueSoonDays, criticalOverdue, staleDoingDays, consolidate }
+  dispatchConfig              Json? // Dispatch settings: { enabled, recentDays, maxEvidenceItems, perChannelPerHour, allowExternalChannels }
   pulsePricingConfig          Json? // PulsePricingConfig — { fxFromUsd, dayRateOverrideGbp?, seniority? } for Pulse engagement pricing
   costingConfig               Json? // SavedCostingConfig — Studio Costing tool: advanced levers + editable per-dev cost rates (seeded from the Rate Card)
   /// Master switch for the public Pulse embed (/embed/pulse + its API routes). Off = all
@@ -454,12 +455,14 @@ model Workspace {
   devSignalNotices            DevSignalNotice[]
   backgroundJobs              BackgroundJob[]
   foremanRuns                 ForemanRun[]
+  dispatchExchanges           DispatchExchange[]
   foremanFindingActions       ForemanFindingAction[]
   coldArchives                ColdArchive[]
   handbookArticles            HandbookArticle[]
   golfClubs                   GolfClub[]
   pulseCheckStats             PulseCheckStat[]
   curatorRuns                 CuratorRun[]
+  countermarks                   Countermark[]
   aiUsageLogs                 AiUsageLog[]
   /// Master switch for per-call AI usage logging (feeds the Super-Admin Analytics → AI usage
   /// scope). Default ON; a Super Admin can disable per-workspace. Never blocks the AI call.
@@ -1109,6 +1112,7 @@ model WorkspaceClient {
   updatedAt                DateTime                  @updatedAt
   workspace                Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   pulseScans               PulseScan[]
+  countermarks                Countermark[]
   platforms                ClientPlatform[]
   designs                  ClientDesign[]
   documentLinks            ClientDocumentLink[]
@@ -3163,6 +3167,51 @@ model ForemanRun {
   @@index([workspaceId, startedAt])
 }
 
+// Dispatch — the Slack-resident coordinator. One row per question asked of the bot, written
+// BEFORE the answer is composed so `slackEventId` doubles as the Slack retry-dedupe key (Slack
+// re-delivers an event up to 3× when the ack is slow; the unique index makes the second delivery
+// a no-op). The row is then patched with the answer, so it is also the audit trail: what was
+// asked, what Dispatch could actually evidence, what it explicitly could NOT confirm, and what it
+// cost. `status` distinguishes a real answer from the honest refusals (no subject matched, rate
+// limited, AI unavailable) — those are outcomes worth seeing in the panel, not silent failures.
+model DispatchExchange {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Slack's per-delivery event id (`Ev…`). Unique → the retry-dedupe guard.
+  slackEventId String    @unique
+  channelId    String
+  /// Parent message ts — Dispatch always answers in-thread, never in the channel body.
+  threadTs     String?
+  /// Slack user id of the asker, and the Foundry user it resolved to (null when unlinked).
+  askerSlackId String?
+  askerUserId  String?
+  /// The question with the bot mention stripped.
+  question     String    @db.Text
+  /// What the question was judged to be about: "client" | "person" | "workspace" | "none".
+  subjectKind  String?
+  subjectId    String?
+  subjectLabel String?
+  /// "answered" | "no_subject" | "rate_limited" | "no_ai" | "error"
+  status       String    @default("pending")
+  /// The composed answer text posted to Slack.
+  answer       String?   @db.Text
+  /// Claims Dispatch deliberately would NOT make — the anti-false-flag record.
+  unverified   Json? // string[]
+  /// Compact record of the evidence pack the answer was grounded in (counts + ids, not prose).
+  evidence     Json?
+  aiModel      String?
+  /// True when the AI-response cache served this answer (£0).
+  cached       Boolean   @default(false)
+  latencyMs    Int?
+  error        String?   @db.Text
+  createdAt    DateTime  @default(now())
+  answeredAt   DateTime?
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, channelId, createdAt])
+}
+
 // A viewer's resolution of a single Foreman finding, so the daily audit is manageable rather than a
 // wall of repeating rows. Findings are regenerated every run, so an action is keyed by the finding's
 // stable `findingKey` (`${kind}:${subjectId}`) and applied at READ time — dismiss/mute take effect
@@ -4338,4 +4387,108 @@ model DevSignalNotice {
 
   @@unique([workspaceId, version])
   @@index([workspaceId, isActive])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────
+// Provenance — the attestation layer (CLAUDE.md §38).
+//
+// A Countermark is the counterparty-facing artifact: what a specific piece of software was
+// found to be, at a specific commit, against a named standard version, by a named issuer,
+// with an explicit list of what could NOT be established.
+//
+// It is FROZEN AND SELF-CONTAINED, which is the single most important thing about this
+// model. `clauses`, `blindSpots`, `coverage`, `standardVersion` and `checkCount` are all
+// snapshotted at issue time rather than re-derived on read, and `scanId` is a loose
+// indexed id rather than a foreign key. Three reasons, all learned from this repo:
+//   • Docs already does exactly this (a share link renders from `formSnapshot`, not the
+//     live template) so that editing a template never rewrites a document already sent.
+//   • ForemanRun freezes its findings for the same reason — the Desk renders the report as
+//     it was, not as it would be recomputed now.
+//   • An attestation whose contents change when the underlying scan is re-run or deleted
+//     is not an attestation. Someone accepted delivery on this text; it has to survive.
+// The `digest` is computed over the frozen payload, so re-deriving anything on read would
+// also break verification.
+model Countermark {
+  id            String           @id @default(cuid())
+  workspaceId   String
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  clientId      String?
+  client        WorkspaceClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  // What the mark is about. Recorded verbatim so the certificate names the exact artifact
+  // even if the client record is later renamed or the repo moved.
+  subjectName   String
+  subjectRepo   String?
+  subjectCommit String?
+  subjectUrl    String?
+
+  // Evidence provenance. Loose id by design (see the note above) — the scan may be pruned.
+  scanId        String
+  scanVersion   String
+  checkCount    Int
+
+  standardId      String
+  standardVersion String
+  grade           CountermarkGrade
+  gradeReason     String        @db.Text
+
+  clauses    Json // ClauseOutcome[] — frozen per-clause verdicts + rationale
+  blindSpots Json // ProvenanceBlindSpot[] — what this mark does NOT establish
+  coverage   Json // { measured, unmeasured, total, pct }
+
+  issuerName String
+  issuedAt   DateTime @default(now())
+  // Absolute, not derived from issuedAt + a live config read: shortening a standard's
+  // validity window must not retroactively expire marks already issued.
+  expiresAt  DateTime
+
+  // Revocation is a state change, never a delete. A revoked mark stays publicly resolvable
+  // and says REVOKED — otherwise withdrawing one is invisible to whoever holds the link,
+  // which defeats the point of being able to withdraw it.
+  revokedAt     DateTime?
+  revokedReason String?   @db.Text
+  revokedByName String?
+
+  // Set when a newer mark is issued for the same subject, so an old link points forward
+  // instead of quietly contradicting the current one.
+  supersededById String?
+
+  digest String // sha256 of the canonical payload — recomputable by anyone from the certificate
+  seal   String? // HMAC-SHA256 under PROVENANCE_SIGNING_SECRET; null = unsealed, shown as such
+
+  token String @unique // the public certificate URL credential (/countermark/[token])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId, issuedAt])
+  @@index([workspaceId, grade])
+  @@index([clientId, issuedAt])
+  @@index([scanId])
+  // Supersession looks up the previous live mark for a subject on every issue.
+  @@index([workspaceId, subjectName, issuedAt])
+  // ⚠️ The PHYSICAL table stays `Hallmark` — the product's artifact was renamed
+  // Hallmark → Countermark after the table had already shipped, and renaming a Prisma
+  // model renames its table. That reads to Prisma as "create Countermark, DROP Hallmark",
+  // and the build's `prisma db push` runs WITHOUT --accept-data-loss, so per the §2
+  // all-or-nothing footgun the ENTIRE sync would be skipped — additive parts included —
+  // leaving the new table uncreated and every Provenance route erroring on a missing relation.
+  //
+  // `@@map` keeps this a pure code-level rename: zero schema diff, applies through the
+  // guarded push with no manual DB step and no data-loss flag. The legacy physical name
+  // is invisible to users. Renaming the table properly is a `prisma migrate` job for
+  // whenever this repo adopts migrations (§2 option (b)) — not worth a hand-run
+  // --accept-data-loss push that someone can forget.
+  @@map("Hallmark")
+}
+
+enum CountermarkGrade {
+  CERTIFIED
+  CONDITIONAL
+  NOT_CERTIFIED
+  INCOMPLETE
+
+  // Same reasoning as the model's @@map above: renaming a Postgres enum type is a
+  // drop-and-recreate, which would trip the same guard and skip the whole sync.
+  @@map("HallmarkGrade")
 }

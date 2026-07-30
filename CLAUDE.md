@@ -271,6 +271,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 |---|---|---|---|
 | **Foundry HQ** | `/app` | — | Dashboard overview. `/app/projects/[slug]` hangs off it (project detail; `app-shell.tsx` deliberately highlights HQ for it) |
 | **Pulse** | `/app/pulse` | `src/server/pulse*.ts` + `pulse-agents/` | AI project validation — ~600 checks in `checks-registry.ts`, gap analysis, GitHub fix-agent, continuous monitors. Also hosts the optional **Study** research tool (no longer a top-level module — see §26) |
+| **Provenance** (lab) | `/app/provenance` | `src/server/provenance/` | Attestation layer — strikes a **Countermark** from a completed Pulse scan: a frozen, digest-and-seal-verified certificate of what a piece of software was found to be, what could **not** be established, and how long the mark is valid for. Public certificate at `/countermark/[token]` (no auth, noindex). **No sidebar item** — entry point is Settings → Labs (§4a) while it's an experiment. Gated by the **admin-only `provenance` feature perm** (default-off, NOT a module id — see §38); issuing/revoking is the separate high-risk `provenance.issue`. See §38 + `docs/provenance.md` |
 | **Code** | `/app/code` (legacy `/app/codeclear`) | `src/server/codeclear*.ts` | Developer hiring pipeline — GitHub analysis, scoring, candidate management. ⚠️ `candidates/`, `pipeline/` and `devsignal/**` still live ONLY under the legacy `/app/codeclear/*` prefix — moving them is a separate PR, and the `/app/codeclear/devsignal` `MODULE_PATHS` entry must be renamed **in place** or admin-only DevSignal silently regates onto the staff-inherited `codeclear` module |
 | **Studio** | `/app/studio` | — (client-side only, no `/api/studio`) | Brand asset studio — design on-brand social assets and App Store / Play Store screenshots, then batch-export at the exact size each platform needs. ~30 components under `src/components/studio/` (`studio-root.tsx` entry, plus `templates/`, `screenshots/`, `costing/`, `brand.tsx`, `export.ts`). Also now hosts the **Demo builder** (`demo-builder.tsx`), moved out of Settings in July 2026 — this is the `Demo {{Feat}}` workstream in §32. Module permission id `studio` |
 | **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). `/app/proposals/*` are redirect stubs (see §16) |
@@ -368,6 +369,7 @@ src/
       rate-card/                  ← Rate card CRUD
       settings/                   ← AI integrations + model settings
       report/[token]/             ← Public shareable report
+      badge/pulse/[token]/        ← Public Pulse-score badge SVG (same shareToken; §38)
       webhooks/github/            ← GitHub webhook for Pulse monitors
       dev/seed-demo/              ← Dev: seed Pulse demo data
       dev/seed-study-demo/        ← Dev: seed Study demo data
@@ -396,6 +398,14 @@ src/
       persona.ts                  ← AI persona interview conductor
       synthesizer.ts              ← Turn/session/final report synthesis
       types.ts                    ← Shared agent types (AiConfig etc.)
+    dispatch/                     ← Dispatch: the Slack-resident coordinator (§36)
+      resolve.ts                  ← PURE question → subject (client/person/workspace) resolution
+      evidence.ts                 ← Deterministic bounded evidence pack + deriveBlindSpots (no AI)
+      answer.ts                   ← Pure no-AI floor + ONE cached light-tier phrasing call
+      respond.ts                  ← Orchestrator: gates → resolve → gather → answer
+      config.ts / types.ts        ← resolveDispatchConfig + DISPATCH_DEFAULTS
+    slack/
+      events.ts                   ← Events API handler (loop guard, dedupe, external-channel gate)
     support.ts                    ← Care/Support CRUD (clients, tickets, convos, workflow rules)
     codeclear.ts                  ← Candidate management + default payloads
     codeclear-analysis.ts         ← GitHub code analysis runner
@@ -1754,7 +1764,7 @@ tags exist. Do not invent a fourth.
 
 | Tag | Means | Current members |
 |---|---|---|
-| `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal** |
+| `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance** |
 | `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
@@ -2153,3 +2163,620 @@ partial-error contract, 5 asserting the native family survives every GraphQL fai
 `detectRepoSignals` turns an empty listing into `hasTests/hasCi/hasLint/hasReadme: false`, feeding
 `CodeClearScore`, so every private candidate repo has been scored as having no tests, CI, linter or
 docs.
+
+## 36. Recent Changes (July 2026) — Dispatch (the Slack-resident coordinator)
+
+`@Foundry` is now **answerable**. Mention the bot in a channel — or DM it — and **Dispatch**
+answers delivery questions ("where are we with the ElectricFire onboarding?", "what has Howard
+done on Big Wedge Golf?", "is anything at risk?") from Foundry's own records, in-thread, always
+stating what it could **not** confirm. Prompted by a Loom of Ayven doing the same thing; the gap
+turned out to be narrow, because Foreman (§29) already had the brain — it had no mouth. **Full
+operator runbook + verification steps: `docs/dispatch.md`.**
+
+- **The inbound half of Slack, which never existed.** Foundry had `/commands` and `/interactions`
+  but no Events API endpoint — it could post and be clicked, never *talked to*. New
+  `src/app/api/webhooks/slack/events/route.ts`: verifies the HMAC over raw bytes (that path is
+  public in middleware, so the signature is the only auth), answers the `url_verification`
+  challenge, then **acks immediately and works in `after()`**. Deferring is correct here, unlike
+  the interactions route which must finish `views.open` inside the 3s `trigger_id` window —
+  nothing in an event expires. Manifest gains `event_subscriptions` (`app_mention`, `message.im`)
+  + `app_mentions:read`/`im:*`; **reinstalling the Slack app is required** (Slack never grants new
+  scopes to an existing token).
+- **The design rule, and it's structural not prompted:** `question → deterministic subject
+  resolution (resolve.ts, pure) → deterministic evidence pack (evidence.ts, Prisma only) → ONE
+  light-tier LLM call that may only rephrase the pack`. The model never queries, never infers,
+  never decides what's true — it's a writer, not a researcher. Three consequences worth keeping:
+  (a) **`unverified` is not the model's to write** — it's derived from the pack's blind spots and
+  merged in afterwards; the model may only *add* a caveat, never drop one; (b) **there's a no-AI
+  floor** — `composeDeterministicAnswer()` is pure, so with no API key / a failed call / junk JSON
+  Dispatch still answers, just plainly; (c) **"nothing overdue" can never mean "on track"** unless
+  tasks are actually dated — computed in `deriveBlindSpots()`, not left to the model.
+- **Blind spots** (`NO_TASKS`, `NO_DUE_DATES`, `NO_TIMELINE`, `NO_COMPLETION_STAMPS`,
+  `NO_RECENT_ACTIVITY`, `NOT_IN_FOUNDRY`, `SLACK_NOT_READ`) each name a question the evidence
+  *can't* answer. `SLACK_NOT_READ` is **conditional on purpose** — only added when the board has
+  gone quiet, which is the one moment a reader would otherwise conclude nothing happened.
+- **Subject resolution is deterministic, never the model's pick** — a confidently wrong client is
+  the exact failure Dispatch exists to prevent. Two passes: word-bounded on a normalised form,
+  then a length-guarded squashed pass so "ElectricFire" finds "Electric Fire" while "Echo" can't
+  match inside "echoed". Client + person in one question = client subject narrowed to that person.
+  Nothing matched → it says so and stops.
+- **`allowExternalChannels` is a disclosure gate, default OFF, fails closed.** Per-client Slack
+  Connect channels contain the client; overdue counts / developer workload / Foreman flags are not
+  client-facing. Classified from a live `conversations.info` (`is_ext_shared` — **not** `is_shared`,
+  which is also true for internal org shares); any failure to classify → treated as external.
+  `resolveDispatchConfig` accepts only a literal boolean `true`, so a stray `"yes"`/`1` can't open it.
+- **Cost discipline mirrors the Foreman narrative** — one `tier:"light"` (Haiku) call, 900 tokens,
+  cached system prompt, wrapped in `AiResponseCache` with the **subject+question in the cache key**
+  and the **evidence in the inputs hash**, so re-asking an unchanged board is **£0**. Attributed to
+  the pre-existing `AiModule.SLACK`. Per-channel rate limit counts *every* exchange, junk included.
+- **Schema (additive → applies via the guarded `prisma db push`):** `Workspace.dispatchConfig`
+  (`{enabled, recentDays 7, maxEvidenceItems 12, perChannelPerHour 20, allowExternalChannels false}`)
+  + new **`DispatchExchange`** — written BEFORE the answer, so `slackEventId @unique` doubles as the
+  Slack retry-dedupe guard (a re-delivery loses the insert race; an attempt that died pre-insert
+  legitimately retries). Also the audit trail: `status` (`answered` | `no_subject` | `rate_limited`
+  | `no_ai` | `error` — honest refusals are outcomes, not silent failures), `unverified`, `evidence`
+  (counts + blind-spot kinds only, never a second copy of client data), `aiModel`, `cached`, `latencyMs`.
+- **`slack` notification channel wired** (was declared-but-no-op in `dispatchNotification`). Posts
+  **once** per dispatch to `Workspace.channelRoutes[event]`, gated on the event's **default**
+  routing — deliberately NOT per-recipient, because a channel post is a workspace broadcast and
+  routing it per-user would post N copies to one channel and let one person's mute change what a
+  shared channel sees. Runs independently of the recipient set, so a channel-routed digest lands
+  even if every individual muted it. **`foreman.digest` now routes `["inApp","push","slack"]`** —
+  set `channelRoutes["foreman.digest"]` and the morning delivery picture lands in Slack. No route
+  configured → silent no-op.
+- **Deliberate limits (all Phase 2/3, all called out in `docs/dispatch.md`):** it does **not** read
+  Slack conversation (no `channels:history` scope requested — least privilege, and it keeps the
+  answer's provenance honest); there is **no mission object** yet, so it answers from derived state
+  rather than a durable "the ElectricFire onboarding" record with an owner + completion target +
+  evidence log (that's the real product work); it answers but never acts (read-only, no writes on
+  your behalf); replies are always in-thread; no Settings UI or panel — config is JSON on the
+  workspace.
+- **Verified:** `tsc --noEmit` + targeted `eslint` clean; `npm test` **174 passing** (39 new
+  Dispatch unit tests covering mention stripping, subject resolution incl. the squash-collision
+  guards, config clamping + the external-channel boolean guard, every blind-spot rule, the no-AI
+  floor, and event triage/loop-guard); `next build` clean with
+  `/api/webhooks/slack/events` registered. App is auth-gated with no local DB → **post-deploy**:
+  reinstall the Slack app, confirm the Events URL verifies, mention the bot in an internal channel,
+  re-ask to prove the `cached` footer, ask something unresolvable, and try a Slack Connect channel
+  to confirm it declines. Steps 1-8 in `docs/dispatch.md`.
+
+## 37. Recent Changes (July 2026) — Pulse: the scan dropdown gets check families behind it
+
+Six of the eleven entries in the scan dropdown had **no checks of their own**. The menu was
+purely **subtractive**: picking "iOS app" removed five irrelevant categories and fed a label into
+the AI prompt, and never caused a single one of the 39 iOS checks to run — those fire on repo
+DETECTION. So "Desktop app" and "CLI tool" were empty, "React Native" was a label with nothing
+behind it, and a scan that could not run the family you asked for looked identical to one that ran
+it and found nothing. Same disease as §35, one layer up.
+
+**Registry: 703 → 819 checks (+116).** Every one is deterministic and traceable to a vendor rule —
+citations in **`docs/platform-check-sources.md`**, which also carries the three version-pinned
+constants (below), because those are the parts that go stale on a schedule.
+
+### 37.1 The bug found while wiring: the browser-extension family could never fire
+
+`isChromeExtension` reads `snapshot.files`, and `buildSnapshot` returned early with an **empty
+files map** for any repo that wasn't iOS/Android/Flutter. A browser-extension repo is neither, so
+`findExtensionManifest` had nothing to search: **all 12 extension checks shipped in #469 were
+unreachable from the moment they landed**, and no test caught it because they were unit-tested
+against a hand-built snapshot. Fixed by the two-phase snapshot below; the family is now 26 checks.
+
+### 37.2 New families
+
+| Family | Checks | File |
+|---|---|---|
+| **Desktop — Electron + Tauri** | 33 | `pulse-checks/desktop-app.ts` |
+| **React Native** | 22 | `pulse-checks/react-native-app.ts` |
+| **CLI / published npm package** | 22 | `pulse-checks/cli-tool.ts` |
+| **API behaviour (probed)** | 13 | `pulse-checks/api-behaviour.ts` |
+| **Android — component & platform security** | +14 (19 → 33) | `pulse-checks/android-app.ts` |
+| **Browser extension — surface, code, listing** | +14 (12 → 26) | `pulse-checks/chrome-extension.ts` |
+
+- **Desktop is the highest-severity family in Pulse.** `nodeIntegration: true` with
+  `contextIsolation: false` is remote code execution on the user's machine from any script the
+  renderer loads — one boolean. `readBooleanSetting` returns `true` / `false` / **`null`** because
+  absent ≠ false: `contextIsolation` defaults SECURE (absence passes) while `sandbox` does not.
+  Collapsing them gets one backwards, and there is a test that fails if you do.
+- **API behaviour probes rather than reads docs.** `api-quality.ts`'s 15 checks all ask whether
+  something is *documented*; these ask what the API actually does — CORS origin reflection with
+  credentials, stack traces in error bodies, TRACE, GraphQL introspection. Two rules it must not
+  break: a **failed probe yields SKIPPED, never FAIL**, and on a `catchAll200` host the path probes
+  decline to answer. `api_unauthenticated_data` is deliberately SKIPPED with a reason — OWASP API1
+  needs an authenticated test with two accounts and cannot be inferred from outside.
+- **CLI is about DISTRIBUTION, not code.** Install lifecycle scripts, `bin` names that shadow
+  `node`, publish provenance, and the argv/stdout/stderr/exit-code contract other programs depend
+  on. Runs only for a `bin`-carrying package that is not a web app and not `private: true`.
+
+### 37.3 The dropdown now says what it did and didn't cover
+
+New `platform-coverage.ts` + check **`platform_family_coverage`**. Detection still WINS over a
+wrong selection — a user who picks the wrong entry should still get a correct scan — but the gap is
+no longer silent:
+
+- **URL scan + a source-based selection** → SKIPPED, naming the family and the count, and saying to
+  re-run with a GitHub repo. **Never a FAIL**: scanning a URL is legitimate, and the score must not
+  punish a project for how it was scanned.
+- **Repo scan, shape matches** → PASS. **Shape differs** → WARN naming both ("selected iOS, this is
+  a CLI"), because the cross-platform-product case — the mobile code is in another repo — is common.
+
+### 37.4 Two-phase snapshot (`native-repo.ts`)
+
+An Electron app, an RN app, a CLI and a plain web service all look like "a directory with a
+package.json", so shape detection needs file CONTENTS, which is what the old path-only early-return
+could not do.
+
+- **Round 0** — at most 8 tiny files (root `package.json`, `src-tauri/tauri.conf.json`, candidate
+  `manifest.json`s), ranked and capped so a 200-workspace monorepo can't stampede the API.
+- **Resolve shape** — mobile first (`detectNativePlatform` already orders RN/Flutter before native),
+  then desktop/CLI from package.json, then React Native, then extension last (needs the
+  `manifest_version` key, which is what stops every PWA being scanned as an extension).
+- **Round 1** — config + a relevance-ranked source sample for that shape, plus a CLI's `bin` targets
+  (named in package.json, so they match no path pattern — and the shebang check is meaningless
+  without them). Config capped at 60.
+- A plain web repo still costs **one tree call + the round-0 probes** and nothing else.
+
+⚠️ `SnapshotShape` is deliberately a **third** union, separate from `NativePlatform` and
+`ProjectShape`. It exists only to choose which files to fetch; merging it into either of the others
+would let a desktop repo silently pick up mobile applicability semantics.
+
+⚠️ `runNativeMobileChecks` guards the RN branch on the **resolved snapshot shape**, not on
+`detectNativePlatform` alone — an Electron app that also ships an `app.json` reads as
+`"react-native"` to the path-based detector. There is a test for exactly this.
+
+### 37.5 Version-pinned constants — these go stale and produce WRONG findings
+
+Not missing findings: an app on a supported version reported as end-of-life. Full table in
+`docs/platform-check-sources.md`.
+
+| Constant | File | Value | Cadence |
+|---|---|---|---|
+| `ELECTRON_OLDEST_SUPPORTED_MAJOR` | `desktop-app.ts` | 41 | new major every 8 weeks, latest 3 supported |
+| `RN_OLDEST_SUPPORTED_MINOR` | `react-native-app.ts` | 84 | latest 3 minors |
+| `PLAY_TARGET_SDK_FLOOR` | `android-app.ts` | 35 | each August |
+
+### 37.6 Things learned (again) writing this
+
+- **The reconcile guard's tuple heuristic bites any three-string array**, including one **inside a
+  comment**. It fired three times here: `["preinstall", "install", "postinstall"]`, the icon sizes,
+  and then the comment written to explain the first. Restructured the code each time rather than
+  loosening the guard — it is the only thing stopping the catalogue drifting.
+- **A computed `checkKey` opts a check out of that guard entirely.** The three `cli_pkg_*` metadata
+  checks were a loop over a template literal; they are written out explicitly now.
+- **Regex classes and quote characters.** `[^"']*` failed to match the Android SQL-concatenation
+  case because a SQL string routinely *contains* the other quote (`"… WHERE email = '"` + email).
+  Matched per-quote-style now. Same family of bug as the Dart single-quote issue in §34.6.
+- **Tests were proved to discriminate** by breaking four things on purpose: disabling comment
+  stripping (1 fail), collapsing absent-vs-false (3 fails), making a failed API probe report FAIL
+  (1 fail), and letting RN classify an Electron app (1 fail).
+
+**Verified:** `npm run verify` green — tsc + lint 0 errors, **494 tests**, audit:ui 0 findings.
+App is auth-gated with no local DB → **post-deploy**: scan a real Electron repo, a real Kotlin repo,
+a browser-extension repo and an npm CLI, and confirm the `platform_family_coverage` check reads
+correctly for a deliberate mismatch. **Deferred:** the 116 new checks are validated against unit
+tests, not against real repositories — §34.3's lesson is that validating a family against a real
+codebase is what finds the wrong ones, and that has not happened yet for any of these.
+
+## 38. Recent Changes (July 2026) — Provenance: the attestation layer (new product)
+
+A new top-level product at `/app/provenance`, sharing Foundry's spine and sellable standalone. It
+inverts what Pulse does: **Pulse produces a report for the owner; Provenance produces a signed,
+expiring attestation for the counterparty** — the client accepting handover, the insurer
+underwriting the app, the acquirer, the procurement officer. Someone who did not build the
+software, cannot read code, and is about to rely on it. Full brief, market evidence, revenue
+model and operator runbook: **`docs/provenance.md`**.
+
+**Why an attestation and not another scanner.** Scanning commoditised to free during 2026 —
+free no-signup agent-readiness scanners, free vibe-code security scanners, Snyk/Semgrep/OX
+overlapping the rest. What has not commoditised is *standing behind* a measurement, and
+certification lives or dies on one property this repo has already paid to learn: **never
+claiming what you did not check** (§34.2's confidence model, §35's *"a check built on
+`safeGithubRequest` converts 'we couldn't look' into 'it isn't there'"*, §37's
+SKIPPED-not-FAIL). Every free scanner still has the bug Foundry found and fixed in itself.
+The commercial precedent is Cyber Essentials — 200,000+ certificates, 69% micro/small, growth
+driven by contract mandates, ~290 licensed assessment bodies (which is the white-label
+channel, proven at national scale).
+
+**SAS-1 — the standard is the product's contract** (`src/server/provenance/standard.ts`). 14
+clauses, each with a plain-English `assertion` (the sentence a counterparty relies on), a
+non-technical `whyItMatters`, a `critical` flag, and the Pulse `checkKeys` that constitute
+evidence. Versioned, and a mark records `standardId` + `standardVersion` — a certificate that
+does not name its standard is worthless. **Never change a clause's meaning in place**; marks
+already issued cite it. A test asserts every `checkKeys` entry exists in
+`checks-registry.ts`, because a clause pointing at a key nothing emits is `UNPROVEN` forever,
+which reads as "we could not check this" when the truth is "we asked the wrong question".
+
+**The verdict rules, and the one that matters** (`evaluate.ts`, pure). `MET` needs every
+covering check to have run *and* passed; `FAILED` needs an adverse check at HIGH or MEDIUM
+confidence; a proven warning is `QUALIFIED`; all-SKIPPED is `NOT_APPLICABLE`. Everything else
+— **no covering check ran, or only LOW-confidence adverse signals** — is `UNPROVEN`. Grades:
+a critical `FAILED` → `NOT_CERTIFIED`; a critical `UNPROVEN` → **`INCOMPLETE`**; non-critical
+problems → `CONDITIONAL`; else `CERTIFIED`.
+⚠️ **`INCOMPLETE` is load-bearing and must not be merged into `NOT_CERTIFIED`.** "We could not
+check this" and "this is broken" are different facts with different fixes. `score-breakdown.ts`
+already excludes a LOW-confidence adverse check from scoring as "an unproven alarm"; here the
+consequence is stronger — it must not earn a *pass* on the way through either.
+
+**Blind spots are first-class and rendered ABOVE the clause list** on the certificate
+(§02, before §03/§04). Derived, never authored: unmeasured clauses, weak-evidence-only
+clauses, clauses met on a partial check set, thin overall coverage — plus an **unconditional**
+`RUNTIME_NOT_PROBED` stating that Provenance inspects code, config and public responses and never
+signs in, exercises payments or attempts cross-account authorisation. A reader must never have
+to infer the product's boundary from the absence of a caveat.
+
+**digest ≠ seal, and the honesty rule** (`digest.ts`). The **digest** is a SHA-256 over a
+canonical (recursively key-sorted) serialisation — proves contents unaltered, needs no secret,
+recomputable by anyone from what the certificate prints. The **seal** is an HMAC-SHA-256 over
+the same form under `PROVENANCE_SIGNING_SECRET` — proves *we* issued it. A digest alone is
+worthless against forgery (an attacker who edits the contents recomputes it). With no secret
+configured, `seal` is `null` and the certificate says **UNSEALED** — there is deliberately
+**no fallback to a derived key**, because a seal anyone can reproduce looks identical to a
+real one to every reader while proving nothing. `verifyAttestation` also keeps
+`UNVERIFIABLE` (seal present, no key here) distinct from `TAMPERED`, so a rotated key does not
+cry forgery. The payload seals clause **verdicts and blind-spot kinds, not prose** — otherwise
+rewording a rationale would invalidate every seal ever issued.
+
+**Marks expire on purpose, and that is the subscription.** 90 days certified / 30 conditional
+(and 30 for failed+incomplete, which still need to be citable in a dispute). Precedence is
+`REVOKED` → `SUPERSEDED` → `LAPSED` → `EXPIRING` → `VALID`, and the order is deliberate: a
+revoked mark that has *also* expired must still say REVOKED, because "we withdrew this"
+outranks "it would have run out anyway" for anyone who relied on it. `LAPSED` explicitly means
+*nobody re-checked*, not *a fault was found*.
+⚠️ **Revocation is `PATCH`, never `DELETE`.** Deleting the row 404s the certificate URL, which
+reads to whoever holds it as a broken link rather than a withdrawal — so the one thing
+revocation exists to communicate would be the one thing it fails to say.
+
+**The Countermark row is frozen and self-contained** — `clauses`/`blindSpots`/`coverage`/
+`standardVersion`/`checkCount` snapshotted at issue, and `scanId` a **loose indexed id, not an
+FK**. Same precedent as Docs (`formSnapshot`, so editing a template never rewrites a document
+already sent) and `ForemanRun` (frozen findings). An attestation whose contents change when the
+scan is re-run is not an attestation, and the digest is computed over the frozen payload, so
+re-deriving anything on read would break verification too.
+
+**Permissions are split.** `provenance` (module) is a read-only register; **`provenance.issue`** is a
+separate high-risk action, because the issuer's name goes on a certificate a third party
+relies on. Both default off. The issue route uses `requireAuthedUser`, **not** the OrDefault
+variant — that helper falls back to the default workspace owner, so an identity-less caller
+would issue a certificate in a Super Admin's name, which here is not merely a privilege bug
+but a forged signature.
+
+**Schema (additive → applies via the guarded `prisma db push`):** `Countermark` + enum
+`CountermarkGrade`; relations on `Workspace` and `WorkspaceClient`. New env
+`PROVENANCE_SIGNING_SECRET` (optional; absence degrades honestly to UNSEALED). New route
+`/countermark/[token]` added to `robots.ts`'s disallow list alongside the other token pages.
+
+**Verified:** `npm run verify` green — tsc + lint **0 errors**, **560 tests passing** (66 new
+across evaluate/lapse/digest), `audit:ui` **0 findings** with its self-test passing;
+`npx next build` clean with all four new routes registered. The 66 tests were **proved to
+discriminate** by breaking four things on purpose (§37's discipline): certifying an unmeasured
+clause → 6 failures; letting a LOW-confidence adverse check count as proof → 1; making
+`LAPSED` outrank `REVOKED` → 1; dropping blind spots from the sealed payload → 2.
+**Not visually verified** — `/app/provenance` is auth-gated and `/countermark/[token]` needs a real
+row, and there is no staging or local DB. Post-deploy steps 1-6 in `docs/provenance.md` §5.
+
+**Demo data + the internal product case.** **Settings → Labs → Provenance → Seed demo data**
+(Super Admin, session-authorised — no API key; `POST /api/dev/seed-provenance-demo` for scripts)
+seeds **six countermarks** covering all four grades plus a revoked one and a superseded pair. It
+does **not** fabricate rows: it builds realistic `PulseScan`/`PulseScanCheck` records and runs the
+real `issueCountermark`, so every verdict, blind spot, digest and seal is genuine engine output —
+and the response asserts each scenario's grade against what the engine actually returned,
+surfacing `gradeMismatches` in the UI rather than swallowing them. Fixtures live in
+`src/server/provenance/demo-scenarios.ts` and are graded in CI by
+`__tests__/demo-scenarios.test.ts` with **no database**, which is how the demo data is known
+correct *before* it is seeded (the seed route can't run locally). Writing that test immediately
+earned its keep: it caught that `repo_accessible` — the canonical "could we even look" signal
+(§35) — was in no clause at all, even though C11's assertion already claimed readability had been
+established. Fixed by bumping **SAS-1 to v1.1.0** and adding the key, rather than loosening the
+test; safe because zero marks had been issued. Also `/provenance-overview`, the internal product
+case (noindex, in `robots.ts`) — a working document with dated regulation, sourced figures, a
+specimen certificate, the competitive-gap table, and an explicit register of what is NOT built
+and what is unresolved.
+
+**Deferred, highest-value first:** **commit pinning** — `subjectCommit` is written `null`
+because `PulseScan` never records the SHA it read, so a mark currently names a repo rather
+than a version (recorded as null rather than guessed, per the no-false-precision rule);
+**continuous re-examination** as a `COUNTERMARK_RECHECK` job on the existing Curator/Foreman cron spine
+(this is the subscription); **licensed issuers** for white label (issuer record + per-issuer
+certificate branding + a public issuer directory); a **public `SAS-1` page** at a stable URL so
+a contract can cite it; **Docs integration** (embed a mark in a handover; require a live mark
+before e-sign acceptance); and an **insurer/marketplace API**, which needs a partner before it
+needs code.
+
+## 39. Recent Changes (July 2026) — Badges: "Foundry Approved" + an embeddable Pulse score
+
+Two families of self-contained SVG mark, so Gitwork's work can be signed on a client's own site and
+a Pulse score can be published there. **Full usage + parameters: `docs/badges.md`.**
+
+- **"Foundry Approved" — five options, committed under `public/badge/`.** Seal (circular stamp,
+  rotating legend), Instrument plate (the `01 // WIDGET NAME` widget grammar), Shield (inline,
+  shields.io proportions), Monogram (square, the real wordmark's "F"), Certificate lockup
+  (horizontal footer). Each ships light + `-dark` and static + `-anim`; the monogram adds `-sm`.
+  Measured size floors: **seal 64px**, **monogram 24px** (below that its tick lozenge is a smudge —
+  `-sm` drops it and is legible to 16px).
+- **Pulse score — `GET /api/badge/pulse/[token]`** (public, added to `PUBLIC_API_PATHS`). The token
+  is the **existing `PulseScan.shareToken`**, so no schema change, no new auth surface, and nothing
+  is exposed that `/report/[token]` does not already show. It reads through the **same
+  `pulse-report-<token>` cache tag** the share route already revalidates, so unshare revokes the
+  badge with the report. `?style=shield|ring|card|bar`, `?theme=light|dark`, `?motion=1`. A revoked
+  token **404s on purpose** — a badge that kept rendering would advertise a claim nobody can check.
+- **Bands are locked to the report.** `scoreBand`/`scoreGrade` mirror `HealthScoreRing`
+  (`document-cover.tsx`) and a unit test asserts every boundary, so the badge can never contradict
+  the report it links to. The `card`'s domain bars come from `computeScoreBreakdown` — the same
+  maths as the headline score.
+
+**Type is outlined to paths, and that is load-bearing.** An SVG in an `<img>` is an isolated
+document: no webfont fetch, no inherited CSS. `font-family:'DM Serif Display'` there falls back to
+Georgia, whose numerals are **old-style** — a score would render with a descending "9". So
+`scripts/badge/fonttype.py` outlines the brand faces (shaped through HarfBuzz for correct kerning)
+from the base64 woff2 **already vendored for Deck**, keeping one copy of the fonts in the repo.
+⚠️ `TTFont` loaded from `.woff2` keeps `flavor="woff2"` and re-saves compressed; HarfBuzz cannot
+parse that and fails **silently** — every character maps to `.notdef`, giving uniform advances and
+no outlines. Clear `font.flavor` before saving.
+
+**⚠️ The trap that shaped the whole design: a CSS animation inside an `<img>` freezes at frame 0.**
+It is not that the animation "doesn't apply" — the browser *starts* it and never advances the
+timeline, so an entrance animation renders its **hidden** first frame. **No `fill-mode` fixes it**;
+"frame 0" and "finished" are contradictory states. It fires wherever a page is rasterised without
+being scrolled: offscreen images in a full-page screenshot, social/OG card renderers, print-to-PDF.
+Found exactly that way here — the Pulse badges came out blank in a full-page screenshot while the
+same files were perfect in isolation. Consequences, both kept:
+1. **Everything ships in two builds.** Static is the **default** and the one that goes on someone
+   else's site; animated (`-anim`, or `?motion=1`) is for surfaces we control, where a person
+   scrolls it into view. The static build is literally the animated one minus its `<style>`.
+2. **Every base style must equal the finished state.** `entrance()` (in both the Python generator
+   and `pulse-badge.ts`) puts stagger in **keyframe percentages, never `animation-delay`**, because
+   a delay with `fill-mode:backwards` reintroduces a hidden resting state. `prefers-reduced-motion`
+   is deliberately *only* `animation:none`, which makes the invariant self-testing — get it wrong
+   and a reduced-motion render visibly breaks.
+
+**Layout defects the detectors cannot see, found by screenshotting** (the §30 lesson again): the
+ring's caption collided with its own arc, the lockup's serif title ran under the VERIFIED chip, and
+the card's fourth domain bar overlapped the footer rule. All three are geometry, so `audit:ui` and
+`audit-clipping` are blind to them — the lockup now **derives its width from the shaped type**, so
+that class of collision cannot come back when the copy changes.
+
+**Files:** `scripts/badge/{fonttype,generate}.py` (build-time only — `pip install fonttools brotli
+uharfbuzz`; outputs are committed, nothing runs Python at build or request time),
+`src/lib/badge/pulse-badge.ts` (pure, 23 unit tests), `src/lib/badge/glyphs.ts` (generated, ~15KB,
+caps-only), `src/app/api/badge/pulse/[token]/route.ts`, `public/badge/*.svg`, `docs/badges.md`.
+
+**Verified:** `npm run verify` green — tsc + lint clean, **517 tests** (23 new), `audit:ui` 0
+findings; `npx next build` clean with `/api/badge/pulse/[token]` registered. Both builds were
+rendered in headless Chromium at multiple sizes, on light and dark grounds, and under
+`prefers-reduced-motion`. **Not verified:** the live route against a real shared scan — that needs a
+database, so it is a post-deploy check (share a scan, hit each `style`, unshare and confirm 404).
+**Deferred:** per-client copy on the static plate/lockup (`AUDITED …` is baked into the art); an
+Inter block in the glyph table (the dynamic `card` sets its grade in mono for that reason); and a
+picker in-app — today you copy a URL out of `docs/badges.md`.
+
+### 39.1 Badge studio (Settings → Labs) + the naming scheme
+
+The marks are now installable from inside Foundry rather than by copying a URL out of a doc.
+
+- **Every mark has a permanent code** — `FA-01`…`FA-05`, `PS-01`…`PS-04` — defined in
+  **`src/lib/badge/catalog.ts`**, the single source of truth for badge identity that the studio,
+  the docs and any review comment all read from. Codes are permanent: retiring a mark retires its
+  code, because reusing a number makes a stale reference resolve to the *wrong* thing instead of
+  failing. `catalog.test.ts` asserts each code is unique, well-formed, and — the useful part —
+  that **every variant the studio can offer actually exists on disk**, so the catalogue can't
+  advertise a file the generator never wrote.
+- **Settings → Labs → Badge studio** (`src/components/settings/labs/badge-studio.tsx`): pick a
+  mark, set the ground, static/animated, then copy a paste-ready snippet. For a Pulse badge it also
+  picks the scan and **shares the report inline** if it isn't shared yet — that share is what mints
+  the token, so the studio is the whole install path rather than step one of three.
+- **It is a modal, not a route, and that is deliberate.** Labs is Super-Admin-gated in the settings
+  shell, but `/app/settings/**` is in `UNGATED_APP_PREFIXES` — a route would have been reachable by
+  any signed-in member. Keeping it in the panel means it inherits the gate it should have. `LabEntry`
+  now takes either an `href` (opens a tab, e.g. `/edge`) or a `panel` (opens in place).
+- **`PulseScanListItem` gained `isShared` + `shareToken`** (additive DTO, no schema change).
+  `shareToken` is populated **only while `isShared`** — an unshared scan's token never leaves the
+  server, and once shared it is no more secret than the `/report/[token]` link it belongs to. The
+  share/unshare hooks now also invalidate `["pulse-scans"]`; they only invalidated the single scan,
+  which left the list's new share state stale.
+
+**Two layout bugs, both caught by rendering the component rather than reading it.** `/app` is
+auth-gated with no staging, so the studio was server-rendered with `renderToStaticMarkup` inside
+the real providers, wrapped in the app's compiled CSS, and screenshotted. That is worth knowing as
+a technique — it does not run effects, but it does check real geometry on gated screens:
+
+1. The **Install block fell below the fold** once the Pulse scan picker was present. The column
+   scrolled, so `audit-clipping` would have passed it — but the snippet is the reason the studio
+   exists and should never be the thing you scroll to find. It is now a pinned, non-scrolling
+   footer with the content above scrolling under it.
+2. Pinning it didn't work at first: the inspector column needed **`min-h-0`**. Without it a grid
+   item's automatic minimum size is its content, so the column grew past the `h-[460px]` track and
+   pushed the footer out of the dialog. Same trap DESIGN.md documents for the Docs editor panes.
+
+**Verified:** `npm run verify` green — tsc + lint clean, **531 tests** (8 new catalogue tests),
+`audit:ui` 0 findings; `npx next build` clean. The studio was rendered and screenshotted in three
+states (FA-01, FA-03, PS-04). **Not verified:** the studio driven live with real scans — effects,
+the scan dropdown and the clipboard need a browser session against a database, so that is a
+post-deploy check.
+
+### 39.2 The Countermark badge — the embeddable face of an Provenance attestation
+
+Provenance (§38) publishes a Countermark as a **page**; it had no embeddable mark. This adds one, so a
+client can put the attestation in their own footer rather than only linking to it. Three styles —
+**`CM-01` Mark shield**, **`CM-02` Validity disc**, **`CM-03` Certificate card** — served from
+`GET /api/badge/countermark/[token]` (public; `/api/badge` was already in `PUBLIC_API_PATHS`), keyed
+on the same `Countermark.token` that serves `/countermark/[token]`, so the badge is exactly as
+public as the certificate and shows strictly less.
+
+**`src/lib/badge/svg-kit.ts`** was extracted first — tokens, outlined-type composition, `entrance`,
+`wrap`, `cardFace` — because the alternative was copying ~150 lines out of the Pulse renderer. Both
+renderers now sit on it and `pulse-badge.ts` kept its public API, so its 23 tests passed the
+refactor unchanged.
+
+**Three honesty rules, enforced in `markState()` so every style inherits them.** Each has unit
+tests named after it, because a badge is the likeliest place for an attestation to get overstated:
+
+1. **Validity dominates grade.** A LAPSED / REVOKED / SUPERSEDED mark asserts nothing, so it never
+   leads with its grade — the status word, muted, and the shield is struck through rather than
+   merely greyed. A badge still reading CERTIFIED three months after expiry is precisely what Provenance
+   exists to prevent.
+2. **INCOMPLETE is not NOT_CERTIFIED.** "Could not establish" and "provably broken" never share a
+   colour — neutral vs danger. The same distinction as §35, one layer out.
+3. **An unsealed mark says so.** No `ASSAY_SIGNING_SECRET` → an UNSEALED marker, so it cannot pass
+   for a signed mark.
+
+⚠️ **This badge is cached for 60 seconds, not 5 minutes, and never at a CDN.** Unlike the Pulse
+badge it is **time-dependent** — it renders days remaining and flips VALID → EXPIRING → LAPSED on
+its own, with no write to invalidate against. `max-age=60, must-revalidate`, deliberately no
+`s-maxage`: a CDN holding a lapsed mark as certified is the failure mode that matters. `validityDays`
+is derived from the record's own `issuedAt`/`expiresAt` rather than the standard, so a mark issued
+under an older validity policy still draws its own window correctly.
+
+**Studio:** the catalogue gained a third family and `countermarkPath()`; the studio lists it and
+picks a mark. There is no share step — a countermark is public the moment it is struck.
+
+**Verified:** `npm run verify` green — **624 tests** (26 new Countermark tests + the catalogue
+guard extended to `CM-`), `audit:ui` 0 findings; `npx next build` clean with both badge routes
+registered. All fifteen grade × status × seal × theme combinations were rendered and inspected —
+which caught the UNSEALED marker sitting on the disc's 9px ring stroke and being cut in half.
+**Not verified:** the route against a real struck countermark (needs a database) — post-deploy,
+issue a mark in Labs → Provenance, hit each style, then revoke it and confirm the badge flips.
+
+## 38. Recent Changes (July 2026) — Pulse reads the source of a WEB repo (the blind spot at the centre)
+
+Prompted by a competitive read of **ogbuilds.ai** (secure·vibes / clean·vibes — a one-person studio
+scanning the same population Pulse targets), which surfaced a gap worth more than anything in their
+feature list: **Pulse read source for seven repo shapes and not for the eighth, most common one.**
+
+A plain web/service repo resolved to `shape === "none"` and `buildSnapshot` returned right after the
+round-0 manifest probes. So a Next.js app, an Express API or a Django service was graded on its HTTP
+responses, its GitHub metadata and a **filename listing** — nothing about the code inside it. That is
+exactly the population where AI-assisted development concentrates.
+
+Their published 549-repo study (deterministic rules, no AI pass, re-runnable) quantifies what Pulse
+was missing: `dangerouslySetInnerHTML` in **42.6%**, injection-category findings in **47.5%**, and a
+`.gitignore` that exists but does not cover `.env` in **35.7%**. Pulse could see the third only as
+"a .gitignore is present" — which PASSES that case — and the other two not at all.
+
+**New family `pulse-checks/web-repo-source.ts` — 17 checks.** Registry 819 → 836.
+
+| Group | Checks |
+|---|---|
+| Injection & unsafe code | raw HTML rendering, SQL string-building (4 idioms), `eval`/`new Function`, shell built from a variable, `pickle`/`yaml.load` |
+| Credentials | `.gitignore` CONTENTS vs `.env`, hardcoded passwords, Supabase RLS from committed migrations |
+| Framework defaults | `DEBUG = True`, `ALLOWED_HOSTS = ['*']`, JWT verification off / `alg: none`, CORS from source, helmet |
+| Transport | TLS verification disabled, plaintext outbound URLs |
+| Supply chain | `curl \| sh` in the README, unpinned deps / no lockfile |
+
+⚠️ **This family carries the highest false-positive risk in Pulse**, because unlike the platform
+families it matches PATTERNS in ordinary application code rather than reading a named config value.
+So the tests are mostly about staying QUIET — on template code, placeholders, `localhost`, comments —
+and three findings are deliberately softened: raw HTML drops to WARN when a sanitiser is present, a
+password literal drops to WARN when it looks like a placeholder, and wildcard CORS is only a FAIL
+when credentials are also enabled. **A scanner that fires on every React app is worse than none.**
+
+### 38.1 The cost trade, made deliberately
+
+`SOURCE_EXTENSION.none` was `null`; it now samples JS/TS/Py/Rb/PHP/Go/Java/C#. Every repo scan pays
+for this, where before only the mobile minority did — so the web cap is **`WEB_SAMPLE_CAP = 80`**,
+not the mobile 150. Config reads grew too: `.gitignore` (contents, not existence), shell scripts, and
+`migrations|supabase|db|sql/*.sql` for the repo-side RLS check.
+
+### 38.2 What else is worth taking from them (NOT built — Dan's call)
+
+- **Benchmark percentile.** They publish a distribution over 549 repos, so a score reads
+  "worst 15% of AI-built apps" rather than "61/100". Pulse has no corpus. This is the single biggest
+  remaining idea, and it compounds: every scan we run could feed it.
+- **A ready-to-paste Claude prompt per finding.** They ship one with every result. Foundry already
+  puts Claude Code in front of clients, so this is a natural fit and needs one optional field.
+- **Six legible subscores with published weights.** Theirs: Secrets 30 / Injection 20 / Auth 15 /
+  Data exposure 15 / Dependencies 10 / Transport 10. Pulse has 26 categories, which is more accurate
+  and much less legible on a client report.
+- **A per-rule finding cap** (they use 10/rule, 300/repo). `MAX_SITES_QUOTED = 5` applies that idea
+  within this family only.
+
+⚠️ **Do not assume their calibration is better than ours.** Their security median is **97 (A)** with
+353 of 549 repos scoring A — a distribution that says most vibe-coded repos are fine, which does not
+match what a hand review of a real client app finds (§34: 10 FAIL / 12 WARN on a shipping iOS app).
+Their *coverage* of web repos was better than ours. Their *severity calibration* looks generous.
+
+**Verified:** `npm run verify` green — tsc + lint 0 errors, 696 tests, audit:ui 0 findings. Tests
+proved to discriminate by breaking three things on purpose: comment stripping (1 fail), the
+`.gitignore` contents test reduced to a presence test (1 fail), and the localhost exclusion (1 fail).
+**Deferred:** as with §37, validated against fixtures rather than real repositories.
+
+## 39. Recent Changes (July 2026) — Pillars, a real benchmark, and cleanliness that measures code
+
+Three changes, all prompted by reading a competitor properly (ogbuilds.ai) rather than copying its
+feature list. Registry 836 → 845.
+
+### 39.1 Pillars — six legible subscores with published weights (`pulse-checks/pillars.ts`)
+
+Pulse grades 845 checks across 26 categories in 12 domains. That is more accurate than any
+six-bucket rollup and much harder to read: a client sees a number and then a wall, with no answer to
+"which part is the problem?" Competitors get an inferior measurement and a better conversation.
+
+Six pillars, weights **published** so they can be argued with rather than buried in a formula:
+**Security & secrets 30 · Access & data 15 · Code & maintainability 15 · Reliability 15 ·
+Legal & compliance 15 · Experience & reach 10.**
+
+Three properties make it honest, each with a test:
+- **Nothing hand-maintained.** Every category maps to exactly one pillar; `unassignedCategories()` /
+  `duplicatedCategories()` must both be empty, so adding a category in `categories.ts` and forgetting
+  it here FAILS rather than scoring nowhere.
+- **Weight is redistributed, never assumed.** A pillar with nothing applicable (an iOS app has no
+  SEO checks) is dropped and its points shared across the pillars that applied — and it is *named* as
+  dropped. Scoring it zero, or on nothing, is the "we could not look" → "it is not there" failure.
+- **It reuses the score's own rules.** Same exclusions as `computeScoreBreakdown`. A test asserts the
+  two agree on the same checks; if they ever disagree a client will find it before we do.
+
+### 39.2 Benchmark — the existing one, made trustworthy (`getIndustryBenchmarks`)
+
+⚠️ **A benchmark already existed.** I nearly shipped a parallel module before finding it — grep
+first. It was rewritten in place rather than duplicated, because two benchmarks disagreeing is worse
+than one weak one.
+
+What changed and why:
+- **Segments on `PulseScan.platform`, not the AI's `projectClassification`.** That free-text label is
+  regenerated per scan, so "SaaS platform" and "B2B SaaS" never matched and peers were lost silently —
+  and it required AI to have run, so a checks-only scan (the fast path since §18) could never be
+  benchmarked at all.
+- **Widens instead of returning nothing** when the platform segment is too small, and sets `widened`
+  so the report says which happened.
+- **A `caveat` sentence ships WITH the figure**, naming the corpus and stating plainly that this is
+  Pulse's own scan history, not an industry survey. A percentile gets screenshotted into a deck and
+  outlives its context.
+- **Stops loading `llmAnalysis` for every scan in the workspace** to read one nested string — a large
+  JSON blob per row for a number already in a column. Adds a 12-month window.
+
+### 39.3 Cleanliness — structural debt, measured (`pulse-checks/code-cleanliness.ts`, 9 checks)
+
+Pulse treated maintainability as a checklist (is there a README, a linter, a CI file). Those are
+facts *about* a repo, not about its code — a project can have all three and be a 4,000-line file
+nobody dares change. **This is the pillar that predicts COST rather than risk**, which for an agency
+inheriting client codebases is the more useful number more often, and the one nobody measures before
+quoting.
+
+Three real analysers — the only actual algorithms in Pulse's check layer, everything else being
+pattern matching:
+- `commentedOutCodeLines` — distinguishes commented-out CODE from prose. This distinction *is* the
+  check: a comment explaining why is the most valuable thing in a file, and a check that fires on
+  documented code punishes exactly what it should encourage.
+- `maxNestingDepth` — control-flow depth, brace- or indentation-based.
+- `detectDuplication` — sliding-window hashing over normalised lines. Excludes all-import windows
+  (every file shares those) and windows with <3 distinct lines (a run of closing braces is not
+  duplicated logic).
+
+### 39.4 ⚠️ Two defects found by running it against a REAL repo, which the unit tests passed through
+
+Dan supplied `tmoreton/tutorials`. §34.3's lesson held again — **validate a new family against a real
+codebase, because unit tests pass while checks are wrong**:
+
+1. **Nesting counted object literals as nesting.** The two files it flagged were an AWS CDK stack and
+   an SDK entrypoint: nested *config*, with three levels of actual control flow. As written, the check
+   would fire on any config-heavy or JSX-heavy file — the "fires on every React app" failure that
+   makes a family worthless. Now only control-flow and function braces count (`opensABlock`), with a
+   regression test both ways: config-heavy reads 1, genuinely nested still reads 5.
+2. **`.gitignore` was read at the repo root only.** That repo is a monorepo whose sub-project
+   `.gitignore` correctly covers `.env` while the root one holds `.DS_Store` — a completely normal
+   layout that produced a false positive. The config pattern now matches `.gitignore` at any depth.
+
+After both fixes that repo reports clean, which it is.
+
+**Verified:** `npm run verify` green — tsc + lint 0 errors, **738 tests**, audit:ui 0 findings.
+**Deferred:** the pillar breakdown and benchmark caveat are computed but not yet rendered in the
+report UI — pillars derive from `scan.checks` per §8, so that is a presentation change with no
+server work behind it.

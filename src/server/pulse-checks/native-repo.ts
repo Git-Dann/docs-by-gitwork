@@ -20,9 +20,50 @@ import type { PulseScanCheckInput } from "@/types/pulse";
 import { detectNativePlatform, isVendoredPath, type NativePlatform, type RepoSnapshot } from "./native-mobile";
 import { evaluateIosChecks } from "./ios-app";
 import { evaluateFlutterChecks } from "./flutter-app";
+import { evaluateAndroidChecks } from "./android-app";
+import { evaluateChromeExtensionChecks, isChromeExtension } from "./chrome-extension";
+import { evaluateReactNativeChecks } from "./react-native-app";
+import { evaluateDesktopChecks } from "./desktop-app";
+import { evaluateCliChecks, binEntries } from "./cli-tool";
+import { detectProjectShape, parsePackageManifest, type ProjectShape } from "./project-shape";
+import { evaluateWebSourceChecks } from "./web-repo-source";
+import { evaluateCleanlinessChecks } from "./code-cleanliness";
+
+/**
+ * Every repo shape the snapshot builder knows how to feed. This is deliberately a
+ * SEPARATE union from NativePlatform (mobile) and ProjectShape (desktop/CLI): it
+ * exists only to decide which files to fetch, and merging it into either of the
+ * other two would let a desktop repo pick up mobile applicability semantics.
+ */
+export type SnapshotShape = NativePlatform | Exclude<ProjectShape, null> | "chrome-extension" | "none";
 
 /** Max Swift files whose contents we read. See ios-app.ts for how coverage is used. */
 const SWIFT_SAMPLE_CAP = 150;
+
+/**
+ * Sample cap for a plain web/service repo.
+ *
+ * Lower than the mobile cap on purpose. Every repo scan now pays this, where
+ * previously a web repo read no source at all, so the cost applies to the whole
+ * population rather than the mobile minority. 80 relevance-ranked files is enough
+ * for the presence findings in web-repo-source.ts to be sound; the absence ones
+ * self-downgrade when coverage is thin, which is the honest outcome on a large
+ * monorepo rather than a fabricated pass.
+ */
+const WEB_SAMPLE_CAP = 80;
+
+/**
+ * Round-0 budget: the tiny files that decide the shape, before we know it.
+ *
+ * package.json distinguishes Electron from React Native from a CLI, and
+ * manifest.json (with a manifest_version key) is the only thing that identifies a
+ * browser extension. Both are cheap; the cap stops a monorepo with 200 workspaces
+ * turning shape detection into 200 requests.
+ */
+const SHAPE_PROBE_CAP = 8;
+
+/** Max config files read in round 1. Bounds the cost on a large monorepo. */
+const CONFIG_CAP = 60;
 /** Concurrency for content fetches — bounded so a big repo can't stampede the API. */
 const FETCH_CONCURRENCY = 15;
 /** Skip blobs above this size (minified bundles, generated Lottie JSON, binaries). */
@@ -62,14 +103,55 @@ const CONFIG_PATTERNS: RegExp[] = [
   /(^|\/)fvm_config\.json$/i,
   /(^|\/)\.fvmrc$/i,
   /(^|\/)google-services\.json$/i,
+  // Browser-extension manifest. Deliberately broad here and narrowed at match time
+  // by findExtensionManifest, which requires a "manifest_version" key — a PWA web
+  // app manifest shares this filename and must not be scanned as an extension.
+  /(^|\/)manifest\.json$/i,
+  // Desktop — Tauri config + capabilities, and both Electron packagers.
+  /(^|\/)src-tauri\/tauri\.conf\.json$/i,
+  /(^|\/)src-tauri\/capabilities\/[^/]+\.(json|toml)$/i,
+  /(^|\/)src-tauri\/Cargo\.toml$/i,
+  /(^|\/)electron-builder\.(ya?ml|json|js|ts|cjs)$/i,
+  /(^|\/)forge\.config\.(js|ts|cjs|mjs)$/i,
+  /(^|\/)electron\.vite\.config\.(js|ts|cjs|mjs)$/i,
+  // JS manifest — the discriminator for Electron vs React Native vs CLI, and the
+  // source of every field the CLI family grades.
+  /(^|\/)package\.json$/i,
+  // React Native build configuration.
+  /(^|\/)(babel\.config\.(js|cjs|ts)|\.babelrc(\.js|\.json)?)$/i,
+  /(^|\/)(app\.json|app\.config\.(js|ts)|eas\.json|metro\.config\.(js|cjs|ts))$/i,
+  // Read for the CLI family (usage docs) and the desktop signing check.
+  /^README(\.md|\.markdown|\.rst|\.txt)?$/i,
+  /^\.github\/workflows\/[^/]+\.ya?ml$/i,
+  // Web-source family: .gitignore CONTENTS (not just its existence — a .gitignore
+  // that misses .env is the second most common finding in AI-built repos and
+  // passes any presence test), setup scripts, and SQL migrations for the
+  // repo-side Supabase RLS check.
+  /(^|\/)\.gitignore$/i,
+  /^(scripts\/)?[^/]*\.(sh|bash)$/i,
+  /(^|\/)(migrations|supabase|db|sql)\/[^/]*\.sql$/i,
 ];
 
-/** Which source extension carries the app's own logic, per platform. */
-const SOURCE_EXTENSION: Record<NativePlatform, RegExp> = {
+/**
+ * Which source extension carries the app's own logic, per shape.
+ *
+ * `null` means "no family reads source for this shape", which is how a plain web
+ * repo still costs exactly one tree call and nothing else.
+ */
+const SOURCE_EXTENSION: Record<SnapshotShape, RegExp | null> = {
   ios: /\.swift$/i,
   android: /\.(kt|java)$/i,
   flutter: /\.dart$/i,
   "react-native": /\.(ts|tsx|js|jsx)$/i,
+  electron: /\.(ts|tsx|js|jsx|mjs|cjs)$/i,
+  // Tauri's security surface is split across the Rust commands and the JS frontend.
+  tauri: /\.(rs|ts|tsx|js|jsx|mjs|cjs)$/i,
+  cli: /\.(ts|js|mjs|cjs)$/i,
+  "chrome-extension": /\.(ts|js|mjs|cjs)$/i,
+  // A plain web/service repo. This used to be null — the snapshot returned after
+  // the round-0 probes and NO source was read, so the most common repo shape of
+  // all was graded on filenames and HTTP responses alone. See web-repo-source.ts.
+  none: /\.(js|jsx|ts|tsx|mjs|cjs|py|rb|php|go|java|cs)$/i,
 };
 
 /** Generated Dart (freezed/json_serializable/retrofit) — read a few, not hundreds. */
@@ -134,14 +216,17 @@ export function swiftRelevance(path: string, size: number): number {
  */
 export function selectFilesToRead(
   entries: { path: string; size: number }[],
-  platform: NativePlatform = "ios",
+  platform: SnapshotShape = "ios",
 ): { config: string[]; source: string[] } {
   const usable = entries.filter((e) => e.size <= MAX_BLOB_BYTES);
   const config = usable
     .filter((e) => CONFIG_PATTERNS.some((re) => re.test(e.path)) && !isVendoredPath(e.path))
-    .map((e) => e.path);
+    .map((e) => e.path)
+    .slice(0, CONFIG_CAP);
 
   const ext = SOURCE_EXTENSION[platform];
+  if (!ext) return { config, source: [] };
+
   const source = usable
     .filter((e) => ext.test(e.path) && !isVendoredPath(e.path))
     // Generated Dart is repetitive boilerplate; a handful is enough to read the
@@ -151,7 +236,7 @@ export function selectFilesToRead(
       score: swiftRelevance(e.path, e.size) - (GENERATED_DART.test(e.path) ? 500 : 0),
     }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, SWIFT_SAMPLE_CAP)
+    .slice(0, platform === "none" ? WEB_SAMPLE_CAP : SWIFT_SAMPLE_CAP)
     .map((e) => e.path);
 
   return { config, source };
@@ -184,6 +269,64 @@ async function mapLimit<T>(items: T[], limit: number, fn: (item: T) => Promise<v
   await Promise.all(workers);
 }
 
+/**
+ * Round-0 probe paths: the few small files whose CONTENTS decide the shape.
+ *
+ * Ordered so the cap keeps the most decisive files — a root package.json beats a
+ * workspace one, and a manifest.json at the root or in the usual extension source
+ * directories beats one buried in a fixture.
+ */
+export function selectShapeProbes(paths: string[]): string[] {
+  const rank = (p: string): number => {
+    const depth = p.split("/").length;
+    if (/^package\.json$/i.test(p)) return 0;
+    if (/^src-tauri\/tauri\.conf\.json$/i.test(p)) return 1;
+    if (/(^|\/)manifest\.json$/i.test(p)) return 2 + depth;
+    if (/^[^/]+\/package\.json$/i.test(p)) return 20 + depth;
+    return 100;
+  };
+  return paths
+    .filter(
+      (p) =>
+        !isVendoredPath(p) &&
+        (/(^|\/)package\.json$/i.test(p) ||
+          /(^|\/)manifest\.json$/i.test(p) ||
+          /(^|\/)src-tauri\/tauri\.conf\.json$/i.test(p)),
+    )
+    .sort((a, b) => rank(a) - rank(b))
+    .slice(0, SHAPE_PROBE_CAP);
+}
+
+/**
+ * Decide which family (if any) will read this repo's contents.
+ *
+ * Mobile wins first because detectNativePlatform's ordering already resolves the
+ * hard cases (an RN project CONTAINS ios/ and android/). Desktop and CLI come from
+ * package.json, and the extension check is last because `manifest.json` only counts
+ * when it carries a manifest_version key.
+ */
+export function resolveSnapshotShape(
+  paths: string[],
+  probeFiles: Map<string, string>,
+): SnapshotShape {
+  const platform = detectNativePlatform(paths);
+  if (platform === "ios" || platform === "android" || platform === "flutter") return platform;
+
+  const shape = detectProjectShape(paths, probeFiles.get("package.json") ?? null);
+  if (shape !== null) return shape;
+
+  // React Native after desktop/CLI: an Electron app can carry app.json too, and
+  // detectNativePlatform treats that as an RN signal.
+  if (platform === "react-native") return "react-native";
+
+  for (const [path, text] of probeFiles) {
+    if (/(^|\/)manifest\.json$/i.test(path) && /"manifest_version"\s*:/.test(text)) {
+      return "chrome-extension";
+    }
+  }
+  return "none";
+}
+
 async function buildSnapshot(owner: string, repo: string): Promise<RepoSnapshot> {
   const tree = await safeGithubRequest<GitTreeResponse>(
     `/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`,
@@ -196,19 +339,54 @@ async function buildSnapshot(owner: string, repo: string): Promise<RepoSnapshot>
     return { owner, repo, paths: [], files: new Map(), truncated: false, accessible: false };
   }
 
-  // Only pay for content when there is a check family that will use it. React Native
-  // is deliberately excluded — it's a JS project and the generic checks cover it.
-  const platform = detectNativePlatform(paths);
-  if (platform !== "ios" && platform !== "android" && platform !== "flutter") {
-    return { owner, repo, paths, files: new Map(), truncated: Boolean(tree.truncated), accessible: true };
+  const files = new Map<string, string>();
+
+  // ── Round 0 ────────────────────────────────────────────────────────────────
+  // At most SHAPE_PROBE_CAP tiny files. Everything downstream needs these to tell
+  // an Electron app from a React Native app from a CLI from a browser extension,
+  // and none of that is decidable from paths alone.
+  //
+  // ⚠️ This round is why the Chrome-extension family works at all. Before it, this
+  // function returned early for any non-mobile repo with an EMPTY files map — and
+  // isChromeExtension reads snapshot.files, so all 12 extension checks were
+  // unreachable from the moment they shipped. Same disease as §35: a check that
+  // could never look reporting as if it had.
+  const probes = selectShapeProbes(paths);
+  await mapLimit(probes, FETCH_CONCURRENCY, async (path) => {
+    const text = await fetchText(owner, repo, path);
+    if (text !== null) files.set(path, text);
+  });
+
+  const shape = resolveSnapshotShape(paths, files);
+
+  // A plain web/service repo has no family that reads source, so it costs exactly
+  // the tree call plus the round-0 probes and nothing more.
+  if (shape === "none") {
+    return { owner, repo, paths, files, truncated: Boolean(tree.truncated), accessible: true };
   }
 
+  // ── Round 1 ────────────────────────────────────────────────────────────────
   const { config, source } = selectFilesToRead(
     blobs.map((b) => ({ path: b.path, size: b.size ?? 0 })),
-    platform,
+    shape,
   );
-  const files = new Map<string, string>();
-  await mapLimit([...config, ...source], FETCH_CONCURRENCY, async (path) => {
+
+  // A CLI's `bin` targets are named in package.json rather than matching any path
+  // pattern, and the shebang check is meaningless without them.
+  const extra: string[] = [];
+  if (shape === "cli") {
+    const pkg = parsePackageManifest(files.get("package.json") ?? null);
+    if (pkg) {
+      const known = new Set(paths.map((p) => p.toLowerCase()));
+      for (const { path } of binEntries(pkg)) {
+        const clean = path.replace(/^\.\//, "");
+        if (known.has(clean.toLowerCase())) extra.push(clean);
+      }
+    }
+  }
+
+  const wanted = [...new Set([...config, ...source, ...extra])].filter((p) => !files.has(p));
+  await mapLimit(wanted, FETCH_CONCURRENCY, async (path) => {
     const text = await fetchText(owner, repo, path);
     if (text !== null) files.set(path, text);
   });
@@ -271,7 +449,102 @@ export async function runNativeMobileChecks(
   if (platform === "flutter") {
     return { platform, checks: evaluateFlutterChecks(snapshot) };
   }
-  // Native Android lands here next — the reader, detection and applicability layers
-  // are already platform-agnostic, so it is a checks module and a registry block.
+  if (platform === "android") {
+    return { platform, checks: evaluateAndroidChecks(snapshot) };
+  }
+  if (platform === "react-native") {
+    // Guarded on the resolved snapshot shape, not on detectNativePlatform alone:
+    // an Electron app that also ships an app.json reads as "react-native" to the
+    // path-based detector, and running the RN family over it would report a
+    // desktop app as a mobile one.
+    const shape = resolveSnapshotShape(snapshot.paths, snapshot.files);
+    if (shape === "react-native") {
+      return { platform, checks: evaluateReactNativeChecks(snapshot) };
+    }
+  }
   return { platform, checks: [] };
+}
+
+/**
+ * Run the desktop family (Electron / Tauri).
+ *
+ * Independent of every other family, and dispatched alongside them rather than
+ * through the mobile path: a desktop app is not a NativePlatform, and neither
+ * family should be able to take the other out.
+ */
+export async function runDesktopChecks(
+  repoInput: string,
+): Promise<{ shape: "electron" | "tauri" | null; checks: PulseScanCheckInput[] }> {
+  const snapshot = await getRepoSnapshot(repoInput);
+  if (!snapshot || !snapshot.accessible) return { shape: null, checks: [] };
+
+  const shape = resolveSnapshotShape(snapshot.paths, snapshot.files);
+  if (shape !== "electron" && shape !== "tauri") return { shape: null, checks: [] };
+  return { shape, checks: evaluateDesktopChecks(snapshot, shape) };
+}
+
+/** Run the CLI / published-package family. */
+export async function runCliChecks(
+  repoInput: string,
+): Promise<{ isCli: boolean; checks: PulseScanCheckInput[] }> {
+  const snapshot = await getRepoSnapshot(repoInput);
+  if (!snapshot || !snapshot.accessible) return { isCli: false, checks: [] };
+
+  if (resolveSnapshotShape(snapshot.paths, snapshot.files) !== "cli") return { isCli: false, checks: [] };
+  return { isCli: true, checks: evaluateCliChecks(snapshot) };
+}
+
+/**
+ * Run the web/service source family.
+ *
+ * Independent of every other family, like the rest. Returns [] for any repo that
+ * resolved to a more specific shape — those have their own family, and running
+ * generic web patterns over a Swift project would produce noise, not findings.
+ */
+export async function runWebSourceChecks(
+  repoInput: string,
+): Promise<{ isWebRepo: boolean; checks: PulseScanCheckInput[] }> {
+  const snapshot = await getRepoSnapshot(repoInput);
+  if (!snapshot || !snapshot.accessible) return { isWebRepo: false, checks: [] };
+
+  if (resolveSnapshotShape(snapshot.paths, snapshot.files) !== "none") return { isWebRepo: false, checks: [] };
+  return { isWebRepo: true, checks: evaluateWebSourceChecks(snapshot) };
+}
+
+/**
+ * Run the code-cleanliness family.
+ *
+ * Unlike every other family here this is SHAPE-AGNOSTIC — file size, nesting,
+ * duplication and leftovers mean the same thing in Swift, Dart, Kotlin and
+ * TypeScript, and the analysers handle brace- and indent-based languages alike.
+ * So it runs over whatever source the snapshot happened to sample, for any shape.
+ */
+export async function runCleanlinessChecks(
+  repoInput: string,
+): Promise<{ checks: PulseScanCheckInput[] }> {
+  const snapshot = await getRepoSnapshot(repoInput);
+  if (!snapshot || !snapshot.accessible) return { checks: [] };
+  return { checks: evaluateCleanlinessChecks(snapshot) };
+}
+
+/** The resolved snapshot shape for a repo, for callers that need it for labelling. */
+export async function detectRepoShape(repoInput: string): Promise<SnapshotShape> {
+  const snapshot = await getRepoSnapshot(repoInput);
+  if (!snapshot || !snapshot.accessible) return "none";
+  return resolveSnapshotShape(snapshot.paths, snapshot.files);
+}
+
+/**
+ * Run the browser-extension family. Independent of the mobile family: an extension
+ * is not a NativePlatform, and neither should be able to take the other out.
+ *
+ * Shares the same memoized snapshot, so this adds no extra tree fetch.
+ */
+export async function runChromeExtensionChecks(
+  repoInput: string,
+): Promise<{ isExtension: boolean; checks: PulseScanCheckInput[] }> {
+  const snapshot = await getRepoSnapshot(repoInput);
+  if (!snapshot || !snapshot.accessible) return { isExtension: false, checks: [] };
+  if (!isChromeExtension(snapshot)) return { isExtension: false, checks: [] };
+  return { isExtension: true, checks: evaluateChromeExtensionChecks(snapshot) };
 }

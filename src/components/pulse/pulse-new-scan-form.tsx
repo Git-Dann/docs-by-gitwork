@@ -31,19 +31,54 @@ const INPUT_TYPES: Array<{ value: PulseScanInputType; label: string; placeholder
   },
 ];
 
-const PLATFORMS = [
-  { value: "WEB_APP", label: "Web app" },
-  { value: "SAAS", label: "SaaS" },
-  { value: "MARKETING_SITE", label: "Marketing site" },
-  { value: "IOS_APP", label: "iOS app" },
-  { value: "ANDROID_APP", label: "Android app" },
-  { value: "CROSS_PLATFORM_MOBILE", label: "React Native / Flutter" },
-  { value: "DESKTOP_APP", label: "Desktop app" },
-  { value: "CHROME_EXTENSION", label: "Chrome extension" },
-  { value: "API_BACKEND", label: "API / backend" },
-  { value: "CLI_TOOL", label: "CLI tool" },
-  { value: "OTHER", label: "Other" },
+/**
+ * Grouped so eleven options read as five decisions rather than a flat list to scan.
+ * The values are unchanged — this is labelling and ordering only, so existing scans
+ * and any saved platform stay valid.
+ *
+ * "Cross-platform mobile" is spelled out because React Native and Flutter are two
+ * different toolchains that happen to share one option: the checks a scan runs are
+ * chosen from the REPO (pubspec.yaml → Flutter, JS manifest → React Native), not from
+ * this dropdown, and today only Flutter has its own check family. The old
+ * "React Native / Flutter" label implied a parity that does not exist.
+ */
+const PLATFORM_GROUPS: Array<{ label: string; options: Array<{ value: string; label: string }> }> = [
+  {
+    label: "Web",
+    options: [
+      { value: "WEB_APP", label: "Web app" },
+      { value: "SAAS", label: "SaaS" },
+      { value: "MARKETING_SITE", label: "Marketing site" },
+    ],
+  },
+  {
+    label: "Mobile",
+    options: [
+      { value: "IOS_APP", label: "iOS app" },
+      { value: "ANDROID_APP", label: "Android app" },
+      { value: "CROSS_PLATFORM_MOBILE", label: "Cross-platform mobile (React Native / Flutter)" },
+    ],
+  },
+  {
+    label: "Other surfaces",
+    options: [
+      { value: "DESKTOP_APP", label: "Desktop app" },
+      { value: "CHROME_EXTENSION", label: "Chrome extension" },
+    ],
+  },
+  {
+    label: "No user interface",
+    options: [
+      { value: "API_BACKEND", label: "API / backend" },
+      { value: "CLI_TOOL", label: "CLI tool" },
+    ],
+  },
+  {
+    label: "Other",
+    options: [{ value: "OTHER", label: "Other" }],
+  },
 ];
+
 
 /** Derive a friendly project name from the input so the user doesn't have to type one
  *  up front: URL → hostname (minus www.), repo → repo name, free-text → first few words. */
@@ -350,8 +385,12 @@ export function PulseNewScanForm({
           onChange={(e: ChangeEvent<HTMLSelectElement>) => setPlatform(e.target.value)}
           disabled={isPending}
         >
-          {PLATFORMS.map((p) => (
-            <option key={p.value} value={p.value}>{p.label}</option>
+          {PLATFORM_GROUPS.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.options.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </label>

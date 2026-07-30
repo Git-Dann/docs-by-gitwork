@@ -50,13 +50,18 @@ export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];
  * (`src/server/notifications.ts`) and the preferences route's lazy-create. A user's saved
  * `NotificationPreference.events` overrides this per event.
  *
- * Channels: `inApp` (the bell + feed) and `push` (native Web Push, VAPID) are wired.
+ * Channels: `inApp` (the bell + feed), `push` (native Web Push, VAPID) and `slack` are wired.
  * EVERY event includes `inApp` — it's the baseline that always works. `push` is added
  * to directed/actionable events (someone assigned you work, decided your request, a client
  * needs something) so devs are interrupted only when it matters; informational events stay
- * in-app. `email`/`slack` routing through the dispatcher is still deferred (listing them is
- * harmless — the dispatcher no-ops on unwired channels); some approval events keep an
- * `email` hint for when it lands. A user's saved `events` override this per event.
+ * in-app. `email` routing through the dispatcher is still deferred (listing it is harmless —
+ * the dispatcher no-ops on unwired channels); some approval events keep an `email` hint for
+ * when it lands. A user's saved `events` override this per event.
+ *
+ * `slack` is the exception to that override: it posts ONCE to `Workspace.channelRoutes[event]`
+ * and is read from THIS map only, never from a user's preferences — a shared channel is a
+ * workspace decision, not a personal one. Adding `slack` to an event with no configured route
+ * is a no-op, so it's safe to declare ahead of the channel being picked.
  */
 export const DEFAULT_EVENT_ROUTING: Record<NotificationEvent, NotificationChannel[]> = {
   "pulse.scan_failed": ["inApp", "push", "email"],
@@ -81,6 +86,8 @@ export const DEFAULT_EVENT_ROUTING: Record<NotificationEvent, NotificationChanne
   "backstage.expense_decided": ["inApp", "push"],
   "meetings.notes_ready": ["inApp"],
   "clients.onboarded": ["inApp"],
-  // Directed at admins each morning — in-app feed + a native push so it lands on the phone.
-  "foreman.digest": ["inApp", "push"],
+  // Directed at admins each morning — in-app feed + a native push so it lands on the phone,
+  // plus a single post to `channelRoutes["foreman.digest"]` when one is configured, so the
+  // delivery picture shows up where the team already is rather than only inside Foundry.
+  "foreman.digest": ["inApp", "push", "slack"],
 };

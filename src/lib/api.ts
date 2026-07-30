@@ -3737,6 +3737,24 @@ export async function deleteWikiDocApi(slug: string, id: string): Promise<void> 
   await apiFetch(`/api/clients/${slug}/wiki/documents/${id}`, { method: "DELETE" });
 }
 
+export interface LinkableWikiDocument {
+  id: string;
+  title: string;
+  documentType: string;
+  clientName: string | null;
+  /** Not yet assigned to any client — adding it assigns it to this one. */
+  unassigned: boolean;
+}
+
+/** The Foundry docs that can be added to a client's wiki (their own + unassigned). */
+export async function getLinkableWikiDocumentsApi(
+  slug: string,
+): Promise<{ documents: LinkableWikiDocument[] }> {
+  return apiFetch<{ documents: LinkableWikiDocument[] }>(
+    `/api/clients/${slug}/wiki/documents/linkable`,
+  );
+}
+
 /** Portal "Add to wiki" — mirror a Foundry document into the client's wiki Documents section. */
 export async function addDocToWikiApi(slug: string, documentId: string): Promise<WikiDocumentDTO> {
   return apiFetch<WikiDocumentDTO>(`/api/clients/${slug}/wiki/documents/from-doc`, {

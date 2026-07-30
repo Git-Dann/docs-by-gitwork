@@ -4,7 +4,7 @@ import { cn } from "@/lib/format";
 
 /**
  * Foundry-native flourishes for the DevSignal admin — used INSIDE the widget-card
- * grammar (never replacing it). A colour-coded meter (DESIGN widget-progress-bar),
+ * grammar (never replacing it). A colour-coded meter (DESIGN widget-progress),
  * an editorial score ring (DM Serif figure), and the best-match tone map. Keeps
  * the brand signature (NN // headers, serif stats, mono labels) intact while
  * giving the review surface real hierarchy + colour.
@@ -55,7 +55,7 @@ export function matchTone(label: string | undefined | null): Tone {
   return "steel";
 }
 
-/** Thin colour-coded progress meter (DESIGN widget-progress-bar). */
+/** Thin colour-coded progress meter (DESIGN widget-progress). */
 export function Meter({ value, tone = "brand", className }: { value: number; tone?: Tone; className?: string }) {
   const pct = Math.max(0, Math.min(100, value));
   return (

@@ -1800,3 +1800,16 @@ export const costingPreviewSchema = z.object({
 export const costingConfigSaveSchema = costingAdvancedConfigSchema.extend({
   tierRates: tierRatesSchema,
 });
+
+// ── Provenance (countermark attestations) ───────────────────────────────────────────────
+export const countermarkIssueSchema = z.object({
+  scanId: z.string().min(1),
+  /** Defaults to DEFAULT_STANDARD_ID server-side; validated against the registry there. */
+  standardId: z.string().min(1).max(64).optional(),
+});
+
+export const countermarkRevokeSchema = z.object({
+  // Required and non-trivial: a withdrawal with no stated reason is useless to the person
+  // holding the certificate, who is the only reader that matters here.
+  reason: z.string().trim().min(10).max(2000),
+});

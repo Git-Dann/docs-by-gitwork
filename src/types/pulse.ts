@@ -318,6 +318,14 @@ export interface PulseScanListItem {
   status: PulseScanStatus;
   healthScore: number | null;
   generatedProposalId: string | null;
+  /** Whether the tokenised public report (and therefore the score badge) is live. */
+  isShared: boolean;
+  /**
+   * Only populated while `isShared` — an unshared scan's token is never handed
+   * out, and unsharing clears it in the database anyway. Once shared this is no
+   * more secret than the /report/[token] link it belongs to.
+   */
+  shareToken: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -344,12 +352,19 @@ export interface PulsePortfolioEntry {
 
 // ── Industry benchmarks (Wave E3) ─────────────────────────────────────────────
 export interface IndustryBenchmark {
-  projectType: string;   // the classification this scan was benchmarked within
-  peerCount: number;     // other completed scans of the same type in the workspace
+  projectType: string;   // the segment this scan was benchmarked within
+  peerCount: number;     // other completed scans in that segment
   yourScore: number;     // this scan's health score
   percentile: number;    // 0–100: % of peers this scan scores at or above
   median: number;        // median peer health score
   best: number;          // best peer health score
+  // True when the platform segment was too small and we widened to the whole
+  // corpus. The reader must be told: different project types have different
+  // achievable ceilings, so a cross-type ranking is indicative, not a fact.
+  widened?: boolean;
+  // One sentence naming the corpus. Travels WITH the figure rather than beside
+  // it, because a percentile gets screenshotted and outlives its context.
+  caveat?: string;
 }
 
 export type CheckConfidence = "HIGH" | "MEDIUM" | "LOW";
