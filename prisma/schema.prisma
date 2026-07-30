@@ -621,6 +621,7 @@ model Document {
   versions          DocumentVersion[]
   presence          EditorPresence[]
   aiSession         DocumentAiSession?
+  docusealSubmission DocusealSubmission?
   /// Wiki Documents-section entries that point back at this doc (surfaced on the client's
   /// wiki via the Portal "Add to wiki" action). Cascades so deleting the doc clears them.
   wikiDocuments     WikiDocument[]     @relation("WikiDocumentSource")
@@ -4491,4 +4492,26 @@ enum CountermarkGrade {
   // Same reasoning as the model's @@map above: renaming a Postgres enum type is a
   // drop-and-recreate, which would trip the same guard and skip the whole sync.
   @@map("HallmarkGrade")
+}
+
+model DocusealSubmission {
+  id                      String    @id @default(cuid())
+  documentId              String    @unique
+  submissionId            Int       @unique // DocuSeal's submission ID
+  slug                    String    // Used for iframe embedding (Client)
+  gitworkSlug             String?   // Used for iframe embedding (Gitwork countersign)
+  status                  String    @default("PENDING") // PENDING, CLIENT_SIGNED, COMPLETED, DECLINED
+  
+  // Archiving fields
+  combinedPdfUrl          String?
+  auditLogUrl             String?
+  pdfSha256               String?
+  auditLogSha256          String?
+  rfc3161TimestampToken   String?   @db.Text
+  archivedAt              DateTime?
+  
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  
+  document                Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
 }

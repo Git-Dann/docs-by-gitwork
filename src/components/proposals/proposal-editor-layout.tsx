@@ -175,6 +175,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [isIssuingDocuSeal, setIsIssuingDocuSeal] = useState(false);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
   const [pullDataOpen, setPullDataOpen] = useState(false);
@@ -230,8 +231,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const pastRef = useRef<string[]>([]);
   const futureRef = useRef<string[]>([]);
   const lastEditAtRef = useRef(0);
-  const undoRef = useRef<() => void>(() => {});
-  const redoRef = useRef<() => void>(() => {});
+  const undoRef = useRef<() => void>(() => { });
+  const redoRef = useRef<() => void>(() => { });
   const [, forceHistory] = useState(0);
 
   useEffect(() => {
@@ -745,6 +746,32 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     setTimeout(() => setCopied(false), 1500);
   }
 
+  async function handleIssueDocuSeal() {
+    if (typeof window === "undefined" || !draft) return;
+    setIsIssuingDocuSeal(true);
+    try {
+      const res = await fetch(`/api/documents/${proposalId}/docuseal/issue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Failed to issue DocuSeal MSA");
+      
+      const clientSlug = json.data?.clientSlug ?? json.clientSlug;
+      if (clientSlug) {
+        const signingUrl = `https://foundry.gitwork.co.uk/contract/${clientSlug}`;
+        const mailto = buildShareMailto(draft.title, signingUrl);
+        window.location.href = mailto;
+        setApprovalOpen(false); // Close the popover on success
+      }
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Failed to issue MSA via DocuSeal.");
+    } finally {
+      setIsIssuingDocuSeal(false);
+    }
+  }
+
   function handleExportPdf() {
     if (typeof window === "undefined") {
       return;
@@ -957,58 +984,58 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
 
             {/* AI menu — Ask AI · Quick draft. Hidden for non-generators (cost gate). */}
             {canGenerateAi && (
-            <div>
-              <button
-                ref={aiMenuButtonRef}
-                type="button"
-                aria-haspopup="menu"
-                aria-expanded={aiMenuOpen}
-                onClick={() => {
-                  const rect = aiMenuButtonRef.current?.getBoundingClientRect();
-                  if (rect) setAiMenuPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
-                  setAiMenuOpen((v) => !v);
-                }}
-                className={buttonStyles({ variant: "secondary", size: "md", className: "gap-1.5 pr-2" })}
-              >
-                <SparklesIcon className="h-4 w-4" />
-                AI
-                <ChevronDownIcon className={cn("h-4 w-4 opacity-70 transition", aiMenuOpen && "rotate-180")} />
-              </button>
-              {aiMenuOpen && (
-                <div
-                  ref={aiMenuRef}
-                  role="menu"
-                  aria-label="AI actions"
-                  style={{ top: aiMenuPos.top, right: aiMenuPos.right }}
-                  className="fixed z-[100] w-60 overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white py-1 shadow-[var(--shadow-lg)]"
+              <div>
+                <button
+                  ref={aiMenuButtonRef}
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={aiMenuOpen}
+                  onClick={() => {
+                    const rect = aiMenuButtonRef.current?.getBoundingClientRect();
+                    if (rect) setAiMenuPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
+                    setAiMenuOpen((v) => !v);
+                  }}
+                  className={buttonStyles({ variant: "secondary", size: "md", className: "gap-1.5 pr-2" })}
                 >
-                  <button
-                    role="menuitem"
-                    type="button"
-                    onClick={() => { setAiMenuOpen(false); setAiChatOpen(true); }}
-                    className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-1)]"
+                  <SparklesIcon className="h-4 w-4" />
+                  AI
+                  <ChevronDownIcon className={cn("h-4 w-4 opacity-70 transition", aiMenuOpen && "rotate-180")} />
+                </button>
+                {aiMenuOpen && (
+                  <div
+                    ref={aiMenuRef}
+                    role="menu"
+                    aria-label="AI actions"
+                    style={{ top: aiMenuPos.top, right: aiMenuPos.right }}
+                    className="fixed z-[100] w-60 overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white py-1 shadow-[var(--shadow-lg)]"
                   >
-                    <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
-                    <span>
-                      <span className="block text-sm font-medium text-[var(--text-1)]">Ask AI</span>
-                      <span className="block text-xs text-[var(--text-3)]">Chat to refine sections as you write.</span>
-                    </span>
-                  </button>
-                  <button
-                    role="menuitem"
-                    type="button"
-                    onClick={() => { setAiMenuOpen(false); setAiDraftOpen(true); }}
-                    className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-1)]"
-                  >
-                    <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
-                    <span>
-                      <span className="block text-sm font-medium text-[var(--text-1)]">Quick draft</span>
-                      <span className="block text-xs text-[var(--text-3)]">Generate a first-pass draft of every section.</span>
-                    </span>
-                  </button>
-                </div>
-              )}
-            </div>
+                    <button
+                      role="menuitem"
+                      type="button"
+                      onClick={() => { setAiMenuOpen(false); setAiChatOpen(true); }}
+                      className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-1)]"
+                    >
+                      <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
+                      <span>
+                        <span className="block text-sm font-medium text-[var(--text-1)]">Ask AI</span>
+                        <span className="block text-xs text-[var(--text-3)]">Chat to refine sections as you write.</span>
+                      </span>
+                    </button>
+                    <button
+                      role="menuitem"
+                      type="button"
+                      onClick={() => { setAiMenuOpen(false); setAiDraftOpen(true); }}
+                      className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-1)]"
+                    >
+                      <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
+                      <span>
+                        <span className="block text-sm font-medium text-[var(--text-1)]">Quick draft</span>
+                        <span className="block text-xs text-[var(--text-3)]">Generate a first-pass draft of every section.</span>
+                      </span>
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
             {draft.documentType === "REPORT" && (
               <button
@@ -1178,6 +1205,21 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                       Export
                     </Button>
                   </div>
+                  
+                  {draft?.documentType === "MSA" && (
+                    <div className="mt-2 flex items-center gap-2 border-t border-[var(--border-2)] pt-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="flex-1 justify-center border-[var(--brand-300)] text-[var(--brand-700)] hover:bg-[var(--brand-50)]"
+                        onClick={handleIssueDocuSeal}
+                        disabled={isIssuingDocuSeal}
+                      >
+                        {isIssuingDocuSeal ? "Generating..." : "Send MSA via DocuSeal"}
+                      </Button>
+                    </div>
+                  )}
 
                   <div className="mt-3 border-t border-[var(--border-2)] pt-3">
                     <button
@@ -1258,12 +1300,12 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           <RightRailTabs
             defaultTabId="collab"
             tabs={[
-              { id: "collab",     label: "Collaboration", panel: <CollabPanel documentId={proposalId} currentVersion={draft.version || "v1.0"} /> },
-              { id: "signature",  label: "Signatures",    panel: <SignaturePanel documentId={proposalId} /> },
-              { id: "insights",   label: "Insights",      panel: <DocumentAnalyticsPanel documentId={proposalId} /> },
-              { id: "activity",   label: "Activity",      panel: <ActivityFeed documentId={proposalId} /> },
-              { id: "linked",     label: "Linked",        panel: <DocumentRelationsPanel documentId={proposalId} clientName={draft.clientName ?? null} /> },
-              { id: "proof",      label: "Proof drafts",  panel: <ProposalProofPanel proposalId={proposalId} /> },
+              { id: "collab", label: "Collaboration", panel: <CollabPanel documentId={proposalId} currentVersion={draft.version || "v1.0"} /> },
+              { id: "signature", label: "Signatures", panel: <SignaturePanel documentId={proposalId} /> },
+              { id: "insights", label: "Insights", panel: <DocumentAnalyticsPanel documentId={proposalId} /> },
+              { id: "activity", label: "Activity", panel: <ActivityFeed documentId={proposalId} /> },
+              { id: "linked", label: "Linked", panel: <DocumentRelationsPanel documentId={proposalId} clientName={draft.clientName ?? null} /> },
+              { id: "proof", label: "Proof drafts", panel: <ProposalProofPanel proposalId={proposalId} /> },
             ]}
           />
         </div>
@@ -1276,11 +1318,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               type="button"
               onClick={() => setOutlineOpen((v) => !v)}
               aria-pressed={outlineOpen}
-              className={`inline-flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-sm font-medium transition-colors ${
-                outlineOpen
+              className={`inline-flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-sm font-medium transition-colors ${outlineOpen
                   ? "border-[var(--brand-600)] bg-[var(--brand-200)] text-[var(--brand-700)]"
                   : "border-[var(--border-2)] bg-white text-[var(--text-2)] hover:border-[var(--border-1)]"
-              }`}
+                }`}
             >
               <QueueListIcon className="h-4 w-4" />
               {outlineOpen ? "Hide outline" : "Outline"}
@@ -1776,72 +1817,72 @@ function OverviewCanvas({
 }) {
   const cover = sections.find((section) => section.key === "cover")?.data as
     | {
-        clientName?: string;
-        productName?: string;
-      }
+      clientName?: string;
+      productName?: string;
+    }
     | undefined;
 
   const introduction = sections.find((section) => section.key === "introduction")?.data as
     | {
-        statement?: string;
-        summary?: string;
-      }
+      statement?: string;
+      summary?: string;
+    }
     | undefined;
 
   const productOverview = sections.find((section) => section.key === "product_overview")?.data as
     | {
-        platformDescription?: string;
-        audience?: string;
-        valueProposition?: string;
-      }
+      platformDescription?: string;
+      audience?: string;
+      valueProposition?: string;
+    }
     | undefined;
 
   const objectives = sections.find((section) => section.key === "objectives")?.data as
     | {
-        items?: Array<{ title?: string }>;
-      }
+      items?: Array<{ title?: string }>;
+    }
     | undefined;
 
   const touchpoints = sections.find((section) => section.key === "touchpoints")?.data as
     | {
-        items?: Array<{ title?: string; features?: string[] }>;
-      }
+      items?: Array<{ title?: string; features?: string[] }>;
+    }
     | undefined;
 
   const costing = sections.find((section) => section.key === "costing")?.data as
     | {
-        currency?: "GBP" | "USD" | "EUR";
-        discount?: number;
-        taxRate?: number;
-        teamAllocations?: Array<{ included?: boolean }>;
-        paymentSchedule?: Array<unknown>;
-      }
+      currency?: "GBP" | "USD" | "EUR";
+      discount?: number;
+      taxRate?: number;
+      teamAllocations?: Array<{ included?: boolean }>;
+      paymentSchedule?: Array<unknown>;
+    }
     | undefined;
 
   const timeline = sections.find((section) => section.key === "timeline")?.data as
     | {
-        viewMode?: string;
-      }
+      viewMode?: string;
+    }
     | undefined;
 
   const assumptions = sections.find((section) => section.key === "assumptions")?.data as
     | {
-        items?: string[];
-      }
+      items?: string[];
+    }
     | undefined;
 
   const outOfScope = sections.find((section) => section.key === "out_of_scope")?.data as
     | {
-        items?: string[];
-      }
+      items?: string[];
+    }
     | undefined;
 
   const signoff = sections.find((section) => section.key === "signoff_footer")?.data as
     | {
-        preparedBy?: string;
-        team?: string;
-        contactDetails?: string;
-      }
+      preparedBy?: string;
+      team?: string;
+      contactDetails?: string;
+    }
     | undefined;
 
   const currency = costing?.currency ?? "GBP";

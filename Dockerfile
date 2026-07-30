@@ -6,7 +6,7 @@ FROM base AS deps
 WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma/
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 # ── builder ──────────────────────────────────────────────────────────────────
 FROM base AS builder
@@ -31,6 +31,9 @@ ARG BUILD_TIME=""
 ARG APP_VERSION=""
 ENV NEXT_PUBLIC_BUILD_TIME=$BUILD_TIME
 ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
+
+# Increase Node memory limit to prevent Next.js from running out of memory during the build
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 RUN npm run build
 
