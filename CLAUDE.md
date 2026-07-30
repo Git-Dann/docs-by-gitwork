@@ -2697,3 +2697,86 @@ Their *coverage* of web repos was better than ours. Their *severity calibration*
 proved to discriminate by breaking three things on purpose: comment stripping (1 fail), the
 `.gitignore` contents test reduced to a presence test (1 fail), and the localhost exclusion (1 fail).
 **Deferred:** as with §37, validated against fixtures rather than real repositories.
+
+## 39. Recent Changes (July 2026) — Pillars, a real benchmark, and cleanliness that measures code
+
+Three changes, all prompted by reading a competitor properly (ogbuilds.ai) rather than copying its
+feature list. Registry 836 → 845.
+
+### 39.1 Pillars — six legible subscores with published weights (`pulse-checks/pillars.ts`)
+
+Pulse grades 845 checks across 26 categories in 12 domains. That is more accurate than any
+six-bucket rollup and much harder to read: a client sees a number and then a wall, with no answer to
+"which part is the problem?" Competitors get an inferior measurement and a better conversation.
+
+Six pillars, weights **published** so they can be argued with rather than buried in a formula:
+**Security & secrets 30 · Access & data 15 · Code & maintainability 15 · Reliability 15 ·
+Legal & compliance 15 · Experience & reach 10.**
+
+Three properties make it honest, each with a test:
+- **Nothing hand-maintained.** Every category maps to exactly one pillar; `unassignedCategories()` /
+  `duplicatedCategories()` must both be empty, so adding a category in `categories.ts` and forgetting
+  it here FAILS rather than scoring nowhere.
+- **Weight is redistributed, never assumed.** A pillar with nothing applicable (an iOS app has no
+  SEO checks) is dropped and its points shared across the pillars that applied — and it is *named* as
+  dropped. Scoring it zero, or on nothing, is the "we could not look" → "it is not there" failure.
+- **It reuses the score's own rules.** Same exclusions as `computeScoreBreakdown`. A test asserts the
+  two agree on the same checks; if they ever disagree a client will find it before we do.
+
+### 39.2 Benchmark — the existing one, made trustworthy (`getIndustryBenchmarks`)
+
+⚠️ **A benchmark already existed.** I nearly shipped a parallel module before finding it — grep
+first. It was rewritten in place rather than duplicated, because two benchmarks disagreeing is worse
+than one weak one.
+
+What changed and why:
+- **Segments on `PulseScan.platform`, not the AI's `projectClassification`.** That free-text label is
+  regenerated per scan, so "SaaS platform" and "B2B SaaS" never matched and peers were lost silently —
+  and it required AI to have run, so a checks-only scan (the fast path since §18) could never be
+  benchmarked at all.
+- **Widens instead of returning nothing** when the platform segment is too small, and sets `widened`
+  so the report says which happened.
+- **A `caveat` sentence ships WITH the figure**, naming the corpus and stating plainly that this is
+  Pulse's own scan history, not an industry survey. A percentile gets screenshotted into a deck and
+  outlives its context.
+- **Stops loading `llmAnalysis` for every scan in the workspace** to read one nested string — a large
+  JSON blob per row for a number already in a column. Adds a 12-month window.
+
+### 39.3 Cleanliness — structural debt, measured (`pulse-checks/code-cleanliness.ts`, 9 checks)
+
+Pulse treated maintainability as a checklist (is there a README, a linter, a CI file). Those are
+facts *about* a repo, not about its code — a project can have all three and be a 4,000-line file
+nobody dares change. **This is the pillar that predicts COST rather than risk**, which for an agency
+inheriting client codebases is the more useful number more often, and the one nobody measures before
+quoting.
+
+Three real analysers — the only actual algorithms in Pulse's check layer, everything else being
+pattern matching:
+- `commentedOutCodeLines` — distinguishes commented-out CODE from prose. This distinction *is* the
+  check: a comment explaining why is the most valuable thing in a file, and a check that fires on
+  documented code punishes exactly what it should encourage.
+- `maxNestingDepth` — control-flow depth, brace- or indentation-based.
+- `detectDuplication` — sliding-window hashing over normalised lines. Excludes all-import windows
+  (every file shares those) and windows with <3 distinct lines (a run of closing braces is not
+  duplicated logic).
+
+### 39.4 ⚠️ Two defects found by running it against a REAL repo, which the unit tests passed through
+
+Dan supplied `tmoreton/tutorials`. §34.3's lesson held again — **validate a new family against a real
+codebase, because unit tests pass while checks are wrong**:
+
+1. **Nesting counted object literals as nesting.** The two files it flagged were an AWS CDK stack and
+   an SDK entrypoint: nested *config*, with three levels of actual control flow. As written, the check
+   would fire on any config-heavy or JSX-heavy file — the "fires on every React app" failure that
+   makes a family worthless. Now only control-flow and function braces count (`opensABlock`), with a
+   regression test both ways: config-heavy reads 1, genuinely nested still reads 5.
+2. **`.gitignore` was read at the repo root only.** That repo is a monorepo whose sub-project
+   `.gitignore` correctly covers `.env` while the root one holds `.DS_Store` — a completely normal
+   layout that produced a false positive. The config pattern now matches `.gitignore` at any depth.
+
+After both fixes that repo reports clean, which it is.
+
+**Verified:** `npm run verify` green — tsc + lint 0 errors, **738 tests**, audit:ui 0 findings.
+**Deferred:** the pillar breakdown and benchmark caveat are computed but not yet rendered in the
+report UI — pillars derive from `scan.checks` per §8, so that is a presentation change with no
+server work behind it.

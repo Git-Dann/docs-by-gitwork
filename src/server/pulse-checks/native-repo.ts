@@ -27,6 +27,7 @@ import { evaluateDesktopChecks } from "./desktop-app";
 import { evaluateCliChecks, binEntries } from "./cli-tool";
 import { detectProjectShape, parsePackageManifest, type ProjectShape } from "./project-shape";
 import { evaluateWebSourceChecks } from "./web-repo-source";
+import { evaluateCleanlinessChecks } from "./code-cleanliness";
 
 /**
  * Every repo shape the snapshot builder knows how to feed. This is deliberately a
@@ -126,7 +127,7 @@ const CONFIG_PATTERNS: RegExp[] = [
   // that misses .env is the second most common finding in AI-built repos and
   // passes any presence test), setup scripts, and SQL migrations for the
   // repo-side Supabase RLS check.
-  /^\.gitignore$/i,
+  /(^|\/)\.gitignore$/i,
   /^(scripts\/)?[^/]*\.(sh|bash)$/i,
   /(^|\/)(migrations|supabase|db|sql)\/[^/]*\.sql$/i,
 ];
@@ -508,6 +509,22 @@ export async function runWebSourceChecks(
 
   if (resolveSnapshotShape(snapshot.paths, snapshot.files) !== "none") return { isWebRepo: false, checks: [] };
   return { isWebRepo: true, checks: evaluateWebSourceChecks(snapshot) };
+}
+
+/**
+ * Run the code-cleanliness family.
+ *
+ * Unlike every other family here this is SHAPE-AGNOSTIC — file size, nesting,
+ * duplication and leftovers mean the same thing in Swift, Dart, Kotlin and
+ * TypeScript, and the analysers handle brace- and indent-based languages alike.
+ * So it runs over whatever source the snapshot happened to sample, for any shape.
+ */
+export async function runCleanlinessChecks(
+  repoInput: string,
+): Promise<{ checks: PulseScanCheckInput[] }> {
+  const snapshot = await getRepoSnapshot(repoInput);
+  if (!snapshot || !snapshot.accessible) return { checks: [] };
+  return { checks: evaluateCleanlinessChecks(snapshot) };
 }
 
 /** The resolved snapshot shape for a repo, for callers that need it for labelling. */

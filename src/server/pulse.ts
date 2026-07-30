@@ -540,50 +540,97 @@ export async function getPulseStats(): Promise<PulseStatsResponse> {
  * COMPLETED scans of the SAME project classification type in the workspace.
  * Returns null until there are enough peers to be meaningful (≥4 others).
  */
-const BENCHMARK_MIN_PEERS = 4;
+import { benchmarkCaveat } from "./pulse-checks/benchmark-math";
 
+const BENCHMARK_MIN_PEERS = 4;
+/** Scans older than this are excluded — the web moves, and so do Pulse's checks. */
+const BENCHMARK_WINDOW_DAYS = 365;
+
+
+
+/**
+ * Where this scan sits among comparable projects.
+ *
+ * A bare score has no anchor: a client told "your app scores 61" cannot tell
+ * whether that is normal, so the number gets argued with instead of acted on.
+ * "Bottom 20% of the web apps we have scanned" is a fact about a population and
+ * is the sentence that moves a delivery conversation.
+ *
+ * Four honesty rules, because a fabricated percentile is worse than none:
+ *
+ *   1. MINIMUM CORPUS — below BENCHMARK_MIN_PEERS there is no percentile. A
+ *      ranking off a handful of scans is noise wearing a statistic's clothes.
+ *   2. SEGMENTED, OR SAID SO — comparing an iOS app against web apps ranks two
+ *      different achievable ceilings. We segment by PLATFORM, and when that
+ *      segment is too small we widen to the whole corpus and set `widened` so
+ *      the report says which happened.
+ *   3. THE CORPUS IS NAMED — `caveat` states what was compared and how many, so
+ *      a reader can discount it themselves.
+ *   4. FAILURE IS SILENT, NOT INVENTED — no default, no estimate, no placeholder.
+ *
+ * ⚠️ Segmented on `PulseScan.platform`, NOT on the AI's `projectClassification`.
+ * That free-text label is generated per scan, so "SaaS platform" and "B2B SaaS"
+ * never matched each other and peers were lost silently — and it required AI to
+ * have run at all, so a checks-only scan (the fast path since §18) could never be
+ * benchmarked. The platform is a user-selected enum, stable across scans.
+ */
 export async function getIndustryBenchmarks(scanId: string): Promise<IndustryBenchmark | null> {
   const { workspace } = await ensureBaseRecords();
   const scan = await prisma.pulseScan.findFirst({
     where: { id: scanId, workspaceId: workspace.id },
-    select: { id: true, status: true, healthScore: true, llmAnalysis: true },
+    select: { id: true, status: true, healthScore: true, platform: true },
   });
   if (!scan || scan.status !== "COMPLETED" || scan.healthScore === null) return null;
 
-  const myType = asJson<PulseAnalysisOutput | null>(scan.llmAnalysis, null)
-    ?.projectClassification?.type?.trim();
-  if (!myType) return null;
+  const since = new Date(Date.now() - BENCHMARK_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  // Selects only the score — the previous implementation pulled `llmAnalysis` for
+  // every scan in the workspace to read one nested string out of it, which is a
+  // large JSON blob per row for a number we already have in a column.
+  const loadPeers = (platform: string | null) =>
+    prisma.pulseScan.findMany({
+      where: {
+        workspaceId: workspace.id,
+        status: "COMPLETED",
+        healthScore: { not: null },
+        createdAt: { gte: since },
+        id: { not: scanId },
+        ...(platform ? { platform } : {}),
+      },
+      select: { healthScore: true },
+      orderBy: { createdAt: "desc" },
+      take: 5000,
+    });
 
-  const others = await prisma.pulseScan.findMany({
-    where: {
-      workspaceId: workspace.id,
-      status: "COMPLETED",
-      healthScore: { not: null },
-      id: { not: scanId },
-    },
-    select: { healthScore: true, llmAnalysis: true },
-  });
+  let widened = false;
+  let segment = scan.platform ?? "all";
+  let rows = scan.platform ? await loadPeers(scan.platform) : [];
 
-  const peerScores: number[] = [];
-  for (const o of others) {
-    const t = asJson<PulseAnalysisOutput | null>(o.llmAnalysis, null)
-      ?.projectClassification?.type?.trim();
-    if (t && t.toLowerCase() === myType.toLowerCase() && o.healthScore !== null) {
-      peerScores.push(o.healthScore);
-    }
+  if (rows.length < BENCHMARK_MIN_PEERS) {
+    // Rule 2: widen rather than report nothing, and record that we widened.
+    rows = await loadPeers(null);
+    widened = Boolean(scan.platform);
+    segment = "all";
   }
+
+  const peerScores = rows
+    .map((r) => r.healthScore)
+    .filter((s): s is number => typeof s === "number" && Number.isFinite(s));
+
   if (peerScores.length < BENCHMARK_MIN_PEERS) return null;
 
   peerScores.sort((a, b) => a - b);
   const your = scan.healthScore;
   const atOrAbove = peerScores.filter((s) => your >= s).length;
+
   return {
-    projectType: myType,
+    projectType: segment,
     peerCount: peerScores.length,
     yourScore: your,
     percentile: Math.round((atOrAbove / peerScores.length) * 100),
     median: peerScores[Math.floor(peerScores.length / 2)],
     best: peerScores[peerScores.length - 1],
+    widened,
+    caveat: benchmarkCaveat(peerScores.length, segment, widened),
   };
 }
 

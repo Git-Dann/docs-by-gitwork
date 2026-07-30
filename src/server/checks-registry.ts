@@ -17,6 +17,16 @@ export interface CheckDefinition {
 }
 
 export const CHECKS_REGISTRY: CheckDefinition[] = [
+  // -- Code cleanliness: structural debt, measured --
+  { key: "clean_file_size", category: CATEGORIES.CODE_QUALITY, label: "Files stay a readable length" },
+  { key: "clean_nesting_depth", category: CATEGORIES.CODE_QUALITY, label: "Logic is not deeply nested" },
+  { key: "clean_duplication_cross_file", category: CATEGORIES.CODE_QUALITY, label: "Logic is not copy-pasted between files" },
+  { key: "clean_duplication_in_file", category: CATEGORIES.CODE_QUALITY, label: "Blocks are not repeated within a file" },
+  { key: "clean_commented_out_code", category: CATEGORIES.CODE_QUALITY, label: "No commented-out code left behind" },
+  { key: "clean_debug_statements", category: CATEGORIES.CODE_QUALITY, label: "Debug output is not left in shipped code" },
+  { key: "clean_committed_artifacts", category: CATEGORIES.CODE_QUALITY, label: "Build output and dependencies are not committed" },
+  { key: "clean_filename_consistency", category: CATEGORIES.CODE_QUALITY, label: "Filenames follow one convention" },
+  { key: "clean_indentation_consistency", category: CATEGORIES.CODE_QUALITY, label: "Indentation is consistent within a file" },
   // -- Web / service repo source (the shape that previously read no source) --
   { key: "web_raw_html_injection", category: CATEGORIES.SECURITY, label: "Raw HTML is sanitised before rendering" },
   { key: "web_sql_string_building", category: CATEGORIES.SECURITY, label: "SQL queries are parameterised" },

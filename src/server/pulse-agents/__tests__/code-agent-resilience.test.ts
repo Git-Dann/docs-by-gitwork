@@ -41,6 +41,7 @@ vi.mock("@/server/pulse-checks/native-repo", () => ({
   runDesktopChecks: async () => ({ shape: null, checks: [] }),
   runCliChecks: async () => ({ isCli: false, checks: [] }),
   runWebSourceChecks: async () => ({ isWebRepo: false, checks: [] }),
+  runCleanlinessChecks: async () => ({ checks: [] }),
 }));
 
 const { runCodeAgent } = await import("../code-agent");
