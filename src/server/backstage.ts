@@ -264,10 +264,10 @@ export async function createLeaveRequest(
   const targetUserId =
     input.userId && input.userId !== user.id
       ? (canApproveBackstage(user)
-          ? input.userId
-          : (() => {
-              throw new ForbiddenError("Cannot file leave for another user");
-            })())
+        ? input.userId
+        : (() => {
+          throw new ForbiddenError("Cannot file leave for another user");
+        })())
       : user.id;
 
   const row = await prisma.leaveRequest.create({
@@ -641,10 +641,10 @@ export async function createExpense(
   const targetUserId =
     input.userId && input.userId !== user.id
       ? (canApproveBackstage(user)
-          ? input.userId
-          : (() => {
-              throw new ForbiddenError("Cannot file expenses for another user");
-            })())
+        ? input.userId
+        : (() => {
+          throw new ForbiddenError("Cannot file expenses for another user");
+        })())
       : user.id;
 
   const row = await prisma.expense.create({
@@ -953,19 +953,19 @@ export async function listWorkspaceMembers(user: EffectiveUser): Promise<Backsta
   return members
     .filter((m) => !isSeedAccount({ email: m.user.email, name: m.user.name }))
     .map((m) => ({
-    id: m.user.id,
-    name: m.user.name ?? m.user.email,
-    email: m.user.email,
-    avatarUrl: m.user.avatarUrl,
-    role: m.role,
-    countryCode: m.countryCode,
-    assignedClientIds: [
-      ...new Set([
-        ...m.user.clientAssignments.map((assignment) => assignment.clientId),
-        ...(placementClientIdsByEmail.get(m.user.email.toLowerCase()) ?? []),
-      ]),
-    ],
-  }));
+      id: m.user.id,
+      name: m.user.name ?? m.user.email,
+      email: m.user.email,
+      avatarUrl: m.user.avatarUrl,
+      role: m.role,
+      countryCode: m.countryCode,
+      assignedClientIds: [
+        ...new Set([
+          ...m.user.clientAssignments.map((assignment) => assignment.clientId),
+          ...(placementClientIdsByEmail.get(m.user.email.toLowerCase()) ?? []),
+        ]),
+      ],
+    }));
 }
 
 // ─── Staffing alerts (Foundry HQ dashboard) ──────────────────────────────
@@ -1271,14 +1271,14 @@ export async function getCalendarMonth(
   const legendMembers: BackstageMember[] = legendSource
     .filter((m) => !isSeedAccount({ email: m.user.email, name: m.user.name }))
     .map((m) => ({
-    id: m.user.id,
-    name: m.user.name?.trim() ? m.user.name : m.user.email,
-    email: m.user.email,
-    avatarUrl: m.user.avatarUrl,
-    role: m.role,
-    countryCode: m.countryCode,
-    assignedClientIds: [],
-  }));
+      id: m.user.id,
+      name: m.user.name?.trim() ? m.user.name : m.user.email,
+      email: m.user.email,
+      avatarUrl: m.user.avatarUrl,
+      role: m.role,
+      countryCode: m.countryCode,
+      assignedClientIds: [],
+    }));
 
   return {
     year,
