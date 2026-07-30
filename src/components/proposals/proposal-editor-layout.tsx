@@ -758,6 +758,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       if (!res.ok) throw new Error(json?.error ?? "Failed to issue DocuSeal MSA");
       
       const clientSlug = json.data?.clientSlug ?? json.clientSlug;
+<<<<<<< HEAD
       const wikiSlug = json.data?.wikiSlug ?? json.wikiSlug;
       const wikiToken = json.data?.wikiToken ?? json.wikiToken;
       
@@ -769,6 +770,11 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           portalLoginUrl = `${portalBase}/portal/login?next=${nextUrl}`;
         }
         const mailto = buildShareMailto(draft.title, portalLoginUrl);
+=======
+      if (clientSlug) {
+        const signingUrl = `https://foundry.gitwork.co.uk/contract/${clientSlug}`;
+        const mailto = buildShareMailto(draft.title, signingUrl);
+>>>>>>> origin/staging
         window.location.href = mailto;
         setApprovalOpen(false); // Close the popover on success
       }
@@ -1214,7 +1220,11 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                     </Button>
                   </div>
                   
+<<<<<<< HEAD
                   {true && (
+=======
+                  {draft?.documentType === "MSA" && (
+>>>>>>> origin/staging
                     <div className="mt-2 flex items-center gap-2 border-t border-[var(--border-2)] pt-2">
                       <Button
                         type="button"
