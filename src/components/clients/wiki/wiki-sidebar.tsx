@@ -42,6 +42,7 @@ export type WikiSection =
   | "changelog"
   | "course-requests"
   | "golf-data"
+  | "agreements"
   | "settings";
 
 /** Course Requests is currently a Wedge-only section. */
@@ -246,6 +247,7 @@ export function WikiSidebar({
         {navItem("timeline", "Timeline", <CalendarDaysIcon />)}
         {navItem("monitors", "Monitors", <BoltIcon />)}
         {navItem("documents", "Documents", <DocumentDuplicateIcon />)}
+        {navItem("agreements", "Agreements", <DocumentTextIcon />)}
         {navItem("intake", "Requests", <FlagIcon />)}
         {navItem("code-handover", "Code Handover", <CpuChipIcon />)}
         {navItem("design-system", "Design System", <CubeTransparentIcon />)}

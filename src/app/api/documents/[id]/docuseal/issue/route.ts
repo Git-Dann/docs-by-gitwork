@@ -19,7 +19,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // 2. Fetch Document and Client details
     const document = await prisma.document.findUnique({
       where: { id },
+<<<<<<< HEAD
+      include: { client: { include: { wiki: true } } },
+=======
       include: { client: true },
+>>>>>>> origin/staging
     });
 
     if (!document) return apiError("Document not found", 404);
@@ -48,7 +52,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
       send_email: false, // Foundry handles the emails via mailto:
       order: "preserved", // Client signs first, then Gitwork
       external_id: document.id,
+<<<<<<< HEAD
+      completed_redirect_url: `${process.env.NEXT_PUBLIC_CLIENT_PORTAL_URL || "https://staging.foundry.gitwork.tech"}/login`, // Fallback if they finish outside the embed
+=======
       completed_redirect_url: `https://foundry.gitwork.co.uk/docs/${document.shareToken || document.id}`, // Fallback if they finish
+>>>>>>> origin/staging
       submitters: [
         {
           role: "Client",
@@ -85,7 +93,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
           name: user?.name || "Gitwork Admin",
           email: user?.email || "muhammad.usman@gitwork.co.uk",
           external_id: `${document.id}:gitwork`,
+<<<<<<< HEAD
+          send_email: true
+=======
           send_email: false
+>>>>>>> origin/staging
         }
       ]
     };
@@ -131,10 +143,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
     });
 
+<<<<<<< HEAD
+    // 6. Return the slug and wiki details back to the frontend
+    const wiki = document.client.wiki;
+    return apiOk({
+      submissionId: docusealSubmission.submissionId,
+      clientSlug: docusealSubmission.slug,
+      wikiSlug: document.client.slug,
+      wikiToken: wiki?.courseIngestToken,
+=======
     // 6. Return the slug back to the frontend
     return apiOk({
       submissionId: docusealSubmission.submissionId,
       clientSlug: docusealSubmission.slug,
+>>>>>>> origin/staging
       message: "DocuSeal submission created successfully."
     });
 

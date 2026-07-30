@@ -117,6 +117,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   changelog: "Changelog",
   "course-requests": "Course Requests",
   "golf-data": "Golf Data",
+  agreements: "Agreements",
 };
 
 const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
