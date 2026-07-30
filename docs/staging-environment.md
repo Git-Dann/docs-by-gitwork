@@ -650,10 +650,16 @@ In order — each failure mode is distinct, so don't skip ahead.
 
 | # | Check | Expected |
 |---|---|---|
+Checks 1–5 need **no login and no shell** — they can be run by anyone, from anywhere, and they cover
+the two failures most likely to go unnoticed.
+
+| # | Check | Expected |
+|---|---|---|
 | 1 | `dig +short staging.foundry.gitwork.tech` | `194.164.127.222` |
 | 2 | `curl -I https://staging.foundry.gitwork.tech` | valid cert, **no** `Server: nginx/<version>` |
-| 3 | `curl https://staging.foundry.gitwork.tech/api/health` | 200 with `commitSha` / `buildTime` |
-| 4 | `curl https://staging.foundry.gitwork.tech/robots.txt` | `Disallow: /` |
+| 3 | `curl https://staging.foundry.gitwork.tech/api/health` | 200 with `commit` / `builtAt` |
+| 4 | `curl https://staging.foundry.gitwork.tech/robots.txt` | `Disallow: /` — see the ⚠️ below |
+| 5 | **`curl https://staging.foundry.gitwork.tech/api/auth/providers`** | every URL on the **staging** host — this is the definitive `NEXTAUTH_URL` test |
 | 5 | `docker compose exec db psql -U foundry -c '\dx'` | lists **`vector`** — if not, the db image is wrong (§2 of the compose file) |
 | 6 | `docker compose logs app \| tail -50` | no repeated errors |
 | 7 | Visit `/` | 307 → `/portal/login` |
@@ -665,6 +671,41 @@ In order — each failure mode is distinct, so don't skip ahead.
 
 Checks 8, 11 and 12 are the three that fail from copying the production `.env` verbatim, and none
 announces its cause.
+
+### Check 5 is the one worth knowing about
+
+`GET /api/auth/providers` is public and returns NextAuth's own resolved URLs:
+
+```json
+{"google":{"id":"google","name":"Google","type":"oidc",
+ "signinUrl":"https://staging.foundry.gitwork.tech/api/auth/signin/google",
+ "callbackUrl":"https://staging.foundry.gitwork.tech/api/auth/callback/google"}}
+```
+
+If either URL names `foundry.gitwork.co.uk`, `NEXTAUTH_URL` is still the production value and the
+login flow will complete **on production** — the silent failure this runbook keeps warning about.
+This turns it from something you discover by signing in and squinting at the address bar into a
+one-line check anyone can run before touching the box.
+
+### ⚠️ Check 4 failed on the first real deployment — staging was indexable
+
+Verified live on 2026-07-30. The app's own `src/app/robots.ts` is written for production, so it
+serves `Allow: /` under **any** hostname, and these were reachable and un-disallowed on staging:
+
+```
+/pulse-overview   200    (and carries no noindex meta)
+/api-docs         200
+```
+
+So Google could index staging copies of both, competing with production for the same content. It also
+serves `Host:` and `Sitemap:` pointing at `foundry.gitwork.co.uk` — a weak canonical hint that does
+not prevent crawling. (`/context` and `/provenance-overview` were fine: disallowed *and* carrying
+`noindex` meta.)
+
+This is exactly why the nginx `location = /robots.txt` block in
+`deploy/staging/nginx/staging.foundry.conf` exists rather than leaving it to the app: nginx takes
+precedence over the Next route, needs no deploy, and cannot be undone by one. Apply it before staging
+is linked anywhere public.
 
 ---
 
