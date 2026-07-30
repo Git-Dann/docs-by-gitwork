@@ -40,6 +40,40 @@ describe("gating", () => {
   });
 });
 
+describe("Pulse audit controls", () => {
+  it("finds executable policy, coverage, and enforcement evidence", () => {
+    const checks = evaluateWebSourceChecks(snapshot({
+      ".github/workflows/quality.yml": `
+        - run: pulse static-analysis --config audit-policy.yml --severity high --block
+        - run: pulse secret-scan --history --remediate rotate
+        - run: pulse supply-chain --sbom --severity critical --block
+        - run: pulse code-flow --sources untrusted-input --sinks database,shell,html
+        - run: pulse browser-test --trace --screenshot --critical login,checkout
+        - run: pulse accessibility-test --keyboard-navigation --accessible-name --contrast-check
+        - run: pulse dynamic-security --authenticated --staging
+      `,
+      "audit-policy.yml": `static-analysis:\n  rules: strict`,
+    }));
+    for (const key of [
+      "pulse_static_analysis_gate", "pulse_static_analysis_policy", "pulse_static_analysis_blocking",
+      "pulse_secret_scan_gate", "pulse_secret_history_scope", "pulse_secret_remediation",
+      "pulse_supply_chain_gate", "pulse_supply_chain_inventory", "pulse_supply_chain_blocking",
+      "pulse_code_flow_gate", "pulse_code_flow_sources", "pulse_code_flow_sinks",
+      "pulse_browser_journeys", "pulse_browser_failure_evidence", "pulse_browser_release_coverage",
+      "pulse_accessibility_assertions", "pulse_accessibility_keyboard", "pulse_accessibility_semantics",
+      "pulse_dynamic_security_gate", "pulse_dynamic_security_auth", "pulse_dynamic_security_isolation",
+    ]) {
+      expect(statusOf(checks, key), key).toBe("PASS");
+    }
+  });
+
+  it("does not invent audit evidence from ordinary app code", () => {
+    const checks = evaluateWebSourceChecks(snapshot({ "src/app.ts": `export const title = "hello";` }));
+    expect(statusOf(checks, "pulse_static_analysis_gate")).toBe("WARN");
+    expect(statusOf(checks, "pulse_dynamic_security_gate")).toBe("WARN");
+  });
+});
+
 describe("injection — presence findings", () => {
   it("fails raw HTML rendering with no sanitiser present", () => {
     const checks = evaluateWebSourceChecks(snapshot({

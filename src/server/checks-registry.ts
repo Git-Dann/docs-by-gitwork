@@ -1,4 +1,5 @@
 import { CATEGORIES, ORDERED_CATEGORIES, type CheckCategory } from "./pulse-checks/categories";
+import { STANDARDS_VALIDATION_REGISTRY } from "./pulse-checks/standards-verification";
 
 /**
  * Static registry of every Pulse check (key + category + label). This is the
@@ -181,6 +182,28 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "ci_build_matrix", category: CATEGORIES.BUILD_PIPELINE, label: "CI tests against more than one environment" },
   { key: "ci_dependency_cache", category: CATEGORIES.BUILD_PIPELINE, label: "CI caches dependencies between runs" },
   { key: "ci_security_scanning", category: CATEGORIES.BUILD_PIPELINE, label: "CI runs a security or dependency scan" },
+  ...STANDARDS_VALIDATION_REGISTRY,
+  { key: "pulse_static_analysis_gate", category: CATEGORIES.CODE_QUALITY, label: "Static analysis runs in CI" },
+  { key: "pulse_static_analysis_policy", category: CATEGORIES.CODE_QUALITY, label: "Static-analysis rules are versioned" },
+  { key: "pulse_static_analysis_blocking", category: CATEGORIES.CODE_QUALITY, label: "Static-analysis findings block unsafe changes" },
+  { key: "pulse_secret_scan_gate", category: CATEGORIES.CODE_QUALITY, label: "Secret scanning runs in CI" },
+  { key: "pulse_secret_history_scope", category: CATEGORIES.CODE_QUALITY, label: "Secret scanning covers repository history" },
+  { key: "pulse_secret_remediation", category: CATEGORIES.CODE_QUALITY, label: "Secret findings have a remediation path" },
+  { key: "pulse_supply_chain_gate", category: CATEGORIES.CODE_QUALITY, label: "Supply-chain risk scanning runs in CI" },
+  { key: "pulse_supply_chain_inventory", category: CATEGORIES.CODE_QUALITY, label: "A release inventory is generated" },
+  { key: "pulse_supply_chain_blocking", category: CATEGORIES.CODE_QUALITY, label: "Supply-chain risk has blocking thresholds" },
+  { key: "pulse_code_flow_gate", category: CATEGORIES.CODE_QUALITY, label: "Code-flow analysis runs in CI" },
+  { key: "pulse_code_flow_sources", category: CATEGORIES.CODE_QUALITY, label: "Code-flow analysis models untrusted inputs" },
+  { key: "pulse_code_flow_sinks", category: CATEGORIES.CODE_QUALITY, label: "Code-flow analysis protects sensitive operations" },
+  { key: "pulse_browser_journeys", category: CATEGORIES.CODE_QUALITY, label: "Browser journeys run before release" },
+  { key: "pulse_browser_failure_evidence", category: CATEGORIES.CODE_QUALITY, label: "Browser failures retain diagnostic evidence" },
+  { key: "pulse_browser_release_coverage", category: CATEGORIES.CODE_QUALITY, label: "Browser tests cover release-critical paths" },
+  { key: "pulse_accessibility_assertions", category: CATEGORIES.CODE_QUALITY, label: "Accessibility assertions run with UI tests" },
+  { key: "pulse_accessibility_keyboard", category: CATEGORIES.CODE_QUALITY, label: "UI tests verify keyboard operation" },
+  { key: "pulse_accessibility_semantics", category: CATEGORIES.CODE_QUALITY, label: "UI tests verify accessible semantics" },
+  { key: "pulse_dynamic_security_gate", category: CATEGORIES.CODE_QUALITY, label: "Dynamic security baseline runs before release" },
+  { key: "pulse_dynamic_security_auth", category: CATEGORIES.CODE_QUALITY, label: "Dynamic security checks authenticated paths" },
+  { key: "pulse_dynamic_security_isolation", category: CATEGORIES.CODE_QUALITY, label: "Dynamic security tests run against a safe target" },
   // -- Code cleanliness: structural debt, measured --
   { key: "clean_file_size", category: CATEGORIES.CODE_QUALITY, label: "Files stay a readable length" },
   { key: "clean_nesting_depth", category: CATEGORIES.CODE_QUALITY, label: "Logic is not deeply nested" },

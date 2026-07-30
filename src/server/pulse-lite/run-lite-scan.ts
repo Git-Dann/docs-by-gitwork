@@ -19,6 +19,7 @@ import {
   calculateHealthScore,
 } from "@/server/pulse-scan";
 import { runDeployAgent } from "@/server/pulse-agents/deploy-agent";
+import { runStandardsVerificationCatalog } from "@/server/pulse-checks/standards-verification";
 import { runCodeAgent } from "@/server/pulse-agents/code-agent";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { assertScannableUrl } from "./url-guard";
@@ -197,6 +198,11 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
       }
     }
   }
+
+  // Public URL and repository scans cannot truthfully verify device, auth, or
+  // release-only controls. Surface the selected platform's 116-item evidence
+  // backlog at LOW confidence; score-breakdown excludes it until proven.
+  pending.push(ingest(runStandardsVerificationCatalog(input.platform)));
 
   // Flush every in-flight persistence wave before computing the final result.
   await Promise.all(pending);

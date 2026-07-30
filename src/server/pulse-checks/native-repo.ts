@@ -131,6 +131,9 @@ const CONFIG_PATTERNS: RegExp[] = [
   // Read for the CLI family (usage docs) and the desktop signing check.
   /^README(\.md|\.markdown|\.rst|\.txt)?$/i,
   /^\.github\/workflows\/[^/]+\.ya?ml$/i,
+  // Read Pulse audit policy/configuration alongside workflows. The recognisers
+  // deliberately describe outcomes rather than coupling Pulse to any vendor.
+  /(^|\/)(?:\.?security|\.?quality|\.?audit|\.?static[-_ ]analysis|\.?secret[-_ ]scan|\.?supply[-_ ]chain|\.?accessibility|\.?browser[-_ ]tests?|\.?dynamic[-_ ]security)\.(ya?ml|json|toml)$/i,
   // Web-source family: .gitignore CONTENTS (not just its existence — a .gitignore
   // that misses .env is the second most common finding in AI-built repos and
   // passes any presence test), setup scripts, and SQL migrations for the

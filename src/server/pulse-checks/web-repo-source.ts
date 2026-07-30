@@ -62,6 +62,8 @@ interface WebContext {
   gitignore: string;
   /** README + shell scripts, where install instructions live. */
   docsAndScripts: string;
+  /** CI workflows and audit-tool config, which are source evidence of a real gate. */
+  automation: string;
   /** SQL / migration files, for the RLS check. */
   sql: string;
   pkg: PackageManifest | null;
@@ -77,6 +79,7 @@ function buildContext(snapshot: RepoSnapshot): WebContext {
   const files = new Map<string, string>();
   let gitignore = "";
   let docsAndScripts = "";
+  let automation = "";
   let sql = "";
   let pkgText: string | null = null;
 
@@ -84,6 +87,11 @@ function buildContext(snapshot: RepoSnapshot): WebContext {
     if (/(^|\/)\.gitignore$/i.test(path)) gitignore += "\n" + text;
     else if (/^README(\.md|\.markdown|\.rst|\.txt)?$/i.test(path) || /\.(sh|bash)$/i.test(path)) {
       docsAndScripts += "\n" + text;
+    } else if (
+      /(^|\/)\.github\/workflows\/[^/]+\.ya?ml$/i.test(path) ||
+      /(^|\/)(?:\.?security|\.?quality|\.?audit|\.?static[-_ ]analysis|\.?secret[-_ ]scan|\.?supply[-_ ]chain|\.?accessibility|\.?browser[-_ ]tests?|\.?dynamic[-_ ]security)\.(ya?ml|json|toml)$/i.test(path)
+    ) {
+      automation += "\n" + text;
     } else if (/\.sql$/i.test(path) && !isVendoredPath(path)) sql += "\n" + text;
     else if (/(^|\/)package\.json$/i.test(path) && !path.includes("/")) pkgText = text;
     else if (SOURCE_RE.test(path) && !isVendoredPath(path)) files.set(path, text);
@@ -96,6 +104,7 @@ function buildContext(snapshot: RepoSnapshot): WebContext {
     files,
     gitignore,
     docsAndScripts,
+    automation,
     sql,
     pkg: parsePackageManifest(pkgText),
     coverage: sourcePaths.length === 0 ? 0 : Math.min(1, files.size / sourcePaths.length),
@@ -140,7 +149,7 @@ export function evaluateWebSourceChecks(snapshot: RepoSnapshot): PulseScanCheckI
   const ctx = buildContext(snapshot);
   // No source was read — say nothing rather than emitting a wall of passes we
   // cannot support. This is the §35 rule in its most literal form.
-  if (ctx.files.size === 0 && ctx.gitignore === "" && ctx.docsAndScripts === "") return [];
+  if (ctx.files.size === 0 && ctx.gitignore === "" && ctx.docsAndScripts === "" && ctx.automation === "") return [];
 
   return [
     ...injectionChecks(ctx),
@@ -148,6 +157,7 @@ export function evaluateWebSourceChecks(snapshot: RepoSnapshot): PulseScanCheckI
     ...frameworkDefaultChecks(ctx),
     ...transportChecks(ctx),
     ...supplyChainChecks(ctx),
+    ...automationChecks(ctx),
   ];
 }
 
@@ -549,6 +559,56 @@ function supplyChainChecks(ctx: WebContext): PulseScanCheckInput[] {
             `Commit the lockfile and use \`npm ci\`.`,
       evidence: loose.length > 0 ? loose.slice(0, 5).map(([k, v]) => `${k}@${v}`).join(", ") : undefined,
     });
+  }
+
+  return checks;
+}
+
+// ── Pulse audit controls ───────────────────────────────────────────────────
+// A package name alone is never evidence. Each Pulse control looks for an
+// executable workflow, checked-in policy, or real test assertion. That is the
+// difference between declaring an intention and protecting a release.
+function automationChecks(ctx: WebContext): PulseScanCheckInput[] {
+  if (!ctx.pkg && !ctx.automation && !ctx.sourceRaw) return [];
+  const evidence = `${ctx.automation}\n${ctx.sourceRaw}\n${JSON.stringify(ctx.pkg?.devDependencies ?? {})}`;
+  const has = (pattern: RegExp) => pattern.test(evidence);
+  const checks: PulseScanCheckInput[] = [];
+
+  const gates: Array<[string, string, RegExp, string, string]> = [
+    ["pulse_static_analysis_gate", "Static analysis runs in CI", /\b(?:static[-_ ]analysis|sast|source[-_ ]analysis)\b/i, "Static analysis is wired into the delivery workflow.", "No CI evidence of static analysis. Pulse requires source-pattern analysis before merge."],
+    ["pulse_static_analysis_policy", "Static-analysis rules are versioned", /\b(?:static[-_ ]analysis|sast)\b[\s\S]{0,240}\b(?:rules|policy|config(?:uration)?)\b|\b(?:rules|policy|config(?:uration)?)\b[\s\S]{0,240}\b(?:static[-_ ]analysis|sast)\b/i, "A checked-in static-analysis policy is present.", "No checked-in static-analysis policy evidence. Keep reviewable rules with the repository."],
+    ["pulse_static_analysis_blocking", "Static-analysis findings block unsafe changes", /\b(?:static[-_ ]analysis|sast)\b[\s\S]{0,240}\b(?:fail|block|threshold|severity|critical|high)\b/i, "The static-analysis workflow includes blocking criteria.", "No evidence that static-analysis findings block a merge or release."],
+    ["pulse_secret_scan_gate", "Secret scanning runs in CI", /\b(?:secret[-_ ]scan|secret[-_ ]detection|credential[-_ ]scan)\b/i, "A secret-scanning workflow is present.", "No CI evidence of secret scanning. Pulse requires credential detection before merge."],
+    ["pulse_secret_history_scope", "Secret scanning covers repository history", /\b(?:secret[-_ ]scan|secret[-_ ]detection|credential[-_ ]scan)\b[\s\S]{0,240}\b(?:history|full[-_ ]repo|all[-_ ]commits|pull[-_ ]request)\b/i, "The secret scan includes repository-history or pull-request coverage.", "No evidence that secret scanning covers history or pull requests."],
+    ["pulse_secret_remediation", "Secret findings have a remediation path", /\b(?:secret[-_ ]scan|secret[-_ ]detection|credential[-_ ]scan)\b[\s\S]{0,240}\b(?:revoke|rotate|redact|remediate|incident)\b/i, "The repository documents how a secret finding is contained.", "No evidence of a documented revoke, rotation, or remediation path for secret findings."],
+    ["pulse_supply_chain_gate", "Supply-chain risk scanning runs in CI", /\b(?:supply[-_ ]chain|dependency[-_ ]scan|iac[-_ ]scan|artifact[-_ ]scan)\b/i, "A supply-chain risk scan is wired into delivery.", "No CI evidence of dependency, infrastructure, or artifact risk scanning."],
+    ["pulse_supply_chain_inventory", "A release inventory is generated", /\b(?:sbom|software[-_ ]bill[-_ ]of[-_ ]materials|release[-_ ]inventory)\b/i, "Release inventory generation is configured.", "No evidence that a release inventory is generated for shipped artifacts."],
+    ["pulse_supply_chain_blocking", "Supply-chain risk has blocking thresholds", /\b(?:supply[-_ ]chain|dependency[-_ ]scan|iac[-_ ]scan|artifact[-_ ]scan)\b[\s\S]{0,240}\b(?:fail|block|threshold|severity|critical|high)\b/i, "Supply-chain workflow includes blocking criteria.", "No evidence that high-risk supply-chain findings block a release."],
+    ["pulse_code_flow_gate", "Code-flow analysis runs in CI", /\b(?:code[-_ ]flow|data[-_ ]flow|interprocedural|query[-_ ]analysis)\b/i, "A code-flow analysis workflow is present.", "No CI evidence of code-flow analysis for paths that simple pattern matching cannot judge."],
+    ["pulse_code_flow_sources", "Code-flow analysis models untrusted inputs", /\b(?:code[-_ ]flow|data[-_ ]flow|interprocedural|query[-_ ]analysis)\b[\s\S]{0,240}\b(?:source|untrusted|input|taint)\b/i, "The code-flow policy includes untrusted-input modelling.", "No evidence that code-flow analysis models untrusted inputs."],
+    ["pulse_code_flow_sinks", "Code-flow analysis protects sensitive operations", /\b(?:code[-_ ]flow|data[-_ ]flow|interprocedural|query[-_ ]analysis)\b[\s\S]{0,240}\b(?:sink|database|shell|html|network)\b/i, "The code-flow policy includes sensitive-operation coverage.", "No evidence that code-flow analysis covers sensitive operations."],
+    ["pulse_browser_journeys", "Browser journeys run before release", /\b(?:browser[-_ ]test|browser[-_ ]journey|end[-_ ]to[-_ ]end|e2e)\b/i, "Browser journey tests are wired into delivery.", "No CI evidence that critical user journeys run in a real browser."],
+    ["pulse_browser_failure_evidence", "Browser failures retain diagnostic evidence", /\b(?:browser[-_ ]test|browser[-_ ]journey|end[-_ ]to[-_ ]end|e2e)\b[\s\S]{0,240}\b(?:trace|screenshot|video|network[-_ ]log)\b/i, "Browser failures retain reproducible diagnostic evidence.", "No evidence that browser failures retain traces, screenshots, video, or network logs."],
+    ["pulse_browser_release_coverage", "Browser tests cover release-critical paths", /\b(?:browser[-_ ]test|browser[-_ ]journey|end[-_ ]to[-_ ]end|e2e)\b[\s\S]{0,240}\b(?:login|checkout|payment|signup|onboarding|critical)\b/i, "Browser-test configuration names release-critical paths.", "No evidence that browser tests cover login, onboarding, payments, or other critical paths."],
+    ["pulse_accessibility_assertions", "Accessibility assertions run with UI tests", /\b(?:accessibility[-_ ]assertion|accessibility[-_ ]test|a11y[-_ ]test|toHaveNoViolations)\b/i, "Automated accessibility assertions run with UI tests.", "No CI evidence of automated accessibility assertions against rendered UI."],
+    ["pulse_accessibility_keyboard", "UI tests verify keyboard operation", /\b(?:accessibility[-_ ]assertion|accessibility[-_ ]test|a11y[-_ ]test|keyboard[-_ ]navigation|focus[-_ ]order)\b/i, "UI-test evidence includes keyboard or focus validation.", "No evidence that UI tests verify keyboard navigation or focus order."],
+    ["pulse_accessibility_semantics", "UI tests verify accessible semantics", /\b(?:accessibility[-_ ]assertion|accessibility[-_ ]test|a11y[-_ ]test|accessible[-_ ]name|role[-_ ]assertion|contrast[-_ ]check)\b/i, "UI-test evidence includes semantic or contrast validation.", "No evidence that UI tests verify accessible names, roles, or contrast."],
+    ["pulse_dynamic_security_gate", "Dynamic security baseline runs before release", /\b(?:dynamic[-_ ]security|dynamic[-_ ]scan|dast|web[-_ ]api[-_ ]baseline)\b/i, "A dynamic web or API security baseline is wired into delivery.", "No CI evidence of dynamic web or API security testing before release."],
+    ["pulse_dynamic_security_auth", "Dynamic security checks authenticated paths", /\b(?:dynamic[-_ ]security|dynamic[-_ ]scan|dast|web[-_ ]api[-_ ]baseline)\b[\s\S]{0,240}\b(?:auth(?:enticated)?|session|token|role)\b/i, "Dynamic security configuration covers authenticated behaviour.", "No evidence that dynamic security checks cover authenticated sessions or roles."],
+    ["pulse_dynamic_security_isolation", "Dynamic security tests run against a safe target", /\b(?:dynamic[-_ ]security|dynamic[-_ ]scan|dast|web[-_ ]api[-_ ]baseline)\b[\s\S]{0,240}\b(?:staging|preview|sandbox|test[-_ ]environment)\b/i, "Dynamic security tests target an isolated environment.", "No evidence that dynamic security tests run against a safe staging, preview, sandbox, or test environment."],
+  ];
+
+  for (const [checkKey, label, pattern, passDetail, warnDetail] of gates) {
+    const enabled = has(pattern);
+    checks.push(absence(ctx, {
+      category: CATEGORIES.CODE_QUALITY,
+      checkKey,
+      label,
+      status: enabled ? "PASS" : "WARN",
+      detail: enabled
+        ? passDetail
+        : warnDetail,
+    }));
   }
 
   return checks;

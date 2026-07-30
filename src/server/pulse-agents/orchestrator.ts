@@ -37,7 +37,7 @@ export async function runOrchestratedScan(input: {
 }): Promise<OrchestratorResult> {
   if (input.inputType === "FREE_TEXT") {
     return {
-      checks: skipAllChecks("FREE_TEXT"),
+      checks: skipAllChecks("FREE_TEXT", input.platform),
       techStack: [],
       codeInsights: null,
       deployInsights: null,
@@ -127,7 +127,7 @@ export async function runOrchestratedScan(input: {
   }
 
   return {
-    checks: skipAllChecks(input.inputType),
+    checks: skipAllChecks(input.inputType, input.platform),
     techStack: [],
     codeInsights: null,
     deployInsights: null,
