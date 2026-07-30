@@ -92,6 +92,37 @@ describe("delivery and abuse safeguards", () => {
     expect(statusOf(checks, "pulse_request_body_limit")).toBe("PASS");
     expect(statusOf(checks, "pulse_upload_limit")).toBe("PASS");
   });
+
+  it("finds unsafe checkout, container, redirect, SSRF, storage, webhook, and AI tool patterns", () => {
+    const checks = evaluateWebSourceChecks(snapshot({
+      "Dockerfile": `FROM node:22\nARG API_TOKEN=value`,
+      ".github/workflows/review.yml": `on: pull_request_target\nsteps:\n - uses: actions/checkout@v4\n   with:\n    ref: \${{ github.event.pull_request.head.sha }}`,
+      "src/app.ts": `bucket({ public: true }); redirect(req.query.next); fetch(req.body.url); webhook(event); toolCall({});`,
+    }));
+    for (const key of ["pulse_ci_untrusted_checkout", "pulse_container_secret_layer", "pulse_public_storage_policy", "pulse_open_redirect", "pulse_ssrf"]) expect(statusOf(checks, key)).toBe("FAIL");
+    expect(statusOf(checks, "pulse_container_nonroot")).toBe("WARN");
+    expect(statusOf(checks, "pulse_webhook_replay")).toBe("WARN");
+    expect(statusOf(checks, "pulse_ai_tool_controls")).toBe("WARN");
+  });
+});
+
+describe("AI repository safety", () => {
+  it("detects concrete unsafe AI implementation paths", () => {
+    const checks = evaluateWebSourceChecks(snapshot({
+      "src/ai.ts": `const client = openai; const key = "sk-abcdefghijklmnopqrstuvwxyz123456"; const system = "${"x".repeat(90)}"; toolCall(() => exec(command)); vectorStore.similaritySearch(query);`,
+    }));
+    for (const key of ["pulse_ai_client_secret", "pulse_ai_client_prompt", "pulse_ai_unsafe_tool", "pulse_ai_unscoped_retrieval"]) expect(statusOf(checks, key)).toBe("FAIL");
+    for (const key of ["pulse_ai_tool_confirmation", "pulse_ai_output_schema", "pulse_ai_budget_timeout", "pulse_ai_audit_log"]) expect(statusOf(checks, key)).toBe("WARN");
+  });
+});
+
+describe("AI repository readiness", () => {
+  it("verifies operational AI evidence from source", () => {
+    const checks = evaluateWebSourceChecks(snapshot({
+      "src/ai.ts": `const client = openai; const model = "x"; const modelVersion = "v1"; const maxTokens = 100; const retry = 2; const fallback = "try again"; const controller = new AbortController(); trace("ai"); feedback("up"); const evals = testCases;`,
+    }));
+    for (const key of ["pulse_ai_retry_policy", "pulse_ai_failure_fallback", "pulse_ai_stream_cancel", "pulse_ai_evaluation_fixture", "pulse_ai_monitoring", "pulse_ai_cost_budget", "pulse_ai_feedback_capture", "pulse_ai_model_version"]) expect(statusOf(checks, key)).toBe("PASS");
+  });
 });
 
 describe("injection — presence findings", () => {

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { PlusIcon, SignalIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { PULSE_FRAMEWORK, PULSE_CHECK_TOTAL, PULSE_CATEGORY_TOTAL, type PulseFrameworkCategory } from "@/config/pulse-framework";
+import { PULSE_FRAMEWORK, PULSE_EXECUTABLE_CHECK_TOTAL, PULSE_EVIDENCE_REQUIREMENT_TOTAL, PULSE_CATEGORY_TOTAL, type PulseFrameworkCategory } from "@/config/pulse-framework";
 import type { PulseCheckStatus, PulseScanStatus, PulseUrgency, PulseBusinessValue, PulseEffort } from "@/types/pulse";
 
 // ── Framework coverage ─────────────────────────────────────────────────────────
@@ -48,7 +48,8 @@ export function PulseFrameworkCoverage() {
       <div className="flex items-baseline justify-between gap-3 border-b border-[var(--border-2)] pb-3">
         <p className="text-sm font-semibold text-[var(--text-1)]">What Pulse checks</p>
         <p className="text-xs tabular-nums text-[var(--text-4)]">
-          <span className="font-semibold text-[var(--text-2)]">{PULSE_CHECK_TOTAL}+</span> checks ·{" "}
+          <span className="font-semibold text-[var(--text-2)]">{PULSE_EXECUTABLE_CHECK_TOTAL}</span> automated checks ·{" "}
+          <span className="font-semibold text-[var(--text-2)]">{PULSE_EVIDENCE_REQUIREMENT_TOTAL}</span> evidence requirements ·{" "}
           <span className="font-semibold text-[var(--text-2)]">{PULSE_CATEGORY_TOTAL}</span> categories
         </p>
       </div>
