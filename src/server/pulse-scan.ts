@@ -18,6 +18,7 @@ import {
   type NativePlatform,
 } from "./pulse-checks/native-mobile";
 import { getRepoSnapshot } from "./pulse-checks/native-repo";
+import { runStandardsVerificationCatalog } from "./pulse-checks/standards-verification";
 
 export const SCAN_VERSION = "pulse-v2";
 
@@ -4022,7 +4023,7 @@ export async function runGithubChecks(repoInput: string): Promise<{
   };
 }
 
-export function skipAllChecks(inputType: PulseScanInputType): PulseScanCheckInput[] {
+export function skipAllChecks(inputType: PulseScanInputType, platform?: string): PulseScanCheckInput[] {
   if (inputType !== "FREE_TEXT") return [];
 
   const skippedChecks: Array<[CheckCategory, string, string]> = [
@@ -4535,14 +4536,17 @@ export function skipAllChecks(inputType: PulseScanInputType): PulseScanCheckInpu
     ["Vibe Code Hygiene", "vibe_node_modules_not_committed", "node_modules/ not committed to repo"],
   ] as const;
 
-  return skippedChecks.map(([category, checkKey, label], i) => ({
+  return [
+    ...skippedChecks.map(([category, checkKey, label], i) => ({
     category,
     checkKey,
     label,
     status: "SKIPPED" as const,
     detail: "Not applicable for free-text input.",
     sortOrder: i,
-  }));
+    })),
+    ...runStandardsVerificationCatalog(platform).map((check, i) => ({ ...check, sortOrder: skippedChecks.length + i })),
+  ];
 }
 
 // The health score and its "why this score" breakdown share one implementation

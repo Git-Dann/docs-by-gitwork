@@ -83,7 +83,7 @@ export const PILLARS: PillarDef[] = [
     label: "Code & maintainability",
     weight: 15,
     question: "Can the next developer change this safely?",
-    categories: [CATEGORIES.CODE_QUALITY, CATEGORIES.VIBE_HYGIENE],
+    categories: [CATEGORIES.CODE_QUALITY, CATEGORIES.VIBE_HYGIENE, CATEGORIES.STANDARDS_VERIFICATION],
   },
   {
     key: "reliability",

@@ -1,4 +1,5 @@
 import { CATEGORIES, ORDERED_CATEGORIES, type CheckCategory } from "./pulse-checks/categories";
+import { STANDARDS_VALIDATION_REGISTRY } from "./pulse-checks/standards-verification";
 
 /**
  * Static registry of every Pulse check (key + category + label). This is the
@@ -17,6 +18,7 @@ export interface CheckDefinition {
 }
 
 export const CHECKS_REGISTRY: CheckDefinition[] = [
+  ...STANDARDS_VALIDATION_REGISTRY,
   // -- Code cleanliness: structural debt, measured --
   { key: "clean_file_size", category: CATEGORIES.CODE_QUALITY, label: "Files stay a readable length" },
   { key: "clean_nesting_depth", category: CATEGORIES.CODE_QUALITY, label: "Logic is not deeply nested" },

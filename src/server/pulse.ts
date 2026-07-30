@@ -999,7 +999,7 @@ export async function runAnalysis(
     let visualInsights: VisualAgentInsights | null = null;
 
     if (input.inputType === "FREE_TEXT") {
-      allChecks = skipAllChecks("FREE_TEXT");
+      allChecks = skipAllChecks("FREE_TEXT", input.platform);
       if (allChecks.length > 0) await persistChecks(allChecks);
     } else {
       const lite = await runLiteScan({

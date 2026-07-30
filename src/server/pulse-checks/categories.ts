@@ -49,6 +49,7 @@ export const CATEGORIES = {
   AI_READINESS: "AI Readiness",
   AI_SAFETY: "AI Safety",
   VIBE_HYGIENE: "Vibe Code Hygiene",
+  STANDARDS_VERIFICATION: "Standards Verification",
 } as const;
 
 export type CheckCategory = (typeof CATEGORIES)[keyof typeof CATEGORIES];
@@ -118,6 +119,7 @@ export const CATEGORY_META: CategoryMeta[] = [
   { name: CATEGORIES.LEGAL, domain: "Legal & Compliance", weighted: true, aiEra: false, blurb: "GDPR, UK-GDPR, CCPA, LGPD, EU AI Act, DPA, cookie consent, auto-renewal disclosure" },
   // Production Readiness
   { name: CATEGORIES.SAAS, domain: "Production Readiness", weighted: false, aiEra: false, blurb: "Billing portal, onboarding, free trial, SSO, data export/import, public roadmap" },
+  { name: CATEGORIES.STANDARDS_VERIFICATION, domain: "Production Readiness", weighted: false, aiEra: false, blurb: "Evidence-required controls across web, SaaS, native mobile, desktop, extensions, APIs, CLIs, and other product surfaces" },
   { name: CATEGORIES.MISSING_PAGES, domain: "Production Readiness", weighted: false, aiEra: false, blurb: "About, contact, pricing, docs, status, changelog, security, legal hub" },
   // SEO & Presence
   { name: CATEGORIES.SEO, domain: "SEO & Presence", weighted: false, aiEra: false, blurb: "Structured data, canonical, sitemaps, Open Graph, preload hints, search verification" },
