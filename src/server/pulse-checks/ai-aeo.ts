@@ -26,6 +26,12 @@ const ALL_CHECKS: Array<[string, string]> = [
   ["aeo_content_server_rendered", "Content readable without JavaScript"],
   ["aeo_semantic_html", "Semantic HTML landmarks"],
   ["aeo_content_feed", "Machine-readable content feed (RSS/Atom)"],
+  ["aeo_canonical", "Canonical URL is declared"],
+  ["aeo_language_alternates", "Language alternatives are declared"],
+  ["aeo_question_answer", "Question-and-answer content is structured"],
+  ["aeo_citation_links", "Claims include supporting links"],
+  ["aeo_content_freshness", "Content exposes a published or updated date"],
+  ["aeo_sitemap", "Crawler sitemap is declared"],
 ];
 
 // The major AI / answer-engine crawlers. If robots.txt fully disallows any of
@@ -171,7 +177,23 @@ export async function runAiAeoChecks(ctx: ExtendedCheckContext): Promise<PulseSc
     }
   }
 
-  // 3. Structured data VALIDITY — SEO checks which schema types exist; this checks
+  // 3. Citation and retrieval signals. These are page-level facts that an
+  // answer engine can verify from the rendered document; they never guess at
+  // the truth of a claim.
+  const canonical = /<link(?=[^>]*\brel=["']canonical["'])(?=[^>]*\bhref=["'][^"']+)[^>]*>/i.test(html);
+  checks.push({ category: CATEGORY, checkKey: "aeo_canonical", label: "Canonical URL is declared", status: canonical ? "PASS" : "WARN", detail: canonical ? "Canonical URL detected." : "No canonical URL found; answer engines can split authority across duplicate URLs." });
+  const alternates = /<link(?=[^>]*\brel=["']alternate["'])(?=[^>]*\bhreflang=["'][^"']+)[^>]*>/i.test(html);
+  checks.push({ category: CATEGORY, checkKey: "aeo_language_alternates", label: "Language alternatives are declared", status: alternates ? "PASS" : "WARN", detail: alternates ? "Language alternate metadata detected." : "No language alternatives found; add them when this site serves localized versions." });
+  const qa = /<(?:h[2-4]|dt)[^>]*>[^<]{5,}\?<|FAQPage|\"(?:Question|Answer)\"/i.test(html);
+  checks.push({ category: CATEGORY, checkKey: "aeo_question_answer", label: "Question-and-answer content is structured", status: qa ? "PASS" : "WARN", detail: qa ? "Question-and-answer content pattern detected." : "No structured question-and-answer content found on this page." });
+  const citations = (html.match(/<a\s+[^>]*href=["']https?:\/\//gi) ?? []).length >= 2;
+  checks.push({ category: CATEGORY, checkKey: "aeo_citation_links", label: "Claims include supporting links", status: citations ? "PASS" : "WARN", detail: citations ? "Multiple supporting outbound links detected." : "Few supporting links found; cite primary sources for factual content." });
+  const freshness = /(?:datePublished|dateModified|<time[^>]+datetime=|last updated|published on)/i.test(html);
+  checks.push({ category: CATEGORY, checkKey: "aeo_content_freshness", label: "Content exposes a published or updated date", status: freshness ? "PASS" : "WARN", detail: freshness ? "Content date metadata detected." : "No published or updated date found; freshness is hard for answer engines to assess." });
+  const sitemap = /sitemap:\s*https?:\/\//i.test(robotsBody) || /<link[^>]+type=["']application\/xml["']/i.test(html);
+  checks.push({ category: CATEGORY, checkKey: "aeo_sitemap", label: "Crawler sitemap is declared", status: sitemap ? "PASS" : "WARN", detail: sitemap ? "Sitemap declaration detected." : "No sitemap declaration found in robots.txt or page metadata." });
+
+  // 4. Structured data VALIDITY — SEO checks which schema types exist; this checks
   //    the JSON-LD actually parses into schema.org objects (answer engines need it valid).
   const jsonLdRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   let totalBlocks = 0;

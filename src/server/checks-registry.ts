@@ -790,6 +790,12 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "aeo_content_feed", category: CATEGORIES.AEO, label: "Machine-readable content feed (RSS/Atom)" },
   { key: "aeo_agent_instructions", category: CATEGORIES.AEO, label: "AI agent instructions (CLAUDE.md / AGENTS.md)" },
   { key: "aeo_repo_llms_txt", category: CATEGORIES.AEO, label: "llms.txt published in repo" },
+  { key: "aeo_canonical", category: CATEGORIES.AEO, label: "Canonical URL is declared" },
+  { key: "aeo_language_alternates", category: CATEGORIES.AEO, label: "Language alternatives are declared" },
+  { key: "aeo_question_answer", category: CATEGORIES.AEO, label: "Question-and-answer content is structured" },
+  { key: "aeo_citation_links", category: CATEGORIES.AEO, label: "Claims include supporting links" },
+  { key: "aeo_content_freshness", category: CATEGORIES.AEO, label: "Content exposes a published or updated date" },
+  { key: "aeo_sitemap", category: CATEGORIES.AEO, label: "Crawler sitemap is declared" },
 
   // ─── Backfilled to complete the catalogue (AI-era / vibe / US-privacy / store) ─
   { key: "repo_secret_keys", category: CATEGORIES.SECRETS_KEYS, label: "No exposed API keys in committed source" },
