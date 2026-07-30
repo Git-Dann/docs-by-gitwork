@@ -49,6 +49,7 @@ export const CATEGORIES = {
   AI_READINESS: "AI Readiness",
   AI_SAFETY: "AI Safety",
   VIBE_HYGIENE: "Vibe Code Hygiene",
+  BUILD_PIPELINE: "Build & Supply Chain",
 } as const;
 
 export type CheckCategory = (typeof CATEGORIES)[keyof typeof CATEGORIES];
@@ -102,6 +103,11 @@ export const CATEGORY_META: CategoryMeta[] = [
   { name: CATEGORIES.INFRASTRUCTURE, domain: "Infrastructure & DevOps", weighted: true, aiEra: false, blurb: "SSL, CDN, IPv6, multi-region, load balancing, feature flags, secrets manager" },
   { name: CATEGORIES.OBSERVABILITY, domain: "Infrastructure & DevOps", weighted: false, aiEra: false, blurb: "Error monitoring, APM, RUM, uptime, distributed tracing, SLO/error budgets" },
   { name: CATEGORIES.PERFORMANCE, domain: "Infrastructure & DevOps", weighted: false, aiEra: false, blurb: "Core Web Vitals, next-gen images, HTTP/3, lazy loading, critical CSS, minification" },
+  // Deliberately weighted:false. It is the largest single category, and the checks
+  // only run for a repo that HAS the artefact (a workflow, a Dockerfile, a chart),
+  // so double-weighting it would move every containerised project's score for a
+  // reason unrelated to the software itself.
+  { name: CATEGORIES.BUILD_PIPELINE, domain: "Infrastructure & DevOps", weighted: false, aiEra: false, blurb: "CI/CD workflow security, container and image hardening, infrastructure-as-code, dependency and supply-chain provenance" },
   // Security & Authentication
   { name: CATEGORIES.SECURITY, domain: "Security & Authentication", weighted: true, aiEra: false, blurb: "CSP, HSTS, DNSSEC, CAA, COOP/CORP/COEP, exposed endpoints, secret patterns in HTML" },
   { name: CATEGORIES.SECRETS_KEYS, domain: "Security & Authentication", weighted: false, aiEra: true, blurb: "Exposed API keys in committed source, committed .env files, prompt-injection vectors" },

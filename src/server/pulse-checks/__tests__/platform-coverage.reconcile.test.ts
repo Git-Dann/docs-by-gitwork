@@ -40,7 +40,7 @@ function emittedKeys(file: string): Set<string> {
   const keys = new Set<string>();
   for (const m of src.matchAll(/checkKey:\s*"([^"]+)"/g)) keys.add(m[1]);
   // Tuple form: ["check_key", "field", …]
-  for (const m of src.matchAll(/\[\s*"([a-z0-9]+_[a-z0-9_]+)"\s*,\s*"[^"]*"\s*,/g)) keys.add(m[1]);
+  for (const m of src.matchAll(/\[\s*"([a-z0-9]+_[a-z0-9_]+)"\s*,\s*"[^"]*"\s*[,\]]/g)) keys.add(m[1]);
   return keys;
 }
 

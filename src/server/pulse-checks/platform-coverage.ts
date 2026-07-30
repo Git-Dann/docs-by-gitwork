@@ -62,20 +62,20 @@ interface FamilySpec {
  * URL suite, which needs no repo — so there is nothing to warn about.
  */
 export const PLATFORM_FAMILIES: Record<string, FamilySpec> = {
-  IOS_APP: { shapes: ["ios"], label: "iOS", count: 39, sourceFiles: ["ios-app.ts"] },
-  ANDROID_APP: { shapes: ["android"], label: "Android", count: 33, sourceFiles: ["android-app.ts"] },
+  IOS_APP: { shapes: ["ios"], label: "iOS", count: 55, sourceFiles: ["ios-app.ts", "ios-app-extended.ts"] },
+  ANDROID_APP: { shapes: ["android"], label: "Android", count: 49, sourceFiles: ["android-app.ts", "android-app-extended.ts"] },
   CROSS_PLATFORM_MOBILE: {
     shapes: ["flutter", "react-native"],
     label: "Flutter / React Native",
-    count: 43,
-    sourceFiles: ["flutter-app.ts", "react-native-app.ts"],
+    count: 59,
+    sourceFiles: ["flutter-app.ts", "react-native-app.ts", "cross-platform-extended.ts"],
   },
-  DESKTOP_APP: { shapes: ["electron", "tauri"], label: "Electron / Tauri", count: 33, sourceFiles: ["desktop-app.ts"] },
+  DESKTOP_APP: { shapes: ["electron", "tauri"], label: "Electron / Tauri", count: 46, sourceFiles: ["desktop-app.ts", "desktop-app-extended.ts"] },
   CHROME_EXTENSION: {
     shapes: ["chrome-extension"],
     label: "browser extension",
-    count: 25,
-    sourceFiles: ["chrome-extension.ts"],
+    count: 38,
+    sourceFiles: ["chrome-extension.ts", "chrome-extension-extended.ts"],
   },
   CLI_TOOL: { shapes: ["cli"], label: "CLI / published package", count: 22, sourceFiles: ["cli-tool.ts"] },
 };

@@ -19,15 +19,23 @@ import { parseGithubRepo, safeGithubRequest } from "@/lib/github";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import { detectNativePlatform, isVendoredPath, type NativePlatform, type RepoSnapshot } from "./native-mobile";
 import { evaluateIosChecks } from "./ios-app";
+import { evaluateIosExtendedChecks } from "./ios-app-extended";
 import { evaluateFlutterChecks } from "./flutter-app";
+import { evaluateCrossPlatformExtendedChecks } from "./cross-platform-extended";
 import { evaluateAndroidChecks } from "./android-app";
+import { evaluateAndroidExtendedChecks } from "./android-app-extended";
 import { evaluateChromeExtensionChecks, isChromeExtension } from "./chrome-extension";
+import { evaluateExtensionExtendedChecks } from "./chrome-extension-extended";
 import { evaluateReactNativeChecks } from "./react-native-app";
 import { evaluateDesktopChecks } from "./desktop-app";
+import { evaluateDesktopExtendedChecks } from "./desktop-app-extended";
 import { evaluateCliChecks, binEntries } from "./cli-tool";
 import { detectProjectShape, parsePackageManifest, type ProjectShape } from "./project-shape";
 import { evaluateWebSourceChecks } from "./web-repo-source";
+import { evaluateBackendServiceChecks } from "./backend-service";
 import { evaluateCleanlinessChecks } from "./code-cleanliness";
+import { evaluateCiWorkflowChecks } from "./ci-workflows";
+import { evaluateContainerChecks } from "./containers";
 
 /**
  * Every repo shape the snapshot builder knows how to feed. This is deliberately a
@@ -130,6 +138,33 @@ const CONFIG_PATTERNS: RegExp[] = [
   /(^|\/)\.gitignore$/i,
   /^(scripts\/)?[^/]*\.(sh|bash)$/i,
   /(^|\/)(migrations|supabase|db|sql)\/[^/]*\.sql$/i,
+  // Containers + infrastructure-as-code. A Dockerfile is the most security-dense
+  // config file most projects own — it decides what user the process runs as, what
+  // ends up in the image layers, and where the base image comes from.
+  /(^|\/)Dockerfile(\.[\w.-]+)?$/i,
+  /(^|\/)[\w.-]*\.dockerfile$/i,
+  /(^|\/)docker-compose(\.[\w.-]+)?\.ya?ml$/i,
+  /(^|\/)compose(\.[\w.-]+)?\.ya?ml$/i,
+  /(^|\/)\.dockerignore$/i,
+  // Dependency manifests across ecosystems, for the supply-chain family.
+  /(^|\/)(requirements[\w.-]*\.txt|Pipfile|pyproject\.toml|poetry\.lock)$/i,
+  /(^|\/)(Gemfile|Gemfile\.lock)$/i,
+  /(^|\/)(go\.mod|go\.sum)$/i,
+  /(^|\/)(composer\.json|composer\.lock)$/i,
+  /(^|\/)(pom\.xml|Cargo\.lock)$/i,
+  /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.ya?ml|bun\.lockb?)$/i,
+  // Backend framework configuration — the files whose VALUES decide whether a
+  // service is safe to expose, rather than whether a framework is present.
+  /(^|\/)settings(_?\w*)?\.py$/i,
+  /(^|\/)(manage\.py|wsgi\.py|asgi\.py)$/i,
+  /(^|\/)config\/environments\/production\.rb$/i,
+  /(^|\/)config\/(application|storage|database)\.rb$/i,
+  /(^|\/)\.env\.example$/i,
+  /(^|\/)(next|nuxt|vite|svelte|astro|remix)\.config\.(js|ts|mjs|cjs)$/i,
+  /(^|\/)application(-\w+)?\.(properties|ya?ml)$/i,
+  /(^|\/)(nginx|default)\.conf$/i,
+  /(^|\/)(vercel|netlify|fly|railway|render)\.(json|toml|ya?ml)$/i,
+  /(^|\/)wrangler\.(toml|jsonc?)$/i,
 ];
 
 /**
@@ -207,6 +242,47 @@ export function swiftRelevance(path: string, size: number): number {
   if (/(appdelegate|scenedelegate|\bapp\.swift)/.test(p)) score += 500;
   // Size as the tiebreaker — capped so one enormous file can't crowd out the rest.
   return score + Math.min(size, 60_000) / 1000;
+}
+
+/**
+ * Which families read a repo's CONTENTS (as opposed to just its file listing).
+ *
+ * ⚠️ This exists because `buildSnapshot` used to return early for `shape === "none"`
+ * — before Round 1 — on the reasoning that a plain web repo had no family reading
+ * source. That stopped being true and the early return stayed, so for the COMMONEST
+ * repo shape of all:
+ *
+ *   • `SOURCE_EXTENSION.none` and `WEB_SAMPLE_CAP` were unreachable code;
+ *   • all 17 web-repo-source checks and all 9 code-cleanliness checks received an
+ *     almost-empty files map — including the `.gitignore`-contents check, the
+ *     finding that family was built for;
+ *   • and the CI/CD family would have been dead on arrival for the same reason.
+ *
+ * It is the same defect as the browser-extension family being unreachable (§37.1),
+ * reintroduced one shape over, and it survived because every family is unit-tested
+ * against a HAND-BUILT snapshot — so the tests exercise the checks and never the
+ * thing that decides whether the checks get anything to look at.
+ *
+ * Exported so a test can assert it, rather than leaving the decision buried in an
+ * `if` inside a function that does network I/O and therefore never runs under test.
+ */
+export function readsRepoContents(shape: SnapshotShape): boolean {
+  // Every shape now has at least one family reading contents: the shape-specific
+  // families for the named shapes, and web-repo-source + code-cleanliness +
+  // ci-workflows for "none". Written as an exhaustive statement rather than
+  // `return true` so that adding a shape is a decision someone has to make.
+  const shapes: Record<SnapshotShape, boolean> = {
+    ios: true,
+    android: true,
+    flutter: true,
+    "react-native": true,
+    electron: true,
+    tauri: true,
+    cli: true,
+    "chrome-extension": true,
+    none: true,
+  };
+  return shapes[shape];
 }
 
 /**
@@ -359,12 +435,6 @@ async function buildSnapshot(owner: string, repo: string): Promise<RepoSnapshot>
 
   const shape = resolveSnapshotShape(paths, files);
 
-  // A plain web/service repo has no family that reads source, so it costs exactly
-  // the tree call plus the round-0 probes and nothing more.
-  if (shape === "none") {
-    return { owner, repo, paths, files, truncated: Boolean(tree.truncated), accessible: true };
-  }
-
   // ── Round 1 ────────────────────────────────────────────────────────────────
   const { config, source } = selectFilesToRead(
     blobs.map((b) => ({ path: b.path, size: b.size ?? 0 })),
@@ -444,13 +514,16 @@ export async function runNativeMobileChecks(
 
   const platform = detectNativePlatform(snapshot.paths);
   if (platform === "ios") {
-    return { platform, checks: evaluateIosChecks(snapshot) };
+    return { platform, checks: [...evaluateIosChecks(snapshot), ...evaluateIosExtendedChecks(snapshot)] };
   }
   if (platform === "flutter") {
-    return { platform, checks: evaluateFlutterChecks(snapshot) };
+    return {
+      platform,
+      checks: [...evaluateFlutterChecks(snapshot), ...evaluateCrossPlatformExtendedChecks(snapshot, "flutter")],
+    };
   }
   if (platform === "android") {
-    return { platform, checks: evaluateAndroidChecks(snapshot) };
+    return { platform, checks: [...evaluateAndroidChecks(snapshot), ...evaluateAndroidExtendedChecks(snapshot)] };
   }
   if (platform === "react-native") {
     // Guarded on the resolved snapshot shape, not on detectNativePlatform alone:
@@ -459,7 +532,13 @@ export async function runNativeMobileChecks(
     // desktop app as a mobile one.
     const shape = resolveSnapshotShape(snapshot.paths, snapshot.files);
     if (shape === "react-native") {
-      return { platform, checks: evaluateReactNativeChecks(snapshot) };
+      return {
+        platform,
+        checks: [
+          ...evaluateReactNativeChecks(snapshot),
+          ...evaluateCrossPlatformExtendedChecks(snapshot, "react-native"),
+        ],
+      };
     }
   }
   return { platform, checks: [] };
@@ -480,7 +559,10 @@ export async function runDesktopChecks(
 
   const shape = resolveSnapshotShape(snapshot.paths, snapshot.files);
   if (shape !== "electron" && shape !== "tauri") return { shape: null, checks: [] };
-  return { shape, checks: evaluateDesktopChecks(snapshot, shape) };
+  return {
+    shape,
+    checks: [...evaluateDesktopChecks(snapshot, shape), ...evaluateDesktopExtendedChecks(snapshot, shape)],
+  };
 }
 
 /** Run the CLI / published-package family. */
@@ -508,7 +590,10 @@ export async function runWebSourceChecks(
   if (!snapshot || !snapshot.accessible) return { isWebRepo: false, checks: [] };
 
   if (resolveSnapshotShape(snapshot.paths, snapshot.files) !== "none") return { isWebRepo: false, checks: [] };
-  return { isWebRepo: true, checks: evaluateWebSourceChecks(snapshot) };
+  return {
+    isWebRepo: true,
+    checks: [...evaluateWebSourceChecks(snapshot), ...evaluateBackendServiceChecks(snapshot)],
+  };
 }
 
 /**
@@ -525,6 +610,37 @@ export async function runCleanlinessChecks(
   const snapshot = await getRepoSnapshot(repoInput);
   if (!snapshot || !snapshot.accessible) return { checks: [] };
   return { checks: evaluateCleanlinessChecks(snapshot) };
+}
+
+/**
+ * Run the CI/CD workflow family.
+ *
+ * SHAPE-AGNOSTIC, like cleanliness: a poisoned build pipeline means the same thing
+ * whether it is building a Swift app or a Django service, and `.github/workflows`
+ * was already in the snapshot's config set for every shape — so this family adds
+ * checks to every repo scan and costs no extra network call.
+ */
+export async function runCiWorkflowChecks(
+  repoInput: string,
+): Promise<{ checks: PulseScanCheckInput[] }> {
+  const snapshot = await getRepoSnapshot(repoInput);
+  if (!snapshot || !snapshot.accessible) return { checks: [] };
+  return { checks: evaluateCiWorkflowChecks(snapshot) };
+}
+
+/**
+ * Run the container family (Dockerfile + Compose).
+ *
+ * Shape-agnostic for the same reason as the CI family: a containerised Django
+ * service and a containerised Go binary fail in identical ways, and the config is
+ * read identically for both.
+ */
+export async function runContainerChecks(
+  repoInput: string,
+): Promise<{ checks: PulseScanCheckInput[] }> {
+  const snapshot = await getRepoSnapshot(repoInput);
+  if (!snapshot || !snapshot.accessible) return { checks: [] };
+  return { checks: evaluateContainerChecks(snapshot) };
 }
 
 /** The resolved snapshot shape for a repo, for callers that need it for labelling. */
@@ -546,5 +662,8 @@ export async function runChromeExtensionChecks(
   const snapshot = await getRepoSnapshot(repoInput);
   if (!snapshot || !snapshot.accessible) return { isExtension: false, checks: [] };
   if (!isChromeExtension(snapshot)) return { isExtension: false, checks: [] };
-  return { isExtension: true, checks: evaluateChromeExtensionChecks(snapshot) };
+  return {
+    isExtension: true,
+    checks: [...evaluateChromeExtensionChecks(snapshot), ...evaluateExtensionExtendedChecks(snapshot)],
+  };
 }

@@ -90,7 +90,16 @@ export const PILLARS: PillarDef[] = [
     label: "Reliability & performance",
     weight: 15,
     question: "Does it stay up, stay fast, and tell you when it doesn't?",
-    categories: [CATEGORIES.INFRASTRUCTURE, CATEGORIES.OBSERVABILITY, CATEGORIES.PERFORMANCE],
+    categories: [
+      CATEGORIES.INFRASTRUCTURE,
+      CATEGORIES.OBSERVABILITY,
+      CATEGORIES.PERFORMANCE,
+      // Sits with its domain rather than under Security, even though its worst
+      // findings are supply-chain compromises. A pipeline that cannot be trusted to
+      // build the right thing is a delivery failure first; the individual
+      // high-severity findings still escalate through priority.ts on their own.
+      CATEGORIES.BUILD_PIPELINE,
+    ],
   },
   {
     key: "legal",
