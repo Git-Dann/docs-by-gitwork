@@ -116,6 +116,15 @@ describe("AI repository safety", () => {
   });
 });
 
+describe("AI repository readiness", () => {
+  it("verifies operational AI evidence from source", () => {
+    const checks = evaluateWebSourceChecks(snapshot({
+      "src/ai.ts": `const client = openai; const model = "x"; const modelVersion = "v1"; const maxTokens = 100; const retry = 2; const fallback = "try again"; const controller = new AbortController(); trace("ai"); feedback("up"); const evals = testCases;`,
+    }));
+    for (const key of ["pulse_ai_retry_policy", "pulse_ai_failure_fallback", "pulse_ai_stream_cancel", "pulse_ai_evaluation_fixture", "pulse_ai_monitoring", "pulse_ai_cost_budget", "pulse_ai_feedback_capture", "pulse_ai_model_version"]) expect(statusOf(checks, key)).toBe("PASS");
+  });
+});
+
 describe("injection — presence findings", () => {
   it("fails raw HTML rendering with no sanitiser present", () => {
     const checks = evaluateWebSourceChecks(snapshot({

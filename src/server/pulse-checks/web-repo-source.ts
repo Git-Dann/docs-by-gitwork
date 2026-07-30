@@ -161,7 +161,24 @@ export function evaluateWebSourceChecks(snapshot: RepoSnapshot): PulseScanCheckI
     ...automationChecks(ctx),
     ...deliverySafetyChecks(ctx),
     ...aiRepositorySafetyChecks(ctx),
+    ...aiRepositoryReadinessChecks(ctx),
   ];
+}
+
+function aiRepositoryReadinessChecks(ctx: WebContext): PulseScanCheckInput[] {
+  const source = ctx.source;
+  if (!/\b(?:openai|anthropic|chat\.completions|generateContent|useChat|languageModel)\b/i.test(source)) return [];
+  const checks: PulseScanCheckInput[] = [];
+  const signal = (key: string, label: string, pattern: RegExp, detail: string) => checks.push(absence(ctx, { category: CATEGORIES.AI_READINESS, checkKey: key, label, status: pattern.test(source) ? "PASS" : "WARN", detail }));
+  signal("pulse_ai_retry_policy", "AI requests use bounded retry policy", /\b(?:retry|backoff|maxRetries)\b/i, "AI request paths need bounded retries with backoff evidence.");
+  signal("pulse_ai_failure_fallback", "AI failures have a user-safe fallback", /\b(?:fallback|try again|graceful|provider unavailable)\b/i, "AI request paths need an explicit user-safe fallback.");
+  signal("pulse_ai_stream_cancel", "Streaming AI responses can be cancelled", /\b(?:AbortController|abort\(|cancel(?:led)?\b)\b/i, "Streaming AI paths need cancellation evidence.");
+  signal("pulse_ai_evaluation_fixture", "AI changes have versioned evaluation fixtures", /\b(?:evals?|golden(?:set)?|benchmark|testCases)\b/i, "AI code needs versioned evaluation fixtures or benchmark evidence.");
+  signal("pulse_ai_monitoring", "AI requests emit operational telemetry", /\b(?:trace|span|metrics|observability|telemetry)\b/i, "AI request paths need trace, metric, or telemetry evidence.");
+  signal("pulse_ai_cost_budget", "AI requests enforce cost or token budgets", /\b(?:maxTokens|tokenBudget|costBudget|usageLimit)\b/i, "AI request paths need token or cost-budget evidence.");
+  signal("pulse_ai_feedback_capture", "AI output feedback is captured for review", /\b(?:feedback|thumbs(?:Up|Down)?|rating|regenerate)\b/i, "AI output paths need feedback-capture evidence.");
+  signal("pulse_ai_model_version", "AI model and prompt versions are recorded", /\b(?:modelVersion|promptVersion|model:\s*["'`])\b/i, "AI request paths need model or prompt version evidence.");
+  return checks;
 }
 
 function aiRepositorySafetyChecks(ctx: WebContext): PulseScanCheckInput[] {
