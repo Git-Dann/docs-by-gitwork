@@ -22,6 +22,9 @@ const THEME_BY_NAME: Record<string, FrameworkTheme> = {
   Authentication: "Security & compliance",
   "Roles & Permissions": "Security & compliance",
   "Business Operations": "Security & compliance",
+  // Its worst findings are supply-chain compromises, so it shows under security
+  // rather than falling through to the "Growth & ops" default.
+  "Build & Supply Chain": "Security & compliance",
   Performance: "Performance & quality",
   Accessibility: "Performance & quality",
   "Mobile & Accessibility": "Performance & quality",
