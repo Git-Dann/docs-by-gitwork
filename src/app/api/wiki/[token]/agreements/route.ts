@@ -34,7 +34,57 @@ export async function GET(request: NextRequest, context: RouteContext) {
       orderBy: { createdAt: "desc" },
     });
 
-    const mapped = submissions.map((sub) => ({
+    const DOCUSEAL_API_KEY = process.env.DOCUSEAL_API_KEY;
+    let needsRefetch = false;
+
+    // Check DocuSeal API for any unresolved submissions
+    if (DOCUSEAL_API_KEY) {
+      for (const sub of submissions) {
+        if (sub.status === "PENDING" || sub.status === "CLIENT_SIGNED") {
+          try {
+            const res = await fetch(`https://api.docuseal.com/submissions/${sub.submissionId}`, {
+              headers: { "X-Auth-Token": DOCUSEAL_API_KEY }
+            });
+            if (res.ok) {
+              const data = await res.json();
+              // data is an array of submitters
+              const submitters = Array.isArray(data) ? data : [data];
+              
+              const clientSubmitter = submitters.find(s => s.role === "Client");
+              const gitworkSubmitter = submitters.find(s => s.role === "Gitwork");
+              
+              let newStatus = sub.status;
+              if (clientSubmitter?.status === "completed" && gitworkSubmitter?.status === "completed") {
+                newStatus = "COMPLETED";
+              } else if (clientSubmitter?.status === "completed") {
+                newStatus = "CLIENT_SIGNED";
+              }
+
+              if (newStatus !== sub.status) {
+                await prisma.docusealSubmission.update({
+                  where: { id: sub.id },
+                  data: { status: newStatus }
+                });
+                needsRefetch = true;
+              }
+            }
+          } catch (e) {
+            console.error(`Failed to poll DocuSeal for submission ${sub.submissionId}:`, e);
+          }
+        }
+      }
+    }
+
+    let finalSubmissions = submissions;
+    if (needsRefetch) {
+      finalSubmissions = await prisma.docusealSubmission.findMany({
+        where: { document: { clientId: resolved.wiki.clientId } },
+        include: { document: { select: { title: true, documentType: true, createdAt: true } } },
+        orderBy: { createdAt: "desc" },
+      });
+    }
+
+    const mapped = finalSubmissions.map((sub) => ({
       id: sub.id,
       submissionId: sub.submissionId,
       slug: sub.slug,

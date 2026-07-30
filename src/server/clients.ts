@@ -61,6 +61,9 @@ const clientProposalInclude = {
   },
   // Visible-block count for the Docs list-item serializer (card meta readout).
   _count: { select: { sections: true } },
+  docusealSubmission: {
+    select: { status: true }
+  }
 } satisfies Prisma.DocumentInclude;
 
 const workspaceClients = (prisma as unknown as {

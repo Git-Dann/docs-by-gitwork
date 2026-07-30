@@ -734,4 +734,5 @@ export interface ProposalListItem {
   shareToken?: string | null;
   /** Whether this doc is currently mirrored into the client's wiki Documents section. */
   inWiki?: boolean;
+  docusealStatus?: string | null;
 }

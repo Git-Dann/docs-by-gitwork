@@ -766,7 +766,14 @@ export function ProposalList() {
                         </div>
                       </td>
                       <td>
-                        <StatusBadge status={proposal.status} />
+                        <div className="flex items-center gap-2">
+                          <StatusBadge status={proposal.status} />
+                          {proposal.docusealStatus === "CLIENT_SIGNED" && (
+                            <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 whitespace-nowrap">
+                              Awaiting Gitwork Signature
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="text-sm text-[var(--text-3)]">{proposal.ownerName || "Unassigned"}</td>
                       <td className="text-sm text-[var(--text-3)]">{formatUpdatedAt(proposal.updatedAt)}</td>
@@ -1180,7 +1187,7 @@ function GroupedList({
   selectedIds,
   onToggleSelect,
 }: {
-  proposals: Array<{ id: string; title: string; clientName?: string | null; status: string; updatedAt: string; documentNumber?: string | null; documentType?: string }>;
+  proposals: Array<{ id: string; title: string; clientName?: string | null; status: string; updatedAt: string; documentNumber?: string | null; documentType?: string; docusealStatus?: string | null }>;
   selectedIds: string[];
   onToggleSelect: (id: string) => void;
 }) {
@@ -1261,7 +1268,14 @@ function GroupedList({
                         {doc.documentNumber}
                       </span>
                     ) : null}
-                    <StatusBadge status={doc.status as never} />
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={doc.status as never} />
+                      {doc.docusealStatus === "CLIENT_SIGNED" && (
+                        <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 whitespace-nowrap">
+                          Awaiting Gitwork Signature
+                        </span>
+                      )}
+                    </div>
                     <span className="hidden text-xs text-[var(--text-4)] sm:inline">
                       {new Date(doc.updatedAt).toLocaleDateString()}
                     </span>
@@ -1659,8 +1673,15 @@ function DocCard({
         <p className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--text-4)]">
           {blocks} {blocks === 1 ? "block" : "blocks"} · {formatUpdatedAt(proposal.updatedAt)}
         </p>
-        <div className="flex items-center justify-between gap-2">
-        <StatusBadge status={proposal.status} />
+        <div className="mt-4 flex items-center justify-between border-t border-[var(--border-1)] px-4 py-3 bg-[var(--bg-1)] group-hover:bg-[var(--bg-2)] transition-colors">
+        <div className="flex flex-col gap-1.5">
+          <StatusBadge status={proposal.status} />
+          {proposal.docusealStatus === "CLIENT_SIGNED" && (
+            <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 whitespace-nowrap w-fit">
+              Awaiting Gitwork Signature
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-0.5 opacity-0 transition group-hover/card:opacity-100 focus-within:opacity-100">
           <DocLink
             doc={proposal}
