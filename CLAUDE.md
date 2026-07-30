@@ -2634,3 +2634,66 @@ registered. All fifteen grade × status × seal × theme combinations were rende
 which caught the UNSEALED marker sitting on the disc's 9px ring stroke and being cut in half.
 **Not verified:** the route against a real struck countermark (needs a database) — post-deploy,
 issue a mark in Labs → Provenance, hit each style, then revoke it and confirm the badge flips.
+
+## 38. Recent Changes (July 2026) — Pulse reads the source of a WEB repo (the blind spot at the centre)
+
+Prompted by a competitive read of **ogbuilds.ai** (secure·vibes / clean·vibes — a one-person studio
+scanning the same population Pulse targets), which surfaced a gap worth more than anything in their
+feature list: **Pulse read source for seven repo shapes and not for the eighth, most common one.**
+
+A plain web/service repo resolved to `shape === "none"` and `buildSnapshot` returned right after the
+round-0 manifest probes. So a Next.js app, an Express API or a Django service was graded on its HTTP
+responses, its GitHub metadata and a **filename listing** — nothing about the code inside it. That is
+exactly the population where AI-assisted development concentrates.
+
+Their published 549-repo study (deterministic rules, no AI pass, re-runnable) quantifies what Pulse
+was missing: `dangerouslySetInnerHTML` in **42.6%**, injection-category findings in **47.5%**, and a
+`.gitignore` that exists but does not cover `.env` in **35.7%**. Pulse could see the third only as
+"a .gitignore is present" — which PASSES that case — and the other two not at all.
+
+**New family `pulse-checks/web-repo-source.ts` — 17 checks.** Registry 819 → 836.
+
+| Group | Checks |
+|---|---|
+| Injection & unsafe code | raw HTML rendering, SQL string-building (4 idioms), `eval`/`new Function`, shell built from a variable, `pickle`/`yaml.load` |
+| Credentials | `.gitignore` CONTENTS vs `.env`, hardcoded passwords, Supabase RLS from committed migrations |
+| Framework defaults | `DEBUG = True`, `ALLOWED_HOSTS = ['*']`, JWT verification off / `alg: none`, CORS from source, helmet |
+| Transport | TLS verification disabled, plaintext outbound URLs |
+| Supply chain | `curl \| sh` in the README, unpinned deps / no lockfile |
+
+⚠️ **This family carries the highest false-positive risk in Pulse**, because unlike the platform
+families it matches PATTERNS in ordinary application code rather than reading a named config value.
+So the tests are mostly about staying QUIET — on template code, placeholders, `localhost`, comments —
+and three findings are deliberately softened: raw HTML drops to WARN when a sanitiser is present, a
+password literal drops to WARN when it looks like a placeholder, and wildcard CORS is only a FAIL
+when credentials are also enabled. **A scanner that fires on every React app is worse than none.**
+
+### 38.1 The cost trade, made deliberately
+
+`SOURCE_EXTENSION.none` was `null`; it now samples JS/TS/Py/Rb/PHP/Go/Java/C#. Every repo scan pays
+for this, where before only the mobile minority did — so the web cap is **`WEB_SAMPLE_CAP = 80`**,
+not the mobile 150. Config reads grew too: `.gitignore` (contents, not existence), shell scripts, and
+`migrations|supabase|db|sql/*.sql` for the repo-side RLS check.
+
+### 38.2 What else is worth taking from them (NOT built — Dan's call)
+
+- **Benchmark percentile.** They publish a distribution over 549 repos, so a score reads
+  "worst 15% of AI-built apps" rather than "61/100". Pulse has no corpus. This is the single biggest
+  remaining idea, and it compounds: every scan we run could feed it.
+- **A ready-to-paste Claude prompt per finding.** They ship one with every result. Foundry already
+  puts Claude Code in front of clients, so this is a natural fit and needs one optional field.
+- **Six legible subscores with published weights.** Theirs: Secrets 30 / Injection 20 / Auth 15 /
+  Data exposure 15 / Dependencies 10 / Transport 10. Pulse has 26 categories, which is more accurate
+  and much less legible on a client report.
+- **A per-rule finding cap** (they use 10/rule, 300/repo). `MAX_SITES_QUOTED = 5` applies that idea
+  within this family only.
+
+⚠️ **Do not assume their calibration is better than ours.** Their security median is **97 (A)** with
+353 of 549 repos scoring A — a distribution that says most vibe-coded repos are fine, which does not
+match what a hand review of a real client app finds (§34: 10 FAIL / 12 WARN on a shipping iOS app).
+Their *coverage* of web repos was better than ours. Their *severity calibration* looks generous.
+
+**Verified:** `npm run verify` green — tsc + lint 0 errors, 696 tests, audit:ui 0 findings. Tests
+proved to discriminate by breaking three things on purpose: comment stripping (1 fail), the
+`.gitignore` contents test reduced to a presence test (1 fail), and the localhost exclusion (1 fail).
+**Deferred:** as with §37, validated against fixtures rather than real repositories.

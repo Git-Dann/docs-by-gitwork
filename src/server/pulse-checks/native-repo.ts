@@ -26,6 +26,7 @@ import { evaluateReactNativeChecks } from "./react-native-app";
 import { evaluateDesktopChecks } from "./desktop-app";
 import { evaluateCliChecks, binEntries } from "./cli-tool";
 import { detectProjectShape, parsePackageManifest, type ProjectShape } from "./project-shape";
+import { evaluateWebSourceChecks } from "./web-repo-source";
 
 /**
  * Every repo shape the snapshot builder knows how to feed. This is deliberately a
@@ -37,6 +38,18 @@ export type SnapshotShape = NativePlatform | Exclude<ProjectShape, null> | "chro
 
 /** Max Swift files whose contents we read. See ios-app.ts for how coverage is used. */
 const SWIFT_SAMPLE_CAP = 150;
+
+/**
+ * Sample cap for a plain web/service repo.
+ *
+ * Lower than the mobile cap on purpose. Every repo scan now pays this, where
+ * previously a web repo read no source at all, so the cost applies to the whole
+ * population rather than the mobile minority. 80 relevance-ranked files is enough
+ * for the presence findings in web-repo-source.ts to be sound; the absence ones
+ * self-downgrade when coverage is thin, which is the honest outcome on a large
+ * monorepo rather than a fabricated pass.
+ */
+const WEB_SAMPLE_CAP = 80;
 
 /**
  * Round-0 budget: the tiny files that decide the shape, before we know it.
@@ -109,6 +122,13 @@ const CONFIG_PATTERNS: RegExp[] = [
   // Read for the CLI family (usage docs) and the desktop signing check.
   /^README(\.md|\.markdown|\.rst|\.txt)?$/i,
   /^\.github\/workflows\/[^/]+\.ya?ml$/i,
+  // Web-source family: .gitignore CONTENTS (not just its existence — a .gitignore
+  // that misses .env is the second most common finding in AI-built repos and
+  // passes any presence test), setup scripts, and SQL migrations for the
+  // repo-side Supabase RLS check.
+  /^\.gitignore$/i,
+  /^(scripts\/)?[^/]*\.(sh|bash)$/i,
+  /(^|\/)(migrations|supabase|db|sql)\/[^/]*\.sql$/i,
 ];
 
 /**
@@ -127,7 +147,10 @@ const SOURCE_EXTENSION: Record<SnapshotShape, RegExp | null> = {
   tauri: /\.(rs|ts|tsx|js|jsx|mjs|cjs)$/i,
   cli: /\.(ts|js|mjs|cjs)$/i,
   "chrome-extension": /\.(ts|js|mjs|cjs)$/i,
-  none: null,
+  // A plain web/service repo. This used to be null — the snapshot returned after
+  // the round-0 probes and NO source was read, so the most common repo shape of
+  // all was graded on filenames and HTTP responses alone. See web-repo-source.ts.
+  none: /\.(js|jsx|ts|tsx|mjs|cjs|py|rb|php|go|java|cs)$/i,
 };
 
 /** Generated Dart (freezed/json_serializable/retrofit) — read a few, not hundreds. */
@@ -212,7 +235,7 @@ export function selectFilesToRead(
       score: swiftRelevance(e.path, e.size) - (GENERATED_DART.test(e.path) ? 500 : 0),
     }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, SWIFT_SAMPLE_CAP)
+    .slice(0, platform === "none" ? WEB_SAMPLE_CAP : SWIFT_SAMPLE_CAP)
     .map((e) => e.path);
 
   return { config, source };
@@ -468,6 +491,23 @@ export async function runCliChecks(
 
   if (resolveSnapshotShape(snapshot.paths, snapshot.files) !== "cli") return { isCli: false, checks: [] };
   return { isCli: true, checks: evaluateCliChecks(snapshot) };
+}
+
+/**
+ * Run the web/service source family.
+ *
+ * Independent of every other family, like the rest. Returns [] for any repo that
+ * resolved to a more specific shape — those have their own family, and running
+ * generic web patterns over a Swift project would produce noise, not findings.
+ */
+export async function runWebSourceChecks(
+  repoInput: string,
+): Promise<{ isWebRepo: boolean; checks: PulseScanCheckInput[] }> {
+  const snapshot = await getRepoSnapshot(repoInput);
+  if (!snapshot || !snapshot.accessible) return { isWebRepo: false, checks: [] };
+
+  if (resolveSnapshotShape(snapshot.paths, snapshot.files) !== "none") return { isWebRepo: false, checks: [] };
+  return { isWebRepo: true, checks: evaluateWebSourceChecks(snapshot) };
 }
 
 /** The resolved snapshot shape for a repo, for callers that need it for labelling. */

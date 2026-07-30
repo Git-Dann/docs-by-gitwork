@@ -40,6 +40,7 @@ vi.mock("@/server/pulse-checks/native-repo", () => ({
   runChromeExtensionChecks: async () => ({ isExtension: false, checks: [] }),
   runDesktopChecks: async () => ({ shape: null, checks: [] }),
   runCliChecks: async () => ({ isCli: false, checks: [] }),
+  runWebSourceChecks: async () => ({ isWebRepo: false, checks: [] }),
 }));
 
 const { runCodeAgent } = await import("../code-agent");

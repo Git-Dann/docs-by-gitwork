@@ -17,6 +17,24 @@ export interface CheckDefinition {
 }
 
 export const CHECKS_REGISTRY: CheckDefinition[] = [
+  // -- Web / service repo source (the shape that previously read no source) --
+  { key: "web_raw_html_injection", category: CATEGORIES.SECURITY, label: "Raw HTML is sanitised before rendering" },
+  { key: "web_sql_string_building", category: CATEGORIES.SECURITY, label: "SQL queries are parameterised" },
+  { key: "web_dynamic_code_execution", category: CATEGORIES.SECURITY, label: "No dynamic code execution" },
+  { key: "web_shell_injection", category: CATEGORIES.SECURITY, label: "Shell commands are not built from variables" },
+  { key: "web_unsafe_deserialization", category: CATEGORIES.SECURITY, label: "Deserialisation is safe by construction" },
+  { key: "web_gitignore_covers_env", category: CATEGORIES.SECRETS_KEYS, label: ".gitignore excludes environment files" },
+  { key: "web_hardcoded_password", category: CATEGORIES.SECRETS_KEYS, label: "No hardcoded passwords in source" },
+  { key: "web_supabase_rls_migrations", category: CATEGORIES.SECURITY, label: "Row-level security is enabled in migrations" },
+  { key: "web_debug_mode_enabled", category: CATEGORIES.SECURITY, label: "Framework debug mode is off" },
+  { key: "web_allowed_hosts_wildcard", category: CATEGORIES.SECURITY, label: "ALLOWED_HOSTS is not a wildcard" },
+  { key: "web_jwt_verification", category: CATEGORIES.AUTHENTICATION, label: "JWT signatures are verified" },
+  { key: "web_cors_source_config", category: CATEGORIES.SECURITY, label: "CORS configuration names specific origins" },
+  { key: "web_security_headers_middleware", category: CATEGORIES.SECURITY, label: "Security-header middleware is installed" },
+  { key: "web_tls_verification_disabled", category: CATEGORIES.SECURITY, label: "TLS certificate verification is enabled" },
+  { key: "web_plaintext_api_calls", category: CATEGORIES.SECURITY, label: "Outbound API calls use HTTPS" },
+  { key: "web_curl_pipe_shell", category: CATEGORIES.SECURITY, label: "Setup does not pipe a remote script into a shell" },
+  { key: "web_dependency_pinning", category: CATEGORIES.SECURITY, label: "Dependencies are pinned and locked" },
   // ── Chrome extension: surface, code and listing (second pass) ─────────────
   { key: "ext_service_worker", category: CATEGORIES.CODE_QUALITY, label: "Background logic runs as a service worker" },
   { key: "ext_content_script_scope", category: CATEGORIES.SECURITY, label: "Content scripts are scoped to specific sites" },
