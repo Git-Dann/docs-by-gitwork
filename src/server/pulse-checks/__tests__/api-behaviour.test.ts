@@ -112,7 +112,7 @@ describe("a failed probe is never a finding", () => {
 
 describe("error responses", () => {
   it("fails a response that leaks a stack trace", async () => {
-    stubFetch((url) =>
+    stubFetch((url): { status: number; headers?: Record<string, string>; body?: string } =>
       url.includes("__pulse_probe")
         ? { status: 500, body: `TypeError: x is not a function\n    at handler (/var/www/app/src/api.js:42:11)` }
         : { status: 200 });
@@ -130,7 +130,7 @@ describe("error responses", () => {
   });
 
   it("passes a clean generic error", async () => {
-    stubFetch((url) =>
+    stubFetch((url): { status: number; headers?: Record<string, string>; body?: string } =>
       url.includes("__pulse_probe")
         ? { status: 404, body: `{"error":"Not found","requestId":"abc123"}` }
         : { status: 200 });
@@ -140,6 +140,27 @@ describe("error responses", () => {
 });
 
 describe("headers and methods", () => {
+  it("recognises explicit response contracts and a machine-readable error", async () => {
+    stubFetch((url): { status: number; headers?: Record<string, string>; body?: string } =>
+      url.includes("__pulse_probe")
+        ? { status: 404, headers: { "content-type": "application/problem+json" }, body: '{"type":"https://example.test/not-found","status":404}' }
+        : { status: 200, headers: { "content-type": "application/json", "x-request-id": "req_123", "cache-control": "private, no-store" } });
+    const checks = await runApiBehaviourChecks(ctx());
+    expect(statusOf(checks, "api_response_content_type")).toBe("PASS");
+    expect(statusOf(checks, "api_request_correlation")).toBe("PASS");
+    expect(statusOf(checks, "api_cache_policy")).toBe("PASS");
+    expect(statusOf(checks, "api_error_machine_readable")).toBe("PASS");
+  });
+
+  it("does not claim an HTML catch-all is a valid API error contract", async () => {
+    stubFetch((url): { status: number; headers?: Record<string, string>; body?: string } =>
+      url.includes("__pulse_probe")
+        ? { status: 200, headers: { "content-type": "text/html" }, body: "<html>app shell</html>" }
+        : { status: 200, headers: { "content-type": "application/json" } });
+    const checks = await runApiBehaviourChecks(ctx({ catchAll200: true }));
+    expect(statusOf(checks, "api_error_machine_readable")).toBe("SKIPPED");
+  });
+
   it("warns when the server advertises its exact version", async () => {
     stubFetch(() => ({ status: 200, headers: { server: "nginx/1.24.0", "x-powered-by": "Express" } }));
     const checks = await runApiBehaviourChecks(ctx());

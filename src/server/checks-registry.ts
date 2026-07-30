@@ -206,6 +206,10 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "api_trace_method", category: CATEGORIES.SECURITY, label: "TRACE / TRACK methods are disabled" },
   { key: "api_debug_endpoints", category: CATEGORIES.SECURITY, label: "No debug or admin endpoints exposed" },
   { key: "api_unauthenticated_data", category: CATEGORIES.SECURITY, label: "Data endpoints require authentication" },
+  { key: "api_response_content_type", category: CATEGORIES.API_QUALITY, label: "Scanned API response declares a Content-Type" },
+  { key: "api_request_correlation", category: CATEGORIES.API_QUALITY, label: "Scanned API response carries a correlation ID" },
+  { key: "api_cache_policy", category: CATEGORIES.API_QUALITY, label: "Scanned API response declares a cache policy" },
+  { key: "api_error_machine_readable", category: CATEGORIES.API_QUALITY, label: "API error responses are machine-readable" },
   // ── Android: component & platform security ────────────────────────────────
   { key: "android_pending_intent_mutability", category: CATEGORIES.SECURITY, label: "PendingIntents are immutable" },
   { key: "android_task_hijacking", category: CATEGORIES.SECURITY, label: "Activities are protected against task hijacking" },

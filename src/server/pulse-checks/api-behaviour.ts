@@ -51,6 +51,10 @@ const ALL_CHECKS: Array<[string, string]> = [
   ["api_nosniff_header", "API responses set X-Content-Type-Options"],
   ["api_unauthenticated_data", "Data endpoints require authentication"],
   ["api_trace_method", "TRACE / TRACK methods are disabled"],
+  ["api_response_content_type", "Scanned API response declares a Content-Type"],
+  ["api_request_correlation", "Scanned API response carries a correlation ID"],
+  ["api_cache_policy", "Scanned API response declares a cache policy"],
+  ["api_error_machine_readable", "API error responses are machine-readable"],
 ];
 
 interface ProbeResult {
@@ -81,9 +85,14 @@ async function probe(
 }
 
 /** SKIPPED because the probe itself did not complete — never a failure. */
-function unprobed(checkKey: string, label: string, what: string): PulseScanCheckInput {
+function unprobed(
+  checkKey: string,
+  label: string,
+  what: string,
+  category: PulseScanCheckInput["category"] = CATEGORIES.SECURITY,
+): PulseScanCheckInput {
   return {
-    category: CATEGORIES.SECURITY,
+    category,
     checkKey,
     label,
     status: "SKIPPED",
@@ -129,6 +138,7 @@ export async function runApiBehaviourChecks(ctx: ExtendedCheckContext): Promise<
   checks.push(...headerChecks(corsRes));
   checks.push(...graphqlChecks(graphqlRes));
   checks.push(...methodChecks(traceRes));
+  checks.push(...apiContractChecks(corsRes, errorRes, ctx));
 
   return checks;
 }
@@ -416,6 +426,93 @@ function methodChecks(res: ProbeResult | null): PulseScanCheckInput[] {
       `the single most common API vulnerability and needs an authenticated test with two accounts — worth booking as ` +
       `a manual exercise rather than inferring from outside.`,
   });
+
+  return checks;
+}
+
+// ── API response contracts (observable developer experience) ────────────────
+// These deliberately report on the endpoint actually scanned, rather than
+// assuming a homepage response represents every route in a product.
+function apiContractChecks(
+  response: ProbeResult | null,
+  error: ProbeResult | null,
+  ctx: ExtendedCheckContext,
+): PulseScanCheckInput[] {
+  const category = CATEGORIES.API_QUALITY;
+  if (!response) {
+    return [
+      unprobed("api_response_content_type", "Scanned API response declares a Content-Type", "Content-Type header", category),
+      unprobed("api_request_correlation", "Scanned API response carries a correlation ID", "request correlation header", category),
+      unprobed("api_cache_policy", "Scanned API response declares a cache policy", "cache policy header", category),
+    ];
+  }
+
+  const headers = response.headers;
+  const contentType = headers["content-type"] ?? "";
+  const correlation = ["x-request-id", "x-correlation-id", "traceparent", "x-amzn-trace-id", "cf-ray"]
+    .find((header) => Boolean(headers[header]));
+  const cacheControl = headers["cache-control"] ?? "";
+  const checks: PulseScanCheckInput[] = [
+    {
+      category,
+      checkKey: "api_response_content_type",
+      label: "Scanned API response declares a Content-Type",
+      status: contentType ? "PASS" : "WARN",
+      confidence: "HIGH",
+      detail: contentType
+        ? `The scanned response explicitly declares \`${contentType.slice(0, 100)}\`, so clients need not guess how to parse it.`
+        : "The scanned response has no Content-Type header. Clients and intermediaries must guess how to parse it; return an explicit media type on every API response.",
+      evidence: contentType || undefined,
+    },
+    {
+      category,
+      checkKey: "api_request_correlation",
+      label: "Scanned API response carries a correlation ID",
+      status: correlation ? "PASS" : "WARN",
+      confidence: "HIGH",
+      detail: correlation
+        ? `The scanned response includes \`${correlation}\`, allowing customers to attach a concrete identifier when reporting a failed request.`
+        : "No request/correlation identifier was observed on the scanned response. Return a request ID (or W3C traceparent) so customers and support can trace a single failed call without sharing credentials or payloads.",
+      evidence: correlation ? `${correlation}: ${headers[correlation].slice(0, 80)}` : undefined,
+    },
+    {
+      category,
+      checkKey: "api_cache_policy",
+      label: "Scanned API response declares a cache policy",
+      status: cacheControl ? "PASS" : "WARN",
+      confidence: "HIGH",
+      detail: cacheControl
+        ? `The scanned response declares \`Cache-Control: ${cacheControl.slice(0, 100)}\`, making cache behaviour explicit to clients and shared intermediaries.`
+        : "No Cache-Control policy was observed on the scanned response. Declare an explicit policy—especially no-store/private for account data—so browsers, CDNs and SDKs do not make inconsistent assumptions.",
+      evidence: cacheControl || undefined,
+    },
+  ];
+
+  if (!error) {
+    checks.push(unprobed("api_error_machine_readable", "API error responses are machine-readable", "error-response", category));
+  } else if (ctx.catchAll200 && error.status === 200) {
+    checks.push({
+      category,
+      checkKey: "api_error_machine_readable",
+      label: "API error responses are machine-readable",
+      status: "SKIPPED",
+      detail: "The host serves its application shell for unknown paths, so Pulse did not reach an API error handler and cannot judge its error format.",
+    });
+  } else {
+    const errorType = error.headers["content-type"] ?? "";
+    const structured = /(?:application\/problem\+json|application\/json|\+json)(?:;|$)/i.test(errorType) || /^\s*[\[{]/.test(error.body);
+    checks.push({
+      category,
+      checkKey: "api_error_machine_readable",
+      label: "API error responses are machine-readable",
+      status: structured ? "PASS" : "WARN",
+      confidence: "HIGH",
+      detail: structured
+        ? `The unknown-route response is machine-readable (${errorType || "JSON body"}), allowing an integration to branch on an error code instead of scraping prose.`
+        : `The unknown-route response is not recognisably JSON or Problem Details (${errorType || "no Content-Type"}). Return a stable machine-readable error object for API routes, with a code and safe request identifier.`,
+      evidence: errorType || undefined,
+    });
+  }
 
   return checks;
 }
