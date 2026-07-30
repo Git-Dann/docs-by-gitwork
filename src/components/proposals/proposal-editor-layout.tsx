@@ -756,12 +756,11 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Failed to issue DocuSeal MSA");
-      
+
       const clientSlug = json.data?.clientSlug ?? json.clientSlug;
-<<<<<<< HEAD
       const wikiSlug = json.data?.wikiSlug ?? json.wikiSlug;
       const wikiToken = json.data?.wikiToken ?? json.wikiToken;
-      
+
       if (clientSlug) {
         const portalBase = process.env.NEXT_PUBLIC_CLIENT_PORTAL_URL || window.location.origin;
         let portalLoginUrl = portalBase;
@@ -770,11 +769,6 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           portalLoginUrl = `${portalBase}/portal/login?next=${nextUrl}`;
         }
         const mailto = buildShareMailto(draft.title, portalLoginUrl);
-=======
-      if (clientSlug) {
-        const signingUrl = `https://foundry.gitwork.co.uk/contract/${clientSlug}`;
-        const mailto = buildShareMailto(draft.title, signingUrl);
->>>>>>> origin/staging
         window.location.href = mailto;
         setApprovalOpen(false); // Close the popover on success
       }
@@ -1219,12 +1213,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                       Export
                     </Button>
                   </div>
-                  
-<<<<<<< HEAD
                   {true && (
-=======
-                  {draft?.documentType === "MSA" && (
->>>>>>> origin/staging
                     <div className="mt-2 flex items-center gap-2 border-t border-[var(--border-2)] pt-2">
                       <Button
                         type="button"
@@ -1337,8 +1326,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               onClick={() => setOutlineOpen((v) => !v)}
               aria-pressed={outlineOpen}
               className={`inline-flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-sm font-medium transition-colors ${outlineOpen
-                  ? "border-[var(--brand-600)] bg-[var(--brand-200)] text-[var(--brand-700)]"
-                  : "border-[var(--border-2)] bg-white text-[var(--text-2)] hover:border-[var(--border-1)]"
+                ? "border-[var(--brand-600)] bg-[var(--brand-200)] text-[var(--brand-700)]"
+                : "border-[var(--border-2)] bg-white text-[var(--text-2)] hover:border-[var(--border-1)]"
                 }`}
             >
               <QueueListIcon className="h-4 w-4" />
