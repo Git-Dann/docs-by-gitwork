@@ -62,6 +62,8 @@ interface WebContext {
   gitignore: string;
   /** README + shell scripts, where install instructions live. */
   docsAndScripts: string;
+  /** CI workflows and audit-tool config, which are source evidence of a real gate. */
+  automation: string;
   /** SQL / migration files, for the RLS check. */
   sql: string;
   pkg: PackageManifest | null;
@@ -77,6 +79,7 @@ function buildContext(snapshot: RepoSnapshot): WebContext {
   const files = new Map<string, string>();
   let gitignore = "";
   let docsAndScripts = "";
+  let automation = "";
   let sql = "";
   let pkgText: string | null = null;
 
@@ -84,6 +87,14 @@ function buildContext(snapshot: RepoSnapshot): WebContext {
     if (/(^|\/)\.gitignore$/i.test(path)) gitignore += "\n" + text;
     else if (/^README(\.md|\.markdown|\.rst|\.txt)?$/i.test(path) || /\.(sh|bash)$/i.test(path)) {
       docsAndScripts += "\n" + text;
+    } else if (
+      /(^|\/)\.github\/workflows\/[^/]+\.ya?ml$/i.test(path) ||
+      /(^|\/)(\.semgrep|semgrep)\.(ya?ml|json)$/i.test(path) ||
+      /(^|\/)\.gitleaks\.toml$/i.test(path) ||
+      /(^|\/)(trivy|\.trivy)\.(ya?ml|json)$/i.test(path) ||
+      /(^|\/)\.trivyignore$/i.test(path)
+    ) {
+      automation += "\n" + text;
     } else if (/\.sql$/i.test(path) && !isVendoredPath(path)) sql += "\n" + text;
     else if (/(^|\/)package\.json$/i.test(path) && !path.includes("/")) pkgText = text;
     else if (SOURCE_RE.test(path) && !isVendoredPath(path)) files.set(path, text);
@@ -96,6 +107,7 @@ function buildContext(snapshot: RepoSnapshot): WebContext {
     files,
     gitignore,
     docsAndScripts,
+    automation,
     sql,
     pkg: parsePackageManifest(pkgText),
     coverage: sourcePaths.length === 0 ? 0 : Math.min(1, files.size / sourcePaths.length),
@@ -148,6 +160,7 @@ export function evaluateWebSourceChecks(snapshot: RepoSnapshot): PulseScanCheckI
     ...frameworkDefaultChecks(ctx),
     ...transportChecks(ctx),
     ...supplyChainChecks(ctx),
+    ...automationChecks(ctx),
   ];
 }
 
@@ -549,6 +562,42 @@ function supplyChainChecks(ctx: WebContext): PulseScanCheckInput[] {
             `Commit the lockfile and use \`npm ci\`.`,
       evidence: loose.length > 0 ? loose.slice(0, 5).map(([k, v]) => `${k}@${v}`).join(", ") : undefined,
     });
+  }
+
+  return checks;
+}
+
+// ── Evidence of real quality gates ─────────────────────────────────────────
+// Tool names alone are not a pass: all seven checks look for a repository
+// workflow/config or a test assertion. That is the difference between an AI
+// builder adding a dependency and the tool actually protecting a release.
+function automationChecks(ctx: WebContext): PulseScanCheckInput[] {
+  if (!ctx.pkg && !ctx.automation && !ctx.sourceRaw) return [];
+  const evidence = `${ctx.automation}\n${ctx.sourceRaw}\n${JSON.stringify(ctx.pkg?.devDependencies ?? {})}`;
+  const has = (pattern: RegExp) => pattern.test(evidence);
+  const checks: PulseScanCheckInput[] = [];
+
+  const gates: Array<[string, string, RegExp, string]> = [
+    ["vibe_semgrep_gate", "Semgrep runs in CI", /\bsemgrep(?:-action|\/semgrep|\s+scan|\s+ci)|\.semgrep/i, "Semgrep configuration or workflow evidence found — semantic SAST can catch repeated AI-generated bug patterns before merge."],
+    ["vibe_gitleaks_gate", "Gitleaks scans git history or pull requests", /gitleaks(?:\/gitleaks-action|\s+git|\.gitleaks)/i, "Gitleaks configuration or workflow evidence found — secrets are scanned beyond the current working tree."],
+    ["vibe_trivy_gate", "Trivy scans dependencies, IaC, or artifacts", /aquasecurity\/trivy-action|\btrivy\s+(fs|image|config|repo)|\.trivy/i, "Trivy configuration or workflow evidence found — vulnerability, misconfiguration, secret, or SBOM scanning is wired into delivery."],
+    ["vibe_codeql_gate", "CodeQL analysis runs in CI", /github\/codeql-action|codeql(?:-analysis)?\.ya?ml/i, "CodeQL workflow evidence found — GitHub code scanning is configured as an automated analysis gate."],
+    ["vibe_playwright_evidence", "Playwright tests retain trace evidence", /@playwright\/test|playwright\.config|trace\s*:\s*["']?(on|retain-on-failure|on-first-retry)/i, "Playwright test/trace evidence found — real-browser regressions can be reproduced from an execution trace."],
+    ["vibe_axe_evidence", "axe accessibility assertions run in tests", /@axe-core\/(playwright|webdriverio)|\baxe-core\b|axe\.run\s*\(|toHaveNoViolations/i, "axe-core test evidence found — automated WCAG checks run alongside functional tests."],
+    ["vibe_zap_gate", "OWASP ZAP baseline or API scan runs in CI", /zaproxy\/(action-baseline|action-api-scan)|\bzap-baseline\.py|\bzap-api-scan\.py/i, "OWASP ZAP workflow evidence found — a dynamic web/API security baseline runs before release."],
+  ];
+
+  for (const [checkKey, label, pattern, passDetail] of gates) {
+    const enabled = has(pattern);
+    checks.push(absence(ctx, {
+      category: CATEGORIES.CODE_QUALITY,
+      checkKey,
+      label,
+      status: enabled ? "PASS" : "WARN",
+      detail: enabled
+        ? passDetail
+        : `No repository evidence that ${label.toLowerCase()}. Add it as a CI gate; AI-generated changes need independent static, secret, dependency, accessibility, browser, and dynamic-security feedback before merge.`,
+    }));
   }
 
   return checks;

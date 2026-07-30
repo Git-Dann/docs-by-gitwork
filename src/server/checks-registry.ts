@@ -19,6 +19,13 @@ export interface CheckDefinition {
 
 export const CHECKS_REGISTRY: CheckDefinition[] = [
   ...STANDARDS_VALIDATION_REGISTRY,
+  { key: "vibe_semgrep_gate", category: CATEGORIES.CODE_QUALITY, label: "Semgrep runs in CI" },
+  { key: "vibe_gitleaks_gate", category: CATEGORIES.CODE_QUALITY, label: "Gitleaks scans git history or pull requests" },
+  { key: "vibe_trivy_gate", category: CATEGORIES.CODE_QUALITY, label: "Trivy scans dependencies, IaC, or artifacts" },
+  { key: "vibe_codeql_gate", category: CATEGORIES.CODE_QUALITY, label: "CodeQL analysis runs in CI" },
+  { key: "vibe_playwright_evidence", category: CATEGORIES.CODE_QUALITY, label: "Playwright tests retain trace evidence" },
+  { key: "vibe_axe_evidence", category: CATEGORIES.CODE_QUALITY, label: "axe accessibility assertions run in tests" },
+  { key: "vibe_zap_gate", category: CATEGORIES.CODE_QUALITY, label: "OWASP ZAP baseline or API scan runs in CI" },
   // -- Code cleanliness: structural debt, measured --
   { key: "clean_file_size", category: CATEGORIES.CODE_QUALITY, label: "Files stay a readable length" },
   { key: "clean_nesting_depth", category: CATEGORIES.CODE_QUALITY, label: "Logic is not deeply nested" },

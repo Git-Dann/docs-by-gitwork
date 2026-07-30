@@ -40,6 +40,31 @@ describe("gating", () => {
   });
 });
 
+describe("AI-generated app quality gates", () => {
+  it("finds real audit-tool workflow and test evidence", () => {
+    const checks = evaluateWebSourceChecks(snapshot({
+      "package.json": JSON.stringify({ devDependencies: { "@playwright/test": "^1", "@axe-core/playwright": "^4" } }),
+      ".github/workflows/quality.yml": `
+        - uses: returntocorp/semgrep-action@v1
+        - uses: gitleaks/gitleaks-action@v2
+        - uses: aquasecurity/trivy-action@master
+        - uses: github/codeql-action/analyze@v3
+        - uses: zaproxy/action-baseline@v0.12.0
+      `,
+      "tests/home.spec.ts": `test("home", async () => { await axe.run(); });`,
+    }));
+    for (const key of ["vibe_semgrep_gate", "vibe_gitleaks_gate", "vibe_trivy_gate", "vibe_codeql_gate", "vibe_playwright_evidence", "vibe_axe_evidence", "vibe_zap_gate"]) {
+      expect(statusOf(checks, key), key).toBe("PASS");
+    }
+  });
+
+  it("does not invent audit-tool evidence from ordinary app code", () => {
+    const checks = evaluateWebSourceChecks(snapshot({ "src/app.ts": `export const title = "hello";` }));
+    expect(statusOf(checks, "vibe_semgrep_gate")).toBe("WARN");
+    expect(statusOf(checks, "vibe_zap_gate")).toBe("WARN");
+  });
+});
+
 describe("injection — presence findings", () => {
   it("fails raw HTML rendering with no sanitiser present", () => {
     const checks = evaluateWebSourceChecks(snapshot({

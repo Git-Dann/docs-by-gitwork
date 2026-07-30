@@ -123,6 +123,13 @@ const CONFIG_PATTERNS: RegExp[] = [
   // Read for the CLI family (usage docs) and the desktop signing check.
   /^README(\.md|\.markdown|\.rst|\.txt)?$/i,
   /^\.github\/workflows\/[^/]+\.ya?ml$/i,
+  // AI-generated apps often have a CI folder but no meaningful audit stage. Read
+  // the common tool configs alongside workflows so source checks can distinguish
+  // an actual security/quality gate from a generic CI badge.
+  /(^|\/)(\.semgrep|semgrep)\.(ya?ml|json)$/i,
+  /(^|\/)\.gitleaks\.toml$/i,
+  /(^|\/)(trivy|\.trivy)\.(ya?ml|json)$/i,
+  /(^|\/)\.trivyignore$/i,
   // Web-source family: .gitignore CONTENTS (not just its existence — a .gitignore
   // that misses .env is the second most common finding in AI-built repos and
   // passes any presence test), setup scripts, and SQL migrations for the
