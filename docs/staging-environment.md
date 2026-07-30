@@ -99,14 +99,20 @@ the **"Foundry Login"** web client (Client ID begins `863801453214-1dv17p3eqf94n
 https://staging.foundry.gitwork.tech/api/auth/callback/google
 ```
 
-**Authorised JavaScript origins** — add:
-
-```
-https://staging.foundry.gitwork.tech
-```
-
 **Add, don't replace.** Leave the production URI in place. A second OAuth client would mean a second
 consent screen and a second secret to keep in step.
+
+**Authorised JavaScript origins — not required, skip it.** Origins only apply to browser-side Google
+flows (Google Identity Services, One Tap, the implicit flow). This app uses none: `signIn("google")`
+(`src/app/login/actions.ts`, `portal-login-form.tsx`, `invite/[token]/accept-button.tsx`) is
+NextAuth's **redirect-based server-side authorization code flow**, so the token exchange happens on
+our server and the browser never presents a client ID. Verified — there is no `gapi`,
+`accounts.google.com/gsi` or `google.accounts.id` reference anywhere in `src/`. Adding the staging
+origin is harmless, but it fixes nothing and its absence is not why a login would fail.
+
+⚠️ **Google warns changes take "five minutes to a few hours" to take effect.** If sign-in still
+fails immediately after saving, wait before debugging — a stale `redirect_uri_mismatch` here has
+sent people off to change `NEXTAUTH_URL`, which was already correct.
 
 While you're there, copy the **Client ID** and **Client secret** — step 5 needs them. (The secret
 can't be viewed after creation; if you don't have it, **Reset secret**, which you're doing anyway

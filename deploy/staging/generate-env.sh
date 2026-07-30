@@ -198,8 +198,9 @@ cat <<'DONE'
 
      That client's Authorised redirect URIs must ALSO already contain:
        https://staging.foundry.gitwork.tech/api/auth/callback/google
-     and its JavaScript origins:
-       https://staging.foundry.gitwork.tech
+
+     (Authorised JavaScript origins are NOT needed — this app uses NextAuth's
+      server-side code flow, not a browser-side Google SDK.)
 
      Edit with:  nano .env       (or: vi .env)
 
