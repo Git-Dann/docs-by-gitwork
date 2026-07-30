@@ -47,16 +47,16 @@ export function WikiAgreementsSection({ token }: { token: string }) {
   if (signingSlug) {
     return (
       <div className="flex flex-col h-full bg-[#f3f4f6]">
-        <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200">
+        <div className="flex items-center justify-between p-4 bg-[#111827] border-b border-gray-800 text-white">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Sign Agreement</h2>
-            <p className="text-sm text-gray-500">Please review and sign the document below.</p>
+            <h2 className="text-lg font-semibold tracking-tight">Sign Agreement</h2>
+            <p className="text-sm text-gray-400">Please review and sign the document below.</p>
           </div>
           <button
             onClick={() => setSigningSlug(null)}
-            className="text-sm font-medium text-[var(--brand-600)] hover:underline"
+            className="text-sm font-medium text-gray-300 hover:text-white hover:underline transition-colors"
           >
-            ← Back to Agreements
+            &larr; Back to Agreements
           </button>
         </div>
         <div className="flex-1 w-full flex flex-col min-h-0 p-4 sm:p-6 lg:p-8">
@@ -105,14 +105,19 @@ export function WikiAgreementsSection({ token }: { token: string }) {
         <div className="bg-white rounded-xl border border-[var(--border-2)] shadow-sm overflow-hidden">
           <ul className="divide-y divide-[var(--border-2)]">
             {agreements.map((agreement) => {
-              const isPending = agreement.status === "PENDING";
+              const isPendingClient = agreement.status === "PENDING";
+              const isPendingGitwork = agreement.status === "CLIENT_SIGNED";
+              const isCompleted = agreement.status === "COMPLETED";
+
               return (
                 <li key={agreement.id} className="p-4 sm:p-6 hover:bg-gray-50 transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex items-start gap-4">
-                      <div className={`p-2 rounded-lg ${isPending ? 'bg-amber-50' : 'bg-green-50'}`}>
-                        {isPending ? (
+                      <div className={`p-2 rounded-lg ${isPendingClient ? 'bg-amber-50' : isPendingGitwork ? 'bg-blue-50' : 'bg-green-50'}`}>
+                        {isPendingClient ? (
                           <ClockIcon className={`h-6 w-6 text-amber-600`} />
+                        ) : isPendingGitwork ? (
+                          <ClockIcon className={`h-6 w-6 text-blue-600`} />
                         ) : (
                           <CheckCircleIcon className={`h-6 w-6 text-green-600`} />
                         )}
@@ -126,11 +131,17 @@ export function WikiAgreementsSection({ token }: { token: string }) {
                           <span>&bull;</span>
                           <span>Issued {new Date(agreement.createdAt).toLocaleDateString()}</span>
                         </div>
-                        {isPending ? (
+                        {isPendingClient && (
                           <span className="mt-2 inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">
                             Signature Required
                           </span>
-                        ) : (
+                        )}
+                        {isPendingGitwork && (
+                          <span className="mt-2 inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20">
+                            Pending Gitwork Signature
+                          </span>
+                        )}
+                        {isCompleted && (
                           <span className="mt-2 inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
                             Completed
                           </span>
@@ -138,7 +149,7 @@ export function WikiAgreementsSection({ token }: { token: string }) {
                       </div>
                     </div>
                     <div>
-                      {isPending && (
+                      {isPendingClient && (
                         <button
                           onClick={() => setSigningSlug(agreement.slug)}
                           className="rounded-md bg-[var(--brand-600)] px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[var(--brand-500)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-600)]"
@@ -146,7 +157,15 @@ export function WikiAgreementsSection({ token }: { token: string }) {
                           Sign Now
                         </button>
                       )}
-                      {!isPending && (
+                      {isPendingGitwork && (
+                        <button
+                          disabled
+                          className="rounded-md bg-gray-100 px-3.5 py-2 text-sm font-semibold text-gray-400 shadow-sm cursor-not-allowed"
+                        >
+                          Signed by Client
+                        </button>
+                      )}
+                      {isCompleted && (
                         <button
                           disabled
                           className="rounded-md bg-gray-100 px-3.5 py-2 text-sm font-semibold text-gray-400 shadow-sm cursor-not-allowed"

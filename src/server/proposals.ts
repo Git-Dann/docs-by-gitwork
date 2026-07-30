@@ -252,6 +252,9 @@ export const proposalListSelect = {
   owner: { select: { name: true } },
   // Visible-block count for the card meta readout. Cheap aggregate, no heavy JSON on the wire.
   _count: { select: { sections: true } },
+  docusealSubmission: {
+    select: { status: true }
+  }
 } satisfies Prisma.DocumentSelect;
 
 export type ProposalListRow = Prisma.DocumentGetPayload<{ select: typeof proposalListSelect }>;
@@ -272,6 +275,7 @@ export function serializeProposalListItem(proposal: ProposalListRow): ProposalLi
     parentId: proposal.parentId ?? null,
     isFavorite: proposal.isFavorite,
     sectionCount: proposal._count?.sections ?? 0,
+    docusealStatus: proposal.docusealSubmission?.status ?? null,
   };
 }
 
