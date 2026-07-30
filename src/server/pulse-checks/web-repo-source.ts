@@ -160,7 +160,28 @@ export function evaluateWebSourceChecks(snapshot: RepoSnapshot): PulseScanCheckI
     ...supplyChainChecks(ctx),
     ...automationChecks(ctx),
     ...deliverySafetyChecks(ctx),
+    ...aiRepositorySafetyChecks(ctx),
   ];
+}
+
+function aiRepositorySafetyChecks(ctx: WebContext): PulseScanCheckInput[] {
+  const source = ctx.source;
+  const ai = /\b(?:openai|anthropic|chat\.completions|generateContent|useChat|languageModel|toolCall|function_call|vectorStore|embedding)\b/i.test(source);
+  if (!ai) return [];
+  const checks: PulseScanCheckInput[] = [];
+  const add = (key: string, label: string, pattern: RegExp, detail: string) => {
+    const hits = sitesMatching(ctx, pattern);
+    if (hits.count) checks.push({ category: CATEGORIES.AI_SAFETY, checkKey: key, label, status: "FAIL", confidence: "HIGH", detail, evidence: hits.where });
+  };
+  add("pulse_ai_client_secret", "AI provider credentials stay server-side", /(?:sk-[a-zA-Z0-9_-]{20,}|AIzaSy[a-zA-Z0-9_-]{20,})/, "An AI provider credential pattern appears in application source.");
+  add("pulse_ai_client_prompt", "Long system instructions stay server-side", /(?:system|developer)\s*(?:=|:)\s*["'`][^"'`]{80,}/i, "A long system/developer instruction appears in client-readable source.");
+  add("pulse_ai_unsafe_tool", "AI tool calls validate arguments before execution", /(?:toolCall|function_call)[\s\S]{0,160}(?:exec\(|spawn\(|fetch\(|redirect\()/i, "An AI tool-call path reaches an execution or network primitive without visible validation.");
+  add("pulse_ai_unscoped_retrieval", "AI retrieval applies user or tenant scope", /(?:vectorStore|similaritySearch|embedding)[\s\S]{0,180}(?!tenant|userId|organizationId)/i, "Retrieval code lacks visible user or tenant scoping near the query.");
+  if (/\b(?:toolCall|function_call)\b/i.test(source)) checks.push(absence(ctx, { category: CATEGORIES.AI_SAFETY, checkKey: "pulse_ai_tool_confirmation", label: "High-impact AI tool calls require confirmation", status: /\b(?:confirm|approval|humanReview)\b/i.test(source) ? "PASS" : "WARN", detail: "Tool-call code needs explicit confirmation or approval evidence for consequential actions." }));
+  checks.push(absence(ctx, { category: CATEGORIES.AI_SAFETY, checkKey: "pulse_ai_output_schema", label: "AI outputs are schema-validated before use", status: /\b(?:zod|safeParse|schema\.parse|json_schema|structuredOutput)\b/i.test(source) ? "PASS" : "WARN", detail: "AI code needs schema-validation evidence before output is rendered, persisted, or executed." }));
+  checks.push(absence(ctx, { category: CATEGORIES.AI_SAFETY, checkKey: "pulse_ai_budget_timeout", label: "AI requests have budget and timeout limits", status: /\b(?:maxTokens|tokenBudget|timeout|AbortController|rateLimit)\b/i.test(source) ? "PASS" : "WARN", detail: "AI request paths need token-budget, timeout, or rate-limit evidence." }));
+  checks.push(absence(ctx, { category: CATEGORIES.AI_SAFETY, checkKey: "pulse_ai_audit_log", label: "AI tool decisions create auditable records", status: /\b(?:auditLog|audit\.log|toolAudit|decisionLog)\b/i.test(source) ? "PASS" : "WARN", detail: "AI tool or decision paths need privacy-safe audit-record evidence." }));
+  return checks;
 }
 
 // ── Injection & unsafe code ─────────────────────────────────────────────────

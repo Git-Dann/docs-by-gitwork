@@ -106,6 +106,16 @@ describe("delivery and abuse safeguards", () => {
   });
 });
 
+describe("AI repository safety", () => {
+  it("detects concrete unsafe AI implementation paths", () => {
+    const checks = evaluateWebSourceChecks(snapshot({
+      "src/ai.ts": `const client = openai; const key = "sk-abcdefghijklmnopqrstuvwxyz123456"; const system = "${"x".repeat(90)}"; toolCall(() => exec(command)); vectorStore.similaritySearch(query);`,
+    }));
+    for (const key of ["pulse_ai_client_secret", "pulse_ai_client_prompt", "pulse_ai_unsafe_tool", "pulse_ai_unscoped_retrieval"]) expect(statusOf(checks, key)).toBe("FAIL");
+    for (const key of ["pulse_ai_tool_confirmation", "pulse_ai_output_schema", "pulse_ai_budget_timeout", "pulse_ai_audit_log"]) expect(statusOf(checks, key)).toBe("WARN");
+  });
+});
+
 describe("injection — presence findings", () => {
   it("fails raw HTML rendering with no sanitiser present", () => {
     const checks = evaluateWebSourceChecks(snapshot({
