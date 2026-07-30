@@ -2634,3 +2634,149 @@ registered. All fifteen grade × status × seal × theme combinations were rende
 which caught the UNSEALED marker sitting on the disc's 9px ring stroke and being cut in half.
 **Not verified:** the route against a real struck countermark (needs a database) — post-deploy,
 issue a mark in Labs → Provenance, hit each style, then revoke it and confirm the badge flips.
+
+## 38. Recent Changes (July 2026) — Pulse reads the source of a WEB repo (the blind spot at the centre)
+
+Prompted by a competitive read of **ogbuilds.ai** (secure·vibes / clean·vibes — a one-person studio
+scanning the same population Pulse targets), which surfaced a gap worth more than anything in their
+feature list: **Pulse read source for seven repo shapes and not for the eighth, most common one.**
+
+A plain web/service repo resolved to `shape === "none"` and `buildSnapshot` returned right after the
+round-0 manifest probes. So a Next.js app, an Express API or a Django service was graded on its HTTP
+responses, its GitHub metadata and a **filename listing** — nothing about the code inside it. That is
+exactly the population where AI-assisted development concentrates.
+
+Their published 549-repo study (deterministic rules, no AI pass, re-runnable) quantifies what Pulse
+was missing: `dangerouslySetInnerHTML` in **42.6%**, injection-category findings in **47.5%**, and a
+`.gitignore` that exists but does not cover `.env` in **35.7%**. Pulse could see the third only as
+"a .gitignore is present" — which PASSES that case — and the other two not at all.
+
+**New family `pulse-checks/web-repo-source.ts` — 17 checks.** Registry 819 → 836.
+
+| Group | Checks |
+|---|---|
+| Injection & unsafe code | raw HTML rendering, SQL string-building (4 idioms), `eval`/`new Function`, shell built from a variable, `pickle`/`yaml.load` |
+| Credentials | `.gitignore` CONTENTS vs `.env`, hardcoded passwords, Supabase RLS from committed migrations |
+| Framework defaults | `DEBUG = True`, `ALLOWED_HOSTS = ['*']`, JWT verification off / `alg: none`, CORS from source, helmet |
+| Transport | TLS verification disabled, plaintext outbound URLs |
+| Supply chain | `curl \| sh` in the README, unpinned deps / no lockfile |
+
+⚠️ **This family carries the highest false-positive risk in Pulse**, because unlike the platform
+families it matches PATTERNS in ordinary application code rather than reading a named config value.
+So the tests are mostly about staying QUIET — on template code, placeholders, `localhost`, comments —
+and three findings are deliberately softened: raw HTML drops to WARN when a sanitiser is present, a
+password literal drops to WARN when it looks like a placeholder, and wildcard CORS is only a FAIL
+when credentials are also enabled. **A scanner that fires on every React app is worse than none.**
+
+### 38.1 The cost trade, made deliberately
+
+`SOURCE_EXTENSION.none` was `null`; it now samples JS/TS/Py/Rb/PHP/Go/Java/C#. Every repo scan pays
+for this, where before only the mobile minority did — so the web cap is **`WEB_SAMPLE_CAP = 80`**,
+not the mobile 150. Config reads grew too: `.gitignore` (contents, not existence), shell scripts, and
+`migrations|supabase|db|sql/*.sql` for the repo-side RLS check.
+
+### 38.2 What else is worth taking from them (NOT built — Dan's call)
+
+- **Benchmark percentile.** They publish a distribution over 549 repos, so a score reads
+  "worst 15% of AI-built apps" rather than "61/100". Pulse has no corpus. This is the single biggest
+  remaining idea, and it compounds: every scan we run could feed it.
+- **A ready-to-paste Claude prompt per finding.** They ship one with every result. Foundry already
+  puts Claude Code in front of clients, so this is a natural fit and needs one optional field.
+- **Six legible subscores with published weights.** Theirs: Secrets 30 / Injection 20 / Auth 15 /
+  Data exposure 15 / Dependencies 10 / Transport 10. Pulse has 26 categories, which is more accurate
+  and much less legible on a client report.
+- **A per-rule finding cap** (they use 10/rule, 300/repo). `MAX_SITES_QUOTED = 5` applies that idea
+  within this family only.
+
+⚠️ **Do not assume their calibration is better than ours.** Their security median is **97 (A)** with
+353 of 549 repos scoring A — a distribution that says most vibe-coded repos are fine, which does not
+match what a hand review of a real client app finds (§34: 10 FAIL / 12 WARN on a shipping iOS app).
+Their *coverage* of web repos was better than ours. Their *severity calibration* looks generous.
+
+**Verified:** `npm run verify` green — tsc + lint 0 errors, 696 tests, audit:ui 0 findings. Tests
+proved to discriminate by breaking three things on purpose: comment stripping (1 fail), the
+`.gitignore` contents test reduced to a presence test (1 fail), and the localhost exclusion (1 fail).
+**Deferred:** as with §37, validated against fixtures rather than real repositories.
+
+## 39. Recent Changes (July 2026) — Pillars, a real benchmark, and cleanliness that measures code
+
+Three changes, all prompted by reading a competitor properly (ogbuilds.ai) rather than copying its
+feature list. Registry 836 → 845.
+
+### 39.1 Pillars — six legible subscores with published weights (`pulse-checks/pillars.ts`)
+
+Pulse grades 845 checks across 26 categories in 12 domains. That is more accurate than any
+six-bucket rollup and much harder to read: a client sees a number and then a wall, with no answer to
+"which part is the problem?" Competitors get an inferior measurement and a better conversation.
+
+Six pillars, weights **published** so they can be argued with rather than buried in a formula:
+**Security & secrets 30 · Access & data 15 · Code & maintainability 15 · Reliability 15 ·
+Legal & compliance 15 · Experience & reach 10.**
+
+Three properties make it honest, each with a test:
+- **Nothing hand-maintained.** Every category maps to exactly one pillar; `unassignedCategories()` /
+  `duplicatedCategories()` must both be empty, so adding a category in `categories.ts` and forgetting
+  it here FAILS rather than scoring nowhere.
+- **Weight is redistributed, never assumed.** A pillar with nothing applicable (an iOS app has no
+  SEO checks) is dropped and its points shared across the pillars that applied — and it is *named* as
+  dropped. Scoring it zero, or on nothing, is the "we could not look" → "it is not there" failure.
+- **It reuses the score's own rules.** Same exclusions as `computeScoreBreakdown`. A test asserts the
+  two agree on the same checks; if they ever disagree a client will find it before we do.
+
+### 39.2 Benchmark — the existing one, made trustworthy (`getIndustryBenchmarks`)
+
+⚠️ **A benchmark already existed.** I nearly shipped a parallel module before finding it — grep
+first. It was rewritten in place rather than duplicated, because two benchmarks disagreeing is worse
+than one weak one.
+
+What changed and why:
+- **Segments on `PulseScan.platform`, not the AI's `projectClassification`.** That free-text label is
+  regenerated per scan, so "SaaS platform" and "B2B SaaS" never matched and peers were lost silently —
+  and it required AI to have run, so a checks-only scan (the fast path since §18) could never be
+  benchmarked at all.
+- **Widens instead of returning nothing** when the platform segment is too small, and sets `widened`
+  so the report says which happened.
+- **A `caveat` sentence ships WITH the figure**, naming the corpus and stating plainly that this is
+  Pulse's own scan history, not an industry survey. A percentile gets screenshotted into a deck and
+  outlives its context.
+- **Stops loading `llmAnalysis` for every scan in the workspace** to read one nested string — a large
+  JSON blob per row for a number already in a column. Adds a 12-month window.
+
+### 39.3 Cleanliness — structural debt, measured (`pulse-checks/code-cleanliness.ts`, 9 checks)
+
+Pulse treated maintainability as a checklist (is there a README, a linter, a CI file). Those are
+facts *about* a repo, not about its code — a project can have all three and be a 4,000-line file
+nobody dares change. **This is the pillar that predicts COST rather than risk**, which for an agency
+inheriting client codebases is the more useful number more often, and the one nobody measures before
+quoting.
+
+Three real analysers — the only actual algorithms in Pulse's check layer, everything else being
+pattern matching:
+- `commentedOutCodeLines` — distinguishes commented-out CODE from prose. This distinction *is* the
+  check: a comment explaining why is the most valuable thing in a file, and a check that fires on
+  documented code punishes exactly what it should encourage.
+- `maxNestingDepth` — control-flow depth, brace- or indentation-based.
+- `detectDuplication` — sliding-window hashing over normalised lines. Excludes all-import windows
+  (every file shares those) and windows with <3 distinct lines (a run of closing braces is not
+  duplicated logic).
+
+### 39.4 ⚠️ Two defects found by running it against a REAL repo, which the unit tests passed through
+
+Dan supplied `tmoreton/tutorials`. §34.3's lesson held again — **validate a new family against a real
+codebase, because unit tests pass while checks are wrong**:
+
+1. **Nesting counted object literals as nesting.** The two files it flagged were an AWS CDK stack and
+   an SDK entrypoint: nested *config*, with three levels of actual control flow. As written, the check
+   would fire on any config-heavy or JSX-heavy file — the "fires on every React app" failure that
+   makes a family worthless. Now only control-flow and function braces count (`opensABlock`), with a
+   regression test both ways: config-heavy reads 1, genuinely nested still reads 5.
+2. **`.gitignore` was read at the repo root only.** That repo is a monorepo whose sub-project
+   `.gitignore` correctly covers `.env` while the root one holds `.DS_Store` — a completely normal
+   layout that produced a false positive. The config pattern now matches `.gitignore` at any depth.
+
+After both fixes that repo reports clean, which it is.
+
+**Verified:** `npm run verify` green — tsc + lint 0 errors, **738 tests**, audit:ui 0 findings.
+**Deferred:** the pillar breakdown and benchmark caveat are computed but not yet rendered in the
+report UI — pillars derive from `scan.checks` per §8, so that is a presentation change with no
+server work behind it.
