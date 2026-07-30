@@ -351,6 +351,58 @@ grep but have no live read in `src/`).
 
 ---
 
+## 2a. Isolation — can a staging sign-in touch production?
+
+**No.** Three independent boundaries, any one of which would be sufficient. Verified in code:
+
+| Layer | Why it holds |
+|---|---|
+| **Different registrable domain** | `foundry.gitwork.co.uk` is under `gitwork.co.uk`; staging is under `gitwork.**tech**`. They share no suffix above the public suffix, so a browser cannot expose one's cookies to the other — the cookie isn't merely un-sent, it's invisible. There is also **no cookie `domain` override anywhere** in `src/auth.ts` / `auth.config.ts` / `middleware.ts` (checked), so cookies are host-only regardless |
+| **Different `AUTH_SECRET`** | `session: { strategy: "jwt" }` (`auth.config.ts:29`) — there is no session table; **the session *is* a signed cookie**. `generate-env.sh` gives staging its own `AUTH_SECRET`, so even a hand-copied production cookie fails signature validation on staging. This is a cryptographic boundary, not a naming convention |
+| **Different database** | Separate Compose project and volume. Your `User` / `WorkspaceMember` rows are distinct records — changing your role on staging cannot affect production |
+
+### What *is* shared, and why it's harmless
+
+The OAuth **client**. Both hosts send the same `client_id` to Google, which means a shared *consent
+record* and obviously the same Google account. It does **not** mean a shared session: Google
+redirects to whichever `redirect_uri` the authorization request carried, so signing into staging
+neither signs you into production nor signs you out of it. (`prompt: "consent"` is forced anyway —
+`src/auth.ts:40` — so you're re-asked on every sign-in regardless.)
+
+Sharing the client is the deliberate choice: a second one would mean a second consent screen and a
+second secret to keep in step, for no isolation gain given the three boundaries above.
+
+### The only realistic route to a crossover is `NEXTAUTH_URL`
+
+Which is why it's called out in step 5 and §2. Several places build URLs from it directly, and each
+would point at production if it were left at the production value:
+
+- `src/middleware.ts:45` — the internal resolve-host call
+- `src/app/api/integrations/gmail/connect|callback` — the connector redirect URI
+- `src/server/pulse-agents/monitor.ts:240` — registered webhook callback URLs
+
+Note `AUTH_TRUST_HOST=true` lets Auth.js derive its own base URL from the forwarded `Host` header,
+so **NextAuth's own callback and the hand-rolled builders above can disagree** — the login flow could
+land correctly on staging while a Pulse monitor still registers a production webhook. Don't rely on
+one covering for the other: set `NEXTAUTH_URL` correctly and the question doesn't arise.
+
+### One inert quirk, so nobody "fixes" it
+
+`DEFAULT_HOSTS` (`src/middleware.ts:14`) lists production and the Vercel hosts, **not** the staging
+host — so `isDefaultHost()` is `false` on staging. That sounds alarming and isn't: the branch it
+guards is `!isDefaultHost(host) && looksLikeShareToken(pathname)`, and `looksLikeShareToken` requires
+the **first path segment to be 16+ url-safe characters**. No normal route qualifies — not `/`, not
+`/login`, not `/app/**`, not `/api/**` — so the custom-hostname lookup never runs for ordinary
+staging traffic and costs nothing.
+
+It only fires if someone visits a root-level token-shaped URL on staging
+(`https://staging.foundry.gitwork.tech/<16+ chars>`), which is the custom-domain share-link feature.
+With `NEXTAUTH_URL` set correctly that does one lookup against staging itself, finds no match, and
+falls through. Adding the staging host to `DEFAULT_HOSTS` would be tidier but changes nothing
+observable, so it's deliberately left alone rather than shipped as a production-file edit.
+
+---
+
 ## 3. What staging must never share with production
 
 1. **The database** — not the same server, not the same volume, not a second database name on the
