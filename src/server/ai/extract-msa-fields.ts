@@ -61,7 +61,7 @@ function normalizeServiceTier(raw?: string): string | undefined {
 function extractWithRegex(docText: string, defaultDocNumber?: string): ExtractedMsaFields {
   const result: ExtractedMsaFields = {};
 
-  // SOW Reference: e.g. SOW-2026-007 (https://staging.foundry.gitwork.tech/docs/...)
+  // SOW Reference: e.g. SOW-2026-007 (https://staging.foundry.gitwork.tech/app/docs/...)
   if (defaultDocNumber) {
     result.sowReference = defaultDocNumber;
   } else {
