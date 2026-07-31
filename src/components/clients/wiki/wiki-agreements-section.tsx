@@ -60,10 +60,12 @@ export function WikiAgreementsSection({ token }: { token: string }) {
           </button>
         </div>
         <div className="flex-1 w-full flex flex-col min-h-0 p-4 sm:p-6 lg:p-8">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden w-full flex-1 relative">
+          <div className="bg-[var(--surface-0)] rounded-lg shadow-sm border border-[var(--border-2)] overflow-hidden w-full flex-1 relative">
             <DocusealForm
               src={`https://docuseal.com/s/${signingSlug}`}
               style={{ width: "100%", height: "100%" }}
+              backgroundColor="#ffffff"
+              withTitle={false}
               onComplete={() => {
                 setTimeout(() => {
                   alert("Thank you! Your signature has been securely captured.");
@@ -96,13 +98,13 @@ export function WikiAgreementsSection({ token }: { token: string }) {
           {error}
         </div>
       ) : agreements.length === 0 ? (
-        <div className="text-center p-12 bg-white rounded-xl border border-[var(--border-2)] shadow-sm">
-          <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-300" />
-          <h3 className="mt-4 text-sm font-semibold text-gray-900">No agreements</h3>
-          <p className="mt-1 text-sm text-gray-500">You don&apos;t have any agreements requiring a signature yet.</p>
+        <div className="text-center p-12 bg-[var(--surface-0)] rounded-xl border border-[var(--border-2)] shadow-sm">
+          <DocumentTextIcon className="mx-auto h-12 w-12 text-[var(--text-4)]" />
+          <h3 className="mt-4 text-sm font-semibold text-[var(--text-1)]">No agreements</h3>
+          <p className="mt-1 text-sm text-[var(--text-3)]">You don&apos;t have any agreements requiring a signature yet.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-[var(--border-2)] shadow-sm overflow-hidden">
+        <div className="bg-[var(--surface-0)] rounded-xl border border-[var(--border-2)] shadow-sm overflow-hidden">
           <ul className="divide-y divide-[var(--border-2)]">
             {agreements.map((agreement) => {
               const isPendingClient = agreement.status === "PENDING";
@@ -110,7 +112,7 @@ export function WikiAgreementsSection({ token }: { token: string }) {
               const isCompleted = agreement.status === "COMPLETED";
 
               return (
-                <li key={agreement.id} className="p-4 sm:p-6 hover:bg-gray-50 transition-colors">
+                <li key={agreement.id} className="p-4 sm:p-6 hover:bg-[var(--surface-1)] transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex items-start gap-4">
                       <div className={`p-2 rounded-lg ${isPendingClient ? 'bg-amber-50' : isPendingGitwork ? 'bg-blue-50' : 'bg-green-50'}`}>
@@ -123,10 +125,10 @@ export function WikiAgreementsSection({ token }: { token: string }) {
                         )}
                       </div>
                       <div>
-                        <h3 className="text-sm font-medium text-gray-900">
+                        <h3 className="text-sm font-medium text-[var(--text-1)]">
                           {agreement.document.title}
                         </h3>
-                        <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
+                        <div className="mt-1 flex items-center gap-2 text-xs text-[var(--text-3)]">
                           <span>{agreement.document.documentType}</span>
                           <span>&bull;</span>
                           <span>Issued {new Date(agreement.createdAt).toLocaleDateString()}</span>
@@ -160,7 +162,7 @@ export function WikiAgreementsSection({ token }: { token: string }) {
                       {isPendingGitwork && (
                         <button
                           disabled
-                          className="rounded-md bg-gray-100 px-3.5 py-2 text-sm font-semibold text-gray-400 shadow-sm cursor-not-allowed"
+                          className="rounded-md bg-[var(--surface-2)] px-3.5 py-2 text-sm font-semibold text-[var(--text-4)] shadow-sm cursor-not-allowed"
                         >
                           Signed by Client
                         </button>
@@ -168,7 +170,7 @@ export function WikiAgreementsSection({ token }: { token: string }) {
                       {isCompleted && (
                         <button
                           disabled
-                          className="rounded-md bg-gray-100 px-3.5 py-2 text-sm font-semibold text-gray-400 shadow-sm cursor-not-allowed"
+                          className="rounded-md bg-[var(--surface-2)] px-3.5 py-2 text-sm font-semibold text-[var(--text-4)] shadow-sm cursor-not-allowed"
                         >
                           Signed
                         </button>
