@@ -48,61 +48,69 @@ export async function POST(request: NextRequest) {
     const verifyRes = await fetch(`https://api.docuseal.com/submissions/${submissionId}`, {
       headers: { "X-Auth-Token": DOCUSEAL_API_KEY! }
     });
-    
+
     if (!verifyRes.ok) {
       return new NextResponse("Failed to verify submission with DocuSeal", { status: 502 });
     }
-    
-    const verifiedData = await verifyRes.json();
 
-    // 5. Handle Events
-    if (eventType === "form.completed" && data.role === "Client") {
-      // Client has signed. Notify Gitwork to countersign.
+    const verifiedData = await verifyRes.json();
+    const submitters = verifiedData.submitters || [];
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const clientSubmitter = submitters.find((s: any) => s.role === "Client");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const gitworkSubmitter = submitters.find((s: any) => s.role === "Gitwork");
+
+    let newStatus = submission.status;
+
+    // Determine true state from API
+    if (clientSubmitter?.status === "completed" && gitworkSubmitter?.status === "completed") {
+      newStatus = "COMPLETED";
+    } else if (clientSubmitter?.status === "completed") {
+      newStatus = "CLIENT_SIGNED";
+    } else if (eventType.includes("declined")) {
+      newStatus = "DECLINED";
+    }
+
+    // If status changed, perform the necessary side effects
+    if (newStatus !== submission.status) {
       await prisma.docusealSubmission.update({
         where: { id: submission.id },
-        data: { status: "CLIENT_SIGNED" }
+        data: { status: newStatus }
       });
 
-      if (submission.gitworkSlug) {
-        const signingUrl = `https://foundry.gitwork.co.uk/contract/${submission.gitworkSlug}`;
-        
-        await sendWorkspaceEmail({
-          workspaceId: submission.document.workspaceId,
-          to: "harry@gitwork.co.uk", // From handover document requirement
-          subject: `Action Required: Countersign ${submission.document.title}`,
-          html: `<p>The client has signed the MSA for ${submission.document.title}.</p>
-                 <p>Please click the link below to review and countersign:</p>
-                 <a href="${signingUrl}">${signingUrl}</a>`
+      if (newStatus === "CLIENT_SIGNED") {
+        if (submission.gitworkSlug) {
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://staging.foundry.gitwork.tech";
+          const signingUrl = `${baseUrl}/contract/${submission.gitworkSlug}`;
+
+          await sendWorkspaceEmail({
+            workspaceId: submission.document.workspaceId,
+            to: process.env.GITWORK_ADMIN_EMAIL || "muhammad.usman@gitwork.co.uk", // "harry@gitwork.co.uk" (commented for testing)
+            subject: `Action Required: Countersign ${submission.document.title}`,
+            html: `<p>The client has signed the MSA for ${submission.document.title}.</p>
+                   <p>Please click the link below to review and countersign:</p>
+                   <a href="${signingUrl}">${signingUrl}</a>`
+          });
+        }
+      }
+      else if (newStatus === "COMPLETED") {
+        await prisma.document.update({
+          where: { id: submission.documentId },
+          data: { status: "ACCEPTED", acceptedAt: new Date() }
+        });
+
+        // Trigger archiving
+        archiveDocusealSubmission(submission.id, verifiedData).catch(err => {
+          console.error("Failed to archive DocuSeal submission:", err);
         });
       }
-    } 
-    else if (eventType === "submission.completed") {
-      // Both parties have signed.
-      await prisma.docusealSubmission.update({
-        where: { id: submission.id },
-        data: { status: "COMPLETED" }
-      });
-
-      await prisma.document.update({
-        where: { id: submission.documentId },
-        data: { status: "ACCEPTED", acceptedAt: new Date() } // Update the document status
-      });
-
-      // Trigger the archiving pipeline asynchronously
-      // We pass the verifiedData to avoid re-fetching
-      archiveDocusealSubmission(submission.id, verifiedData).catch(err => {
-        console.error("Failed to archive DocuSeal submission:", err);
-      });
-    }
-    else if (eventType === "form.declined") {
-      await prisma.docusealSubmission.update({
-        where: { id: submission.id },
-        data: { status: "DECLINED" }
-      });
-      await prisma.document.update({
-        where: { id: submission.documentId },
-        data: { status: "DECLINED", declinedAt: new Date() }
-      });
+      else if (newStatus === "DECLINED") {
+        await prisma.document.update({
+          where: { id: submission.documentId },
+          data: { status: "DECLINED", declinedAt: new Date() }
+        });
+      }
     }
 
     return new NextResponse("OK", { status: 200 });

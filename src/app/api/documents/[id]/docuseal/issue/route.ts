@@ -35,14 +35,53 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const DOCUSEAL_API_KEY = process.env.DOCUSEAL_API_KEY;
     if (!DOCUSEAL_API_KEY) return apiError("DocuSeal integration is not configured", 500);
 
-    // We assume the template ID is stored in env, or hardcoded for the MSA
     const MSA_TEMPLATE_ID = process.env.DOCUSEAL_MSA_TEMPLATE_ID;
     if (!MSA_TEMPLATE_ID) return apiError("DocuSeal MSA template ID is not configured", 500);
 
-    // Build the registered office string
+    // Build the registered office string (fallback if billingAddressLine1 is missing)
     const officeParts = [client.addressLine1, client.city, client.county, client.postcode, client.country].filter(Boolean);
     const registeredOffice = officeParts.length > 0 ? officeParts.join(", ") : "N/A";
 
+    // 4. Read pre-flight fields from the request body (collected via the modal)
+    interface PreflightBody {
+      effectiveDate?: string;       // DD/MM/YYYY — admin picks any date
+      serviceTier?: string;
+      sowReference?: string;
+      charges?: string;
+      paymentSchedule?: string;
+      startDate?: string;           // DD/MM/YYYY
+      duration?: string;
+      publicityConsent?: "Yes" | "No";
+    }
+    const body: PreflightBody = await request.json().catch(() => ({}));
+
+    // Fallback: effective_date defaults to today if not provided
+    const effectiveDate =
+      body.effectiveDate || new Date().toLocaleDateString("en-GB"); // DD/MM/YYYY
+
+    // 5. Persist these details into document.metadata.msaDetails so the modal
+    //    is pre-filled on the next visit (no schema migration required — metadata is Json?).
+    const existingMeta = (document.metadata as Record<string, unknown>) ?? {};
+    await prisma.document.update({
+      where: { id },
+      data: {
+        metadata: {
+          ...existingMeta,
+          msaDetails: {
+            effectiveDate,
+            serviceTier: body.serviceTier ?? "",
+            sowReference: body.sowReference ?? "",
+            charges: body.charges ?? "",
+            paymentSchedule: body.paymentSchedule ?? "",
+            startDate: body.startDate ?? "",
+            duration: body.duration ?? "",
+            publicityConsent: body.publicityConsent ?? "No",
+          },
+        },
+      },
+    });
+
+    // 6. Build DocuSeal payload
     const payload = {
       template_id: parseInt(MSA_TEMPLATE_ID, 10),
       send_email: false, // Foundry handles the emails via mailto:
@@ -58,11 +97,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
           values: {
             client_legal_name: client.legalCompanyName || client.name,
             client_company_no: client.companyNumber || "N/A",
-            client_registered_office: registeredOffice,
+            client_registered_office: client.billingAddressLine1 || registeredOffice,
             client_contact_name: client.primaryContactName || client.name,
             client_notices_email: client.primaryContactEmail || "client@example.com",
-            effective_date: new Date().toLocaleDateString("en-GB"), // DD/MM/YYYY
-            agreement_ref: document.documentNumber || document.id,
+            effective_date: effectiveDate,
+            agreement_ref: document.documentNumber,
+            // Pre-flight fields supplied by the admin via modal
+            service_tier: body.serviceTier ?? "",
+            sow_reference: body.sowReference ?? "",
+            charges: body.charges ?? "",
+            payment_schedule: body.paymentSchedule ?? "",
+            start_date: body.startDate ?? "",
+            duration: body.duration ?? "",
+            // Admin pre-sets publicity consent — locked for the client
+            publicity_consent: body.publicityConsent ?? "No",
           },
           fields: [
             { name: "client_legal_name", readonly: true },
@@ -76,20 +124,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
             { name: "payment_schedule", readonly: true },
             { name: "start_date", readonly: true },
             { name: "duration", readonly: true },
-            { name: "publicity_consent", required: true }
+            { name: "publicity_consent", readonly: true },
           ]
         },
         {
           role: "Gitwork",
           name: user?.name || "Gitwork Admin",
-          email: user?.email || "muhammad.usman@gitwork.co.uk",
+          email: user?.email || process.env.GITWORK_ADMIN_EMAIL || "muhammad.usman@gitwork.co.uk",
           external_id: `${document.id}:gitwork`,
           send_email: true
         }
       ]
     };
 
-    // 4. Call DocuSeal API
+    // 7. Call DocuSeal API
     const response = await fetch("https://api.docuseal.com/submissions", {
       method: "POST",
       headers: {
@@ -119,7 +167,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return apiError("Invalid response from DocuSeal API", 502);
     }
 
-    // 5. Store in Database
+    // 8. Store in Database
     const docusealSubmission = await prisma.docusealSubmission.create({
       data: {
         documentId: document.id,
@@ -130,7 +178,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
     });
 
-    // 6. Return the slug and wiki details back to the frontend
+    // 9. Return the slug and wiki details back to the frontend
     const wiki = document.client.wiki;
     return apiOk({
       submissionId: docusealSubmission.submissionId,

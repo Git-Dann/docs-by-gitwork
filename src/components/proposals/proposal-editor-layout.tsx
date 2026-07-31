@@ -56,6 +56,7 @@ import { RightRailTabs } from "@/components/proposals/right-rail-tabs";
 import { useDocumentRelations } from "@/hooks/use-document-relations";
 import { ProposalProofPanel } from "@/components/proposals/proposal-proof-panel";
 import { SignaturePanel } from "@/components/proposals/signature-panel";
+import { DocuSealPreflightModal, type DocuSealPreflightValues } from "@/components/proposals/docuseal-preflight-modal";
 import { EnvelopeIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { SECTION_REGISTRY } from "@/lib/sections/registry";
 import { Button } from "@/components/ui/button";
@@ -176,6 +177,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [isIssuingDocuSeal, setIsIssuingDocuSeal] = useState(false);
+  const [isPreflightOpen, setIsPreflightOpen] = useState(false);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
   const [pullDataOpen, setPullDataOpen] = useState(false);
@@ -746,13 +748,21 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     setTimeout(() => setCopied(false), 1500);
   }
 
-  async function handleIssueDocuSeal() {
+  /** Opens the pre-flight modal. The actual API call happens in handlePreflightSubmit. */
+  function handleIssueDocuSeal() {
+    if (!draft) return;
+    setIsPreflightOpen(true);
+  }
+
+  /** Called by DocuSealPreflightModal after the admin fills in the 8 engagement fields. */
+  async function handlePreflightSubmit(values: DocuSealPreflightValues) {
     if (typeof window === "undefined" || !draft) return;
     setIsIssuingDocuSeal(true);
     try {
       const res = await fetch(`/api/documents/${proposalId}/docuseal/issue`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(values),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Failed to issue DocuSeal MSA");
@@ -760,6 +770,9 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       const clientSlug = json.data?.clientSlug ?? json.clientSlug;
       const wikiSlug = json.data?.wikiSlug ?? json.wikiSlug;
       const wikiToken = json.data?.wikiToken ?? json.wikiToken;
+
+      setIsPreflightOpen(false);
+      setApprovalOpen(false);
 
       if (clientSlug) {
         const portalBase = process.env.NEXT_PUBLIC_CLIENT_PORTAL_URL || window.location.origin;
@@ -770,11 +783,11 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
         }
         const mailto = buildShareMailto(draft.title, portalLoginUrl);
         window.location.href = mailto;
-        setApprovalOpen(false); // Close the popover on success
       }
     } catch (err) {
       console.error(err);
-      alert(err instanceof Error ? err.message : "Failed to issue MSA via DocuSeal.");
+      // Re-throw so the modal can display the error inline
+      throw err;
     } finally {
       setIsIssuingDocuSeal(false);
     }
@@ -1223,7 +1236,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                         onClick={handleIssueDocuSeal}
                         disabled={isIssuingDocuSeal}
                       >
-                        {isIssuingDocuSeal ? "Generating..." : "Send MSA via DocuSeal"}
+                        {isIssuingDocuSeal ? "Issuing..." : "Send MSA via DocuSeal"}
                       </Button>
                     </div>
                   )}
@@ -1480,6 +1493,18 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             : paletteInsertAt === sectionEntries.length
               ? "Inserting at the end"
               : undefined
+        }
+      />
+
+      {/* DocuSeal pre-flight modal — collects 8 engagement fields before issuing the MSA */}
+      <DocuSealPreflightModal
+        open={isPreflightOpen}
+        onClose={() => setIsPreflightOpen(false)}
+        onSubmit={handlePreflightSubmit}
+        initialValues={
+          ((draft.metadata as unknown) as Record<string, unknown>)?.msaDetails as
+            | Partial<DocuSealPreflightValues>
+            | undefined
         }
       />
     </div>
