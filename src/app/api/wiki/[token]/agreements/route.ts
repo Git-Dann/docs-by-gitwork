@@ -8,6 +8,18 @@ interface RouteContext {
   params: Promise<{ token: string }>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function findSubmitter(submitters: any[], roleName: "client" | "gitwork") {
+  if (!Array.isArray(submitters) || submitters.length === 0) return undefined;
+  const matched = submitters.find(
+    (s) => s.role?.toString().toLowerCase().trim() === roleName,
+  );
+  if (matched) return matched;
+  if (roleName === "client" && submitters[0]) return submitters[0];
+  if (roleName === "gitwork" && submitters[1]) return submitters[1];
+  return undefined;
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { token } = await context.params;
@@ -47,12 +59,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
               headers: { "X-Auth-Token": DOCUSEAL_API_KEY }
             });
             if (res.ok) {
-              const data = await res.json();
-              // data is an array of submitters
-              const submitters = Array.isArray(data) ? data : [data];
+              const verifiedData = await res.json();
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const submitters: any[] = verifiedData.submitters || (Array.isArray(verifiedData) ? verifiedData : [verifiedData]);
               
-              const clientSubmitter = submitters.find(s => s.role === "Client");
-              const gitworkSubmitter = submitters.find(s => s.role === "Gitwork");
+              const clientSubmitter = findSubmitter(submitters, "client");
+              const gitworkSubmitter = findSubmitter(submitters, "gitwork");
               
               let newStatus = sub.status;
               if (clientSubmitter?.status === "completed" && gitworkSubmitter?.status === "completed") {
@@ -69,7 +81,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
                 needsRefetch = true;
 
                 if (newStatus === "COMPLETED") {
-                  archiveDocusealSubmission(sub.id, data).catch((err: unknown) => {
+                  archiveDocusealSubmission(sub.id, verifiedData).catch((err: unknown) => {
                     console.error("Failed to archive submission from poll:", err);
                   });
                 }
