@@ -34,7 +34,7 @@ export default function SignDocumentPage() {
           <DocusealForm
             src={`https://docuseal.com/s/${slug}`}
             style={{ width: "100%", height: "100%" }}
-            onComplete={(e) => {
+            onComplete={() => {
               // The webhook handles the actual backend state update.
               // Optional: redirect to a success page or back to portal
               setTimeout(() => {

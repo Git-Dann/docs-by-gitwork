@@ -162,7 +162,7 @@ ${docText.slice(0, 14000)}
     const parsed = JSON.parse(rawJson);
     const extractedTier = normalizeServiceTier(parsed.serviceTier);
 
-    let sowRef = defaultDocNumber || parsed.sowReference || undefined;
+    const sowRef = defaultDocNumber || parsed.sowReference || undefined;
 
     return {
       serviceTier: extractedTier || "Launch Pad",
