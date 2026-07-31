@@ -28,7 +28,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     // Build the proposal link URL
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://staging.foundry.gitwork.tech";
-    const proposalLink = `${baseUrl}/docs/${document.shareToken || document.id}`;
+    const proposalLink = `${baseUrl}/app/docs/${document.id}`;
 
     // Concatenate document title, document number, timeline phases, and section texts
     const sectionTexts = (serialized.sections || []).map((s) => {
