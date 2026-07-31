@@ -3,13 +3,14 @@
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 import { DocusealForm } from "@docuseal/react";
-import { DocumentTextIcon, CheckCircleIcon, ClockIcon } from "@heroicons/react/24/outline";
+import { DocumentTextIcon, CheckCircleIcon, ClockIcon, ArrowDownTrayIcon } from "@heroicons/react/24/outline";
 
 interface Agreement {
   id: string;
   submissionId: string;
   slug: string;
   status: string;
+  combinedPdfUrl?: string | null;
   createdAt: string;
   document: {
     title: string;
@@ -22,7 +23,8 @@ export function WikiAgreementsSection({ token }: { token: string }) {
   const [agreements, setAgreements] = useState<Agreement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
   // State for the embedded signing view
   const [signingSlug, setSigningSlug] = useState<string | null>(null);
 
@@ -38,6 +40,25 @@ export function WikiAgreementsSection({ token }: { token: string }) {
       setIsLoading(false);
     }
   }, [token]);
+
+  const handleDownloadPdf = async (agreement: Agreement) => {
+    setDownloadingId(agreement.id);
+    try {
+      const downloadUrl = `/api/wiki/${token}/agreements/${agreement.submissionId}/download`;
+      // Trigger native browser download
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = `${agreement.document.title.replace(/[^a-zA-Z0-9_\-]/g, "_")}-Signed.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("Failed to download PDF:", err);
+      alert("Failed to download PDF. Please try again.");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   useEffect(() => {
     fetchAgreements();
@@ -169,10 +190,12 @@ export function WikiAgreementsSection({ token }: { token: string }) {
                       )}
                       {isCompleted && (
                         <button
-                          disabled
-                          className="rounded-md bg-[var(--surface-2)] px-3.5 py-2 text-sm font-semibold text-[var(--text-4)] shadow-sm cursor-not-allowed"
+                          onClick={() => handleDownloadPdf(agreement)}
+                          disabled={downloadingId === agreement.id}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-[var(--brand-600)] px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[var(--brand-500)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-600)] transition-colors"
                         >
-                          Signed
+                          <ArrowDownTrayIcon className="h-4 w-4" />
+                          {downloadingId === agreement.id ? "Downloading..." : "Download PDF"}
                         </button>
                       )}
                     </div>

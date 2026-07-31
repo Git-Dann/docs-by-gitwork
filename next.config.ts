@@ -107,6 +107,17 @@ const nextConfig: NextConfig = {
       { source: "/cookies", destination: "https://gitwork.co.uk/cookies", permanent: true },
       { source: "/security", destination: "https://gitwork.co.uk/security", permanent: true },
       { source: "/legal", destination: "https://gitwork.co.uk/legal", permanent: true },
+      // DocuSeal webhook — nginx sometimes normalises a trailing slash on the URL that
+      // DocuSeal POSTs to, which yields a 307 Temporary Redirect and the POST body is
+      // lost (browsers / curl re-POST on 307, but third-party webhook senders may not).
+      // Redirect the slash variant back to the canonical slash-free path permanently
+      // (308 preserves the HTTP method and body, unlike 301/302 which may downgrade
+      // to GET). Set the DocuSeal webhook URL WITHOUT a trailing slash.
+      {
+        source: "/api/webhooks/docuseal/",
+        destination: "/api/webhooks/docuseal",
+        permanent: true, // 308 — keeps POST method + body
+      },
     ];
   },
   async headers() {
