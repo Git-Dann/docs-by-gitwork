@@ -13,11 +13,32 @@ export async function GET() {
   return new NextResponse("OK", { status: 200 });
 }
 
+/**
+ * Robustly finds a submitter by role name with case-insensitivity and positional fallback.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function findSubmitter(submitters: any[], roleName: "client" | "gitwork") {
+  if (!Array.isArray(submitters) || submitters.length === 0) return undefined;
+
+  // 1. Case-insensitive & trimmed role match
+  const matched = submitters.find(
+    (s) => s.role?.toString().toLowerCase().trim() === roleName,
+  );
+  if (matched) return matched;
+
+  // 2. Positional fallback: order is preserved (Client = 0, Gitwork = 1)
+  if (roleName === "client" && submitters[0]) return submitters[0];
+  if (roleName === "gitwork" && submitters[1]) return submitters[1];
+
+  return undefined;
+}
+
 export async function POST(request: NextRequest) {
   try {
     // 1. Security: Secret path/token validation
     const token = request.nextUrl.searchParams.get("token");
     if (!token || token !== process.env.DOCUSEAL_WEBHOOK_SECRET) {
+      console.warn("DocuSeal Webhook 401: Secret token mismatch or missing token parameter");
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
@@ -31,56 +52,44 @@ export async function POST(request: NextRequest) {
     }
 
     // ── 2. Resolve the local DocusealSubmission record ────────────────────────
-    //
-    // DocuSeal sends different shapes depending on the event type:
-    //
-    //   form.completed / form.declined / form.viewed / form.started
-    //     → `data` is the SUBMITTER object
-    //       data.id           = submitter ID  (NOT the submission ID)
-    //       data.external_id  = "<documentId>:<role>"  (e.g. "abc123:client")
-    //       data.submission_id may be present on some versions but is unreliable
-    //
-    //   submission.completed / submission.created / submission.expired
-    //     → `data` is the SUBMISSION object
-    //       data.id           = submission ID
-    //       data.submitters   = [...] (array of submitter objects)
-    //
-    // Strategy: try submission_id first (reliable for submission.* events), then
-    // fall back to parsing external_id for form.* events.
-
     let submission = null;
 
-    // Path A — submission-level events carry the submission ID directly
-    const directSubmissionId: number | null =
-      typeof data.submission_id === "number"
-        ? data.submission_id
-        : eventType.startsWith("submission.")
-          ? Number(data.id)
-          : null;
+    // Extract potential submission IDs
+    const rawSubId =
+      data.submission_id ??
+      data.submission?.id ??
+      (eventType.startsWith("submission.") ? data.id : null);
 
-    if (directSubmissionId) {
+    const directSubmissionId = typeof rawSubId === "number" ? rawSubId : rawSubId ? Number(rawSubId) : null;
+
+    if (directSubmissionId && !isNaN(directSubmissionId)) {
       submission = await prisma.docusealSubmission.findUnique({
         where: { submissionId: directSubmissionId },
         include: { document: true },
       });
     }
 
-    // Path B — form-level events: parse documentId from external_id
-    if (!submission && typeof data.external_id === "string") {
-      // external_id format: "<documentId>:<role>"  e.g. "cms8tywr00186t701hxvvzh68:client"
-      const documentId = data.external_id.split(":")[0];
-      if (documentId) {
-        submission = await prisma.docusealSubmission.findFirst({
-          where: { documentId },
-          orderBy: { createdAt: "desc" }, // newest if somehow multiple exist
-          include: { document: true },
-        });
+    // Fallback: parse documentId from external_id
+    if (!submission) {
+      const rawExtId = data.external_id ?? data.submission?.external_id;
+      if (typeof rawExtId === "string") {
+        const documentId = rawExtId.split(":")[0];
+        if (documentId) {
+          submission = await prisma.docusealSubmission.findFirst({
+            where: { documentId },
+            orderBy: { createdAt: "desc" },
+            include: { document: true },
+          });
+        }
       }
     }
 
     if (!submission) {
-      // Not found — log and return 200 so DocuSeal doesn't retry endlessly
-      console.warn("DocuSeal webhook: submission not found for event", eventType, data);
+      console.warn("DocuSeal webhook: submission not found for event", eventType, {
+        id: data.id,
+        submission_id: data.submission_id,
+        external_id: data.external_id,
+      });
       return new NextResponse("Submission not found locally", { status: 200 });
     }
 
@@ -88,9 +97,11 @@ export async function POST(request: NextRequest) {
     if (submission.status === "COMPLETED") {
       return new NextResponse("Already completed", { status: 200 });
     }
+
+    const eventRole = data.role?.toString().toLowerCase().trim();
     if (
       (eventType === "form.completed" || eventType === "form.declined") &&
-      data.role === "Client" &&
+      eventRole === "client" &&
       submission.status !== "PENDING"
     ) {
       return new NextResponse("Client already processed", { status: 200 });
@@ -110,12 +121,16 @@ export async function POST(request: NextRequest) {
 
     const verifiedData = await verifyRes.json();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const submitters: any[] = verifiedData.submitters || [];
+    const submitters: any[] = verifiedData.submitters || (Array.isArray(verifiedData) ? verifiedData : []);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const clientSubmitter = submitters.find((s: any) => s.role === "Client");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const gitworkSubmitter = submitters.find((s: any) => s.role === "Gitwork");
+    const clientSubmitter = findSubmitter(submitters, "client");
+    const gitworkSubmitter = findSubmitter(submitters, "gitwork");
+
+    console.log(`DocuSeal webhook event: ${eventType} for submission ${submission.submissionId}`, {
+      clientStatus: clientSubmitter?.status,
+      gitworkStatus: gitworkSubmitter?.status,
+      currentDbStatus: submission.status,
+    });
 
     // ── 5. Determine the new status from live API data ────────────────────────
     let newStatus = submission.status;
@@ -136,13 +151,14 @@ export async function POST(request: NextRequest) {
 
     // ── 6. Persist and fire side-effects if status changed ────────────────────
     if (newStatus !== submission.status) {
+      console.log(`Updating submission ${submission.submissionId} status: ${submission.status} -> ${newStatus}`);
+
       await prisma.docusealSubmission.update({
         where: { id: submission.id },
         data: { status: newStatus },
       });
 
       if (newStatus === "CLIENT_SIGNED") {
-        // Notify Gitwork admin to countersign
         if (submission.gitworkSlug) {
           const baseUrl =
             process.env.NEXT_PUBLIC_APP_URL || "https://staging.foundry.gitwork.tech";
@@ -159,14 +175,12 @@ export async function POST(request: NextRequest) {
           });
         }
       } else if (newStatus === "COMPLETED") {
-        // Mark document as accepted
         await prisma.document.update({
           where: { id: submission.documentId },
           data: { status: "ACCEPTED", acceptedAt: new Date() },
         });
 
-        // Trigger async archiving (fire-and-forget — don't block the webhook response)
-        archiveDocusealSubmission(submission.id, verifiedData).catch((err) => {
+        archiveDocusealSubmission(submission.id, verifiedData).catch((err: unknown) => {
           console.error("Failed to archive DocuSeal submission:", err);
         });
       } else if (newStatus === "DECLINED") {
