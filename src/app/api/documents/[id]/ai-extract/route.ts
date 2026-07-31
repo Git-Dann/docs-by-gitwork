@@ -1,0 +1,50 @@
+import { NextRequest } from "next/server";
+import { apiError, apiOk, fromError } from "@/lib/api-response";
+import { prisma } from "@/lib/prisma";
+import { assertCan, canManageDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { proposalInclude, serializeProposal } from "@/server/proposals";
+import { extractMsaFieldsFromText } from "@/server/ai/extract-msa-fields";
+
+interface RouteContext {
+  params: Promise<{ id: string }>;
+}
+
+export async function POST(request: NextRequest, context: RouteContext) {
+  try {
+    const user = await getEffectiveUserOrNull(request);
+    assertCan(user, canManageDocs, "extract document AI fields");
+
+    const { id } = await context.params;
+    if (!id) return apiError("Missing document id", 400);
+
+    const document = await prisma.document.findUnique({
+      where: { id },
+      include: proposalInclude,
+    });
+
+    if (!document) return apiError("Document not found", 404);
+
+    const serialized = serializeProposal(document);
+
+    // Concatenate document title + section titles, descriptions, and data
+    const sectionTexts = (serialized.sections || []).map((s) => {
+      const dataStr = JSON.stringify(s.data || {});
+      return `Section: ${s.title}\nDescription: ${s.description || ""}\nContent: ${dataStr}`;
+    });
+
+    const costTexts = (serialized.costLineItems || []).map(
+      (c) => `${c.itemName} (${c.category}): £${c.subtotal} ${c.description ? `- ${c.description}` : ""}`
+    );
+
+    const fullDocText = `Document Title: ${serialized.title}\nDocument Number: ${serialized.documentNumber || ""}\nClient Name: ${serialized.clientName || ""}\n\nCosting Line Items:\n${costTexts.join("\n")}\n\nDocument Sections:\n${sectionTexts.join("\n\n")}`;
+
+    const extracted = await extractMsaFieldsFromText(fullDocText);
+
+    return apiOk({
+      extracted,
+      message: "AI fields extracted successfully",
+    });
+  } catch (error) {
+    return fromError(error);
+  }
+}

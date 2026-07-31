@@ -1500,6 +1500,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       <DocuSealPreflightModal
         open={isPreflightOpen}
         onClose={() => setIsPreflightOpen(false)}
+        documentId={proposalId}
         onSubmit={handlePreflightSubmit}
         initialValues={
           ((draft.metadata as unknown) as Record<string, unknown>)?.msaDetails as

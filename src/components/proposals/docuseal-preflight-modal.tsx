@@ -4,12 +4,13 @@
  * Collects the 8 engagement fields that cannot be derived from the database
  * before issuing the DocuSeal submission. Values are saved to document.metadata
  * on the server so the modal is pre-filled next time.
+ * Supports Groq AI auto-extraction from document text.
  */
 
 "use client";
 
 import { useState } from "react";
-import { DocumentTextIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { DocumentTextIcon, XMarkIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 
@@ -27,6 +28,8 @@ export interface DocuSealPreflightValues {
 interface DocuSealPreflightModalProps {
   open: boolean;
   onClose: () => void;
+  /** Document ID to fetch text for AI auto-extraction. */
+  documentId?: string;
   /** Called with the collected values when the admin clicks "Issue MSA". */
   onSubmit: (values: DocuSealPreflightValues) => Promise<void>;
   /** Pre-fill from document.metadata.msaDetails if it exists. */
@@ -39,6 +42,7 @@ function todayDDMMYYYY(): string {
 
 /** Convert a DD/MM/YYYY string to yyyy-mm-dd for <input type="date">. */
 function toInputDate(ddmmyyyy: string): string {
+  if (!ddmmyyyy) return "";
   const [d, m, y] = ddmmyyyy.split("/");
   if (!d || !m || !y) return "";
   return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
@@ -46,6 +50,7 @@ function toInputDate(ddmmyyyy: string): string {
 
 /** Convert yyyy-mm-dd from <input type="date"> back to DD/MM/YYYY. */
 function fromInputDate(yyyymmdd: string): string {
+  if (!yyyymmdd) return "";
   const [y, m, d] = yyyymmdd.split("-");
   if (!y || !m || !d) return "";
   return `${d}/${m}/${y}`;
@@ -54,6 +59,7 @@ function fromInputDate(yyyymmdd: string): string {
 export function DocuSealPreflightModal({
   open,
   onClose,
+  documentId,
   onSubmit,
   initialValues,
 }: DocuSealPreflightModalProps) {
@@ -73,11 +79,42 @@ export function DocuSealPreflightModal({
   );
 
   const [submitting, setSubmitting] = useState(false);
+  const [isExtractingAi, setIsExtractingAi] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function handleClose() {
     setError(null);
     onClose();
+  }
+
+  async function handleAiAutoFill() {
+    if (!documentId) return;
+    setIsExtractingAi(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/documents/${documentId}/ai-extract`, {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Failed to extract AI fields");
+
+      const extracted = json.data?.extracted || json.extracted || {};
+
+      if (extracted.effectiveDate) setEffectiveDate(toInputDate(extracted.effectiveDate));
+      if (extracted.serviceTier) setServiceTier(extracted.serviceTier);
+      if (extracted.sowReference) setSowReference(extracted.sowReference);
+      if (extracted.charges) setCharges(extracted.charges);
+      if (extracted.paymentSchedule) setPaymentSchedule(extracted.paymentSchedule);
+      if (extracted.startDate) setStartDate(toInputDate(extracted.startDate));
+      if (extracted.duration) setDuration(extracted.duration);
+      if (extracted.publicityConsent) setPublicityConsent(extracted.publicityConsent);
+
+    } catch (err) {
+      console.error(err);
+      setError((err as Error).message ?? "AI extraction failed");
+    } finally {
+      setIsExtractingAi(false);
+    }
   }
 
   async function handleSubmit() {
@@ -125,13 +162,27 @@ export function DocuSealPreflightModal({
       </div>
 
       <div className="space-y-5 p-6">
-        {/* Info banner */}
-        <div className="flex items-start gap-2 rounded-[8px] border border-[var(--brand-300)] bg-[var(--brand-50)] px-3 py-2.5">
-          <DocumentTextIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
-          <p className="text-xs leading-5 text-[var(--brand-700)]">
-            These details will be pre-filled into the MSA template and locked for the client.
-            Values are saved to this document so the form is pre-filled next time.
-          </p>
+        {/* Info banner + AI Auto-fill action */}
+        <div className="flex items-center justify-between gap-3 rounded-[8px] border border-[var(--brand-300)] bg-[var(--brand-50)] px-3.5 py-2.5">
+          <div className="flex items-start gap-2 min-w-0">
+            <DocumentTextIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
+            <p className="text-xs leading-5 text-[var(--brand-700)]">
+              Details pre-filled into MSA template & locked for client.
+            </p>
+          </div>
+          {documentId ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleAiAutoFill}
+              loading={isExtractingAi}
+              className="shrink-0 border-[var(--brand-300)] bg-white text-[var(--brand-700)] hover:bg-[var(--brand-100)]"
+              leadingIcon={<SparklesIcon className="h-3.5 w-3.5 text-[var(--brand-600)]" />}
+            >
+              {isExtractingAi ? "Analyzing..." : "Auto-fill with AI"}
+            </Button>
+          ) : null}
         </div>
 
         {/* Row 1: Dates */}
@@ -215,18 +266,13 @@ export function DocuSealPreflightModal({
             <span className="text-sm font-medium text-[var(--text-2)]">
               Payment Schedule
             </span>
-            <select
+            <input
+              type="text"
               value={paymentSchedule}
               onChange={(e) => setPaymentSchedule(e.target.value)}
-              className="app-select"
-            >
-              <option value="">Select…</option>
-              <option value="Monthly">Monthly</option>
-              <option value="Quarterly">Quarterly</option>
-              <option value="Milestone-based">Milestone-based</option>
-              <option value="Upfront">Upfront</option>
-              <option value="50% upfront, 50% on completion">50% upfront, 50% on completion</option>
-            </select>
+              placeholder="e.g. Monthly in advance"
+              className="app-input"
+            />
           </label>
         </div>
 
