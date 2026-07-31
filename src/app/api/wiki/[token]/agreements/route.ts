@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { resolvePublicWiki } from "@/server/wiki";
+import { archiveDocusealSubmission } from "@/server/docuseal-archive";
 
 interface RouteContext {
   params: Promise<{ token: string }>;
@@ -66,6 +67,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
                   data: { status: newStatus }
                 });
                 needsRefetch = true;
+
+                if (newStatus === "COMPLETED") {
+                  archiveDocusealSubmission(sub.id, data).catch((err: unknown) => {
+                    console.error("Failed to archive submission from poll:", err);
+                  });
+                }
               }
             }
           } catch (e) {
@@ -89,6 +96,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       submissionId: sub.submissionId,
       slug: sub.slug,
       status: sub.status,
+      combinedPdfUrl: sub.combinedPdfUrl,
       createdAt: sub.createdAt.toISOString(),
       document: {
         title: sub.document.title,

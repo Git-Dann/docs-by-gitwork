@@ -38,6 +38,15 @@ export function Modal({
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
 
+  // Keep a stable ref to `onClose` so the focus/keydown effect only re-runs when
+  // `open` changes — NOT on every render (which would happen if `onClose` were an
+  // inline arrow function in the parent, causing the focus to jump back to the first
+  // input after every keystroke).
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   useEffect(() => {
     if (!open) return;
     restoreFocusRef.current = (document.activeElement as HTMLElement | null) ?? null;
@@ -49,7 +58,7 @@ export function Modal({
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key === "Tab" && panel) {
@@ -76,7 +85,7 @@ export function Modal({
       document.body.style.overflow = prevOverflow;
       restoreFocusRef.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]); // ← only `open` — onClose is read from the ref above
 
   if (!open) return null;
 
