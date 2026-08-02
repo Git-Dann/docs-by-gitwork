@@ -2,6 +2,37 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendWorkspaceEmail } from "@/server/email";
 import { archiveDocusealSubmission } from "@/server/docuseal-archive";
+import { enableDocumentShare } from "@/server/documents";
+
+/**
+ * GET handler — DocuSeal sometimes follows a 307 redirect (nginx trailing-slash
+ * normalisation) and ends up hitting the same URL with a GET. Returning 200 here
+ * stops that from showing as a "failure" in the DocuSeal events log and prevents
+ * any retry loops on their side.
+ */
+export async function GET() {
+  return new NextResponse("OK", { status: 200 });
+}
+
+/**
+ * Robustly finds a submitter by role name with case-insensitivity and positional fallback.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function findSubmitter(submitters: any[], roleName: "client" | "gitwork") {
+  if (!Array.isArray(submitters) || submitters.length === 0) return undefined;
+
+  // 1. Case-insensitive & trimmed role match
+  const matched = submitters.find(
+    (s) => s.role?.toString().toLowerCase().trim() === roleName,
+  );
+  if (matched) return matched;
+
+  // 2. Positional fallback: order is preserved (Client = 0, Gitwork = 1)
+  if (roleName === "client" && submitters[0]) return submitters[0];
+  if (roleName === "gitwork" && submitters[1]) return submitters[1];
+
+  return undefined;
+}
 
 /**
  * GET handler — DocuSeal sometimes follows a 307 redirect (nginx trailing-slash
@@ -164,14 +195,20 @@ export async function POST(request: NextRequest) {
             process.env.NEXT_PUBLIC_APP_URL || "https://staging.foundry.gitwork.tech";
           const signingUrl = `${baseUrl}/contract/${submission.gitworkSlug}`;
 
+          // Ensure share token exists and construct public proposal link
+          const { shareToken } = await enableDocumentShare(submission.documentId);
+          const publicProposalUrl = `${baseUrl}/docs/${shareToken}`;
+
           await sendWorkspaceEmail({
             workspaceId: submission.document.workspaceId,
             to:
               process.env.GITWORK_ADMIN_EMAIL || "muhammad.usman@gitwork.co.uk",
             subject: `Action Required: Countersign ${submission.document.title}`,
             html: `<p>The client has signed the MSA for <strong>${submission.document.title}</strong>.</p>
-                   <p>Please click the link below to review and countersign:</p>
-                   <a href="${signingUrl}">${signingUrl}</a>`,
+                   <p><strong>1. Review & Countersign MSA:</strong><br />
+                   <a href="${signingUrl}">${signingUrl}</a></p>
+                   <p><strong>2. View Public Proposal Document:</strong><br />
+                   <a href="${publicProposalUrl}">${publicProposalUrl}</a></p>`,
           });
         }
       } else if (newStatus === "COMPLETED") {

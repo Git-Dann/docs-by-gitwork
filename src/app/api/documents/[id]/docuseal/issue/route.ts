@@ -3,6 +3,8 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { assertCan, canShareDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
+import { enableDocumentShare } from "@/server/documents";
+
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
@@ -23,6 +25,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
 
     if (!document) return apiError("Document not found", 404);
+
+    // Ensure proposal sharing is active so client can access the public link
+    await enableDocumentShare(document.id);
     if (!document.client) return apiError("Document must be assigned to a client to issue an MSA", 400);
     // Let's allow PROPOSAL and MSA types to be flexible
     if (document.documentType !== "MSA" && document.documentType !== "PROPOSAL") {
