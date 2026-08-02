@@ -117,11 +117,22 @@ const PresentationMode = dynamic(
  * Build a mailto: URL that pre-fills a sensible subject + body for sharing a doc. Used by the
  * "Email link" affordance on the share popover.
  */
-function buildShareMailto(documentTitle: string, shareUrl: string): string {
+function buildShareMailto(
+  documentTitle: string,
+  publicShareUrl: string,
+  portalLoginUrl?: string,
+): string {
   const subject = `Document for your review: ${documentTitle}`;
-  const body =
-    `Hi,\n\nPlease find the document for your review at the link below.\n\n${shareUrl}\n\n` +
-    `If you have any questions, just reply to this email.\n\nBest,\nGitwork`;
+  let body = `Hi,\n\nPlease find the document links for your review below:\n\n`;
+
+  if (publicShareUrl) {
+    body += `1. View Proposal Document:\n${publicShareUrl}\n\n`;
+  }
+  if (portalLoginUrl && portalLoginUrl !== publicShareUrl) {
+    body += `2. Client Portal & Sign Agreements:\n${portalLoginUrl}\n\n`;
+  }
+
+  body += `If you have any questions, just reply to this email.\n\nBest,\nGitwork`;
   return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
@@ -781,7 +792,22 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           const nextUrl = encodeURIComponent(`/wiki/${wikiSlug}/${wikiToken}?section=agreements`);
           portalLoginUrl = `${portalBase}/portal/login?next=${nextUrl}`;
         }
-        const mailto = buildShareMailto(draft.title, portalLoginUrl);
+
+        // Retrieve public proposal URL (mint if not shared yet)
+        let docPublicUrl = publicShareUrl;
+        if (!docPublicUrl) {
+          try {
+            const shareRes = await fetch(`/api/documents/${proposalId}/share`, { method: "POST" });
+            if (shareRes.ok) {
+              const shareJson = await shareRes.json();
+              docPublicUrl = `${window.location.origin}${shareJson.url || `/docs/${shareJson.shareToken}`}`;
+            }
+          } catch (e) {
+            console.error("Failed to mint share URL for email:", e);
+          }
+        }
+
+        const mailto = buildShareMailto(draft.title, docPublicUrl, portalLoginUrl);
         window.location.href = mailto;
       }
     } catch (err) {
