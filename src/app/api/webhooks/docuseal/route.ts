@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendWorkspaceEmail } from "@/server/email";
 import { archiveDocusealSubmission } from "@/server/docuseal-archive";
+import { enableDocumentShare } from "@/server/documents";
 
 /**
  * GET handler — DocuSeal sometimes follows a 307 redirect (nginx trailing-slash
@@ -164,14 +165,20 @@ export async function POST(request: NextRequest) {
             process.env.NEXT_PUBLIC_APP_URL || "https://staging.foundry.gitwork.tech";
           const signingUrl = `${baseUrl}/contract/${submission.gitworkSlug}`;
 
+          // Ensure share token exists and construct public proposal link
+          const { shareToken } = await enableDocumentShare(submission.documentId);
+          const publicProposalUrl = `${baseUrl}/docs/${shareToken}`;
+
           await sendWorkspaceEmail({
             workspaceId: submission.document.workspaceId,
             to:
               process.env.GITWORK_ADMIN_EMAIL || "muhammad.usman@gitwork.co.uk",
             subject: `Action Required: Countersign ${submission.document.title}`,
             html: `<p>The client has signed the MSA for <strong>${submission.document.title}</strong>.</p>
-                   <p>Please click the link below to review and countersign:</p>
-                   <a href="${signingUrl}">${signingUrl}</a>`,
+                   <p><strong>1. Review & Countersign MSA:</strong><br />
+                   <a href="${signingUrl}">${signingUrl}</a></p>
+                   <p><strong>2. View Public Proposal Document:</strong><br />
+                   <a href="${publicProposalUrl}">${publicProposalUrl}</a></p>`,
           });
         }
       } else if (newStatus === "COMPLETED") {

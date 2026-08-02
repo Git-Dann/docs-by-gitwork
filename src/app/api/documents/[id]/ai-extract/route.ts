@@ -3,6 +3,7 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { assertCan, canManageDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
+import { enableDocumentShare } from "@/server/documents";
 import { extractMsaFieldsFromText } from "@/server/ai/extract-msa-fields";
 
 interface RouteContext {
@@ -26,9 +27,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const serialized = serializeProposal(document);
 
-    // Build the proposal link URL
+    // Ensure document sharing is enabled and get public share token
+    const { shareToken } = await enableDocumentShare(document.id);
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://staging.foundry.gitwork.tech";
-    const proposalLink = `${baseUrl}/app/docs/${document.id}`;
+    const publicProposalLink = `${baseUrl}/docs/${shareToken}`;
 
     // Concatenate document title, document number, timeline phases, and section texts
     const sectionTexts = (serialized.sections || []).map((s) => {
@@ -44,16 +46,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
       (tp) => `Phase: ${tp.name} | Duration: ${tp.duration} | Summary: ${tp.summary}`
     );
 
-    const fullDocText = `Document Title: ${serialized.title}\nDocument Number: ${serialized.documentNumber || ""}\nProposal Link: ${proposalLink}\nClient Name: ${serialized.clientName || ""}\n\nTimeline & Target Dates:\n${timelineTexts.join("\n")}\n\nCosting Line Items:\n${costTexts.join("\n")}\n\nDocument Sections:\n${sectionTexts.join("\n\n")}`;
+    const fullDocText = `Document Title: ${serialized.title}\nDocument Number: ${serialized.documentNumber || ""}\nPublic Proposal Link: ${publicProposalLink}\nClient Name: ${serialized.clientName || ""}\n\nTimeline & Target Dates:\n${timelineTexts.join("\n")}\n\nCosting Line Items:\n${costTexts.join("\n")}\n\nDocument Sections:\n${sectionTexts.join("\n\n")}`;
 
-    // Default SOW Reference formatted as "SOW-2026-007 (URL)"
+    // Default SOW Reference formatted as "SOW-2026-007 (https://staging.foundry.gitwork.tech/docs/shareToken)"
     const rawRef = (serialized.documentNumber || `SOW-${document.id.slice(-6)}`).replace(/^PROP/i, "SOW");
-    const defaultSowRef = `${rawRef} (${proposalLink})`;
+    const defaultSowRef = `${rawRef} (${publicProposalLink})`;
 
     const extracted = await extractMsaFieldsFromText(fullDocText, defaultSowRef);
 
     return apiOk({
       extracted,
+      publicProposalLink,
       message: "AI fields extracted successfully",
     });
   } catch (error) {
