@@ -10,7 +10,8 @@ import { enableDocumentShare } from "@/server/documents";
  * stops that from showing as a "failure" in the DocuSeal events log and prevents
  * any retry loops on their side.
  */
-export async function GET() {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function GET(_request: NextRequest) {
   return new NextResponse("OK", { status: 200 });
 }
 
