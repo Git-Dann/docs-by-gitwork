@@ -184,6 +184,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const { canGenerateAi } = usePermissions();
   const [templateSavedAt, setTemplateSavedAt] = useState<string | null>(null);
   const [presenting, setPresenting] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
 
   async function handleSaveAsTemplate() {
     if (!draft) return;
@@ -239,6 +241,21 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   }, [urlTab]);
 
   const draft = localDraft ?? data?.proposal ?? null;
+
+  function beginTitleEdit() {
+    if (!draft) return;
+    setTitleDraft(draft.title);
+    setEditingTitle(true);
+  }
+
+  function commitTitleEdit() {
+    if (!draft) return;
+    const nextTitle = titleDraft.trim();
+    if (nextTitle && nextTitle !== draft.title) {
+      updateDraft({ ...draft, title: nextTitle });
+    }
+    setEditingTitle(false);
+  }
 
   const sectionEntries = useMemo(() => {
     if (!draft) {
@@ -876,9 +893,39 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               <span className="font-medium text-[var(--text-1)]">{draft.title}</span>
             </div>
 
-            <h1 className="mt-4 font-[family-name:var(--font-display)] text-[28px] font-normal leading-[1.1] tracking-[-0.5px] text-[var(--text-1)] sm:text-[36px] lg:text-[44px]">
-              {draft.title}
-            </h1>
+            <div className="mt-4 flex items-start gap-2">
+              {editingTitle ? (
+                <input
+                  autoFocus
+                  aria-label="Document title"
+                  value={titleDraft}
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  onBlur={commitTitleEdit}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      commitTitleEdit();
+                    } else if (event.key === "Escape") {
+                      setEditingTitle(false);
+                    }
+                  }}
+                  className="w-full rounded-[8px] border border-[var(--brand-500)] bg-white px-2 py-1 font-[family-name:var(--font-display)] text-[28px] font-normal leading-[1.1] tracking-[-0.5px] text-[var(--text-1)] outline-none sm:text-[36px] lg:text-[44px]"
+                />
+              ) : (
+                <h1 className="font-[family-name:var(--font-display)] text-[28px] font-normal leading-[1.1] tracking-[-0.5px] text-[var(--text-1)] sm:text-[36px] lg:text-[44px]">
+                  {draft.title}
+                </h1>
+              )}
+              <button
+                type="button"
+                onClick={beginTitleEdit}
+                aria-label="Rename document"
+                title="Rename document"
+                className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] border border-[var(--border-2)] bg-white text-[var(--text-2)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+              >
+                <PencilSquareIcon className="h-4 w-4" />
+              </button>
+            </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <StatusBadge status={draft.status} />
