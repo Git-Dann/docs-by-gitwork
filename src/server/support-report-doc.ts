@@ -14,7 +14,11 @@
 
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { getTicketStatsForPeriod, getPerformanceMetricsForPeriod } from "@/server/support";
+import {
+  decryptScraperConfig,
+  getTicketStatsForPeriod,
+  getPerformanceMetricsForPeriod,
+} from "@/server/support";
 import { enableDocumentShare } from "@/server/documents";
 import { runAnalytics, type AnalyticsConnectionConfig } from "@/server/support-analytics";
 import type { AnalyticsMetric } from "@/server/support-analytics/types";
@@ -68,7 +72,9 @@ async function loadAnalyticsMetrics(
   if (!conn) return [];
 
   try {
-    const config = (conn.scraperConfig ?? {}) as AnalyticsConnectionConfig;
+    // AccountConnection stores secrets encrypted. This document-generation path
+    // runs outside the connector sync context, so it must decrypt explicitly.
+    const config = (decryptScraperConfig(conn.scraperConfig as Record<string, unknown> | null) ?? {}) as AnalyticsConnectionConfig;
     const prevDate = new Date(year, month - 2, 1);
     const prevPeriod = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
     const prevRow = await prisma.supportAnalyticsSnapshot.findUnique({

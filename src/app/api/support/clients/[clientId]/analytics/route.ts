@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { decryptScraperConfig } from "@/server/support";
 import { runAnalytics, type AnalyticsConnectionConfig } from "@/server/support-analytics";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +31,10 @@ export async function GET(
       return apiError("No analytics connection configured for this client", 404);
     }
 
-    const config = (conn.scraperConfig ?? {}) as AnalyticsConnectionConfig;
+    // Connector secrets are encrypted at rest. Analytics adapters need the decrypted
+    // config on the server, otherwise they see an encrypted token (and no adapter
+    // config) and the report falls back to an empty analytics table.
+    const config = (decryptScraperConfig(conn.scraperConfig as Record<string, unknown> | null) ?? {}) as AnalyticsConnectionConfig;
 
     // Prefer a stored snapshot of the previous month for reliable trends.
     const prevDate = new Date(year, month - 2, 1);

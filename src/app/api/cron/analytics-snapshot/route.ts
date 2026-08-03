@@ -3,6 +3,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { assertCron } from "@/server/auth/cron";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { decryptScraperConfig } from "@/server/support";
 import { runAnalytics, type AnalyticsConnectionConfig } from "@/server/support-analytics";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +36,9 @@ export async function GET(request: NextRequest) {
 
     for (const conn of connections) {
       try {
-        const config = (conn.scraperConfig ?? {}) as AnalyticsConnectionConfig;
+        // scraperConfig contains encrypted API credentials. Decrypt only in this
+        // server-side job before passing it to the analytics adapter.
+        const config = (decryptScraperConfig(conn.scraperConfig as Record<string, unknown> | null) ?? {}) as AnalyticsConnectionConfig;
         const snapshot = await runAnalytics(config, year, month);
         await prisma.supportAnalyticsSnapshot.upsert({
           where: { clientId_period: { clientId: conn.clientId, period } },

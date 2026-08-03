@@ -1207,9 +1207,11 @@ function mean(values: number[]): number | null {
 /**
  * Compute support-desk performance for a period from conversation lifecycle timestamps.
  * Conversations are scoped by receivedAt so the figures describe work that *arrived* in
- * the window. Times derive from firstTriagedAt / closedAt — i.e. "first response" now
- * means **time-to-triage** (when an operator first actioned the signal), since replies
- * happen in the native channel, not in-app. "Resolved" = status CLOSED or IGNORED.
+ * the window. Times normally derive from firstTriagedAt / closedAt — i.e. "first response"
+ * means **time-to-triage** (when an operator first actioned the signal). For email threads,
+ * the first outbound message is a more faithful response timestamp, including historic Gmail
+ * and IMAP conversations imported before the Care triage state was introduced. "Resolved" =
+ * status CLOSED or IGNORED; sending an email alone never closes a conversation.
  *
  * `slaTargetHours` defaults to 4h — a sensible first-touch agency benchmark.
  */
@@ -1222,9 +1224,21 @@ export async function getPerformanceMetricsForPeriod(
   const start = new Date(periodStart);
   const end = new Date(periodEnd + "T23:59:59.999Z");
 
-  const tickets = await prisma.supportConversation.findMany({
+  const conversations = await prisma.supportConversation.findMany({
     where: { clientId, receivedAt: { gte: start, lte: end } },
-    select: { receivedAt: true, firstTriagedAt: true, closedAt: true, status: true },
+    select: {
+      source: true,
+      receivedAt: true,
+      firstTriagedAt: true,
+      closedAt: true,
+      status: true,
+      messages: {
+        where: { direction: "outbound" },
+        select: { createdAt: true },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+      },
+    },
   });
 
   const frtMs: number[] = [];
@@ -1234,19 +1248,25 @@ export async function getPerformanceMetricsForPeriod(
   let withinSla = 0;
   const slaTargetMs = slaTargetHours * 3600_000;
 
-  for (const t of tickets) {
-    if (t.firstTriagedAt) {
-      const ms = t.firstTriagedAt.getTime() - t.receivedAt.getTime();
+  for (const conversation of conversations) {
+    const firstEmailReply =
+      conversation.source === "GMAIL" || conversation.source === "IMAP"
+        ? conversation.messages[0]?.createdAt
+        : undefined;
+    const firstTouchAt = firstEmailReply ?? conversation.firstTriagedAt;
+
+    if (firstTouchAt) {
+      const ms = firstTouchAt.getTime() - conversation.receivedAt.getTime();
       if (ms >= 0) {
         frtMs.push(ms);
         respondedCount++;
         if (ms <= slaTargetMs) withinSla++;
       }
     }
-    if (t.closedAt || t.status === "CLOSED" || t.status === "IGNORED") {
+    if (conversation.closedAt || conversation.status === "CLOSED" || conversation.status === "IGNORED") {
       resolvedCount++;
-      if (t.closedAt) {
-        const ms = t.closedAt.getTime() - t.receivedAt.getTime();
+      if (conversation.closedAt) {
+        const ms = conversation.closedAt.getTime() - conversation.receivedAt.getTime();
         if (ms >= 0) resolutionMs.push(ms);
       }
     }
@@ -1255,7 +1275,7 @@ export async function getPerformanceMetricsForPeriod(
   // CSAT is not collected on the monitor-only cockpit (no in-app replies/surveys).
   const avgCsat: number | null = null;
 
-  const total = tickets.length;
+  const total = conversations.length;
   return {
     totalTickets: total,
     respondedCount,
