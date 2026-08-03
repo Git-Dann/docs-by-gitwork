@@ -342,18 +342,40 @@ export async function pullSupportDataIntoDocument(input: {
     { key: "data_table", title: T.ticketVolume, description: "Breakdown of conversations by type.", data: data.ticketVolume },
     { key: "data_table", title: T.priority, description: "Conversations by priority.", data: data.priority },
   ];
-  // One data_table per analytics group — matched/created by the group title so a re-pull updates
-  // the same tables in place.
-  for (const table of data.analyticsTables) {
+  const byTitle = new Map(doc.sections.map((s) => [s.title.trim().toLowerCase(), s]));
+  const genericAnalyticsSection = doc.sections.find(
+    (section) => section.key === "data_table" && section.title.trim().toLowerCase() === "product analytics",
+  );
+
+  // Reports created before analytics groups were introduced have one generic
+  // "Product analytics" table. Populate that table in place rather than adding
+  // grouped tables beside it, which would leave a stale empty table in the report.
+  if (genericAnalyticsSection && data.analyticsTables.length > 0) {
     targets.push({
       key: "data_table",
-      title: table.title,
-      description: `${table.title} for the period.`,
-      data: { columns: table.columns, rows: table.rows, caption: table.caption },
+      title: genericAnalyticsSection.title,
+      description: "Product analytics for the period.",
+      data: {
+        columns: ["Metric", "Value", "vs last month"],
+        rows: data.analyticsTables.flatMap((table) =>
+          table.rows.map(([label, value, trend]) => [`${table.title} — ${label}`, value, trend]),
+        ),
+        caption: periodLabel,
+      },
     });
+  } else {
+    // One data_table per analytics group — matched/created by the group title so a re-pull
+    // updates the same tables in place.
+    for (const table of data.analyticsTables) {
+      targets.push({
+        key: "data_table",
+        title: table.title,
+        description: `${table.title} for the period.`,
+        data: { columns: table.columns, rows: table.rows, caption: table.caption },
+      });
+    }
   }
 
-  const byTitle = new Map(doc.sections.map((s) => [s.title.trim().toLowerCase(), s]));
   let nextOrder = doc.sections.reduce((max, s) => Math.max(max, s.sortOrder), -1) + 1;
 
   let updated = 0;
