@@ -57,6 +57,7 @@ import { useDocumentRelations } from "@/hooks/use-document-relations";
 import { ProposalProofPanel } from "@/components/proposals/proposal-proof-panel";
 import { SignaturePanel } from "@/components/proposals/signature-panel";
 import { DocuSealPreflightModal, type DocuSealPreflightValues } from "@/components/proposals/docuseal-preflight-modal";
+import { Modal } from "@/components/ui/modal";
 import { EnvelopeIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { SECTION_REGISTRY } from "@/lib/sections/registry";
 import { Button } from "@/components/ui/button";
@@ -110,6 +111,11 @@ const ProposalBuilderPanel = dynamic(
 // client-side so it stays out of the editor's initial bundle.
 const PresentationMode = dynamic(
   () => import("@/components/proposals/presentation-mode").then((mod) => ({ default: mod.PresentationMode })),
+  { ssr: false },
+);
+
+const DocusealForm = dynamic(
+  () => import("@docuseal/react").then((mod) => mod.DocusealForm),
   { ssr: false },
 );
 
@@ -198,6 +204,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const { canGenerateAi } = usePermissions();
   const [templateSavedAt, setTemplateSavedAt] = useState<string | null>(null);
   const [presenting, setPresenting] = useState(false);
+  const [isSigningOpen, setIsSigningOpen] = useState(false);
 
   async function handleSaveAsTemplate() {
     if (!draft) return;
@@ -1288,15 +1295,17 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                       return (
                         <div className="mt-2 flex items-center gap-2 border-t border-[var(--border-2)] pt-2">
                           {draft.docusealGitworkSlug ? (
-                            <a
-                              href={`/contract/${draft.docusealGitworkSlug}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="flex flex-1 items-center justify-center gap-1.5 rounded-[7px] border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100"
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setApprovalOpen(false);
+                                setIsSigningOpen(true);
+                              }}
+                              className="flex flex-1 items-center justify-center gap-1.5 rounded-[7px] border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 cursor-pointer"
                             >
                               <EnvelopeIcon className="h-4 w-4" />
                               Awaiting Gitwork Signature
-                            </a>
+                            </button>
                           ) : (
                             <span className="flex flex-1 items-center justify-center gap-1.5 rounded-[7px] border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-600">
                               <EnvelopeIcon className="h-4 w-4" />
@@ -1601,6 +1610,46 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           | undefined
         }
       />
+
+      {/* DocuSeal countersigning popup modal matching client portal agreement design */}
+      <Modal
+        open={isSigningOpen}
+        onClose={() => setIsSigningOpen(false)}
+        panelClassName="flex h-[88vh] max-h-[850px] w-full max-w-5xl flex-col p-0 overflow-hidden bg-white rounded-xl shadow-2xl"
+      >
+        <div className="flex items-center justify-between p-4 bg-[#111827] border-b border-gray-800 text-white">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">Sign Agreement (Countersign)</h2>
+            <p className="text-xs text-gray-400">Please review and sign the document below.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsSigningOpen(false)}
+            className="text-sm font-medium text-gray-300 hover:text-white transition-colors"
+          >
+            ✕ Close
+          </button>
+        </div>
+        <div className="flex-1 w-full bg-[#f3f4f6] p-4 sm:p-6 flex flex-col min-h-0">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden w-full flex-1 relative">
+            {draft?.docusealGitworkSlug ? (
+              <DocusealForm
+                src={`https://docuseal.com/s/${draft.docusealGitworkSlug}`}
+                style={{ width: "100%", height: "100%" }}
+                backgroundColor="#ffffff"
+                withTitle={false}
+                onComplete={() => {
+                  setTimeout(() => {
+                    alert("Thank you! Your signature has been securely captured.");
+                    setIsSigningOpen(false);
+                    router.refresh();
+                  }, 1500);
+                }}
+              />
+            ) : null}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
