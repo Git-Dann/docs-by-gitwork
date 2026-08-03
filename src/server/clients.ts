@@ -62,7 +62,7 @@ const clientProposalInclude = {
   // Visible-block count for the Docs list-item serializer (card meta readout).
   _count: { select: { sections: true } },
   docusealSubmission: {
-    select: { status: true, gitworkSlug: true, submissionId: true }
+    select: { status: true, gitworkSlug: true, submissionId: true, combinedPdfUrl: true }
   }
 } satisfies Prisma.DocumentInclude;
 
@@ -316,14 +316,14 @@ function buildContactData(input: ClientContactInput) {
   // Retainer keys are numeric (Int? columns); every other contact field is a string column.
   const data: Partial<{
     [K in keyof ClientContactInput]: K extends "retainerDays" | "retainerDaysUsed" | "leadValue"
-      ? number | null
-      : K extends "leadFollowUpAt" | "resumeAt" | "endDate"
-        ? Date | null
-        : K extends "leadStage"
-          ? LeadStage | null
-          : K extends "engagementType"
-            ? ClientEngagementType | null
-            : string | null;
+    ? number | null
+    : K extends "leadFollowUpAt" | "resumeAt" | "endDate"
+    ? Date | null
+    : K extends "leadStage"
+    ? LeadStage | null
+    : K extends "engagementType"
+    ? ClientEngagementType | null
+    : string | null;
   }> & { retainerPeriodMonth?: string | null } = {};
   const trim = (v: string) => v.trim() || null;
   // ISO string → Date (empty/invalid → null) for the DateTime columns.
@@ -332,21 +332,21 @@ function buildContactData(input: ClientContactInput) {
     const d = new Date(v);
     return Number.isNaN(d.getTime()) ? null : d;
   };
-  if (input.website !== undefined)             data.website             = trim(input.website);
-  if (input.addressLine1 !== undefined)        data.addressLine1        = trim(input.addressLine1);
-  if (input.addressLine2 !== undefined)        data.addressLine2        = trim(input.addressLine2);
-  if (input.city !== undefined)                data.city                = trim(input.city);
-  if (input.county !== undefined)              data.county              = trim(input.county);
-  if (input.postcode !== undefined)            data.postcode            = trim(input.postcode);
-  if (input.country !== undefined)             data.country             = trim(input.country);
-  if (input.notes !== undefined)               data.notes               = trim(input.notes);
-  if (input.primaryContactName !== undefined)  data.primaryContactName  = trim(input.primaryContactName);
+  if (input.website !== undefined) data.website = trim(input.website);
+  if (input.addressLine1 !== undefined) data.addressLine1 = trim(input.addressLine1);
+  if (input.addressLine2 !== undefined) data.addressLine2 = trim(input.addressLine2);
+  if (input.city !== undefined) data.city = trim(input.city);
+  if (input.county !== undefined) data.county = trim(input.county);
+  if (input.postcode !== undefined) data.postcode = trim(input.postcode);
+  if (input.country !== undefined) data.country = trim(input.country);
+  if (input.notes !== undefined) data.notes = trim(input.notes);
+  if (input.primaryContactName !== undefined) data.primaryContactName = trim(input.primaryContactName);
   if (input.primaryContactEmail !== undefined) data.primaryContactEmail = trim(input.primaryContactEmail);
   if (input.primaryContactPhone !== undefined) data.primaryContactPhone = trim(input.primaryContactPhone);
-  if (input.invoiceEmail !== undefined)        data.invoiceEmail        = trim(input.invoiceEmail);
+  if (input.invoiceEmail !== undefined) data.invoiceEmail = trim(input.invoiceEmail);
   if (input.googleDriveFolderUrl !== undefined) data.googleDriveFolderUrl = trim(input.googleDriveFolderUrl);
-  if (input.clickupUrl !== undefined)          data.clickupUrl          = trim(input.clickupUrl);
-  if (input.slackChannelId !== undefined)      data.slackChannelId      = trim(input.slackChannelId);
+  if (input.clickupUrl !== undefined) data.clickupUrl = trim(input.clickupUrl);
+  if (input.slackChannelId !== undefined) data.slackChannelId = trim(input.slackChannelId);
   if (input.slackInternalChannelId !== undefined)
     data.slackInternalChannelId = trim(input.slackInternalChannelId);
   if (input.slackInternalChannelName !== undefined)
@@ -355,17 +355,17 @@ function buildContactData(input: ClientContactInput) {
     data.slackExternalChannelId = trim(input.slackExternalChannelId);
   if (input.slackExternalChannelName !== undefined)
     data.slackExternalChannelName = trim(input.slackExternalChannelName);
-  if (input.legalCompanyName !== undefined)    data.legalCompanyName    = trim(input.legalCompanyName);
-  if (input.companyNumber !== undefined)       data.companyNumber       = trim(input.companyNumber);
-  if (input.vatNumber !== undefined)           data.vatNumber           = trim(input.vatNumber);
+  if (input.legalCompanyName !== undefined) data.legalCompanyName = trim(input.legalCompanyName);
+  if (input.companyNumber !== undefined) data.companyNumber = trim(input.companyNumber);
+  if (input.vatNumber !== undefined) data.vatNumber = trim(input.vatNumber);
   if (input.billingAddressLine1 !== undefined) data.billingAddressLine1 = trim(input.billingAddressLine1);
   if (input.billingAddressLine2 !== undefined) data.billingAddressLine2 = trim(input.billingAddressLine2);
-  if (input.billingCity !== undefined)         data.billingCity         = trim(input.billingCity);
-  if (input.billingCounty !== undefined)       data.billingCounty       = trim(input.billingCounty);
-  if (input.billingPostcode !== undefined)     data.billingPostcode     = trim(input.billingPostcode);
-  if (input.billingCountry !== undefined)      data.billingCountry      = trim(input.billingCountry);
+  if (input.billingCity !== undefined) data.billingCity = trim(input.billingCity);
+  if (input.billingCounty !== undefined) data.billingCounty = trim(input.billingCounty);
+  if (input.billingPostcode !== undefined) data.billingPostcode = trim(input.billingPostcode);
+  if (input.billingCountry !== undefined) data.billingCountry = trim(input.billingCountry);
   // Numeric retainer fields — pass through (0 is valid; null clears). No trim.
-  if (input.retainerDays !== undefined)        data.retainerDays        = input.retainerDays;
+  if (input.retainerDays !== undefined) data.retainerDays = input.retainerDays;
   if (input.retainerDaysUsed !== undefined) {
     data.retainerDaysUsed = input.retainerDaysUsed;
     // Stamp the period so the lazy monthly reset knows which month this figure belongs to;
@@ -373,16 +373,16 @@ function buildContactData(input: ClientContactInput) {
     data.retainerPeriodMonth = input.retainerDaysUsed == null ? null : currentRetainerMonth();
   }
   // Engagement structure + end date (plain date column).
-  if (input.engagementType !== undefined)    data.engagementType    = input.engagementType ?? null;
-  if (input.endDate !== undefined)           data.endDate           = toDate(input.endDate);
+  if (input.engagementType !== undefined) data.engagementType = input.engagementType ?? null;
+  if (input.endDate !== undefined) data.endDate = toDate(input.endDate);
   // Lead (LEAD) + paused-client (INACTIVE) fields.
-  if (input.leadSource !== undefined)        data.leadSource        = input.leadSource?.trim() || null;
-  if (input.leadStage !== undefined)         data.leadStage         = input.leadStage ?? null;
-  if (input.leadValue !== undefined)         data.leadValue         = input.leadValue ?? null;
+  if (input.leadSource !== undefined) data.leadSource = input.leadSource?.trim() || null;
+  if (input.leadStage !== undefined) data.leadStage = input.leadStage ?? null;
+  if (input.leadValue !== undefined) data.leadValue = input.leadValue ?? null;
   if (input.leadValueCurrency !== undefined) data.leadValueCurrency = input.leadValueCurrency?.trim().toUpperCase() || null;
-  if (input.leadFollowUpAt !== undefined)    data.leadFollowUpAt    = toDate(input.leadFollowUpAt);
-  if (input.resumeAt !== undefined)          data.resumeAt          = toDate(input.resumeAt);
-  if (input.pauseNote !== undefined)         data.pauseNote         = input.pauseNote?.trim() || null;
+  if (input.leadFollowUpAt !== undefined) data.leadFollowUpAt = toDate(input.leadFollowUpAt);
+  if (input.resumeAt !== undefined) data.resumeAt = toDate(input.resumeAt);
+  if (input.pauseNote !== undefined) data.pauseNote = input.pauseNote?.trim() || null;
   return data;
 }
 
@@ -923,98 +923,98 @@ export async function updateClientRecord(
 
   const persisted = manualClient
     ? await workspaceClients.update({
-        where: {
-          workspaceId_slug: {
-            workspaceId: workspace.id,
-            slug,
-          },
-        },
-        data: {
-          name: nextName,
-          slug: nextSlug,
-          ...(input.logoUrl !== undefined ? { logoUrl: input.logoUrl.trim() || null } : {}),
-          ...contactData,
-        },
-      })
-    : await workspaceClients.create({
-        data: {
+      where: {
+        workspaceId_slug: {
           workspaceId: workspace.id,
-          name: nextName,
-          slug: nextSlug,
-          logoUrl: input.logoUrl?.trim() || null,
-          ...contactData,
+          slug,
         },
-      });
+      },
+      data: {
+        name: nextName,
+        slug: nextSlug,
+        ...(input.logoUrl !== undefined ? { logoUrl: input.logoUrl.trim() || null } : {}),
+        ...contactData,
+      },
+    })
+    : await workspaceClients.create({
+      data: {
+        workspaceId: workspace.id,
+        name: nextName,
+        slug: nextSlug,
+        logoUrl: input.logoUrl?.trim() || null,
+        ...contactData,
+      },
+    });
 
   const updatedClients = mergeClients(
     manualClient
       ? manualClients.map((client) =>
-          client.id === persisted.id
-            ? {
-                ...client,
-                name: persisted.name,
-                slug: persisted.slug,
-                logoUrl: persisted.logoUrl,
-                updatedAt: persisted.updatedAt,
-                googleDriveFolderUrl: persisted.googleDriveFolderUrl,
-                clickupUrl: persisted.clickupUrl,
-              }
-            : client,
-        )
-      : [
-          ...manualClients,
-          {
-            id: persisted.id,
+        client.id === persisted.id
+          ? {
+            ...client,
             name: persisted.name,
             slug: persisted.slug,
             logoUrl: persisted.logoUrl,
-            productTeamUserIds: (persisted as typeof persisted & { productTeamUserIds?: string[] }).productTeamUserIds ?? [],
-            website: null,
-            addressLine1: null,
-            addressLine2: null,
-            city: null,
-            county: null,
-            postcode: null,
-            country: null,
-            notes: null,
-            primaryContactName: null,
-            primaryContactEmail: null,
-            primaryContactPhone: null,
-            invoiceEmail: null,
+            updatedAt: persisted.updatedAt,
             googleDriveFolderUrl: persisted.googleDriveFolderUrl,
             clickupUrl: persisted.clickupUrl,
-            slackChannelId: persisted.slackChannelId,
-            slackInternalChannelId: (persisted as typeof persisted & { slackInternalChannelId: string | null }).slackInternalChannelId ?? null,
-            slackInternalChannelName: (persisted as typeof persisted & { slackInternalChannelName: string | null }).slackInternalChannelName ?? null,
-            slackExternalChannelId: (persisted as typeof persisted & { slackExternalChannelId: string | null }).slackExternalChannelId ?? null,
-            slackExternalChannelName: (persisted as typeof persisted & { slackExternalChannelName: string | null }).slackExternalChannelName ?? null,
-            slackProvisionError: (persisted as typeof persisted & { slackProvisionError: string | null }).slackProvisionError ?? null,
-            legalCompanyName: (persisted as typeof persisted & { legalCompanyName: string | null }).legalCompanyName ?? null,
-            companyNumber: (persisted as typeof persisted & { companyNumber: string | null }).companyNumber ?? null,
-            vatNumber: (persisted as typeof persisted & { vatNumber: string | null }).vatNumber ?? null,
-            billingAddressLine1: null,
-            billingAddressLine2: null,
-            billingCity: null,
-            billingCounty: null,
-            billingPostcode: null,
-            billingCountry: null,
-            retainerDays: null,
-            retainerDaysUsed: null,
-            retainerPeriodMonth: null,
-            engagementType: null,
-            endDate: null,
-            leadSource: null,
-            leadStage: null,
-            leadFollowUpAt: null,
-            leadValue: null,
-            leadValueCurrency: null,
-            resumeAt: null,
-            pauseNote: null,
-            status: (persisted as typeof persisted & { status: WorkspaceClientStatus }).status ?? "ACTIVE",
-            createdAt: persisted.createdAt,
-            updatedAt: persisted.updatedAt,
-          },
-        ],
+          }
+          : client,
+      )
+      : [
+        ...manualClients,
+        {
+          id: persisted.id,
+          name: persisted.name,
+          slug: persisted.slug,
+          logoUrl: persisted.logoUrl,
+          productTeamUserIds: (persisted as typeof persisted & { productTeamUserIds?: string[] }).productTeamUserIds ?? [],
+          website: null,
+          addressLine1: null,
+          addressLine2: null,
+          city: null,
+          county: null,
+          postcode: null,
+          country: null,
+          notes: null,
+          primaryContactName: null,
+          primaryContactEmail: null,
+          primaryContactPhone: null,
+          invoiceEmail: null,
+          googleDriveFolderUrl: persisted.googleDriveFolderUrl,
+          clickupUrl: persisted.clickupUrl,
+          slackChannelId: persisted.slackChannelId,
+          slackInternalChannelId: (persisted as typeof persisted & { slackInternalChannelId: string | null }).slackInternalChannelId ?? null,
+          slackInternalChannelName: (persisted as typeof persisted & { slackInternalChannelName: string | null }).slackInternalChannelName ?? null,
+          slackExternalChannelId: (persisted as typeof persisted & { slackExternalChannelId: string | null }).slackExternalChannelId ?? null,
+          slackExternalChannelName: (persisted as typeof persisted & { slackExternalChannelName: string | null }).slackExternalChannelName ?? null,
+          slackProvisionError: (persisted as typeof persisted & { slackProvisionError: string | null }).slackProvisionError ?? null,
+          legalCompanyName: (persisted as typeof persisted & { legalCompanyName: string | null }).legalCompanyName ?? null,
+          companyNumber: (persisted as typeof persisted & { companyNumber: string | null }).companyNumber ?? null,
+          vatNumber: (persisted as typeof persisted & { vatNumber: string | null }).vatNumber ?? null,
+          billingAddressLine1: null,
+          billingAddressLine2: null,
+          billingCity: null,
+          billingCounty: null,
+          billingPostcode: null,
+          billingCountry: null,
+          retainerDays: null,
+          retainerDaysUsed: null,
+          retainerPeriodMonth: null,
+          engagementType: null,
+          endDate: null,
+          leadSource: null,
+          leadStage: null,
+          leadFollowUpAt: null,
+          leadValue: null,
+          leadValueCurrency: null,
+          resumeAt: null,
+          pauseNote: null,
+          status: (persisted as typeof persisted & { status: WorkspaceClientStatus }).status ?? "ACTIVE",
+          createdAt: persisted.createdAt,
+          updatedAt: persisted.updatedAt,
+        },
+      ],
     proposals,
     hiddenSlugs,
   );
@@ -1220,116 +1220,116 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
   const [proofDocuments, platforms, designs, pulseScans, supportClient, placements, studies, bank, onboardingRow, auditRows, documentLinks] = await Promise.all([
     matchingProposals.length > 0
       ? prisma.proofDocument.findMany({
-          where: {
-            proposalId: {
-              in: matchingProposals.map((proposal) => proposal.id),
-            },
+        where: {
+          proposalId: {
+            in: matchingProposals.map((proposal) => proposal.id),
           },
-          include: proofDocumentInclude,
-          orderBy: {
-            lastOpenedAt: "desc",
-          },
-        })
+        },
+        include: proofDocumentInclude,
+        orderBy: {
+          lastOpenedAt: "desc",
+        },
+      })
       : Promise.resolve([]),
     manualRecord
       ? clientPlatforms.findMany({
-          where: { clientId: manualRecord.id },
-          orderBy: { createdAt: "asc" },
-          include: { logins: true },
-        })
+        where: { clientId: manualRecord.id },
+        orderBy: { createdAt: "asc" },
+        include: { logins: true },
+      })
       : Promise.resolve([]),
     manualRecord
       ? clientDesigns.findMany({
-          where: { clientId: manualRecord.id },
-          orderBy: { createdAt: "asc" },
-        })
+        where: { clientId: manualRecord.id },
+        orderBy: { createdAt: "asc" },
+      })
       : Promise.resolve([]),
     manualRecord
       ? prisma.pulseScan.findMany({
-          where: { clientId: manualRecord.id },
-          select: {
-            id: true,
-            projectName: true,
-            healthScore: true,
-            status: true,
-            createdAt: true,
-          },
-          orderBy: { createdAt: "desc" },
-          take: 10,
-        })
+        where: { clientId: manualRecord.id },
+        select: {
+          id: true,
+          projectName: true,
+          healthScore: true,
+          status: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      })
       : Promise.resolve([]),
     manualRecord
       ? prisma.supportClient.findFirst({
-          where: { workspaceClientId: manualRecord.id },
-          select: { id: true, name: true, slug: true },
-        })
+        where: { workspaceClientId: manualRecord.id },
+        select: { id: true, name: true, slug: true },
+      })
       : Promise.resolve(null),
     manualRecord
       ? prisma.placement.findMany({
-          where: { clientId: manualRecord.id },
-          include: { candidate: { select: { id: true, name: true } } },
-          orderBy: { startDate: "desc" },
-        })
+        where: { clientId: manualRecord.id },
+        include: { candidate: { select: { id: true, name: true } } },
+        orderBy: { startDate: "desc" },
+      })
       : Promise.resolve([]),
     manualRecord
       ? prisma.study.findMany({
-          where: { workspaceClientId: manualRecord.id },
-          include: { sessions: { select: { status: true } } },
-          orderBy: { createdAt: "desc" },
-          take: 20,
-        })
+        where: { workspaceClientId: manualRecord.id },
+        include: { sessions: { select: { status: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      })
       : Promise.resolve([]),
     manualRecord
       ? clientBankAccounts.findUnique({
-          where: { clientId: manualRecord.id },
-          select: { currency: true, accountNumberLast4: true },
-        })
+        where: { clientId: manualRecord.id },
+        select: { currency: true, accountNumberLast4: true },
+      })
       : Promise.resolve(null),
     manualRecord
       ? onboardings.findUnique({
-          where: { workspaceClientId: manualRecord.id },
-          select: { id: true, status: true, createdAt: true, submittedAt: true },
-        })
+        where: { workspaceClientId: manualRecord.id },
+        select: { id: true, status: true, createdAt: true, submittedAt: true },
+      })
       : Promise.resolve(null),
     manualRecord
       ? prisma.auditLog.findMany({
-          where: {
-            workspaceId: workspace.id,
-            target: clientLifecycleTarget(manualRecord.id),
-            action: {
-              in: [
-                "foundry.proposal_draft.prepared",
-                "foundry.client.activated",
-                "foundry.delivery_plan.seeded",
-              ],
-            },
+        where: {
+          workspaceId: workspace.id,
+          target: clientLifecycleTarget(manualRecord.id),
+          action: {
+            in: [
+              "foundry.proposal_draft.prepared",
+              "foundry.client.activated",
+              "foundry.delivery_plan.seeded",
+            ],
           },
-          select: { id: true, action: true, createdAt: true, metadata: true },
-          orderBy: { createdAt: "desc" },
-          take: 20,
-        })
+        },
+        select: { id: true, action: true, createdAt: true, metadata: true },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      })
       : Promise.resolve([]),
     manualRecord
       ? clientDocumentLinks.findMany({
-          where: { clientId: manualRecord.id },
-          orderBy: { createdAt: "asc" },
-        })
+        where: { clientId: manualRecord.id },
+        orderBy: { createdAt: "asc" },
+      })
       : Promise.resolve([]),
   ]);
 
   const bankSummary: ClientBankSummary | null = bank
     ? {
-        onFile: true,
-        currency: bank.currency ?? null,
-        accountNumberLast4: bank.accountNumberLast4 ?? null,
-      }
+      onFile: true,
+      currency: bank.currency ?? null,
+      accountNumberLast4: bank.accountNumberLast4 ?? null,
+    }
     : null;
 
   const contactFields: ClientDetailFields = manualRecord
     ? contactFieldsFromRecord(manualRecord, {
-        bank: bankSummary,
-        onboardingId: onboardingRow?.id ?? null,
-      })
+      bank: bankSummary,
+      onboardingId: onboardingRow?.id ?? null,
+    })
     : emptyContactFields();
 
   const serializedPlacements: ClientPlacementRecord[] = (
@@ -1376,12 +1376,12 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
   // CRM activity log (leads) — most-recent first, author names resolved in one batch.
   const touchpoints = manualRecord
     ? await serializeTouchpoints(
-        await prisma.clientTouchpoint.findMany({
-          where: { clientId: manualRecord.id },
-          orderBy: { occurredAt: "desc" },
-          take: 200,
-        }),
-      )
+      await prisma.clientTouchpoint.findMany({
+        where: { clientId: manualRecord.id },
+        orderBy: { occurredAt: "desc" },
+        take: 200,
+      }),
+    )
     : [];
 
   return {

@@ -2,10 +2,8 @@
 
 import {
   ArchiveBoxIcon,
-  ArrowTopRightOnSquareIcon,
   ArrowUturnLeftIcon,
   ChartBarIcon,
-  CheckCircleIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -90,57 +88,6 @@ function DocLink({
     </Link>
   );
 }
-
-function DocusealBadge({
-  status,
-  gitworkSlug,
-}: {
-  status?: string | null;
-  gitworkSlug?: string | null;
-}) {
-  if (!status) return null;
-
-  if (status === "CLIENT_SIGNED") {
-    if (gitworkSlug) {
-      return (
-        <Link
-          href={`/contract/${gitworkSlug}`}
-          onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-500 ring-1 ring-inset ring-amber-500/30 hover:bg-amber-500/20 transition-colors whitespace-nowrap w-fit cursor-pointer"
-          title="Click to review and countersign MSA as Gitwork"
-        >
-          <span>Awaiting Gitwork Signature</span>
-          <ArrowTopRightOnSquareIcon className="h-3 w-3" />
-        </Link>
-      );
-    }
-    return (
-      <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 whitespace-nowrap w-fit">
-        Awaiting Gitwork Signature
-      </span>
-    );
-  }
-
-  if (status === "COMPLETED") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold text-emerald-400 ring-1 ring-inset ring-emerald-500/30 whitespace-nowrap w-fit">
-        <CheckCircleIcon className="h-3 w-3 text-emerald-400" />
-        <span>Signed MSA</span>
-      </span>
-    );
-  }
-
-  if (status === "PENDING") {
-    return (
-      <span className="inline-flex items-center rounded-md bg-blue-500/10 px-2 py-1 text-[10px] font-medium text-blue-400 ring-1 ring-inset ring-blue-500/20 whitespace-nowrap w-fit">
-        MSA Sent (Awaiting Client)
-      </span>
-    );
-  }
-
-  return null;
-}
-
 import { StatusBadge } from "@/components/status-badge";
 import { TemplateGallery } from "@/components/proposals/template-gallery";
 import type { DocumentType } from "@/types/proposal";
@@ -683,326 +630,357 @@ export function ProposalList() {
 
           <div className="flex min-h-0 flex-1 flex-col min-w-0 border-t border-[var(--border-2)] lg:border-l lg:border-t-0">
             <div className="min-h-0 flex-1 overflow-auto">
-        {viewMode === "cards" ? (
-          <DocCardGrid
-            proposals={pagedProposals}
-            isPending={isPending}
-            error={error as Error | null}
-            isWorkspaceEmpty={isWorkspaceEmpty}
-            canManageDocs={canManageDocs}
-            scope={scope}
-            onCreate={() => setShowCreate(true)}
-            onToggleFavorite={(id, next) => favoriteMutation.mutate({ id, isFavorite: next })}
-            onDuplicate={(id) => duplicateMutation.mutate(id)}
-            onArchive={(id) => archiveMutation.mutate(id)}
-            onRestore={(id) => void restoreOne(id)}
-            onDelete={(id) => {
-              if (window.confirm("Delete this document permanently?")) deleteMutation.mutate(id);
-            }}
-            onClearFilters={() => {
-              setSearch("");
-              setStatus("ALL");
-              setDocTypeFilter("ALL");
-              setScope("all");
-            }}
-          />
-        ) : viewMode === "grouped" ? (
-          <GroupedList
-            proposals={filteredProposals}
-            selectedIds={selectedIds}
-            onToggleSelect={(id) =>
-              setSelectedIds((current) =>
-                current.includes(id)
-                  ? current.filter((entry) => entry !== id)
-                  : [...current, id],
-              )
-            }
-          />
-        ) : (
-        <div className="overflow-x-auto">
-          <table className="app-table proposals-table min-w-full">
-            <thead>
-              <tr>
-                <th className="w-[44px]">
-                  <input
-                    type="checkbox"
-                    checked={allOnPageSelected}
-                    onChange={(event) => {
-                      if (event.target.checked) {
-                        setSelectedIds((current) => [
-                          ...new Set([...current, ...pagedProposals.map((proposal) => proposal.id)]),
-                        ]);
-                        return;
-                      }
-
-                      setSelectedIds((current) =>
-                        current.filter((id) => !pagedProposals.some((proposal) => proposal.id === id)),
-                      );
-                    }}
-                    className="app-checkbox"
-                    aria-label="Select all documents on page"
-                  />
-                </th>
-                <th className="text-left">DOCUMENT</th>
-                <th className="text-left">STATUS</th>
-                <th className="text-left">OWNER</th>
-                <th className="text-left">UPDATED</th>
-                <th className="text-right">ACTIONS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isPending ? (
-                <tr>
-                  <td colSpan={6} className="text-sm text-[var(--text-4)]">
-                    Loading documents...
-                  </td>
-                </tr>
-              ) : error ? (
-                <tr>
-                  <td colSpan={6} className="text-sm text-rose-700">
-                    {(error as Error).message}
-                  </td>
-                </tr>
-              ) : pagedProposals.length ? (
-                pagedProposals.map((proposal) => {
-                  const selected = selectedIds.includes(proposal.id);
-
-                  return (
-                    <tr key={proposal.id} className={selected ? "bg-[var(--surface-1)]" : undefined}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={selected}
-                          onChange={(event) => {
-                            setSelectedIds((current) =>
-                              event.target.checked
-                                ? [...current, proposal.id]
-                                : current.filter((id) => id !== proposal.id),
-                            );
-                          }}
-                          className="app-checkbox"
-                          aria-label={`Select ${proposal.title}`}
-                        />
-                      </td>
-                      <td>
-                        <div className="flex flex-wrap items-baseline gap-x-2">
-                          {/* Doc-type pill — visible at a glance, distinct colour from labels. */}
-                          {proposal.documentType ? (
-                            <span className="inline-flex items-center rounded-[4px] bg-[var(--brand-200)] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)]">
-                              {proposal.documentType === "CO" ? "CO" : proposal.documentType}
-                            </span>
-                          ) : null}
-                          <DocLink
-                            doc={proposal}
-                            className="font-medium text-[var(--text-1)] transition hover:text-[var(--brand-700)]"
-                          >
-                            {proposal.title}
-                          </DocLink>
-                          {proposal.documentNumber ? (
-                            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
-                              {proposal.documentNumber}
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                          <p className="text-sm text-[var(--text-3)]">
-                            {proposal.clientName || "No client assigned"}
-                          </p>
-                          {(proposal.labels ?? []).slice(0, 4).map((label) => (
-                            <span
-                              key={label}
-                              className="rounded-[4px] bg-[var(--brand-200)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--brand-700)]"
-                            >
-                              {label}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td>
-                        <div className="flex items-center gap-2">
-                          <StatusBadge status={proposal.status} />
-                          <DocusealBadge status={proposal.docusealStatus} gitworkSlug={proposal.docusealGitworkSlug} />
-                        </div>
-                      </td>
-                      <td className="text-sm text-[var(--text-3)]">{proposal.ownerName || "Unassigned"}</td>
-                      <td className="text-sm text-[var(--text-3)]">{formatUpdatedAt(proposal.updatedAt)}</td>
-                      <td>
-                        <div className="flex items-center justify-end gap-1">
-                          <DocLink
-                            doc={proposal}
-                            className={buttonStyles({
-                              variant: "utility",
-                              size: "icon-md",
-                              className: "text-[var(--text-3)]",
-                            })}
-                            aria-label={`Edit ${proposal.title}`}
-                            title="Edit"
-                          >
-                            <PencilSquareIcon className="h-4 w-4" />
-                          </DocLink>
-                          {canManageDocs ? (
-                            <>
-                              <Button
-                                type="button"
-                                onClick={() => duplicateMutation.mutate(proposal.id)}
-                                variant="utility"
-                                size="icon-md"
-                                aria-label={`Duplicate ${proposal.title}`}
-                                title="Duplicate"
-                              >
-                                <DocumentDuplicateIcon className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                onClick={() => archiveMutation.mutate(proposal.id)}
-                                variant="utility"
-                                size="icon-md"
-                                aria-label={`Archive ${proposal.title}`}
-                                title="Archive"
-                              >
-                                <ArchiveBoxIcon className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                onClick={() => {
-                                  if (window.confirm("Delete this proposal permanently?")) {
-                                    deleteMutation.mutate(proposal.id);
-                                  }
-                                }}
-                                variant="utility"
-                                size="icon-md"
-                                className="text-rose-600 hover:text-rose-700"
-                                aria-label={`Delete ${proposal.title}`}
-                                title="Delete"
-                              >
-                                <TrashIcon className="h-4 w-4" />
-                              </Button>
-                            </>
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
+              {viewMode === "cards" ? (
+                <DocCardGrid
+                  proposals={pagedProposals}
+                  isPending={isPending}
+                  error={error as Error | null}
+                  isWorkspaceEmpty={isWorkspaceEmpty}
+                  canManageDocs={canManageDocs}
+                  scope={scope}
+                  onCreate={() => setShowCreate(true)}
+                  onToggleFavorite={(id, next) => favoriteMutation.mutate({ id, isFavorite: next })}
+                  onDuplicate={(id) => duplicateMutation.mutate(id)}
+                  onArchive={(id) => archiveMutation.mutate(id)}
+                  onRestore={(id) => void restoreOne(id)}
+                  onDelete={(id) => {
+                    if (window.confirm("Delete this document permanently?")) deleteMutation.mutate(id);
+                  }}
+                  onClearFilters={() => {
+                    setSearch("");
+                    setStatus("ALL");
+                    setDocTypeFilter("ALL");
+                    setScope("all");
+                  }}
+                />
+              ) : viewMode === "grouped" ? (
+                <GroupedList
+                  proposals={filteredProposals}
+                  selectedIds={selectedIds}
+                  onToggleSelect={(id) =>
+                    setSelectedIds((current) =>
+                      current.includes(id)
+                        ? current.filter((entry) => entry !== id)
+                        : [...current, id],
+                    )
+                  }
+                />
               ) : (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-sm text-[var(--text-4)]">
-                    {isWorkspaceEmpty ? (
-                      <div className="mx-auto max-w-md space-y-3">
-                        <DocumentPlusIcon className="mx-auto h-8 w-8 text-[var(--text-4)]" />
-                        <p className="text-[var(--text-2)]">
-                          No documents yet &mdash; click <strong>New</strong> above to spin
-                          one up from a template.
-                        </p>
-                      </div>
-                    ) : (
-                      <span>
-                        No documents match this filter.
-                        {search || status !== "ALL" ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSearch("");
-                              setStatus("ALL");
+                <div className="overflow-x-auto">
+                  <table className="app-table proposals-table min-w-full">
+                    <thead>
+                      <tr>
+                        <th className="w-[44px]">
+                          <input
+                            type="checkbox"
+                            checked={allOnPageSelected}
+                            onChange={(event) => {
+                              if (event.target.checked) {
+                                setSelectedIds((current) => [
+                                  ...new Set([...current, ...pagedProposals.map((proposal) => proposal.id)]),
+                                ]);
+                                return;
+                              }
+
+                              setSelectedIds((current) =>
+                                current.filter((id) => !pagedProposals.some((proposal) => proposal.id === id)),
+                              );
                             }}
-                            className="ml-2 font-medium text-[var(--brand-700)] hover:underline"
-                          >
-                            Clear filter
-                          </button>
-                        ) : null}
-                      </span>
-                    )}
-                  </td>
-                </tr>
+                            className="app-checkbox"
+                            aria-label="Select all documents on page"
+                          />
+                        </th>
+                        <th className="text-left">DOCUMENT</th>
+                        <th className="text-left">STATUS</th>
+                        <th className="text-left">OWNER</th>
+                        <th className="text-left">UPDATED</th>
+                        <th className="text-right">ACTIONS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {isPending ? (
+                        <tr>
+                          <td colSpan={6} className="text-sm text-[var(--text-4)]">
+                            Loading documents...
+                          </td>
+                        </tr>
+                      ) : error ? (
+                        <tr>
+                          <td colSpan={6} className="text-sm text-rose-700">
+                            {(error as Error).message}
+                          </td>
+                        </tr>
+                      ) : pagedProposals.length ? (
+                        pagedProposals.map((proposal) => {
+                          const selected = selectedIds.includes(proposal.id);
+
+                          return (
+                            <tr key={proposal.id} className={selected ? "bg-[var(--surface-1)]" : undefined}>
+                              <td>
+                                <input
+                                  type="checkbox"
+                                  checked={selected}
+                                  onChange={(event) => {
+                                    setSelectedIds((current) =>
+                                      event.target.checked
+                                        ? [...current, proposal.id]
+                                        : current.filter((id) => id !== proposal.id),
+                                    );
+                                  }}
+                                  className="app-checkbox"
+                                  aria-label={`Select ${proposal.title}`}
+                                />
+                              </td>
+                              <td>
+                                <div className="flex flex-wrap items-baseline gap-x-2">
+                                  {/* Doc-type pill — visible at a glance, distinct colour from labels. */}
+                                  {proposal.documentType ? (
+                                    <span className="inline-flex items-center rounded-[4px] bg-[var(--brand-200)] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)]">
+                                      {proposal.documentType === "CO" ? "CO" : proposal.documentType}
+                                    </span>
+                                  ) : null}
+                                  <DocLink
+                                    doc={proposal}
+                                    className="font-medium text-[var(--text-1)] transition hover:text-[var(--brand-700)]"
+                                  >
+                                    {proposal.title}
+                                  </DocLink>
+                                  {proposal.documentNumber ? (
+                                    <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
+                                      {proposal.documentNumber}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                                  <p className="text-sm text-[var(--text-3)]">
+                                    {proposal.clientName || "No client assigned"}
+                                  </p>
+                                  {(proposal.labels ?? []).slice(0, 4).map((label) => (
+                                    <span
+                                      key={label}
+                                      className="rounded-[4px] bg-[var(--brand-200)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--brand-700)]"
+                                    >
+                                      {label}
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+                              <td>
+                                <div className="flex items-center gap-2">
+                                  <StatusBadge status={proposal.status} />
+                                  {proposal.docusealStatus === "CLIENT_SIGNED" && (
+                                    proposal.docusealGitworkSlug ? (
+                                      <Link
+                                        href={`/contract/${proposal.docusealGitworkSlug}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 whitespace-nowrap hover:bg-amber-100 transition"
+                                      >
+                                        Awaiting Gitwork Signature
+                                      </Link>
+                                    ) : (
+                                      <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 whitespace-nowrap">
+                                        Awaiting Gitwork Signature
+                                      </span>
+                                    )
+                                  )}
+                                  {proposal.docusealStatus === "COMPLETED" && (
+                                    proposal.docusealCombinedPdfUrl ? (
+                                      <a
+                                        href={proposal.docusealCombinedPdfUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 whitespace-nowrap hover:bg-emerald-100 transition"
+                                      >
+                                        Signed MSA
+                                      </a>
+                                    ) : (
+                                      <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 whitespace-nowrap">
+                                        Signed MSA
+                                      </span>
+                                    )
+                                  )}
+                                </div>
+                              </td>
+                              <td className="text-sm text-[var(--text-3)]">{proposal.ownerName || "Unassigned"}</td>
+                              <td className="text-sm text-[var(--text-3)]">{formatUpdatedAt(proposal.updatedAt)}</td>
+                              <td>
+                                <div className="flex items-center justify-end gap-1">
+                                  <DocLink
+                                    doc={proposal}
+                                    className={buttonStyles({
+                                      variant: "utility",
+                                      size: "icon-md",
+                                      className: "text-[var(--text-3)]",
+                                    })}
+                                    aria-label={`Edit ${proposal.title}`}
+                                    title="Edit"
+                                  >
+                                    <PencilSquareIcon className="h-4 w-4" />
+                                  </DocLink>
+                                  {canManageDocs ? (
+                                    <>
+                                      <Button
+                                        type="button"
+                                        onClick={() => duplicateMutation.mutate(proposal.id)}
+                                        variant="utility"
+                                        size="icon-md"
+                                        aria-label={`Duplicate ${proposal.title}`}
+                                        title="Duplicate"
+                                      >
+                                        <DocumentDuplicateIcon className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        onClick={() => archiveMutation.mutate(proposal.id)}
+                                        variant="utility"
+                                        size="icon-md"
+                                        aria-label={`Archive ${proposal.title}`}
+                                        title="Archive"
+                                      >
+                                        <ArchiveBoxIcon className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        onClick={() => {
+                                          if (window.confirm("Delete this proposal permanently?")) {
+                                            deleteMutation.mutate(proposal.id);
+                                          }
+                                        }}
+                                        variant="utility"
+                                        size="icon-md"
+                                        className="text-rose-600 hover:text-rose-700"
+                                        aria-label={`Delete ${proposal.title}`}
+                                        title="Delete"
+                                      >
+                                        <TrashIcon className="h-4 w-4" />
+                                      </Button>
+                                    </>
+                                  ) : null}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-12 text-center text-sm text-[var(--text-4)]">
+                            {isWorkspaceEmpty ? (
+                              <div className="mx-auto max-w-md space-y-3">
+                                <DocumentPlusIcon className="mx-auto h-8 w-8 text-[var(--text-4)]" />
+                                <p className="text-[var(--text-2)]">
+                                  No documents yet &mdash; click <strong>New</strong> above to spin
+                                  one up from a template.
+                                </p>
+                              </div>
+                            ) : (
+                              <span>
+                                No documents match this filter.
+                                {search || status !== "ALL" ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSearch("");
+                                      setStatus("ALL");
+                                    }}
+                                    className="ml-2 font-medium text-[var(--brand-700)] hover:underline"
+                                  >
+                                    Clear filter
+                                  </button>
+                                ) : null}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
-        )}
             </div>
 
-        {viewMode !== "grouped" ? (
-        <div className="flex flex-col gap-3 border-t border-[var(--border-2)] px-4 py-3 text-sm text-[var(--text-3)] sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <div className="flex flex-wrap items-center gap-3">
-            <span>
-              Page {currentPage} of {totalPages}
-            </span>
-            <span className="text-[var(--border-1)]">|</span>
-            <label
-              className={cn(
-                "flex min-w-[190px] items-center gap-2 whitespace-nowrap",
-                proposals.length <= rowsPerPageOptions[0] && "opacity-40",
-              )}
-            >
-              <span className="shrink-0">Rows per page</span>
-              <select
-                value={rowsPerPage}
-                onChange={(event) =>
-                  setRowsPerPage(Number(event.target.value) as (typeof rowsPerPageOptions)[number])
-                }
-                disabled={proposals.length <= rowsPerPageOptions[0]}
-                className="app-select-compact min-w-[96px]"
-              >
-                {rowsPerPageOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+            {viewMode !== "grouped" ? (
+              <div className="flex flex-col gap-3 border-t border-[var(--border-2)] px-4 py-3 text-sm text-[var(--text-3)] sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span>
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <span className="text-[var(--border-1)]">|</span>
+                  <label
+                    className={cn(
+                      "flex min-w-[190px] items-center gap-2 whitespace-nowrap",
+                      proposals.length <= rowsPerPageOptions[0] && "opacity-40",
+                    )}
+                  >
+                    <span className="shrink-0">Rows per page</span>
+                    <select
+                      value={rowsPerPage}
+                      onChange={(event) =>
+                        setRowsPerPage(Number(event.target.value) as (typeof rowsPerPageOptions)[number])
+                      }
+                      disabled={proposals.length <= rowsPerPageOptions[0]}
+                      className="app-select-compact min-w-[96px]"
+                    >
+                      {rowsPerPageOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
 
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={currentPage === 1}
-              className={cn(
-                "inline-flex h-9 w-9 items-center justify-center rounded-[6px] border border-[var(--border-2)] bg-white text-[var(--text-3)] shadow-[var(--shadow-xs)] transition",
-                currentPage === 1 ? "cursor-not-allowed opacity-40" : "hover:bg-[var(--surface-1)]",
-              )}
-              aria-label="Previous page"
-            >
-              <ChevronLeftIcon className="h-4 w-4" />
-            </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPage((current) => Math.max(1, current - 1))}
+                    disabled={currentPage === 1}
+                    className={cn(
+                      "inline-flex h-9 w-9 items-center justify-center rounded-[6px] border border-[var(--border-2)] bg-white text-[var(--text-3)] shadow-[var(--shadow-xs)] transition",
+                      currentPage === 1 ? "cursor-not-allowed opacity-40" : "hover:bg-[var(--surface-1)]",
+                    )}
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeftIcon className="h-4 w-4" />
+                  </button>
 
-            {buildPageItems(totalPages, currentPage).map((item, index) =>
-              item === "ellipsis" ? (
-                <span key={`${item}-${index}`} className="px-1 text-[var(--text-4)]">
-                  ...
-                </span>
-              ) : (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => setPage(item)}
-                  className={cn(
-                    "inline-flex h-9 min-w-9 items-center justify-center rounded-[6px] px-2 text-sm transition",
-                    item === currentPage
-                      ? "border border-[var(--border-2)] bg-[var(--surface-1)] font-medium text-[var(--text-1)]"
-                      : "text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+                  {buildPageItems(totalPages, currentPage).map((item, index) =>
+                    item === "ellipsis" ? (
+                      <span key={`${item}-${index}`} className="px-1 text-[var(--text-4)]">
+                        ...
+                      </span>
+                    ) : (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => setPage(item)}
+                        className={cn(
+                          "inline-flex h-9 min-w-9 items-center justify-center rounded-[6px] px-2 text-sm transition",
+                          item === currentPage
+                            ? "border border-[var(--border-2)] bg-[var(--surface-1)] font-medium text-[var(--text-1)]"
+                            : "text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+                        )}
+                      >
+                        {item}
+                      </button>
+                    ),
                   )}
-                >
-                  {item}
-                </button>
-              ),
-            )}
 
-            <button
-              type="button"
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={currentPage === totalPages}
-              className={cn(
-                "inline-flex h-9 w-9 items-center justify-center rounded-[6px] border border-[var(--border-2)] bg-white text-[var(--text-3)] shadow-[var(--shadow-xs)] transition",
-                currentPage === totalPages ? "cursor-not-allowed opacity-40" : "hover:bg-[var(--surface-1)]",
-              )}
-              aria-label="Next page"
-            >
-              <ChevronRightIcon className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-        ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                    disabled={currentPage === totalPages}
+                    className={cn(
+                      "inline-flex h-9 w-9 items-center justify-center rounded-[6px] border border-[var(--border-2)] bg-white text-[var(--text-3)] shadow-[var(--shadow-xs)] transition",
+                      currentPage === totalPages ? "cursor-not-allowed opacity-40" : "hover:bg-[var(--surface-1)]",
+                    )}
+                    aria-label="Next page"
+                  >
+                    <ChevronRightIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </section>
@@ -1016,167 +994,167 @@ export function ProposalList() {
         onClose={closeCreate}
         panelClassName="flex h-[640px] max-h-[calc(100vh-32px)] w-full max-w-4xl flex-col p-6"
       >
-              {/* Compact header — eyebrow + title only, subtitle dropped so the form has room. */}
-              <div className="flex items-baseline justify-between gap-3">
-                <div>
-                  <p className="widget-header-label widget-data-label-bright">07 // NEW DOCUMENT</p>
-                  <h2 className="mt-2 font-[family-name:var(--font-display)] text-[26px] font-normal leading-[1.15] tracking-[-0.5px] text-[var(--text-1)]">
-                    Create document
-                  </h2>
-                </div>
-              </div>
+        {/* Compact header — eyebrow + title only, subtitle dropped so the form has room. */}
+        <div className="flex items-baseline justify-between gap-3">
+          <div>
+            <p className="widget-header-label widget-data-label-bright">07 // NEW DOCUMENT</p>
+            <h2 className="mt-2 font-[family-name:var(--font-display)] text-[26px] font-normal leading-[1.15] tracking-[-0.5px] text-[var(--text-1)]">
+              Create document
+            </h2>
+          </div>
+        </div>
 
-              {/* 2-column body. Left = form fields (always visible), right = template gallery
+        {/* 2-column body. Left = form fields (always visible), right = template gallery
                   with its own internal scroll so the picker stays focused on the chosen tab. */}
-              <div className="mt-5 grid flex-1 gap-5 overflow-hidden md:grid-cols-[300px_minmax(0,1fr)]">
-                {/* Left — form */}
-                {/* px-1 (not just pr-1): overflow-y-auto forces overflow-x to `auto`, which would
+        <div className="mt-5 grid flex-1 gap-5 overflow-hidden md:grid-cols-[300px_minmax(0,1fr)]">
+          {/* Left — form */}
+          {/* px-1 (not just pr-1): overflow-y-auto forces overflow-x to `auto`, which would
                     clip an input's focus ring at the left/right edge. The side padding gives it room. */}
-                <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-1 py-0.5">
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
-                      {LABEL_BY_TYPE[form.documentType]} title
-                    </span>
+          <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-1 py-0.5">
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
+                {LABEL_BY_TYPE[form.documentType]} title
+              </span>
+              <input
+                value={form.title}
+                onChange={(event) =>
+                  setForm((previous) => ({ ...previous, title: event.target.value }))
+                }
+                className="app-input"
+                placeholder={PLACEHOLDER_BY_TYPE[form.documentType]}
+              />
+            </label>
+
+            <div className="block">
+              <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
+                Client
+              </span>
+              {clientsQuery.data?.clients && clientsQuery.data.clients.length > 0 ? (
+                <div className="space-y-2">
+                  <select
+                    value={form.clientId ?? ""}
+                    onChange={(event) => {
+                      const selected = clientsQuery.data?.clients.find(
+                        (c) => c.id === event.target.value,
+                      );
+                      setForm((previous) => ({
+                        ...previous,
+                        clientId: event.target.value || undefined,
+                        clientName: selected?.name ?? previous.clientName,
+                      }));
+                    }}
+                    className="app-select"
+                  >
+                    <option value="">— Select a client —</option>
+                    {clientsQuery.data.clients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {client.name}
+                      </option>
+                    ))}
+                  </select>
+                  {!form.clientId && (
                     <input
-                      value={form.title}
+                      value={form.clientName}
                       onChange={(event) =>
-                        setForm((previous) => ({ ...previous, title: event.target.value }))
-                      }
-                      className="app-input"
-                      placeholder={PLACEHOLDER_BY_TYPE[form.documentType]}
-                    />
-                  </label>
-
-                  <div className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
-                      Client
-                    </span>
-                    {clientsQuery.data?.clients && clientsQuery.data.clients.length > 0 ? (
-                      <div className="space-y-2">
-                        <select
-                          value={form.clientId ?? ""}
-                          onChange={(event) => {
-                            const selected = clientsQuery.data?.clients.find(
-                              (c) => c.id === event.target.value,
-                            );
-                            setForm((previous) => ({
-                              ...previous,
-                              clientId: event.target.value || undefined,
-                              clientName: selected?.name ?? previous.clientName,
-                            }));
-                          }}
-                          className="app-select"
-                        >
-                          <option value="">— Select a client —</option>
-                          {clientsQuery.data.clients.map((client) => (
-                            <option key={client.id} value={client.id}>
-                              {client.name}
-                            </option>
-                          ))}
-                        </select>
-                        {!form.clientId && (
-                          <input
-                            value={form.clientName}
-                            onChange={(event) =>
-                              setForm((previous) => ({
-                                ...previous,
-                                clientName: event.target.value,
-                              }))
-                            }
-                            className="app-input"
-                            placeholder="Or type a name for a prospect"
-                          />
-                        )}
-                      </div>
-                    ) : (
-                      <input
-                        value={form.clientName}
-                        onChange={(event) =>
-                          setForm((previous) => ({
-                            ...previous,
-                            clientName: event.target.value,
-                          }))
-                        }
-                        className="app-input"
-                        placeholder="Acme Health"
-                      />
-                    )}
-                  </div>
-
-                  {/* Selected template confirmation — small chip-style summary so the operator
-                      doesn't lose track of which template they picked once they scroll the
-                      right-hand gallery away from the active row. */}
-                  <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-                    <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
-                      Template
-                    </p>
-                    <p className="mt-1 text-sm font-medium text-[var(--text-1)]">
-                      {form.documentType === "DECK"
-                        ? deckTemplateBySlug(form.deckTemplate)?.name ?? "Pick a deck →"
-                        : form.templateId
-                          ? LABEL_BY_TYPE[form.documentType]
-                          : "Pick a template →"}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-[var(--text-3)]">
-                      {form.documentType === "DECK"
-                        ? form.deckTemplate
-                          ? "Opens in Deck — slides are created on first open."
-                          : "Choose one of the ten decks on the right."
-                        : form.templateId
-                          ? "Selected — Gitwork defaults pre-filled."
-                          : "Browse the gallery on the right."}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Right — gallery. No padding on the scroll container; the gallery handles its
-                    own padding so the sticky chip row can flush against the scroll viewport's
-                    top edge instead of leaving a 12px gap. */}
-                <div className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)]">
-                  <div className="border-b border-[var(--border-2)] bg-white px-3 py-2">
-                    <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
-                      Template library
-                    </p>
-                  </div>
-                  <div className="min-h-0 flex-1 overflow-y-auto">
-                    <TemplateGallery
-                      selectedTemplateId={form.templateId}
-                      selectedDeckTemplate={form.deckTemplate}
-                      onPick={({ id, documentType, deckTemplate }) =>
                         setForm((previous) => ({
                           ...previous,
-                          templateId: id,
-                          documentType,
-                          // Keep the slug only while DECK is the chosen type, so
-                          // switching to a normal doc can't smuggle one through.
-                          deckTemplate:
-                            documentType === "DECK"
-                              ? deckTemplate ?? previous.deckTemplate
-                              : null,
+                          clientName: event.target.value,
                         }))
                       }
+                      className="app-input"
+                      placeholder="Or type a name for a prospect"
                     />
-                  </div>
+                  )}
                 </div>
-              </div>
+              ) : (
+                <input
+                  value={form.clientName}
+                  onChange={(event) =>
+                    setForm((previous) => ({
+                      ...previous,
+                      clientName: event.target.value,
+                    }))
+                  }
+                  className="app-input"
+                  placeholder="Acme Health"
+                />
+              )}
+            </div>
 
-              {/* Footer — actions pinned at the bottom of the panel, independent of either
+            {/* Selected template confirmation — small chip-style summary so the operator
+                      doesn't lose track of which template they picked once they scroll the
+                      right-hand gallery away from the active row. */}
+            <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+              <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+                Template
+              </p>
+              <p className="mt-1 text-sm font-medium text-[var(--text-1)]">
+                {form.documentType === "DECK"
+                  ? deckTemplateBySlug(form.deckTemplate)?.name ?? "Pick a deck →"
+                  : form.templateId
+                    ? LABEL_BY_TYPE[form.documentType]
+                    : "Pick a template →"}
+              </p>
+              <p className="mt-0.5 text-[11px] text-[var(--text-3)]">
+                {form.documentType === "DECK"
+                  ? form.deckTemplate
+                    ? "Opens in Deck — slides are created on first open."
+                    : "Choose one of the ten decks on the right."
+                  : form.templateId
+                    ? "Selected — Gitwork defaults pre-filled."
+                    : "Browse the gallery on the right."}
+              </p>
+            </div>
+          </div>
+
+          {/* Right — gallery. No padding on the scroll container; the gallery handles its
+                    own padding so the sticky chip row can flush against the scroll viewport's
+                    top edge instead of leaving a 12px gap. */}
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)]">
+            <div className="border-b border-[var(--border-2)] bg-white px-3 py-2">
+              <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+                Template library
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <TemplateGallery
+                selectedTemplateId={form.templateId}
+                selectedDeckTemplate={form.deckTemplate}
+                onPick={({ id, documentType, deckTemplate }) =>
+                  setForm((previous) => ({
+                    ...previous,
+                    templateId: id,
+                    documentType,
+                    // Keep the slug only while DECK is the chosen type, so
+                    // switching to a normal doc can't smuggle one through.
+                    deckTemplate:
+                      documentType === "DECK"
+                        ? deckTemplate ?? previous.deckTemplate
+                        : null,
+                  }))
+                }
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Footer — actions pinned at the bottom of the panel, independent of either
                   column's scroll. */}
-              <div className="mt-5 flex justify-end gap-2 border-t border-[var(--border-2)] pt-4">
-                <Button type="button" onClick={closeCreate} variant="secondary" size="md">
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => void handleCreate()}
-                  loading={createMutation.isPending}
-                  variant="primary"
-                  size="md"
-                >
-                  Create
-                </Button>
-              </div>
-        </Modal>
+        <div className="mt-5 flex justify-end gap-2 border-t border-[var(--border-2)] pt-4">
+          <Button type="button" onClick={closeCreate} variant="secondary" size="md">
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void handleCreate()}
+            loading={createMutation.isPending}
+            variant="primary"
+            size="md"
+          >
+            Create
+          </Button>
+        </div>
+      </Modal>
 
       {selectedIds.length > 0 ? (
         <div className="fixed inset-x-0 bottom-0 z-30 flex justify-center px-4 pb-6">
@@ -1236,7 +1214,7 @@ function GroupedList({
   selectedIds,
   onToggleSelect,
 }: {
-  proposals: ProposalListItem[];
+  proposals: Array<{ id: string; title: string; clientName?: string | null; status: string; updatedAt: string; documentNumber?: string | null; documentType?: string; docusealStatus?: string | null; docusealGitworkSlug?: string | null; docusealCombinedPdfUrl?: string | null }>;
   selectedIds: string[];
   onToggleSelect: (id: string) => void;
 }) {
@@ -1319,7 +1297,38 @@ function GroupedList({
                     ) : null}
                     <div className="flex items-center gap-2">
                       <StatusBadge status={doc.status as never} />
-                      <DocusealBadge status={doc.docusealStatus} gitworkSlug={doc.docusealGitworkSlug} />
+                      {doc.docusealStatus === "CLIENT_SIGNED" && (
+                        doc.docusealGitworkSlug ? (
+                          <Link
+                            href={`/contract/${doc.docusealGitworkSlug}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 whitespace-nowrap hover:bg-amber-100 transition"
+                          >
+                            Awaiting Gitwork Signature
+                          </Link>
+                        ) : (
+                          <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 whitespace-nowrap">
+                            Awaiting Gitwork Signature
+                          </span>
+                        )
+                      )}
+                      {doc.docusealStatus === "COMPLETED" && (
+                        doc.docusealCombinedPdfUrl ? (
+                          <a
+                            href={doc.docusealCombinedPdfUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 whitespace-nowrap hover:bg-emerald-100 transition"
+                          >
+                            Signed MSA
+                          </a>
+                        ) : (
+                          <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 whitespace-nowrap">
+                            Signed MSA
+                          </span>
+                        )
+                      )}
                     </div>
                     <span className="hidden text-xs text-[var(--text-4)] sm:inline">
                       {new Date(doc.updatedAt).toLocaleDateString()}
@@ -1719,81 +1728,112 @@ function DocCard({
           {blocks} {blocks === 1 ? "block" : "blocks"} · {formatUpdatedAt(proposal.updatedAt)}
         </p>
         <div className="mt-4 flex items-center justify-between border-t border-[var(--border-1)] px-4 py-3 bg-[var(--bg-1)] group-hover:bg-[var(--bg-2)] transition-colors">
-        <div className="flex flex-col gap-1.5">
-          <StatusBadge status={proposal.status} />
-          <DocusealBadge status={proposal.docusealStatus} gitworkSlug={proposal.docusealGitworkSlug} />
-        </div>
-        <div className="flex items-center gap-0.5 opacity-0 transition group-hover/card:opacity-100 focus-within:opacity-100">
-          <DocLink
-            doc={proposal}
-            className={buttonStyles({ variant: "utility", size: "icon-sm", className: "text-[var(--text-3)]" })}
-            aria-label="Edit"
-            title="Edit"
-          >
-            <PencilSquareIcon className="h-4 w-4" />
-          </DocLink>
-          {canManageDocs ? (
-            scope === "archived" ? (
-              <>
-                <Button
-                  type="button"
-                  onClick={() => onRestore(proposal.id)}
-                  variant="utility"
-                  size="icon-sm"
-                  aria-label="Restore"
-                  title="Restore"
+          <div className="flex flex-col gap-1.5">
+            <StatusBadge status={proposal.status} />
+            {proposal.docusealStatus === "CLIENT_SIGNED" && (
+              proposal.docusealGitworkSlug ? (
+                <Link
+                  href={`/contract/${proposal.docusealGitworkSlug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 whitespace-nowrap w-fit hover:bg-amber-100 transition"
                 >
-                  <ArrowUturnLeftIcon className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => onDelete(proposal.id)}
-                  variant="utility"
-                  size="icon-sm"
-                  className="text-rose-600 hover:text-rose-700"
-                  aria-label="Delete"
-                  title="Delete"
+                  Awaiting Gitwork Signature
+                </Link>
+              ) : (
+                <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 whitespace-nowrap w-fit">
+                  Awaiting Gitwork Signature
+                </span>
+              )
+            )}
+            {proposal.docusealStatus === "COMPLETED" && (
+              proposal.docusealCombinedPdfUrl ? (
+                <a
+                  href={proposal.docusealCombinedPdfUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 whitespace-nowrap w-fit hover:bg-emerald-100 transition"
                 >
-                  <TrashIcon className="h-4 w-4" />
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  type="button"
-                  onClick={() => onDuplicate(proposal.id)}
-                  variant="utility"
-                  size="icon-sm"
-                  aria-label="Duplicate"
-                  title="Duplicate"
-                >
-                  <DocumentDuplicateIcon className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => onArchive(proposal.id)}
-                  variant="utility"
-                  size="icon-sm"
-                  aria-label="Archive"
-                  title="Archive"
-                >
-                  <ArchiveBoxIcon className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => onDelete(proposal.id)}
-                  variant="utility"
-                  size="icon-sm"
-                  className="text-rose-600 hover:text-rose-700"
-                  aria-label="Delete"
-                  title="Delete"
-                >
-                  <TrashIcon className="h-4 w-4" />
-                </Button>
-              </>
-            )
-          ) : null}
-        </div>
+                  Signed MSA
+                </a>
+              ) : (
+                <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 whitespace-nowrap w-fit">
+                  Signed MSA
+                </span>
+              )
+            )}
+          </div>
+          <div className="flex items-center gap-0.5 opacity-0 transition group-hover/card:opacity-100 focus-within:opacity-100">
+            <DocLink
+              doc={proposal}
+              className={buttonStyles({ variant: "utility", size: "icon-sm", className: "text-[var(--text-3)]" })}
+              aria-label="Edit"
+              title="Edit"
+            >
+              <PencilSquareIcon className="h-4 w-4" />
+            </DocLink>
+            {canManageDocs ? (
+              scope === "archived" ? (
+                <>
+                  <Button
+                    type="button"
+                    onClick={() => onRestore(proposal.id)}
+                    variant="utility"
+                    size="icon-sm"
+                    aria-label="Restore"
+                    title="Restore"
+                  >
+                    <ArrowUturnLeftIcon className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => onDelete(proposal.id)}
+                    variant="utility"
+                    size="icon-sm"
+                    className="text-rose-600 hover:text-rose-700"
+                    aria-label="Delete"
+                    title="Delete"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    onClick={() => onDuplicate(proposal.id)}
+                    variant="utility"
+                    size="icon-sm"
+                    aria-label="Duplicate"
+                    title="Duplicate"
+                  >
+                    <DocumentDuplicateIcon className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => onArchive(proposal.id)}
+                    variant="utility"
+                    size="icon-sm"
+                    aria-label="Archive"
+                    title="Archive"
+                  >
+                    <ArchiveBoxIcon className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => onDelete(proposal.id)}
+                    variant="utility"
+                    size="icon-sm"
+                    className="text-rose-600 hover:text-rose-700"
+                    aria-label="Delete"
+                    title="Delete"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </Button>
+                </>
+              )
+            ) : null}
+          </div>
         </div>
       </div>
     </article>
