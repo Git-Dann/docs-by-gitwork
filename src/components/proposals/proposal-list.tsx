@@ -2,8 +2,10 @@
 
 import {
   ArchiveBoxIcon,
+  ArrowTopRightOnSquareIcon,
   ArrowUturnLeftIcon,
   ChartBarIcon,
+  CheckCircleIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -88,6 +90,57 @@ function DocLink({
     </Link>
   );
 }
+
+function DocusealBadge({
+  status,
+  gitworkSlug,
+}: {
+  status?: string | null;
+  gitworkSlug?: string | null;
+}) {
+  if (!status) return null;
+
+  if (status === "CLIENT_SIGNED") {
+    if (gitworkSlug) {
+      return (
+        <Link
+          href={`/contract/${gitworkSlug}`}
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center gap-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-500 ring-1 ring-inset ring-amber-500/30 hover:bg-amber-500/20 transition-colors whitespace-nowrap w-fit cursor-pointer"
+          title="Click to review and countersign MSA as Gitwork"
+        >
+          <span>Awaiting Gitwork Signature</span>
+          <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+        </Link>
+      );
+    }
+    return (
+      <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 whitespace-nowrap w-fit">
+        Awaiting Gitwork Signature
+      </span>
+    );
+  }
+
+  if (status === "COMPLETED") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold text-emerald-400 ring-1 ring-inset ring-emerald-500/30 whitespace-nowrap w-fit">
+        <CheckCircleIcon className="h-3 w-3 text-emerald-400" />
+        <span>Signed MSA</span>
+      </span>
+    );
+  }
+
+  if (status === "PENDING") {
+    return (
+      <span className="inline-flex items-center rounded-md bg-blue-500/10 px-2 py-1 text-[10px] font-medium text-blue-400 ring-1 ring-inset ring-blue-500/20 whitespace-nowrap w-fit">
+        MSA Sent (Awaiting Client)
+      </span>
+    );
+  }
+
+  return null;
+}
+
 import { StatusBadge } from "@/components/status-badge";
 import { TemplateGallery } from "@/components/proposals/template-gallery";
 import type { DocumentType } from "@/types/proposal";
