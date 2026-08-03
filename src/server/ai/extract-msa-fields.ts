@@ -11,6 +11,11 @@ export interface ExtractedMsaFields {
   publicityConsent?: "Yes" | "No";
 }
 
+export interface ExtractionHints {
+  totalNetValue?: string;
+  hasMilestones?: boolean;
+}
+
 const ALLOWED_SERVICE_TIERS = [
   "Launch Pad",
   "MVP Sprint",
@@ -40,9 +45,9 @@ function normalizeDate(raw?: string): string | undefined {
   return trimmed;
 }
 
-/** Matches and normalizes a string to one of the 4 allowed Service Tiers. */
-function normalizeServiceTier(raw?: string): string | undefined {
-  if (!raw) return undefined;
+/** Matches and normalizes a string to strictly one of the 4 allowed Service Tiers. */
+function normalizeServiceTier(raw?: string): string {
+  if (!raw) return "MVP Sprint";
   const lower = raw.toLowerCase().trim();
 
   if (lower.includes("launch")) return "Launch Pad";
@@ -52,16 +57,20 @@ function normalizeServiceTier(raw?: string): string | undefined {
 
   // Check direct exact match
   const exact = ALLOWED_SERVICE_TIERS.find((t) => t.toLowerCase() === lower);
-  return exact || raw;
+  return exact || "MVP Sprint"; // Strict fallback guarantee
 }
 
 /**
  * Smart Regex fallback if GROQ_API_KEY is not set or AI fails.
  */
-function extractWithRegex(docText: string, defaultDocNumber?: string): ExtractedMsaFields {
+function extractWithRegex(
+  docText: string,
+  defaultDocNumber?: string,
+  hints?: ExtractionHints
+): ExtractedMsaFields {
   const result: ExtractedMsaFields = {};
 
-  // SOW Reference: e.g. SOW-2026-007 (https://staging.foundry.gitwork.tech/app/docs/...)
+  // 1. SOW Reference
   if (defaultDocNumber) {
     result.sowReference = defaultDocNumber;
   } else {
@@ -71,36 +80,46 @@ function extractWithRegex(docText: string, defaultDocNumber?: string): Extracted
     }
   }
 
-  // Charges / Fees: e.g. £4,500/month, £5,000 + VAT, $10,000
-  const chargesMatch = docText.match(/(?:[£$€]\s*[\d,]+(?:\.\d{2})?(?:\s*(?:\/|\s*per\s*)(?:month|mo|quarter|yr|year|milestone))?(?:\s*excl\.?\s*VAT|\s*\+\s*VAT)?)/i);
-  if (chargesMatch) result.charges = chargesMatch[0].trim();
-
-  // Payment Schedule: e.g. Monthly, Quarterly, Milestone, 50% upfront
-  const scheduleMatch = docText.match(/(?:monthly|quarterly|milestone(?:-based)?|upfront|in advance|50%\s*upfront)/i);
-  if (scheduleMatch) {
-    const val = scheduleMatch[0].toLowerCase();
-    result.paymentSchedule = val.includes("monthly") ? "Monthly in advance" : val.includes("quarterly") ? "Quarterly" : val.includes("upfront") ? "Upfront" : "Monthly";
+  // 2. Charges / Total Contract Value
+  if (hints?.totalNetValue) {
+    result.charges = hints.totalNetValue;
+  } else {
+    const totalMatch = docText.match(/(?:Total Net Contract Value|Grand Total|Subtotal|Total Value)[^£$€0-9]*([£$€]\s*[\d,]+(?:\.\d{2})?)/i);
+    if (totalMatch) {
+      result.charges = totalMatch[1].trim();
+    } else {
+      const chargesMatch = docText.match(/(?:[£$€]\s*[\d,]+(?:\.\d{2})?(?:\s*(?:\/|\s*per\s*)(?:month|mo|quarter|yr|year|milestone))?(?:\s*excl\.?\s*VAT|\s*\+\s*VAT)?)/i);
+      if (chargesMatch) result.charges = chargesMatch[0].trim();
+    }
   }
 
-  // Duration: e.g. 12 months, 16 weeks, 6 months
+  // 3. Payment Schedule
+  if (hints?.hasMilestones || /milestone/i.test(docText)) {
+    result.paymentSchedule = "Milestone-based";
+  } else {
+    const scheduleMatch = docText.match(/(?:monthly|quarterly|upfront|in advance|50%\s*upfront)/i);
+    if (scheduleMatch) {
+      const val = scheduleMatch[0].toLowerCase();
+      result.paymentSchedule = val.includes("monthly") ? "Monthly in advance" : val.includes("quarterly") ? "Quarterly" : val.includes("upfront") ? "Upfront" : "Monthly";
+    } else {
+      result.paymentSchedule = "Monthly in advance";
+    }
+  }
+
+  // 4. Duration
   const durationMatch = docText.match(/\b(\d+\s*(?:months?|weeks?|years?))\b/i);
   if (durationMatch) result.duration = durationMatch[1].trim();
 
-  // Service Tier: strictly mapped to Launch Pad, MVP Sprint, Greenfield Build, Care Plan
-  const tierMatch = docText.match(/\b(Launch\s*Pad|MVP\s*Sprint|Greenfield\s*Build|Care\s*Plan|Handover|Maintenance|Growth|Care)\b/i);
-  if (tierMatch) {
-    result.serviceTier = normalizeServiceTier(tierMatch[1]);
-  } else {
-    result.serviceTier = "Launch Pad"; // Default fallback tier
-  }
+  // 5. Service Tier: strictly mapped to 1 of 4 allowed options
+  const tierMatch = docText.match(/\b(Launch\s*Pad|MVP\s*Sprint|Greenfield\s*Build|Care\s*Plan|MVP|Greenfield|Care|Launch)\b/i);
+  result.serviceTier = normalizeServiceTier(tierMatch ? tierMatch[1] : undefined);
 
-  // Target Start Date extraction
+  // 6. Target Start Date & Effective Date
   const startDateMatch = docText.match(/(?:start\s*date|commencement\s*date|target\s*start)[^0-9]*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2})/i);
   if (startDateMatch) {
     result.startDate = normalizeDate(startDateMatch[1]);
   }
 
-  // Dates (find dates in text)
   const dateMatches = docText.match(/\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2})\b/g);
   if (dateMatches && dateMatches.length > 0) {
     if (!result.effectiveDate) result.effectiveDate = normalizeDate(dateMatches[0]);
@@ -116,32 +135,40 @@ function extractWithRegex(docText: string, defaultDocNumber?: string): Extracted
  * Extracts MSA Pre-Flight fields from document text using Groq Llama-3 / OpenAI-OSS AI model,
  * with graceful fallback to regex pattern matching if GROQ_API_KEY is not configured.
  */
-export async function extractMsaFieldsFromText(docText: string, defaultDocNumber?: string): Promise<ExtractedMsaFields> {
+export async function extractMsaFieldsFromText(
+  docText: string,
+  defaultDocNumber?: string,
+  hints?: ExtractionHints
+): Promise<ExtractedMsaFields> {
   const hasGroqKey = Boolean(process.env.GROQ_API_KEY);
 
   if (!hasGroqKey) {
     console.log("GROQ_API_KEY not set. Using smart regex fallback extractor.");
-    return extractWithRegex(docText, defaultDocNumber);
+    return extractWithRegex(docText, defaultDocNumber, hints);
   }
 
   try {
     const prompt = `You are a contract analysis AI. Extract key Master Services Agreement (MSA) engagement details from the provided document text.
 
-CRITICAL INSTRUCTIONS FOR "serviceTier":
-You MUST select the single best matching service tier from ONLY these 4 exact allowed values:
-1. "Launch Pad"
-2. "MVP Sprint"
-3. "Greenfield Build"
-4. "Care Plan"
+CRITICAL INSTRUCTIONS:
+1. "serviceTier": MUST be strictly ONE of these 4 exact allowed values (NEVER use any other string):
+   - "Launch Pad"
+   - "MVP Sprint"
+   - "Greenfield Build"
+   - "Care Plan"
+
+2. "charges": Extract the TOTAL project contract value / total net budget (e.g. "£32,000"), NOT an individual role line item subtotal.
+
+3. "paymentSchedule": If the document uses milestone payments or lists milestones, return "Milestone-based". Otherwise return the payment structure (e.g. "Monthly in advance").
 
 Return a JSON object strictly matching this schema:
 {
   "serviceTier": "Launch Pad" | "MVP Sprint" | "Greenfield Build" | "Care Plan",
-  "sowReference": string or null (e.g. "SOW-2026-007" or document ref),
-  "charges": string or null (e.g. "£4,500/month excl. VAT"),
-  "paymentSchedule": string or null (e.g. "Monthly in advance"),
-  "startDate": string or null (Format: DD/MM/YYYY - Target start date or commencement date),
-  "duration": string or null (e.g. "12 months" or "16 weeks"),
+  "sowReference": string or null,
+  "charges": string or null,
+  "paymentSchedule": string or null,
+  "startDate": string or null (Format: DD/MM/YYYY),
+  "duration": string or null (e.g. "16 weeks"),
   "effectiveDate": string or null (Format: DD/MM/YYYY),
   "publicityConsent": "Yes" | "No" or null
 }
@@ -161,14 +188,13 @@ ${docText.slice(0, 14000)}
 
     const parsed = JSON.parse(rawJson);
     const extractedTier = normalizeServiceTier(parsed.serviceTier);
-
     const sowRef = defaultDocNumber || parsed.sowReference || undefined;
 
     return {
-      serviceTier: extractedTier || "Launch Pad",
+      serviceTier: extractedTier,
       sowReference: sowRef,
-      charges: parsed.charges || undefined,
-      paymentSchedule: parsed.paymentSchedule || undefined,
+      charges: hints?.totalNetValue || parsed.charges || undefined,
+      paymentSchedule: hints?.hasMilestones ? "Milestone-based" : (parsed.paymentSchedule || undefined),
       startDate: normalizeDate(parsed.startDate),
       duration: parsed.duration || undefined,
       effectiveDate: normalizeDate(parsed.effectiveDate),
@@ -176,6 +202,6 @@ ${docText.slice(0, 14000)}
     };
   } catch (err) {
     console.error("Groq AI extraction failed, using fallback:", err);
-    return extractWithRegex(docText, defaultDocNumber);
+    return extractWithRegex(docText, defaultDocNumber, hints);
   }
 }

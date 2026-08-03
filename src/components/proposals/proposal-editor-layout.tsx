@@ -1252,8 +1252,38 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                       Export
                     </Button>
                   </div>
-                  {true && (
-                    <div className="mt-2 flex items-center gap-2 border-t border-[var(--border-2)] pt-2">
+                  <div className="mt-2 flex items-center gap-2 border-t border-[var(--border-2)] pt-2">
+                    {draft?.docusealStatus === "CLIENT_SIGNED" ? (
+                      draft.docusealGitworkSlug ? (
+                        <Link
+                          href={`/contract/${draft.docusealGitworkSlug}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-600 transition-colors"
+                        >
+                          <span>Awaiting Gitwork Signature</span>
+                          <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+                        </Link>
+                      ) : (
+                        <span className="flex-1 text-center py-1.5 text-xs font-semibold text-amber-500 bg-amber-500/10 rounded-md ring-1 ring-amber-500/20">
+                          Awaiting Gitwork Signature
+                        </span>
+                      )
+                    ) : draft?.docusealStatus === "COMPLETED" || (draft?.status === "ACCEPTED" && draft?.docusealStatus) ? (
+                      <a
+                        href={`/api/documents/${draft.id}/docuseal/download`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 transition-colors"
+                      >
+                        <CheckCircleIcon className="h-3.5 w-3.5" />
+                        <span>Signed MSA</span>
+                      </a>
+                    ) : draft?.docusealStatus === "PENDING" ? (
+                      <span className="flex-1 text-center py-1.5 text-xs font-medium text-blue-400 bg-blue-500/10 rounded-md ring-1 ring-blue-500/20">
+                        MSA Sent (Awaiting Client)
+                      </span>
+                    ) : (
                       <Button
                         type="button"
                         variant="secondary"
@@ -1264,8 +1294,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                       >
                         {isIssuingDocuSeal ? "Issuing..." : "Send MSA via DocuSeal"}
                       </Button>
-                    </div>
-                  )}
+                    )}
+                  </div>
 
                   <div className="mt-3 border-t border-[var(--border-2)] pt-3">
                     <button
