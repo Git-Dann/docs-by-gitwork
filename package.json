@@ -72,6 +72,10 @@
       "nodemailer": "$nodemailer"
     }
   },
+  "optionalDependencies": {
+    "lightningcss-linux-x64-musl": "1.31.1",
+    "lightningcss-linux-x64-gnu": "1.31.1"
+  },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@tanstack/react-query-devtools": "^5.101.0",
