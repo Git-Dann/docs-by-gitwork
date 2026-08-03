@@ -179,8 +179,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
         submissionId: clientSubmitter.submission_id,
         slug: clientSubmitter.slug || "",
         gitworkSlug: gitworkSubmitter?.slug,
-        status: "PENDING"
-      }
+        status: "PENDING",
+      },
+      update: {
+        submissionId: clientSubmitter.submission_id,
+        slug: clientSubmitter.slug || "",
+        gitworkSlug: gitworkSubmitter?.slug,
+        status: "PENDING",
+        combinedPdfUrl: null,
+        auditLogUrl: null,
+        archivedAt: null,
+      },
     });
 
     // 9. Return the slug and wiki details back to the frontend
