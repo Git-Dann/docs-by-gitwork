@@ -698,6 +698,9 @@ export interface ProposalDocument {
   assets: AssetInput[];
   links: ProposalLinkInput[];
   ctas: CTAInput[];
+  docusealStatus?: string | null;
+  docusealGitworkSlug?: string | null;
+  docusealSubmissionId?: number | null;
 }
 
 export interface TemplateSummary {
@@ -735,4 +738,6 @@ export interface ProposalListItem {
   /** Whether this doc is currently mirrored into the client's wiki Documents section. */
   inWiki?: boolean;
   docusealStatus?: string | null;
+  docusealGitworkSlug?: string | null;
+  docusealSubmissionId?: number | null;
 }

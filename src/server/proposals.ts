@@ -66,6 +66,7 @@ export const proposalInclude = {
   // Linked Portal client — used to auto-fill the cover's "Client × Gitwork" logo when the
   // document is tied to a WorkspaceClient that already has a logo (falls back to the name).
   client: { select: { id: true, name: true, logoUrl: true } },
+  docusealSubmission: { select: { status: true, gitworkSlug: true, submissionId: true } },
 } satisfies Prisma.DocumentInclude;
 
 export type ProposalDocumentRecord = Prisma.DocumentGetPayload<{
@@ -228,6 +229,9 @@ export function serializeProposal(
       destinationType: cta.destinationType,
       sortOrder: cta.sortOrder,
     })),
+    docusealStatus: document.docusealSubmission?.status ?? null,
+    docusealGitworkSlug: document.docusealSubmission?.gitworkSlug ?? null,
+    docusealSubmissionId: document.docusealSubmission?.submissionId ?? null,
   };
 }
 
@@ -253,8 +257,8 @@ export const proposalListSelect = {
   // Visible-block count for the card meta readout. Cheap aggregate, no heavy JSON on the wire.
   _count: { select: { sections: true } },
   docusealSubmission: {
-    select: { status: true }
-  }
+    select: { status: true, gitworkSlug: true, submissionId: true },
+  },
 } satisfies Prisma.DocumentSelect;
 
 export type ProposalListRow = Prisma.DocumentGetPayload<{ select: typeof proposalListSelect }>;
@@ -276,6 +280,8 @@ export function serializeProposalListItem(proposal: ProposalListRow): ProposalLi
     isFavorite: proposal.isFavorite,
     sectionCount: proposal._count?.sections ?? 0,
     docusealStatus: proposal.docusealSubmission?.status ?? null,
+    docusealGitworkSlug: proposal.docusealSubmission?.gitworkSlug ?? null,
+    docusealSubmissionId: proposal.docusealSubmission?.submissionId ?? null,
   };
 }
 
