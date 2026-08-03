@@ -1615,12 +1615,17 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       <Modal
         open={isSigningOpen}
         onClose={() => setIsSigningOpen(false)}
-        panelClassName="flex h-[88vh] max-h-[850px] w-full max-w-5xl flex-col p-0 overflow-hidden bg-white rounded-xl shadow-2xl"
+        panelClassName="flex h-[90vh] max-h-[900px] w-full max-w-5xl flex-col p-0 overflow-hidden bg-white rounded-xl shadow-2xl"
       >
-        <div className="flex items-center justify-between p-4 bg-[#111827] border-b border-gray-800 text-white">
-          <div>
-            <h2 className="text-lg font-semibold tracking-tight">Sign Agreement (Countersign)</h2>
-            <p className="text-xs text-gray-400">Please review and sign the document below.</p>
+        <div className="flex items-center justify-between px-6 py-4 bg-[#111827] border-b border-gray-800 text-white shrink-0">
+          <div className="flex items-center gap-3">
+            <span className="font-semibold text-lg tracking-tight font-[family-name:var(--font-display)] text-white">
+              Gitwork Foundry
+            </span>
+            <span className="h-4 w-px bg-white/20" />
+            <span className="text-sm font-medium text-gray-300">
+              Document Signing
+            </span>
           </div>
           <button
             type="button"
@@ -1630,12 +1635,12 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             ✕ Close
           </button>
         </div>
-        <div className="flex-1 w-full bg-[#f3f4f6] p-4 sm:p-6 flex flex-col min-h-0">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden w-full flex-1 relative">
+        <div className="flex-1 w-full bg-[#f3f4f6] p-4 sm:p-6 flex flex-col overflow-y-auto min-h-0">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 w-full flex-1 min-h-[650px] relative">
             {draft?.docusealGitworkSlug ? (
               <DocusealForm
                 src={`https://docuseal.com/s/${draft.docusealGitworkSlug}`}
-                style={{ width: "100%", height: "100%" }}
+                style={{ width: "100%", height: "100%", minHeight: "650px" }}
                 backgroundColor="#ffffff"
                 withTitle={false}
                 onComplete={() => {
