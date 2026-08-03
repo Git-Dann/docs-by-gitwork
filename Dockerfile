@@ -6,6 +6,8 @@ FROM base AS deps
 WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma/
+# Pin npm to a specific version to ensure consistent lockfile validation across environments
+RUN npm install -g npm@10.9.8 --quiet
 RUN npm ci --legacy-peer-deps
 
 # ── builder ──────────────────────────────────────────────────────────────────
