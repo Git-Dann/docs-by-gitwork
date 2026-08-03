@@ -173,8 +173,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     // 8. Store in Database
-    const docusealSubmission = await prisma.docusealSubmission.create({
-      data: {
+    const docusealSubmission = await prisma.docusealSubmission.upsert({
+      where: { documentId: document.id },
+      create: {
         documentId: document.id,
         submissionId: clientSubmitter.submission_id,
         slug: clientSubmitter.slug || "",
