@@ -55,13 +55,19 @@ export async function runChannelSync(ctx: SyncContext): Promise<SyncResult> {
 
   for (const item of items) {
     let conv = await prisma.supportConversation.findFirst({
-      where: { clientId: ctx.client.id, source, externalId: item.externalId },
+      where: {
+        clientId: ctx.client.id,
+        source,
+        externalId: item.externalId,
+        OR: [{ connectionId: ctx.connection.id }, { connectionId: null }],
+      },
     });
 
     if (!conv) {
       conv = await prisma.supportConversation.create({
         data: {
           clientId: ctx.client.id,
+          connectionId: ctx.connection.id,
           source,
           externalId: item.externalId,
           customerLabel: item.customerLabel,
@@ -75,12 +81,13 @@ export async function runChannelSync(ctx: SyncContext): Promise<SyncResult> {
         },
       });
       newConversationIds.push(conv.id);
-    } else if (item.refreshTags || (item.externalUrl && !conv.externalUrl)) {
+    } else if (conv.connectionId === null || item.refreshTags || (item.externalUrl && !conv.externalUrl)) {
       // Keep keyword tags in sync with the connector config, and backfill the deep-link
       // URL onto older rows that predate it (never overwrite an existing URL).
       await prisma.supportConversation.update({
         where: { id: conv.id },
         data: {
+          ...(conv.connectionId === null ? { connectionId: ctx.connection.id } : {}),
           ...(item.refreshTags ? { tags: item.tags } : {}),
           ...(item.externalUrl && !conv.externalUrl
             ? { externalUrl: item.externalUrl, externalGuildId: item.externalGuildId ?? conv.externalGuildId }

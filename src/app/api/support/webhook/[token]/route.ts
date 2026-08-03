@@ -66,13 +66,19 @@ export async function POST(
 
   // Upsert conversation.
   let conv = await prisma.supportConversation.findFirst({
-    where: { clientId: conn.client.id, source: "WEBHOOK", externalId },
+    where: {
+      clientId: conn.client.id,
+      source: "WEBHOOK",
+      externalId,
+      OR: [{ connectionId: conn.id }, { connectionId: null }],
+    },
   });
 
   if (!conv) {
     conv = await prisma.supportConversation.create({
       data: {
         clientId: conn.client.id,
+        connectionId: conn.id,
         source: "WEBHOOK",
         externalId,
         customerLabel,
@@ -82,6 +88,13 @@ export async function POST(
         unread: true,
         tags,
       },
+    });
+  }
+
+  if (conv.connectionId === null) {
+    await prisma.supportConversation.update({
+      where: { id: conv.id },
+      data: { connectionId: conn.id },
     });
   }
 

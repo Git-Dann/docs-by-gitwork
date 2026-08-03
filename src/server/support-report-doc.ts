@@ -250,13 +250,15 @@ export async function buildSupportReportData(input: {
   periodStart: string;
   periodEnd: string;
   periodLabel: string;
+  /** Undefined means all Care connectors; an explicit array scopes the report. */
+  connectionIds?: string[];
 }): Promise<SupportReportData> {
-  const { clientId, periodStart, periodEnd, periodLabel } = input;
+  const { clientId, periodStart, periodEnd, periodLabel, connectionIds } = input;
   const [year, month] = periodStart.split("-").map(Number);
 
   const [stats, perf, metrics] = await Promise.all([
-    getTicketStatsForPeriod(clientId, periodStart, periodEnd),
-    getPerformanceMetricsForPeriod(clientId, periodStart, periodEnd),
+    getTicketStatsForPeriod(clientId, periodStart, periodEnd, connectionIds),
+    getPerformanceMetricsForPeriod(clientId, periodStart, periodEnd, 4, connectionIds),
     loadAnalyticsMetrics(clientId, year, month),
   ]);
 
@@ -320,8 +322,9 @@ export async function pullSupportDataIntoDocument(input: {
   periodStart: string;
   periodEnd: string;
   periodLabel: string;
+  connectionIds?: string[];
 }): Promise<{ updated: number; analyticsFound: boolean }> {
-  const { documentId, clientId, periodStart, periodEnd, periodLabel } = input;
+  const { documentId, clientId, periodStart, periodEnd, periodLabel, connectionIds } = input;
 
   const doc = await prisma.document.findUnique({
     where: { id: documentId },
@@ -329,7 +332,7 @@ export async function pullSupportDataIntoDocument(input: {
   });
   if (!doc) throw new Error("Document not found");
 
-  const data = await buildSupportReportData({ clientId, periodStart, periodEnd, periodLabel });
+  const data = await buildSupportReportData({ clientId, periodStart, periodEnd, periodLabel, connectionIds });
   const T = SUPPORT_REPORT_SECTION_TITLES;
 
   // The data sections this pull owns, in render order. Each is matched to an existing section by

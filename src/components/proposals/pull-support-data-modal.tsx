@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { buttonStyles } from "@/components/ui/button";
-import { useSupportClients } from "@/hooks/use-support";
+import { useSupportClients, useSupportConnections } from "@/hooks/use-support";
 import { getProposal } from "@/lib/api";
 import type { ProposalDocument } from "@/types/proposal";
 
@@ -39,6 +39,16 @@ export function PullSupportDataModal({
 
   const [clientId, setClientId] = useState("");
   const effectiveClientId = clientId || defaultClientId;
+  const connectionsQ = useSupportConnections(effectiveClientId || null);
+  const careConnections = useMemo(
+    () => (connectionsQ.data?.connections ?? []).filter((connection) => connection.source !== "analytics"),
+    [connectionsQ.data],
+  );
+  const [connectorScope, setConnectorScope] = useState("all");
+  const selectedConnectionIds = useMemo(() => {
+    if (connectorScope === "all") return undefined;
+    return careConnections.some((connection) => connection.id === connectorScope) ? [connectorScope] : undefined;
+  }, [careConnections, connectorScope]);
 
   // Month options: last 12 months, default the previous month.
   const monthOptions = useMemo(() => {
@@ -74,6 +84,7 @@ export function PullSupportDataModal({
           periodStart: start.toISOString().slice(0, 10),
           periodEnd: end.toISOString().slice(0, 10),
           periodLabel,
+          connectionIds: selectedConnectionIds,
         }),
       });
       const json = (await res.json().catch(() => ({}))) as {
@@ -88,7 +99,10 @@ export function PullSupportDataModal({
 
       const updated = json.data?.updated ?? 0;
       const note = json.data?.analyticsFound === false ? " (no analytics connection — metrics table left as-is)" : "";
-      setMsg({ type: "ok", text: `Filled ${updated} section${updated === 1 ? "" : "s"} for ${periodLabel}.${note}` });
+      const sourceNote = selectedConnectionIds
+        ? ` from ${careConnections.find((connection) => connection.id === selectedConnectionIds[0])?.label ?? "the selected connector"}`
+        : " from all Care connectors";
+      setMsg({ type: "ok", text: `Filled ${updated} section${updated === 1 ? "" : "s"} for ${periodLabel}${sourceNote}.${note}` });
     } catch (err) {
       setMsg({ type: "err", text: err instanceof Error ? err.message : "Failed to pull data" });
     } finally {
@@ -101,7 +115,8 @@ export function PullSupportDataModal({
       <div className="space-y-4 p-5">
         <p className="text-sm text-[var(--text-3)]">
           Fills this report&apos;s performance, ticket-volume and analytics sections from the
-          client&apos;s live Care data for the chosen month. Your cover, overview and closing text stay as they are.
+          client&apos;s live Care data for the chosen month. Choose all Care connectors or a single
+          source for the support-performance figures. Your cover, overview and closing text stay as they are.
         </p>
 
         <label className="block">
@@ -116,6 +131,26 @@ export function PullSupportDataModal({
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
+        </label>
+
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-[var(--text-2)]">Care connector</span>
+          <select
+            value={selectedConnectionIds ? connectorScope : "all"}
+            onChange={(e) => setConnectorScope(e.target.value)}
+            className="app-select h-9 w-full text-sm"
+            disabled={connectionsQ.isLoading || careConnections.length === 0}
+          >
+            <option value="all">All Care connectors</option>
+            {careConnections.map((connection) => (
+              <option key={connection.id} value={connection.id}>
+                {connection.label} · {connection.source.replace(/_/g, " ")}
+              </option>
+            ))}
+          </select>
+          {careConnections.length === 0 && !connectionsQ.isLoading && (
+            <span className="mt-1 block text-[11px] text-[var(--text-4)]">No Care conversation connectors are configured for this client.</span>
+          )}
         </label>
 
         <label className="block">

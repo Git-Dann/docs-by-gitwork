@@ -1138,6 +1138,7 @@ export async function getTicketStatsForPeriod(
   clientId: string,
   periodStart: string,
   periodEnd: string,
+  connectionIds?: string[],
 ): Promise<{
   totalTickets: number;
   catCancellations: number;
@@ -1154,7 +1155,7 @@ export async function getTicketStatsForPeriod(
   const end = new Date(periodEnd + "T23:59:59.999Z");
 
   const tickets = await prisma.supportConversation.findMany({
-    where: { clientId, receivedAt: { gte: start, lte: end } },
+    where: await supportReportConversationWhere(clientId, start, end, connectionIds),
     select: { issueType: true, priority: true },
   });
 
@@ -1205,6 +1206,43 @@ function mean(values: number[]): number | null {
 }
 
 /**
+ * Scope report metrics to one or more current Care connectors. Conversations ingested
+ * before connector attribution was added remain visible when their source matches the
+ * chosen connector, so historic reports don't appear empty after the upgrade.
+ */
+async function supportReportConversationWhere(
+  clientId: string,
+  start: Date,
+  end: Date,
+  connectionIds?: string[],
+): Promise<Prisma.SupportConversationWhereInput> {
+  const base: Prisma.SupportConversationWhereInput = {
+    clientId,
+    receivedAt: { gte: start, lte: end },
+  };
+  if (connectionIds === undefined) return base;
+
+  const ids = [...new Set(connectionIds.filter(Boolean))];
+  if (ids.length === 0) return { ...base, id: { in: [] } };
+
+  const connections = await prisma.accountConnection.findMany({
+    where: { id: { in: ids }, clientId },
+    select: { id: true, source: true },
+  });
+  if (connections.length === 0) return { ...base, id: { in: [] } };
+
+  return {
+    ...base,
+    OR: [
+      { connectionId: { in: connections.map((connection) => connection.id) } },
+      // Legacy rows have no connection id. Source is the best accurate matching
+      // signal until their connector sync touches them and claims attribution.
+      { connectionId: null, source: { in: [...new Set(connections.map((connection) => connection.source))] } },
+    ],
+  };
+}
+
+/**
  * Compute support-desk performance for a period from conversation lifecycle timestamps.
  * Conversations are scoped by receivedAt so the figures describe work that *arrived* in
  * the window. Times normally derive from firstTriagedAt / closedAt — i.e. "first response"
@@ -1220,12 +1258,13 @@ export async function getPerformanceMetricsForPeriod(
   periodStart: string,
   periodEnd: string,
   slaTargetHours = 4,
+  connectionIds?: string[],
 ): Promise<import("@/types/support").SupportPerformanceMetrics> {
   const start = new Date(periodStart);
   const end = new Date(periodEnd + "T23:59:59.999Z");
 
   const conversations = await prisma.supportConversation.findMany({
-    where: { clientId, receivedAt: { gte: start, lte: end } },
+    where: await supportReportConversationWhere(clientId, start, end, connectionIds),
     select: {
       source: true,
       receivedAt: true,

@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 // POST /api/documents/[id]/pull-support-data
-// Body: { clientId (support client), periodStart, periodEnd, periodLabel }
+// Body: { clientId (support client), periodStart, periodEnd, periodLabel, connectionIds? }
 // Fills the open REPORT document's data sections from the client's live support data,
 // leaving the narrative sections untouched.
 export async function POST(
@@ -20,11 +20,16 @@ export async function POST(
       periodStart?: string;
       periodEnd?: string;
       periodLabel?: string;
+      connectionIds?: unknown;
     };
 
     if (!body.clientId || !body.periodStart || !body.periodEnd || !body.periodLabel) {
       return apiError("clientId, periodStart, periodEnd and periodLabel are required", 400);
     }
+
+    const connectionIds = Array.isArray(body.connectionIds)
+      ? body.connectionIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+      : undefined;
 
     const result = await pullSupportDataIntoDocument({
       documentId: id,
@@ -32,6 +37,7 @@ export async function POST(
       periodStart: body.periodStart,
       periodEnd: body.periodEnd,
       periodLabel: body.periodLabel,
+      connectionIds,
     });
 
     return apiOk(result);

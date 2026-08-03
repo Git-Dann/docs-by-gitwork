@@ -2599,6 +2599,7 @@ model AccountConnection {
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   channelTokens ChannelToken[]
+  conversations SupportConversation[] @relation("ConnectionConversations")
 
   @@index([clientId, source])
 }
@@ -2631,6 +2632,10 @@ model SupportConversation {
   id              String                    @id @default(cuid())
   clientId        String
   client          SupportClient             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  // The connector that ingested this conversation. Nullable so existing Care
+  // history remains valid while new syncs become filterable by connector.
+  connectionId    String?
+  connection      AccountConnection?        @relation("ConnectionConversations", fields: [connectionId], references: [id], onDelete: SetNull)
   source          SupportSource
   customerLabel   String
   externalId      String?
@@ -2657,6 +2662,7 @@ model SupportConversation {
   notes           SupportConversationNote[]
 
   @@index([clientId, receivedAt])
+  @@index([connectionId, receivedAt])
   @@index([clientId, unread])
   @@index([clientId, status])
   @@index([clientId, assigneeId])

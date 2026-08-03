@@ -108,7 +108,12 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
         const customerLabel = from.replace(/<[^>]+>/g, "").trim() || from;
 
         let conv = await prisma.supportConversation.findFirst({
-          where: { clientId: client.id, source: "GMAIL", externalId: item.threadId },
+          where: {
+            clientId: client.id,
+            source: "GMAIL",
+            externalId: item.threadId,
+            OR: [{ connectionId: connection.id }, { connectionId: null }],
+          },
         });
 
         if (!conv) {
@@ -119,6 +124,7 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
           conv = await prisma.supportConversation.create({
             data: {
               clientId: client.id,
+              connectionId: connection.id,
               source: "GMAIL",
               externalId: item.threadId,
               customerLabel,
@@ -134,6 +140,12 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
           newConversationIds.push(conv.id);
           ingested++;
         } else {
+          if (conv.connectionId === null) {
+            await prisma.supportConversation.update({
+              where: { id: conv.id },
+              data: { connectionId: connection.id },
+            });
+          }
           filtered++;
           reasons.duplicate = (reasons.duplicate ?? 0) + 1;
         }
