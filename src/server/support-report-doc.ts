@@ -234,6 +234,22 @@ function buildAnalyticsTables(
 }
 
 /**
+ * Legacy reports may contain a single "Product analytics" table alongside the
+ * newer, per-group tables. Keep that section useful as a compact index instead
+ * of flattening every metric into it and creating a second wall of numbers.
+ */
+function buildAnalyticsOverviewTable(
+  tables: SupportReportData["analyticsTables"],
+  periodLabel: string,
+): { columns: string[]; rows: string[][]; caption: string } {
+  return {
+    columns: ["Metric group", "Measures"],
+    rows: tables.map((table) => [table.title, `${table.rows.length} metric${table.rows.length === 1 ? "" : "s"}`]),
+    caption: `${periodLabel} · detailed breakouts below`,
+  };
+}
+
+/**
  * Fixed section titles that are the join key between template, generator and pull-refresh for the
  * Care (non-analytics) sections. Analytics sections are titled dynamically by their metric group
  * (Revenue / Subscription activity / Top countries / …), so they aren't listed here.
@@ -351,32 +367,27 @@ export async function pullSupportDataIntoDocument(input: {
   );
 
   // Reports created before analytics groups were introduced have one generic
-  // "Product analytics" table. Populate that table in place rather than adding
-  // grouped tables beside it, which would leave a stale empty table in the report.
+  // "Product analytics" table. Keep it as a compact index, then populate the
+  // distinct group tables below. This avoids the old, crowded flattened table
+  // while preserving a useful high-level section in existing client reports.
   if (genericAnalyticsSection && data.analyticsTables.length > 0) {
     targets.push({
       key: "data_table",
       title: genericAnalyticsSection.title,
-      description: "Product analytics for the period.",
-      data: {
-        columns: ["Metric", "Value", "vs last month"],
-        rows: data.analyticsTables.flatMap((table) =>
-          table.rows.map(([label, value, trend]) => [`${table.title} — ${label}`, value, trend]),
-        ),
-        caption: periodLabel,
-      },
+      description: "Metric groups included in the report.",
+      data: buildAnalyticsOverviewTable(data.analyticsTables, periodLabel),
     });
-  } else {
-    // One data_table per analytics group — matched/created by the group title so a re-pull
-    // updates the same tables in place.
-    for (const table of data.analyticsTables) {
-      targets.push({
-        key: "data_table",
-        title: table.title,
-        description: `${table.title} for the period.`,
-        data: { columns: table.columns, rows: table.rows, caption: table.caption },
-      });
-    }
+  }
+
+  // One data_table per analytics group — matched/created by the group title so a re-pull
+  // updates the same tables in place.
+  for (const table of data.analyticsTables) {
+    targets.push({
+      key: "data_table",
+      title: table.title,
+      description: `${table.title} for the period.`,
+      data: { columns: table.columns, rows: table.rows, caption: table.caption },
+    });
   }
 
   let nextOrder = doc.sections.reduce((max, s) => Math.max(max, s.sortOrder), -1) + 1;
