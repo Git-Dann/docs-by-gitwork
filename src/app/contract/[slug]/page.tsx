@@ -19,27 +19,33 @@ export default function SignDocumentPage() {
 
   return (
     <main className="h-screen bg-[#f3f4f6] flex flex-col">
-      {/* Branded Header */}
-      <div className="bg-[#111827] text-white px-6 py-4 flex items-center shadow-md">
-        <span className="font-semibold text-lg tracking-tight">Gitwork Foundry</span>
-        <span className="ml-4 pl-4 border-l border-white/20 text-sm text-gray-300">
-          Document Signing
-        </span>
+      {/* Header matching client portal agreement format */}
+      <div className="flex items-center justify-between p-4 bg-[#111827] border-b border-gray-800 text-white shadow-sm">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">Sign Agreement</h2>
+          <p className="text-sm text-gray-400">Please review and sign the document below.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="text-sm font-medium text-gray-300 hover:text-white hover:underline transition-colors"
+        >
+          &larr; Back to App
+        </button>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 w-full max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col min-h-0">
-        {/* DocuSeal Embed Container */}
+      {/* Main Content Area */}
+      <div className="flex-1 w-full flex flex-col min-h-0 p-4 sm:p-6 lg:p-8">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden w-full flex-1 relative">
           <DocusealForm
             src={`https://docuseal.com/s/${slug}`}
             style={{ width: "100%", height: "100%" }}
+            backgroundColor="#ffffff"
+            withTitle={false}
             onComplete={() => {
-              // The webhook handles the actual backend state update.
-              // Optional: redirect to a success page or back to portal
               setTimeout(() => {
                 alert("Thank you! Your signature has been securely captured.");
-                router.push("/");
+                router.push("/app/docs");
               }, 1500);
             }}
           />
@@ -47,10 +53,8 @@ export default function SignDocumentPage() {
       </div>
 
       {/* Footer */}
-      <div className="py-8 text-center">
-        <p className="text-xs text-gray-500">
-          Secured by DocuSeal &bull; Powered by Foundry
-        </p>
+      <div className="py-3 text-center bg-[#111827] text-gray-400 border-t border-gray-800 text-xs">
+        Secured by DocuSeal &bull; Powered by Foundry
       </div>
     </main>
   );
