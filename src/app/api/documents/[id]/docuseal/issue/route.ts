@@ -172,10 +172,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return apiError("Invalid response from DocuSeal API", 502);
     }
 
-    // 8. Store in Database (upsert to handle re-issuance cleanly)
-    const docusealSubmission = await prisma.docusealSubmission.upsert({
-      where: { documentId: document.id },
-      create: {
+    // 8. Store in Database
+    const docusealSubmission = await prisma.docusealSubmission.create({
+      data: {
         documentId: document.id,
         submissionId: clientSubmitter.submission_id,
         slug: clientSubmitter.slug || "",

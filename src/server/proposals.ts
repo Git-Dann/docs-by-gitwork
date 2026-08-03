@@ -66,7 +66,10 @@ export const proposalInclude = {
   // Linked Portal client — used to auto-fill the cover's "Client × Gitwork" logo when the
   // document is tied to a WorkspaceClient that already has a logo (falls back to the name).
   client: { select: { id: true, name: true, logoUrl: true } },
-  docusealSubmission: { select: { status: true, gitworkSlug: true, submissionId: true } },
+  // DocuSeal MSA submission — status, countersign slug, and completed PDF URL for the editor toolbar.
+  docusealSubmission: {
+    select: { status: true, gitworkSlug: true, submissionId: true, combinedPdfUrl: true },
+  },
 } satisfies Prisma.DocumentInclude;
 
 export type ProposalDocumentRecord = Prisma.DocumentGetPayload<{
@@ -175,22 +178,22 @@ export function serializeProposal(
     updatedAt: document.updatedAt.toISOString(),
     sections: hideCosts
       ? sections.map((s) =>
-          s.key === "costing" ? { ...s, data: blankCostingData(s.data) as typeof s.data } : s,
-        )
+        s.key === "costing" ? { ...s, data: blankCostingData(s.data) as typeof s.data } : s,
+      )
       : sections,
     costLineItems: hideCosts
       ? []
       : document.costLineItems.map((item) => ({
-          id: item.id,
-          category: item.category,
-          itemName: item.itemName,
-          description: item.description ?? "",
-          quantity: decimalToNumber(item.quantity),
-          unitCost: decimalToNumber(item.unitCost),
-          subtotal: decimalToNumber(item.subtotal),
-          costKind: item.costKind,
-          sortOrder: item.sortOrder,
-        })),
+        id: item.id,
+        category: item.category,
+        itemName: item.itemName,
+        description: item.description ?? "",
+        quantity: decimalToNumber(item.quantity),
+        unitCost: decimalToNumber(item.unitCost),
+        subtotal: decimalToNumber(item.subtotal),
+        costKind: item.costKind,
+        sortOrder: item.sortOrder,
+      })),
     timelinePhases: document.timelinePhases.map((phase) => ({
       id: phase.id,
       name: phase.name,
@@ -232,6 +235,7 @@ export function serializeProposal(
     docusealStatus: document.docusealSubmission?.status ?? null,
     docusealGitworkSlug: document.docusealSubmission?.gitworkSlug ?? null,
     docusealSubmissionId: document.docusealSubmission?.submissionId ?? null,
+    docusealCombinedPdfUrl: document.docusealSubmission?.combinedPdfUrl ?? null,
   };
 }
 
@@ -257,8 +261,8 @@ export const proposalListSelect = {
   // Visible-block count for the card meta readout. Cheap aggregate, no heavy JSON on the wire.
   _count: { select: { sections: true } },
   docusealSubmission: {
-    select: { status: true, gitworkSlug: true, submissionId: true },
-  },
+    select: { status: true, gitworkSlug: true, submissionId: true, combinedPdfUrl: true }
+  }
 } satisfies Prisma.DocumentSelect;
 
 export type ProposalListRow = Prisma.DocumentGetPayload<{ select: typeof proposalListSelect }>;
@@ -282,6 +286,7 @@ export function serializeProposalListItem(proposal: ProposalListRow): ProposalLi
     docusealStatus: proposal.docusealSubmission?.status ?? null,
     docusealGitworkSlug: proposal.docusealSubmission?.gitworkSlug ?? null,
     docusealSubmissionId: proposal.docusealSubmission?.submissionId ?? null,
+    docusealCombinedPdfUrl: proposal.docusealSubmission?.combinedPdfUrl ?? null,
   };
 }
 

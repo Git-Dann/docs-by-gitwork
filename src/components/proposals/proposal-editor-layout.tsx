@@ -785,6 +785,12 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       setIsPreflightOpen(false);
       setApprovalOpen(false);
 
+      // Optimistically reflect the MSA-issued state so the toolbar button switches
+      // to "MSA Sent — Awaiting Client" immediately without waiting for a refetch.
+      setLocalDraft((current) =>
+        current ? { ...current, docusealStatus: "PENDING" } : current,
+      );
+
       if (clientSlug) {
         const portalBase = process.env.NEXT_PUBLIC_CLIENT_PORTAL_URL || window.location.origin;
         let portalLoginUrl = portalBase;
@@ -1252,50 +1258,81 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                       Export
                     </Button>
                   </div>
-                  <div className="mt-2 flex items-center gap-2 border-t border-[var(--border-2)] pt-2">
-                    {draft?.docusealStatus === "CLIENT_SIGNED" ? (
-                      draft.docusealGitworkSlug ? (
-                        <Link
-                          href={`/contract/${draft.docusealGitworkSlug}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-600 transition-colors"
+                  {(() => {
+                    const msaStatus = draft.docusealStatus ?? null;
+                    if (msaStatus === "COMPLETED") {
+                      // Fully signed — link directly to the combined PDF
+                      return (
+                        <div className="mt-2 flex items-center gap-2 border-t border-[var(--border-2)] pt-2">
+                          {draft.docusealCombinedPdfUrl ? (
+                            <a
+                              href={draft.docusealCombinedPdfUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex flex-1 items-center justify-center gap-1.5 rounded-[7px] border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
+                            >
+                              <CheckCircleIcon className="h-4 w-4" />
+                              View Signed MSA
+                            </a>
+                          ) : (
+                            <span className="flex flex-1 items-center justify-center gap-1.5 rounded-[7px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-600">
+                              <CheckCircleIcon className="h-4 w-4" />
+                              Signed MSA
+                            </span>
+                          )}
+                        </div>
+                      );
+                    }
+                    if (msaStatus === "CLIENT_SIGNED") {
+                      // Client signed — admin needs to countersign
+                      return (
+                        <div className="mt-2 flex items-center gap-2 border-t border-[var(--border-2)] pt-2">
+                          {draft.docusealGitworkSlug ? (
+                            <a
+                              href={`/contract/${draft.docusealGitworkSlug}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex flex-1 items-center justify-center gap-1.5 rounded-[7px] border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100"
+                            >
+                              <EnvelopeIcon className="h-4 w-4" />
+                              Awaiting Gitwork Signature
+                            </a>
+                          ) : (
+                            <span className="flex flex-1 items-center justify-center gap-1.5 rounded-[7px] border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-600">
+                              <EnvelopeIcon className="h-4 w-4" />
+                              Awaiting Gitwork Signature
+                            </span>
+                          )}
+                        </div>
+                      );
+                    }
+                    if (msaStatus === "PENDING") {
+                      // MSA sent to client, waiting for their signature
+                      return (
+                        <div className="mt-2 flex items-center gap-2 border-t border-[var(--border-2)] pt-2">
+                          <span className="flex flex-1 cursor-not-allowed items-center justify-center gap-1.5 rounded-[7px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-sm font-medium text-[var(--text-3)] opacity-70">
+                            <EnvelopeIcon className="h-4 w-4" />
+                            MSA Sent — Awaiting Client
+                          </span>
+                        </div>
+                      );
+                    }
+                    // No MSA issued yet — show the Send button
+                    return (
+                      <div className="mt-2 flex items-center gap-2 border-t border-[var(--border-2)] pt-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="flex-1 justify-center border-[var(--brand-300)] text-[var(--brand-700)] hover:bg-[var(--brand-50)]"
+                          onClick={handleIssueDocuSeal}
+                          disabled={isIssuingDocuSeal}
                         >
-                          <span>Awaiting Gitwork Signature</span>
-                          <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
-                        </Link>
-                      ) : (
-                        <span className="flex-1 text-center py-1.5 text-xs font-semibold text-amber-500 bg-amber-500/10 rounded-md ring-1 ring-amber-500/20">
-                          Awaiting Gitwork Signature
-                        </span>
-                      )
-                    ) : draft?.docusealStatus === "COMPLETED" || (draft?.status === "ACCEPTED" && draft?.docusealStatus) ? (
-                      <a
-                        href={`/api/documents/${draft.id}/docuseal/download`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 transition-colors"
-                      >
-                        <CheckCircleIcon className="h-3.5 w-3.5" />
-                        <span>Signed MSA</span>
-                      </a>
-                    ) : draft?.docusealStatus === "PENDING" ? (
-                      <span className="flex-1 text-center py-1.5 text-xs font-medium text-blue-400 bg-blue-500/10 rounded-md ring-1 ring-blue-500/20">
-                        MSA Sent (Awaiting Client)
-                      </span>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="flex-1 justify-center border-[var(--brand-300)] text-[var(--brand-700)] hover:bg-[var(--brand-50)]"
-                        onClick={handleIssueDocuSeal}
-                        disabled={isIssuingDocuSeal}
-                      >
-                        {isIssuingDocuSeal ? "Issuing..." : "Send MSA via DocuSeal"}
-                      </Button>
-                    )}
-                  </div>
+                          {isIssuingDocuSeal ? "Issuing..." : "Send MSA via DocuSeal"}
+                        </Button>
+                      </div>
+                    );
+                  })()}
 
                   <div className="mt-3 border-t border-[var(--border-2)] pt-3">
                     <button
@@ -1560,8 +1597,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
         onSubmit={handlePreflightSubmit}
         initialValues={
           ((draft.metadata as unknown) as Record<string, unknown>)?.msaDetails as
-            | Partial<DocuSealPreflightValues>
-            | undefined
+          | Partial<DocuSealPreflightValues>
+          | undefined
         }
       />
     </div>

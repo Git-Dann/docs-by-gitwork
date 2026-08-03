@@ -698,9 +698,14 @@ export interface ProposalDocument {
   assets: AssetInput[];
   links: ProposalLinkInput[];
   ctas: CTAInput[];
+  /** Current DocuSeal MSA status: null = not issued, PENDING, CLIENT_SIGNED, COMPLETED, DECLINED */
   docusealStatus?: string | null;
+  /** Gitwork countersign slug — builds /contract/[slug] link for admin countersigning. */
   docusealGitworkSlug?: string | null;
+  /** DocuSeal internal submission ID. */
   docusealSubmissionId?: number | null;
+  /** URL to the combined signed PDF when the MSA is COMPLETED. */
+  docusealCombinedPdfUrl?: string | null;
 }
 
 export interface TemplateSummary {
@@ -738,6 +743,10 @@ export interface ProposalListItem {
   /** Whether this doc is currently mirrored into the client's wiki Documents section. */
   inWiki?: boolean;
   docusealStatus?: string | null;
+  /** Gitwork countersign slug — used to build /contract/[slug] link for admin countersigning. */
   docusealGitworkSlug?: string | null;
+  /** DocuSeal submission ID, for direct API/download references. */
   docusealSubmissionId?: number | null;
+  /** URL to the combined signed PDF when the MSA is COMPLETED. */
+  docusealCombinedPdfUrl?: string | null;
 }
