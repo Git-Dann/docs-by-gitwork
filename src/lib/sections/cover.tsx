@@ -151,6 +151,17 @@ export const coverSection = defineSection<CoverSectionData>({
     );
   },
   Preview: ({ data, proposal, section, editable, onChange }) => {
+    // There are TWO themes — Gitwork and Foundry — and nothing else. `coverStyle`
+    // (light | minimal | bold) is stranded legacy: its control was removed in 43506dd6, so no UI
+    // can change a stored value, yet older documents still carry one and it still steered the
+    // render. That is how a contract lost its parties with no way for the author to fix it —
+    // `minimal` zeroed the strip, and `bold` selected a different cover renderer that has no
+    // parties strip at all.
+    //
+    // So the stored value is ignored outright rather than clamped case by case. The cover is the
+    // statement cover, themed by `data-doc-theme`. Deleting the field is a data-losing schema
+    // change, so it stays on the type and is simply not read.
+    const coverStyle = "light" as const;
     // Preview is a regular component rendered by the section dispatcher, so hook ordering is
     // stable within each render of this preview function.
     const editing = Boolean(editable && onChange);
@@ -316,10 +327,10 @@ export const coverSection = defineSection<CoverSectionData>({
               documentNumber={proposal.documentNumber ?? undefined}
               version={proposal.version || "v1.0"}
               status={statusLabelForCover(proposal.status)}
-              tone={(data.coverStyle ?? "light") === "bold" ? "light" : "dark"}
+              tone="dark"
             />
           }
-          coverStyle={data.coverStyle ?? "light"}
+          coverStyle={coverStyle}
           heroImage={data.heroImage?.trim() || undefined}
           // The proposal-grade stat strip (Sections / Phases / Touchpoints / Value) only makes
           // sense for proposals — lightweight docs (handover, report, brief, blank) get a clean

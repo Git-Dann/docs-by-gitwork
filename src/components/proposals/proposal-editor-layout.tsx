@@ -1019,6 +1019,196 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             </Link>
           ) : null}
 
+            {/* Row 1 is DOCUMENT-level and ends here. Review & Send sits far right, alone —
+                separating it from Details (row 2) is also what stopped their native `title`
+                tooltips colliding, which cannot be fixed by repositioning because the browser
+                owns native tooltip placement. Layout was the only real fix. */}
+            <span className="ml-auto flex shrink-0 items-center gap-1.5">
+              <button
+                ref={approvalButtonRef}
+                type="button"
+                aria-haspopup="dialog"
+                aria-expanded={approvalOpen}
+                onClick={() => {
+                  const rect = approvalButtonRef.current?.getBoundingClientRect();
+                  if (rect) {
+                    setApprovalPos({
+                      top: rect.bottom + 8,
+                      right: window.innerWidth - rect.right,
+                    });
+                  }
+                  setApprovalOpen((v) => !v);
+                }}
+                className={buttonStyles({
+                  variant: "primary",
+                  size: "sm",
+                  className: "h-8 shrink-0 gap-1.5 pr-1.5",
+                })}
+              >
+                <CheckCircleIcon className="h-4 w-4" />
+                Review &amp; Send
+                {/* The status is already a mono readout in this card's header strip, so the chip is a
+                    nicety — dropped below 2xl to keep the toolbar on ONE row at 1280. */}
+                <span className="hidden rounded-[4px] border border-white/20 bg-white/12 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-white/95 2xl:inline-block">
+                  {statusLabel(draft.status)}
+                </span>
+                <ChevronDownIcon
+                  className={cn("h-4 w-4 opacity-80 transition", approvalOpen && "rotate-180")}
+                />
+              </button>
+
+              {approvalOpen && (
+                <div
+                  ref={approvalPanelRef}
+                  role="dialog"
+                  aria-label="Approve, share and export"
+                  style={{ top: approvalPos.top, right: approvalPos.right }}
+                  className="fixed z-[100] w-[360px] overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-lg)]"
+                >
+                  {/* Widget-header strip — the platform signature; live status on the right. */}
+                  <div className="widget-header">
+                    <span className="widget-header-label">REVIEW &amp; SEND</span>
+                    <span className="widget-header-right">{statusLabel(draft.status)}</span>
+                  </div>
+
+                  <div className="p-5">
+                    {/* Internal review track — opt-in per doc. Lightweight docs (handover, report,
+                        brief, blank) default off; proposals/contracts default on. The toggle stores
+                        an explicit override on metadata.approvalTrackEnabled. */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+                          Internal review
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--text-3)]">
+                          Require Product / Tech / MD sign-off before this doc is ready.
+                        </p>
+                      </div>
+                      <label className="relative mt-0.5 inline-flex shrink-0 cursor-pointer items-center">
+                        <input
+                          type="checkbox"
+                          checked={approvalApplies}
+                          onChange={(event) => handleApprovalTrackToggle(event.target.checked)}
+                          className="peer sr-only"
+                        />
+                        <span className="h-5 w-9 rounded-full bg-[var(--text-4)]/40 transition-colors peer-checked:bg-[var(--brand-600)]" />
+                        <span className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-4" />
+                      </label>
+                    </div>
+
+                    {approvalApplies ? (
+                      <div className="mt-3 divide-y divide-[var(--border-2)] border-t border-[var(--border-2)] pt-1">
+                        {approvalOptions.map((option) => {
+                          const checked = Boolean(draft.metadata[option.key]);
+                          return (
+                            <label
+                              key={option.key}
+                              className="flex cursor-pointer items-start gap-3 py-2.5 text-sm text-[var(--text-2)]"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(event) => handleApprovalToggle(option.key, event.target.checked)}
+                                className="app-checkbox mt-0.5 rounded"
+                              />
+                              <span>
+                                <span className="block font-medium text-[var(--text-1)]">{option.label}</span>
+                                <span className="block text-xs text-[var(--text-3)]">{option.description}</span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="mt-3 border-t border-[var(--border-2)] pt-3 text-xs text-[var(--text-3)]">
+                        No sign-off needed — share or send whenever you&apos;re ready.
+                      </p>
+                    )}
+
+                    {/* Public link */}
+                    <div className="mt-5 border-t border-[var(--border-2)] pt-4">
+                      <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
+                        Public link
+                      </p>
+                      {publicSharePath ? (
+                        <>
+                          <input readOnly value={publicShareUrl} className="app-input mt-2" />
+                          <div className="mt-2 flex items-center gap-3 text-sm">
+                            <Link
+                              href={publicSharePath}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-medium text-[var(--brand-700)] hover:underline"
+                            >
+                              Open shared preview
+                            </Link>
+                            <span className="text-[var(--text-4)]">·</span>
+                            <a
+                              href={buildShareMailto(draft.title, publicShareUrl)}
+                              className="inline-flex items-center gap-1 font-medium text-[var(--brand-700)] hover:underline"
+                            >
+                              <EnvelopeIcon className="h-3.5 w-3.5" />
+                              Email link
+                            </a>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
+                          No public link yet — <span className="font-medium text-[var(--text-1)]">Share</span> below to mint a
+                          tokenised URL. Revocable any time.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="mt-5 flex items-center gap-2 border-t border-[var(--border-2)] pt-4">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="flex-1 justify-center"
+                        onClick={handleShareLink}
+                        leadingIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                      >
+                        {copied ? "Copied" : "Share"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        className="flex-1 justify-center"
+                        onClick={handleExportPdf}
+                        leadingIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
+                      >
+                        Export
+                      </Button>
+                    </div>
+
+                    <div className="mt-3 border-t border-[var(--border-2)] pt-3">
+                      <button
+                        type="button"
+                        onClick={handleSaveAsTemplate}
+                        className="text-sm font-medium text-[var(--brand-700)] hover:underline"
+                      >
+                        Save current structure as a template…
+                      </button>
+                      {templateSavedAt ? (
+                        <p className="mt-1 text-xs text-[var(--success-500)]">
+                          Saved as &ldquo;{templateSavedAt}&rdquo;
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </span>
+          </div>
+
+          {/* Row 2 — EDITING-level: what you reach for while writing. Its own hairline and a
+              tighter vertical rhythm (44px vs row 1's 49px) so the two read as a stacked pair
+              rather than two toolbars that happen to be adjacent. */}
+          <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--border-2)] px-2.5 py-1.5 sm:px-3">
+
           {/* Pane toggles (Deck's left/right panel toggles) — outline left, properties right. */}
           <span className="flex shrink-0 items-center gap-1">
             <button
@@ -1264,183 +1454,6 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               )}
             </button>
 
-            <button
-              ref={approvalButtonRef}
-              type="button"
-              aria-haspopup="dialog"
-              aria-expanded={approvalOpen}
-              onClick={() => {
-                const rect = approvalButtonRef.current?.getBoundingClientRect();
-                if (rect) {
-                  setApprovalPos({
-                    top: rect.bottom + 8,
-                    right: window.innerWidth - rect.right,
-                  });
-                }
-                setApprovalOpen((v) => !v);
-              }}
-              className={buttonStyles({
-                variant: "primary",
-                size: "sm",
-                className: "h-8 shrink-0 gap-1.5 pr-1.5",
-              })}
-            >
-              <CheckCircleIcon className="h-4 w-4" />
-              Review &amp; Send
-              {/* The status is already a mono readout in this card's header strip, so the chip is a
-                  nicety — dropped below 2xl to keep the toolbar on ONE row at 1280. */}
-              <span className="hidden rounded-[4px] border border-white/20 bg-white/12 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-white/95 2xl:inline-block">
-                {statusLabel(draft.status)}
-              </span>
-              <ChevronDownIcon
-                className={cn("h-4 w-4 opacity-80 transition", approvalOpen && "rotate-180")}
-              />
-            </button>
-
-            {approvalOpen && (
-              <div
-                ref={approvalPanelRef}
-                role="dialog"
-                aria-label="Approve, share and export"
-                style={{ top: approvalPos.top, right: approvalPos.right }}
-                className="fixed z-[100] w-[360px] overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-lg)]"
-              >
-                {/* Widget-header strip — the platform signature; live status on the right. */}
-                <div className="widget-header">
-                  <span className="widget-header-label">REVIEW &amp; SEND</span>
-                  <span className="widget-header-right">{statusLabel(draft.status)}</span>
-                </div>
-
-                <div className="p-5">
-                  {/* Internal review track — opt-in per doc. Lightweight docs (handover, report,
-                      brief, blank) default off; proposals/contracts default on. The toggle stores
-                      an explicit override on metadata.approvalTrackEnabled. */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
-                        Internal review
-                      </p>
-                      <p className="mt-1 text-xs text-[var(--text-3)]">
-                        Require Product / Tech / MD sign-off before this doc is ready.
-                      </p>
-                    </div>
-                    <label className="relative mt-0.5 inline-flex shrink-0 cursor-pointer items-center">
-                      <input
-                        type="checkbox"
-                        checked={approvalApplies}
-                        onChange={(event) => handleApprovalTrackToggle(event.target.checked)}
-                        className="peer sr-only"
-                      />
-                      <span className="h-5 w-9 rounded-full bg-[var(--text-4)]/40 transition-colors peer-checked:bg-[var(--brand-600)]" />
-                      <span className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-4" />
-                    </label>
-                  </div>
-
-                  {approvalApplies ? (
-                    <div className="mt-3 divide-y divide-[var(--border-2)] border-t border-[var(--border-2)] pt-1">
-                      {approvalOptions.map((option) => {
-                        const checked = Boolean(draft.metadata[option.key]);
-                        return (
-                          <label
-                            key={option.key}
-                            className="flex cursor-pointer items-start gap-3 py-2.5 text-sm text-[var(--text-2)]"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={(event) => handleApprovalToggle(option.key, event.target.checked)}
-                              className="app-checkbox mt-0.5 rounded"
-                            />
-                            <span>
-                              <span className="block font-medium text-[var(--text-1)]">{option.label}</span>
-                              <span className="block text-xs text-[var(--text-3)]">{option.description}</span>
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="mt-3 border-t border-[var(--border-2)] pt-3 text-xs text-[var(--text-3)]">
-                      No sign-off needed — share or send whenever you&apos;re ready.
-                    </p>
-                  )}
-
-                  {/* Public link */}
-                  <div className="mt-5 border-t border-[var(--border-2)] pt-4">
-                    <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
-                      Public link
-                    </p>
-                    {publicSharePath ? (
-                      <>
-                        <input readOnly value={publicShareUrl} className="app-input mt-2" />
-                        <div className="mt-2 flex items-center gap-3 text-sm">
-                          <Link
-                            href={publicSharePath}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="font-medium text-[var(--brand-700)] hover:underline"
-                          >
-                            Open shared preview
-                          </Link>
-                          <span className="text-[var(--text-4)]">·</span>
-                          <a
-                            href={buildShareMailto(draft.title, publicShareUrl)}
-                            className="inline-flex items-center gap-1 font-medium text-[var(--brand-700)] hover:underline"
-                          >
-                            <EnvelopeIcon className="h-3.5 w-3.5" />
-                            Email link
-                          </a>
-                        </div>
-                      </>
-                    ) : (
-                      <p className="mt-2 text-sm leading-6 text-[var(--text-3)]">
-                        No public link yet — <span className="font-medium text-[var(--text-1)]">Share</span> below to mint a
-                        tokenised URL. Revocable any time.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="mt-5 flex items-center gap-2 border-t border-[var(--border-2)] pt-4">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="flex-1 justify-center"
-                      onClick={handleShareLink}
-                      leadingIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
-                    >
-                      {copied ? "Copied" : "Share"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="primary"
-                      size="sm"
-                      className="flex-1 justify-center"
-                      onClick={handleExportPdf}
-                      leadingIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
-                    >
-                      Export
-                    </Button>
-                  </div>
-
-                  <div className="mt-3 border-t border-[var(--border-2)] pt-3">
-                    <button
-                      type="button"
-                      onClick={handleSaveAsTemplate}
-                      className="text-sm font-medium text-[var(--brand-700)] hover:underline"
-                    >
-                      Save current structure as a template…
-                    </button>
-                    {templateSavedAt ? (
-                      <p className="mt-1 text-xs text-[var(--success-500)]">
-                        Saved as &ldquo;{templateSavedAt}&rdquo;
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            )}
         </div>
       </section>
 
@@ -1460,31 +1473,27 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           />
         </div>
       ) : (
-        // Three panes (Deck's editor shape): [outline · navigation] [canvas] [properties].
-        // The column template is written out as four literal class strings rather than composed at
-        // runtime — Tailwind v4's scanner only sees static class text, so a template-literal
-        // `lg:grid-cols-[${n}px_…]` would never be emitted.
-        <section
-          className={cn(
-            "grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-rows-1",
-            // Rails step up at 2xl. Three panes on a 1280 laptop leaves the canvas tight, so the
-            // narrow band uses the documented 212px collections-rail width + a 320px props rail
-            // (the low end of the 320–360 target, still wide enough for `@[26rem]` to engage).
-            outlineOpen && optionsEntry
-              ? "lg:grid-cols-[212px_minmax(0,1fr)_320px] 2xl:grid-cols-[260px_minmax(0,1fr)_352px]"
-              : outlineOpen
-                ? "lg:grid-cols-[240px_minmax(0,1fr)] 2xl:grid-cols-[260px_minmax(0,1fr)]"
-                : optionsEntry
-                  ? "lg:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_352px]"
-                  : "lg:grid-cols-1",
-          )}
-        >
+        // ONE fluid canvas with two FLOATING rails over it.
+        //
+        // This was three grid columns, which is why it read as three windows however the borders
+        // were tuned: a column takes width away from the document permanently, so the page got
+        // narrower as you opened tools, and every rail had to own an edge. Floating them means
+        // the canvas is the full surface at every moment and the rails sit ON it — the document
+        // is the app, the tools are furniture.
+        //
+        // Only floats at `lg`. Below that the rails stack in normal flow, because an absolutely
+        // positioned 240px panel on a 390px phone would cover the document it is meant to steer.
+        <section className="relative lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:rounded-[10px] lg:border lg:border-[var(--border-2)] lg:bg-[var(--surface-canvas)]">
           {/* 02 // OUTLINE — NAVIGATION ONLY. Drag-reorder, visibility, insert-at, delete, and
               click-to-scroll. A block's Options no longer drill in here; they open on the right, so
               you never lose your place in the document while editing. On mobile it stacks above the
               canvas with a capped scrollable height so it can't bury the document. */}
+          {/* `lg:overflow-visible` on the wrapper is deliberate and load-bearing: the outline
+              card scrolls INSIDE itself (its list div is `lg:overflow-y-auto`), so a second
+              scroller here would nest one inside the other. Mobile keeps its own capped
+              scroller because there the card is not a full-height flex column. */}
           {outlineOpen ? (
-            <div className="max-h-[45vh] overflow-y-auto pr-1 lg:max-h-none lg:h-full lg:min-h-0 lg:overflow-visible lg:pr-0">
+            <div className="mb-3 max-h-[45vh] overflow-y-auto rounded-[10px] border border-[var(--border-2)] bg-white lg:absolute lg:left-4 lg:top-4 lg:bottom-4 lg:z-20 lg:mb-0 lg:max-h-none lg:w-[236px] lg:overflow-visible lg:shadow-[0_8px_28px_rgba(15,23,42,0.13)] 2xl:w-[260px]">
               <TableOfContentsCard
                 sections={sectionEntries}
                 activeId={viewingSectionId ?? activeEntry?.id ?? null}
@@ -1502,22 +1511,36 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           {/* 03 // CANVAS — the live document; ALL text edited inline. Clicking a block selects it
               and opens its Options in the right rail. */}
           <div className="min-w-0 lg:flex lg:min-h-0 lg:flex-col">
-            <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-              <div className="flex items-center justify-between gap-3 border-b border-[var(--border-2)] bg-white px-3 py-2 lg:shrink-0">
+            {/* No border and no radius of its own — the shell owns the frame now. Without this
+                the canvas drew a second box inside the first, which is the "three cards" look. */}
+            <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:rounded-none lg:border-0">
+              {/* The `03 // CANVAS` bar is gone on desktop. A header strip is what makes a region
+                  look like a pane, and the canvas is no longer a pane — it is the whole surface.
+                  The hint it carried now floats bottom-centre, out of the document's way. */}
+              <div className="flex items-center justify-between gap-3 border-b border-[var(--border-2)] bg-white px-3 py-2 lg:hidden">
                 <span className="font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-4)]">
                   03 // CANVAS
                 </span>
                 <span className="truncate text-[11px] text-[var(--text-4)]">
-                  {optionsEntry
-                    ? "What the client sees"
-                    : "Click any block to edit it →"}
+                  {optionsEntry ? "What the client sees" : "Click any block to edit it →"}
                 </span>
               </div>
               {/* The canvas scrolls INSIDE this pane. On desktop the editor is a fixed-height
                   frame (root is lg:h-full), so this pane is lg:flex-1 lg:min-h-0 and the document
                   scrolls here — the page itself never scrolls past the viewport. On mobile it
                   flows normally. NEVER give this an unbounded height on desktop. */}
-              <div className="overflow-auto p-4 sm:p-6 lg:min-h-0 lg:flex-1 [scrollbar-gutter:stable]">
+              <div
+                className={cn(
+                  "overflow-auto p-4 sm:p-6 lg:min-h-0 lg:flex-1 [scrollbar-gutter:stable]",
+                  // Inset the DOCUMENT clear of the floating rails rather than shrinking the
+                  // canvas: the scroll surface still spans the full width, so the page scrolls
+                  // under the rails and nothing is trapped behind them. Rail + 16px gutter each
+                  // side, written as literal class strings because Tailwind only scans static
+                  // text — a template literal here would emit no class at all.
+                  outlineOpen ? "lg:pl-[268px] 2xl:pl-[292px]" : null,
+                  optionsEntry ? "lg:pr-[368px] 2xl:pr-[392px]" : null,
+                )}
+              >
                 <ProposalPreview
                   proposal={draft}
                   showTableOfContents={false}
@@ -1536,8 +1559,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               rail. 340px (was a 280px shared rail), which is what finally lets the editors' own
               `@[26rem]:grid-cols-2` container queries engage. */}
           {optionsEntry ? (
-            <div className="max-h-[60vh] overflow-y-auto pr-1 lg:max-h-none lg:h-full lg:min-h-0 lg:overflow-visible lg:pr-0">
-              <aside className="widget-card proposal-form-theme overflow-hidden lg:flex lg:h-full lg:flex-col">
+            <div className="mt-3 max-h-[60vh] overflow-y-auto rounded-[10px] border border-[var(--border-2)] lg:absolute lg:right-4 lg:top-4 lg:bottom-4 lg:z-20 lg:mt-0 lg:max-h-none lg:w-[336px] lg:overflow-visible lg:shadow-[0_8px_28px_rgba(15,23,42,0.13)] 2xl:w-[360px]">
+              {/* `widget-card` is gone — the wrapper above now owns the frame and the lift, so
+                  the rail is one floating panel rather than a card inside a column. */}
+              <aside className="proposal-form-theme overflow-hidden rounded-[10px] bg-white lg:flex lg:h-full lg:flex-col">
                 <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto [scrollbar-gutter:stable]">
                   <RailGroup
                     index="01"
@@ -1735,7 +1760,10 @@ function TableOfContentsCard({
   }
 
   return (
-    <aside className="widget-card overflow-hidden lg:flex lg:h-full lg:flex-col">
+    // `widget-card` dropped: inside the unified editor shell its border, radius and shadow drew
+    // a second box within the frame. The `widget-header` stays — it is the rail's own label, and
+    // it is what keeps the three regions legible now that they share one frame.
+    <aside className="overflow-hidden bg-white lg:flex lg:h-full lg:flex-col">
       <div className="widget-header lg:shrink-0">
         <span className="widget-header-label">02 {"// "}OUTLINE</span>
         <span className="widget-header-right">

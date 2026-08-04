@@ -76,7 +76,10 @@ const COVER_SECTION = {
   },
 };
 
-function renderCover(overrides: Record<string, unknown> = {}) {
+function renderCover(
+  overrides: Record<string, unknown> = {},
+  coverData: Record<string, unknown> = {},
+) {
   const proposal = {
     id: "doc-1",
     title: "Mutual Non-Disclosure Agreement",
@@ -112,7 +115,7 @@ function renderCover(overrides: Record<string, unknown> = {}) {
 
   return renderToStaticMarkup(
     <Preview
-      data={COVER_SECTION.data}
+      data={{ ...COVER_SECTION.data, ...coverData }}
       proposal={proposal}
       section={COVER_SECTION}
       editable={false}
@@ -162,4 +165,22 @@ describe("cover — parties", () => {
 
     expect(html).not.toContain("Gitwork Group Ltd");
   });
+
+  it.each(["minimal", "light", "bold"])(
+    "prints the parties on a `%s` cover",
+    (coverStyle) => {
+      // THE regression. `minimal` used to zero the parties array before `coverStripMode` ever
+      // saw it, so every downstream check — pure helpers, mode decision, renderer — was correct
+      // and still produced nothing. Documents created before 43506dd6 carry a stored
+      // `coverStyle: "minimal"`, and that commit removed the Light/Minimal/Bold control, so they
+      // were stranded in it with no UI to change it back. Hence "unfixable" across three passes.
+      //
+      // `minimal` may drop decoration (covers strip, exec summary, stat tiles). Who is legally
+      // bound is not decoration.
+      const html = renderCover({}, { coverStyle });
+
+      expect(html).toContain("Gitwork Group Ltd");
+      expect(html).toContain("Shuffle Love Ltd");
+    },
+  );
 });
