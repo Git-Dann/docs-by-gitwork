@@ -69,6 +69,8 @@ import { useProposal, useUpdateProposal } from "@/hooks/use-proposals";
 import { useDeleteSnippet, useSnippets } from "@/hooks/use-snippets";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatCurrency, formatDate, statusLabel } from "@/lib/format";
+import type { ReadinessFinding } from "@/lib/sections/document-readiness";
+import { documentReadiness, readinessSummary } from "@/lib/sections/document-readiness";
 import { deriveProposalStatus } from "@/lib/proposal-workflow";
 import { approvalTrackApplies } from "@/lib/templates";
 import { createTemplateFromDocument } from "@/lib/api";
@@ -198,6 +200,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [presenting, setPresenting] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+  const [editingClient, setEditingClient] = useState(false);
+  const [clientDraft, setClientDraft] = useState("");
 
   async function handleSaveAsTemplate() {
     if (!draft) return;
@@ -276,6 +280,28 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       updateDraft({ ...draft, title: nextTitle });
     }
     setEditingTitle(false);
+  }
+
+  function beginClientEdit() {
+    if (!draft) return;
+    setClientDraft(draft.clientName ?? "");
+    setEditingClient(true);
+  }
+
+  /**
+   * Commits the crumb's client name to the DOCUMENT-level `clientName`.
+   *
+   * Document-level on purpose: `clientName` is what the cover, the parties block and the
+   * signature blocks all resolve from, so editing it in one place is what makes the crumb a
+   * control rather than a label. An empty value clears it back to a prospect.
+   */
+  function commitClientEdit() {
+    if (!draft) return;
+    const next = clientDraft.trim();
+    if (next !== (draft.clientName ?? "")) {
+      updateDraft({ ...draft, clientName: next || null });
+    }
+    setEditingClient(false);
   }
 
   const sectionEntries = useMemo(() => {
@@ -965,15 +991,43 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               Docs
             </Link>
             <ChevronRightIcon className="h-3 w-3 shrink-0" />
-            {draft.clientName ? (
+            {/* The Portal link is gated on `clientId`, NOT on `clientName`.
+
+                It used to link to `/app/portal/{slugify(clientName)}` whenever a name existed —
+                but a prospect has a typed name and no `WorkspaceClient` behind it, so the crumb
+                led straight to a 404. A name is not a link target; a linked client id is.
+
+                With no linked client the crumb is an inline field instead, writing doc-level
+                `clientName` — which is what the cover, parties and signature blocks all resolve
+                from, so naming the prospect here names them everywhere. */}
+            {draft.clientId && draft.clientName ? (
               <Link
                 href={`/app/portal/${slugifyClientName(draft.clientName)}`}
                 className="max-w-[130px] truncate hover:text-[var(--text-1)]"
+                title={`Open ${draft.clientName} in Portal`}
               >
                 {draft.clientName}
               </Link>
             ) : (
-              <span>Client</span>
+              <input
+                aria-label="Client name"
+                title="Name the client (no Portal record linked yet)"
+                placeholder="Client"
+                value={editingClient ? clientDraft : (draft.clientName ?? "")}
+                onFocus={beginClientEdit}
+                onChange={(event) => setClientDraft(event.target.value)}
+                onBlur={commitClientEdit}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                  } else if (event.key === "Escape") {
+                    setEditingClient(false);
+                    event.currentTarget.blur();
+                  }
+                }}
+                className="h-6 w-[110px] min-w-0 rounded-[4px] border border-transparent bg-transparent px-1 text-xs text-[var(--text-4)] transition hover:border-[var(--border-2)] hover:bg-white focus:border-[var(--brand-500)] focus:bg-white focus:text-[var(--text-1)] focus:outline-none"
+              />
             )}
             <ChevronRightIcon className="h-3 w-3 shrink-0" />
           </span>
@@ -1459,7 +1513,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
 
       {activeTab === "overview" ? (
         <div className="space-y-5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-          <OverviewCanvas proposal={draft} sections={sectionEntries.map((entry) => entry.section)} />
+          <OverviewCanvas proposal={draft} sections={sectionEntries.map((entry) => entry.section)} onProposalChange={(next) => updateDraft(next, { coalesce: true })} />
           <RightRailTabs
             defaultTabId="collab"
             tabs={[
@@ -1483,7 +1537,14 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
         //
         // Only floats at `lg`. Below that the rails stack in normal flow, because an absolutely
         // positioned 240px panel on a 390px phone would cover the document it is meant to steer.
-        <section className="relative lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:rounded-[10px] lg:border lg:border-[var(--border-2)] lg:bg-[var(--surface-canvas)]">
+        // ⚠️ `lg:flex` is LOAD-BEARING, not cosmetic. This was `relative` alone, which is
+        // `display: block` — so the canvas child's `lg:flex-1 lg:min-h-0` resolved against
+        // nothing, the canvas never took the frame's height, and its inner
+        // `overflow-auto` had no bounded height to scroll within. Result: the document
+        // could not be scrolled at all. The old grid gave the child its height via
+        // `grid-rows-1`; when the columns went, that height had to come from somewhere,
+        // and flex is what replaces it.
+        <section className="relative lg:flex lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:rounded-[10px] lg:border lg:border-[var(--border-2)] lg:bg-[var(--surface-canvas)]">
           {/* 02 // OUTLINE — NAVIGATION ONLY. Drag-reorder, visibility, insert-at, delete, and
               click-to-scroll. A block's Options no longer drill in here; they open on the right, so
               you never lose your place in the document while editing. On mobile it stacks above the
@@ -1510,7 +1571,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
 
           {/* 03 // CANVAS — the live document; ALL text edited inline. Clicking a block selects it
               and opens its Options in the right rail. */}
-          <div className="min-w-0 lg:flex lg:min-h-0 lg:flex-col">
+          {/* `lg:flex-1` + `lg:w-full`: the canvas is the ONLY in-flow child of the flex shell
+              (both rails are absolutely positioned), so it must claim the full width and height
+              itself. Without flex-1 it sizes to its content and the scroll container collapses. */}
+          <div className="min-w-0 lg:flex lg:min-h-0 lg:w-full lg:flex-1 lg:flex-col">
             {/* No border and no radius of its own — the shell owns the frame now. Without this
                 the canvas drew a second box inside the first, which is the "three cards" look. */}
             <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:rounded-none lg:border-0">
@@ -2069,337 +2133,243 @@ function sectionBlockItemCount(section: ProposalSection): number {
   return 1;
 }
 
+/**
+ * Document details — the document's own settings, not a report about it.
+ *
+ * This replaced a read-only summary that counted things ("13 SECTIONS", "Checklists 10",
+ * "Written sections 8") beside a stakeholder card that restated the toolbar's own readout. None
+ * of it was actionable: the section count is visible in the outline, and the status, version and
+ * document number are already in the header strip two rows above. It was noise on the one page
+ * whose job is to let you CHANGE things.
+ *
+ * Everything here is editable and maps to a real field on `proposalUpdateSchema`. The read-only
+ * facts are grouped separately and explicitly labelled as such, so nothing looks like an input
+ * that silently discards what you type.
+ */
 function OverviewCanvas({
   proposal,
   sections,
+  onProposalChange,
 }: {
   proposal: ProposalDocument;
   sections: ProposalSection[];
+  onProposalChange: (next: ProposalDocument) => void;
 }) {
-  const cover = sections.find((section) => section.key === "cover")?.data as
-    | {
-        clientName?: string;
-        productName?: string;
-      }
-    | undefined;
+  const set = (patch: Partial<ProposalDocument>) => onProposalChange({ ...proposal, ...patch });
 
-  const introduction = sections.find((section) => section.key === "introduction")?.data as
-    | {
-        statement?: string;
-        summary?: string;
-      }
-    | undefined;
-
-  const productOverview = sections.find((section) => section.key === "product_overview")?.data as
-    | {
-        platformDescription?: string;
-        audience?: string;
-        valueProposition?: string;
-      }
-    | undefined;
-
-  const objectives = sections.find((section) => section.key === "objectives")?.data as
-    | {
-        items?: Array<{ title?: string }>;
-      }
-    | undefined;
-
-  const touchpoints = sections.find((section) => section.key === "touchpoints")?.data as
-    | {
-        items?: Array<{ title?: string; features?: string[] }>;
-      }
-    | undefined;
-
-  const costing = sections.find((section) => section.key === "costing")?.data as
-    | {
-        currency?: "GBP" | "USD" | "EUR";
-        discount?: number;
-        taxRate?: number;
-        teamAllocations?: Array<{ included?: boolean }>;
-        paymentSchedule?: Array<unknown>;
-      }
-    | undefined;
-
-  const timeline = sections.find((section) => section.key === "timeline")?.data as
-    | {
-        viewMode?: string;
-      }
-    | undefined;
-
-  const assumptions = sections.find((section) => section.key === "assumptions")?.data as
-    | {
-        items?: string[];
-      }
-    | undefined;
-
-  const outOfScope = sections.find((section) => section.key === "out_of_scope")?.data as
-    | {
-        items?: string[];
-      }
-    | undefined;
-
-  const signoff = sections.find((section) => section.key === "signoff_footer")?.data as
-    | {
-        preparedBy?: string;
-        team?: string;
-        contactDetails?: string;
-      }
-    | undefined;
-
-  const currency = costing?.currency ?? "GBP";
-  const subtotal = proposal.costLineItems.reduce((sum, item) => {
-    const lineSubtotal = Number.isFinite(item.subtotal) ? item.subtotal : item.quantity * item.unitCost;
-    return sum + lineSubtotal;
-  }, 0);
-  const oneOffTotal = proposal.costLineItems
-    .filter((item) => item.costKind === "ONE_OFF")
-    .reduce((sum, item) => sum + item.subtotal, 0);
-  const recurringTotal = proposal.costLineItems
-    .filter((item) => item.costKind === "RECURRING")
-    .reduce((sum, item) => sum + item.subtotal, 0);
-  const discount = costing?.discount ?? 0;
-  const taxRate = costing?.taxRate ?? 0;
-  const discountAmount = subtotal * (discount / 100);
-  const netTotal = Math.max(subtotal - discountAmount, 0);
-  const taxAmount = netTotal * (taxRate / 100);
-  const grandTotal = netTotal + taxAmount;
-  const billableTeamCount = proposal.costLineItems.filter(
-    (item) => item.category.trim().length > 0 && item.unitCost > 0,
-  ).length;
-  const paymentMilestoneCount = costing?.paymentSchedule?.length ?? 0;
-
-  const phasesCount = proposal.timelinePhases.length;
-  const deliverablesCount = proposal.timelinePhases.reduce(
-    (sum, phase) => sum + phase.deliverables.filter(Boolean).length,
-    0,
-  );
-  const workstreamCount = new Set(
-    proposal.costLineItems.map((item) => item.category).filter((category) => category.trim().length > 0),
-  ).size;
-
-  const objectiveCount = objectives?.items?.length ?? 0;
-  const touchpointCount = touchpoints?.items?.length ?? 0;
-  const featureCount =
-    touchpoints?.items?.reduce((sum, item) => sum + (item.features?.filter(Boolean).length ?? 0), 0) ?? 0;
-  const visibleSectionsCount = sections.filter((section) => section.isVisible).length;
-  const assumptionCount = assumptions?.items?.length ?? 0;
-  const outOfScopeCount = outOfScope?.items?.length ?? 0;
-
-  const assetsCount = proposal.assets.filter((asset) => asset.url.trim().length > 0).length;
-  const linksCount = proposal.links.filter((link) => link.url.trim().length > 0).length;
-  const ctaCount = proposal.ctas.filter((cta) => cta.label.trim().length > 0).length;
-  const primaryCta = proposal.ctas.find((cta) => cta.role === "PRIMARY");
-
-  // Generic narrative blocks — the building blocks lightweight docs (reports, briefs, handovers)
-  // lean on instead of costing/timeline/scope. Counted so their overview isn't a wall of zeroes.
-  const calloutSections = sections.filter((section) => section.key === "callout");
-  const checklistSections = sections.filter((section) => section.key === "checklist");
-  const proseSections = sections.filter(
-    (section) => section.key === "prose" || section.key === "introduction",
-  );
-  // Only a callout near the top reads as a period-status signal — report templates lead with a
-  // "this period at a glance" callout. A closing sign-off callout (e.g. the Care report's
-  // "Looking ahead") sits at the end and must NOT be promoted to the STATUS hero figure.
-  const firstCalloutIndex = sections.findIndex((section) => section.key === "callout");
-  const headlineCallout =
-    firstCalloutIndex >= 0 && firstCalloutIndex <= 2
-      ? (sections[firstCalloutIndex].data as { headline?: string; tone?: string } | undefined)
-      : undefined;
-  const checklistItemCount = checklistSections.reduce((sum, section) => {
-    const items = (section.data as { items?: unknown[] } | undefined)?.items ?? [];
-    return sum + items.filter(Boolean).length;
-  }, 0);
-
-  const noun = DOC_TYPE_NOUN[proposal.documentType] ?? "DOCUMENT";
-  const hasCommercials = proposal.costLineItems.length > 0;
-  const hasDelivery = phasesCount > 0;
-  const hasScope = objectiveCount > 0 || touchpointCount > 0 || assumptionCount > 0 || outOfScopeCount > 0;
-
-  // Generic content summary — every visible block that isn't the cover or sign-off footer, grouped
-  // by friendly label and summed by item count. This is what lets non-costed types (contracts,
-  // reports, briefs) reflect their real structure. Top groups become the CONTENT card's rows.
-  const contentSections = sections.filter(
-    (section) => section.isVisible && section.key !== "cover" && section.key !== "signoff_footer",
-  );
-  const blockGroups = new Map<string, number>();
-  for (const section of contentSections) {
-    const label = SECTION_BLOCK_LABEL[section.key];
-    if (!label) continue;
-    blockGroups.set(label, (blockGroups.get(label) ?? 0) + sectionBlockItemCount(section));
-  }
-  const contentRows = [...blockGroups.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([label, value]) => ({ label, value }));
-  const hasContent = contentSections.length > 0;
-
-  const clientName = proposal.clientName || proposal.metadata.client || cover?.clientName || "";
-  const owner = proposal.metadata.owner || "";
-  // Mirror the cover's author-line resolution exactly so the overview can't disagree with the
-  // document. The cover renders "Prepared by" from metadata.owner (what the cover editor's
-  // "Prepared by" field writes), falling back to the sign-off footer's prepared-by / team.
-  const preparedByLine =
-    owner.trim() || [signoff?.preparedBy, signoff?.team].filter(Boolean).join(" / ");
-  const expiryDate = proposal.expiresAt ?? proposal.metadata.expiryDate ?? null;
-  const isEmptyProposal =
-    !clientName &&
-    !proposal.productName &&
-    !proposal.summary &&
-    !proposal.version &&
-    !introduction?.statement &&
-    !introduction?.summary &&
-    !productOverview?.platformDescription &&
-    !productOverview?.audience &&
-    !productOverview?.valueProposition &&
-    !proposal.costLineItems.length &&
-    !proposal.timelinePhases.length &&
-    !objectiveCount &&
-    !touchpointCount &&
-    !linksCount &&
-    !assetsCount &&
-    !ctaCount &&
-    !hasContent;
-
-  if (isEmptyProposal) {
-    return (
-      <section className="widget-card overflow-hidden">
-        <div className="widget-header">
-          <span className="widget-header-label">02 // OVERVIEW</span>
-          <span className="widget-header-right">EMPTY</span>
-        </div>
-        <div className="widget-body">
-          <h4 className="font-[family-name:var(--font-display)] text-[28px] font-normal leading-[1.15] tracking-[-0.5px] text-[var(--text-1)]">
-            Nothing to summarise yet
-          </h4>
-          <p className="mt-2 max-w-2xl text-sm leading-7 text-[var(--text-3)]">
-            New documents start blank. Use Builder to add content. The overview will stay empty until there is something real to summarise.
-          </p>
-        </div>
-      </section>
-    );
-  }
-
-  const titleCase = (value: string) =>
-    value.toLowerCase().replace(/^\w/, (char) => char.toUpperCase());
-
-  // Build the card set from what the document actually carries, rather than assuming a proposal's
-  // shape. Costed docs lead with commercials/delivery/scope; lightweight docs (reports, briefs)
-  // lead with their status + narrative content. Every doc closes on stakeholders.
-  const cards: OverviewCardDef[] = [];
-
-  if (hasCommercials) {
-    cards.push({
-      name: "COMMERCIAL",
-      rightSlot: "VALUE",
-      figure: formatCurrency(grandTotal, currency),
-      figureLabel: `CURRENT ${noun} VALUE`,
-      rows: [
-        { label: "Billable people", value: billableTeamCount },
-        { label: "One-off", value: formatCurrency(oneOffTotal, currency) },
-        { label: "Recurring", value: formatCurrency(recurringTotal, currency) },
-        { label: `Discount (${discount}%)`, value: formatCurrency(discountAmount, currency) },
-        { label: `VAT (${taxRate}%)`, value: formatCurrency(taxAmount, currency) },
-      ],
-    });
-  }
-
-  if (hasDelivery) {
-    cards.push({
-      name: "DELIVERY",
-      rightSlot: "SHAPE",
-      figure: String(phasesCount),
-      figureLabel: "PHASES · IMPLEMENTATION SHAPE",
-      rows: [
-        { label: "Deliverables", value: deliverablesCount },
-        { label: "Workstreams", value: workstreamCount },
-        { label: "Milestones", value: paymentMilestoneCount },
-        { label: "Timeline mode", value: titleCase(timeline?.viewMode ?? "LIST") },
-        { label: "Last updated", value: formatDate(proposal.updatedAt) },
-      ],
-    });
-  }
-
-  if (hasScope) {
-    cards.push({
-      name: "SCOPE",
-      rightSlot: "COVERAGE",
-      figure: String(touchpointCount || objectiveCount),
-      figureLabel: `${touchpointCount ? "TOUCHPOINTS" : "OBJECTIVES"} · ${noun} COVERAGE`,
-      rows: [
-        { label: "Objectives", value: objectiveCount },
-        { label: "Features", value: featureCount },
-        { label: "Visible modules", value: visibleSectionsCount },
-        { label: "Assumptions", value: assumptionCount },
-        { label: "Out of scope", value: outOfScopeCount },
-      ],
-    });
-  }
-
-  // Status + content cards for non-costed docs (contracts, reports, briefs, handovers). A headline
-  // callout (reports/handovers) leads with a STATUS signal; the CONTENT card summarises the real
-  // building blocks and only appears when SCOPE hasn't already covered the doc's structure.
-  if (!hasCommercials) {
-    if (proposal.documentType === "REPORT" && headlineCallout?.headline) {
-      cards.push({
-        name: "STATUS",
-        rightSlot: "SIGNAL",
-        figure: headlineCallout.headline,
-        figureLabel: `${noun} · THIS PERIOD`,
-        figureLong: true,
-        rows: [
-          { label: "Highlights", value: calloutSections.length },
-          { label: "Checklist items", value: checklistItemCount },
-          { label: "Written updates", value: proseSections.length },
-          { label: "Last updated", value: formatDate(proposal.updatedAt) },
-        ],
-      });
-    }
-
-    if (!hasScope && contentRows.length > 0) {
-      cards.push({
-        name: "CONTENT",
-        rightSlot: "STRUCTURE",
-        figure: String(contentSections.length),
-        figureLabel: `SECTIONS · ${noun} STRUCTURE`,
-        rows: contentRows,
-      });
-    }
-  }
-
-  cards.push({
-    name: "STAKEHOLDERS",
-    rightSlot: "OWNERSHIP",
-    figure: clientName || "—",
-    figureLabel: "CLIENT · OWNERSHIP",
-    figureLong: true,
-    rows: [
-      { label: "Prepared by", value: preparedByLine || "Not set" },
-      { label: "Primary CTA", value: primaryCta?.label || "Not set" },
-      { label: "Status", value: <StatusBadge status={proposal.status} /> },
-      { label: "Expiry", value: formatDate(expiryDate) },
-    ],
+  const findings = documentReadiness({
+    clientName: proposal.clientName,
+    expiresAt: proposal.expiresAt,
+    metadata: proposal.metadata,
+    sections,
   });
+  const { blockers, warnings, ready } = readinessSummary(findings);
 
   return (
-    <section className="grid gap-3 xl:grid-cols-2">
-      {cards.map((card, index) => (
-        <OverviewWidget
-          key={card.name}
-          number={String(index + 2).padStart(2, "0")}
-          name={card.name}
-          rightSlot={card.rightSlot}
-          figure={card.figure}
-          figureLabel={card.figureLabel}
-          figureLong={card.figureLong}
-        >
-          {card.rows.map((row) => (
-            <OverviewStatRow key={row.label} label={row.label} value={row.value} />
-          ))}
-        </OverviewWidget>
-      ))}
-    </section>
+    <div className="space-y-5">
+      {/* 02 // READINESS — the question this page should answer: is it ready to send, and if
+          not, what is missing? Every row is actionable and names the block it lives in. This
+          replaced a card that counted sections, which the outline already shows. */}
+      <section className="widget-card overflow-hidden">
+        <div className="widget-header">
+          <span className="widget-header-label">02 {"// "}READINESS</span>
+          <span className={cn("widget-header-right", ready ? "text-[var(--success-500)]" : undefined)}>
+            {ready ? "READY TO SEND" : `${blockers} BLOCKER${blockers === 1 ? "" : "S"} · ${warnings} TO CHECK`}
+          </span>
+        </div>
+
+        {findings.length === 0 ? (
+          <p className="p-4 text-sm text-[var(--text-3)]">
+            Nothing outstanding — no unfilled placeholders, no empty blocks, client and author
+            named, expiry set.
+          </p>
+        ) : (
+          <ul className="divide-y divide-[var(--border-3)]">
+            {findings.map((finding: ReadinessFinding) => (
+              <li key={finding.id} className="flex items-start gap-3 px-4 py-2.5">
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
+                    finding.severity === "blocker"
+                      ? "bg-[var(--danger-500)]"
+                      : "bg-[var(--warning-500)]",
+                  )}
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-[var(--text-1)]">
+                    {finding.label}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-[var(--text-3)]">{finding.detail}</span>
+                </span>
+                <span className="ml-auto shrink-0 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--text-4)]">
+                  {finding.severity === "blocker" ? "Blocker" : "Check"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="widget-card overflow-hidden">
+        <div className="widget-header">
+          <span className="widget-header-label">03 {"// "}DOCUMENT</span>
+          <span className="widget-header-right">SETTINGS</span>
+        </div>
+
+        <div className="grid gap-4 p-4 sm:grid-cols-2">
+          <Field label="Title" hint="Shown on the cover and in the Docs list.">
+            <input
+              className="app-input"
+              value={proposal.title}
+              onChange={(event) => set({ title: event.target.value })}
+            />
+          </Field>
+
+          <Field
+            label="Client"
+            hint={
+              proposal.clientId
+                ? "Linked to a Portal client."
+                : "No Portal record linked — this is a prospect."
+            }
+          >
+            <input
+              className="app-input"
+              value={proposal.clientName ?? ""}
+              placeholder="Client name"
+              onChange={(event) => set({ clientName: event.target.value || null })}
+            />
+          </Field>
+
+          <Field label="Product / project" hint="Optional. Sits under the title on the cover.">
+            <input
+              className="app-input"
+              value={proposal.productName ?? ""}
+              onChange={(event) => set({ productName: event.target.value || null })}
+            />
+          </Field>
+
+          <Field
+            label="Prepared by"
+            hint="The author named on the cover. Older documents still say “Foundry Owner”."
+          >
+            <input
+              className="app-input"
+              value={proposal.metadata.owner ?? ""}
+              placeholder="Name"
+              onChange={(event) =>
+                set({ metadata: { ...proposal.metadata, owner: event.target.value } })
+              }
+            />
+          </Field>
+
+          <Field label="Version" hint="Free text — e.g. v1.0, Rev B.">
+            <input
+              className="app-input"
+              value={proposal.version ?? ""}
+              onChange={(event) => set({ version: event.target.value })}
+            />
+          </Field>
+
+          <Field label="Status">
+            <select
+              className="app-select app-select-chevron pr-9"
+              value={proposal.status}
+              onChange={(event) => set({ status: event.target.value as ProposalDocument["status"] })}
+            >
+              {DOC_STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {statusLabel(status)}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Expires" hint="Leave empty for no expiry.">
+            <input
+              type="date"
+              className="app-input"
+              value={proposal.expiresAt ? proposal.expiresAt.slice(0, 10) : ""}
+              onChange={(event) =>
+                set({ expiresAt: event.target.value ? new Date(event.target.value).toISOString() : null })
+              }
+            />
+          </Field>
+
+          <Field label="Labels" hint="Internal only — never shown to the client.">
+            <LabelEditor labels={proposal.labels ?? []} onChange={(labels) => set({ labels })} />
+          </Field>
+
+          <div className="sm:col-span-2">
+            <Field label="Summary" hint="Used in the Docs list and by AI when drafting.">
+              <textarea
+                className="app-input min-h-[76px] resize-y px-3 py-2"
+                value={proposal.summary ?? ""}
+                onChange={(event) => set({ summary: event.target.value })}
+              />
+            </Field>
+          </div>
+        </div>
+
+        {/* Read-only facts, grouped and LABELLED read-only. `documentNumber` in particular is not
+            on `proposalUpdateSchema`, so rendering it as an input would silently discard every
+            keystroke — the exact defect the old theme toggle shipped with. */}
+        <div className="border-t border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+          <p className="app-eyebrow mb-2">Read-only</p>
+          <dl className="grid gap-x-6 gap-y-1.5 text-xs sm:grid-cols-3">
+            <ReadOnly label="Number" value={proposal.documentNumber ?? "—"} />
+            <ReadOnly label="Type" value={proposal.documentType} />
+            <ReadOnly label="Blocks" value={String(sections.length)} />
+          </dl>
+        </div>
+      </section>
+    </div>
   );
 }
+
+/** One labelled control. Label above, control full width — never crammed side by side. */
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="app-eyebrow">{label}</span>
+      <span className="mt-1.5 block">{children}</span>
+      {hint ? <span className="mt-1 block text-[11px] text-[var(--text-4)]">{hint}</span> : null}
+    </label>
+  );
+}
+
+function ReadOnly({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 sm:block">
+      <dt className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--text-4)]">
+        {label}
+      </dt>
+      <dd className="font-mono text-xs text-[var(--text-2)]">{value}</dd>
+    </div>
+  );
+}
+
+const DOC_STATUSES = [
+  "DRAFT",
+  "PRODUCT_SIGN_OFF",
+  "TECH_SIGN_OFF",
+  "IN_REVIEW",
+  "APPROVED",
+  "SENT",
+  "ACCEPTED",
+  "DECLINED",
+  "ARCHIVED",
+] as const;
+
 
 function OverviewWidget({
   number,
