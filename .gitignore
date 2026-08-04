@@ -67,3 +67,6 @@ next-env.d.ts
 # Python bytecode from scripts/badge/ (build-time badge generator)
 __pycache__/
 *.pyc
+
+# Scratch copy of supplied references (client PDFs live here; not for git history)
+.gitwork-reference/

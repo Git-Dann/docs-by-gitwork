@@ -1316,6 +1316,11 @@ h2, h3, h4, h5 {
   --doc-line-soft: rgba(0, 0, 0, 0.08);
   --doc-accent: #4f5bd5;
   --doc-accent-tint: rgba(79, 91, 213, 0.12);
+  /* The document display weight. NEVER hardcode a weight on a `--font-display` element — read
+     this token, because the correct value is a property of the THEME's face, not of the block:
+     Foundry's DM Serif Display ships a single 400 cut (700 would synthesise a fake bold), while
+     Gitwork's Fraunces is always 700 in the brand reference (63/63 display occurrences). */
+  --doc-display-weight: 400;
   background: var(--doc-paper);
   color: var(--doc-ink);
   /* BODY IS INTER (the standard Foundry font system) — mono is reserved for labels, clause numbers
@@ -1343,6 +1348,45 @@ h2, h3, h4, h5 {
   --brand-600: var(--doc-accent);
   --brand-700: var(--doc-accent);
   --brand-800: var(--doc-accent);
+  /* The remap must be EXHAUSTIVE. Any app token left unremapped keeps its app value inside the
+     document, so a block that happens to reach for it paints cool grey or app-blue on cream —
+     which is why documents read subtly off-brand even though every named colour looked right.
+     These seven were the leak: four literal app blues, the blue gradient, and two cool greys. */
+  --brand-50: var(--doc-accent-tint);
+  --brand-100: var(--doc-accent-tint);
+  --brand-400: var(--doc-accent);
+  --brand-900: var(--doc-accent);
+  --brand-gradient: linear-gradient(135deg, var(--doc-accent) 0%, var(--doc-accent) 100%);
+  --surface-2: var(--doc-panel);
+  --surface-canvas: var(--doc-paper);
+  --surface-brand-soft: var(--doc-accent-tint);
+  --surface-brand-strong: var(--doc-accent-tint);
+  --brand-focus-ring: var(--doc-accent-tint);
+  --signal-stripe: linear-gradient(90deg, var(--doc-accent) 0%, var(--doc-accent-tint) 100%);
+
+  /* A printed document has NO traffic lights. The reference uses accent for affirmative marks
+     and muted for negative ones — a tick is purple, a cross is grey — so app green/amber/red
+     collapse onto the document's two-colour system rather than importing a status palette that
+     appears nowhere in the brand. This is what made do_dont ticks render app-green. */
+  --success-500: var(--doc-accent);
+  --success-50: var(--doc-accent-tint);
+  --info-500: var(--doc-accent);
+  --info-50: var(--doc-accent-tint);
+  --warning-500: var(--doc-accent);
+  --warning-50: var(--doc-accent-tint);
+  --danger-500: var(--doc-muted);
+  --danger-700: var(--doc-ink);
+  --danger-300: var(--doc-line);
+  --danger-200: var(--doc-line);
+  --danger-100: var(--doc-line-soft);
+  --danger-50: var(--doc-line-soft);
+
+  /* Paper has no elevation. App shadows on a document read as a web widget photographed onto a
+     page, and they print as grey smudges. Blocks separate with the hairline rule instead. */
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-lg: none;
+  --shadow-skeuomorphic: none;
 }
 /* bg-white panels inside a document sit on cream — warm them to the panel tone. Cover uses inline
    styles (not this class), so it is unaffected. */
@@ -1354,8 +1398,16 @@ h2, h3, h4, h5 {
 .proposal-document h3,
 .proposal-document h4 {
   font-family: var(--font-display), "Times New Roman", Georgia, serif;
-  font-weight: 400;
+  font-weight: var(--doc-display-weight);
   color: var(--doc-ink);
+}
+/* The display face for anything that ISN'T an h1-h4 — stat figures, tier prices, KPI numbers.
+   Use this in place of `font-[family-name:var(--font-display)] font-normal`: the hardcoded
+   `font-normal` is what kept Gitwork's Fraunces at 400 in five places after the heading rule
+   was fixed. It is a single class so a block can never pin the wrong weight again. */
+.doc-display-face {
+  font-family: var(--font-display), "Times New Roman", Georgia, serif;
+  font-weight: var(--doc-display-weight);
 }
 .proposal-document a {
   color: var(--doc-accent);
@@ -1390,21 +1442,29 @@ h2, h3, h4, h5 {
   --doc-paper: #f2ede4;
   --doc-panel: #ffffff;
   --doc-panel-dark: #0c0c18;
+  /* EXACT reference values, counted from the 31 signing emails — do not eyeball these.
+     Ink #1A1A1E (320 uses) and muted #6B6B6B (292) are the ONLY two text colours in the whole
+     set. Rules and card borders are a WARM #EAE5DC (128 uses); the alpha-black we had before
+     resolved to roughly #D5D1C9 over cream — darker and cooler than the brand, and a large part
+     of why documents read subtly off. Alpha is wrong here in principle as well as in value,
+     because it shifts with whatever it sits on. */
   --doc-ink: #1a1a1e;
   --doc-ink-soft: #3b3b40;
-  --doc-muted: #68686b;
-  --doc-line: rgba(0, 0, 0, 0.12);
-  --doc-line-soft: rgba(0, 0, 0, 0.07);
+  --doc-muted: #6b6b6b;
+  --doc-line: #eae5dc;
+  --doc-line-soft: #f0ece4;
   --doc-accent: #6b52ff;
   --doc-accent-tint: rgba(107, 82, 255, 0.12);
+  --doc-display-weight: 700;
   /* Headings are FRAUNCES — the brand display face used throughout the reference NDA. Body stays
      Inter (base rule above) and labels/clause numbers stay JetBrains Mono. Do NOT remap --font-mono
      here: the reference's uppercase labels + 1.1 / (a) clause numbers are monospace, and remapping
      it to Inter (as this block used to) silently killed that signature. */
   --font-display: var(--font-fraunces);
 }
-/* Headings keep DM Serif Display's own weight (400) — it ships one weight, so forcing 600 only
-   synthesised a smeared faux-bold. */
+/* Weight is NOT set here — both themes resolve it through --doc-display-weight (Foundry 400,
+   because DM Serif Display ships one cut; Gitwork 700, because Fraunces is 700 in 62 of the 63
+   display declarations across the reference emails and the 63rd is a default-bold h1). */
 
 /* ── Legal numbering (clauses) ────────────────────────────────────────────────────────────────
    The house numbering system for contract-style documents: `01` section number, `1.1` clauses,
@@ -1582,16 +1642,10 @@ h2, h3, h4, h5 {
 .proposal-document[data-doc-theme="gitwork"] .doc-a4-page__footer {
   color: #68686b;
 }
-/* Gitwork content pages: a short purple accent rule under each section header (title + eyebrow),
-   matching the brand PDFs' underlined section titles. Foundry omits it. */
-.proposal-document[data-doc-theme="gitwork"] .doc-a4-page section.proposal-block-avoid > header::after {
-  content: "";
-  display: block;
-  width: 44px;
-  height: 2px;
-  margin-top: 12px;
-  background: var(--doc-accent);
-}
+/* NOTE: a 44x2px purple rule used to be drawn under every Gitwork section header here, on the
+   belief that the brand PDFs underline their section titles. They do not — the gap analysis
+   found no such rule in EITHER reference. It was invented, so it is removed rather than tuned.
+   Section hierarchy comes from the mono overline + bold Fraunces title, nothing else. */
 
 @media print {
   /* Default page keeps a margin (Pulse report + any other print surface unchanged). Documents use

@@ -262,7 +262,7 @@ export const pricingTiersSection = defineSection<PricingTiersSectionData>({
                     </span>
                   ) : null}
                   <p
-                    className="font-[family-name:var(--font-display)] text-[19px] leading-tight"
+                    className="doc-display-face text-[19px] leading-tight"
                     style={{ color: ink }}
                   >
                     {tier.name}
@@ -279,7 +279,7 @@ export const pricingTiersSection = defineSection<PricingTiersSectionData>({
                     {(tier.priceLabel || "From").toUpperCase()}
                   </p>
                   <p
-                    className="mt-1 font-[family-name:var(--font-display)] text-[34px] font-normal leading-none"
+                    className="doc-display-face mt-1 text-[34px] leading-none"
                     style={{ color: ink }}
                   >
                     {tier.price || "—"}
@@ -361,7 +361,7 @@ export const pricingTiersSection = defineSection<PricingTiersSectionData>({
                 <p className="mt-0.5 text-[12px] text-[var(--text-3)]">{tier.tagline}</p>
               ) : null}
               <p className="mt-3">
-                <span className="font-[family-name:var(--font-display)] text-[36px] font-normal leading-none text-[var(--text-1)]">
+                <span className="doc-display-face text-[36px] leading-none text-[var(--text-1)]">
                   {tier.price || "—"}
                 </span>
                 {tier.cadence ? (
