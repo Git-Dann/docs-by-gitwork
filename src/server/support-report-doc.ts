@@ -12,6 +12,7 @@
  * "generate a Document from module data" pattern.
  */
 
+import { resolveDocumentOwnerName, type DocumentOwnerIdentity } from "@/lib/document-owner";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import {
@@ -33,8 +34,14 @@ export interface GenerateSupportReportInput {
   periodEnd: string;
   /** Human label for the period, e.g. "June 2026". */
   periodLabel: string;
-  /** Optional author name stamped on the doc metadata. */
+  /** Optional author name stamped on the doc metadata — an explicit override of `actor`. */
   author?: string;
+  /**
+   * The operator who asked for the report. Sets the document's owner + "Prepared by" so a
+   * generated report isn't attributed to the default workspace owner. Optional: an
+   * unattended/API-key call has no per-user identity and falls back to that owner.
+   */
+  actor?: (DocumentOwnerIdentity & { id?: string }) | null;
   /** When true, don't reuse an already-generated doc for this client+period. */
   force?: boolean;
 }
@@ -104,7 +111,7 @@ async function loadAnalyticsMetrics(
 export async function generateSupportReportDocument(
   input: GenerateSupportReportInput,
 ): Promise<string> {
-  const { clientId, periodStart, periodEnd, periodLabel, author, force } = input;
+  const { clientId, periodStart, periodEnd, periodLabel, author, actor, force } = input;
 
   const client = await prisma.supportClient.findUnique({
     where: { id: clientId },
@@ -143,7 +150,7 @@ export async function generateSupportReportDocument(
   const document = await prisma.document.create({
     data: {
       workspaceId: workspace.id,
-      ownerId: user.id,
+      ownerId: actor?.id ?? user.id,
       templateId: reportTemplate?.id ?? template.id,
       documentType: "REPORT",
       status: "DRAFT",
@@ -155,7 +162,10 @@ export async function generateSupportReportDocument(
       version: "v1.0",
       metadata: {
         client: client.name,
-        owner: author ?? user.name ?? "",
+        // An explicit `author` from the caller is a deliberate override and wins; otherwise
+        // "Prepared by" is the requesting operator, and only an identity-less call falls back
+        // to the workspace owner. Editable afterwards.
+        owner: author?.trim() || resolveDocumentOwnerName(actor, user.name),
         version: "v1.0",
         notes: "",
         internalComments: `Auto-generated Care support report for ${periodLabel}`,

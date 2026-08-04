@@ -285,6 +285,13 @@ export const coverSection = defineSection<CoverSectionData>({
       }))
       .filter((party) => party.name || party.lines.length);
 
+    // The bordered `COVERS · … · …` scope strip. Authored on the cover (one entry per line in the
+    // cover editor) — trimmed and emptied out here, so a blank or whitespace-only list passes
+    // `undefined` and DocumentCover omits the strip entirely rather than drawing an empty frame.
+    const coversStrip = (data.covers ?? [])
+      .map((item) => (item ?? "").trim())
+      .filter(Boolean);
+
     const summary =
       intro?.statement?.trim() ||
       proposal.summary?.trim() ||
@@ -340,6 +347,7 @@ export const coverSection = defineSection<CoverSectionData>({
           callout={confidentialityText ? { text: confidentialityText, tone: "neutral" } : undefined}
           dated={prettyPrepared}
           classification={classification}
+          covers={coversStrip.length ? coversStrip : undefined}
           companyFooter={companyFooter}
           parties={coverParties.length ? coverParties : undefined}
           logoUrl={brandLogoUrl}

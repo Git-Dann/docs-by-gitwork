@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { applyClientNameToSections } from "@/lib/apply-client-name";
 import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
+import { resolveDocumentOwnerName, templateOwnerName } from "@/lib/document-owner";
 import { TEMPLATE_SLUG_BY_TYPE, getTemplateBlueprintsForType } from "@/lib/templates";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
@@ -118,7 +119,11 @@ export async function POST(request: NextRequest) {
     const actor = await getEffectiveUserOrNull(request);
     assertCan(actor, canManageDocs, "create documents");
     const body = proposalCreateSchema.parse(await request.json());
-    const { workspace, user, template } = await ensureBaseRecords();
+    // `workspaceOwner` is the BOOTSTRAP/default workspace owner — it is NOT the caller.
+    // It's only a last-resort attribution for an unattended API-key call (no session and
+    // no mobile JWT → `actor` is null, which assertCan deliberately lets through). Every
+    // real caller is attributed to `actor`.
+    const { workspace, user: workspaceOwner, template } = await ensureBaseRecords();
 
     // Resolve the document type for this new record. Defaults to PROPOSAL so existing callers
     // (the legacy "New document" flow that only knew about proposals) keep working unchanged.
@@ -206,7 +211,8 @@ export async function POST(request: NextRequest) {
     const document = await prisma.document.create({
       data: {
         workspaceId: workspace.id,
-        ownerId: user.id,
+        // Attribute to the caller, not the default workspace owner.
+        ownerId: actor?.id ?? workspaceOwner.id,
         templateId: selectedTemplate?.id,
         documentType,
         documentNumber,
@@ -220,7 +226,15 @@ export async function POST(request: NextRequest) {
         metadata: {
           ...DEFAULT_PROPOSAL_METADATA,
           client: body.clientName ?? DEFAULT_PROPOSAL_METADATA.client,
-          owner: user.name ?? DEFAULT_PROPOSAL_METADATA.owner,
+          // "Prepared by" defaults to the logged-in creator. The template's own metadata is
+          // deliberately never spread here, so a blueprint can't supply an owner that beats
+          // the caller; only an identity-less API-key call falls back to the workspace owner.
+          // Editable afterwards — the cover's "Prepared by" field writes straight to this.
+          owner: resolveDocumentOwnerName(
+            actor,
+            templateOwnerName(selectedTemplate?.metadata),
+            workspaceOwner.name,
+          ),
           // DECK only: the starting deck's slug. Deck reads this on first open,
           // builds the slides and saves them to Document.deckDoc — so the choice
           // made here survives even though no slides exist yet.

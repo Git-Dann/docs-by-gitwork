@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { applyClientNameToSections } from "@/lib/apply-client-name";
 import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
+import { resolveDocumentOwnerName } from "@/lib/document-owner";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { allocateDocumentNumber } from "@/server/documents";
@@ -1358,7 +1359,7 @@ export async function draftProposalFromMeeting(
   const sections = buildProposalSectionsFromMeeting({
     clientName,
     clientLogoUrl: client.logoUrl,
-    ownerName: user.name,
+    ownerName: resolveDocumentOwnerName(user),
     meeting,
     draft,
   });
@@ -1381,7 +1382,10 @@ export async function draftProposalFromMeeting(
       metadata: {
         ...DEFAULT_PROPOSAL_METADATA,
         client: clientName,
-        owner: user.name ?? DEFAULT_PROPOSAL_METADATA.owner,
+        // "Prepared by" = the operator who drafted this from the meeting, never the
+        // workspace owner. `user` here is always a real EffectiveUser (the route uses
+        // requireAuthedUser), so this only adds the email-local-part fallback.
+        owner: resolveDocumentOwnerName(user),
         notes: `Drafted from Scribe meeting "${meeting.title}".`,
         internalComments: [
           meeting.summary ? `Summary:\n${meeting.summary}` : null,

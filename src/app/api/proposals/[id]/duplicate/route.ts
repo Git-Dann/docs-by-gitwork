@@ -3,7 +3,9 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { applyClientNameToSections } from "@/lib/apply-client-name";
+import { resolveDocumentOwnerName } from "@/lib/document-owner";
 import { prisma } from "@/lib/prisma";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { allocateDocumentNumber } from "@/server/documents";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 
@@ -84,10 +86,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
       ? `${existing.title.replace(/ \(Copy\)$/, "")} — ${effectiveClientName}`
       : `${existing.title} (Copy)`;
 
+    // A duplicate is a NEW document, so it's "prepared by" whoever cloned it — not the author
+    // of the original and never the default workspace owner. `getEffectiveUserOrNull` (not the
+    // throwing variant) keeps unattended API-key callers working: with no per-user identity we
+    // carry the original's owner across exactly as before. Editable afterwards.
+    const actor = await getEffectiveUserOrNull(request);
+    const carriedMetadata = (existing.metadata ?? null) as Record<string, unknown> | null;
+    const clonedOwner = resolveDocumentOwnerName(
+      actor,
+      typeof carriedMetadata?.owner === "string" ? carriedMetadata.owner : null,
+    );
+
     const duplicate = await prisma.document.create({
       data: {
         workspaceId: existing.workspaceId,
-        ownerId: existing.ownerId,
+        ownerId: actor?.id ?? existing.ownerId,
         templateId: existing.templateId,
         documentType: existing.documentType,
         documentNumber,
@@ -98,7 +111,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
         summary: existing.summary,
         version: existing.version,
         expiresAt: existing.expiresAt,
-        metadata: (existing.metadata as unknown as Prisma.InputJsonValue | null) ?? Prisma.JsonNull,
+        metadata: carriedMetadata
+          ? ({ ...carriedMetadata, owner: clonedOwner } as unknown as Prisma.InputJsonValue)
+          : clonedOwner
+            ? ({ owner: clonedOwner } as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
         // A DECK's content is its slides, not its sections — without this the copy
         // arrives empty and, because metadata.deckTemplate came along, the Deck app
         // would helpfully rebuild it FROM THE TEMPLATE on first open. "Duplicate"

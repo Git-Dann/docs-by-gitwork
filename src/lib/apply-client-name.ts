@@ -45,6 +45,16 @@ const SUPPLIER_ROLE_PATTERNS = [
   /^gitwork$/i,
 ];
 
+/** Our own legal name, however it's written — the surest supplier signal when `role` is blank. */
+const SUPPLIER_NAME_PATTERN = /\bgitwork\b/i;
+
+/**
+ * A `[bracketed]` template placeholder means "a human fills this in" — it is NOT the counterparty.
+ * The NDA's third signatory is `[individual name]` (the Founder, who signs personally and is not
+ * the Client), so auto-filling it with the client's name would be plainly wrong.
+ */
+const PLACEHOLDER_PATTERN = /^\s*\[[^\]]+\]\s*$/;
+
 /**
  * True if the role string identifies Gitwork's side of the contract — meaning the entry is
  * NOT the one we should rename to the new client.
@@ -52,6 +62,22 @@ const SUPPLIER_ROLE_PATTERNS = [
 function isSupplierRole(role: string | undefined): boolean {
   if (!role) return false;
   return SUPPLIER_ROLE_PATTERNS.some((re) => re.test(role.trim()));
+}
+
+/**
+ * Supplier-side if EITHER the role says so or the name is ours. Role alone wasn't enough: a
+ * template may deliberately leave `role: ""` (the NDA does, so the cover's generated PARTY A/B/C
+ * labels win), and `isSupplierRole("")` is false — so every party, Gitwork's own entry included,
+ * was being renamed to the incoming client. Matching the name closes that hole.
+ */
+function isSupplierEntry(role: string | undefined, name: string | undefined): boolean {
+  if (isSupplierRole(role)) return true;
+  return Boolean(name && SUPPLIER_NAME_PATTERN.test(name));
+}
+
+/** Entries we must leave alone: our own side, or a hand-fill `[placeholder]`. */
+function isNotTheCounterparty(role: string | undefined, name: string | undefined): boolean {
+  return isSupplierEntry(role, name) || Boolean(name && PLACEHOLDER_PATTERN.test(name));
 }
 
 interface PartyLike {
@@ -99,7 +125,7 @@ export function applyClientNameToSections(
         const parties = Array.isArray(data.parties) ? (data.parties as PartyLike[]) : [];
         if (parties.length === 0) return section;
         const nextParties = parties.map((p) =>
-          isSupplierRole(p.role)
+          isNotTheCounterparty(p.role, p.name)
             ? p
             : {
                 ...p,
@@ -120,7 +146,10 @@ export function applyClientNameToSections(
         // Heuristic: the first block tends to be the supplier (Gitwork by template convention),
         // every other block is customer-side. Operators who reorder blocks can edit manually.
         const nextBlocks = blocks.map((block, index) => {
-          if (index === 0) return block;
+          // Index 0 is the supplier by template convention; also skip anything that names Gitwork
+          // (templates may order parties differently) or is a `[placeholder]` — the NDA's third
+          // signatory is the Founder, who signs personally and is NOT the client.
+          if (index === 0 || isNotTheCounterparty(block.signatoryRole, block.partyName)) return block;
           return {
             ...block,
             partyName: trimmed,

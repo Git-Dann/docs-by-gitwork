@@ -128,6 +128,24 @@ export function CoverEditor({
             </span>
           </Field>
         ) : null}
+        {/* The cover's `COVERS · … · …` scope strip. One entry per line — stored as a string[] and
+            split/joined raw (no per-keystroke filtering, so a newline you type survives); the cover
+            trims and drops blanks at render, and omits the strip when nothing is left. */}
+        <Field label="Covers">
+          <textarea
+            value={(value.covers ?? []).join("\n")}
+            onChange={(event) =>
+              onChange({ ...value, covers: event.target.value.split("\n") })
+            }
+            rows={3}
+            placeholder={"One per line, e.g.\nThe Matchmaker UK platform\nShuffle Love (in formation)"}
+            className="app-input min-h-[76px] resize-y leading-6"
+          />
+          <span className="mt-1.5 block text-xs leading-5 text-[var(--text-4)]">
+            Shown on the cover as a single <span className="font-mono">COVERS</span> strip. Leave
+            blank to hide it.
+          </span>
+        </Field>
         <Field label="Prepared by">
           <input
             value={preparedBy}

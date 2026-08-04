@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { resolveDocumentOwnerName, type DocumentOwnerIdentity } from "@/lib/document-owner";
 import { prisma } from "@/lib/prisma";
 import { dispatchNotification } from "@/server/notifications";
 import { ensureBaseRecords } from "@/server/bootstrap";
@@ -1367,7 +1368,15 @@ export async function runAnalysis(
 }
 
 
-export async function generateProposalFromScan(scanId: string): Promise<string> {
+/**
+ * Turn a completed scan into a draft proposal. `actor` is the operator who clicked
+ * "Generate proposal" — it sets the document's owner + "Prepared by". Optional so the
+ * unattended/API-key path still works; then it falls back to the workspace owner.
+ */
+export async function generateProposalFromScan(
+  scanId: string,
+  actor?: DocumentOwnerIdentity & { id?: string },
+): Promise<string> {
   const scan = await prisma.pulseScan.findUnique({
     where: { id: scanId },
     include: { client: { select: { name: true } } },
@@ -1393,7 +1402,7 @@ export async function generateProposalFromScan(scanId: string): Promise<string> 
   const document = await prisma.document.create({
     data: {
       workspaceId: workspace.id,
-      ownerId: user.id,
+      ownerId: actor?.id ?? user.id,
       templateId: template.id,
       documentType: "PROPOSAL",
       status: "DRAFT",
@@ -1404,7 +1413,9 @@ export async function generateProposalFromScan(scanId: string): Promise<string> 
       version: "v1.0",
       metadata: {
         client: scan.client?.name ?? "",
-        owner: user.name ?? "",
+        // "Prepared by" = whoever generated it; the workspace owner only when there's no
+        // per-user identity (unattended API-key call). Editable afterwards.
+        owner: resolveDocumentOwnerName(actor, user.name),
         version: "v1.0",
         notes: "",
         internalComments: `Auto-generated from Pulse scan ${scanId}`,

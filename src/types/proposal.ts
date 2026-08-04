@@ -111,6 +111,12 @@ export interface CoverSectionData {
   brandLogoUrl?: string;
   /** Client logo for the "Client × Gitwork" lockup. Blank → the client name is shown instead. */
   clientLogoUrl?: string;
+  /**
+   * The cover's bordered `COVERS · a · b · c` scope strip — one line saying what the document
+   * covers (e.g. `THE MATCHMAKER UK PLATFORM` · `SHUFFLE LOVE (IN FORMATION)`). Authored per
+   * document in the cover editor; empty/absent → no strip is rendered at all.
+   */
+  covers?: string[];
 }
 
 export interface IntroductionSectionData {

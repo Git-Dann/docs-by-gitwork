@@ -69,6 +69,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { applyClientNameToSections } from "@/lib/apply-client-name";
 import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
+import { resolveDocumentOwnerName, templateOwnerName } from "@/lib/document-owner";
 import { TEMPLATE_SLUG_BY_TYPE, getTemplateBlueprintsForType } from "@/lib/templates";
 import {
   getDefaultAssetPayload,
@@ -1360,7 +1361,13 @@ const TOOLS: ToolDef[] = [
           metadata: {
             ...DEFAULT_PROPOSAL_METADATA,
             client: clientName ?? DEFAULT_PROPOSAL_METADATA.client,
-            owner: user.name ?? DEFAULT_PROPOSAL_METADATA.owner,
+            // "Prepared by" = the MCP caller. Falls back to their email local-part, then the
+            // template's own owner, and only then the default workspace owner. Editable after.
+            owner: resolveDocumentOwnerName(
+              user,
+              templateOwnerName(selectedTemplate?.metadata),
+              defaultUser.name,
+            ),
           },
           sections: { create: sectionsCreate },
           costLineItems: isProposal ? { create: getDefaultCostsPayload() } : undefined,

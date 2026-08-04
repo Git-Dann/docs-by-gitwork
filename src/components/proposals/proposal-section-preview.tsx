@@ -13,39 +13,23 @@ import type { ReactNode } from "react";
 import { PencilSquareIcon } from "@heroicons/react/24/outline";
 import { getSectionType } from "@/lib/sections/registry";
 import { InlineTextArea } from "@/lib/sections/inline-text";
+import { resolveSectionNumber } from "@/lib/sections/section-number";
 import { renderInline } from "@/lib/markdown";
-import type { DocumentType, ProposalDocument, ProposalSection } from "@/types/proposal";
+import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
 /**
- * Contract-style documents carry house clause numbering, so their sections get an accent-mono
- * `01` / `02` gutter number. Proposals, reports, briefs, handovers and decks do NOT — they read as
- * editorial documents and a numbered section would be noise.
- */
-const NUMBERED_DOC_TYPES = new Set<DocumentType>(["SLA", "SOW", "MSA", "NDA", "CO", "DSA"]);
-
-/** Stable identity for a section, matching the selection id used elsewhere in this file. */
-function sectionRef(section: ProposalSection): string {
-  return section.id ?? section.key;
-}
-
-/**
- * The section's position among the VISIBLE, shell-rendered content sections, zero-padded to two
- * digits — derived from the sections array on every render, so there's no stored field to drift and
- * inserting or hiding a block renumbers the rest for free. Continuous across the whole document
- * (not per page). Returns null when this document type isn't numbered, or the section isn't counted
- * (the cover and any `renderShell: false` block — `heading`, `divider` — are skipped).
+ * The accent-mono `01` gutter number beside a section title. The rule itself (clause-authored when
+ * the document is clause-numbered, positional otherwise) lives in the pure, unit-tested
+ * `@/lib/sections/section-number`; all this does is hand it the registry's shell-render answer,
+ * which that module deliberately doesn't import.
  */
 function sectionNumber(proposal: ProposalDocument, section: ProposalSection): string | null {
-  if (!NUMBERED_DOC_TYPES.has(proposal.documentType)) return null;
-  const target = sectionRef(section);
-  let ordinal = 0;
-  for (const entry of proposal.sections) {
-    if (!entry.isVisible) continue;
-    if (getSectionType(entry.key)?.renderShell === false) continue;
-    ordinal += 1;
-    if (sectionRef(entry) === target) return String(ordinal).padStart(2, "0");
-  }
-  return null;
+  return resolveSectionNumber({
+    documentType: proposal.documentType,
+    sections: proposal.sections,
+    section,
+    isShellRendered: (entry) => getSectionType(entry.key)?.renderShell !== false,
+  });
 }
 
 function Graphic({
