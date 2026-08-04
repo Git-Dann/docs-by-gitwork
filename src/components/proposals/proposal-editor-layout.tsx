@@ -18,6 +18,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  AdjustmentsHorizontalIcon,
   ArrowDownTrayIcon,
   ArrowLeftIcon,
   ArrowTopRightOnSquareIcon,
@@ -27,10 +28,10 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   ClipboardDocumentIcon,
+  Cog6ToothIcon,
   DocumentTextIcon,
   EyeIcon,
   EyeSlashIcon,
-  HomeIcon,
   LinkIcon,
   PencilSquareIcon,
   PlayIcon,
@@ -38,6 +39,7 @@ import {
   QueueListIcon,
   Squares2X2Icon,
   TrashIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -53,6 +55,7 @@ import { BlockPalette } from "@/components/proposals/block-palette";
 import { CollabPanel } from "@/components/proposals/collab-panel";
 import { DocumentRelationsPanel } from "@/components/proposals/document-relations-panel";
 import { RightRailTabs } from "@/components/proposals/right-rail-tabs";
+import { SpeakerNotesField } from "@/components/proposals/speaker-notes-field";
 import { useDocumentRelations } from "@/hooks/use-document-relations";
 import { ProposalProofPanel } from "@/components/proposals/proposal-proof-panel";
 import { SignaturePanel } from "@/components/proposals/signature-panel";
@@ -92,19 +95,27 @@ const ProposalBuilderPanel = dynamic(
       default: mod.ProposalBuilderPanel,
     })),
   {
-    loading: () => (
-      <article className="widget-card">
-        <div className="widget-header">
-          <span className="widget-header-label">04 // BUILDER</span>
-          <span className="widget-header-right">LOADING</span>
-        </div>
-        <div className="widget-body">
-          <p className="text-sm text-[var(--text-3)]">Loading builder...</p>
-        </div>
-      </article>
-    ),
+    // Renders inside the right properties rail's `01 // BLOCK` group, which supplies the chrome —
+    // so the placeholder is chromeless too (a widget-card here would nest a card in a card).
+    loading: () => <p className="p-4 text-sm text-[var(--text-3)]">Loading block options…</p>,
   },
 );
+
+/** Toolbar icon-button chrome. 32px square, 6px radius (DESIGN.md instrument geometry). */
+const TOOL_ICON_BTN =
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] border border-[var(--border-2)] " +
+  "bg-white text-[var(--text-2)] transition-colors hover:bg-[var(--surface-1)] hover:text-[var(--text-1)] " +
+  "disabled:cursor-not-allowed disabled:opacity-40";
+
+/** Same geometry, pressed/active tone — used by the two pane toggles. */
+const TOOL_ICON_BTN_ON =
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] border " +
+  "border-[var(--brand-600)] bg-[var(--brand-200)] text-[var(--brand-700)] transition-colors";
+
+/** Compact labelled toolbar button (Present · Details · Review & Send share this height). */
+const TOOL_BTN =
+  "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white " +
+  "px-2.5 text-[13px] font-medium text-[var(--text-2)] transition-colors hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]";
 
 // Presentation mode is heavy (full-screen deck + canvas) and only mounts on demand — lazy-load it
 // client-side so it stays out of the editor's initial bundle.
@@ -205,10 +216,12 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   }
   /** Index where the palette will insert a freshly-picked block. Null = palette closed. */
   const [paletteInsertAt, setPaletteInsertAt] = useState<number | null>(null);
-  // Canvas editor (2026): TWO panes only — the outline rail (left, sticky, travels with scroll)
-  // and the document canvas (right, all text edited inline). The outline is the hub: it lists the
-  // blocks AND, when you open a block's options (the edit ✎), drills into that block's settings
-  // in-place with a back button. No third inspector column.
+  // Canvas editor (2026, Deck's three-pane shape): a compact top toolbar, then
+  //   [left: block outline — NAVIGATION ONLY] [centre: canvas] [right: properties].
+  // `outlineOpen` toggles the left rail; `optionsForId` drives the RIGHT rail — selecting a block
+  // (canvas click or the outline's ✎) opens its Options there while the outline stays visible.
+  // The old behaviour (Options drilled INTO the left rail, replacing the outline) is gone: the
+  // 280px rail was too narrow for the forms and you lost your place while editing.
   const [outlineOpen, setOutlineOpen] = useState(true);
   const [optionsForId, setOptionsForId] = useState<string | null>(null);
 
@@ -223,6 +236,13 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [aiMenuPos, setAiMenuPos] = useState({ top: 0, right: 0 });
   const aiMenuButtonRef = useRef<HTMLButtonElement>(null);
   const aiMenuRef = useRef<HTMLDivElement>(null);
+  // Doc settings (theme + labels). Re-housed out of the old tall header card into a popover so the
+  // toolbar stays one row — same fixed-positioning trick as the approval popover, for the same
+  // reason (the toolbar lives inside an overflow-hidden widget-card).
+  const [docSettingsOpen, setDocSettingsOpen] = useState(false);
+  const [docSettingsPos, setDocSettingsPos] = useState({ top: 0, right: 0 });
+  const docSettingsButtonRef = useRef<HTMLButtonElement>(null);
+  const docSettingsRef = useRef<HTMLDivElement>(null);
 
   const baselineRef = useRef("");
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -335,10 +355,16 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     ? approvalTrackApplies(draft.documentType, draft.metadata)
     : false;
 
-  // The block whose options are currently open inside the outline (drill-in), if any.
+  // The block whose options are open in the RIGHT properties rail, if any.
   const optionsEntry = optionsForId
     ? sectionEntries.find((entry) => entry.id === optionsForId) ?? null
     : null;
+  // Its index in `draft.sections` — the speaker-notes group patches by index, like the builder panel.
+  const optionsSectionIndex = optionsEntry
+    ? (draft?.sections ?? []).findIndex(
+        (section) => getSectionEntryId(section) === optionsEntry.id,
+      )
+    : -1;
 
   const handleTabChange = useCallback(
     (tab: EditorTab) => {
@@ -411,6 +437,29 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       document.removeEventListener("keydown", handleKey);
     };
   }, [aiMenuOpen]);
+
+  useEffect(() => {
+    if (!docSettingsOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (
+        docSettingsRef.current?.contains(e.target as Node) ||
+        docSettingsButtonRef.current?.contains(e.target as Node)
+      ) return;
+      setDocSettingsOpen(false);
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setDocSettingsOpen(false);
+        docSettingsButtonRef.current?.focus();
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [docSettingsOpen]);
 
   const saveDraft = useCallback(
     async (nextDraft: ProposalDocument) => {
@@ -722,11 +771,11 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     scrollToBlock(id);
   }
 
-  // Open a block's options/settings inside the outline (drill-in) and scroll to it on the canvas.
+  // Select a block: open its options in the RIGHT properties rail and scroll to it on the canvas.
+  // The left outline is untouched, so you keep your place in the document while editing.
   function openOptions(id: string) {
     setActiveSectionId(id);
     setOptionsForId(id);
-    setOutlineOpen(true);
     scrollToBlock(id);
   }
 
@@ -847,180 +896,205 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     );
   }
 
+  // Save state is now a mono readout in the toolbar's widget-header strip rather than a chip on its
+  // own row — same information, no vertical cost.
   const saveTone =
     saveState === "saved"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      ? "text-emerald-600"
       : saveState === "saving"
-        ? "border-amber-200 bg-amber-50 text-amber-700"
+        ? "text-amber-600"
         : saveState === "error"
-          ? "border-rose-200 bg-rose-50 text-rose-700"
-          : "border-[var(--border-2)] bg-white text-[var(--text-3)]";
+          ? "text-rose-600"
+          : "text-[var(--text-4)]";
+  const saveReadout =
+    saveState === "saved"
+      ? `SAVED ${lastSavedAt ? new Date(lastSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "JUST NOW"}`
+      : saveState === "saving"
+        ? "SAVING…"
+        : saveState === "error"
+          ? "SAVE FAILED"
+          : "WAITING TO SAVE";
+  const docMetaReadout = [
+    draft.documentNumber || null,
+    draft.version || null,
+    statusLabel(draft.status).toUpperCase(),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const labelCount = draft.labels?.length ?? 0;
+  const activeDocTheme = draft.metadata.docTheme ?? DEFAULT_DOC_THEME;
 
   return (
     // Desktop: a FIXED-HEIGHT frame (fills <main>) so the page never scrolls past the viewport —
     // the header/toolbar are fixed and the canvas + outline scroll internally. Mobile keeps normal
     // document flow. (Never revert this to an unbounded flow: a long doc used to grow the whole
     // page. See DESIGN.md → "Docs editor is a fixed-height frame".)
-    <div className="flex flex-col gap-5 lg:h-full lg:min-h-0 lg:overflow-hidden">
+    <div className="flex flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-hidden">
+      {/* 01 // DOCUMENT — ONE compact toolbar row (Deck's topbar shape). Everything that used to
+          stack vertically here is either a mono readout in this header strip (doc number, version,
+          status, save state), an inline field (the title), or one click behind a popover (theme +
+          labels, under the ⚙; sign-off/share/export/save-as-template under Review & Send). */}
       <section className="widget-card overflow-hidden lg:shrink-0">
         <div className="widget-header">
           <span className="widget-header-label">01 // DOCUMENT</span>
-          <span className="widget-header-right">
-            {draft.documentNumber ? `${draft.documentNumber} · ` : ""}
-            {draft.version ? `${draft.version} · ` : ""}
-            {statusLabel(draft.status).toUpperCase()}
+          <span className="flex min-w-0 items-center gap-2">
+            {/* Ellipses on a phone, so it carries its own title (audit-clipping TRUNCATED). */}
+            <span className="widget-header-right truncate" title={docMetaReadout}>
+              {docMetaReadout}
+            </span>
+            <span className={cn("widget-header-right", saveTone)}>{saveReadout}</span>
           </span>
         </div>
-        <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-5 sm:px-6">
-          <div className="max-w-3xl">
-            <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--text-3)]">
-              <HomeIcon className="h-4 w-4" />
-              <ChevronRightIcon className="h-4 w-4" />
-              <Link href="/app/docs" className="hover:text-[var(--text-1)]">
-                Proposals
-              </Link>
-              <ChevronRightIcon className="h-4 w-4" />
-              {draft.clientName ? (
-                <Link
-                  href={`/app/portal/${slugifyClientName(draft.clientName)}`}
-                  className="hover:text-[var(--text-1)]"
-                >
-                  {draft.clientName}
-                </Link>
-              ) : (
-                <span>Client</span>
-              )}
-              <ChevronRightIcon className="h-4 w-4" />
-              <span className="font-medium text-[var(--text-1)]">{draft.title}</span>
-            </div>
 
-            <div className="mt-4 flex items-start gap-2">
-              {editingTitle ? (
-                <input
-                  autoFocus
-                  aria-label="Document title"
-                  value={titleDraft}
-                  onChange={(event) => setTitleDraft(event.target.value)}
-                  onBlur={commitTitleEdit}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      commitTitleEdit();
-                    } else if (event.key === "Escape") {
-                      setEditingTitle(false);
-                    }
-                  }}
-                  className="w-full rounded-[8px] border border-[var(--brand-500)] bg-white px-2 py-1 font-[family-name:var(--font-display)] text-[28px] font-normal leading-[1.1] tracking-[-0.5px] text-[var(--text-1)] outline-none sm:text-[36px] lg:text-[44px]"
-                />
-              ) : (
-                <h1 className="font-[family-name:var(--font-display)] text-[28px] font-normal leading-[1.1] tracking-[-0.5px] text-[var(--text-1)] sm:text-[36px] lg:text-[44px]">
-                  {draft.title}
-                </h1>
-              )}
-              <button
-                type="button"
-                onClick={beginTitleEdit}
-                aria-label="Rename document"
-                title="Rename document"
-                className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] border border-[var(--border-2)] bg-white text-[var(--text-2)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-              >
-                <PencilSquareIcon className="h-4 w-4" />
-              </button>
-            </div>
+        <div className="flex flex-wrap items-center gap-1.5 px-2.5 py-2 sm:px-3">
+          <Link
+            href="/app/docs"
+            aria-label="Back to Docs"
+            title="Back to Docs"
+            className={TOOL_ICON_BTN}
+          >
+            <ArrowLeftIcon className="h-4 w-4" />
+          </Link>
 
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <StatusBadge status={draft.status} />
-              {draft.version ? <span className="app-chip">Version {draft.version}</span> : null}
-              {parentDoc ? (
-                <Link
-                  href={`/app/docs/${parentDoc.id}`}
-                  className="app-chip inline-flex items-center gap-1.5 text-[var(--brand-700)] transition hover:bg-[var(--brand-200)]/60"
-                  title={`Linked under: ${parentDoc.title}`}
-                >
-                  <LinkIcon className="h-3 w-3" />
-                  <span>Under {parentDoc.documentType}</span>
-                  <span className="max-w-[160px] truncate text-[var(--text-1)]">
-                    {parentDoc.title}
-                  </span>
-                </Link>
-              ) : null}
-              <span className={cn("app-chip", saveTone)}>
-                {saveState === "saved"
-                  ? `Saved ${lastSavedAt ? new Date(lastSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "just now"}`
-                  : saveState === "saving"
-                    ? "Saving..."
-                    : saveState === "error"
-                      ? "Save failed"
-                      : "Waiting to save"}
-              </span>
-            </div>
-
-            <LabelEditor
-              labels={draft.labels ?? []}
-              onChange={(labels) => updateDraft({ ...draft, labels })}
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-0.5">
-              <button
-                type="button"
-                onClick={() => undoRef.current()}
-                disabled={pastRef.current.length === 0}
-                title="Undo (⌘Z)"
-                aria-label="Undo"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-[var(--border-2)] bg-white text-[var(--text-2)] transition-colors hover:bg-[var(--surface-1)] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <ArrowUturnLeftIcon className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => redoRef.current()}
-                disabled={futureRef.current.length === 0}
-                title="Redo (⌘⇧Z)"
-                aria-label="Redo"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-[var(--border-2)] bg-white text-[var(--text-2)] transition-colors hover:bg-[var(--surface-1)] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <ArrowUturnRightIcon className="h-4 w-4" />
-              </button>
+          {/* Condensed breadcrumb — the document itself is named by the title field beside it, so
+              the old trailing "› {title}" crumb is gone as pure duplication. */}
+          <span className="hidden min-w-0 items-center gap-1 text-xs text-[var(--text-4)] xl:flex">
+            <Link href="/app/docs" className="hover:text-[var(--text-1)]">
+              Docs
+            </Link>
+            <ChevronRightIcon className="h-3 w-3 shrink-0" />
+            {draft.clientName ? (
               <Link
-                href={`/app/docs/${proposalId}/preview`}
-                title="Open full preview"
-                aria-label="Open full preview"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-[var(--border-2)] bg-white text-[var(--text-2)] transition-colors hover:bg-[var(--surface-1)]"
+                href={`/app/portal/${slugifyClientName(draft.clientName)}`}
+                className="max-w-[130px] truncate hover:text-[var(--text-1)]"
               >
-                <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+                {draft.clientName}
               </Link>
-            </div>
+            ) : (
+              <span>Client</span>
+            )}
+            <ChevronRightIcon className="h-3 w-3 shrink-0" />
+          </span>
 
-            <Button
-              type="button"
-              variant="secondary"
-              size="md"
-              onClick={() => setPresenting(true)}
-              leadingIcon={<PlayIcon className="h-4 w-4" />}
+          {/* Title — a compact inline-editable field, not a 44px display heading. Focus begins the
+              edit; blur / Enter commits; Escape reverts. Same commit path as before. */}
+          <input
+            aria-label="Document title"
+            value={editingTitle ? titleDraft : draft.title}
+            onFocus={beginTitleEdit}
+            onChange={(event) => setTitleDraft(event.target.value)}
+            onBlur={commitTitleEdit}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.currentTarget.blur();
+              } else if (event.key === "Escape") {
+                setEditingTitle(false);
+                event.currentTarget.blur();
+              }
+            }}
+            title="Rename document"
+            className="h-8 min-w-[7rem] flex-1 rounded-[6px] border border-transparent bg-transparent px-2 text-sm font-semibold tracking-[-0.01em] text-[var(--text-1)] transition hover:border-[var(--border-2)] hover:bg-white focus:border-[var(--brand-500)] focus:bg-white focus:outline-none"
+          />
+
+          {parentDoc ? (
+            <Link
+              href={`/app/docs/${parentDoc.id}`}
+              className="hidden h-8 shrink-0 items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2 text-xs font-medium text-[var(--brand-700)] transition hover:bg-[var(--brand-200)]/50 lg:inline-flex"
+              title={`Linked under ${parentDoc.documentType}: ${parentDoc.title}`}
             >
-              Present
-            </Button>
+              <LinkIcon className="h-3.5 w-3.5 shrink-0" />
+              <span className="max-w-[110px] truncate">{parentDoc.title}</span>
+            </Link>
+          ) : null}
+
+          {/* Pane toggles (Deck's left/right panel toggles) — outline left, properties right. */}
+          <span className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setOutlineOpen((v) => !v)}
+              aria-pressed={outlineOpen}
+              aria-label={outlineOpen ? "Hide outline" : "Show outline"}
+              title={outlineOpen ? "Hide outline" : "Show outline"}
+              className={outlineOpen ? TOOL_ICON_BTN_ON : TOOL_ICON_BTN}
+            >
+              <QueueListIcon className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setOptionsForId((current) =>
+                  current ? null : activeEntry?.id ?? sectionEntries[0]?.id ?? null,
+                )
+              }
+              aria-pressed={optionsForId !== null}
+              aria-label={optionsForId ? "Hide block options" : "Show block options"}
+              title={optionsForId ? "Hide block options" : "Show block options"}
+              className={optionsForId !== null ? TOOL_ICON_BTN_ON : TOOL_ICON_BTN}
+            >
+              <AdjustmentsHorizontalIcon className="h-4 w-4" />
+            </button>
+          </span>
+
+          <span className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => undoRef.current()}
+              disabled={pastRef.current.length === 0}
+              title="Undo (⌘Z)"
+              aria-label="Undo"
+              className={TOOL_ICON_BTN}
+            >
+              <ArrowUturnLeftIcon className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => redoRef.current()}
+              disabled={futureRef.current.length === 0}
+              title="Redo (⌘⇧Z)"
+              aria-label="Redo"
+              className={TOOL_ICON_BTN}
+            >
+              <ArrowUturnRightIcon className="h-4 w-4" />
+            </button>
+            <Link
+              href={`/app/docs/${proposalId}/preview`}
+              title="Open full preview"
+              aria-label="Open full preview"
+              className={TOOL_ICON_BTN}
+            >
+              <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+            </Link>
+            <button
+              type="button"
+              onClick={() => setPresenting(true)}
+              title="Present"
+              aria-label="Present"
+              className={TOOL_ICON_BTN}
+            >
+              <PlayIcon className="h-4 w-4" />
+            </button>
+          </span>
 
             {/* AI menu — Ask AI · Quick draft. Hidden for non-generators (cost gate). */}
             {canGenerateAi && (
-            <div>
+            <div className="shrink-0">
               <button
                 ref={aiMenuButtonRef}
                 type="button"
                 aria-haspopup="menu"
                 aria-expanded={aiMenuOpen}
+                title="AI authoring"
                 onClick={() => {
                   const rect = aiMenuButtonRef.current?.getBoundingClientRect();
                   if (rect) setAiMenuPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
                   setAiMenuOpen((v) => !v);
                 }}
-                className={buttonStyles({ variant: "secondary", size: "md", className: "gap-1.5 pr-2" })}
+                className={cn(TOOL_BTN, "gap-1 px-2")}
               >
                 <SparklesIcon className="h-4 w-4" />
                 AI
-                <ChevronDownIcon className={cn("h-4 w-4 opacity-70 transition", aiMenuOpen && "rotate-180")} />
+                <ChevronDownIcon className={cn("h-3.5 w-3.5 opacity-70 transition", aiMenuOpen && "rotate-180")} />
               </button>
               {aiMenuOpen && (
                 <div
@@ -1062,13 +1136,123 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               <button
                 type="button"
                 onClick={() => setPullDataOpen(true)}
-                className={buttonStyles({ variant: "secondary", size: "md", className: "gap-1.5" })}
+                className={TOOL_ICON_BTN}
+                aria-label="Pull client data"
                 title="Fill this report's data sections from a Care client's live tickets & analytics"
               >
                 <ArrowDownTrayIcon className="h-4 w-4" />
-                Pull client data
               </button>
             )}
+
+            {/* ⚙ Doc settings — the per-document theme toggle + labels, re-housed out of the old
+                header rows so neither costs the toolbar any vertical space. */}
+            <div className="shrink-0">
+              <button
+                ref={docSettingsButtonRef}
+                type="button"
+                aria-haspopup="dialog"
+                aria-expanded={docSettingsOpen}
+                aria-label="Document theme and labels"
+                title="Theme & labels"
+                onClick={() => {
+                  const rect = docSettingsButtonRef.current?.getBoundingClientRect();
+                  if (rect) {
+                    setDocSettingsPos({
+                      top: rect.bottom + 8,
+                      right: window.innerWidth - rect.right,
+                    });
+                  }
+                  setDocSettingsOpen((v) => !v);
+                }}
+                className={docSettingsOpen ? TOOL_ICON_BTN_ON : TOOL_ICON_BTN}
+              >
+                <Cog6ToothIcon className="h-4 w-4" />
+              </button>
+              {docSettingsOpen && (
+                <div
+                  ref={docSettingsRef}
+                  role="dialog"
+                  aria-label="Document theme and labels"
+                  style={{ top: docSettingsPos.top, right: docSettingsPos.right }}
+                  className="fixed z-[100] w-[300px] max-w-[94vw] overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-lg)]"
+                >
+                  <div className="widget-header">
+                    <span className="widget-header-label">DOCUMENT</span>
+                    <span className="widget-header-right">
+                      {activeDocTheme.toUpperCase()} · {labelCount} LABEL{labelCount === 1 ? "" : "S"}
+                    </span>
+                  </div>
+                  <div className="space-y-4 p-4">
+                    <div>
+                      <p className="app-eyebrow">Theme</p>
+                      {/* Gitwork first — it's the default. "Light/Dark" was misleading: both themes
+                          are cream paper (only the COVER is navy), so this names the brand, not a
+                          brightness. Live-updates the canvas via the draft/autosave path. */}
+                      <div className="mt-2 inline-flex items-center gap-0.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5">
+                        {([["gitwork", "Gitwork"], ["foundry", "Foundry"]] as const).map(
+                          ([theme, label]) => {
+                            const themeActive = activeDocTheme === theme;
+                            return (
+                              <button
+                                key={theme}
+                                type="button"
+                                onClick={() =>
+                                  updateDraft({
+                                    ...draft,
+                                    metadata: { ...draft.metadata, docTheme: theme },
+                                  })
+                                }
+                                aria-pressed={themeActive}
+                                className={cn(
+                                  "rounded-[4px] px-2.5 py-1 text-xs font-medium transition",
+                                  themeActive
+                                    ? "bg-[var(--brand-200)] text-[var(--brand-700)]"
+                                    : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+                                )}
+                              >
+                                {label}
+                              </button>
+                            );
+                          },
+                        )}
+                      </div>
+                    </div>
+                    <div className="border-t border-[var(--border-2)] pt-3">
+                      <p className="app-eyebrow">Labels</p>
+                      <LabelEditor
+                        labels={draft.labels ?? []}
+                        onChange={(labels) => updateDraft({ ...draft, labels })}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleTabChange(activeTab === "overview" ? "builder" : "overview")}
+              aria-pressed={activeTab === "overview"}
+              title={activeTab === "overview" ? "Back to the editor" : "Document details"}
+              className={cn(
+                TOOL_BTN,
+                activeTab === "overview" &&
+                  "border-[var(--brand-600)] bg-[var(--brand-200)] text-[var(--brand-700)]",
+              )}
+            >
+              {activeTab === "overview" ? (
+                <>
+                  <ArrowLeftIcon className="h-4 w-4" />
+                  Editor
+                </>
+              ) : (
+                <>
+                  <Squares2X2Icon className="h-4 w-4" />
+                  Details
+                </>
+              )}
+            </button>
+
             <button
               ref={approvalButtonRef}
               type="button"
@@ -1086,13 +1270,15 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               }}
               className={buttonStyles({
                 variant: "primary",
-                size: "md",
-                className: "gap-2 pr-2",
+                size: "sm",
+                className: "h-8 shrink-0 gap-1.5 pr-1.5",
               })}
             >
               <CheckCircleIcon className="h-4 w-4" />
               Review &amp; Send
-              <span className="rounded-[4px] border border-white/20 bg-white/12 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-white/95">
+              {/* The status is already a mono readout in this card's header strip, so the chip is a
+                  nicety — dropped below 2xl to keep the toolbar on ONE row at 1280. */}
+              <span className="hidden rounded-[4px] border border-white/20 bg-white/12 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-white/95 2xl:inline-block">
                 {statusLabel(draft.status)}
               </span>
               <ChevronDownIcon
@@ -1244,61 +1430,6 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 </div>
               </div>
             )}
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between gap-3 border-t border-[var(--border-2)] px-4 py-3 sm:px-6">
-          {/* Per-document theme — live-updates the canvas via the draft/autosave path. */}
-          <div className="inline-flex items-center gap-0.5 rounded-[8px] border border-[var(--border-2)] bg-white p-0.5">
-            <span className="px-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
-              Theme
-            </span>
-            {/* Gitwork first — it's the default. "Light/Dark" was misleading: both themes are cream
-                paper (only the COVER is navy), so the toggle names the brand, not a brightness. */}
-            {([["gitwork", "Gitwork"], ["foundry", "Foundry"]] as const).map(([theme, label]) => {
-              const themeActive = (draft.metadata.docTheme ?? DEFAULT_DOC_THEME) === theme;
-              return (
-                <button
-                  key={theme}
-                  type="button"
-                  onClick={() =>
-                    updateDraft({ ...draft, metadata: { ...draft.metadata, docTheme: theme } })
-                  }
-                  aria-pressed={themeActive}
-                  className={cn(
-                    "rounded-[6px] px-2.5 py-1 text-xs font-medium transition",
-                    themeActive
-                      ? "bg-[var(--brand-200)] text-[var(--brand-700)]"
-                      : "text-[var(--text-3)] hover:text-[var(--text-1)]",
-                  )}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-          <button
-            type="button"
-            onClick={() => handleTabChange(activeTab === "overview" ? "builder" : "overview")}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-sm font-medium transition",
-              activeTab === "overview"
-                ? "border-[var(--brand-600)] bg-[var(--brand-200)] text-[var(--brand-700)]"
-                : "border-[var(--border-2)] bg-white text-[var(--text-2)] hover:border-[var(--border-1)] hover:text-[var(--text-1)]",
-            )}
-          >
-            {activeTab === "overview" ? (
-              <>
-                <ArrowLeftIcon className="h-4 w-4" />
-                Back to editor
-              </>
-            ) : (
-              <>
-                <Squares2X2Icon className="h-4 w-4" />
-                Document details
-              </>
-            )}
-          </button>
         </div>
       </section>
 
@@ -1318,105 +1449,129 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           />
         </div>
       ) : (
-        <div className="flex flex-col gap-3 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
-          {/* Toolbar — the canvas IS the working area. A tidy "Overlay" toggle reveals the outline
-              as a floating panel (no reserved column), so the canvas always uses the full width. */}
-          <div className="flex items-center justify-between lg:shrink-0">
-            <button
-              type="button"
-              onClick={() => setOutlineOpen((v) => !v)}
-              aria-pressed={outlineOpen}
-              className={`inline-flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-sm font-medium transition-colors ${
-                outlineOpen
-                  ? "border-[var(--brand-600)] bg-[var(--brand-200)] text-[var(--brand-700)]"
-                  : "border-[var(--border-2)] bg-white text-[var(--text-2)] hover:border-[var(--border-1)]"
-              }`}
-            >
-              <QueueListIcon className="h-4 w-4" />
-              {outlineOpen ? "Hide outline" : "Outline"}
-            </button>
-            <span className="hidden text-[11px] text-[var(--text-4)] sm:inline">
-              Click any block on the page to edit it →
-            </span>
-          </div>
+        // Three panes (Deck's editor shape): [outline · navigation] [canvas] [properties].
+        // The column template is written out as four literal class strings rather than composed at
+        // runtime — Tailwind v4's scanner only sees static class text, so a template-literal
+        // `lg:grid-cols-[${n}px_…]` would never be emitted.
+        <section
+          className={cn(
+            "grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-rows-1",
+            // Rails step up at 2xl. Three panes on a 1280 laptop leaves the canvas tight, so the
+            // narrow band uses the documented 212px collections-rail width + a 320px props rail
+            // (the low end of the 320–360 target, still wide enough for `@[26rem]` to engage).
+            outlineOpen && optionsEntry
+              ? "lg:grid-cols-[212px_minmax(0,1fr)_320px] 2xl:grid-cols-[260px_minmax(0,1fr)_352px]"
+              : outlineOpen
+                ? "lg:grid-cols-[240px_minmax(0,1fr)] 2xl:grid-cols-[260px_minmax(0,1fr)]"
+                : optionsEntry
+                  ? "lg:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_352px]"
+                  : "lg:grid-cols-1",
+          )}
+        >
+          {/* 02 // OUTLINE — NAVIGATION ONLY. Drag-reorder, visibility, insert-at, delete, and
+              click-to-scroll. A block's Options no longer drill in here; they open on the right, so
+              you never lose your place in the document while editing. On mobile it stacks above the
+              canvas with a capped scrollable height so it can't bury the document. */}
+          {outlineOpen ? (
+            <div className="max-h-[45vh] overflow-y-auto pr-1 lg:max-h-none lg:h-full lg:min-h-0 lg:overflow-visible lg:pr-0">
+              <TableOfContentsCard
+                sections={sectionEntries}
+                activeId={viewingSectionId ?? activeEntry?.id ?? null}
+                editable
+                onSelect={handleOutlineSelect}
+                onEditOptions={openOptions}
+                onInsertAt={(index) => setPaletteInsertAt(index)}
+                onDeleteSection={handleDeleteSection}
+                onReorder={updateSectionOrder}
+                onToggleVisibility={handleToggleVisibility}
+              />
+            </div>
+          ) : null}
 
-          <section
-            className={`grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-rows-1 ${outlineOpen ? "lg:grid-cols-[280px_minmax(0,1fr)]" : "lg:grid-cols-1"}`}
-          >
-            {/* Outline (02) — the hub. On desktop it's a sticky rail beside the canvas; on mobile it
-                stacks above with a capped, scrollable height so it never buries the document. It
-                lists the blocks and drills into a block's Options in-place (with a back to the list). */}
-            {outlineOpen ? (
-              <div className="max-h-[55vh] overflow-y-auto pr-1 lg:max-h-none lg:min-h-0 lg:h-full lg:overflow-visible lg:pr-0">
-                {optionsEntry ? (
-                  <section className="widget-card overflow-hidden lg:flex lg:h-full lg:flex-col">
-                    <div className="widget-header lg:shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setOptionsForId(null)}
-                        className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-3)] transition hover:text-[var(--text-1)]"
-                      >
-                        <ChevronRightIcon className="h-3.5 w-3.5 rotate-180" />
-                        Outline
-                      </button>
-                      <span className="widget-header-right truncate">{optionsEntry.section.title}</span>
-                    </div>
-                    <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto [scrollbar-gutter:stable]">
-                      <ProposalBuilderPanel
-                        embedded
-                        proposal={draft}
-                        sections={sectionEntries}
-                        activeId={optionsEntry.id}
-                        onProposalChange={(next) => updateDraft(next, { coalesce: true })}
-                      />
-                    </div>
-                  </section>
-                ) : (
-                  <TableOfContentsCard
-                    sections={sectionEntries}
-                    activeId={viewingSectionId ?? activeEntry?.id ?? null}
-                    editable
-                    onSelect={handleOutlineSelect}
-                    onEditOptions={openOptions}
-                    onInsertAt={(index) => setPaletteInsertAt(index)}
-                    onDeleteSection={handleDeleteSection}
-                    onReorder={updateSectionOrder}
-                    onToggleVisibility={handleToggleVisibility}
-                  />
-                )}
+          {/* 03 // CANVAS — the live document; ALL text edited inline. Clicking a block selects it
+              and opens its Options in the right rail. */}
+          <div className="min-w-0 lg:flex lg:min-h-0 lg:flex-col">
+            <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+              <div className="flex items-center justify-between gap-3 border-b border-[var(--border-2)] bg-white px-3 py-2 lg:shrink-0">
+                <span className="font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-4)]">
+                  03 // CANVAS
+                </span>
+                <span className="truncate text-[11px] text-[var(--text-4)]">
+                  {optionsEntry
+                    ? "What the client sees"
+                    : "Click any block to edit it →"}
+                </span>
               </div>
-            ) : null}
-
-            {/* Canvas — the live document; ALL text edited inline. The ✎ on a block opens its
-                settings in the outline. */}
-            <div className="min-w-0 lg:flex lg:min-h-0 lg:flex-col">
-              <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-                <div className="flex items-center justify-between border-b border-[var(--border-2)] bg-white px-3 py-2 lg:shrink-0">
-                  <span className="font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-4)]">
-                    03 // CANVAS
-                  </span>
-                  <span className="text-[11px] text-[var(--text-4)]">What the client sees</span>
-                </div>
-                {/* The canvas scrolls INSIDE this pane. On desktop the editor is a fixed-height
-                    frame (root is lg:h-full), so this pane is lg:flex-1 lg:min-h-0 and the document
-                    scrolls here — the page itself never scrolls past the viewport. On mobile it
-                    flows normally. NEVER give this an unbounded height on desktop. */}
-                <div className="overflow-auto p-4 sm:p-6 lg:min-h-0 lg:flex-1 [scrollbar-gutter:stable]">
-                  <ProposalPreview
-                    proposal={draft}
-                    showTableOfContents={false}
-                    frame={false}
-                    editable
-                    onSelectSection={openOptions}
-                    onSectionChange={handleSectionDataChange}
-                    onSectionMetaChange={handleSectionMetaChange}
-                    pageMode="paged"
-                  />
-                </div>
+              {/* The canvas scrolls INSIDE this pane. On desktop the editor is a fixed-height
+                  frame (root is lg:h-full), so this pane is lg:flex-1 lg:min-h-0 and the document
+                  scrolls here — the page itself never scrolls past the viewport. On mobile it
+                  flows normally. NEVER give this an unbounded height on desktop. */}
+              <div className="overflow-auto p-4 sm:p-6 lg:min-h-0 lg:flex-1 [scrollbar-gutter:stable]">
+                <ProposalPreview
+                  proposal={draft}
+                  showTableOfContents={false}
+                  frame={false}
+                  editable
+                  onSelectSection={openOptions}
+                  onSectionChange={handleSectionDataChange}
+                  onSectionMetaChange={handleSectionMetaChange}
+                  pageMode="paged"
+                />
               </div>
             </div>
-          </section>
-        </div>
+          </div>
+
+          {/* PROPERTIES rail — the selected block's Options, in numbered groups like Deck's props
+              rail. 340px (was a 280px shared rail), which is what finally lets the editors' own
+              `@[26rem]:grid-cols-2` container queries engage. */}
+          {optionsEntry ? (
+            <div className="max-h-[60vh] overflow-y-auto pr-1 lg:max-h-none lg:h-full lg:min-h-0 lg:overflow-visible lg:pr-0">
+              <aside className="widget-card proposal-form-theme overflow-hidden lg:flex lg:h-full lg:flex-col">
+                <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto [scrollbar-gutter:stable]">
+                  <RailGroup
+                    index="01"
+                    name="BLOCK"
+                    right={
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="widget-header-right truncate">
+                          {optionsEntry.section.title}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setOptionsForId(null)}
+                          aria-label="Close block options"
+                          title="Close block options"
+                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] text-[var(--text-4)] transition hover:bg-white hover:text-[var(--text-1)]"
+                        >
+                          <XMarkIcon className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    }
+                  >
+                    <ProposalBuilderPanel
+                      embedded
+                      withSpeakerNotes={false}
+                      proposal={draft}
+                      sections={sectionEntries}
+                      activeId={optionsEntry.id}
+                      onProposalChange={(next) => updateDraft(next, { coalesce: true })}
+                    />
+                  </RailGroup>
+
+                  {optionsSectionIndex >= 0 ? (
+                    <RailGroup index="02" name="SPEAKER NOTES" defaultOpen={false}>
+                      <SpeakerNotesField
+                        proposal={draft}
+                        sectionIndex={optionsSectionIndex}
+                        onProposalChange={(next) => updateDraft(next, { coalesce: true })}
+                      />
+                    </RailGroup>
+                  ) : null}
+                </div>
+              </aside>
+            </div>
+          ) : null}
+        </section>
       )}
 
       {presenting ? (
@@ -1484,6 +1639,53 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               : undefined
         }
       />
+    </div>
+  );
+}
+
+/**
+ * One collapsible group in the right properties rail — Deck's props-rail grammar: a full-bleed
+ * 36px `NN // GROUP` strip (number in the brand accent, exactly like Deck's CSS counter) over the
+ * group's fields. The strip is sticky so the group you're editing stays labelled while you scroll.
+ */
+function RailGroup({
+  index,
+  name,
+  right,
+  defaultOpen = true,
+  children,
+}: {
+  index: string;
+  name: string;
+  right?: ReactNode;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border-t border-[var(--border-3)] first:border-t-0">
+      <div className="widget-header sticky top-0 z-[1]">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex min-w-0 items-center gap-1.5 text-left"
+        >
+          <ChevronRightIcon
+            className={cn(
+              "h-3 w-3 shrink-0 text-[var(--text-4)] transition-transform",
+              open && "rotate-90",
+            )}
+          />
+          <span className="widget-header-label">
+            <span className="text-[var(--brand-700)]">{index}</span>
+            {" // "}
+            {name}
+          </span>
+        </button>
+        {right}
+      </div>
+      {open ? <div className="p-4">{children}</div> : null}
     </div>
   );
 }
@@ -1649,7 +1851,7 @@ function SortableTableOfContentsItem({
 
       <div
         className={cn(
-          "group flex items-center gap-1.5 rounded-[10px] border px-1.5 py-2.5 transition xl:py-1.5",
+          "group relative flex items-center gap-1.5 rounded-[10px] border px-1.5 py-2.5 transition xl:py-1.5",
           isActive
             ? "border-[var(--border-2)] bg-[var(--surface-1)]"
             : "border-transparent hover:bg-[var(--surface-1)]",
@@ -1676,15 +1878,26 @@ function SortableTableOfContentsItem({
         <button
           type="button"
           onClick={() => onSelect(entry.id)}
+          // The rail is narrow, so long block titles ellipse — carry the full title so it stays
+          // readable on hover (and so the clipping audit's TRUNCATED rule is satisfied).
+          title={entry.section.title}
           className={cn(
             "min-w-0 flex-1 overflow-hidden text-left text-sm tracking-[-0.01em]",
             isActive ? "font-medium text-[var(--text-1)]" : "text-[var(--text-2)]",
           )}
         >
-          <span className="block truncate whitespace-nowrap">{entry.section.title}</span>
+          {/* `title` repeated on the ellipsing element itself: audit-clipping's TRUNCATED rule reads
+              the element's own title/aria-label, not an ancestor's. */}
+          <span title={entry.section.title} className="block truncate whitespace-nowrap">
+            {entry.section.title}
+          </span>
         </button>
 
-        <div className="flex items-center gap-0.5 transition xl:opacity-0 xl:group-hover:opacity-100">
+        {/* Row actions. From xl up they leave the flow entirely (absolute, hover-revealed over the
+            row's own hover fill) — in flow they cost ~84px, which on the navigation rail left the
+            block title clipped to a single letter. Pointer events follow the reveal so the invisible
+            buttons can't be clicked through the label. */}
+        <div className="flex items-center gap-0.5 transition xl:pointer-events-none xl:absolute xl:right-1 xl:top-1/2 xl:-translate-y-1/2 xl:rounded-[6px] xl:bg-[var(--surface-1)] xl:opacity-0 xl:group-hover:pointer-events-auto xl:group-hover:opacity-100">
           {onEditOptions ? (
             <button
               type="button"

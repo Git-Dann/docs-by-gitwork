@@ -3,6 +3,7 @@
 import { BookmarkIcon, PlusIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { useState, type ReactNode } from "react";
 import { ProposalSectionEditor } from "@/components/proposals/proposal-section-editor";
+import { SpeakerNotesField } from "@/components/proposals/speaker-notes-field";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { apiFetch } from "@/lib/api";
@@ -23,6 +24,7 @@ export function ProposalBuilderPanel({
   activeId,
   onProposalChange,
   embedded = false,
+  withSpeakerNotes = true,
 }: {
   proposal: ProposalDocument;
   sections: Array<{ id: string; section: ProposalSection; order: number }>;
@@ -31,6 +33,10 @@ export function ProposalBuilderPanel({
   /** Chromeless mode — drop the widget-card wrapper + header so it sits flush inside a docked
    *  inspector column that supplies its own chrome. */
   embedded?: boolean;
+  /** Embedded-only. The editor's right properties rail renders speaker notes as its OWN numbered
+   *  group (`02 // SPEAKER NOTES`) via <SpeakerNotesField>, so it passes false to avoid a second
+   *  copy inside the block group. Default true keeps every other embedded caller unchanged. */
+  withSpeakerNotes?: boolean;
 }) {
   const createSnippet = useCreateSnippet();
   const { canGenerateAi } = usePermissions(); // per-section "Expand with AI" spends tokens
@@ -195,9 +201,10 @@ export function ProposalBuilderPanel({
         </div>
       )}
       {embedded ? (
-        // Outline drill-in: a clean top-to-bottom panel — subtitle, the settings form, then a
-        // tidy labelled footer action (no orphaned icon, roomy single-column rhythm).
-        <div className="space-y-5 p-5">
+        // Properties-rail group: a clean top-to-bottom panel — subtitle, the settings form, then a
+        // tidy labelled footer action (no orphaned icon, roomy single-column rhythm). No padding of
+        // its own — the rail's `NN // GROUP` wrapper supplies it, so nesting doesn't double up.
+        <div className="space-y-5">
           {activeSection.description ? (
             <p className="text-sm leading-6 text-[var(--text-3)]">{activeSection.description}</p>
           ) : null}
@@ -213,33 +220,18 @@ export function ProposalBuilderPanel({
           )}
 
           {/* Speaker notes — presenter-only, surfaced in presentation mode's notes panel. Never
-              rendered in the doc body, public share, or PDF. */}
-          {sectionIndex >= 0 ? (
+              rendered in the doc body, public share, or PDF. The editor's right rail renders these
+              as their own numbered group instead, hence the opt-out. */}
+          {sectionIndex >= 0 && withSpeakerNotes ? (
             <div className="border-t border-[var(--border-2)] pt-4">
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
-                  Speaker notes
-                </span>
-                <textarea
-                  value={activeSection.speakerNotes ?? ""}
-                  onChange={(event) =>
-                    onProposalChange({
-                      ...proposal,
-                      sections: proposal.sections.map((entry, index) =>
-                        index === sectionIndex
-                          ? { ...entry, speakerNotes: event.target.value }
-                          : entry,
-                      ),
-                    })
-                  }
-                  rows={3}
-                  placeholder="Talking points shown only to you in presentation mode…"
-                  className="app-textarea"
-                />
-              </label>
-              <p className="mt-1.5 text-xs leading-5 text-[var(--text-4)]">
-                Only visible in presentation mode (the Notes toggle) — never in the doc, share link, or PDF.
-              </p>
+              <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
+                Speaker notes
+              </span>
+              <SpeakerNotesField
+                proposal={proposal}
+                sectionIndex={sectionIndex}
+                onProposalChange={onProposalChange}
+              />
             </div>
           ) : null}
 
