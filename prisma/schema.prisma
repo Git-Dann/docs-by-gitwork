@@ -1566,6 +1566,15 @@ model ClientWikiIntakeItem {
   status      WikiIntakeItemStatus @default(NEW)
   requestedBy String?
   externalRef String?
+  /// Deep link back to the item in the client's own tracker, sent by the intake
+  /// API so the team can open the source of a request. Rendered as a link on the
+  /// Requests row; never fetched server-side.
+  externalUrl String?
+  /// Attachment/screenshot LINKS supplied by the intake API, as a JSON string[].
+  /// Deliberately links rather than bytes: an API that accepted a URL and fetched
+  /// it would be an SSRF vector, and inlining binaries would bloat the payload
+  /// (see the avatar-blob lesson). `image`/`thumb` below stay for UI uploads.
+  attachmentUrls Json?
   source      String?
   taskId      String?
   /// Optional screenshot/image attached to the request (client or internal).

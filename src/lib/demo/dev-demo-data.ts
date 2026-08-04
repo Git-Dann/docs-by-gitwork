@@ -587,8 +587,8 @@ const demoWiki: WikiDTO = {
   users: [],
   intakeEnabled: true,
   intakeItems: [
-    { id: "wi1", type: "FEEDBACK", title: "Add a “continue watching” rail to the home screen", description: "Surface the last 10 partially-watched titles at the top of Home.", priority: "MEDIUM", status: "TRIAGED", requestedBy: "Priya Shah", externalRef: null, source: "wiki", taskId: null, hasImage: false, imageFilename: null, createdAt: atDays(-4), updatedAt: atDays(-2) },
-    { id: "wi2", type: "BUG", title: "AirPlay handoff drops audio on iOS 18", description: "Video continues but audio cuts out when handing off to Apple TV.", priority: "HIGH", status: "NEW", requestedBy: "Priya Shah", externalRef: null, source: "wiki", taskId: null, hasImage: false, imageFilename: null, createdAt: atDays(-1), updatedAt: atDays(-1) },
+    { id: "wi1", type: "FEEDBACK", title: "Add a “continue watching” rail to the home screen", description: "Surface the last 10 partially-watched titles at the top of Home.", priority: "MEDIUM", status: "TRIAGED", requestedBy: "Priya Shah", externalRef: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, hasImage: false, imageFilename: null, createdAt: atDays(-4), updatedAt: atDays(-2) },
+    { id: "wi2", type: "BUG", title: "AirPlay handoff drops audio on iOS 18", description: "Video continues but audio cuts out when handing off to Apple TV.", priority: "HIGH", status: "NEW", requestedBy: "Priya Shah", externalRef: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, hasImage: false, imageFilename: null, createdAt: atDays(-1), updatedAt: atDays(-1) },
   ],
   blockers: [
     { taskId: "t-blocked-1", title: "Wire up the new search index", blockedReason: "We need the Algolia admin API key for the production index before we can cut over. Can you add it to the shared vault?", blockedAt: atDays(-2), category: "Search & discovery", blockedResponse: null, blockedResponseAt: null },

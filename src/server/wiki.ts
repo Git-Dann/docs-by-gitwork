@@ -86,6 +86,10 @@ export interface WikiIntakeItemRecord {
   status: WikiIntakeItemStatus;
   requestedBy: string | null;
   externalRef: string | null;
+  /** Deep link back to the item in the client's own tracker (API-supplied). */
+  externalUrl: string | null;
+  /** Screenshot/attachment links supplied by the API (http(s) only). */
+  attachmentUrls: string[];
   source: string | null;
   taskId: string | null;
   /** True when an image is attached — bytes are served via a separate route. */
@@ -276,6 +280,8 @@ function serializeWikiIntakeItem(item: {
   status: WikiIntakeItemStatus;
   requestedBy: string | null;
   externalRef: string | null;
+  externalUrl?: string | null;
+  attachmentUrls?: unknown;
   source: string | null;
   taskId: string | null;
   mime?: string | null;
@@ -292,6 +298,9 @@ function serializeWikiIntakeItem(item: {
     status: item.status,
     requestedBy: item.requestedBy,
     externalRef: item.externalRef,
+    externalUrl: item.externalUrl ?? null,
+    // Json column — guard the shape rather than trusting it.
+    attachmentUrls: Array.isArray(item.attachmentUrls) ? (item.attachmentUrls as string[]) : [],
     source: item.source,
     taskId: item.taskId,
     hasImage: Boolean(item.mime),
@@ -1072,6 +1081,23 @@ export interface WikiItemIngestItem {
   priority?: "LOW" | "MEDIUM" | "HIGH";
   requestedBy?: string | null;
   externalRef?: string | null;
+  /** Deep link back to the item in the client's own tracker. */
+  externalUrl?: string | null;
+  /** Screenshot / attachment LINKS (http(s) only). Never fetched server-side. */
+  attachmentUrls?: string[] | null;
+  /** Only meaningful on an update — a new item always starts at NEW. */
+  status?: "NEW" | "TRIAGED" | "PROMOTED" | "CLOSED";
+}
+
+/** http(s) only, so nothing can put a javascript:/data: URL in front of the team. */
+export function safeIntakeLink(url: string | null | undefined): string | null {
+  const v = url?.trim();
+  return v && /^https?:\/\//i.test(v) ? v : null;
+}
+
+export function safeIntakeLinks(urls: string[] | null | undefined): string[] {
+  if (!urls) return [];
+  return urls.map((u) => u.trim()).filter((u) => /^https?:\/\//i.test(u)).slice(0, 10);
 }
 
 export interface WikiItemIngestResult {
@@ -1148,6 +1174,8 @@ export async function ingestWikiItemsByToken(
         priority: raw.priority ?? "MEDIUM",
         requestedBy: raw.requestedBy?.trim() || null,
         externalRef,
+        externalUrl: safeIntakeLink(raw.externalUrl),
+        attachmentUrls: safeIntakeLinks(raw.attachmentUrls),
         source: "api",
       },
     });
@@ -1199,6 +1227,112 @@ export async function addWikiIntakeItemByToken(
 ): Promise<WikiIntakeItemRecord | null> {
   const result = await ingestWikiItemsByToken(token, [{ ...item, requestedBy: item.requestedBy ?? "Client wiki" }]);
   return result?.created[0] ?? null;
+}
+
+/**
+ * Update one intake item over the public API, addressed by OUR id or by the
+ * client's own `externalRef` — an integrator shouldn't have to store our ids to
+ * keep status in sync from their side.
+ *
+ * Always scoped to the token's own wiki, so a token can never touch another
+ * client's items even if handed a valid id belonging to one. Returns null for an
+ * unknown token, a disabled intake section, or an item that isn't theirs — the
+ * route must not distinguish those, or a caller could probe for id existence.
+ */
+export async function updateWikiIntakeItemByToken(
+  token: string,
+  ref: string,
+  patch: Partial<WikiItemIngestItem>,
+): Promise<WikiIntakeItemRecord | null> {
+  if (!token || !ref) return null;
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { courseIngestToken: token },
+    select: { id: true, intakeEnabled: true },
+  });
+  if (!wiki || !wiki.intakeEnabled) return null;
+
+  const existing = await prisma.clientWikiIntakeItem.findFirst({
+    where: { wikiId: wiki.id, OR: [{ id: ref }, { externalRef: ref }] },
+    select: { id: true },
+  });
+  if (!existing) return null;
+
+  const row = await prisma.clientWikiIntakeItem.update({
+    where: { id: existing.id },
+    data: {
+      ...(patch.title !== undefined ? { title: patch.title.trim() } : {}),
+      ...(patch.description !== undefined
+        ? { description: patch.description?.trim() || null }
+        : {}),
+      ...(patch.type ? { type: patch.type } : {}),
+      ...(patch.priority ? { priority: patch.priority } : {}),
+      ...(patch.status ? { status: patch.status } : {}),
+      ...(patch.requestedBy !== undefined
+        ? { requestedBy: patch.requestedBy?.trim() || null }
+        : {}),
+      ...(patch.externalUrl !== undefined
+        ? { externalUrl: safeIntakeLink(patch.externalUrl) }
+        : {}),
+      ...(patch.attachmentUrls !== undefined
+        ? { attachmentUrls: safeIntakeLinks(patch.attachmentUrls) }
+        : {}),
+    },
+  });
+  return serializeWikiIntakeItem(row);
+}
+
+/**
+ * List a client's own intake items, for an integrator reconciling their side.
+ * Scoped to the token's wiki; null for an unknown token or a disabled section.
+ */
+export async function listWikiIntakeItemsByToken(
+  token: string,
+  opts: { status?: string | null; limit?: number } = {},
+): Promise<WikiIntakeItemRecord[] | null> {
+  if (!token) return null;
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { courseIngestToken: token },
+    select: { id: true, intakeEnabled: true },
+  });
+  if (!wiki || !wiki.intakeEnabled) return null;
+  const status = opts.status?.trim().toUpperCase();
+  const valid = ["NEW", "TRIAGED", "PROMOTED", "CLOSED"];
+  const rows = await prisma.clientWikiIntakeItem.findMany({
+    where: {
+      wikiId: wiki.id,
+      ...(status && valid.includes(status) ? { status: status as WikiIntakeItemStatus } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: Math.min(Math.max(opts.limit ?? 50, 1), 200),
+  });
+  return rows.map(serializeWikiIntakeItem);
+}
+
+/**
+ * Reveal (creating on first call) the client's intake token, or rotate it.
+ *
+ * The token is the credential a client's system authenticates with, and until now
+ * there was no way to obtain it without database access — which is why a client
+ * asking for "an API key" couldn't be given one. Rotating invalidates the old
+ * token immediately, so a key that's been shared too widely can be replaced.
+ */
+export async function getOrCreateWikiIntakeToken(
+  clientId: string,
+  opts: { rotate?: boolean } = {},
+): Promise<string> {
+  const existing = await prisma.clientWiki.findUnique({
+    where: { clientId },
+    select: { courseIngestToken: true },
+  });
+  if (!opts.rotate && existing?.courseIngestToken) return existing.courseIngestToken;
+
+  const token = randomBytes(24).toString("hex");
+  await prisma.clientWiki.upsert({
+    where: { clientId },
+    create: { clientId, courseIngestToken: token },
+    update: { courseIngestToken: token },
+  });
+  return token;
 }
 
 export async function addWikiIntakeItem(
