@@ -1644,11 +1644,9 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 backgroundColor="#ffffff"
                 withTitle={false}
                 onComplete={() => {
-                  setTimeout(() => {
-                    alert("Thank you! Your signature has been securely captured.");
-                    setIsSigningOpen(false);
-                    router.refresh();
-                  }, 1500);
+                  void fetch("/api/documents/docuseal/sync", { method: "POST" }).catch(() => undefined);
+                  setIsSigningOpen(false);
+                  router.refresh();
                 }}
               />
             ) : null}
