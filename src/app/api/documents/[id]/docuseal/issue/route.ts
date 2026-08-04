@@ -64,6 +64,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const effectiveDate =
       body.effectiveDate || new Date().toLocaleDateString("en-GB"); // DD/MM/YYYY
 
+    // Helper to ensure any URL inside a text string (e.g. sowReference) has spaces URL-encoded as %20
+    function encodeUrlInText(text?: string): string {
+      if (!text) return "";
+      let formatted = text.replace(/\((https?:\/\/[^\)]+)\)/gi, (_match, urlInside: string) => {
+        const fixedUrl = urlInside.replace(/\s+/g, "%20");
+        return `(${fixedUrl})`;
+      });
+      formatted = formatted.replace(/(https?:\/\/[^\s\)]+)/gi, (url: string) => {
+        return url.replace(/\s+/g, "%20");
+      });
+      return formatted;
+    }
+
+    const sowReference = encodeUrlInText(body.sowReference ?? "");
+
     // 5. Persist these details into document.metadata.msaDetails so the modal
     //    is pre-filled on the next visit (no schema migration required — metadata is Json?).
     const existingMeta = (document.metadata as Record<string, unknown>) ?? {};
@@ -75,7 +90,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           msaDetails: {
             effectiveDate,
             serviceTier: body.serviceTier ?? "",
-            sowReference: body.sowReference ?? "",
+            sowReference,
             charges: body.charges ?? "",
             paymentSchedule: body.paymentSchedule ?? "",
             startDate: body.startDate ?? "",
@@ -109,7 +124,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             agreement_ref: document.documentNumber,
             // Pre-flight fields supplied by the admin via modal
             service_tier: body.serviceTier ?? "",
-            sow_reference: body.sowReference ?? "",
+            sow_reference: sowReference,
             charges: body.charges ?? "",
             payment_schedule: body.paymentSchedule ?? "",
             start_date: body.startDate ?? "",
