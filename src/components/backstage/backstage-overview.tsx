@@ -1,19 +1,24 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ArrowRightIcon, BanknotesIcon, ClockIcon } from "@heroicons/react/24/outline";
-import { useExpenses, useLeaveAllowance } from "@/hooks/use-backstage";
+import {
+  ArrowRightIcon,
+  BanknotesIcon,
+  ClockIcon,
+  InboxArrowDownIcon,
+} from "@heroicons/react/24/outline";
+import { useExpenses, useLeaveAllowance, useLeaveRequests } from "@/hooks/use-backstage";
 import { CalendarTab } from "@/components/backstage/calendar-tab";
 import { AbsencesCard } from "@/components/backstage/absences-card";
 import { useBackstageAccess } from "@/components/backstage/access";
 
-export type BackstageArea = "leave" | "expenses";
+export type BackstageArea = "leave" | "expenses" | "approvals";
 
 // Backstage landing — a bento grid of navigational cards (HQ dashboard pattern,
 // see app-overview.tsx + DESIGN.md) over the full team calendar. Cards show a
 // headline figure and open their area on click; the calendar stays visible. No tabs.
 export function BackstageOverview({ onOpen }: { onOpen: (area: BackstageArea) => void }) {
-  const { canManageExpenses } = useBackstageAccess();
+  const { canManageExpenses, canApprove } = useBackstageAccess();
 
   let n = 0;
   const num = () => String(++n).padStart(2, "0");
@@ -22,6 +27,10 @@ export function BackstageOverview({ onOpen }: { onOpen: (area: BackstageArea) =>
     <div className="space-y-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <LeaveCard number={num()} onOpen={onOpen} />
+        {/* Approvers get the queue as a first-class card — the ApprovalsTab was
+            built but never reachable, so a leave request could be notified and
+            then had nowhere to be actioned. */}
+        {canApprove ? <ApprovalsCard number={num()} onOpen={onOpen} /> : null}
         <AbsencesCard number={num()} />
         {canManageExpenses ? <ExpensesCard number={num()} onOpen={onOpen} /> : null}
       </div>
@@ -85,6 +94,32 @@ function LeaveCard({ number, onOpen }: { number: string; onOpen: (a: BackstageAr
       <p className="flex items-center gap-1 text-xs text-[var(--text-3)]">
         <ClockIcon className="h-3.5 w-3.5" />
         {pending > 0 ? `${pending} pending` : "Book & track your leave"}
+      </p>
+    </Card>
+  );
+}
+
+/** Approver-only queue card — the count is what's actually waiting on you, so a
+ *  pending request is visible without opening anything. */
+function ApprovalsCard({ number, onOpen }: { number: string; onOpen: (a: BackstageArea) => void }) {
+  const leave = useLeaveRequests("team", "PENDING");
+  const expenses = useExpenses("team", "SUBMITTED");
+  const leaveCount = leave.data?.length ?? 0;
+  const expenseCount = expenses.data?.length ?? 0;
+  const total = leaveCount + expenseCount;
+  return (
+    <Card number={number} title="APPROVALS" area="approvals" onOpen={onOpen}>
+      <Figure value={total} unit={total === 1 ? "waiting" : "waiting"} />
+      <p className="flex items-center gap-1 text-xs text-[var(--text-3)]">
+        <InboxArrowDownIcon className="h-3.5 w-3.5" />
+        {total === 0
+          ? "Nothing to approve"
+          : [
+              leaveCount > 0 ? `${leaveCount} leave` : null,
+              expenseCount > 0 ? `${expenseCount} expense${expenseCount === 1 ? "" : "s"}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
       </p>
     </Card>
   );

@@ -1,20 +1,35 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { BackstageOverview, type BackstageArea } from "@/components/backstage/backstage-overview";
 import { LeaveTab } from "@/components/backstage/leave-tab";
 import { ExpensesTab } from "@/components/backstage/expenses-tab";
+import { ApprovalsTab } from "@/components/backstage/approvals-tab";
 import { useBackstageAccess } from "@/components/backstage/access";
 
 const AREA_LABEL: Record<BackstageArea, string> = {
   leave: "Leave",
   expenses: "Expenses",
+  approvals: "Approvals",
 };
 
+const AREAS = new Set<BackstageArea>(["leave", "expenses", "approvals"]);
+
 export function BackstageWorkspace() {
-  const { canManageExpenses } = useBackstageAccess();
-  const [area, setArea] = useState<BackstageArea | null>(null);
+  const { canManageExpenses, canApprove } = useBackstageAccess();
+  const searchParams = useSearchParams();
+  // `?area=approvals` lets the "requested leave" notification land straight on the
+  // queue. Read once as the initial state so navigating back to the overview
+  // isn't immediately undone by the still-present query param.
+  const initialArea = (() => {
+    const requested = searchParams.get("area");
+    return requested && AREAS.has(requested as BackstageArea)
+      ? (requested as BackstageArea)
+      : null;
+  })();
+  const [area, setArea] = useState<BackstageArea | null>(initialArea);
 
   // Landing: the bento card grid (HQ pattern). Cards open their area.
   if (!area) {
@@ -22,7 +37,7 @@ export function BackstageWorkspace() {
   }
 
   // Guard: if a non-permitted area is somehow selected, fall back to overview.
-  if (area === "expenses" && !canManageExpenses) {
+  if ((area === "expenses" && !canManageExpenses) || (area === "approvals" && !canApprove)) {
     setArea(null);
     return null;
   }
@@ -41,6 +56,7 @@ export function BackstageWorkspace() {
 
       {area === "leave" ? <LeaveTab /> : null}
       {area === "expenses" ? <ExpensesTab /> : null}
+      {area === "approvals" ? <ApprovalsTab /> : null}
     </div>
   );
 }

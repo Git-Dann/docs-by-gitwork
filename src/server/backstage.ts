@@ -191,11 +191,14 @@ export async function listLeaveRequests(
 ): Promise<LeaveRequestDTO[]> {
   await ensureBaseRecords();
   const scope = opts.scope ?? "me";
+  // Team/all visibility is admins + approvers only. This used to throw for
+  // `all` but fall THROUGH for `team` — and because a non-"me" scope drops the
+  // userId filter entirely, any authenticated member could call
+  // `GET /api/backstage/leave?scope=team` and read every teammate's leave dates,
+  // type and notes. Both non-me scopes are now gated, which is what the comment
+  // always claimed.
   if (scope !== "me" && !canApproveBackstage(user)) {
-    // Team/all visibility is allowed for admins + approvers only
-    if (scope === "all") {
-      throw new ForbiddenError("Cannot view all leave requests");
-    }
+    throw new ForbiddenError("Cannot view other people's leave requests");
   }
 
   const where: Prisma.LeaveRequestWhereInput = { workspaceId: user.workspaceId };
@@ -307,7 +310,9 @@ export async function createLeaveRequest(
       n === 1
         ? `${dto.user.name ?? "A teammate"} requested leave`
         : `${n} leave requests awaiting approval`,
-    actionUrl: "/app/backstage",
+    // Straight to the queue — this notice is only sent to approvers, and landing
+    // them on the Backstage overview left the request with nowhere to be actioned.
+    actionUrl: "/app/backstage?area=approvals",
     groupKey: "backstage.leave_submitted",
   });
   return dto;
@@ -678,7 +683,8 @@ export async function createExpense(
       n === 1
         ? `${dto.user.name ?? "A teammate"} submitted an expense`
         : `${n} expenses awaiting approval`,
-    actionUrl: "/app/backstage",
+    // Approver-targeted, so it lands on the queue rather than the overview.
+    actionUrl: "/app/backstage?area=approvals",
     groupKey: "backstage.expense_submitted",
   });
   return dto;
