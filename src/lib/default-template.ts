@@ -1,3 +1,4 @@
+import { DEFAULT_DOC_THEME } from "@/types/proposal";
 import type {
   AssetInput,
   CostLineItemInput,
@@ -246,6 +247,9 @@ export const DEFAULT_PROPOSAL_METADATA: ProposalMetadata = {
   productSignOff: false,
   techSignOff: false,
   approvalChecked: false,
+  // Gitwork FIRST — every document is brand-themed unless explicitly switched. `normalizeMetadata`
+  // spreads this first, so docs whose stored JSON predates the key adopt it too.
+  docTheme: DEFAULT_DOC_THEME,
 };
 
 export const EMPTY_PROPOSAL_METADATA: ProposalMetadata = {
@@ -258,6 +262,7 @@ export const EMPTY_PROPOSAL_METADATA: ProposalMetadata = {
   productSignOff: false,
   techSignOff: false,
   approvalChecked: false,
+  docTheme: DEFAULT_DOC_THEME,
 };
 
 export const defaultCostLineItems: CostLineItemInput[] = [

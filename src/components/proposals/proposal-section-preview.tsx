@@ -14,7 +14,39 @@ import { PencilSquareIcon } from "@heroicons/react/24/outline";
 import { getSectionType } from "@/lib/sections/registry";
 import { InlineTextArea } from "@/lib/sections/inline-text";
 import { renderInline } from "@/lib/markdown";
-import type { ProposalDocument, ProposalSection } from "@/types/proposal";
+import type { DocumentType, ProposalDocument, ProposalSection } from "@/types/proposal";
+
+/**
+ * Contract-style documents carry house clause numbering, so their sections get an accent-mono
+ * `01` / `02` gutter number. Proposals, reports, briefs, handovers and decks do NOT — they read as
+ * editorial documents and a numbered section would be noise.
+ */
+const NUMBERED_DOC_TYPES = new Set<DocumentType>(["SLA", "SOW", "MSA", "NDA", "CO", "DSA"]);
+
+/** Stable identity for a section, matching the selection id used elsewhere in this file. */
+function sectionRef(section: ProposalSection): string {
+  return section.id ?? section.key;
+}
+
+/**
+ * The section's position among the VISIBLE, shell-rendered content sections, zero-padded to two
+ * digits — derived from the sections array on every render, so there's no stored field to drift and
+ * inserting or hiding a block renumbers the rest for free. Continuous across the whole document
+ * (not per page). Returns null when this document type isn't numbered, or the section isn't counted
+ * (the cover and any `renderShell: false` block — `heading`, `divider` — are skipped).
+ */
+function sectionNumber(proposal: ProposalDocument, section: ProposalSection): string | null {
+  if (!NUMBERED_DOC_TYPES.has(proposal.documentType)) return null;
+  const target = sectionRef(section);
+  let ordinal = 0;
+  for (const entry of proposal.sections) {
+    if (!entry.isVisible) continue;
+    if (getSectionType(entry.key)?.renderShell === false) continue;
+    ordinal += 1;
+    if (sectionRef(entry) === target) return String(ordinal).padStart(2, "0");
+  }
+  return null;
+}
 
 function Graphic({
   title,
@@ -129,41 +161,57 @@ export function ProposalSectionPreview({
 
   const sectionId = `section-${section.id ?? section.key}`;
   const sectionAssets = proposal.assets.filter((asset) => asset.placement === section.key);
+  const number = sectionNumber(proposal, section);
+
+  const titleBlock =
+    editable && onMetaChange ? (
+      <>
+        {/* Title + caption are editable inline on EVERY block (they live on the section, not
+            its data) — so even blocks whose body isn't inline-editable can have their heading
+            and caption changed straight on the canvas. */}
+        <InlineTextArea
+          value={section.title}
+          onChange={(title) => onMetaChange({ title })}
+          placeholder="Section title"
+          ariaLabel="Section title"
+          className="text-[24px] leading-[1.15] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]"
+        />
+        <InlineTextArea
+          value={section.description ?? ""}
+          onChange={(description) => onMetaChange({ description })}
+          placeholder="Caption (optional)"
+          ariaLabel="Section caption"
+          className="font-[var(--font-mono),'JetBrains_Mono',monospace] text-[10px] font-semibold uppercase leading-5 tracking-[0.12em] text-[var(--doc-muted)]"
+        />
+      </>
+    ) : (
+      <>
+        <h2 className="text-[24px] leading-[1.15] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]">
+          {renderInline(section.title, `sec-title-${section.id ?? section.key}`)}
+        </h2>
+        {section.description ? (
+          <p className="font-[var(--font-mono),'JetBrains_Mono',monospace] text-[10px] font-semibold uppercase leading-5 tracking-[0.12em] text-[var(--doc-muted)]">
+            {renderInline(section.description, `sec-desc-${section.id ?? section.key}`)}
+          </p>
+        ) : null}
+      </>
+    );
 
   return wrapSelectable(
     <section id={sectionId} className="proposal-block-avoid space-y-4">
       <header className="max-w-3xl space-y-1.5">
-        {editable && onMetaChange ? (
-          <>
-            {/* Title + caption are editable inline on EVERY block (they live on the section, not
-                its data) — so even blocks whose body isn't inline-editable can have their heading
-                and caption changed straight on the canvas. */}
-            <InlineTextArea
-              value={section.title}
-              onChange={(title) => onMetaChange({ title })}
-              placeholder="Section title"
-              ariaLabel="Section title"
-              className="text-[24px] leading-[1.15] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]"
-            />
-            <InlineTextArea
-              value={section.description ?? ""}
-              onChange={(description) => onMetaChange({ description })}
-              placeholder="Caption (optional)"
-              ariaLabel="Section caption"
-              className="font-[var(--font-mono),'JetBrains_Mono',monospace] text-[10px] font-semibold uppercase leading-5 tracking-[0.12em] text-[var(--doc-muted)]"
-            />
-          </>
+        {number ? (
+          // Contract numbering: accent mono in a fixed 3rem gutter (sized for two digits + space,
+          // so 10/11/12 don't widen it), the title column `min-w-0` so long titles wrap under
+          // themselves and never collide with the number.
+          <div className="flex items-start">
+            <span className="w-12 shrink-0 pt-1.5 font-[var(--font-mono),'JetBrains_Mono',monospace] text-[13px] font-medium leading-none tracking-[0.04em] text-[var(--doc-accent)]">
+              {number}
+            </span>
+            <div className="min-w-0 flex-1 space-y-1.5">{titleBlock}</div>
+          </div>
         ) : (
-          <>
-            <h2 className="text-[24px] leading-[1.15] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]">
-              {renderInline(section.title, `sec-title-${section.id ?? section.key}`)}
-            </h2>
-            {section.description ? (
-              <p className="font-[var(--font-mono),'JetBrains_Mono',monospace] text-[10px] font-semibold uppercase leading-5 tracking-[0.12em] text-[var(--doc-muted)]">
-                {renderInline(section.description, `sec-desc-${section.id ?? section.key}`)}
-              </p>
-            ) : null}
-          </>
+          titleBlock
         )}
       </header>
 

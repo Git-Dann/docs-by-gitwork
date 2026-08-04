@@ -12,7 +12,8 @@ import { DocumentCover, DocumentVersionChip } from "@/components/document-cover"
 import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import { defineSection } from "@/lib/sections/types";
 import { approvalTrackApplies } from "@/lib/templates";
-import type { CoverSectionData, DocumentType, ProposalSection } from "@/types/proposal";
+import { DEFAULT_DOC_THEME } from "@/types/proposal";
+import type { CoverSectionData, DocumentType, PartyItem, ProposalSection } from "@/types/proposal";
 
 // Cover eyebrow label per doc type (`FOUNDRY // {LABEL}`). Mono caps. Kept here (not imported
 // from server/documents.ts) because that module pulls in Prisma and can't go client-side.
@@ -235,7 +236,8 @@ export const coverSection = defineSection<CoverSectionData>({
         "GITWORK GROUP LTD  /  COMPANY NO. 15756347  /  VAT REG. 468314867",
         "3RD FLOOR, ANCHORAGE ONE, ANCHORAGE QUAY, SALFORD QUAYS, M50 3YJ",
       ],
-      right: ["ACCOUNTS@GITWORK.CO.UK", "WWW.GITWORK.CO.UK"],
+      // Reference NDA footer copy — the positioning line, then the domain.
+      right: ["GLOBAL BUILD CAPACITY. UK QUALITY CONTROL.", "GITWORK.CO.UK"],
     };
 
     const visibleSections = proposal.sections.filter((s) => s.isVisible).length;
@@ -261,6 +263,26 @@ export const coverSection = defineSection<CoverSectionData>({
     if (authorLine) meta.push({ label: "Prepared by", value: authorLine });
     meta.push({ label: "Date", value: prettyPrepared });
     if (proposal.version) meta.push({ label: "Version", value: proposal.version });
+
+    // Contract-style documents (NDA / MSA / SLA / DSA) carry a Parties block — surface it on the
+    // cover, which then leads with who is bound instead of the meta grid / stat strip. No visible
+    // parties section → undefined, so the meta grid renders exactly as it does today.
+    const partiesData = proposal.sections.find((s) => s.key === "parties" && s.isVisible)?.data as
+      | { parties?: PartyItem[] }
+      | undefined;
+    const coverParties = (partiesData?.parties ?? [])
+      .map((party) => ({
+        label: undefined,
+        name: (party.name || party.organization || "").trim(),
+        lines: [
+          party.organization && party.organization !== party.name ? party.organization : null,
+          party.role,
+          party.email,
+        ]
+          .map((line) => (line ?? "").trim())
+          .filter(Boolean),
+      }))
+      .filter((party) => party.name || party.lines.length);
 
     const summary =
       intro?.statement?.trim() ||
@@ -318,6 +340,7 @@ export const coverSection = defineSection<CoverSectionData>({
           dated={prettyPrepared}
           classification={classification}
           companyFooter={companyFooter}
+          parties={coverParties.length ? coverParties : undefined}
           logoUrl={brandLogoUrl}
           boldPalette="navy"
           coBrand={
@@ -327,7 +350,7 @@ export const coverSection = defineSection<CoverSectionData>({
               : undefined
           }
           variant="print"
-          docTheme={proposal.metadata.docTheme ?? "foundry"}
+          docTheme={proposal.metadata.docTheme ?? DEFAULT_DOC_THEME}
           watermark={watermark}
           watermarkTone={watermarkTone}
         />

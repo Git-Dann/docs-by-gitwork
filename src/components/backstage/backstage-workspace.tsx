@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { BackstageOverview, type BackstageArea } from "@/components/backstage/backstage-overview";
 import { LeaveTab } from "@/components/backstage/leave-tab";
@@ -19,17 +18,27 @@ const AREAS = new Set<BackstageArea>(["leave", "expenses", "approvals"]);
 
 export function BackstageWorkspace() {
   const { canManageExpenses, canApprove } = useBackstageAccess();
-  const searchParams = useSearchParams();
-  // `?area=approvals` lets the "requested leave" notification land straight on the
-  // queue. Read once as the initial state so navigating back to the overview
-  // isn't immediately undone by the still-present query param.
-  const initialArea = (() => {
-    const requested = searchParams.get("area");
-    return requested && AREAS.has(requested as BackstageArea)
-      ? (requested as BackstageArea)
-      : null;
-  })();
-  const [area, setArea] = useState<BackstageArea | null>(initialArea);
+  const [area, setArea] = useState<BackstageArea | null>(null);
+
+  // `?area=approvals` lets the "requested leave" notification land straight on
+  // the queue.
+  //
+  // Read in an effect rather than via useSearchParams: that hook opts the page
+  // out of static prerendering unless it's wrapped in a Suspense boundary, and
+  // without one `next build` fails outright on /app/backstage — which is exactly
+  // how this shipped broken the first time. Reading after mount also means the
+  // server and first client render agree (both the overview), so there's no
+  // hydration mismatch. Applied once, so returning to the overview isn't
+  // immediately undone by the still-present query param.
+  const appliedDeepLink = useRef(false);
+  useEffect(() => {
+    if (appliedDeepLink.current) return;
+    appliedDeepLink.current = true;
+    const requested = new URLSearchParams(window.location.search).get("area");
+    if (requested && AREAS.has(requested as BackstageArea)) {
+      setArea(requested as BackstageArea);
+    }
+  }, []);
 
   // Landing: the bento card grid (HQ pattern). Cards open their area.
   if (!area) {

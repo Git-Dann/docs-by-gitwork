@@ -2,6 +2,7 @@ import { TableOfContents } from "@/components/proposals/table-of-contents";
 import { ProposalSectionPreview } from "@/components/proposals/proposal-section-preview";
 import { PagedDocument } from "@/components/proposals/paged-document";
 import { resolveProposalMergeVariables } from "@/lib/merge-variables";
+import { DEFAULT_DOC_THEME } from "@/types/proposal";
 import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
 export function ProposalPreview({
@@ -49,7 +50,7 @@ export function ProposalPreview({
   const sortedSections = [...resolved.sections].sort((left, right) => left.sortOrder - right.sortOrder);
   const visibleSections = sortedSections.filter((section) => section.isVisible);
   // Per-document visual theme — drives the token/font overrides in globals.css. Default Foundry.
-  const docTheme = resolved.metadata.docTheme ?? "foundry";
+  const docTheme = resolved.metadata.docTheme ?? DEFAULT_DOC_THEME;
 
   const documentBody = pageMode === "paged" ? (
     // Transparent backdrop (overrides .proposal-document's cream) so the neutral page canvas shows

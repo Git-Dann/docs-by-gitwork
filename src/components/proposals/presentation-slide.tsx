@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import { ProposalSectionPreview } from "@/components/proposals/proposal-section-preview";
+import { DEFAULT_DOC_THEME } from "@/types/proposal";
 import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
 /**
@@ -52,7 +53,7 @@ export function PresentationSlide({
   const contentRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState(FALLBACK_DIMS);
   const [innerScale, setInnerScale] = useState(1);
-  const docTheme = proposal.metadata.docTheme ?? "foundry";
+  const docTheme = proposal.metadata.docTheme ?? DEFAULT_DOC_THEME;
 
   // Measure the (CSS-sized) card → content column width + available height. Reported up for
   // packing. Keeps the fallback if the card can't be measured (e.g. a 0-size headless context).

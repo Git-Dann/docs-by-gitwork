@@ -69,6 +69,7 @@ import { cn, formatCurrency, formatDate, statusLabel } from "@/lib/format";
 import { deriveProposalStatus } from "@/lib/proposal-workflow";
 import { approvalTrackApplies } from "@/lib/templates";
 import { createTemplateFromDocument } from "@/lib/api";
+import { DEFAULT_DOC_THEME } from "@/types/proposal";
 import type { DocumentType, ProposalDocument, ProposalSection, SectionKey } from "@/types/proposal";
 
 type EditorTab = "overview" | "builder";
@@ -1252,8 +1253,10 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             <span className="px-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]">
               Theme
             </span>
-            {([["foundry", "Light"], ["gitwork", "Dark"]] as const).map(([theme, label]) => {
-              const themeActive = (draft.metadata.docTheme ?? "foundry") === theme;
+            {/* Gitwork first — it's the default. "Light/Dark" was misleading: both themes are cream
+                paper (only the COVER is navy), so the toggle names the brand, not a brightness. */}
+            {([["gitwork", "Gitwork"], ["foundry", "Foundry"]] as const).map(([theme, label]) => {
+              const themeActive = (draft.metadata.docTheme ?? DEFAULT_DOC_THEME) === theme;
               return (
                 <button
                   key={theme}

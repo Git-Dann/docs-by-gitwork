@@ -320,11 +320,21 @@ export interface SignatureBlockItem {
   signatoryEmail: string;
   /** Filled at signing time (Sprint 4 e-sig); kept blank in v3. */
   signatureDate: string;
+  /** Optional detail lines printed under the party name (company number, registered office, …).
+   *  One entry per rendered line; blank entries are dropped at render. */
+  details?: string[];
+  /** True when this block is an individual signing in a personal capacity rather than an officer
+   *  signing for a company — the card then reads "SIGNED PERSONALLY BY" and asks for a witness
+   *  name in place of a position. */
+  personal?: boolean;
 }
 
 export interface SignaturesSectionData {
   intro: string;
   blocks: SignatureBlockItem[];
+  /** Optional accent-ruled "NOTE ON SIGNING" callout under the signature cards (counterpart
+   *  clauses, wet-ink instructions, …). Nothing renders when empty. */
+  note?: string;
 }
 
 // ── Generic blocks (Sprint 7 — new) ───────────────────────────────────────────────────────
@@ -378,6 +388,17 @@ export interface CategoryChecklistSectionData {
 export interface ProseSectionData {
   /** Markdown-ish content. The preview renders paragraphs split on \n\n and trims line breaks. */
   content: string;
+  /**
+   * How the content is rendered. Absent or `"prose"` = markdown paragraphs (the original, unchanged
+   * behaviour). `"clauses"` = the house legal numbering — each non-indented line becomes a `1.1`
+   * clause and each indented line an `(a)` sub-item, numbered automatically by CSS counters.
+   */
+  style?: "prose" | "clauses";
+  /**
+   * The section number that drives clause numbering (`"2"` → `2.1`, `2.2`, …). Clause style only;
+   * defaults to `"1"`. Not a stored document field — it's authored per prose block.
+   */
+  clauseSection?: string;
 }
 
 export interface CalloutSectionData {
@@ -652,13 +673,23 @@ export interface ProposalMetadata {
    */
   approvalTrackEnabled?: boolean;
   /**
-   * Per-document visual theme. `"foundry"` (default when undefined) is the cream + DM Serif +
-   * mono-body statement look; `"gitwork"` is the brand-guide look — cream + Fraunces headings +
-   * Inter sans body + purple accent, with a navy cover/running header. Drives `data-doc-theme`
-   * on `.proposal-document`.
+   * Per-document visual theme — a PALETTE choice only; both themes share the standard Foundry type
+   * system (DM Serif Display headings / Inter body / JetBrains Mono labels + clause numbers).
+   * `"gitwork"` is the DEFAULT (see `DEFAULT_DOC_THEME`): brand cream paper, purple accent, white
+   * tiles, navy cover + running header. `"foundry"` is the older cream/periwinkle statement look.
+   * Drives `data-doc-theme` on `.proposal-document`.
    */
-  docTheme?: "foundry" | "gitwork";
+  docTheme?: DocTheme;
 }
+
+export type DocTheme = "foundry" | "gitwork";
+
+/**
+ * Gitwork FIRST — every document defaults to the brand theme. Single source of truth: read this
+ * instead of writing `?? "gitwork"` at each call site (scattered literals silently drift, see
+ * CLAUDE.md §31).
+ */
+export const DEFAULT_DOC_THEME: DocTheme = "gitwork";
 
 export interface ProposalDocument {
   id: string;

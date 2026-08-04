@@ -10,18 +10,17 @@
  * Falls back to author-driven `paginateSections` (cover + explicit breaks) for SSR / first paint,
  * then swaps to the measured layout once the client effect runs.
  *
- * Every non-cover page carries a quiet running header (Gitwork · client · doc number) and footer
- * (doc type/version · date · page X of Y) inside its own 20mm margin box; the footer pins to the
+ * Every non-cover page carries a quiet running header (`GITWORK.` wordmark · DOC TYPE · number) and
+ * footer (company legal line · page n of N) inside its own 20mm margin box; the footer pins to the
  * sheet bottom via the flex column, so it never floats. `window.__docPaginated` is set once the
  * measured layout settles — the server PDF route waits on it before capturing.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatDate } from "@/lib/format";
 import { paginateSections } from "@/lib/proposal-pagination";
 import { ProposalSectionPreview } from "@/components/proposals/proposal-section-preview";
-import { GitworkMark } from "@/components/document-cover";
 import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
+import { DEFAULT_DOC_THEME } from "@/types/proposal";
 import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
 const DOC_TYPE_LABEL: Record<string, string> = {
@@ -169,13 +168,22 @@ export function PagedDocument({
 
   const contentPageCount = pages.filter((p) => !isCoverPage(p)).length;
   const docTypeLabel = DOC_TYPE_LABEL[proposal.documentType] ?? "Document";
-  const isGitwork = proposal.metadata.docTheme === "gitwork";
-  const dateFmt = formatDate(proposal.updatedAt);
+  const isGitwork = (proposal.metadata.docTheme ?? DEFAULT_DOC_THEME) === "gitwork";
   // Running-header agency label — from workspace branding, defaulting to Gitwork (live product
   // unchanged). A white-label / demo workspace can blank it, so the header shows the client only.
   const branding = useWorkspaceBranding().data;
   const agencyLabel = branding?.companyName ?? "GITWORK";
-  const headerLabel = [agencyLabel, proposal.clientName].filter(Boolean).join(" · ");
+  // Per the reference NDA: header = `GITWORK.` wordmark (left) + `DOC TYPE · DOC NUMBER` (right);
+  // footer = the company legal line (left) + `PAGE n OF N` (right). The wordmark carries the brand
+  // period, so it reads as the mark rather than a bare word.
+  const wordmark = agencyLabel ? `${agencyLabel}.` : "";
+  const headerRight = [docTypeLabel.toUpperCase(), proposal.documentNumber ?? proposal.version ?? ""]
+    .filter(Boolean)
+    .join("  ·  ");
+  // Legal line: workspace letterhead when set, else the Gitwork registration line from the cover.
+  const legalLine =
+    branding?.companyFooter?.left?.[0] ??
+    (agencyLabel ? "GITWORK GROUP LTD  ·  COMPANY NO. 15756347" : "");
   let contentPageNumber = 0;
 
   // Blocks that participate in measurement: everything except the cover and page-break markers.
@@ -267,20 +275,24 @@ export function PagedDocument({
           <div key={pageIndex} className="doc-a4-page">
             <div className="doc-a4-page__margin">
               <header className="doc-a4-page__header">
-                <span className="flex items-center gap-2.5 truncate">
-                  {isGitwork ? <GitworkMark size={20} /> : null}
-                  {headerLabel || docTypeLabel}
+                {/* Wordmark left, in ink (not muted) so it reads as the mark. */}
+                <span
+                  className="truncate"
+                  style={
+                    isGitwork
+                      ? { color: "var(--doc-ink)", letterSpacing: "0.2em", fontWeight: 500 }
+                      : undefined
+                  }
+                >
+                  {wordmark || docTypeLabel}
                 </span>
-                <span className="shrink-0">{proposal.documentNumber ?? proposal.title}</span>
+                <span className="shrink-0">{headerRight}</span>
               </header>
               <div className="doc-a4-page__body space-y-8">{body}</div>
               <footer className="doc-a4-page__footer">
-                <span className="truncate">
-                  {docTypeLabel}
-                  {proposal.version ? ` · ${proposal.version}` : ""}
-                </span>
+                <span className="truncate">{legalLine || `${docTypeLabel}${proposal.version ? ` · ${proposal.version}` : ""}`}</span>
                 <span className="shrink-0">
-                  {dateFmt} · Page {contentPageNumber} of {contentPageCount}
+                  Page {contentPageNumber} of {contentPageCount}
                 </span>
               </footer>
             </div>

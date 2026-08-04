@@ -19,6 +19,7 @@ import {
 import { ProposalSectionPreview } from "@/components/proposals/proposal-section-preview";
 import { resolveProposalMergeVariables } from "@/lib/merge-variables";
 import { cn } from "@/lib/format";
+import { DEFAULT_DOC_THEME } from "@/types/proposal";
 import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
 type SlideItem = { section: ProposalSection; index: number };
@@ -104,7 +105,7 @@ export function PresentationMode({
 }) {
   // Resolve merge variables once so slides read like the shared/exported doc (not raw {{tokens}}).
   const resolved = useMemo(() => resolveProposalMergeVariables(proposal), [proposal]);
-  const docTheme = resolved.metadata.docTheme ?? "foundry";
+  const docTheme = resolved.metadata.docTheme ?? DEFAULT_DOC_THEME;
   // Visible sections in order, each tagged with its global index (used as the measurement key).
   const ordered = useMemo<SlideItem[]>(
     () =>

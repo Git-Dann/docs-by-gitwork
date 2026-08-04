@@ -1318,7 +1318,10 @@ h2, h3, h4, h5 {
   --doc-accent-tint: rgba(79, 91, 213, 0.12);
   background: var(--doc-paper);
   color: var(--doc-ink);
-  font-family: var(--font-mono), "SF Mono", Menlo, Consolas, monospace;
+  /* BODY IS INTER (the standard Foundry font system) — mono is reserved for labels, clause numbers
+     and data readouts (explicit `font-mono` classes), serif for headings. A mono body reads as a
+     code dump in a legal document; this is the house standard for every doc, both themes. */
+  font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
 
   /* Remap the app palette tokens to the document palette WITHIN the document only. Every block
      preview already paints with these tokens (--text-*, --border-*, --surface-*, --brand-*), so
@@ -1358,11 +1361,12 @@ h2, h3, h4, h5 {
   color: var(--doc-accent);
 }
 
-/* ── Gitwork theme (opt-in per doc via data-doc-theme="gitwork") ──────────────────────────────
-   The brand-guide look: warmer cream paper, purple accent, white card tiles, navy dark tile — and
-   crucially a SANS body (Inter) with Fraunces headings, for a more readable/accessible document
-   than the Foundry mono-body statement style. Only the --doc-* tokens + fonts change; every block
-   re-derives because the app tokens alias --doc-* above. Default (no attribute) stays Foundry. */
+/* ── Gitwork theme (the DEFAULT for every document — data-doc-theme="gitwork") ─────────────────
+   The brand-guide look: warm cream paper, purple accent, white card tiles, navy dark tile. It is a
+   PALETTE ONLY — the type system is the standard Foundry triple shared by both themes (DM Serif
+   Display headings / Inter body / JetBrains Mono labels & clause numbers). Do NOT re-add font
+   remaps here: mono labels must stay mono (that's the brand signature) and headings stay
+   DM Serif Display. Every block re-derives because the app tokens alias --doc-* above. */
 .proposal-document[data-doc-theme="gitwork"] {
   --doc-paper: #f2ede4;
   --doc-panel: #ffffff;
@@ -1374,19 +1378,103 @@ h2, h3, h4, h5 {
   --doc-line-soft: rgba(0, 0, 0, 0.07);
   --doc-accent: #6b52ff;
   --doc-accent-tint: rgba(107, 82, 255, 0.12);
-  /* Remap the two font vars WITHIN the doc scope so every block re-derives with no per-file edits:
-     headings/figures (var(--font-display)) → Fraunces; body AND the mono-caps labels/eyebrows/
-     table headers (var(--font-mono)) → Inter. Gitwork's brand uses Inter for both body and the
-     uppercase-tracked labels, so this is correct — nothing outside .proposal-document is touched. */
+  /* Headings are FRAUNCES — the brand display face used throughout the reference NDA. Body stays
+     Inter (base rule above) and labels/clause numbers stay JetBrains Mono. Do NOT remap --font-mono
+     here: the reference's uppercase labels + 1.1 / (a) clause numbers are monospace, and remapping
+     it to Inter (as this block used to) silently killed that signature. */
   --font-display: var(--font-fraunces);
-  --font-mono: var(--font-sans);
-  font-family: var(--font-sans);
 }
-.proposal-document[data-doc-theme="gitwork"] h1,
-.proposal-document[data-doc-theme="gitwork"] h2,
-.proposal-document[data-doc-theme="gitwork"] h3,
-.proposal-document[data-doc-theme="gitwork"] h4 {
-  font-weight: 600;
+/* Headings keep DM Serif Display's own weight (400) — it ships one weight, so forcing 600 only
+   synthesised a smeared faux-bold. */
+
+/* ── Legal numbering (clauses) ────────────────────────────────────────────────────────────────
+   The house numbering system for contract-style documents: `01` section number, `1.1` clauses,
+   `(a) (b) (c)` sub-items — the number in ACCENT MONO in a fixed-width gutter, the text in a
+   hanging indent so wrapped lines align under the text, never under the number. Counters are
+   automatic, so inserting or reordering a clause renumbers everything.
+
+   Markup:
+     <ol class="doc-clauses" data-clause-section="1">   ← section number drives 1.x
+       <li>Clause text… <ol class="doc-clause-subs"><li>sub-item</li></ol></li>
+     </ol> */
+.proposal-document .doc-clauses {
+  list-style: none;
+  counter-reset: doc-clause;
+  margin: 0;
+  padding: 0;
+}
+.proposal-document .doc-clauses > li {
+  counter-increment: doc-clause;
+  position: relative;
+  padding-left: 4.25rem;
+  margin-top: 0.9rem;
+}
+.proposal-document .doc-clauses > li::before {
+  content: var(--doc-clause-section, "1") "." counter(doc-clause);
+  position: absolute;
+  left: 0;
+  top: 0.15em;
+  width: 3.5rem;
+  font-family: var(--font-mono), "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.8em;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--doc-accent);
+}
+/* Sub-items: (a) (b) (c) — lower-alpha in brackets, same accent-mono gutter. */
+.proposal-document .doc-clause-subs {
+  list-style: none;
+  counter-reset: doc-sub;
+  margin: 0.6rem 0 0;
+  padding: 0;
+}
+.proposal-document .doc-clause-subs > li {
+  counter-increment: doc-sub;
+  position: relative;
+  padding-left: 2.5rem;
+  margin-top: 0.55rem;
+}
+.proposal-document .doc-clause-subs > li::before {
+  content: "(" counter(doc-sub, lower-alpha) ")";
+  position: absolute;
+  left: 0;
+  top: 0.15em;
+  width: 2rem;
+  font-family: var(--font-mono), "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.8em;
+  font-weight: 500;
+  color: var(--doc-accent);
+}
+/* Body bullets — a purple → ARROW marker (not a dot; this is what the reference NDA uses), hanging
+   indent so wrapped lines align to the text. */
+.proposal-document .doc-bullets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.proposal-document .doc-bullets > li {
+  position: relative;
+  padding-left: 1.6rem;
+  margin-top: 0.55rem;
+}
+.proposal-document .doc-bullets > li::before {
+  content: "→";
+  position: absolute;
+  left: 0;
+  top: 0.05em;
+  font-family: var(--font-mono), "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  line-height: 1.6;
+  color: var(--doc-accent);
+}
+/* Nested bullets step in and use a lighter chevron so the hierarchy reads. */
+.proposal-document .doc-bullets .doc-bullets {
+  margin-top: 0.35rem;
+  padding-left: 0.35rem;
+}
+.proposal-document .doc-bullets .doc-bullets > li::before {
+  content: "›";
+  opacity: 0.8;
 }
 
 /* On-screen "paged" A4 view — real per-page containers, used everywhere a document renders
@@ -1463,13 +1551,14 @@ h2, h3, h4, h5 {
 /* Gitwork theme: the running header becomes a full-bleed NAVY bar (matches the brand PDFs) —
    it breaks out of the 20mm margin box to the page edges, with cream text + the round "G." mark.
    Foundry keeps the quiet hairline header above. */
+/* Running header — a QUIET cream bar with a hairline, per the reference NDA: `GITWORK.` wordmark
+   left in ink, doc descriptor right in muted, thin rule under. (It used to be a full navy band with
+   the round G. mark; the reference has no navy on content pages, so that's gone.) */
 .proposal-document[data-doc-theme="gitwork"] .doc-a4-page__header {
-  margin: -20mm -20mm 12mm;
-  padding: 9mm 20mm;
-  background: #0c0c18;
-  color: #f2ede4;
-  border-bottom: 0;
-  align-items: center;
+  align-items: baseline;
+  padding-bottom: 5mm;
+  border-bottom: 1px solid var(--doc-line);
+  color: var(--doc-muted);
 }
 .proposal-document[data-doc-theme="gitwork"] .doc-a4-page__footer {
   color: #68686b;

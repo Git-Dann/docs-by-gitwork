@@ -55,6 +55,17 @@ export interface DocumentCoverCallout {
   tone?: "blue" | "amber" | "neutral";
 }
 
+/**
+ * One column of the Gitwork cover's parties row (contracts: NDA / MSA / SLA / DSA).
+ * `label` overrides the auto `PARTY A` / `PARTY B` / … index label.
+ */
+export interface DocumentCoverParty {
+  label?: string;
+  name: string;
+  /** Supporting lines under the name — organisation, role, email. Rendered one per line. */
+  lines?: string[];
+}
+
 export interface DocumentCoverProps {
   /** `FOUNDRY // PROPOSAL`, `PULSE // PROJECT HEALTH REPORT`, etc. Always mono caps. */
   eyebrow: string;
@@ -118,6 +129,17 @@ export interface DocumentCoverProps {
   classification?: string[];
   /** Statement cover (light/minimal): the company footer strip — left + right mono caps lines. */
   companyFooter?: { left?: string[]; right?: string[] };
+  /**
+   * Gitwork cover only: the bordered `COVERS  ·  a  ·  b  ·  c` strip — a one-line scope readout
+   * ("what this document covers"). Omitted entirely when absent/empty.
+   */
+  covers?: string[];
+  /**
+   * Gitwork cover only: the parties row (contracts). 2–3 per row; 4+ wrap onto a second row rather
+   * than squashing. When present it REPLACES the meta grid / executive summary / stat tiles on the
+   * cover — a contract front page leads with who is bound, not with delivery metrics.
+   */
+  parties?: DocumentCoverParty[];
   /**
    * Document theme for the statement cover. `"foundry"` (default) → warm cream + periwinkle +
    * DM-Serif. `"gitwork"` → the brand-guide look: a FULL NAVY cover with a round "G." mark,
@@ -189,7 +211,9 @@ export function DocumentCover({
   onSubtitleChange,
   classification,
   companyFooter,
-  docTheme = "foundry",
+  covers,
+  parties,
+  docTheme = "gitwork",
 }: DocumentCoverProps) {
   const isPrint = variant === "print";
   const isGitwork = docTheme === "gitwork";
@@ -199,18 +223,15 @@ export function DocumentCover({
   const mono = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
   const serif = "var(--font-display), 'DM Serif Display', 'Times New Roman', Georgia, serif";
 
-  // ── Statement cover (light / minimal) — THEME-AWARE. Foundry: warm cream paper, periwinkle
-  // accent, DM-Serif title, mono labels. Gitwork (brand PDFs): FULL NAVY page, purple accent,
-  // Fraunces cream title + purple periods, Inter labels, a round "G." mark. Bold (Pulse) falls
-  // through to the legacy blue-gradient hero below and is untouched. ──
+  // ── Statement cover (light / minimal) — THEME-AWARE, and the two themes render as two separate
+  // layouts (shared palette consts, then an early return per theme):
+  //   · Gitwork (the DEFAULT) — FULL NAVY page, mono `GITWORK.` wordmark, purple glow, Fraunces
+  //     title + purple period, Inter subtitle, optional COVERS strip + parties row, square "G."
+  //     footer tile. Matched to the brand reference PDF.
+  //   · Foundry — the cream statement cover: logo + classification stack, accent eyebrow, DM Serif
+  //     title, mono meta grid / summary / stat tiles / callout, letterhead footer.
+  // Bold (Pulse) falls through to the legacy blue-gradient hero below and is untouched. ──
   if (coverStyle !== "bold") {
-    // Shadow the outer font consts for this branch so labels/title follow the theme.
-    const serif = isGitwork
-      ? "var(--font-fraunces), 'Fraunces', Georgia, serif"
-      : "var(--font-display), 'DM Serif Display', 'Times New Roman', Georgia, serif";
-    const mono = isGitwork
-      ? "var(--font-sans), 'Inter', system-ui, sans-serif"
-      : "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
     const paper = isGitwork ? "#0C0C18" : "#F0EEE8"; // navy | cream
     const panel = isGitwork ? "#17172a" : "#F7F5EF";
     const ink = isGitwork ? "#F2EDE4" : "#1A1A17"; // cream | near-black
@@ -224,6 +245,508 @@ export function DocumentCover({
     // executive summary, stat tiles and callout that the full "light" statement cover carries.
     const minimal = coverStyle === "minimal";
     const pad = isPrint ? "56px 60px 40px" : "34px 40px 32px";
+
+    // ── Gitwork cover (the DEFAULT theme) — a full-bleed navy A4 front page matched to the brand
+    // reference: mono `GITWORK.` wordmark + doc-number/date stack, a soft purple glow upper-right,
+    // a big Fraunces title with a purple period, an Inter subtitle, an optional bordered COVERS
+    // strip, an optional parties row (contracts), and a footer carrying the square "G." tile.
+    // NOTE: the reference has no `CLIENT / DOC TYPE` eyebrow, so this cover drops it — the doc type
+    // already sits in the top-right stack and the client in the parties row / meta grid.
+    // Type follows the document type system: Fraunces display · Inter body · JetBrains Mono labels
+    // (the `data-doc-theme="gitwork"` block in globals.css aliases --font-display to Fraunces and
+    // deliberately leaves --font-mono alone). The faces are named explicitly here so the cover is
+    // correct even when it renders outside `.proposal-document`.
+    if (isGitwork) {
+      const gMono = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
+      const gSerif = "var(--font-fraunces), 'Fraunces', Georgia, serif";
+      const gSans = "var(--font-sans), 'Inter', system-ui, sans-serif";
+      const dot = "  ·  "; // NBSP-padded — plain spaces collapse in HTML.
+
+      const coverItems = minimal ? [] : (covers ?? []).map((item) => item.trim()).filter(Boolean);
+      const partyList = minimal
+        ? []
+        : (parties ?? []).filter((party) => (party.name ?? "").trim() || (party.lines ?? []).length);
+      // Never more than 3 columns — 4–5 parties wrap onto a second row instead of squashing.
+      const partyCols = Math.min(Math.max(partyList.length, 1), 3);
+      const partyLabel = (party: DocumentCoverParty, index: number) =>
+        party.label?.trim() ||
+        (index < 26 ? `Party ${String.fromCharCode(65 + index)}` : `Party ${index + 1}`);
+      // A contract cover leads with who is bound, not with delivery metrics: the parties row
+      // REPLACES the meta grid / executive summary / stat tiles (which also keeps it to one sheet).
+      const showMetaBlocks = !minimal && partyList.length === 0;
+
+      const titleType = {
+        fontFamily: gSerif,
+        fontSize: isPrint ? 62 : 46,
+        fontWeight: 600,
+        lineHeight: 1.06,
+        letterSpacing: "-1.5px",
+        color: ink,
+      };
+      const subtitleType = { fontFamily: gSans, fontSize: 14.5, lineHeight: 1.65, color: inkSoft };
+      const showSubtitle = Boolean(onSubtitleChange) || Boolean((subtitle ?? "").trim());
+      const footerRight = companyFooter?.right ?? (dated ? [dated] : []);
+      const hasFooter =
+        (companyFooter?.left?.length ?? 0) > 0 ||
+        (companyFooter?.right?.length ?? 0) > 0 ||
+        (!companyFooter && Boolean(dated));
+
+      return (
+        <section
+          className={isPrint ? "document-cover document-cover-print" : "document-cover"}
+          style={{
+            position: "relative",
+            display: "flex",
+            flexDirection: "column",
+            background: paper,
+            color: ink,
+            // Pinned to exactly one A4 sheet — the two flexible spacers below absorb the slack, so
+            // a dense cover (covers strip + 5 parties + footer) compresses instead of overflowing.
+            minHeight: "297mm",
+            breakAfter: isPrint ? "page" : undefined,
+            pageBreakAfter: isPrint ? "always" : undefined,
+            padding: pad,
+            overflow: "hidden",
+          }}
+        >
+          {/* Soft purple glow, upper-right. Sits behind every content wrapper (which are z-index 1). */}
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "radial-gradient(circle at 75% 15%, rgba(107,82,255,0.28), transparent 60%)",
+              pointerEvents: "none",
+              zIndex: 0,
+            }}
+          />
+
+          {/* Watermark — light translucent cream. Dark ink is invisible on the navy field. */}
+          {watermark ? (
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%) rotate(-28deg)",
+                pointerEvents: "none",
+                zIndex: 0,
+                fontFamily: gMono,
+                fontWeight: 800,
+                fontSize: isPrint ? "7vw" : 72,
+                letterSpacing: "0.25em",
+                whiteSpace: "nowrap",
+                color: `rgba(242,237,228,${watermarkTone === "neutral" ? "0.07" : watermarkAlpha})`,
+                userSelect: "none",
+              }}
+            >
+              {watermark}
+            </div>
+          ) : null}
+
+          {/* Top row — wordmark left, document number + date right (from `classification`). */}
+          <div
+            style={{
+              position: "relative",
+              zIndex: 1,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 24,
+            }}
+          >
+            <span
+              style={{
+                fontFamily: gMono,
+                fontSize: 12,
+                fontWeight: 600,
+                letterSpacing: "0.22em",
+                textTransform: "uppercase",
+                color: accent,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Gitwork<span style={{ color: accent }}>.</span>
+            </span>
+            {classification && classification.length ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, textAlign: "right" }}>
+                {classification.map((row, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      fontFamily: gMono,
+                      fontSize: 9.5,
+                      fontWeight: 600,
+                      letterSpacing: "0.16em",
+                      textTransform: "uppercase",
+                      color: muted,
+                    }}
+                  >
+                    {row}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          {/* Breathing space above the title. Grows to fill the sheet; floors out on a dense cover. */}
+          <div aria-hidden="true" style={{ flex: "1.4 1 auto", minHeight: isPrint ? 40 : 20 }} />
+
+          {/* Accent bar + title + subtitle. */}
+          <div style={{ position: "relative", zIndex: 1 }}>
+            <div aria-hidden="true" style={{ width: 44, height: 3, background: accent, marginBottom: 22 }} />
+
+            {onTitleChange ? (
+              // The inline field is always full-width (its auto-grow replica sizes on 100%), so the
+              // accent period rides the last baseline at the end of the field rather than hugging
+              // the final glyph. Editor-only compromise — the read-only render is exact.
+              <div style={{ display: "flex", alignItems: "flex-end", maxWidth: "90%" }}>
+                <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+                  <InlineTextArea
+                    value={title}
+                    onChange={onTitleChange}
+                    placeholder="Document title"
+                    ariaLabel="Document title"
+                    style={titleType}
+                  />
+                </div>
+                <span aria-hidden="true" style={{ ...titleType, color: accent, flexShrink: 0 }}>
+                  .
+                </span>
+              </div>
+            ) : (
+              <h1 style={{ margin: 0, ...titleType, maxWidth: "90%" }}>
+                {cleanTitle}
+                <span style={{ color: accent }}>.</span>
+              </h1>
+            )}
+
+            {/* Rendered whenever there IS a subtitle — read-only and print covers showed none
+                before, because the block was gated on the editor's onSubtitleChange handler. */}
+            {showSubtitle ? (
+              onSubtitleChange ? (
+                <div style={{ marginTop: 18, maxWidth: "58ch" }}>
+                  <InlineTextArea
+                    value={subtitle ?? ""}
+                    onChange={onSubtitleChange}
+                    placeholder="Subtitle / summary line"
+                    ariaLabel="Subtitle"
+                    style={subtitleType}
+                  />
+                </div>
+              ) : (
+                <p style={{ margin: "18px 0 0", ...subtitleType, maxWidth: "58ch" }}>{subtitle}</p>
+              )
+            ) : null}
+          </div>
+
+          {/* Slack between the title block and the bottom stack. */}
+          <div aria-hidden="true" style={{ flex: "1 1 auto", minHeight: isPrint ? 24 : 14 }} />
+
+          {/* COVERS strip — purple-hairline box, one line of scope. */}
+          {coverItems.length ? (
+            <div
+              style={{
+                position: "relative",
+                zIndex: 1,
+                marginTop: 4,
+                border: "1px solid rgba(107,82,255,0.55)",
+                padding: "10px 14px",
+                fontFamily: gMono,
+                fontSize: 9.5,
+                fontWeight: 600,
+                letterSpacing: "0.16em",
+                textTransform: "uppercase",
+                lineHeight: 1.6,
+                color: inkSoft,
+              }}
+            >
+              <span style={{ color: accent }}>Covers</span>
+              {dot}
+              {coverItems.join(dot)}
+            </div>
+          ) : null}
+
+          {/* Parties row — equal columns divided by hairlines, hairline above and below. */}
+          {partyList.length ? (
+            <div
+              style={{
+                position: "relative",
+                zIndex: 1,
+                marginTop: 26,
+                borderTop: `1px solid ${line}`,
+                borderBottom: `1px solid ${line}`,
+                padding: "22px 0",
+                display: "grid",
+                gridTemplateColumns: `repeat(${partyCols}, minmax(0, 1fr))`,
+                columnGap: 18,
+                rowGap: 22,
+              }}
+            >
+              {partyList.map((party, index) => {
+                // First column of each row carries no divider — so a wrapped 4th/5th party reads
+                // as the start of a new row rather than a continuation.
+                const divided = index % partyCols !== 0;
+                return (
+                  <div
+                    key={`${party.name}-${index}`}
+                    style={{
+                      minWidth: 0,
+                      paddingLeft: divided ? 18 : 0,
+                      borderLeft: divided ? `1px solid ${line}` : undefined,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontFamily: gMono,
+                        fontSize: 9.5,
+                        fontWeight: 600,
+                        letterSpacing: "0.16em",
+                        textTransform: "uppercase",
+                        color: accent,
+                        marginBottom: 10,
+                      }}
+                    >
+                      {partyLabel(party, index)}
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: gSerif,
+                        fontSize: 18,
+                        fontWeight: 600,
+                        lineHeight: 1.25,
+                        color: ink,
+                        overflowWrap: "anywhere",
+                      }}
+                    >
+                      {party.name}
+                    </div>
+                    {(party.lines ?? [])
+                      .map((row) => (row ?? "").trim())
+                      .filter(Boolean)
+                      .map((row, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            marginTop: i === 0 ? 8 : 2,
+                            fontFamily: gSans,
+                            fontSize: 11.5,
+                            lineHeight: 1.6,
+                            color: muted,
+                            overflowWrap: "anywhere",
+                          }}
+                        >
+                          {row}
+                        </div>
+                      ))}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {/* No parties (proposals, reports…) → the meta grid / summary / stat tiles as before. */}
+          {showMetaBlocks && meta && meta.length ? (
+            <div
+              style={{
+                position: "relative",
+                zIndex: 1,
+                marginTop: 26,
+                borderTop: `1px solid ${line}`,
+                paddingTop: 22,
+                display: "grid",
+                gridTemplateColumns: `repeat(${Math.min(meta.length, 4)}, minmax(0, 1fr))`,
+                gap: "18px 24px",
+              }}
+            >
+              {meta.map((row) => (
+                <div key={row.label} style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontFamily: gMono,
+                      fontSize: 9.5,
+                      fontWeight: 600,
+                      letterSpacing: "0.16em",
+                      textTransform: "uppercase",
+                      color: accent,
+                      marginBottom: 8,
+                    }}
+                  >
+                    {row.label}
+                  </div>
+                  <div style={{ fontFamily: gMono, fontSize: 12.5, fontWeight: 500, color: ink, lineHeight: 1.45 }}>
+                    {row.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {showMetaBlocks && executiveSummary ? (
+            <div style={{ position: "relative", zIndex: 1, marginTop: 22, maxWidth: "70ch" }}>
+              {executiveSummary
+                .split(/\n{2,}/)
+                .map((para) => para.trim())
+                .filter(Boolean)
+                .map((para, idx) => (
+                  <p
+                    key={idx}
+                    style={{
+                      margin: idx === 0 ? 0 : "10px 0 0",
+                      fontFamily: gSans,
+                      fontSize: 12.5,
+                      lineHeight: 1.75,
+                      color: inkSoft,
+                    }}
+                  >
+                    {para}
+                  </p>
+                ))}
+            </div>
+          ) : null}
+
+          {showMetaBlocks && stats && stats.length ? (
+            <div
+              style={{
+                position: "relative",
+                zIndex: 1,
+                marginTop: 24,
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                gap: 12,
+              }}
+            >
+              {stats.map((stat, i) => (
+                <div
+                  key={`${stat.label}-${i}`}
+                  style={{
+                    borderRadius: 4,
+                    padding: "14px 14px 16px",
+                    background: panel,
+                    border: `1px solid ${line}`,
+                    minWidth: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontFamily: gMono,
+                      fontSize: 9.5,
+                      fontWeight: 600,
+                      letterSpacing: "0.16em",
+                      textTransform: "uppercase",
+                      color: muted,
+                      marginBottom: 10,
+                    }}
+                  >
+                    {stat.label}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: gSerif,
+                      fontSize: 26,
+                      fontWeight: 600,
+                      letterSpacing: "-0.02em",
+                      lineHeight: 1,
+                      color: stat.color && stat.color !== "#FFFFFF" ? stat.color : ink,
+                      overflowWrap: "break-word",
+                    }}
+                  >
+                    {stat.count}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {!minimal && callout ? (
+            <div
+              style={{
+                position: "relative",
+                zIndex: 1,
+                marginTop: 22,
+                borderLeft: `3px solid ${accent}`,
+                paddingLeft: 14,
+                fontFamily: gSans,
+                fontSize: 11.5,
+                lineHeight: 1.7,
+                color: muted,
+                maxWidth: "70ch",
+              }}
+            >
+              {callout.text}
+            </div>
+          ) : null}
+
+          {/* Footer — square "G." tile left, the caller's mono lines right. Suppressed with the
+              hairline when there's no letterhead at all (a de-branded / white-label cover). */}
+          {hasFooter ? (
+            <div style={{ position: "relative", zIndex: 1, marginTop: 28 }}>
+              <div aria-hidden="true" style={{ height: 1, background: line, marginBottom: 16 }} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 24 }}>
+                {/* Rounded-SQUARE tile per the reference. The round `GitworkMark` is unchanged and
+                    still used by the navy running-header bar on content pages. */}
+                <span
+                  aria-label="Gitwork"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 36,
+                    height: 36,
+                    borderRadius: 4,
+                    background: "#F2EDE4",
+                    flexShrink: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: gSerif,
+                      fontSize: 18,
+                      fontWeight: 600,
+                      lineHeight: 1,
+                      color: "#0C0C18",
+                      transform: "translateY(-1px)",
+                    }}
+                  >
+                    G<span style={{ color: "#6B52FF" }}>.</span>
+                  </span>
+                </span>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                    textAlign: "right",
+                    minWidth: 0,
+                  }}
+                >
+                  {footerRight.map((row, i) => (
+                    <span
+                      key={i}
+                      style={{
+                        fontFamily: gMono,
+                        fontSize: 9.5,
+                        fontWeight: 600,
+                        letterSpacing: "0.16em",
+                        textTransform: "uppercase",
+                        color: muted,
+                      }}
+                    >
+                      {row}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      );
+    }
+
+    // ── Foundry statement cover (cream paper, periwinkle accent, DM Serif title, mono labels) ──
+    const serif = "var(--font-display), 'DM Serif Display', 'Times New Roman', Georgia, serif";
+    const mono = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
     return (
       <section
@@ -277,9 +800,7 @@ export function DocumentCover({
             gap: 24,
           }}
         >
-          {isGitwork ? (
-            <GitworkMark size={44} />
-          ) : logoUrl ? (
+          {logoUrl ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={logoUrl} alt="" style={{ height: 26, objectFit: "contain", display: "block" }} />

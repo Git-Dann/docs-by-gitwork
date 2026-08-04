@@ -1050,12 +1050,25 @@ function buildApiHandoverDoc(item: (typeof demoProposals.proposals)[number]) {
         },
       },
       {
+        key: "parties", title: "The parties", sortOrder: 8.5, isVisible: true,
+        data: {
+          intro: "This handover is made between:",
+          parties: [
+            { id: "pty-1", name: "Gitwork Group Ltd", role: "Supplier", organization: "Gitwork Group Ltd", email: "accounts@gitwork.co.uk", signatureRequired: true },
+            { id: "pty-2", name: "Northwind Studio", role: "Client", organization: "Northwind Studio Ltd", email: "ops@northwind.co", signatureRequired: true },
+            { id: "pty-3", name: "Priya Raman", role: "Technical contact", organization: "In a personal capacity", email: "priya@northwind.co", signatureRequired: false },
+          ],
+        },
+      },
+      {
         key: "signatures", title: "Sign-off", sortOrder: 9, isVisible: true,
         data: {
-          intro: "Accepted and signed for and on behalf of:",
+          intro: "Each person signing below confirms they are authorised to sign in the capacity shown.",
+          note: "This document may be signed electronically. An electronic signature applied through a recognised signing platform has the same effect as a wet ink signature. Once all parties have signed, each party should keep a copy.",
           blocks: [
-            { id: "sig-1", partyName: "Northwind Studio", signatoryName: "", signatoryRole: "Head of Product", signatoryEmail: "", signatureDate: "" },
-            { id: "sig-2", partyName: "Gitwork", signatoryName: "Alex Rivera", signatoryRole: "Delivery Lead", signatoryEmail: "", signatureDate: "" },
+            { id: "sig-1", partyName: "Gitwork Group Ltd", signatoryName: "Alex Rivera", signatoryRole: "Delivery Lead", signatoryEmail: "", signatureDate: "", details: ["Company no. 15756347", "Salford Quays, Manchester"] },
+            { id: "sig-2", partyName: "Northwind Studio", signatoryName: "", signatoryRole: "Head of Product", signatoryEmail: "", signatureDate: "", details: ["Company no. 09183477", "Shoreditch, London"] },
+            { id: "sig-3", partyName: "Priya Raman", signatoryName: "", signatoryRole: "", signatoryEmail: "", signatureDate: "", personal: true, details: ["In her personal capacity, as technical contact"] },
           ],
         },
       },

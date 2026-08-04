@@ -812,6 +812,17 @@ export function SignaturesEditor({
         />
       </div>
 
+      <div className="space-y-2">
+        <FieldLabel>Note on signing (optional)</FieldLabel>
+        <textarea
+          value={data.note ?? ""}
+          onChange={(e) => onChange({ ...data, note: e.target.value })}
+          className="app-textarea"
+          rows={3}
+          placeholder="e.g. This Agreement may be executed in counterparts, each of which is an original."
+        />
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <p className="app-eyebrow min-w-0">Signature blocks</p>
         <Button
@@ -886,6 +897,27 @@ export function SignaturesEditor({
                     onChange={(e) => patch(index, { signatoryEmail: e.target.value })}
                     className="app-input-compact"
                   />
+                </label>
+                <label className="space-y-1.5 @[26rem]:col-span-2">
+                  <FieldLabel>Details — one per line (optional)</FieldLabel>
+                  {/* Stored as the raw split lines (blanks included) so a newline you just typed
+                      isn't swallowed by the controlled value; the preview drops blank lines. */}
+                  <textarea
+                    value={(block.details ?? []).join("\n")}
+                    onChange={(e) => patch(index, { details: e.target.value.split("\n") })}
+                    className="app-textarea"
+                    rows={3}
+                    placeholder={"Company no. 12345678\nRegistered in England and Wales"}
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-sm text-[var(--text-2)] @[26rem]:col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={block.personal ?? false}
+                    onChange={(e) => patch(index, { personal: e.target.checked })}
+                    className="app-checkbox"
+                  />
+                  Individual (signs personally)
                 </label>
               </div>
             </ItemCard>

@@ -568,10 +568,40 @@ tiles `#F7F5EF`, one **dark** tile `#191817`, warm **ink** `#1A1A17` / soft `#4B
 #4F5BD5` (distinct from the app's royal `--brand`). Used only for the cover eyebrow/title period,
 callout rule, and links.
 
-**Type.** DM Serif Display headings (section titles, the cover title, stat figures); **JetBrains
-Mono body** (paragraphs, table cells, bullets — the signature); mono uppercase labels/eyebrows.
-Section blocks drop the `Section NN` eyebrow + numbering and the between-section dividers — serif
-title, optional mono description, flowing on spacing.
+**Type — ONE system for every document (Aug 2026, MD-mandated).** Modelled on the reference
+`Gitwork-NDA-Matchmaker-ShuffleLove` PDF:
+
+| Role | Face | Notes |
+|---|---|---|
+| Headings — section titles, cover title, party/signatory names | **Fraunces** (`var(--font-display)` inside the doc) | The brand display face. Weight 600 on the cover. |
+| **Body** — paragraphs, clauses, table cells, list items | **Inter** (`var(--font-sans)`) | Set on `.proposal-document` itself. |
+| Labels, eyebrows, clause numbers, page header/footer, data readouts | **JetBrains Mono** (`var(--font-mono)`) | Uppercase, letter-spaced ~.14–.22em. |
+
+⚠️ **A mono BODY is gone** — it read as a code dump in a legal document. Mono is now labels-and-
+numbers only. And **never remap `--font-mono` inside the doc scope**: the Gitwork block used to alias
+it to Inter, which silently killed the mono labels and clause numbers that are the brand signature.
+Both themes share this type system — `docTheme` is a **palette** choice, nothing more.
+
+**Gitwork is the DEFAULT theme for every document** (`DEFAULT_DOC_THEME` in `src/types/proposal.ts`
+— the single source of truth; never write `?? "foundry"` at a call site again, and note
+`DEFAULT_PROPOSAL_METADATA` carries it so existing docs adopt it through `normalizeMetadata`).
+
+**Numbering & bullets (the house legal system).** CSS in `globals.css` ("Legal numbering (clauses)"),
+driven by CSS counters so inserting or reordering a clause renumbers automatically — never store a
+number:
+- `01` **section number** — accent mono in a left gutter beside the serif section title. Contract doc
+  types only (`SLA · SOW · MSA · NDA · CO · DSA`); continuous across the whole document, 2-digit.
+- `1.1` **clauses** — `.doc-clauses` (`--doc-clause-section` sets the `1.x` prefix, as a *quoted* CSS
+  string), accent mono in a ~3.5rem gutter, text in a **hanging indent** so wrapped lines align to
+  the text, never under the number. Opt-in per `prose` block via `style: "clauses"`.
+- `(a) (b) (c)` **sub-items** — `.doc-clause-subs`, same treatment nested inside the clause column.
+- **Bullets** — `.doc-bullets`: a purple **`→` arrow** marker (not a dot), hanging indent; nested
+  levels step in with a lighter `›`.
+
+**Running header / footer (content pages).** A quiet cream bar with a hairline — `GITWORK.` wordmark
+left in ink, `DOC TYPE · DOC NUMBER` right in muted; footer is the company legal line left and
+`Page n of N` right. (The earlier full-navy header band is gone — the reference has no navy on
+content pages, only on the cover.)
 
 **Blocks.** Every section preview inherits the statement palette automatically: `.proposal-document`
 **remaps the app tokens** (`--text-*`, `--border-*`, `--surface-*`, `--brand-*`) to the doc palette,
