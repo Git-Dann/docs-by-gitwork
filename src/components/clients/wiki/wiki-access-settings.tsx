@@ -106,12 +106,17 @@ export function WikiAccessSettings({
     Object.keys(wiki.pageShares ?? {}).length > 0;
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-5">
-      {/* Two-column masonry for the COMPACT panels. The API panel is deliberately
-          NOT in here — it carries endpoint URLs, a three-up type legend and a curl
-          block, all of which were unreadable squeezed into a half-width column
-          (long URLs wrapped mid-token). It spans the full width below instead. */}
-      <div className="columns-1 gap-5 lg:columns-2 [&>*]:mb-5 [&>*]:break-inside-avoid">
+    // Fills the content area. It used to be `mx-auto max-w-5xl`, which on a wide
+    // screen centred a 1024px column and left a dead gap down BOTH sides — and
+    // Settings was the only wiki section that capped its width, so it didn't even
+    // match the pages either side of it.
+    <div className="w-full space-y-5">
+      {/* Masonry for the COMPACT panels — a third column from 2xl so extra width
+          becomes another card rather than three very wide ones. The API panel is
+          deliberately NOT in here: it carries endpoint URLs, a type legend and a
+          curl block, none of which survive a half-width column (long URLs wrapped
+          mid-token). It spans the full width below instead. */}
+      <div className="columns-1 gap-5 lg:columns-2 2xl:columns-3 [&>*]:mb-5 [&>*]:break-inside-avoid">
         <section className="widget-card">
         <div className="widget-header flex items-center justify-between">
           <span className="widget-header__label" style={{ fontFamily: MONO }}>
