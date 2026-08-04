@@ -188,15 +188,21 @@ export function ProposalSectionPreview({
     <section id={sectionId} className="proposal-block-avoid space-y-4">
       <header className="max-w-3xl space-y-1.5">
         {number ? (
-          // Contract numbering: accent mono in a fixed 3rem gutter (sized for two digits + space,
-          // so 10/11/12 don't widen it), the title column `min-w-0` so long titles wrap under
-          // themselves and never collide with the number.
-          <div className="flex items-start">
-            <span className="w-12 shrink-0 pt-1.5 font-[var(--font-mono),'JetBrains_Mono',monospace] text-[13px] font-medium leading-none tracking-[0.04em] text-[var(--doc-accent)]">
+          // The number is an OVERLINE above the title (`01 · PARTIES`), not a left gutter — this
+          // is the Gitwork reference's section header, where hierarchy reads top-to-bottom:
+          // mono accent overline, then the bold display title, then the caption.
+          //
+          // The gutter it replaced put the number in a fixed 3rem column beside the title, which
+          // is a table-of-contents idiom, not a section header: it indented every heading away
+          // from the text column below it, so nothing on the page shared a left edge.
+          <>
+            <p className="font-[var(--font-mono),'JetBrains_Mono',monospace] text-[10px] font-semibold uppercase leading-none tracking-[0.16em] text-[var(--doc-accent)]">
               {number}
-            </span>
-            <div className="min-w-0 flex-1 space-y-1.5">{titleBlock}</div>
-          </div>
+              <span aria-hidden="true"> · </span>
+              {section.title}
+            </p>
+            {titleBlock}
+          </>
         ) : (
           titleBlock
         )}

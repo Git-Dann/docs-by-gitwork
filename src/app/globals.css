@@ -1430,6 +1430,11 @@ h2, h3, h4, h5 {
 .proposal-document .doc-serif,
 .proposal-document .doc-serif textarea {
   font-family: var(--font-display), "Times New Roman", Georgia, serif;
+  /* The WEIGHT has to be restated for the same reason as the family: a <textarea> inherits
+     neither, so without this the editable title rendered at the UA's 400 while the read-only
+     <h2> picked up the theme weight from the h1-h4 rule — the same heading, two weights,
+     depending on whether you were editing it. Both now resolve through the theme token. */
+  font-weight: var(--doc-display-weight);
 }
 
 /* ── Gitwork theme (the DEFAULT for every document — data-doc-theme="gitwork") ─────────────────
