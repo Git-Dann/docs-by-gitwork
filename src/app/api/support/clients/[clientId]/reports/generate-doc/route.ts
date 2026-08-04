@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { generateSupportReportDocument } from "@/server/support-report-doc";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +34,8 @@ export async function POST(
       periodEnd: body.periodEnd,
       periodLabel: body.periodLabel,
       author: body.author,
+      // The report is "prepared by" the operator who generated it, not the workspace owner.
+      actor: await getEffectiveUserOrNull(request),
       force: body.force,
     });
 
