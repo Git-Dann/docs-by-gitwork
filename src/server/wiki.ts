@@ -1477,7 +1477,35 @@ export async function promoteWikiIntakeItemToTask(
 
 const INTAKE_IMAGE_THUMB_SIZE = 320;
 
+/** Thrown when the uploaded bytes aren't a readable image — the CALLER's problem,
+ *  so routes map it to a 4xx rather than letting it surface as a 500. */
+export class UnreadableImageError extends Error {
+  readonly status = 400;
+  constructor() {
+    super("That file could not be read as an image. Re-export it as PNG or JPEG and try again.");
+    this.name = "UnreadableImageError";
+  }
+}
+
 async function transcodeIntakeImage(
+  bytes: Buffer,
+  mime: string,
+): Promise<{ bytes: Buffer; thumb: Buffer; mime: string }> {
+  try {
+    return await transcodeIntakeImageUnsafe(bytes, mime);
+  } catch (err) {
+    // A truncated or mislabelled file made sharp throw, which reached the client
+    // as `500 {"error":"pngload_buffer: libspng read error"}` — the wrong status
+    // (it's bad input, not our fault) and an internal library string leaked to an
+    // external caller. Anything genuinely ours still propagates.
+    if (err instanceof Error && /vips|libspng|pngload|jpegload|heif|unsupported image/i.test(err.message)) {
+      throw new UnreadableImageError();
+    }
+    throw err;
+  }
+}
+
+async function transcodeIntakeImageUnsafe(
   bytes: Buffer,
   mime: string,
 ): Promise<{ bytes: Buffer; thumb: Buffer; mime: string }> {
