@@ -1308,33 +1308,6 @@ export async function listWikiIntakeItemsByToken(
   return rows.map(serializeWikiIntakeItem);
 }
 
-/**
- * Reveal (creating on first call) the client's intake token, or rotate it.
- *
- * The token is the credential a client's system authenticates with, and until now
- * there was no way to obtain it without database access — which is why a client
- * asking for "an API key" couldn't be given one. Rotating invalidates the old
- * token immediately, so a key that's been shared too widely can be replaced.
- */
-export async function getOrCreateWikiIntakeToken(
-  clientId: string,
-  opts: { rotate?: boolean } = {},
-): Promise<string> {
-  const existing = await prisma.clientWiki.findUnique({
-    where: { clientId },
-    select: { courseIngestToken: true },
-  });
-  if (!opts.rotate && existing?.courseIngestToken) return existing.courseIngestToken;
-
-  const token = randomBytes(24).toString("hex");
-  await prisma.clientWiki.upsert({
-    where: { clientId },
-    create: { clientId, courseIngestToken: token },
-    update: { courseIngestToken: token },
-  });
-  return token;
-}
-
 export async function addWikiIntakeItem(
   clientId: string,
   item: WikiItemIngestItem,

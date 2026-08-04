@@ -276,8 +276,12 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
   const courseEndpoint = token ? `${origin}/api/public/course-requests/${token}` : "";
   const wikiItemsEndpoint = token ? `${origin}/api/public/wiki-items/${token}` : "";
   const intakePagePath = `/app/portal/${slug}/wiki`;
+  // Shows the full field set the API accepts, including the ones added with the
+  // intake API (externalUrl, attachmentUrls, status) — a client only sends what
+  // they can see documented. Friendly values on purpose: "Feature request" and
+  // "High" are accepted as-is, so nobody has to learn our enum names.
   const example = token
-    ? `curl -X POST ${wikiItemsEndpoint} \\\n  -H "Content-Type: application/json" \\\n  -d '{"type":"BUG","title":"Scorecard total is incorrect","description":"Steps to reproduce...","requestedBy":"Big Wedge app","externalRef":"bug_123","priority":"HIGH"}'`
+    ? `curl -X POST ${wikiItemsEndpoint} \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "title": "Scorecard total is incorrect",\n    "description": "Steps to reproduce...",\n    "type": "Bug",\n    "priority": "High",\n    "status": "New",\n    "requestedBy": "Big Wedge app",\n    "externalRef": "bug_123",\n    "externalUrl": "https://tracker.example.com/bug_123",\n    "attachmentUrls": ["https://tracker.example.com/files/shot.png"]\n  }'`
     : "";
   const busy = setIngest.isPending;
 
@@ -305,8 +309,14 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
             <p className="text-sm font-medium text-[var(--text-1)]">Client wiki intake API</p>
             <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-4)]">
               Give this client-scoped token to a trusted external system so it can push bugs,
-              feedback, tasks, or Wedge course requests into this wiki/client. Bugs, feedback,
-              and task requests stay on the Wiki Requests page until an Admin promotes them.
+              feedback, feature requests, or Wedge course requests into this wiki/client — and
+              keep their status in sync. Items stay on the Wiki Requests page until an Admin
+              promotes them. Send the integrator{" "}
+              <span style={{ fontFamily: MONO }}>docs/client-intake-api.md</span>.
+            </p>
+            <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--danger-500)]">
+              Send this token only — never the workspace API key, which grants access to every
+              client&rsquo;s data.
             </p>
           </div>
           <ShareToggle
@@ -382,9 +392,13 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
             </div>
 
             {[
-              { key: "items", label: "Bugs / feedback / tasks", method: "POST", value: wikiItemsEndpoint },
-              { key: "courses", label: "Wedge course requests", method: "POST", value: courseEndpoint },
-              { key: "check", label: "Connectivity check", method: "GET", value: wikiItemsEndpoint },
+              { key: "items", label: "Create — bug / feedback / feature request (POST)", method: "POST", value: wikiItemsEndpoint },
+              // Update + list shipped with the intake API (docs/client-intake-api.md).
+              // Listed here because a client can't discover an endpoint that isn't shown.
+              { key: "update", label: "Update one — their ref or ours (PATCH)", method: "PATCH", value: `${wikiItemsEndpoint}/{ref}` },
+              { key: "list", label: "List what we hold (GET)", method: "GET", value: `${wikiItemsEndpoint}?items=1` },
+              { key: "courses", label: "Wedge course requests (POST)", method: "POST", value: courseEndpoint },
+              { key: "check", label: "Connectivity check (GET)", method: "GET", value: wikiItemsEndpoint },
             ].map((row) => (
               <div key={row.key}>
                 <div className="mb-1.5 flex items-center justify-between">
