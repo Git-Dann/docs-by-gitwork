@@ -135,6 +135,10 @@ export const metadataSchema = z.object({
   techSignOff: z.boolean(),
   approvalChecked: z.boolean(),
   approvalTrackEnabled: z.boolean().optional(),
+  // Per-document render theme. MUST be listed here: Zod strips unknown keys, so while this was
+  // missing the theme toggle appeared to do nothing — the switch updated the local draft, then the
+  // save dropped it and the next refetch reverted the document. Keep in sync with DocTheme.
+  docTheme: z.enum(["gitwork", "foundry"]).optional(),
 });
 
 const requiredTrimmedString = z.string().trim().min(1);

@@ -139,10 +139,11 @@ export const coverSection = defineSection<CoverSectionData>({
         onProposalChange({
           ...proposal,
           clientId,
-          // Linking sets the doc-level name; unlinking clears it so the cover override / free
-          // text takes over. metadata.client mirrors it for legacy merge-variable resolution.
-          clientName: clientId ? clientName : "",
-          metadata: { ...proposal.metadata, client: clientId ? clientName : proposal.metadata.client },
+          // The passed name ALWAYS becomes the doc-level clientName — linked (from the picker) or
+          // unlinked (a prospect typed by hand). It used to be forced to "" when unlinked, which
+          // made a prospect name set at creation permanently uneditable (a typo was stuck forever).
+          clientName,
+          metadata: { ...proposal.metadata, client: clientName || proposal.metadata.client },
         })
       }
     />

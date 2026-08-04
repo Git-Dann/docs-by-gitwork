@@ -1,18 +1,10 @@
 "use client";
 
-import { CheckIcon } from "@heroicons/react/20/solid";
 import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import { useClientList } from "@/hooks/use-proposals";
 import { ImagePicker } from "@/components/ui/image-picker";
 import { LogoQuickSwap } from "@/components/ui/logo-quick-swap";
-import { cn } from "@/lib/format";
 import type { CoverSectionData } from "@/types/proposal";
-
-const COVER_STYLES: Array<{ value: NonNullable<CoverSectionData["coverStyle"]>; label: string; hint: string }> = [
-  { value: "light", label: "Light", hint: "Editorial, warm canvas" },
-  { value: "minimal", label: "Minimal", hint: "Bare title + logo" },
-  { value: "bold", label: "Bold", hint: "Dark navy hero" },
-];
 
 export function CoverEditor({
   value,
@@ -50,7 +42,6 @@ export function CoverEditor({
   const branding = brandingQuery.data;
   const clientsQuery = useClientList({ status: "ALL", search: "" });
   const clients = clientsQuery.data?.clients ?? [];
-  const coverStyle = value.coverStyle ?? "light";
   const confidentialityMode = value.confidentialityMode ?? "INTERNAL";
   const confidentialityText =
     (confidentialityMode === "EXTERNAL"
@@ -90,10 +81,17 @@ export function CoverEditor({
             ))}
           </select>
           {!linkedClientId ? (
+            /* Prospect name — writes the DOC-LEVEL clientName (via onLinkClient), which is what the
+               breadcrumb, Document details, sharing and analytics read. It previously only wrote the
+               cover's own override, so a prospect name typed at creation could never be corrected. */
             <input
-              value={value.clientName}
-              onChange={(event) => onChange({ ...value, clientName: event.target.value })}
-              placeholder="Display name (prospect)"
+              value={linkedClientName ?? ""}
+              onChange={(event) => {
+                onLinkClient(null, event.target.value);
+                // Drop any stale cover-level override so there's a single source of truth.
+                if (value.clientName) onChange({ ...value, clientName: "" });
+              }}
+              placeholder="Client or prospect name"
               className="app-input mt-2"
             />
           ) : (
@@ -108,44 +106,8 @@ export function CoverEditor({
         </Field>
       ) : null}
 
-      {/* Cover style — Light is the modern editorial default; Bold is the legacy blue hero.
-          Stacked full-width rows so the labels + hints breathe in a narrow panel. */}
-      <Field label="Cover style">
-        <div className="space-y-2">
-          {COVER_STYLES.map((style) => {
-            const active = coverStyle === style.value;
-            return (
-              <button
-                key={style.value}
-                type="button"
-                onClick={() => onChange({ ...value, coverStyle: style.value })}
-                aria-pressed={active}
-                className={cn(
-                  "flex w-full items-center justify-between gap-3 rounded-[10px] border px-4 py-3 text-left transition-colors",
-                  active
-                    ? "border-[var(--brand-600)] bg-[var(--surface-brand)]"
-                    : "border-[var(--border-2)] bg-white hover:border-[var(--border-1)]",
-                )}
-              >
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium text-[var(--text-1)]">{style.label}</span>
-                  <span className="block text-xs text-[var(--text-4)]">{style.hint}</span>
-                </span>
-                <span
-                  className={cn(
-                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors",
-                    active
-                      ? "border-[var(--brand-600)] bg-[var(--brand-600)] text-white"
-                      : "border-[var(--border-1)] text-transparent",
-                  )}
-                >
-                  <CheckIcon className="h-3.5 w-3.5" />
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </Field>
+      {/* Cover style control removed: there are only two document themes now (Gitwork / Foundry),
+          chosen with the theme toggle in the editor header. The cover derives its look from that. */}
 
       {/* Document meta — stacked single column. */}
       <div className="space-y-4">
