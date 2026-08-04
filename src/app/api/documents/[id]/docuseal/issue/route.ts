@@ -36,6 +36,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const client = document.client;
 
+    // Ensure client portal credentials have been created by an admin
+    const credentialsCount = await prisma.clientWikiUser.count({
+      where: { wiki: { clientId: client.id } },
+    });
+    if (credentialsCount === 0) {
+      return apiError(
+        `Client login credentials for "${client.name}" have not been created yet. Please set up portal access for this client under Portal -> Client -> Access Settings before issuing the MSA.`,
+        400,
+        { code: "MISSING_CLIENT_CREDENTIALS", clientSlug: client.slug }
+      );
+    }
+
     // 3. Extract required DocuSeal payload data
     const DOCUSEAL_API_KEY = process.env.DOCUSEAL_API_KEY;
     if (!DOCUSEAL_API_KEY) return apiError("DocuSeal integration is not configured", 500);
