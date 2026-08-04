@@ -838,20 +838,14 @@ export function ProposalList() {
                                     )
                                   )}
                                   {proposal.docusealStatus === "COMPLETED" && (
-                                    proposal.docusealCombinedPdfUrl ? (
-                                      <a
-                                        href={proposal.docusealCombinedPdfUrl}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 whitespace-nowrap hover:bg-emerald-100 transition"
-                                      >
-                                        Signed MSA
-                                      </a>
-                                    ) : (
-                                      <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 whitespace-nowrap">
-                                        Signed MSA
-                                      </span>
-                                    )
+                                    <a
+                                      href={`/api/documents/${proposal.id}/docuseal/download`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 whitespace-nowrap hover:bg-emerald-100 transition"
+                                    >
+                                      Signed MSA
+                                    </a>
                                   )}
                                 </div>
                               </td>
@@ -1367,20 +1361,14 @@ function GroupedList({
                         )
                       )}
                       {doc.docusealStatus === "COMPLETED" && (
-                        doc.docusealCombinedPdfUrl ? (
-                          <a
-                            href={doc.docusealCombinedPdfUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 whitespace-nowrap hover:bg-emerald-100 transition"
-                          >
-                            Signed MSA
-                          </a>
-                        ) : (
-                          <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 whitespace-nowrap">
-                            Signed MSA
-                          </span>
-                        )
+                        <a
+                          href={`/api/documents/${doc.id}/docuseal/download`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 whitespace-nowrap hover:bg-emerald-100 transition"
+                        >
+                          Signed MSA
+                        </a>
                       )}
                     </div>
                     <span className="hidden text-xs text-[var(--text-4)] sm:inline">
@@ -1800,20 +1788,14 @@ function DocCard({
               )
             )}
             {proposal.docusealStatus === "COMPLETED" && (
-              proposal.docusealCombinedPdfUrl ? (
-                <a
-                  href={proposal.docusealCombinedPdfUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 whitespace-nowrap w-fit hover:bg-emerald-100 transition"
-                >
-                  Signed MSA
-                </a>
-              ) : (
-                <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 whitespace-nowrap w-fit">
-                  Signed MSA
-                </span>
-              )
+              <a
+                href={`/api/documents/${proposal.id}/docuseal/download`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20 whitespace-nowrap w-fit hover:bg-emerald-100 transition"
+              >
+                Signed MSA
+              </a>
             )}
           </div>
           <div className="flex items-center gap-0.5 opacity-0 transition group-hover/card:opacity-100 focus-within:opacity-100">

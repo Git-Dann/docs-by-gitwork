@@ -40,9 +40,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return new NextResponse("Signed PDF not available yet", { status: 404 });
     }
 
-    const fileRes = await fetch(pdfUrl);
+    const fileRes = await fetch(pdfUrl, {
+      headers: DOCUSEAL_API_KEY ? { "X-Auth-Token": DOCUSEAL_API_KEY } : {},
+    });
     if (!fileRes.ok) {
-      return NextResponse.redirect(pdfUrl);
+      console.error(`DocuSeal file fetch failed (${fileRes.status}):`, await fileRes.text().catch(() => ""));
+      return new NextResponse("Failed to download signed PDF from DocuSeal", { status: 502 });
     }
 
     const buffer = await fileRes.arrayBuffer();
