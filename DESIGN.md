@@ -642,6 +642,36 @@ general-purpose display face here and must not spread. (A headline's accent tail
 **its own** face, not Playfair — that could not be resolved to a distinct face from the 300dpi
 rasters, so the rule is stated in terms of the face already in use.)
 
+### Gap analysis — reference vs. what Docs renders
+
+The state of the Gitwork theme against its reference, as of Aug 2026. Rows marked **fixed** landed
+in `72d3140`; the rest are open work. Keep this table current — it is the tracking surface for the
+propagation pass, and it has already been lost once with the session that produced it.
+
+| # | Reference says | Docs rendered | File | Status |
+|---|---|---|---|---|
+| 1 | Fraunces always 700 (62/63 decls) | 400 everywhere | `globals.css`, `heading.tsx` ×3, `document-cover.tsx`, `pricing-tiers.tsx`, `kpi-strip.tsx` | ✅ fixed — `--doc-display-weight` |
+| 2 | Rules are warm opaque `#EAE5DC` | `rgba(0,0,0,0.12)` → ~`#D5D1C9` | `globals.css` | ✅ fixed |
+| 3 | Muted text is `#6B6B6B` | `#68686b` | `globals.css` | ✅ fixed |
+| 4 | No underline under section headers | Invented 44×2px purple rule | `globals.css` | ✅ removed |
+| 5 | Document tokens fully remapped | 7 app tokens leaked app-blue / cool grey | `globals.css` | ✅ fixed |
+| 6 | Circular G. mark | Inlined rounded-**square** copy | `document-cover.tsx` | ✅ shape fixed |
+| 7 | G. mark sits **top-left** of the cover | Sits in the cover footer | `document-cover.tsx` | ⏳ needs a screenshot first |
+| 8 | Section number is a mono **overline** (`01 · OVERVIEW`) | Left gutter | section shell | ⏳ open |
+| 9 | Caption sits **below** the title | — | section shell | ⏳ open |
+| 10 | Overlines are **accent**, not muted | Muted | blocks | ⏳ open |
+| 11 | Ticks/crosses are **accent / muted** | Green / red | `do_dont` | ⏳ open |
+
+⚠️ **`do_dont` "ledger" and `process_steps` "stepped" are already correct — do not "fix" them.**
+
+**Six reference patterns have no Foundry block at all**, and are the gap worth closing once the
+rows above are done: a label/value definition list · side-by-side sections · an attachment card ·
+a contact card · a two-column bullet list · an inline dot-separated run-on list.
+
+⚠️ **The seven existing block variants were built from a written description, not the PDFs** — type
+sizes and gutters in them are judgement calls and should be re-checked against the reference before
+being treated as settled.
+
 ### ⚠️ Section headers carry NO underline
 
 A 44×2px purple rule under each Gitwork section header was invented in a previous pass on the
