@@ -30,7 +30,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // Ensure document sharing is enabled and get public share token
     const { shareToken } = await enableDocumentShare(document.id);
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://staging.foundry.gitwork.tech";
-    const publicProposalLink = `${baseUrl}/docs/${shareToken}`;
+    const publicProposalLink = `${baseUrl}/docs/${encodeURIComponent(shareToken)}`;
 
     // Compute Commercial & Cost totals accurately
     const netSubtotal = (serialized.costLineItems || []).reduce((sum, c) => sum + (c.subtotal || 0), 0);

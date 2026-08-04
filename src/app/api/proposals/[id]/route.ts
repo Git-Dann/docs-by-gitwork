@@ -5,6 +5,7 @@ import { proposalInclude, serializeProposal } from "@/server/proposals";
 import { updateDocument } from "@/server/documents";
 import { proposalUpdateSchema } from "@/server/validators";
 import { allowedDocTypesForUser, canViewCosts, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { syncPendingDocusealSubmissions } from "@/server/docuseal-sync";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     // Type-agnostic: any document type (proposal, contract, handover, report, brief, blank)
     // is fetched by id — the editor at /app/docs/[id] is generic. id is a unique cuid.
-    const document = await prisma.document.findFirst({
+    let document = await prisma.document.findFirst({
       where: {
         id,
       },
@@ -25,6 +26,21 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     if (!document) {
       return apiError("Document not found", 404);
+    }
+
+    // On-demand sync for active DocuSeal submissions
+    if (
+      document.docusealSubmission?.status === "PENDING" ||
+      document.docusealSubmission?.status === "CLIENT_SIGNED"
+    ) {
+      const didUpdate = await syncPendingDocusealSubmissions([document.id]);
+      if (didUpdate) {
+        const refreshed = await prisma.document.findFirst({
+          where: { id },
+          include: proposalInclude,
+        });
+        if (refreshed) document = refreshed;
+      }
     }
 
     const user = await getEffectiveUserOrNull(request);

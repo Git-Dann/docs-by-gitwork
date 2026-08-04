@@ -48,6 +48,7 @@ export default function SignDocumentPage() {
             backgroundColor="#ffffff"
             withTitle={false}
             onComplete={() => {
+              void fetch("/api/documents/docuseal/sync", { method: "POST" }).catch(() => undefined);
               setTimeout(() => {
                 alert("Thank you! Your signature has been securely captured.");
                 router.push("/app/docs");

@@ -1337,7 +1337,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                           onClick={handleIssueDocuSeal}
                           disabled={isIssuingDocuSeal}
                         >
-                          {isIssuingDocuSeal ? "Issuing..." : "Send MSA via DocuSeal"}
+                          {isIssuingDocuSeal ? "Issuing..." : "Send MSA"}
                         </Button>
                       </div>
                     );

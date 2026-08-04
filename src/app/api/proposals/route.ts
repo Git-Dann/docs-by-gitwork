@@ -26,6 +26,7 @@ import {
   serializeProposalListItem,
 } from "@/server/proposals";
 import { proposalCreateSchema } from "@/server/validators";
+import { syncPendingDocusealSubmissions } from "@/server/docuseal-sync";
 
 export async function GET(request: NextRequest) {
   try {
@@ -99,11 +100,21 @@ export async function GET(request: NextRequest) {
             updatedAt: sortDirection,
           };
 
-    const documents = await prisma.document.findMany({
+    let documents = await prisma.document.findMany({
       where,
       orderBy,
       select: proposalListSelect,
     });
+
+    // On-demand sync: verify active pending/client-signed DocuSeal submissions
+    const didUpdate = await syncPendingDocusealSubmissions(documents.map((d) => d.id));
+    if (didUpdate) {
+      documents = await prisma.document.findMany({
+        where,
+        orderBy,
+        select: proposalListSelect,
+      });
+    }
 
     return apiOk({
       proposals: documents.map((document) => serializeProposalListItem(document)),
