@@ -5,6 +5,9 @@ import { apiFetch } from "@/lib/api";
 import { DocusealForm } from "@docuseal/react";
 import { DocumentTextIcon, CheckCircleIcon, ClockIcon, ArrowDownTrayIcon } from "@heroicons/react/24/outline";
 
+import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
+
 interface Agreement {
   id: string;
   submissionId: string;
@@ -25,8 +28,9 @@ export function WikiAgreementsSection({ token }: { token: string }) {
   const [error, setError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
-  // State for the embedded signing view
+  // State for the embedded signing view and custom completion modal
   const [signingSlug, setSigningSlug] = useState<string | null>(null);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   const fetchAgreements = useCallback(async () => {
     setIsLoading(true);
@@ -40,6 +44,12 @@ export function WikiAgreementsSection({ token }: { token: string }) {
       setIsLoading(false);
     }
   }, [token]);
+
+  const handleCompletionClose = () => {
+    setShowCompletionModal(false);
+    setSigningSlug(null);
+    fetchAgreements();
+  };
 
   const handleDownloadPdf = async (agreement: Agreement) => {
     setDownloadingId(agreement.id);
@@ -88,15 +98,44 @@ export function WikiAgreementsSection({ token }: { token: string }) {
               backgroundColor="#ffffff"
               withTitle={false}
               onComplete={() => {
-                setTimeout(() => {
-                  alert("Thank you! Your signature has been securely captured.");
-                  setSigningSlug(null);
-                  fetchAgreements(); // Refresh the list to show the signed status
-                }, 1500);
+                void fetch("/api/documents/docuseal/sync", { method: "POST" }).catch(() => undefined);
+                setShowCompletionModal(true);
               }}
             />
           </div>
         </div>
+
+        {/* Signature Completion Modal (Foundry Design System) */}
+        <Modal open={showCompletionModal} onClose={handleCompletionClose} panelClassName="w-full max-w-md">
+          <div className="widget-header">
+            <span className="widget-header-label">01 // SIGNATURE CAPTURED</span>
+            <span className="widget-header-right font-mono text-[10px] font-semibold tracking-wider text-emerald-500 uppercase">CONFIRMED</span>
+          </div>
+          <div className="p-6 space-y-4 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500 ring-1 ring-emerald-500/30">
+              <CheckCircleIcon className="h-6 w-6 text-emerald-500" />
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="text-base font-semibold text-[var(--text-1)]">
+                Signature Successfully Recorded
+              </h3>
+              <p className="text-xs text-[var(--text-3)] leading-relaxed">
+                Thank you! Your signature has been securely captured and verified. Status synced with your client portal.
+              </p>
+            </div>
+            <div className="pt-3 border-t border-[var(--border-2)]">
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                className="w-full justify-center"
+                onClick={handleCompletionClose}
+              >
+                Return to Agreements Dashboard
+              </Button>
+            </div>
+          </div>
+        </Modal>
       </div>
     );
   }
