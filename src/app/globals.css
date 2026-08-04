@@ -1360,6 +1360,25 @@ h2, h3, h4, h5 {
 .proposal-document a {
   color: var(--doc-accent);
 }
+/* Inline editing must LOOK like the document. Form controls don't inherit font-family from their
+   context (browsers force a system UI font on textarea/input/select), so every inline-editable
+   field — the section title, the cover title, block text — rendered as a <textarea> lost the doc's
+   serif/mono and fell back to sans. That's the "font hasn't pulled through" bug: the read-only
+   render was correct while the editor showed sans. Inherit it. Size/leading still come from the
+   element's own classes; only the family (and letter-spacing) is inherited. */
+.proposal-document textarea,
+.proposal-document input,
+.proposal-document select,
+.proposal-document [contenteditable="true"] {
+  font-family: inherit;
+  letter-spacing: inherit;
+}
+/* Serif headings — the rule above only inherits, so the editable title's WRAPPER must carry the
+   display face for the textarea to pick it up. Section shells + cover set it explicitly. */
+.proposal-document .doc-serif,
+.proposal-document .doc-serif textarea {
+  font-family: var(--font-display), "Times New Roman", Georgia, serif;
+}
 
 /* ── Gitwork theme (the DEFAULT for every document — data-doc-theme="gitwork") ─────────────────
    The brand-guide look: warm cream paper, purple accent, white card tiles, navy dark tile. It is a

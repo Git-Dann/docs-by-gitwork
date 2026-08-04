@@ -169,28 +169,31 @@ export function ProposalSectionPreview({
         {/* Title + caption are editable inline on EVERY block (they live on the section, not
             its data) — so even blocks whose body isn't inline-editable can have their heading
             and caption changed straight on the canvas. */}
+        {/* `doc-serif` is required on the EDITABLE title: a <textarea> doesn't inherit font-family,
+            so without it the inline editor showed sans while the read-only render was serif. */}
         <InlineTextArea
           value={section.title}
           onChange={(title) => onMetaChange({ title })}
           placeholder="Section title"
           ariaLabel="Section title"
-          className="text-[24px] leading-[1.15] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]"
+          className="doc-serif text-[24px] leading-[1.3] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]"
         />
         <InlineTextArea
           value={section.description ?? ""}
           onChange={(description) => onMetaChange({ description })}
           placeholder="Caption (optional)"
           ariaLabel="Section caption"
-          className="font-[var(--font-mono),'JetBrains_Mono',monospace] text-[10px] font-semibold uppercase leading-5 tracking-[0.12em] text-[var(--doc-muted)]"
+          className="font-mono text-[10px] font-semibold uppercase leading-5 tracking-[0.12em] text-[var(--doc-muted)]"
         />
       </>
     ) : (
       <>
-        <h2 className="text-[24px] leading-[1.15] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]">
+        {/* leading-[1.3] (not 1.15) so serif descenders — the g/y/p in a title — aren't clipped. */}
+        <h2 className="doc-serif text-[24px] leading-[1.3] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]">
           {renderInline(section.title, `sec-title-${section.id ?? section.key}`)}
         </h2>
         {section.description ? (
-          <p className="font-[var(--font-mono),'JetBrains_Mono',monospace] text-[10px] font-semibold uppercase leading-5 tracking-[0.12em] text-[var(--doc-muted)]">
+          <p className="font-mono text-[10px] font-semibold uppercase leading-5 tracking-[0.12em] text-[var(--doc-muted)]">
             {renderInline(section.description, `sec-desc-${section.id ?? section.key}`)}
           </p>
         ) : null}

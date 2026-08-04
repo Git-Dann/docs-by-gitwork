@@ -279,9 +279,13 @@ export function DocumentCover({
         fontFamily: gSerif,
         fontSize: isPrint ? 62 : 46,
         fontWeight: 600,
-        lineHeight: 1.06,
+        // 1.06 clipped the descenders (the 'g' in "Agreement") — a display serif at this size needs
+        // real leading, and the cover clips overflow to stay one A4 page, so there's nowhere for a
+        // cropped tail to go. paddingBottom gives the last line's descender room too.
+        lineHeight: 1.16,
         letterSpacing: "-1.5px",
         color: ink,
+        paddingBottom: "0.12em",
       };
       const subtitleType = { fontFamily: gSans, fontSize: 14.5, lineHeight: 1.65, color: inkSoft };
       const showSubtitle = Boolean(onSubtitleChange) || Boolean((subtitle ?? "").trim());
