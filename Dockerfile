@@ -32,6 +32,17 @@ ARG APP_VERSION=""
 ENV NEXT_PUBLIC_BUILD_TIME=$BUILD_TIME
 ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
 
+# Raise the build heap. The default was fine for years and is no longer: the app
+# now has ~100 routes and the Next build worker started dying with "Ineffective
+# mark-compacts near heap limit — JavaScript heap out of memory / SIGABRT",
+# failing deploys at random depending on what a commit touched (2026-08-04). Node
+# defaults to roughly half of host memory capped near 4GB, which the runner was
+# already hitting, so this has to be set explicitly and above that.
+#
+# Builder stage only — the runtime container doesn't need it, and a stray large
+# heap there would just reserve memory the app never uses.
+ENV NODE_OPTIONS=--max-old-space-size=6144
+
 RUN npm run build
 
 # ── runner ───────────────────────────────────────────────────────────────────
