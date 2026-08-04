@@ -515,19 +515,32 @@ function ExpandedRail({
 function AppVersion({ collapsed }: { collapsed: boolean }) {
   const version = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0";
   const buildTime = process.env.NEXT_PUBLIC_BUILD_TIME;
-  // Format the build stamp in the viewer's local time so timezones read naturally.
-  // Guarded so a bad/missing env doesn't crash the sidebar.
-  const built = (() => {
-    if (!buildTime) return null;
+
+  // ⚠️ This stamp is rendered AFTER MOUNT, never during SSR. It is formatted in the viewer's
+  // LOCAL time (getFullYear/getHours/…), and the server that prerenders it runs in UTC — so in
+  // London the server wrote "17:33" and the browser wrote "18:33" for the same instant. React
+  // saw different text and threw hydration error #418 on EVERY /app page, since the sidebar is
+  // on all of them.
+  //
+  // It never reproduced locally because a dev server and its browser share a timezone, which is
+  // what made it look intermittent and environment-specific.
+  //
+  // Deferring is the correct fix rather than `suppressHydrationWarning`: that flag silences the
+  // warning while leaving the two renders genuinely disagreeing. Server and first client render
+  // now both produce no stamp, so they match by construction; the stamp appears a tick later.
+  const [built, setBuilt] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!buildTime) return;
     const d = new Date(buildTime);
-    if (Number.isNaN(d.getTime())) return null;
+    if (Number.isNaN(d.getTime())) return;
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, "0");
     const dd = String(d.getDate()).padStart(2, "0");
     const hh = String(d.getHours()).padStart(2, "0");
     const mi = String(d.getMinutes()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
-  })();
+    setBuilt(`${yyyy}-${mm}-${dd} ${hh}:${mi}`);
+  }, [buildTime]);
   if (collapsed) {
     return (
       <p
