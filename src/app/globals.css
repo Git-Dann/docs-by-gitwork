@@ -1359,6 +1359,34 @@ h2, h3, h4, h5 {
   --brand-gradient: linear-gradient(135deg, var(--doc-accent) 0%, var(--doc-accent) 100%);
   --surface-2: var(--doc-panel);
   --surface-canvas: var(--doc-paper);
+  --surface-brand-soft: var(--doc-accent-tint);
+  --surface-brand-strong: var(--doc-accent-tint);
+  --brand-focus-ring: var(--doc-accent-tint);
+  --signal-stripe: linear-gradient(90deg, var(--doc-accent) 0%, var(--doc-accent-tint) 100%);
+
+  /* A printed document has NO traffic lights. The reference uses accent for affirmative marks
+     and muted for negative ones — a tick is purple, a cross is grey — so app green/amber/red
+     collapse onto the document's two-colour system rather than importing a status palette that
+     appears nowhere in the brand. This is what made do_dont ticks render app-green. */
+  --success-500: var(--doc-accent);
+  --success-50: var(--doc-accent-tint);
+  --info-500: var(--doc-accent);
+  --info-50: var(--doc-accent-tint);
+  --warning-500: var(--doc-accent);
+  --warning-50: var(--doc-accent-tint);
+  --danger-500: var(--doc-muted);
+  --danger-700: var(--doc-ink);
+  --danger-300: var(--doc-line);
+  --danger-200: var(--doc-line);
+  --danger-100: var(--doc-line-soft);
+  --danger-50: var(--doc-line-soft);
+
+  /* Paper has no elevation. App shadows on a document read as a web widget photographed onto a
+     page, and they print as grey smudges. Blocks separate with the hairline rule instead. */
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-lg: none;
+  --shadow-skeuomorphic: none;
 }
 /* bg-white panels inside a document sit on cream — warm them to the panel tone. Cover uses inline
    styles (not this class), so it is unaffected. */

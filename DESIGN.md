@@ -624,6 +624,27 @@ whatever it happens to sit on.
 There are **two text colours in the entire reference set.** If you reach for a third, you are
 inventing.
 
+### ⚠️ The app-token remap must be EXHAUSTIVE
+
+`.proposal-document` remaps the app palette onto the document palette, so every block re-derives
+with no per-file edits. **Any token left out keeps its app value inside the document** — which is
+how app-blue, cool grey, traffic-light green/red and drop shadows ended up on cream paper while
+every *named* colour looked correct. The defect lives in what nobody remembered to name.
+
+It was counted by hand twice and undercounted both times (once as 7, once as 8; the two lists
+overlapped on a single token and the real figure was **22**). A hand-maintained list is the wrong
+tool, so **`doc-display-weight.test.ts` derives both sets from `globals.css`** and fails on any
+token that is neither remapped nor in a short exempt list with a stated reason. Add a token to
+`:root` and forget the document, and the gate stops you.
+
+Two document-specific rules the remap encodes:
+
+- **A printed document has no traffic lights.** `success` / `warning` / `info` collapse onto the
+  accent and `danger` onto muted — a tick is purple, a cross is grey. The status palette appears
+  nowhere in the brand, and it is what made `do_dont` ticks render app-green.
+- **Paper has no elevation.** All four shadow tokens are `none`. App shadows read as a web widget
+  photographed onto a page and print as grey smudges; blocks separate with the hairline rule.
+
 ### ⚠️ Ink-on-dark is for INTERNAL alerts only — never a client document
 
 From the reference's own design notes: *"Cream page background, white card. Ink background on
@@ -654,7 +675,7 @@ propagation pass, and it has already been lost once with the session that produc
 | 2 | Rules are warm opaque `#EAE5DC` | `rgba(0,0,0,0.12)` → ~`#D5D1C9` | `globals.css` | ✅ fixed |
 | 3 | Muted text is `#6B6B6B` | `#68686b` | `globals.css` | ✅ fixed |
 | 4 | No underline under section headers | Invented 44×2px purple rule | `globals.css` | ✅ removed |
-| 5 | Document tokens fully remapped | 7 app tokens leaked app-blue / cool grey | `globals.css` | ✅ fixed |
+| 5 | Document tokens fully remapped | **22** app tokens leaked app-blue, cool grey, traffic-light green/red and drop shadows | `globals.css` | ✅ fixed + enforced |
 | 6 | Circular G. mark | Inlined rounded-**square** copy | `document-cover.tsx` | ✅ shape fixed |
 | 7 | G. mark sits **top-left** of the cover | Sits in the cover footer | `document-cover.tsx` | ⏳ needs a screenshot first |
 | 8 | Section number is a mono **overline** (`01 · OVERVIEW`) | Left gutter | section shell | ⏳ open |

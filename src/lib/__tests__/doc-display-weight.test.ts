@@ -73,6 +73,58 @@ describe("document display weight", () => {
     expect(offenders).toEqual([]);
   });
 
+  /**
+   * The remap of app tokens onto document tokens must be EXHAUSTIVE.
+   *
+   * Any app token left unremapped keeps its app value inside `.proposal-document`, so a block
+   * that reaches for it paints app-blue, cool grey, traffic-light green or a drop shadow onto
+   * cream paper. That is why documents read subtly off-brand while every *named* colour looked
+   * correct — the defect is in what nobody remembered to name.
+   *
+   * It was found by hand twice and undercounted both times (once as 7, once as 8; the real
+   * figure was 22, and the two hand lists overlapped on a single token). A hand-maintained list
+   * is exactly the wrong tool, so this derives both sets from the stylesheet and fails on any
+   * token that is neither remapped nor deliberately exempt with a stated reason.
+   */
+  describe("app-token remap", () => {
+    /** Tokens that legitimately need no remap, each with the reason it doesn't. */
+    const EXEMPT: Record<string, string> = {
+      // Aliases of tokens the remap already covers. Custom properties resolve at USE time, so
+      // these pick up the document values automatically — restating them would be noise that
+      // could silently drift out of step with what they alias.
+      "--accent": "alias of --brand-700, which is remapped",
+      "--bg": "alias of --surface-canvas, which is remapped",
+    };
+
+    const root = css.slice(css.indexOf(":root,"), css.indexOf("@theme {"));
+    const remapBlock = css.slice(
+      css.indexOf("Remap the app palette tokens"),
+      css.indexOf("\n}", css.indexOf("Remap the app palette tokens")),
+    );
+
+    const appTokens = [...new Set([...root.matchAll(/^ {2}(--[a-z0-9-]+):/gm)].map((m) => m[1]))];
+    const remapped = new Set([...remapBlock.matchAll(/^ {2}(--[a-z0-9-]+):/gm)].map((m) => m[1]));
+
+    it("finds the app palette and the remap block", () => {
+      // Guards the parsing itself: if globals.css is restructured, this test must fail loudly
+      // rather than quietly assert over two empty sets and pass forever.
+      expect(appTokens.length).toBeGreaterThan(30);
+      expect(remapped.size).toBeGreaterThan(20);
+    });
+
+    it("remaps every app token, or exempts it with a reason", () => {
+      const leaking = appTokens.filter((t) => !remapped.has(t) && !(t in EXEMPT));
+
+      expect(leaking).toEqual([]);
+    });
+
+    it("keeps the exempt list honest — an exempt token must not also be remapped", () => {
+      // If someone remaps an exempt token, the stated reason has stopped being true and the
+      // entry should go, rather than sit there justifying nothing.
+      expect(Object.keys(EXEMPT).filter((t) => remapped.has(t))).toEqual([]);
+    });
+  });
+
   it("removes the invented 44x2px purple rule under Gitwork section headers", () => {
     // The gap analysis found no such underline in EITHER reference — it was invented, so it must
     // stay removed rather than be re-tuned. Section hierarchy is the mono overline + bold title.
