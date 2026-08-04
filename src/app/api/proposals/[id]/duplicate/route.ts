@@ -5,7 +5,12 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { applyClientNameToSections } from "@/lib/apply-client-name";
 import { resolveDocumentOwnerName } from "@/lib/document-owner";
 import { prisma } from "@/lib/prisma";
-import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import {
+  allowedDocTypesForUser,
+  assertCan,
+  canManageDocs,
+  getEffectiveUserOrNull,
+} from "@/server/auth/effective-user";
 import { allocateDocumentNumber } from "@/server/documents";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 
@@ -30,6 +35,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
 
+    // A duplicate IS a create — it mints a new Document row the caller then owns and can read
+    // in full. So it takes the same gate as `POST /api/proposals`: `canManageDocs`, plus the
+    // per-doc-type role gate below. `assertCan(null, …)` is a deliberate no-op for trusted
+    // API-key-only callers with no per-user identity (see effective-user.ts), so unattended
+    // integrations keep working exactly as before.
+    const actor = await getEffectiveUserOrNull(request);
+    assertCan(actor, canManageDocs, "create documents");
+
     // Accept an optional body. Empty body → exact clone. Body with clientName → rename + patch.
     let body: z.infer<typeof duplicateBodySchema> = undefined;
     try {
@@ -42,12 +55,28 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     // Doc-type-agnostic lookup — the endpoint sits under /api/proposals/ for legacy reasons
     // but supports every contract type (SLA / SOW / MSA / NDA / CO / DSA / OTHER) too.
+    //
+    // Scoped to the caller's workspace (the `where: { id, workspaceId }` convention used across
+    // the server layer — feature-blocks, milestones, backstage, absences). Without it a bare id
+    // was enough to clone ANY document in the database: the clone copies the source's sections,
+    // costing, parties and signature blocks into a row the caller then owns and can read in full.
+    // An out-of-workspace id now 404s. Identity-less API-key callers have no workspace to scope
+    // to, so they stay unscoped — same position as `POST /api/proposals`, which writes into the
+    // bootstrap/default workspace for exactly that case.
     const existing = await prisma.document.findFirst({
-      where: { id },
+      where: { id, ...(actor ? { workspaceId: actor.workspaceId } : {}) },
       include: proposalInclude,
     });
 
     if (!existing) {
+      return apiError("Document not found", 404);
+    }
+
+    // Type gate: a developer must never clone an admin doc type — that would launder the
+    // `POST /api/proposals` type check ("You don't have permission to create that document
+    // type") into a copy they own. 404 rather than 403, mirroring the GET/PATCH/favorite reads,
+    // so the document's existence isn't leaked.
+    if (actor && !allowedDocTypesForUser(actor).includes(existing.documentType)) {
       return apiError("Document not found", 404);
     }
 
@@ -87,10 +116,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       : `${existing.title} (Copy)`;
 
     // A duplicate is a NEW document, so it's "prepared by" whoever cloned it — not the author
-    // of the original and never the default workspace owner. `getEffectiveUserOrNull` (not the
-    // throwing variant) keeps unattended API-key callers working: with no per-user identity we
-    // carry the original's owner across exactly as before. Editable afterwards.
-    const actor = await getEffectiveUserOrNull(request);
+    // of the original and never the default workspace owner. `actor` was resolved at the top of
+    // the handler; `getEffectiveUserOrNull` (not the throwing variant) keeps unattended API-key
+    // callers working: with no per-user identity we carry the original's owner across exactly as
+    // before. Editable afterwards.
     const carriedMetadata = (existing.metadata ?? null) as Record<string, unknown> | null;
     const clonedOwner = resolveDocumentOwnerName(
       actor,
