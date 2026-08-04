@@ -985,9 +985,35 @@ export async function setCourseIngest(
 
   await prisma.clientWiki.update({
     where: { id: wiki.id },
-    data: { courseIngestToken: token },
+    data: {
+      courseIngestToken: token,
+      // Turning the API on also switches the Requests section on. Pushes are
+      // REJECTED while it's off (see ingestWikiItemsByToken), so minting a token
+      // without it produced a live credential that always failed — and the error
+      // said "Invalid intake token", sending everyone after the wrong thing.
+      // Found by testing a second client end-to-end. Disabling leaves the section
+      // alone: the team may still be using it for requests filed by hand.
+      ...(opts.enabled ? { intakeEnabled: true } : {}),
+    },
   });
   return { token };
+}
+
+/**
+ * Why an intake token isn't working — the two failures are different problems
+ * with different fixes, and the API used to report both as "Invalid intake
+ * token", which points at the credential even when the credential is fine.
+ */
+export async function wikiIntakeTokenState(
+  token: string,
+): Promise<"unknown" | "intake_disabled" | "ok"> {
+  if (!token) return "unknown";
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { courseIngestToken: token },
+    select: { intakeEnabled: true },
+  });
+  if (!wiki) return "unknown";
+  return wiki.intakeEnabled ? "ok" : "intake_disabled";
 }
 
 export interface CourseIngestItem {

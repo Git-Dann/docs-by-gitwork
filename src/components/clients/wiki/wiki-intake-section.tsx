@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import {
   ArrowTopRightOnSquareIcon,
   CheckCircleIcon,
+  PaperClipIcon,
   PhotoIcon,
   PlusIcon,
   TrashIcon,
@@ -290,6 +291,38 @@ export function WikiIntakeSection({
                         />
                       </button>
                     ) : null}
+                    {/* Links sent by the intake API. Storing the source link and
+                        then never showing it would defeat the point — the whole
+                        reason a client sends it is so the team can open the item
+                        in their tracker. Attachments are the client's URLs, so
+                        they open in a new tab and carry noreferrer. */}
+                    {(item.externalUrl || item.attachmentUrls.length > 0) && (
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                        {item.externalUrl ? (
+                          <a
+                            href={item.externalUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--brand-700)] transition hover:text-[var(--brand-800)]"
+                          >
+                            <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+                            {item.externalRef ? `Open ${item.externalRef}` : "Open in their tracker"}
+                          </a>
+                        ) : null}
+                        {item.attachmentUrls.map((url, i) => (
+                          <a
+                            key={url}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[12px] text-[var(--text-3)] underline decoration-dotted underline-offset-2 transition hover:text-[var(--text-1)]"
+                          >
+                            <PaperClipIcon className="h-3.5 w-3.5" />
+                            Attachment {i + 1}
+                          </a>
+                        ))}
+                      </div>
+                    )}
                     <p className="mt-2 text-[12px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
                       {item.requestedBy ? `${item.requestedBy} · ` : ""}
                       {new Date(item.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}

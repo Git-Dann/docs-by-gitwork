@@ -10,20 +10,22 @@ own intake token, and the API is the same for all of them.
 
 ## 1. Give the client a token (internal, one minute)
 
-The token is the credential their system authenticates with. Reveal or rotate it:
+**Portal → the client → Wiki → Settings → `02 // API INTAKE`.**
 
-```bash
-# reveal (mints on first call)
-curl -H "Authorization: Bearer $API_KEY" \
-  https://foundry.gitwork.co.uk/api/clients/<client-slug>/wiki/intake-token
+Everything is there: the toggle that mints the token, the token itself, every
+endpoint with the token already substituted (so they paste and run), a worked
+`curl` example, and **Rotate**. Present for every client — nothing to set up
+per-client beyond flipping it on.
 
-# rotate — invalidates the old token immediately
-curl -X POST -H "Authorization: Bearer $API_KEY" \
-  https://foundry.gitwork.co.uk/api/clients/<client-slug>/wiki/intake-token
-```
+Turning it **off** nulls the token, which stops their pushes immediately.
+**Rotate** replaces it — their integration breaks until they update it, so use it
+when a token has been shared too widely.
 
-Requires **manage-clients** permission. Send the client the token only —
-everything below needs nothing else.
+The same endpoint is scriptable if you need it
+(`GET`/`POST /api/clients/<slug>/wiki/course-requests/ingest-token` — named for
+the Wedge course feed, which shares this credential).
+
+Send the client the token only — everything below needs nothing else.
 
 > ⚠️ **Never give a client the workspace `API_KEY`.** It authorises every `/api/`
 > route for the whole workspace — every other client's documents, tasks, rates and
@@ -159,8 +161,9 @@ vector against our own network. Only `http(s)` links are stored.
 - **Links, not uploads.** Screenshots come in as URLs the client hosts. Binary
   upload is a UI-only path today.
 - **One token per client**, rotatable but not per-integrator — you can't revoke
-  one system's access while keeping another's. Fine for one integration per
-  client; revisit if a client wants several.
+  one system's access while keeping another's. It is also shared with the Wedge
+  course-request feed, so rotating affects both for that client. Fine for one
+  integration per client; revisit if a client wants several.
 - **No webhooks out.** The client polls `?items=1` to see our side; we don't call
   them when a status changes here.
 - **No rate limit** on these endpoints yet. The token is the only gate, so rotate

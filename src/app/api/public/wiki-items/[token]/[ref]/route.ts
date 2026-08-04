@@ -15,7 +15,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { updateWikiIntakeItemByToken } from "@/server/wiki";
+import { updateWikiIntakeItemByToken, wikiIntakeTokenState } from "@/server/wiki";
 import { intakeCommonFields } from "@/server/wiki-intake-vocab";
 
 const patchSchema = z
@@ -38,7 +38,21 @@ export async function PATCH(
     const { token, ref } = await params;
     const patch = patchSchema.parse(await req.json());
     const item = await updateWikiIntakeItemByToken(token, decodeURIComponent(ref), patch);
-    if (!item) return apiError("Item not found for this intake token", 404);
+    if (!item) {
+      // Same reasoning as the create route: a switched-off Requests section is a
+      // different fix from a bad token or a wrong ref, so don't report all three
+      // identically. An item that exists but belongs to ANOTHER client still
+      // reads as "not found" — deliberately, so this can't probe for ids.
+      const state = await wikiIntakeTokenState(token);
+      if (state === "unknown") return apiError("Invalid intake token", 404);
+      if (state === "intake_disabled") {
+        return apiError(
+          "This client's Requests section is switched off in Foundry, so intake is disabled. The token itself is valid.",
+          404,
+        );
+      }
+      return apiError("No item with that id or externalRef for this client", 404);
+    }
     return apiOk(item);
   } catch (err) {
     return fromError(err);

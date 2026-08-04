@@ -18,8 +18,28 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { ingestWikiItemsByToken, listWikiIntakeItemsByToken } from "@/server/wiki";
+import {
+  ingestWikiItemsByToken,
+  listWikiIntakeItemsByToken,
+  wikiIntakeTokenState,
+} from "@/server/wiki";
 import { intakeCommonFields } from "@/server/wiki-intake-vocab";
+
+/**
+ * A valid token whose Requests section is switched off is a DIFFERENT problem
+ * from a bad token, and reporting "Invalid intake token" for both sends an
+ * integrator chasing the credential when the real fix is one toggle in Foundry.
+ * Costs one extra query, and only on the error path.
+ */
+async function tokenError(token: string) {
+  const state = await wikiIntakeTokenState(token);
+  return state === "intake_disabled"
+    ? apiError(
+        "This client's Requests section is switched off in Foundry, so intake is disabled. The token itself is valid.",
+        404,
+      )
+    : apiError("Invalid intake token", 404);
+}
 
 const itemSchema = z.object({
   ...intakeCommonFields,
@@ -51,11 +71,11 @@ export async function GET(
         status: req.nextUrl.searchParams.get("status"),
         limit: Number(req.nextUrl.searchParams.get("limit")) || undefined,
       });
-      if (!items) return apiError("Invalid intake token", 404);
+      if (!items) return tokenError(token);
       return apiOk({ items });
     }
     const result = await ingestWikiItemsByToken(token, [], { dryRun: true });
-    if (!result) return apiError("Invalid intake token", 404);
+    if (!result) return tokenError(token);
     return apiOk({ ok: true, client: result.client });
   } catch (err) {
     return fromError(err);
@@ -71,7 +91,7 @@ export async function POST(
     const parsed = bodySchema.parse(await req.json());
     const items = "items" in parsed ? parsed.items : [parsed];
     const result = await ingestWikiItemsByToken(token, items);
-    if (!result) return apiError("Invalid intake token", 404);
+    if (!result) return tokenError(token);
     // `skipped` is not a failure: a repeat push of the same externalRef — or of an
     // open item with the same title — is deduped on purpose, so a retrying
     // integration can't fill the Requests page with duplicates.

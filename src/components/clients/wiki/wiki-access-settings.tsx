@@ -106,8 +106,11 @@ export function WikiAccessSettings({
     Object.keys(wiki.pageShares ?? {}).length > 0;
 
   return (
-    <div className="mx-auto w-full max-w-5xl">
-      {/* Two-column masonry — cards flow into two balanced columns on lg+, single column below. */}
+    <div className="mx-auto w-full max-w-5xl space-y-5">
+      {/* Two-column masonry for the COMPACT panels. The API panel is deliberately
+          NOT in here — it carries endpoint URLs, a three-up type legend and a curl
+          block, all of which were unreadable squeezed into a half-width column
+          (long URLs wrapped mid-token). It spans the full width below instead. */}
       <div className="columns-1 gap-5 lg:columns-2 [&>*]:mb-5 [&>*]:break-inside-avoid">
         <section className="widget-card">
         <div className="widget-header flex items-center justify-between">
@@ -212,12 +215,13 @@ export function WikiAccessSettings({
         </div>
       </section>
 
-        <WikiApiIntakeSettings slug={slug} />
-
         <WikiSharePanel wiki={wiki} slug={slug} availableSections={availableSections} />
 
         <WikiAppearanceCard />
       </div>
+
+      {/* Full width — see the note on the masonry above. */}
+      <WikiApiIntakeSettings slug={slug} />
 
       {editing && (
         <WikiUserModal
@@ -305,7 +309,7 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
       </div>
       <div className="space-y-5 p-6">
         <div className="flex items-start justify-between gap-4">
-          <div>
+          <div className="max-w-[70ch]">
             <p className="text-sm font-medium text-[var(--text-1)]">Client wiki intake API</p>
             <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-4)]">
               Give this client-scoped token to a trusted external system so it can push bugs,
@@ -391,6 +395,9 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
               ))}
             </div>
 
+            {/* Two-up on lg now the panel is full width — each row is a short
+                label plus one URL, so a single tall column just wasted the space. */}
+            <div className="grid gap-x-5 gap-y-4 lg:grid-cols-2">
             {[
               { key: "items", label: "Create — bug / feedback / feature request (POST)", method: "POST", value: wikiItemsEndpoint },
               // Update + list shipped with the intake API (docs/client-intake-api.md).
@@ -419,6 +426,7 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
                 </div>
               </div>
             ))}
+            </div>
 
             <div>
               <div className="mb-1.5 flex items-center justify-between">
@@ -430,7 +438,7 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
               </div>
               <pre className="overflow-x-auto rounded-[8px] border border-[rgba(0,0,0,0.1)] bg-[#0f1115] px-3 py-2.5 text-[11.5px] leading-5 text-[#d6deeb]" style={{ fontFamily: MONO }}>{example}</pre>
               <p className="mt-1.5 text-[11px] leading-5 text-[var(--text-4)]">
-                Required: <span style={{ fontFamily: MONO }}>title</span>. Optional: <span style={{ fontFamily: MONO }}>type</span>, <span style={{ fontFamily: MONO }}>description</span>, <span style={{ fontFamily: MONO }}>priority</span>, <span style={{ fontFamily: MONO }}>requestedBy</span>, and <span style={{ fontFamily: MONO }}>externalRef</span>. Send one object or {`{"items":[…]}`} for a batch of up to 200.
+                Required: <span style={{ fontFamily: MONO }}>title</span>. Optional: <span style={{ fontFamily: MONO }}>type</span>, <span style={{ fontFamily: MONO }}>description</span>, <span style={{ fontFamily: MONO }}>priority</span>, <span style={{ fontFamily: MONO }}>status</span>, <span style={{ fontFamily: MONO }}>requestedBy</span>, <span style={{ fontFamily: MONO }}>externalRef</span>, <span style={{ fontFamily: MONO }}>externalUrl</span>, and <span style={{ fontFamily: MONO }}>attachmentUrls</span>. Send one object or {`{"items":[…]}`} for a batch of up to 200. Sending the same <span style={{ fontFamily: MONO }}>externalRef</span> twice is deduped, so retries are safe.
               </p>
             </div>
 
