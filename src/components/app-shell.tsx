@@ -4,7 +4,6 @@ import {
   ArrowRightOnRectangleIcon,
   Bars3Icon,
   BookOpenIcon,
-  ChartBarIcon,
   ChevronDoubleLeftIcon,
   ChevronDoubleRightIcon,
   CodeBracketIcon,
@@ -13,8 +12,6 @@ import {
   DocumentTextIcon,
   HomeModernIcon,
   LifebuoyIcon,
-  PhotoIcon,
-  RectangleStackIcon,
   SignalIcon,
   UserGroupIcon,
   WrenchScrewdriverIcon,
@@ -28,7 +25,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
 import { avatarPosition, resolveAvatar } from "@/lib/avatar";
 import { useAccount } from "@/hooks/use-account";
-import { isAtLeast, isSuperAdmin } from "@/types/auth";
+import { isAtLeast } from "@/types/auth";
 import { useViewAs, type ViewAsRole, type ViewAsUser } from "@/lib/view-as";
 import { listSupportClients, listTeamMembers } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
@@ -111,7 +108,6 @@ export function AppShell({
   }
   const account = useAccount();
   const isAdmin = isAtLeast(account.data?.role ?? "", "ADMIN");
-  const isSuper = isSuperAdmin(account.data?.role ?? "");
   const { viewAs, viewAsUser, setViewAs, setViewAsUser, effectivePermissions, previewLabel } = useViewAs(isAdmin);
   const realPermissions = useMemo(() => account.data?.permissions ?? [], [account.data?.permissions]);
   const isFullAccessAdmin = isAdmin && realPermissions.length === 0;
@@ -213,13 +209,10 @@ export function AppShell({
         icon: WrenchScrewdriverIcon,
         module: "backstage",
       },
-      {
-        href: "/app/studio",
-        label: "Studio",
-        description: "Brand social assets — carousels, banners, posts",
-        icon: PhotoIcon,
-        module: "studio",
-      },
+      // Studio moved to Settings → Labs (Aug 2026). Analytics + Starters moved to
+      // the HQ context strip. The sidebar is the seven products and nothing else;
+      // everything that isn't a product you'd open daily lives behind an entry
+      // point instead — see §4a in CLAUDE.md.
     ];
     if (account.isPending) {
       // Pre-/api/account first paint: render from the cached module list if we
@@ -247,26 +240,11 @@ export function AppShell({
     });
   }, [isAdmin, effectivePermissions, account.isPending, realPermissions, hideCareForScopedUser, cachedModules]);
 
-  const secondaryNav = useMemo<NavItem[]>(
-    () =>
-      isSuper
-        ? [
-            {
-              href: "/app/analytics",
-              label: "Analytics",
-              description: "Delivery, output & AI usage",
-              icon: ChartBarIcon,
-            },
-            {
-              href: "/app/starters",
-              label: "Starters",
-              description: "Prompt→Production library",
-              icon: RectangleStackIcon,
-            },
-          ]
-        : [],
-    [isSuper],
-  );
+  // Analytics + Starters are Super-Admin-only tools, not products, so they no
+  // longer take sidebar rows — they're links in the HQ context strip beside DECKS
+  // (see app-overview.tsx). Kept as a list so the mobile footer, which has room,
+  // can still surface them.
+  const secondaryNav = useMemo<NavItem[]>(() => [], []);
 
   return (
     // overflow-hidden is load-bearing: the shell is a fixed h-[100dvh] frame and <main> is the
@@ -332,10 +310,7 @@ export function AppShell({
               }}
               active={Boolean(isActivePath(pathname, "/app/handbook"))}
             />
-            <SidebarNavItem
-              item={{ href: "/app/settings/account", label: "Settings", icon: Cog8ToothIcon }}
-              active={Boolean(isActivePath(pathname, "/app/settings"))}
-            />
+
           </div>
         </div>
       )}
@@ -521,11 +496,6 @@ function ExpandedRail({
               active={Boolean(isActivePath(pathname, "/app/handbook"))}
               collapsed={collapsed}
             />
-            <SidebarNavItem
-              item={{ href: "/app/settings/account", label: "Settings", icon: Cog8ToothIcon }}
-              active={Boolean(isActivePath(pathname, "/app/settings"))}
-              collapsed={collapsed}
-            />
             <ProfileMenu
               viewAs={viewAs}
               viewAsUser={viewAsUser}
@@ -687,6 +657,8 @@ function ProfileMenu({
   const accountQuery = useAccount();
   const account = accountQuery.data;
   const [open, setOpen] = useState(false);
+  // View-as list is collapsed until asked for — see the comment at its trigger.
+  const [viewAsOpen, setViewAsOpen] = useState(false);
 
   // Fetch team members so we can show real admin users in the preview switcher
   const { data: teamData } = useQuery({
@@ -772,12 +744,53 @@ function ProfileMenu({
           )}
         >
 
-          {/* View as — Super Admin only, tucked away */}
+          {/* Settings — moved here out of the sidebar so the rail is products only. */}
+          <Link
+            href="/app/settings/account"
+            onClick={() => setOpen(false)}
+            className="mb-1 flex w-full items-center gap-3 rounded-[6px] border-b border-[var(--border-3)] px-3 py-2.5 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+          >
+            <Cog8ToothIcon className="h-4.5 w-4.5 shrink-0 text-[var(--text-4)]" style={{ width: 18, height: 18 }} />
+            Settings
+          </Link>
+
+          {/* View as — Super Admin only. Collapsed behind one row by default: the
+              full list (you + every restricted admin + a teammate picker + two
+              presets) is long enough to bury Settings, Theme and Sign out under a
+              control most sessions never touch. The row states what you're
+              currently viewing as, so the menu still answers that at a glance. */}
           {isAdmin && (
             <div className="mb-1 border-b border-[var(--border-3)] pb-1">
-              <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[1px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-                View platform as
-              </p>
+              <button
+                type="button"
+                onClick={() => setViewAsOpen((v) => !v)}
+                aria-expanded={viewAsOpen}
+                className="flex w-full items-center justify-between gap-2 rounded-[6px] px-3 py-2.5 text-left transition hover:bg-[var(--surface-1)]"
+              >
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-[var(--text-2)]">
+                    View platform as
+                  </span>
+                  <span
+                    className={cn(
+                      "block truncate text-[11px]",
+                      viewAs === null && !viewAsUser
+                        ? "text-[var(--text-4)]"
+                        : "text-[var(--brand-700)]",
+                    )}
+                  >
+                    {viewAsUser?.name ??
+                      (viewAs === "STAFF"
+                        ? "Staff"
+                        : viewAs === "DEVELOPER"
+                          ? "Developer"
+                          : "Super Admin (you)")}
+                  </span>
+                </span>
+                <ChevronUpDownIcon className="h-4 w-4 shrink-0 text-[var(--text-4)]" />
+              </button>
+
+              <div className={viewAsOpen ? "" : "hidden"}>
 
               {/* Super Admin — always first, clears any preview */}
               <button
@@ -890,6 +903,7 @@ function ProfileMenu({
                     </button>
                   );
                 })}
+              </div>
               </div>
             </div>
           )}

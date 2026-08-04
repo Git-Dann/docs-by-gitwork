@@ -45,6 +45,13 @@ const ENTRIES: LabEntry[] = [
     note: "Every mark has a permanent code (FA-01 … PS-04) — call them by it. Full reference: docs/badges.md.",
   },
   {
+    name: "Studio",
+    href: "/app/studio",
+    blurb:
+      "Design on-brand social assets and App Store / Play Store screenshots, then batch-export at the exact size each platform needs. Moved here from the sidebar — it's a tool you open when you need it, not a product you work in daily.",
+    note: "Runs entirely in the browser; nothing is uploaded. Gated on the studio module permission.",
+  },
+  {
     name: "Mission Control",
     href: "/edge",
     blurb:

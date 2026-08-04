@@ -23,7 +23,7 @@ import { BroadcastComposer } from "@/components/tasks/broadcast-composer";
 import { can } from "@/components/dashboard/dashboard-config";
 import { useAccount } from "@/hooks/use-account";
 import { useStaffingAlerts } from "@/hooks/use-backstage";
-import { isAtLeast } from "@/types/auth";
+import { isAtLeast, isSuperAdmin } from "@/types/auth";
 import { useViewAs } from "@/lib/view-as";
 
 export type WidgetSize = "sm" | "md" | "lg";
@@ -186,6 +186,15 @@ export function AppOverview() {
         {firstName ? <span>· {greetingPart()}, {firstName}</span> : null}
         {hasBackstage ? <WhoIsOffToday /> : null}
         <DeckLink />
+        {/* Super-Admin tools, moved off the sidebar (Aug 2026): neither is a
+            product you work in daily, and both were taking a permanent rail row
+            for one person. Same quiet text-link treatment as Decks. */}
+        {isSuperAdmin(role) ? (
+          <>
+            <StripLink href="/app/analytics" label="Analytics" title="Delivery, output & AI usage" />
+            <StripLink href="/app/starters" label="Starters" title="Prompt→Production library" />
+          </>
+        ) : null}
       </div>
 
       {/* Today band — "On your desk" (personal to-do, auto-hides when empty)
@@ -227,6 +236,20 @@ export function AppOverview() {
  * it's in testing, and it opens its own window because the editor takes over the
  * whole page and saves to a file rather than the database.
  */
+/** A context-strip text link, styled exactly like Decks so the strip reads as one set. */
+function StripLink({ href, label, title }: { href: string; label: string; title: string }) {
+  return (
+    <Link
+      href={href}
+      title={title}
+      className="font-medium uppercase tracking-[0.12em] text-[var(--text-4)] transition hover:text-[var(--brand-700)]"
+      style={{ fontFamily: "var(--font-mono)", fontSize: "10px" }}
+    >
+      · {label}
+    </Link>
+  );
+}
+
 function DeckLink() {
   // Decks are documents now, so this goes to Docs rather than opening a scratch
   // deck in a new window — one that saved to a file and never showed up in the
