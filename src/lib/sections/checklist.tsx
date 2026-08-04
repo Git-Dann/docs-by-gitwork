@@ -15,7 +15,7 @@ import type { ChecklistSectionData } from "@/types/proposal";
 export const checklistSection = defineSection<ChecklistSectionData>({
   key: "checklist",
   displayName: "Checklist",
-  description: "Polarity-aware list — green ticks for inclusions or red crosses for exclusions.",
+  description: "Polarity-aware list — tick/cross icons, or accent arrows on ruled rows (1–2 columns).",
   category: "lists",
   icon: ClipboardDocumentCheckIcon,
   defaultData: { polarity: "INCLUDE", intro: "", items: [""] },
@@ -49,14 +49,46 @@ export const checklistSection = defineSection<ChecklistSectionData>({
           ))}
         </div>
       </label>
+      <label className="block space-y-1.5">
+        <span className="text-sm font-medium text-[var(--text-2)]">Marker</span>
+        <select
+          value={data.marker ?? "icon"}
+          onChange={(e) => onChange({ ...data, marker: e.target.value as ChecklistSectionData["marker"] })}
+          className="app-select w-full"
+        >
+          <option value="icon">Tick / cross icons</option>
+          <option value="arrow">Accent arrows (ruled rows)</option>
+        </select>
+      </label>
+      <label className="block space-y-1.5">
+        <span className="text-sm font-medium text-[var(--text-2)]">Columns</span>
+        <select
+          value={String(data.columns ?? 1)}
+          onChange={(e) => onChange({ ...data, columns: Number(e.target.value) as ChecklistSectionData["columns"] })}
+          className="app-select w-full"
+        >
+          <option value="1">1 column</option>
+          <option value="2">2 columns</option>
+        </select>
+      </label>
       <p className="text-xs leading-5 text-[var(--text-4)]">
         The intro and items are edited inline on the canvas.
       </p>
     </SimpleForm>
   ),
   Preview: ({ data, editable, onChange }) => {
+    const arrow = (data.marker ?? "icon") === "arrow";
     const Icon = data.polarity === "INCLUDE" ? CheckCircleIcon : XCircleIcon;
     const iconColor = data.polarity === "INCLUDE" ? "var(--success-500)" : "var(--danger-500)";
+    const ArrowMarker = () => (
+      <span
+        aria-hidden
+        className="font-mono text-[13px] font-semibold leading-6"
+        style={{ color: "var(--doc-accent, #4f5bd5)" }}
+      >
+        &rarr;
+      </span>
+    );
 
     if (editable && onChange) {
       return (
@@ -71,7 +103,9 @@ export const checklistSection = defineSection<ChecklistSectionData>({
           <InlineStringList
             items={data.items ?? []}
             onChange={(items) => onChange({ ...data, items })}
-            marker={() => <Icon className="h-4 w-4 shrink-0" style={{ color: iconColor }} />}
+            marker={() =>
+              arrow ? <ArrowMarker /> : <Icon className="h-4 w-4 shrink-0" style={{ color: iconColor }} />
+            }
             placeholder={data.polarity === "INCLUDE" ? "What's in scope" : "What's out of scope"}
             addLabel="Add item"
           />
@@ -87,6 +121,31 @@ export const checklistSection = defineSection<ChecklistSectionData>({
         </p>
       );
     }
+    // ── Accent arrows on hairline-ruled rows, in 1 or 2 columns. ──
+    if (arrow) {
+      const twoUp = (data.columns ?? 1) === 2;
+      return (
+        <div className="proposal-block-avoid space-y-3">
+          {data.intro ? <p className="text-sm leading-7 text-[var(--text-2)]">{data.intro}</p> : null}
+          <ul className={twoUp ? "grid gap-x-10 md:grid-cols-2" : "block"}>
+            {items.map((item, i) => (
+              <li
+                key={i}
+                className="flex items-start gap-3 border-t py-2.5 text-[13px] leading-6"
+                style={{
+                  borderColor: "var(--doc-line-soft, rgba(0,0,0,0.08))",
+                  color: "var(--doc-ink, #1a1a17)",
+                }}
+              >
+                <ArrowMarker />
+                <span className="min-w-0 flex-1">{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+
     return (
       <div className="proposal-block-avoid space-y-3">
         {data.intro ? <p className="text-sm leading-7 text-[var(--text-2)]">{data.intro}</p> : null}

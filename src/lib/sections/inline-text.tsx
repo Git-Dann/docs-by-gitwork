@@ -14,7 +14,7 @@
 
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import { useCallback, useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
 
 const FIELD_RESET: CSSProperties = {
@@ -69,6 +69,90 @@ export function InlineTextArea({
         {value ? `${value} ` : placeholder || " "}
       </div>
     </div>
+  );
+}
+
+/**
+ * Inline-FLOW editable text — a single-line, plain-text `contenteditable` that shrinks to its
+ * content, so a sibling glyph sits immediately after the last character.
+ *
+ * `InlineTextArea` cannot do that: it's a `<textarea>` whose auto-grow replica sizes at `width:100%`,
+ * so the field is always the full width of its column and anything rendered after it lands at the
+ * end of the FIELD, not the end of the TEXT. That's exactly what pushed the cover title's accent
+ * period out to the right margin. Use this wherever rendered text and a trailing mark share one
+ * line; keep `InlineTextArea` for multi-line body fields.
+ *
+ * Contract: the value is a PLAIN STRING. Enter is blocked and paste is forced to plain text, so no
+ * markup or newline can enter the round-trip; formatting is not offered (use `RichInlineEditor` for
+ * Markdown-backed prose). Typography is inherited from the wrapper — the document scope already
+ * makes `[contenteditable]` inherit the family + letter-spacing (`globals.css`).
+ */
+export function InlineEditableText({
+  value,
+  onChange,
+  placeholder,
+  className,
+  style,
+  ariaLabel,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  placeholder?: string;
+  className?: string;
+  style?: CSSProperties;
+  ariaLabel?: string;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const focused = useRef(false);
+
+  // External value → DOM, but never while focused: writing during an edit would reset the caret to
+  // the start on every autosave-driven re-render.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || focused.current) return;
+    if (el.textContent !== value) el.textContent = value;
+  }, [value]);
+
+  const commit = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const next = (el.textContent ?? "").replace(/\s*\n+\s*/g, " ");
+    if (next !== value) onChange(next);
+  }, [onChange, value]);
+
+  return (
+    <span
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-label={ariaLabel}
+      aria-multiline="false"
+      spellCheck
+      data-placeholder={placeholder ?? ""}
+      // `:empty::before` carries the placeholder — an inline box with no text has no room for an
+      // overlay, and it keeps a click target when the field is empty.
+      className={`inline-edit-text rounded-[3px] outline-none transition-colors focus:bg-[var(--surface-brand)]/50 [&:empty]:before:text-[var(--text-4)] [&:empty]:before:opacity-70 [&:empty]:before:content-[attr(data-placeholder)] ${className ?? ""}`}
+      style={{ display: "inline", ...style }}
+      onFocus={() => {
+        focused.current = true;
+      }}
+      onBlur={() => {
+        focused.current = false;
+        commit();
+      }}
+      onInput={commit}
+      onKeyDown={(event) => {
+        // Single-line field: a newline would be silently flattened on commit, so don't accept one.
+        if (event.key === "Enter") event.preventDefault();
+      }}
+      onPaste={(event) => {
+        event.preventDefault();
+        const text = event.clipboardData.getData("text/plain").replace(/\s*\n+\s*/g, " ");
+        // Deprecated but still the only API that inserts text into the browser's own undo stack.
+        document.execCommand("insertText", false, text);
+      }}
+    />
   );
 }
 

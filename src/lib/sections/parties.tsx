@@ -1,29 +1,44 @@
 /**
  * Section type: `parties`
  *
- * Lists the counterparties to an agreement. The structured editor lives in
- * `src/components/proposals/legal-editors.tsx`; the registry wraps it so the dispatcher can
- * load it uniformly. Previews print as a 2-column card grid.
+ * The counterparties to an agreement. The structured editor lives in
+ * `src/components/proposals/legal-editors.tsx`; the registry wraps it so the dispatcher can load it
+ * uniformly.
+ *
+ * The Preview renders **clause prose**, not cards — an intro line then one `(a)/(b)/(c)` item per
+ * party, exactly as the reference NDA reads:
+ *
+ *   This agreement is dated 4 August 2026 and is made between:
+ *     (a) **Gitwork Group Ltd**, a company registered in England and Wales under number 15756347,
+ *         whose registered office is at … ("Gitwork");
+ *     (b) **Shuffle Love Ltd**, a company registered in England and Wales … ("the Client"); and
+ *     (c) **Alex Doe**, in a personal capacity, care of … ("the Founder").
+ *
+ * It used to print a grid of `DISCLOSING PARTY / Gitwork Ltd` cards, which duplicated the party
+ * columns the cover already carries — the same fact stated twice, in two different visual grammars.
+ * The cover owns the at-a-glance columns; this block owns the operative sentence.
+ *
+ * Markup is the document's own `.doc-clause-subs` list (`globals.css` → "Legal numbering"), the
+ * same element a `prose` block's sub-items render into, so the `(a)` gutter, accent mono marker and
+ * hanging indent are identical to a real clause instead of a lookalike.
  */
 
 import { UserGroupIcon } from "@heroicons/react/24/outline";
 import { PartiesEditor } from "@/components/proposals/legal-editors";
 import { defineSection } from "@/lib/sections/types";
 import { renderInline } from "@/lib/markdown";
+import {
+  clauseItemPunctuation,
+  partyDefinedTerm,
+  partyDetailLines,
+  partyDisplayName,
+} from "@/lib/sections/parties-text";
 import type { PartiesSectionData } from "@/types/proposal";
 
 const DEFAULT: PartiesSectionData = {
   intro: "",
   parties: [],
 };
-
-/** Max cards per row. 4–5 parties wrap to a second row rather than squashing to slivers. */
-const MAX_COLUMNS = 3;
-
-/** `PARTY A` / `PARTY B` / … fallback when a party carries no explicit role. */
-function partyFallbackLabel(index: number): string {
-  return `Party ${String.fromCharCode(65 + (index % 26))}`;
-}
 
 export const partiesSection = defineSection<PartiesSectionData>({
   key: "parties",
@@ -38,46 +53,39 @@ export const partiesSection = defineSection<PartiesSectionData>({
   aiExpandable: false,
   Editor: ({ data, onChange }) => <PartiesEditor data={data} onChange={onChange} />,
   Preview: ({ data }) => {
-    const parties = data.parties ?? [];
-    // Adapts to the party count: 1–3 sit on one row, 4–5 wrap. Never more than 3 across.
-    const columns = Math.min(Math.max(parties.length, 1), MAX_COLUMNS);
+    const parties = (data.parties ?? []).filter(
+      (party) => partyDisplayName(party) || partyDetailLines(party).length,
+    );
     return (
-      <div className="space-y-4">
-        {data.intro?.trim() ? (
-          <p className="text-sm leading-7 text-[var(--text-2)]">
-            {renderInline(data.intro, "parties-intro")}
-          </p>
-        ) : null}
+      <div className="max-w-4xl space-y-4 text-[16px] leading-8 text-[var(--text-2)]">
+        {data.intro?.trim() ? <p>{renderInline(data.intro, "parties-intro")}</p> : null}
         {parties.length ? (
-          <div
-            className="grid gap-4"
-            style={{ gridTemplateColumns: `repeat(${columns}, minmax(0,1fr))` }}
-          >
-            {parties.map((p, index) => (
-              <div
-                key={p.id}
-                className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-white p-5"
-              >
-                <p
-                  className="font-mono text-[10px] font-semibold uppercase"
-                  style={{ letterSpacing: "0.14em", color: "var(--doc-accent)" }}
-                >
-                  {p.role?.trim() || partyFallbackLabel(index)}
-                </p>
-                <p className="mt-2 font-[family-name:var(--font-display)] text-[18px] font-normal leading-tight text-[var(--text-1)]">
-                  {p.name || p.organization || "—"}
-                </p>
-                {p.organization && p.organization !== p.name ? (
-                  <p className="mt-1.5 text-[12.5px] leading-[1.4] text-[var(--text-3)]">
-                    {p.organization}
-                  </p>
-                ) : null}
-                {p.email ? (
-                  <p className="mt-1 text-[12.5px] leading-[1.4] text-[var(--text-3)]">{p.email}</p>
-                ) : null}
-              </div>
-            ))}
-          </div>
+          <ol className="doc-clause-subs">
+            {parties.map((party, index) => {
+              const name = partyDisplayName(party);
+              // Detail lines are clause FRAGMENTS here (not stacked lines as on the cover), so they
+              // join into the one sentence the reference document sets.
+              const details = partyDetailLines(party).join(", ");
+              const term = partyDefinedTerm(party);
+              return (
+                <li key={party.id}>
+                  {name ? (
+                    <span className="font-semibold text-[var(--text-1)]">
+                      {renderInline(name, `party-${index}-name`)}
+                    </span>
+                  ) : null}
+                  {details ? (
+                    <>
+                      {name ? ", " : null}
+                      {renderInline(details, `party-${index}-details`)}
+                    </>
+                  ) : null}
+                  {term ? <> (&ldquo;{term}&rdquo;)</> : null}
+                  {clauseItemPunctuation(index, parties.length)}
+                </li>
+              );
+            })}
+          </ol>
         ) : null}
       </div>
     );

@@ -4,6 +4,7 @@ import { ArrowLongRightIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { SimpleForm } from "@/lib/sections/_shared";
 import { InlineTextArea, InlineAddButton, InlineRemoveButton } from "@/lib/sections/inline-text";
+import { romanNumeral } from "@/lib/sections/variant-helpers";
 import type { ProcessStepsSectionData } from "@/types/proposal";
 
 const num = (i: number) => String(i + 1).padStart(2, "0");
@@ -11,7 +12,7 @@ const num = (i: number) => String(i + 1).padStart(2, "0");
 export const processStepsSection = defineSection<ProcessStepsSectionData>({
   key: "process_steps",
   displayName: "Process steps",
-  description: "A numbered workflow — steps as connected pills, with an optional highlighted finish.",
+  description: "A numbered workflow — connected pills, or stepped rows with roman numerals.",
   category: "lists",
   icon: ArrowLongRightIcon,
   defaultData: {
@@ -31,50 +32,74 @@ export const processStepsSection = defineSection<ProcessStepsSectionData>({
   aiExpandable: false,
   inlineEditable: true,
   hasOptions: true,
-  Editor: ({ data, onChange }) => (
-    <SimpleForm>
-      <label className="block space-y-1.5">
-        <span className="text-sm font-medium text-[var(--text-2)]">Layout</span>
-        <select
-          value={data.layout ?? "row"}
-          onChange={(e) => onChange({ ...data, layout: e.target.value as ProcessStepsSectionData["layout"] })}
-          className="app-select w-full"
-        >
-          <option value="row">Flowing row of pills</option>
-          <option value="stack">Vertical stack</option>
-        </select>
-      </label>
-      <label className="flex items-center gap-2 text-sm text-[var(--text-2)]">
-        <input
-          type="checkbox"
-          checked={data.arrows ?? true}
-          onChange={(e) => onChange({ ...data, arrows: e.target.checked })}
-          className="app-checkbox"
-        />
-        Show connecting arrows
-      </label>
-      <label className="flex items-center gap-2 text-sm text-[var(--text-2)]">
-        <input
-          type="checkbox"
-          checked={data.highlightLast ?? false}
-          onChange={(e) => onChange({ ...data, highlightLast: e.target.checked })}
-          className="app-checkbox"
-        />
-        Highlight the final step
-      </label>
-      <p className="text-xs leading-5 text-[var(--text-4)]">
-        Step labels and the intro are edited inline on the canvas.
-      </p>
-    </SimpleForm>
-  ),
+  Editor: ({ data, onChange }) => {
+    const style = data.style ?? "pills";
+    return (
+      <SimpleForm>
+        <label className="block space-y-1.5">
+          <span className="text-sm font-medium text-[var(--text-2)]">Style</span>
+          <select
+            value={style}
+            onChange={(e) => onChange({ ...data, style: e.target.value as ProcessStepsSectionData["style"] })}
+            className="app-select w-full"
+          >
+            <option value="pills">Connected pills</option>
+            <option value="stepped">Stepped rows (i. ii. iii.)</option>
+          </select>
+        </label>
+
+        {style === "pills" ? (
+          <>
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium text-[var(--text-2)]">Layout</span>
+              <select
+                value={data.layout ?? "row"}
+                onChange={(e) => onChange({ ...data, layout: e.target.value as ProcessStepsSectionData["layout"] })}
+                className="app-select w-full"
+              >
+                <option value="row">Flowing row of pills</option>
+                <option value="stack">Vertical stack</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[var(--text-2)]">
+              <input
+                type="checkbox"
+                checked={data.arrows ?? true}
+                onChange={(e) => onChange({ ...data, arrows: e.target.checked })}
+                className="app-checkbox"
+              />
+              Show connecting arrows
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[var(--text-2)]">
+              <input
+                type="checkbox"
+                checked={data.highlightLast ?? false}
+                onChange={(e) => onChange({ ...data, highlightLast: e.target.checked })}
+                className="app-checkbox"
+              />
+              Highlight the final step
+            </label>
+          </>
+        ) : null}
+
+        <p className="text-xs leading-5 text-[var(--text-4)]">
+          {style === "stepped"
+            ? "Step titles and descriptions are edited inline on the canvas."
+            : "Step labels and the intro are edited inline on the canvas."}
+        </p>
+      </SimpleForm>
+    );
+  },
   Preview: ({ data, editable, onChange }) => {
     const steps = data.steps ?? [];
     const arrows = data.arrows ?? true;
     const highlightLast = data.highlightLast ?? false;
     const layout = data.layout ?? "row";
+    const style = data.style ?? "pills";
+    const stepped = style === "stepped";
 
     if (editable && onChange) {
-      const update = (i: number, patch: Partial<{ label: string; note: string }>) =>
+      const update = (i: number, patch: Partial<{ label: string; note: string; description: string }>) =>
         onChange({ ...data, steps: steps.map((s, j) => (j === i ? { ...s, ...patch } : s)) });
       return (
         <div className="space-y-3">
@@ -87,16 +112,42 @@ export const processStepsSection = defineSection<ProcessStepsSectionData>({
           />
           <div className="space-y-2">
             {steps.map((step, i) => (
-              <div key={i} className="group/row flex items-center gap-3 rounded-[10px] border border-[var(--border-2)] bg-white px-3 py-2">
-                <span className="font-mono text-[10px] font-semibold text-[var(--text-4)]">{num(i)}</span>
-                <div className="flex-1">
+              <div
+                key={i}
+                className={`group/row rounded-[10px] border border-[var(--border-2)] bg-white px-3 py-2 ${
+                  stepped ? "flex items-start gap-3" : "flex items-center gap-3"
+                }`}
+              >
+                <span
+                  className={
+                    stepped
+                      ? "shrink-0 pt-1 font-[family-name:var(--font-display)] text-[15px] italic text-[var(--doc-accent,#4f5bd5)]"
+                      : "font-mono text-[10px] font-semibold text-[var(--text-4)]"
+                  }
+                >
+                  {stepped ? `${romanNumeral(i)}.` : num(i)}
+                </span>
+                <div className="min-w-0 flex-1">
                   <InlineTextArea
                     value={step.label}
                     onChange={(label) => update(i, { label })}
                     placeholder="Step"
                     ariaLabel={`Step ${i + 1}`}
-                    className="text-sm font-medium text-[var(--text-1)]"
+                    className={
+                      stepped
+                        ? "font-[family-name:var(--font-display)] text-[17px] leading-tight text-[var(--text-1)]"
+                        : "text-sm font-medium text-[var(--text-1)]"
+                    }
                   />
+                  {stepped ? (
+                    <InlineTextArea
+                      value={step.description ?? ""}
+                      onChange={(description) => update(i, { description })}
+                      placeholder="Description (optional)"
+                      ariaLabel={`Step ${i + 1} description`}
+                      className="mt-1 text-[13px] leading-6 text-[var(--text-3)]"
+                    />
+                  ) : null}
                 </div>
                 <InlineRemoveButton onClick={() => onChange({ ...data, steps: steps.filter((_, j) => j !== i) })} />
               </div>
@@ -108,6 +159,55 @@ export const processStepsSection = defineSection<ProcessStepsSectionData>({
     }
 
     if (steps.length === 0) return null;
+
+    // ── Stepped rows — serif-italic accent roman numeral in a gutter, serif title, muted line. ──
+    if (stepped) {
+      return (
+        <div className="proposal-block-avoid space-y-4">
+          {data.intro ? (
+            <p className="text-[13px] leading-6 text-[var(--doc-ink-soft,#4b4a44)]">{data.intro}</p>
+          ) : null}
+          <div>
+            {steps.map((step, i) => (
+              <div
+                key={i}
+                className={`grid grid-cols-[2.5rem_minmax(0,1fr)] gap-x-3 py-4 ${
+                  i > 0 ? "border-t border-[var(--doc-line-soft,rgba(0,0,0,0.08))]" : ""
+                }`}
+              >
+                <span
+                  className="font-[family-name:var(--font-display)] text-[18px] italic leading-[1.5]"
+                  style={{ color: "var(--doc-accent, #4f5bd5)" }}
+                >
+                  {romanNumeral(i)}.
+                </span>
+                <div className="min-w-0">
+                  <p
+                    className="font-[family-name:var(--font-display)] text-[19px] font-semibold leading-snug"
+                    style={{ color: "var(--doc-ink, #1a1a17)" }}
+                  >
+                    {step.label}
+                  </p>
+                  {step.description ? (
+                    <p className="mt-1.5 text-[13px] leading-6" style={{ color: "var(--doc-ink-soft, #4b4a44)" }}>
+                      {step.description}
+                    </p>
+                  ) : null}
+                  {step.note ? (
+                    <p
+                      className="mt-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em]"
+                      style={{ color: "var(--doc-muted, #8a867c)" }}
+                    >
+                      {step.note}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
 
     const Pill = ({ i, last }: { i: number; last: boolean }) => {
       const step = steps[i];

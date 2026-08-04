@@ -69,7 +69,7 @@ export function PartiesEditor({
           value={data.intro ?? ""}
           onChange={(e) => onChange({ ...data, intro: e.target.value })}
           className="app-textarea"
-          placeholder="e.g. This Agreement is made between:"
+          placeholder="e.g. This agreement is dated 4 August 2026 and is made between:"
         />
       </div>
 
@@ -130,6 +130,39 @@ export function PartiesEditor({
                     className="app-input-compact"
                     placeholder="Service Provider"
                   />
+                </label>
+                {/* Spans the rail so the field grid stays gapless with an odd field count. */}
+                <label className="space-y-1.5 @[26rem]:col-span-2">
+                  <FieldLabel>Referred to as (optional)</FieldLabel>
+                  <input
+                    value={party.definedTerm ?? ""}
+                    onChange={(e) => patch(index, { definedTerm: e.target.value })}
+                    className="app-input-compact"
+                    placeholder="Gitwork"
+                  />
+                  <span className="block text-xs leading-5 text-[var(--text-4)]">
+                    Quoted at the end of the clause. Defaults to the role (&ldquo;the Client&rdquo;),
+                    else the name without Ltd / Group.
+                  </span>
+                </label>
+                {/* Full-width: detail lines are clause fragments, so they need the whole rail. */}
+                <label className="space-y-1.5 @[26rem]:col-span-2">
+                  <FieldLabel>Details — one per line (optional)</FieldLabel>
+                  {/* Stored as the raw split lines (blanks included) so a newline you just typed
+                      isn't swallowed by the controlled value; the render drops blank lines. */}
+                  <textarea
+                    value={(party.details ?? []).join("\n")}
+                    onChange={(e) => patch(index, { details: e.target.value.split("\n") })}
+                    className="app-textarea"
+                    rows={3}
+                    placeholder={
+                      "a company registered in England and Wales under number 15756347\nwhose registered office is at 3rd Floor, Anchorage One, Salford Quays, M50 3YJ"
+                    }
+                  />
+                  <span className="block text-xs leading-5 text-[var(--text-4)]">
+                    Joined into the party&rsquo;s clause: <em>Name</em>, detail, detail
+                    (&ldquo;term&rdquo;). Leave blank to keep using Organisation / Email.
+                  </span>
                 </label>
                 <label className="space-y-1.5">
                   <FieldLabel>Organisation</FieldLabel>

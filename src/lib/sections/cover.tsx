@@ -11,6 +11,7 @@ import { CoverEditor } from "@/components/proposals/cover-editor";
 import { DocumentCover, DocumentVersionChip } from "@/components/document-cover";
 import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import { defineSection } from "@/lib/sections/types";
+import { toCoverParties } from "@/lib/sections/parties-text";
 import { approvalTrackApplies } from "@/lib/templates";
 import { DEFAULT_DOC_THEME } from "@/types/proposal";
 import type { CoverSectionData, DocumentType, PartyItem, ProposalSection } from "@/types/proposal";
@@ -271,19 +272,10 @@ export const coverSection = defineSection<CoverSectionData>({
     const partiesData = proposal.sections.find((s) => s.key === "parties" && s.isVisible)?.data as
       | { parties?: PartyItem[] }
       | undefined;
-    const coverParties = (partiesData?.parties ?? [])
-      .map((party) => ({
-        label: undefined,
-        name: (party.name || party.organization || "").trim(),
-        lines: [
-          party.organization && party.organization !== party.name ? party.organization : null,
-          party.role,
-          party.email,
-        ]
-          .map((line) => (line ?? "").trim())
-          .filter(Boolean),
-      }))
-      .filter((party) => party.name || party.lines.length);
+    // One shared normaliser with the `parties` block's own prose render, so the cover columns and
+    // the clause list can never disagree: label = the authored role (else the cover's auto
+    // `PARTY A/B/C…`), lines = `details` with organisation/email as the back-compat fallback.
+    const coverParties = toCoverParties(partiesData?.parties ?? []);
 
     // The bordered `COVERS · … · …` scope strip. Authored on the cover (one entry per line in the
     // cover editor) — trimmed and emptied out here, so a blank or whitespace-only list passes

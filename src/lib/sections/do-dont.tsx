@@ -1,4 +1,10 @@
-/** Section type: `do_dont` — paired "do" (green ticks) / "don't" (red crosses) panels. */
+/**
+ * Section type: `do_dont` — paired "do" / "don't" lists.
+ *
+ * Two styles, chosen in Options: `panels` (the original green-tick / red-cross panels) and
+ * `ledger` — the MD's live proposal, where the two lists are mono-headed columns of
+ * hairline-separated rows, an accent ✓ against a muted ✕, with no panel fill at all.
+ */
 
 import { CheckIcon, XMarkIcon } from "@heroicons/react/24/solid";
 import { ShieldCheckIcon } from "@heroicons/react/24/outline";
@@ -10,7 +16,7 @@ import type { DoDontSectionData } from "@/types/proposal";
 export const doDontSection = defineSection<DoDontSectionData>({
   key: "do_dont",
   displayName: "Do / Don't",
-  description: "Two panels — what to do (green ticks) beside what to avoid (red crosses).",
+  description: "Two lists side by side — tick/cross panels, or a hairline-ruled ledger.",
   category: "lists",
   icon: ShieldCheckIcon,
   defaultData: {
@@ -25,26 +31,45 @@ export const doDontSection = defineSection<DoDontSectionData>({
   aiExpandable: false,
   inlineEditable: true,
   hasOptions: true,
-  Editor: ({ data, onChange }) => (
-    <SimpleForm>
-      <label className="block space-y-1.5">
-        <span className="text-sm font-medium text-[var(--text-2)]">&ldquo;Don&rsquo;t&rdquo; panel style</span>
-        <select
-          value={data.dontStyle ?? "dark"}
-          onChange={(e) => onChange({ ...data, dontStyle: e.target.value as DoDontSectionData["dontStyle"] })}
-          className="app-select w-full"
-        >
-          <option value="dark">Dark (navy)</option>
-          <option value="light">Light</option>
-        </select>
-      </label>
-      <p className="text-xs leading-5 text-[var(--text-4)]">
-        Titles, list items and the footnote are edited inline on the canvas.
-      </p>
-    </SimpleForm>
-  ),
+  Editor: ({ data, onChange }) => {
+    const style = data.style ?? "panels";
+    return (
+      <SimpleForm>
+        <label className="block space-y-1.5">
+          <span className="text-sm font-medium text-[var(--text-2)]">Style</span>
+          <select
+            value={style}
+            onChange={(e) => onChange({ ...data, style: e.target.value as DoDontSectionData["style"] })}
+            className="app-select w-full"
+          >
+            <option value="panels">Tick / cross panels</option>
+            <option value="ledger">Ledger (two ruled columns)</option>
+          </select>
+        </label>
+        {style === "panels" ? (
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium text-[var(--text-2)]">&ldquo;Don&rsquo;t&rdquo; panel style</span>
+            <select
+              value={data.dontStyle ?? "dark"}
+              onChange={(e) => onChange({ ...data, dontStyle: e.target.value as DoDontSectionData["dontStyle"] })}
+              className="app-select w-full"
+            >
+              <option value="dark">Dark (navy)</option>
+              <option value="light">Light</option>
+            </select>
+          </label>
+        ) : null}
+        <p className="text-xs leading-5 text-[var(--text-4)]">
+          {style === "ledger"
+            ? "The two column labels (e.g. INCLUDED / NOT INCLUDED), the rows and the footnote are edited inline on the canvas."
+            : "Titles, list items and the footnote are edited inline on the canvas."}
+        </p>
+      </SimpleForm>
+    );
+  },
   Preview: ({ data, editable, onChange }) => {
     const dark = (data.dontStyle ?? "dark") === "dark";
+    const ledger = (data.style ?? "panels") === "ledger";
     const doItems = data.doItems ?? [];
     const dontItems = data.dontItems ?? [];
 
@@ -62,7 +87,12 @@ export const doDontSection = defineSection<DoDontSectionData>({
             <InlineStringList
               items={doItems}
               onChange={(doItems) => onChange({ ...data, doItems })}
-              marker={() => <CheckIcon className="h-3.5 w-3.5 text-[var(--success-500)]" />}
+              marker={() => (
+                <CheckIcon
+                  className="h-3.5 w-3.5"
+                  style={{ color: ledger ? "var(--doc-accent, #4f5bd5)" : "var(--success-500)" }}
+                />
+              )}
               placeholder="What to do"
               addLabel="Add item"
             />
@@ -78,7 +108,12 @@ export const doDontSection = defineSection<DoDontSectionData>({
             <InlineStringList
               items={dontItems}
               onChange={(dontItems) => onChange({ ...data, dontItems })}
-              marker={() => <XMarkIcon className="h-3.5 w-3.5 text-[var(--danger-500)]" />}
+              marker={() => (
+                <XMarkIcon
+                  className="h-3.5 w-3.5"
+                  style={{ color: ledger ? "var(--doc-muted, #8a867c)" : "var(--danger-500)" }}
+                />
+              )}
               placeholder="What to avoid"
               addLabel="Add item"
             />
@@ -98,6 +133,69 @@ export const doDontSection = defineSection<DoDontSectionData>({
 
     const cleanDo = doItems.filter((i) => i.trim());
     const cleanDont = dontItems.filter((i) => i.trim());
+
+    // ── Ledger — two mono-headed columns of hairline rows, accent ✓ against muted ✕. ──
+    if (ledger) {
+      const Column = ({
+        label,
+        items,
+        tone,
+      }: {
+        label: string;
+        items: string[];
+        tone: "in" | "out";
+      }) => (
+        <div>
+          <p
+            className="border-b pb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.16em]"
+            style={{
+              color: tone === "in" ? "var(--doc-accent, #4f5bd5)" : "var(--doc-muted, #8a867c)",
+              borderColor: "var(--doc-line, rgba(0,0,0,0.14))",
+            }}
+          >
+            {label}
+          </p>
+          <ul>
+            {items.map((item, i) => (
+              <li
+                key={i}
+                className={`flex items-start gap-2.5 py-2.5 text-[13px] leading-6 ${
+                  i > 0 ? "border-t" : ""
+                }`}
+                style={{
+                  color: tone === "in" ? "var(--doc-ink, #1a1a17)" : "var(--doc-ink-soft, #4b4a44)",
+                  borderColor: "var(--doc-line-soft, rgba(0,0,0,0.08))",
+                }}
+              >
+                {tone === "in" ? (
+                  <CheckIcon className="mt-1 h-3.5 w-3.5 shrink-0" style={{ color: "var(--doc-accent, #4f5bd5)" }} />
+                ) : (
+                  <XMarkIcon className="mt-1 h-3.5 w-3.5 shrink-0" style={{ color: "var(--doc-muted, #8a867c)" }} />
+                )}
+                <span className="min-w-0">{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+      return (
+        <div className="proposal-block-avoid space-y-4">
+          <div className="grid gap-x-10 gap-y-6 md:grid-cols-2">
+            <Column label={data.doTitle?.trim() || "Included"} items={cleanDo} tone="in" />
+            <Column label={data.dontTitle?.trim() || "Not included"} items={cleanDont} tone="out" />
+          </div>
+          {data.footnote ? (
+            <p
+              className="border-t pt-3 text-xs leading-6"
+              style={{ color: "var(--doc-muted, #8a867c)", borderColor: "var(--doc-line, rgba(0,0,0,0.14))" }}
+            >
+              {data.footnote}
+            </p>
+          ) : null}
+        </div>
+      );
+    }
+
     return (
       <div className="proposal-block-avoid grid gap-3 md:grid-cols-2">
         {/* Do */}

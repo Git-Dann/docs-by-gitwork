@@ -208,6 +208,22 @@ export interface CostingSectionData {
 export interface CtaSectionData {
   headline: string;
   body: string;
+  /**
+   * `default` = the original eyebrow + headline + body + CTA buttons card (unchanged).
+   * `contact` = the MD's live-proposal closing: an optional contact card, one full-width accent
+   * button, and an optional small-print legal line. Every field below is optional, so a document
+   * written before this existed renders exactly as it always did.
+   */
+  style?: "default" | "contact";
+  /** Named contact for the closing card (`contact` style). Nothing renders when `name` is blank. */
+  contact?: { name?: string; role?: string; email?: string };
+  /** Secondary people listed under an "ALSO ON THIS ENGAGEMENT" label. */
+  alsoOn?: Array<{ name: string; role?: string }>;
+  /** Full-width accent pill button. Falls back to the PRIMARY `Cta` record when blank. */
+  buttonLabel?: string;
+  buttonUrl?: string;
+  /** Small-print line beneath the button (validity, VAT, contract precedence…). */
+  legalNote?: string;
 }
 
 export interface SupportingLinksSectionData {
@@ -238,6 +254,20 @@ export interface PartyItem {
   email: string;
   /** Whether this party signs the document. Used by the signatures block. */
   signatureRequired: boolean;
+  /**
+   * Optional detail lines describing the party — company number, registered office, "in a personal
+   * capacity". One entry per rendered line/clause fragment; blank entries are dropped at render.
+   * Mirrors `SignatureBlockItem.details`. Documents written before this field carried the same
+   * information in `organization` / `email`, which stay the back-compat fallback
+   * (`partyDetailLines` in `src/lib/sections/parties-text.ts`).
+   */
+  details?: string[];
+  /**
+   * The term this party is referred to by for the rest of the agreement — rendered in quotes at the
+   * end of its clause, e.g. `("Gitwork")` / `("the Client")`. Derived from `role`, else the name
+   * with its entity words stripped, when left blank (`partyDefinedTerm`).
+   */
+  definedTerm?: string;
 }
 
 export interface PartiesSectionData {
@@ -348,6 +378,11 @@ export interface SignaturesSectionData {
 export interface HeadingSectionData {
   /** Visual size — h1 (page-level), h2 (section), h3 (subsection). */
   level: "h1" | "h2" | "h3";
+  /**
+   * Heading text. A word or phrase wrapped in single asterisks is rendered as the **accent tail** —
+   * serif italic in `--doc-accent` — e.g. `Five angles of *attack.*`. Plain text is unaffected, so
+   * this is backwards-compatible; see `parseAccentSegments` in `src/lib/sections/variant-helpers.ts`.
+   */
   text: string;
   /** Optional eyebrow above the heading (mono caps). */
   eyebrow?: string;
@@ -361,13 +396,20 @@ export interface HeadingSectionData {
 // ── Infographic-inspired blocks (Sprint 9) ──────────────────────────────────
 export interface ProcessStepsSectionData {
   intro?: string;
-  steps: Array<{ label: string; note?: string }>;
+  /** `description` renders only in the `stepped` style (the muted line under each step title). */
+  steps: Array<{ label: string; note?: string; description?: string }>;
   /** Highlight the final step in the accent colour (the "Deploy to production" pill). */
   highlightLast?: boolean;
   /** Show connecting arrows between steps. */
   arrows?: boolean;
   /** Flowing row of pills vs a vertical stack. */
   layout?: "row" | "stack";
+  /**
+   * `pills` (default, unchanged) = connected pills. `stepped` = the MD's reference: full-width rows
+   * with a serif-italic accent roman numeral in the gutter, a serif title, a muted description, and
+   * a hairline between rows.
+   */
+  style?: "pills" | "stepped";
 }
 
 export interface DoDontSectionData {
@@ -376,14 +418,26 @@ export interface DoDontSectionData {
   dontTitle?: string;
   dontItems: string[];
   footnote?: string;
-  /** The "don't" panel: dark (navy) or light. */
+  /** The "don't" panel: dark (navy) or light. Applies to the `panels` style only. */
   dontStyle?: "dark" | "light";
+  /**
+   * `panels` (default, unchanged) = the tick/cross panels. `ledger` = the MD's reference: two
+   * mono-headed columns of hairline-separated rows, accent ✓ against muted ✕, no panel fill.
+   */
+  style?: "panels" | "ledger";
 }
 
 export interface PrinciplesGridSectionData {
-  items: Array<{ title: string; detail?: string }>;
+  /** `label` and `highlighted` render in the `cards` style only. */
+  items: Array<{ title: string; detail?: string; label?: string; highlighted?: boolean }>;
   columns?: 2 | 3;
-  style?: "light" | "dark";
+  /**
+   * `light` (default) / `dark` — unchanged. `cards` = the MD's reference: separated cards with a
+   * mono `NN / LABEL` eyebrow, one optionally accent-highlighted.
+   */
+  style?: "light" | "dark" | "cards";
+  /** Optional full-width card below the grid (`cards` style) — the reference's closing statement. */
+  footer?: { title?: string; body?: string };
 }
 
 export interface CategoryChecklistSectionData {
@@ -408,7 +462,9 @@ export interface ProseSectionData {
 }
 
 export interface CalloutSectionData {
-  tone: "info" | "warning" | "success" | "danger" | "neutral";
+  /** `outline` = no fill, hairline border, serif headline + body (the reference's "a disclosure,
+   *  up front"). The five filled tones are unchanged. */
+  tone: "info" | "warning" | "success" | "danger" | "neutral" | "outline";
   /** Optional headline above the body. */
   headline?: string;
   body: string;
@@ -455,13 +511,25 @@ export interface PricingTierItem {
   /** Optional CTA button label + url. Only renders when label is set. */
   ctaLabel?: string;
   ctaUrl?: string;
-  /** Highlights this tier ("most popular"). At most one should be highlighted. */
+  /** Highlights this tier ("most popular" / "recommended"). At most one should be highlighted. */
   highlighted?: boolean;
+  /** Mono label above the price in the `recommended` style. Defaults to `FROM`. */
+  priceLabel?: string;
+  /** Muted line under the price ("5 days, fixed price"). Falls back to `cadence`. */
+  subline?: string;
+  /** Badge text on the highlighted tier. Defaults to `RECOMMENDED`. */
+  badgeLabel?: string;
 }
 
 export interface PricingTiersSectionData {
   intro?: string;
   tiers: PricingTierItem[];
+  /**
+   * `cards` (default, unchanged) = the app-styled comparison cards. `recommended` = the MD's
+   * reference: the highlighted tier on a dark face with an accent badge, a `FROM` label, a big
+   * serif price, a muted sub-line and an accent-tick feature list; the rest light, same skeleton.
+   */
+  style?: "cards" | "recommended";
 }
 
 export interface KpiStripItem {
@@ -548,6 +616,13 @@ export interface ChecklistSectionData {
   polarity: "INCLUDE" | "EXCLUDE";
   intro?: string;
   items: string[];
+  /**
+   * `icon` (default, unchanged) = the polarity tick/cross circles. `arrow` = the reference's accent
+   * `→` markers on hairline-separated rows ("what we need from you").
+   */
+  marker?: "icon" | "arrow";
+  /** 1 (default) or 2 columns. */
+  columns?: 1 | 2;
 }
 
 export type ProposalSectionData =

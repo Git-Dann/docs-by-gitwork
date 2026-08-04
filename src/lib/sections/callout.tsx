@@ -12,6 +12,10 @@ const TONE_PALETTE: Record<CalloutSectionData["tone"], { border: string; bg: str
   success:  { border: "var(--success-500)", bg: "var(--success-50)", eyebrow: "var(--success-500)" },
   danger:   { border: "var(--danger-500)",  bg: "var(--danger-50)",  eyebrow: "var(--danger-500)" },
   neutral:  { border: "var(--text-3)",      bg: "var(--surface-1)",  eyebrow: "var(--text-4)" },
+  // `outline` is not a filled tone — it draws a full hairline box with no fill and sets its
+  // headline in serif rather than as a mono eyebrow. Rendered by its own branch below; these
+  // values only style the tone picker chip in the rail.
+  outline:  { border: "var(--doc-line, rgba(0,0,0,0.14))", bg: "transparent", eyebrow: "var(--doc-muted, #8a867c)" },
 };
 
 const TONE_LABEL: Record<CalloutSectionData["tone"], string> = {
@@ -20,6 +24,7 @@ const TONE_LABEL: Record<CalloutSectionData["tone"], string> = {
   success: "Success",
   danger: "Danger",
   neutral: "Neutral",
+  outline: "Outline",
 };
 
 export const calloutSection = defineSection<CalloutSectionData>({
@@ -66,7 +71,51 @@ export const calloutSection = defineSection<CalloutSectionData>({
     </SimpleForm>
   ),
   Preview: ({ data, editable, onChange }) => {
-    const palette = TONE_PALETTE[data.tone];
+    const palette = TONE_PALETTE[data.tone] ?? TONE_PALETTE.info;
+
+    // ── Outline — no fill, a full hairline border, serif headline over the body. ──
+    if (data.tone === "outline") {
+      const box = {
+        border: "1px solid var(--doc-line, rgba(0,0,0,0.14))",
+        borderRadius: 10,
+        padding: "20px 24px",
+        background: "transparent",
+      } as const;
+      const headlineClass =
+        "font-[family-name:var(--font-display)] text-[20px] leading-snug text-[var(--doc-ink,#1a1a17)]";
+      const bodyClass = "text-[13px] leading-6 text-[var(--doc-ink-soft,#4b4a44)]";
+      if (editable && onChange) {
+        return (
+          <div className="proposal-block-avoid" style={box}>
+            <InlineTextArea
+              value={data.headline ?? ""}
+              onChange={(headline) => onChange({ ...data, headline })}
+              placeholder="Headline (optional)"
+              ariaLabel="Callout headline"
+              className={headlineClass}
+            />
+            <div className="mt-2">
+              <InlineTextArea
+                value={data.body}
+                onChange={(body) => onChange({ ...data, body })}
+                placeholder="Callout body…"
+                ariaLabel="Callout body"
+                className={bodyClass}
+              />
+            </div>
+          </div>
+        );
+      }
+      return (
+        <div className="proposal-block-avoid" style={box}>
+          {data.headline ? <p className={headlineClass}>{data.headline}</p> : null}
+          <p className={`${bodyClass} ${data.headline ? "mt-2" : ""}`}>
+            {data.body || <span className="italic text-[var(--doc-muted,#8a867c)]">Empty callout — add a body in the editor.</span>}
+          </p>
+        </div>
+      );
+    }
+
     if (editable && onChange) {
       return (
         <div

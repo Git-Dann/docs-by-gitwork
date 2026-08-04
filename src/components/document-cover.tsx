@@ -33,8 +33,14 @@
  * for brand colour so light/dark mode toggles cascade through.
  */
 
-import type { ReactNode } from "react";
-import { InlineTextArea } from "@/lib/sections/inline-text";
+import type { CSSProperties, ReactNode } from "react";
+import { InlineEditableText, InlineTextArea } from "@/lib/sections/inline-text";
+import {
+  coverStripMode,
+  filterCoverParties,
+  partyColumnCount,
+  partyFallbackLabel,
+} from "@/lib/sections/parties-text";
 
 export interface DocumentCoverStat {
   count: string | number;
@@ -135,9 +141,11 @@ export interface DocumentCoverProps {
    */
   covers?: string[];
   /**
-   * Gitwork cover only: the parties row (contracts). 2–3 per row; 4+ wrap onto a second row rather
-   * than squashing. When present it REPLACES the meta grid / executive summary / stat tiles on the
-   * cover — a contract front page leads with who is bound, not with delivery metrics.
+   * The parties bound by the document (contracts). When present, the cover's ONE bottom strip
+   * renders party columns INSTEAD of the `meta` grid, and the executive summary / stat tiles are
+   * dropped — a contract front page leads with who is bound, not with delivery metrics. Layout
+   * scales with the count: 2 → 2-up, 3 → 3-up, 4 → 2×2, 5 → 3+2 (see `CoverBottomStrip`).
+   * Both document themes honour it; there is no `documentType` in the decision.
    */
   parties?: DocumentCoverParty[];
   /**
@@ -186,6 +194,152 @@ export function GitworkMark({ size = 44 }: { size?: number }) {
         G<span style={{ color: "#6B52FF" }}>.</span>
       </span>
     </span>
+  );
+}
+
+/** Faces + palette the bottom strip inherits from whichever cover renders it. */
+interface CoverStripSkin {
+  mono: string;
+  serif: string;
+  sans: string;
+  /** DM Serif Display ships one weight — forcing 600 there only synthesises a smeared faux-bold. */
+  serifWeight: number;
+  ink: string;
+  muted: string;
+  accent: string;
+  line: string;
+}
+
+/**
+ * The cover's ONE bottom region, in two data-driven modes.
+ *
+ * The cover used to carry two competing bottom blocks — a party columns row and a
+ * `Prepared for / Prepared by / Date / Valid until` meta grid — with an ad-hoc rule deciding which
+ * appeared, and only on the Gitwork theme (a Foundry-themed NDA printed neither). Now there is one
+ * frame, one label scale, one hairline treatment and one spacing rhythm, so a proposal cover and an
+ * NDA cover read as the same system, and the mode is chosen by `coverStripMode` from the DATA:
+ *
+ *   · has parties → the party columns (a contract leads with who is bound)
+ *   · otherwise   → the meta grid
+ *   · neither     → nothing at all, rather than an empty framed box
+ *
+ * There is deliberately **no `documentType` anywhere in this decision**: an NDA gets columns because
+ * it HAS parties, and adding a parties block to a proposal switches its cover over automatically.
+ *
+ * Party columns scale by count (`partyColumnCount`): 2 → 2-up, 3 → 3-up, **4 → 2×2** (not a ragged
+ * 3+1), 5 → 3+2, never more than 3 across — a 4th column on A4 crushes a registered-office line.
+ * The first column of each row carries no divider, so a wrapped 4th/5th party reads as a new row.
+ */
+function CoverBottomStrip({
+  parties,
+  meta,
+  skin,
+}: {
+  parties?: DocumentCoverParty[];
+  meta?: DocumentCoverMeta[];
+  skin: CoverStripSkin;
+}) {
+  const mode = coverStripMode({ parties, meta });
+  if (!mode) return null;
+
+  const label: CSSProperties = {
+    fontFamily: skin.mono,
+    fontSize: 9.5,
+    fontWeight: 600,
+    letterSpacing: "0.16em",
+    textTransform: "uppercase",
+    color: skin.accent,
+    marginBottom: 10,
+  };
+  const frame: CSSProperties = {
+    position: "relative",
+    zIndex: 1,
+    marginTop: 26,
+    borderTop: `1px solid ${skin.line}`,
+    borderBottom: `1px solid ${skin.line}`,
+    padding: "22px 0",
+    display: "grid",
+    columnGap: 18,
+    rowGap: 22,
+  };
+
+  if (mode === "meta") {
+    const rows = meta ?? [];
+    return (
+      <div style={{ ...frame, gridTemplateColumns: `repeat(${Math.min(rows.length, 4)}, minmax(0, 1fr))` }}>
+        {rows.map((row) => (
+          <div key={row.label} style={{ minWidth: 0 }}>
+            <div style={label}>{row.label}</div>
+            {/* A date / version / owner is a data readout, so it stays mono per the type system. */}
+            <div
+              style={{
+                fontFamily: skin.mono,
+                fontSize: 12.5,
+                fontWeight: 500,
+                color: skin.ink,
+                lineHeight: 1.45,
+                overflowWrap: "anywhere",
+              }}
+            >
+              {row.value}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const list = filterCoverParties(parties ?? []);
+  const cols = partyColumnCount(list.length);
+  return (
+    <div style={{ ...frame, gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+      {list.map((party, index) => {
+        const divided = index % cols !== 0;
+        return (
+          <div
+            key={`${party.name}-${index}`}
+            style={{
+              minWidth: 0,
+              paddingLeft: divided ? 18 : 0,
+              borderLeft: divided ? `1px solid ${skin.line}` : undefined,
+            }}
+          >
+            <div style={label}>{party.label?.trim() || partyFallbackLabel(index)}</div>
+            {/* A party name is a heading, so it is the display serif per the type system. */}
+            <div
+              style={{
+                fontFamily: skin.serif,
+                fontSize: 18,
+                fontWeight: skin.serifWeight,
+                lineHeight: 1.25,
+                color: skin.ink,
+                overflowWrap: "anywhere",
+              }}
+            >
+              {party.name}
+            </div>
+            {(party.lines ?? [])
+              .map((row) => (row ?? "").trim())
+              .filter(Boolean)
+              .map((row, i) => (
+                <div
+                  key={i}
+                  style={{
+                    marginTop: i === 0 ? 8 : 2,
+                    fontFamily: skin.sans,
+                    fontSize: 11.5,
+                    lineHeight: 1.6,
+                    color: skin.muted,
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {row}
+                </div>
+              ))}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -263,17 +417,23 @@ export function DocumentCover({
       const dot = "  ·  "; // NBSP-padded — plain spaces collapse in HTML.
 
       const coverItems = minimal ? [] : (covers ?? []).map((item) => item.trim()).filter(Boolean);
-      const partyList = minimal
-        ? []
-        : (parties ?? []).filter((party) => (party.name ?? "").trim() || (party.lines ?? []).length);
-      // Never more than 3 columns — 4–5 parties wrap onto a second row instead of squashing.
-      const partyCols = Math.min(Math.max(partyList.length, 1), 3);
-      const partyLabel = (party: DocumentCoverParty, index: number) =>
-        party.label?.trim() ||
-        (index < 26 ? `Party ${String.fromCharCode(65 + index)}` : `Party ${index + 1}`);
-      // A contract cover leads with who is bound, not with delivery metrics: the parties row
-      // REPLACES the meta grid / executive summary / stat tiles (which also keeps it to one sheet).
-      const showMetaBlocks = !minimal && partyList.length === 0;
+      // `minimal` is the bare front page — no strip in either mode.
+      const stripParties = minimal ? [] : (parties ?? []);
+      const stripMeta = minimal ? [] : (meta ?? []);
+      const stripSkin: CoverStripSkin = {
+        mono: gMono,
+        serif: gSerif,
+        sans: gSans,
+        serifWeight: 600, // Fraunces has real weights.
+        ink,
+        muted,
+        accent,
+        line,
+      };
+      // A contract cover leads with who is bound, not with delivery metrics: when the strip is in
+      // parties mode it REPLACES the executive summary / stat tiles too (and keeps it to one sheet).
+      const showMetaBlocks =
+        coverStripMode({ parties: stripParties, meta: stripMeta }) !== "parties" && !minimal;
 
       const titleType = {
         fontFamily: gSerif,
@@ -401,30 +561,24 @@ export function DocumentCover({
           <div style={{ position: "relative", zIndex: 1 }}>
             <div aria-hidden="true" style={{ width: 44, height: 3, background: accent, marginBottom: 22 }} />
 
-            {onTitleChange ? (
-              // The inline field is always full-width (its auto-grow replica sizes on 100%), so the
-              // accent period rides the last baseline at the end of the field rather than hugging
-              // the final glyph. Editor-only compromise — the read-only render is exact.
-              <div style={{ display: "flex", alignItems: "flex-end", maxWidth: "90%" }}>
-                <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-                  <InlineTextArea
-                    value={title}
-                    onChange={onTitleChange}
-                    placeholder="Document title"
-                    ariaLabel="Document title"
-                    style={titleType}
-                  />
-                </div>
-                <span aria-hidden="true" style={{ ...titleType, color: accent, flexShrink: 0 }}>
-                  .
-                </span>
-              </div>
-            ) : (
-              <h1 style={{ margin: 0, ...titleType, maxWidth: "90%" }}>
-                {cleanTitle}
-                <span style={{ color: accent }}>.</span>
-              </h1>
-            )}
+            {/* Editing and read-only share ONE markup shape — an h1 whose last child is the accent
+                period — so the dot hugs the final glyph (and follows the last word of a wrapped
+                title) identically in the editor, the print page and the public share. It used to be
+                a flex row with the field on one side: `InlineTextArea` is a textarea sized at 100%,
+                so the sibling dot landed at the end of the FIELD, out by the right margin. */}
+            <h1 style={{ margin: 0, ...titleType, maxWidth: "90%" }}>
+              {onTitleChange ? (
+                <InlineEditableText
+                  value={title}
+                  onChange={onTitleChange}
+                  placeholder="Document title"
+                  ariaLabel="Document title"
+                />
+              ) : (
+                cleanTitle
+              )}
+              <span style={{ color: accent }}>.</span>
+            </h1>
 
             {/* Rendered whenever there IS a subtitle — read-only and print covers showed none
                 before, because the block was gated on the editor's onSubtitleChange handler. */}
@@ -472,120 +626,9 @@ export function DocumentCover({
             </div>
           ) : null}
 
-          {/* Parties row — equal columns divided by hairlines, hairline above and below. */}
-          {partyList.length ? (
-            <div
-              style={{
-                position: "relative",
-                zIndex: 1,
-                marginTop: 26,
-                borderTop: `1px solid ${line}`,
-                borderBottom: `1px solid ${line}`,
-                padding: "22px 0",
-                display: "grid",
-                gridTemplateColumns: `repeat(${partyCols}, minmax(0, 1fr))`,
-                columnGap: 18,
-                rowGap: 22,
-              }}
-            >
-              {partyList.map((party, index) => {
-                // First column of each row carries no divider — so a wrapped 4th/5th party reads
-                // as the start of a new row rather than a continuation.
-                const divided = index % partyCols !== 0;
-                return (
-                  <div
-                    key={`${party.name}-${index}`}
-                    style={{
-                      minWidth: 0,
-                      paddingLeft: divided ? 18 : 0,
-                      borderLeft: divided ? `1px solid ${line}` : undefined,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontFamily: gMono,
-                        fontSize: 9.5,
-                        fontWeight: 600,
-                        letterSpacing: "0.16em",
-                        textTransform: "uppercase",
-                        color: accent,
-                        marginBottom: 10,
-                      }}
-                    >
-                      {partyLabel(party, index)}
-                    </div>
-                    <div
-                      style={{
-                        fontFamily: gSerif,
-                        fontSize: 18,
-                        fontWeight: 600,
-                        lineHeight: 1.25,
-                        color: ink,
-                        overflowWrap: "anywhere",
-                      }}
-                    >
-                      {party.name}
-                    </div>
-                    {(party.lines ?? [])
-                      .map((row) => (row ?? "").trim())
-                      .filter(Boolean)
-                      .map((row, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            marginTop: i === 0 ? 8 : 2,
-                            fontFamily: gSans,
-                            fontSize: 11.5,
-                            lineHeight: 1.6,
-                            color: muted,
-                            overflowWrap: "anywhere",
-                          }}
-                        >
-                          {row}
-                        </div>
-                      ))}
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-
-          {/* No parties (proposals, reports…) → the meta grid / summary / stat tiles as before. */}
-          {showMetaBlocks && meta && meta.length ? (
-            <div
-              style={{
-                position: "relative",
-                zIndex: 1,
-                marginTop: 26,
-                borderTop: `1px solid ${line}`,
-                paddingTop: 22,
-                display: "grid",
-                gridTemplateColumns: `repeat(${Math.min(meta.length, 4)}, minmax(0, 1fr))`,
-                gap: "18px 24px",
-              }}
-            >
-              {meta.map((row) => (
-                <div key={row.label} style={{ minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontFamily: gMono,
-                      fontSize: 9.5,
-                      fontWeight: 600,
-                      letterSpacing: "0.16em",
-                      textTransform: "uppercase",
-                      color: accent,
-                      marginBottom: 8,
-                    }}
-                  >
-                    {row.label}
-                  </div>
-                  <div style={{ fontFamily: gMono, fontSize: 12.5, fontWeight: 500, color: ink, lineHeight: 1.45 }}>
-                    {row.value}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : null}
+          {/* The ONE bottom strip — party columns when the document has parties, else the meta
+              grid. Same frame, labels and spacing either way (see CoverBottomStrip). */}
+          <CoverBottomStrip parties={stripParties} meta={stripMeta} skin={stripSkin} />
 
           {showMetaBlocks && executiveSummary ? (
             <div style={{ position: "relative", zIndex: 1, marginTop: 22, maxWidth: "70ch" }}>
@@ -751,6 +794,14 @@ export function DocumentCover({
     // ── Foundry statement cover (cream paper, periwinkle accent, DM Serif title, mono labels) ──
     const serif = "var(--font-display), 'DM Serif Display', 'Times New Roman', Georgia, serif";
     const mono = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
+    const sans = "var(--font-sans), 'Inter', system-ui, sans-serif";
+
+    // The SAME bottom strip the Gitwork cover uses — so a Foundry-themed NDA prints its parties
+    // (it printed neither region before) and a proposal's meta grid reads as the same component.
+    const fStripParties = minimal ? [] : (parties ?? []);
+    const fStripMeta = minimal ? [] : (meta ?? []);
+    const fStripMode = coverStripMode({ parties: fStripParties, meta: fStripMeta });
+    const fShowMetaBlocks = !minimal && fStripMode !== "parties";
 
     return (
       <section
@@ -853,40 +904,33 @@ export function DocumentCover({
             {eyebrow}
           </p>
 
-          {onTitleChange ? (
-            <div style={{ marginTop: 14, maxWidth: "92%" }}>
-              <InlineTextArea
+          {/* One markup shape for edit + read-only, so the accent period hugs the last glyph of a
+              wrapped title in both (see the Gitwork branch above for why the old flex row didn't). */}
+          <h1
+            style={{
+              margin: "14px 0 0",
+              fontFamily: serif,
+              fontSize: isPrint ? 46 : 36,
+              fontWeight: 400,
+              letterSpacing: "-0.02em",
+              lineHeight: 1.16,
+              color: ink,
+              maxWidth: "92%",
+              paddingBottom: "0.12em",
+            }}
+          >
+            {onTitleChange ? (
+              <InlineEditableText
                 value={title}
                 onChange={onTitleChange}
                 placeholder="Document title"
                 ariaLabel="Document title"
-                style={{
-                  fontFamily: serif,
-                  fontSize: isPrint ? 46 : 36,
-                  fontWeight: 400,
-                  letterSpacing: "-0.02em",
-                  lineHeight: 1.16,
-                  color: ink,
-                }}
               />
-            </div>
-          ) : (
-            <h1
-              style={{
-                margin: "14px 0 0",
-                fontFamily: serif,
-                fontSize: isPrint ? 46 : 36,
-                fontWeight: 400,
-                letterSpacing: "-0.02em",
-                lineHeight: 1.16,
-                color: ink,
-                maxWidth: "92%",
-              }}
-            >
-              {cleanTitle}
-              <span style={{ color: accent }}>.</span>
-            </h1>
-          )}
+            ) : (
+              cleanTitle
+            )}
+            <span style={{ color: accent }}>.</span>
+          </h1>
 
           {onSubtitleChange ? (
             <div style={{ marginTop: 14, maxWidth: "80%" }}>
@@ -901,41 +945,25 @@ export function DocumentCover({
           ) : null}
         </div>
 
-        {/* Meta grid — up to 4-up. */}
-        {!minimal && meta && meta.length ? (
-          <div
-            style={{
-              marginTop: 26,
-              display: "grid",
-              gridTemplateColumns: `repeat(${Math.min(meta.length, 4)}, minmax(0, 1fr))`,
-              gap: "18px 24px",
-            }}
-          >
-            {meta.map((row) => (
-              <div key={row.label} style={{ minWidth: 0 }}>
-                <div
-                  style={{
-                    fontFamily: mono,
-                    fontSize: 10,
-                    fontWeight: 600,
-                    letterSpacing: "0.1em",
-                    textTransform: "uppercase",
-                    color: muted,
-                    marginBottom: 6,
-                  }}
-                >
-                  {row.label}
-                </div>
-                <div style={{ fontFamily: mono, fontSize: 13, fontWeight: 500, color: ink, lineHeight: 1.4 }}>
-                  {row.value}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : null}
+        {/* The ONE bottom strip — party columns when the document has parties, else the meta grid. */}
+        <CoverBottomStrip
+          parties={fStripParties}
+          meta={fStripMeta}
+          skin={{
+            mono,
+            serif,
+            sans,
+            // DM Serif Display ships one weight; 600 here would only synthesise a faux-bold.
+            serifWeight: 400,
+            ink,
+            muted,
+            accent,
+            line,
+          }}
+        />
 
         {/* Executive summary — mono body. */}
-        {!minimal && executiveSummary ? (
+        {fShowMetaBlocks && executiveSummary ? (
           <div style={{ marginTop: 24, maxWidth: "80ch" }}>
             {executiveSummary
               .split(/\n{2,}/)
@@ -959,7 +987,7 @@ export function DocumentCover({
         ) : null}
 
         {/* Stat tiles — rounded panels, one dark (via stat.bg). */}
-        {!minimal && stats && stats.length ? (
+        {fShowMetaBlocks && stats && stats.length ? (
           <div
             style={{
               marginTop: 28,
