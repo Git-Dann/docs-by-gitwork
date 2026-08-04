@@ -1271,9 +1271,9 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                       // Fully signed — link directly to the combined PDF
                       return (
                         <div className="mt-2 flex items-center gap-2 border-t border-[var(--border-2)] pt-2">
-                          {draft.docusealCombinedPdfUrl ? (
+                          {draft.docusealCombinedPdfUrl || draft.docusealStatus === "COMPLETED" ? (
                             <a
-                              href={draft.docusealCombinedPdfUrl}
+                              href={`/api/documents/${draft.id}/docuseal/download`}
                               target="_blank"
                               rel="noreferrer"
                               className="flex flex-1 items-center justify-center gap-1.5 rounded-[7px] border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
