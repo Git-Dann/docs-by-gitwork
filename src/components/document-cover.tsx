@@ -418,7 +418,16 @@ export function DocumentCover({
 
       const coverItems = minimal ? [] : (covers ?? []).map((item) => item.trim()).filter(Boolean);
       // `minimal` is the bare front page — no strip in either mode.
-      const stripParties = minimal ? [] : (parties ?? []);
+      // Parties are EXEMPT from `minimal`. `minimal` is a bare front page — it drops the covers
+      // strip, the exec summary and the stat tiles — but who is legally bound is not decoration,
+      // and a contract cover that omits it is wrong rather than minimal.
+      //
+      // This one line is why "parties don't render on the cover" survived three fixes: it zeroed
+      // the input BEFORE `coverStripMode` saw it, so every check downstream — the pure helpers,
+      // the mode decision, the renderer — was correct and still produced nothing. Documents
+      // created before `43506dd6` carry a stored `coverStyle: "minimal"`, and that commit removed
+      // the Light/Minimal/Bold control, so they were stranded in it with no UI to change it back.
+      const stripParties = parties ?? [];
       const stripMeta = minimal ? [] : (meta ?? []);
       const stripSkin: CoverStripSkin = {
         mono: gMono,
@@ -774,7 +783,9 @@ export function DocumentCover({
 
     // The SAME bottom strip the Gitwork cover uses — so a Foundry-themed NDA prints its parties
     // (it printed neither region before) and a proposal's meta grid reads as the same component.
-    const fStripParties = minimal ? [] : (parties ?? []);
+    // Same exemption as the Gitwork cover above — a Foundry-themed NDA must print its parties
+    // whatever cover style the document happens to carry.
+    const fStripParties = parties ?? [];
     const fStripMeta = minimal ? [] : (meta ?? []);
     const fStripMode = coverStripMode({ parties: fStripParties, meta: fStripMeta });
     const fShowMetaBlocks = !minimal && fStripMode !== "parties";
