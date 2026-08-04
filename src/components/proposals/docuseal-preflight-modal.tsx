@@ -10,7 +10,7 @@
 "use client";
 
 import { useState } from "react";
-import { DocumentTextIcon, XMarkIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import { DocumentTextIcon, XMarkIcon, SparklesIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 
@@ -309,9 +309,15 @@ export function DocuSealPreflightModal({
           </label>
         </div>
 
-        {/* Error */}
+        {/* Error / Warning Notice */}
         {error ? (
-          <p className="text-sm font-medium text-[var(--danger-500)]">{error}</p>
+          <div className="rounded-[8px] border border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-3.5 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
+            <ExclamationTriangleIcon className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+            <div className="space-y-1">
+              <p className="font-semibold text-amber-900 dark:text-amber-200">Attention Required</p>
+              <p className="leading-relaxed">{error}</p>
+            </div>
+          </div>
         ) : null}
 
         {/* Actions */}
