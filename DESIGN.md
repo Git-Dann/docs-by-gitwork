@@ -573,9 +573,81 @@ callout rule, and links.
 
 | Role | Face | Notes |
 |---|---|---|
-| Headings — section titles, cover title, party/signatory names | **Fraunces** (`var(--font-display)` inside the doc) | The brand display face. Weight 600 on the cover. |
+| Headings — section titles, cover title, party/signatory names | **Fraunces** (`var(--font-display)` inside the doc) | The brand display face. **Never hardcode a weight — read `--doc-display-weight`** (see below). |
 | **Body** — paragraphs, clauses, table cells, list items | **Inter** (`var(--font-sans)`) | Set on `.proposal-document` itself. |
 | Labels, eyebrows, clause numbers, page header/footer, data readouts | **JetBrains Mono** (`var(--font-mono)`) | Uppercase, letter-spaced ~.14–.22em. |
+
+### ⚠️ The display weight is a property of the THEME, never of the block
+
+**Never write a weight on a `--font-display` element. Read `--doc-display-weight`.**
+
+| Theme | Face | Weight | Why |
+|---|---|---|---|
+| Foundry | DM Serif Display | **400** | The family ships a single 400 cut. Asking for 700 makes the browser synthesise a fake bold. |
+| Gitwork | Fraunces | **700** | Fraunces is always 700 in the brand reference — **63 of 63** display occurrences across the signing emails, with no lighter cut used anywhere. |
+
+Because the correct number differs per theme, any literal is wrong in one of them by construction.
+This is not hypothetical: five call sites pinned `font-normal` beside
+`font-[family-name:var(--font-display)]`, which kept every Gitwork heading at 400 long after the
+heading rule itself was corrected, and was the single biggest reason our display type read thin
+next to the real thing.
+
+- `h1`–`h4` inside `.proposal-document` already resolve through the token — do nothing.
+- Anything else on the display face (stat figures, tier prices, KPI numbers) uses
+  **`.doc-display-face`**, which sets the family *and* the weight together.
+
+**Enforced** by `src/lib/__tests__/doc-display-weight.test.ts`, which fails if the token loses
+either theme's value, if the heading rule regresses to a literal, or if any of the four
+document-face files pairs the display face with a Tailwind weight utility. Nothing else in the
+gate can see inside a class string.
+
+### The Gitwork document palette — exact, counted, not eyeballed
+
+Every value below was counted from the 31 signing emails in
+[`docs/gitwork-reference/`](gitwork-reference/) — the canonical brand set. Use the token, and if
+you ever need to change one, re-count rather than nudge.
+
+| Token | Value | Role | Uses in reference |
+|---|---|---|---|
+| `--doc-ink` | `#1A1A1E` | Headings and body — **one** of only two text colours | 320 |
+| `--doc-muted` | `#6B6B6B` | The *only* secondary text colour | 292 |
+| `--doc-paper` | `#F2EDE4` | Cream page ground | 272 |
+| `--doc-line` | `#EAE5DC` | Every rule, card border and divider | 128 |
+| `--doc-panel` | `#FFFFFF` | The white card on cream | 152 |
+| `--doc-accent` | `#6B52FF` | Purple — CTAs, eyebrows, numerals, the cover period | 123 |
+
+⚠️ **Rules are a warm opaque `#EAE5DC`, never alpha-black.** We previously used
+`rgba(0,0,0,0.12)`, which resolves to about `#D5D1C9` on cream — darker and cooler than the brand.
+Alpha is wrong in principle here as well as in value, because the resulting colour shifts with
+whatever it happens to sit on.
+
+There are **two text colours in the entire reference set.** If you reach for a third, you are
+inventing.
+
+### ⚠️ Ink-on-dark is for INTERNAL alerts only — never a client document
+
+From the reference's own design notes: *"Cream page background, white card. Ink background on
+internal alerts only, so a client email and an internal alert can never be confused at a glance."*
+
+The dark palette (`#050509` ground, `#0C0C18` card, `#1E1E30` rules, `#8A86A6` muted) exists so a
+Foundry alert to the team is **unmistakable at a glance**. Putting a client-facing document, cover
+or block on ink destroys the one signal that distinction carries. Client-facing surfaces are cream
+paper with a white card, always.
+
+### Playfair Display italic — numerals only
+
+Stepped/process lists set their numerals in **Playfair Display italic, 24px, `#6B52FF`** — declared
+exactly that way in the reference. This is the *one* place a third face appears; Playfair is not a
+general-purpose display face here and must not spread. (A headline's accent tail is the italic of
+**its own** face, not Playfair — that could not be resolved to a distinct face from the 300dpi
+rasters, so the rule is stated in terms of the face already in use.)
+
+### ⚠️ Section headers carry NO underline
+
+A 44×2px purple rule under each Gitwork section header was invented in a previous pass on the
+belief that the brand PDFs underline their section titles. **They do not** — the gap analysis
+found no such rule in *either* reference. It has been removed, and the test above fails if it
+comes back. Section hierarchy is the mono overline plus the bold Fraunces title, nothing else.
 
 ⚠️ **A mono BODY is gone** — it read as a code dump in a legal document. Mono is now labels-and-
 numbers only. And **never remap `--font-mono` inside the doc scope**: the Gitwork block used to alias

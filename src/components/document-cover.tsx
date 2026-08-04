@@ -185,7 +185,7 @@ export function GitworkMark({ size = 44 }: { size?: number }) {
         style={{
           fontFamily: "var(--font-fraunces), 'Fraunces', Georgia, serif",
           fontSize: Math.round(size * 0.5),
-          fontWeight: 600,
+          fontWeight: 700,
           lineHeight: 1,
           color: "#0C0C18",
           transform: "translateY(-1px)",
@@ -424,7 +424,7 @@ export function DocumentCover({
         mono: gMono,
         serif: gSerif,
         sans: gSans,
-        serifWeight: 600, // Fraunces has real weights.
+        serifWeight: 700, // Fraunces is always 700 in the brand reference (63/63).
         ink,
         muted,
         accent,
@@ -438,7 +438,7 @@ export function DocumentCover({
       const titleType = {
         fontFamily: gSerif,
         fontSize: isPrint ? 62 : 46,
-        fontWeight: 600,
+        fontWeight: 700,
         // 1.06 clipped the descenders (the 'g' in "Agreement") — a display serif at this size needs
         // real leading, and the cover clips overflow to stay one A4 page, so there's nowhere for a
         // cropped tail to go. paddingBottom gives the last line's descender room too.
@@ -692,7 +692,7 @@ export function DocumentCover({
                     style={{
                       fontFamily: gSerif,
                       fontSize: 26,
-                      fontWeight: 600,
+                      fontWeight: 700,
                       letterSpacing: "-0.02em",
                       lineHeight: 1,
                       color: stat.color && stat.color !== "#FFFFFF" ? stat.color : ink,
@@ -731,34 +731,10 @@ export function DocumentCover({
             <div style={{ position: "relative", zIndex: 1, marginTop: 28 }}>
               <div aria-hidden="true" style={{ height: 1, background: line, marginBottom: 16 }} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 24 }}>
-                {/* Rounded-SQUARE tile per the reference. The round `GitworkMark` is unchanged and
-                    still used by the navy running-header bar on content pages. */}
-                <span
-                  aria-label="Gitwork"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 36,
-                    height: 36,
-                    borderRadius: 4,
-                    background: "#F2EDE4",
-                    flexShrink: 0,
-                  }}
-                >
-                  <span
-                    style={{
-                      fontFamily: gSerif,
-                      fontSize: 18,
-                      fontWeight: 600,
-                      lineHeight: 1,
-                      color: "#0C0C18",
-                      transform: "translateY(-1px)",
-                    }}
-                  >
-                    G<span style={{ color: "#6B52FF" }}>.</span>
-                  </span>
-                </span>
+                {/* The CIRCULAR mark. This was an inlined rounded-square copy of `GitworkMark`,
+                    which the gap analysis found disagrees with both references — the brand mark is
+                    a disc. Using the shared component means there is now exactly one G. mark. */}
+                <GitworkMark size={36} />
                 <div
                   style={{
                     display: "flex",

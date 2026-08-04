@@ -137,7 +137,7 @@ export const headingSection = defineSection<HeadingSectionData>({
                 onChange={(text) => onChange({ ...data, text })}
                 placeholder="Banner title"
                 ariaLabel="Banner title"
-                style={{ fontFamily: serif, fontSize: "clamp(28px, 5vw, 44px)", fontWeight: 400, lineHeight: 1.1, letterSpacing: "-0.02em", color: "#fff" }}
+                style={{ fontFamily: serif, fontSize: "clamp(28px, 5vw, 44px)", fontWeight: "var(--doc-display-weight)", lineHeight: 1.1, letterSpacing: "-0.02em", color: "#fff" }}
               />
             </div>
             <div className="mt-3 max-w-[62ch]">
@@ -160,7 +160,7 @@ export const headingSection = defineSection<HeadingSectionData>({
             </p>
           ) : null}
           <h2
-            style={{ fontFamily: serif, fontSize: "clamp(28px, 5vw, 44px)", fontWeight: 400, lineHeight: 1.1, letterSpacing: "-0.02em", color: "#fff", margin: data.eyebrow ? "12px 0 0" : 0 }}
+            style={{ fontFamily: serif, fontSize: "clamp(28px, 5vw, 44px)", fontWeight: "var(--doc-display-weight)", lineHeight: 1.1, letterSpacing: "-0.02em", color: "#fff", margin: data.eyebrow ? "12px 0 0" : 0 }}
           >
             {/* An authored accent tail supplies its own ending (including the full stop), so the
                 banner's auto-period is skipped — otherwise "…in *place.*" prints two of them.
@@ -189,7 +189,7 @@ export const headingSection = defineSection<HeadingSectionData>({
     const headingStyle = {
       fontFamily: "var(--font-display), serif",
       fontSize,
-      fontWeight: 400,
+      fontWeight: "var(--doc-display-weight)",
       letterSpacing: "-0.025em",
       lineHeight: 1.15,
       color: "var(--doc-ink, #0F172A)",

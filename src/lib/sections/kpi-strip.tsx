@@ -144,7 +144,7 @@ export const kpiStripSection = defineSection<KpiStripSectionData>({
                     onChange={(value) => update(i, { value })}
                     placeholder="85%"
                     ariaLabel="KPI value"
-                    className={`font-[family-name:var(--font-display)] text-[32px] font-normal leading-none ${dark ? "text-white" : "text-[var(--text-1)]"}`}
+                    className={`doc-display-face text-[32px] leading-none ${dark ? "text-white" : "text-[var(--text-1)]"}`}
                   />
                 </div>
                 <div className="mt-2">
@@ -189,7 +189,7 @@ export const kpiStripSection = defineSection<KpiStripSectionData>({
                 {item.context}
               </p>
             ) : null}
-            <p className={`font-[family-name:var(--font-display)] text-[32px] font-normal leading-none ${dark ? "text-white" : "text-[var(--text-1)]"} ${item.context ? "mt-1.5" : ""}`}>
+            <p className={`doc-display-face text-[32px] leading-none ${dark ? "text-white" : "text-[var(--text-1)]"} ${item.context ? "mt-1.5" : ""}`}>
               {item.value || "—"}
             </p>
             <p className={`mt-2 text-sm ${dark ? "text-white/70" : "text-[var(--text-3)]"}`}>{item.label || "—"}</p>
