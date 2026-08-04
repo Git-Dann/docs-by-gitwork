@@ -1077,7 +1077,208 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 separating it from Details (row 2) is also what stopped their native `title`
                 tooltips colliding, which cannot be fixed by repositioning because the browser
                 owns native tooltip placement. Layout was the only real fix. */}
-            <span className="ml-auto flex shrink-0 items-center gap-1.5">
+
+            {/* The tool cluster sits HERE, immediately left of Review & Send: these are what you
+                reach for right before sending — preview, present, ask AI, settings, Details.
+                Review & Send stays hard right and ALONE, so the primary action is never one of
+                six lookalike buttons in a row. Row 2 keeps only what you touch WHILE writing:
+                the pane toggles and undo/redo. */}
+            <span className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+            <Link
+              href={`/app/docs/${proposalId}/preview`}
+              title="Open full preview"
+              aria-label="Open full preview"
+              className={TOOL_ICON_BTN}
+            >
+              <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+            </Link>
+            <button
+              type="button"
+              onClick={() => setPresenting(true)}
+              title="Present"
+              aria-label="Present"
+              className={TOOL_ICON_BTN}
+            >
+              <PlayIcon className="h-4 w-4" />
+            </button>
+            {/* AI menu — Ask AI · Quick draft. Hidden for non-generators (cost gate). */}
+            {canGenerateAi && (
+            <div className="shrink-0">
+              <button
+                ref={aiMenuButtonRef}
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={aiMenuOpen}
+                title="AI authoring"
+                onClick={() => {
+                  const rect = aiMenuButtonRef.current?.getBoundingClientRect();
+                  if (rect) setAiMenuPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
+                  setAiMenuOpen((v) => !v);
+                }}
+                className={cn(TOOL_BTN, "gap-1 px-2")}
+              >
+                <SparklesIcon className="h-4 w-4" />
+                AI
+                <ChevronDownIcon className={cn("h-3.5 w-3.5 opacity-70 transition", aiMenuOpen && "rotate-180")} />
+              </button>
+              {aiMenuOpen && (
+                <div
+                  ref={aiMenuRef}
+                  role="menu"
+                  aria-label="AI actions"
+                  style={{ top: aiMenuPos.top, right: aiMenuPos.right }}
+                  className="fixed z-[100] w-60 overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white py-1 shadow-[var(--shadow-lg)]"
+                >
+                  <button
+                    role="menuitem"
+                    type="button"
+                    onClick={() => { setAiMenuOpen(false); setAiChatOpen(true); }}
+                    className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-1)]"
+                  >
+                    <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
+                    <span>
+                      <span className="block text-sm font-medium text-[var(--text-1)]">Ask AI</span>
+                      <span className="block text-xs text-[var(--text-3)]">Chat to refine sections as you write.</span>
+                    </span>
+                  </button>
+                  <button
+                    role="menuitem"
+                    type="button"
+                    onClick={() => { setAiMenuOpen(false); setAiDraftOpen(true); }}
+                    className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-1)]"
+                  >
+                    <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
+                    <span>
+                      <span className="block text-sm font-medium text-[var(--text-1)]">Quick draft</span>
+                      <span className="block text-xs text-[var(--text-3)]">Generate a first-pass draft of every section.</span>
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+            )}
+            {draft.documentType === "REPORT" && (
+              <button
+                type="button"
+                onClick={() => setPullDataOpen(true)}
+                className={TOOL_ICON_BTN}
+                aria-label="Pull client data"
+                title="Fill this report's data sections from a Care client's live tickets & analytics"
+              >
+                <ArrowDownTrayIcon className="h-4 w-4" />
+              </button>
+            )}
+
+            {/* ⚙ Doc settings — the per-document theme toggle + labels, re-housed out of the old
+                header rows so neither costs the toolbar any vertical space. */}
+            <div className="shrink-0">
+              <button
+                ref={docSettingsButtonRef}
+                type="button"
+                aria-haspopup="dialog"
+                aria-expanded={docSettingsOpen}
+                aria-label="Document theme and labels"
+                title="Theme & labels"
+                onClick={() => {
+                  const rect = docSettingsButtonRef.current?.getBoundingClientRect();
+                  if (rect) {
+                    setDocSettingsPos({
+                      top: rect.bottom + 8,
+                      right: window.innerWidth - rect.right,
+                    });
+                  }
+                  setDocSettingsOpen((v) => !v);
+                }}
+                className={docSettingsOpen ? TOOL_ICON_BTN_ON : TOOL_ICON_BTN}
+              >
+                <Cog6ToothIcon className="h-4 w-4" />
+              </button>
+              {docSettingsOpen && (
+                <div
+                  ref={docSettingsRef}
+                  role="dialog"
+                  aria-label="Document theme and labels"
+                  style={{ top: docSettingsPos.top, right: docSettingsPos.right }}
+                  className="fixed z-[100] w-[300px] max-w-[94vw] overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-lg)]"
+                >
+                  <div className="widget-header">
+                    <span className="widget-header-label">DOCUMENT</span>
+                    <span className="widget-header-right">
+                      {activeDocTheme.toUpperCase()} · {labelCount} LABEL{labelCount === 1 ? "" : "S"}
+                    </span>
+                  </div>
+                  <div className="space-y-4 p-4">
+                    <div>
+                      <p className="app-eyebrow">Theme</p>
+                      {/* Gitwork first — it's the default. "Light/Dark" was misleading: both themes
+                          are cream paper (only the COVER is navy), so this names the brand, not a
+                          brightness. Live-updates the canvas via the draft/autosave path. */}
+                      <div className="mt-2 inline-flex items-center gap-0.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5">
+                        {([["gitwork", "Gitwork"], ["foundry", "Foundry"]] as const).map(
+                          ([theme, label]) => {
+                            const themeActive = activeDocTheme === theme;
+                            return (
+                              <button
+                                key={theme}
+                                type="button"
+                                onClick={() =>
+                                  updateDraft({
+                                    ...draft,
+                                    metadata: { ...draft.metadata, docTheme: theme },
+                                  })
+                                }
+                                aria-pressed={themeActive}
+                                className={cn(
+                                  "rounded-[4px] px-2.5 py-1 text-xs font-medium transition",
+                                  themeActive
+                                    ? "bg-[var(--brand-200)] text-[var(--brand-700)]"
+                                    : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+                                )}
+                              >
+                                {label}
+                              </button>
+                            );
+                          },
+                        )}
+                      </div>
+                    </div>
+                    <div className="border-t border-[var(--border-2)] pt-3">
+                      <p className="app-eyebrow">Labels</p>
+                      <LabelEditor
+                        labels={draft.labels ?? []}
+                        onChange={(labels) => updateDraft({ ...draft, labels })}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleTabChange(activeTab === "overview" ? "builder" : "overview")}
+              aria-pressed={activeTab === "overview"}
+              title={activeTab === "overview" ? "Back to the editor" : "Document details"}
+              className={cn(
+                TOOL_BTN,
+                activeTab === "overview" &&
+                  "border-[var(--brand-600)] bg-[var(--brand-200)] text-[var(--brand-700)]",
+              )}
+            >
+              {activeTab === "overview" ? (
+                <>
+                  <ArrowLeftIcon className="h-4 w-4" />
+                  Editor
+                </>
+              ) : (
+                <>
+                  <Squares2X2Icon className="h-4 w-4" />
+                  Details
+                </>
+              )}
+            </button>
+            </span>
+            <span className="flex shrink-0 items-center gap-1.5">
               <button
                 ref={approvalButtonRef}
                 type="button"
@@ -1312,201 +1513,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             >
               <ArrowUturnRightIcon className="h-4 w-4" />
             </button>
-            <Link
-              href={`/app/docs/${proposalId}/preview`}
-              title="Open full preview"
-              aria-label="Open full preview"
-              className={TOOL_ICON_BTN}
-            >
-              <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-            </Link>
-            <button
-              type="button"
-              onClick={() => setPresenting(true)}
-              title="Present"
-              aria-label="Present"
-              className={TOOL_ICON_BTN}
-            >
-              <PlayIcon className="h-4 w-4" />
-            </button>
           </span>
 
-            {/* AI menu — Ask AI · Quick draft. Hidden for non-generators (cost gate). */}
-            {canGenerateAi && (
-            <div className="shrink-0">
-              <button
-                ref={aiMenuButtonRef}
-                type="button"
-                aria-haspopup="menu"
-                aria-expanded={aiMenuOpen}
-                title="AI authoring"
-                onClick={() => {
-                  const rect = aiMenuButtonRef.current?.getBoundingClientRect();
-                  if (rect) setAiMenuPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
-                  setAiMenuOpen((v) => !v);
-                }}
-                className={cn(TOOL_BTN, "gap-1 px-2")}
-              >
-                <SparklesIcon className="h-4 w-4" />
-                AI
-                <ChevronDownIcon className={cn("h-3.5 w-3.5 opacity-70 transition", aiMenuOpen && "rotate-180")} />
-              </button>
-              {aiMenuOpen && (
-                <div
-                  ref={aiMenuRef}
-                  role="menu"
-                  aria-label="AI actions"
-                  style={{ top: aiMenuPos.top, right: aiMenuPos.right }}
-                  className="fixed z-[100] w-60 overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white py-1 shadow-[var(--shadow-lg)]"
-                >
-                  <button
-                    role="menuitem"
-                    type="button"
-                    onClick={() => { setAiMenuOpen(false); setAiChatOpen(true); }}
-                    className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-1)]"
-                  >
-                    <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
-                    <span>
-                      <span className="block text-sm font-medium text-[var(--text-1)]">Ask AI</span>
-                      <span className="block text-xs text-[var(--text-3)]">Chat to refine sections as you write.</span>
-                    </span>
-                  </button>
-                  <button
-                    role="menuitem"
-                    type="button"
-                    onClick={() => { setAiMenuOpen(false); setAiDraftOpen(true); }}
-                    className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-1)]"
-                  >
-                    <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
-                    <span>
-                      <span className="block text-sm font-medium text-[var(--text-1)]">Quick draft</span>
-                      <span className="block text-xs text-[var(--text-3)]">Generate a first-pass draft of every section.</span>
-                    </span>
-                  </button>
-                </div>
-              )}
-            </div>
-            )}
-            {draft.documentType === "REPORT" && (
-              <button
-                type="button"
-                onClick={() => setPullDataOpen(true)}
-                className={TOOL_ICON_BTN}
-                aria-label="Pull client data"
-                title="Fill this report's data sections from a Care client's live tickets & analytics"
-              >
-                <ArrowDownTrayIcon className="h-4 w-4" />
-              </button>
-            )}
-
-            {/* ⚙ Doc settings — the per-document theme toggle + labels, re-housed out of the old
-                header rows so neither costs the toolbar any vertical space. */}
-            <div className="shrink-0">
-              <button
-                ref={docSettingsButtonRef}
-                type="button"
-                aria-haspopup="dialog"
-                aria-expanded={docSettingsOpen}
-                aria-label="Document theme and labels"
-                title="Theme & labels"
-                onClick={() => {
-                  const rect = docSettingsButtonRef.current?.getBoundingClientRect();
-                  if (rect) {
-                    setDocSettingsPos({
-                      top: rect.bottom + 8,
-                      right: window.innerWidth - rect.right,
-                    });
-                  }
-                  setDocSettingsOpen((v) => !v);
-                }}
-                className={docSettingsOpen ? TOOL_ICON_BTN_ON : TOOL_ICON_BTN}
-              >
-                <Cog6ToothIcon className="h-4 w-4" />
-              </button>
-              {docSettingsOpen && (
-                <div
-                  ref={docSettingsRef}
-                  role="dialog"
-                  aria-label="Document theme and labels"
-                  style={{ top: docSettingsPos.top, right: docSettingsPos.right }}
-                  className="fixed z-[100] w-[300px] max-w-[94vw] overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-lg)]"
-                >
-                  <div className="widget-header">
-                    <span className="widget-header-label">DOCUMENT</span>
-                    <span className="widget-header-right">
-                      {activeDocTheme.toUpperCase()} · {labelCount} LABEL{labelCount === 1 ? "" : "S"}
-                    </span>
-                  </div>
-                  <div className="space-y-4 p-4">
-                    <div>
-                      <p className="app-eyebrow">Theme</p>
-                      {/* Gitwork first — it's the default. "Light/Dark" was misleading: both themes
-                          are cream paper (only the COVER is navy), so this names the brand, not a
-                          brightness. Live-updates the canvas via the draft/autosave path. */}
-                      <div className="mt-2 inline-flex items-center gap-0.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5">
-                        {([["gitwork", "Gitwork"], ["foundry", "Foundry"]] as const).map(
-                          ([theme, label]) => {
-                            const themeActive = activeDocTheme === theme;
-                            return (
-                              <button
-                                key={theme}
-                                type="button"
-                                onClick={() =>
-                                  updateDraft({
-                                    ...draft,
-                                    metadata: { ...draft.metadata, docTheme: theme },
-                                  })
-                                }
-                                aria-pressed={themeActive}
-                                className={cn(
-                                  "rounded-[4px] px-2.5 py-1 text-xs font-medium transition",
-                                  themeActive
-                                    ? "bg-[var(--brand-200)] text-[var(--brand-700)]"
-                                    : "text-[var(--text-3)] hover:text-[var(--text-1)]",
-                                )}
-                              >
-                                {label}
-                              </button>
-                            );
-                          },
-                        )}
-                      </div>
-                    </div>
-                    <div className="border-t border-[var(--border-2)] pt-3">
-                      <p className="app-eyebrow">Labels</p>
-                      <LabelEditor
-                        labels={draft.labels ?? []}
-                        onChange={(labels) => updateDraft({ ...draft, labels })}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => handleTabChange(activeTab === "overview" ? "builder" : "overview")}
-              aria-pressed={activeTab === "overview"}
-              title={activeTab === "overview" ? "Back to the editor" : "Document details"}
-              className={cn(
-                TOOL_BTN,
-                activeTab === "overview" &&
-                  "border-[var(--brand-600)] bg-[var(--brand-200)] text-[var(--brand-700)]",
-              )}
-            >
-              {activeTab === "overview" ? (
-                <>
-                  <ArrowLeftIcon className="h-4 w-4" />
-                  Editor
-                </>
-              ) : (
-                <>
-                  <Squares2X2Icon className="h-4 w-4" />
-                  Details
-                </>
-              )}
-            </button>
 
         </div>
       </section>
