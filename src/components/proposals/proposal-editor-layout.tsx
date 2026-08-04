@@ -958,7 +958,9 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
 
           {/* Condensed breadcrumb — the document itself is named by the title field beside it, so
               the old trailing "› {title}" crumb is gone as pure duplication. */}
-          <span className="hidden min-w-0 items-center gap-1 text-xs text-[var(--text-4)] xl:flex">
+          {/* Breadcrumb is duplicative of the title field right beside it, and it is what over-fills
+              the toolbar row at 1280-1600 (clipping the title). Hold it back to 2xl. */}
+          <span className="hidden min-w-0 items-center gap-1 text-xs text-[var(--text-4)] 2xl:flex">
             <Link href="/app/docs" className="hover:text-[var(--text-1)]">
               Docs
             </Link>
@@ -994,7 +996,16 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               }
             }}
             title="Rename document"
-            className="h-8 min-w-[7rem] flex-1 rounded-[6px] border border-transparent bg-transparent px-2 text-sm font-semibold tracking-[-0.01em] text-[var(--text-1)] transition hover:border-[var(--border-2)] hover:bg-white focus:border-[var(--brand-500)] focus:bg-white focus:outline-none"
+            // The document's name is the most important thing in this bar, so it must WIN space
+            // rather than share it: `flex-1` alongside the breadcrumb and eight controls collapsed
+            // it to 178px and clipped a 196px title. grow-[3] + a 15rem basis makes it take the
+            // lion's share of any slack, and it still shrinks (min-w) before it forces a wrap.
+            // The document's name is the most important thing in this bar, so it must not be the
+            // thing that gives way. The row is genuinely over-full at 1280-1600, so `grow` never
+            // applies and `shrink` governed — flex-1 clipped a 196px title to 178px, and adding
+            // grow made it worse (142px). `shrink-0` + a 15rem basis means it keeps its width and
+            // the FLEX ROW WRAPS instead: a title on its own line reads fine, a clipped one doesn't.
+            className="h-8 min-w-0 shrink-0 basis-[15rem] rounded-[6px] border border-transparent bg-transparent px-2 text-sm font-semibold tracking-[-0.01em] text-[var(--text-1)] transition hover:border-[var(--border-2)] hover:bg-white focus:border-[var(--brand-500)] focus:bg-white focus:outline-none"
           />
 
           {parentDoc ? (
