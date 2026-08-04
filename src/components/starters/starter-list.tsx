@@ -264,28 +264,47 @@ export function StarterList() {
   const recommendations = scan ? recommendStartersForScan(scan, all).slice(0, 4) : [];
   const typeCount = (t: StarterType) => all.filter((s) => s.type === t).length;
 
-  // Content categories — a starter's first tag doubles as its category (e.g. "cinematic-scenes",
-  // "business-and-marketing"). This is a lightweight filter dimension separate from type (Prompt/
-  // Skill/…), useful for narrowing the library to what's relevant for a given piece of work.
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    (starters ?? []).forEach((s) => {
-      const cat = s.tags[0];
-      if (cat && !NON_CATEGORY_TAGS.has(cat)) set.add(cat);
-    });
-    return Array.from(set).sort();
-  }, [starters]);
-
   // Smart search: every whitespace-separated term must appear somewhere in the item's searchText
   // (name + summary + description + tags + hidden function/use-case keywords). So "sales email" or
   // "make a logo" find the right prompt even when those exact words aren't in the title.
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const filtered = all.filter(
-    (s) =>
-      (filter === "all" ? true : s.type === filter) &&
-      (category === "all" ? true : s.tags[0] === category) &&
-      (terms.length === 0 || terms.every((t) => s.searchText.includes(t))),
+
+  // Type + search filtered set, BEFORE the content-category filter is applied — this is the pool
+  // the category dropdown itself is built from (see below), so a category option only ever exists
+  // if it would actually produce a result given whatever's currently typed/selected.
+  const searchFiltered = useMemo(
+    () =>
+      all.filter(
+        (s) =>
+          (filter === "all" ? true : s.type === filter) &&
+          (terms.length === 0 || terms.every((t) => s.searchText.includes(t))),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [all, filter, query],
   );
+
+  // Content categories — a starter's first tag doubles as its category (e.g. "cinematic-scenes",
+  // "business-and-marketing"). Deliberately derived from `searchFiltered`, not the raw catalog:
+  // if it were built from every starter regardless of the current type/search filter, picking an
+  // option could dead-end into "no starters match" (a category whose one representative doesn't
+  // match the current search). Reactive to the filter instead, so every option always has >= 1
+  // result under the current search/type — never an empty one.
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    searchFiltered.forEach((s) => {
+      const cat = s.tags[0];
+      if (cat && !NON_CATEGORY_TAGS.has(cat)) set.add(cat);
+    });
+    return Array.from(set).sort();
+  }, [searchFiltered]);
+
+  // If the current type/search filter narrows the selected category out of existence, fall back
+  // to "all" rather than leaving the user stuck on a hidden option that would show zero results.
+  useEffect(() => {
+    if (category !== "all" && !categories.includes(category)) setCategory("all");
+  }, [categories, category]);
+
+  const filtered = searchFiltered.filter((s) => (category === "all" ? true : s.tags[0] === category));
 
   // "featured" (the hard default) is a real relevancy ordering, not raw import order:
   // Gitwork Approved always leads (the server already orders by `featured desc`, preserved by
