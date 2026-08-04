@@ -68,6 +68,8 @@ export function WikiIntakeSection({
   const [image, setImage] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewingImageId, setViewingImageId] = useState<string | null>(null);
+  /** Which row's delete is armed — see the two-step delete in the actions below. */
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const visibleItems = isInternal ? items : localItems;
@@ -347,8 +349,15 @@ export function WikiIntakeSection({
                           View tasks <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
                         </a>
                       ) : null}
+                      {/* "Close" alone read as though it might close the task too.
+                          It doesn't — it only files the request as dealt with. */}
                       <button
                         type="button"
+                        title={
+                          item.status === "CLOSED"
+                            ? "Put this request back on the open list."
+                            : "Files the request as dealt with. Any task already created from it is not affected."
+                        }
                         onClick={() =>
                           void updateItem.mutateAsync({
                             id: item.id,
@@ -357,16 +366,47 @@ export function WikiIntakeSection({
                         }
                         className="rounded-[7px] border border-[var(--border-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
                       >
-                        {item.status === "CLOSED" ? "Reopen" : "Close"}
+                        {item.status === "CLOSED" ? "Reopen request" : "Mark dealt with"}
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => void deleteItem.mutateAsync(item.id)}
-                        aria-label="Delete item"
-                        className="inline-flex items-center rounded-[7px] border border-[var(--border-2)] px-2 py-1.5 text-[var(--text-4)] transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
-                      >
-                        <TrashIcon className="h-4 w-4" />
-                      </button>
+                      {/* Delete is two-step. It used to fire on a single click next
+                          to the everyday buttons, which is one slip away from
+                          destroying something a client submitted — and unlike
+                          closing, it can't be undone. */}
+                      {confirmDeleteId === item.id ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-[7px] border border-rose-300 bg-rose-50 px-2 py-1.5">
+                          <span className="text-[12px] font-medium text-rose-700">
+                            Delete permanently?
+                          </span>
+                          <button
+                            type="button"
+                            disabled={deleteItem.isPending}
+                            onClick={async () => {
+                              await deleteItem.mutateAsync(item.id);
+                              setConfirmDeleteId(null);
+                            }}
+                            className="rounded-[6px] bg-rose-600 px-2 py-0.5 text-[12px] font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+                          >
+                            Delete
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="px-1 text-[12px] text-[var(--text-4)] transition hover:text-[var(--text-1)]"
+                          >
+                            Cancel
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(item.id)}
+                          aria-label="Delete request"
+                          title="Delete this request permanently. Prefer 'Mark dealt with' — deleting can't be undone."
+                          className="inline-flex items-center rounded-[7px] border border-[var(--border-2)] px-2 py-1.5 text-[var(--text-4)] transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
