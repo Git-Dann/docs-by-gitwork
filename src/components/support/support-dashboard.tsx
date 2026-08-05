@@ -796,8 +796,19 @@ function AddConnectorModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ config: buildScraperConfig() }),
       });
-      const json = (await res.json().catch(() => ({}))) as { data?: { imap?: { ok: boolean; error?: string }; smtp?: { ok: boolean; error?: string } } };
-      setImapTest(json.data ?? { imap: { ok: false, error: "No response" }, smtp: { ok: false } });
+      // The route returns { imap, smtp } at the top level (apiOk payload) — or
+      // { error } on a 4xx. Read those directly; the old code looked for json.data,
+      // which never exists, so every test reported a false "No response".
+      const json = (await res.json().catch(() => ({}))) as {
+        imap?: { ok: boolean; error?: string };
+        smtp?: { ok: boolean; error?: string };
+        error?: string;
+      };
+      setImapTest(
+        json.imap || json.smtp
+          ? { imap: json.imap ?? { ok: false }, smtp: json.smtp ?? { ok: false } }
+          : { imap: { ok: false, error: json.error ?? "No response" }, smtp: { ok: false } },
+      );
     } catch (err) {
       setImapTest({ imap: { ok: false, error: err instanceof Error ? err.message : String(err) }, smtp: { ok: false } });
     } finally {
