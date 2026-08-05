@@ -95,26 +95,6 @@ export function AppShell({
       /* storage unavailable — stays expanded */
     }
   }, []);
-
-  /**
-   * The document editor auto-collapses the sidebar, giving the canvas back ~204px.
-   *
-   * The editor is the one full-bleed workspace in the app — a fixed-height frame with a document
-   * in the middle and two rails over it — so 280px of navigation is the most expensive thing on
-   * screen exactly where space matters most.
-   *
-   * Two deliberate limits:
-   *  · It does NOT write `SIDEBAR_COLLAPSED_KEY`. This is a per-surface default, not a change to
-   *    the user's preference — leaving the editor restores whatever they had chosen, and toggling
-   *    it manually inside the editor still persists normally through `toggleCollapsed`.
-   *  · It only fires on ENTERING an editor, keyed on the document id, so re-expanding by hand
-   *    while editing is not undone on the next render.
-   */
-  const editorDocId = /^\/app\/docs\/([^/]+)/.exec(pathname ?? "")?.[1] ?? null;
-  const isEditor = Boolean(editorDocId) && editorDocId !== "analytics";
-  useEffect(() => {
-    if (isEditor) setCollapsed(true);
-  }, [isEditor, editorDocId]);
   function toggleCollapsed() {
     setCollapsed((prev) => {
       const next = !prev;
@@ -321,16 +301,17 @@ export function AppShell({
                 active={Boolean(item.href && isActivePath(pathname, item.href))}
               />
             ))}
-            <SidebarNavItem
-              item={{
-                href: "/app/handbook",
-                label: "Handbook",
-                description: "Developer knowledgebase",
-                icon: BookOpenIcon,
-              }}
-              active={Boolean(isActivePath(pathname, "/app/handbook"))}
-            />
-
+            {isAdmin ? (
+              <SidebarNavItem
+                item={{
+                  href: "/app/handbook",
+                  label: "Handbook",
+                  description: "Developer knowledgebase",
+                  icon: BookOpenIcon,
+                }}
+                active={Boolean(isActivePath(pathname, "/app/handbook"))}
+              />
+            ) : null}
           </div>
         </div>
       )}
@@ -462,7 +443,7 @@ function ExpandedRail({
       >
         {!collapsed ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src="/foundry-logo.svg" alt="Foundry" width={245} height={64} className="h-12 w-auto dark:brightness-0 dark:invert" />
+          <img src="/foundry-logo.svg" alt="Foundry" width={245} height={64} className="h-8 w-auto dark:brightness-0 dark:invert" />
         ) : null}
         <button
           type="button"
@@ -506,16 +487,18 @@ function ExpandedRail({
         <div className="mt-4">
           {!collapsed ? <AiSpendCard /> : null}
           <div className="space-y-2">
-            <SidebarNavItem
-              item={{
-                href: "/app/handbook",
-                label: "Handbook",
-                description: "Developer knowledgebase",
-                icon: BookOpenIcon,
-              }}
-              active={Boolean(isActivePath(pathname, "/app/handbook"))}
-              collapsed={collapsed}
-            />
+            {isAdmin ? (
+              <SidebarNavItem
+                item={{
+                  href: "/app/handbook",
+                  label: "Handbook",
+                  description: "Developer knowledgebase",
+                  icon: BookOpenIcon,
+                }}
+                active={Boolean(isActivePath(pathname, "/app/handbook"))}
+                collapsed={collapsed}
+              />
+            ) : null}
             <ProfileMenu
               viewAs={viewAs}
               viewAsUser={viewAsUser}
@@ -591,7 +574,7 @@ function SidebarNavItem({
 }) {
   const Icon = item.icon;
   const classes = cn(
-    "flex w-full items-start gap-3 rounded-[6px] border px-3 py-2 text-sm font-medium transition",
+    "flex w-full items-start gap-2.5 rounded-[6px] border px-2.5 py-1.5 text-[13px] font-medium leading-snug transition",
     collapsed && "items-center justify-center px-2 py-2.5",
     active
       ? "border-[var(--brand-300)] bg-[var(--surface-brand)] text-[var(--brand-800)] shadow-[var(--shadow-xs)]"
@@ -602,7 +585,7 @@ function SidebarNavItem({
   const icon = (
     <Icon
       className={cn(
-        collapsed ? "h-5 w-5 shrink-0" : "mt-0.5 h-5 w-5 shrink-0",
+        collapsed ? "h-5 w-5 shrink-0" : "mt-[3px] h-4 w-4 shrink-0",
         active ? "text-[var(--brand-700)]" : "text-[var(--text-4)]",
       )}
     />
@@ -616,7 +599,7 @@ function SidebarNavItem({
       <span className="min-w-0">
         <span className="block">{item.label}</span>
         {item.description ? (
-          <span className="mt-0.5 block text-xs font-normal text-[var(--text-4)]">
+          <span className="mt-px block text-[11px] font-normal leading-[1.35] text-[var(--text-4)]">
             {item.description}
           </span>
         ) : null}
@@ -657,7 +640,12 @@ function Avatar({ name, url, position }: { name: string; url: string; position?:
         height={36}
         loading="lazy"
         decoding="async"
-        className="h-9 w-9 rounded-full object-cover"
+        // `shrink-0` matters: this sits in a flex row, so without it the image is
+        // squashed to whatever width the padding leaves — measured 26px wide by
+        // 36 tall in the 76px collapsed rail, i.e. a circular photo rendered as
+        // an oval. The initials fallback below already had it, which is the tell
+        // that this was an oversight rather than a choice.
+        className="h-9 w-9 shrink-0 rounded-full object-cover"
         style={position ? { objectPosition: position } : undefined}
         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; (e.currentTarget.nextSibling as HTMLElement | null)?.style.setProperty("display", "flex"); }}
       />
@@ -753,8 +741,22 @@ function ProfileMenu({
         onClick={() => setOpen((current) => !current)}
         title={collapsed ? displayName : undefined}
         className={cn(
-          "flex w-full items-center gap-3 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-3 text-left transition hover:bg-[var(--surface-1)]",
-          collapsed && "justify-center px-2",
+          "flex w-full items-center gap-3 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] text-left transition hover:bg-[var(--surface-1)]",
+          // Collapsed: a SQUARE tile. The rail is 76px and its column is `px-3`,
+          // so this button is 76−24 = 52px wide. Padding is 6px, not 8: the 36px
+          // avatar plus 2×8 plus the 1px borders comes to 54 and overflows a
+          // 52px box, which is what shrank the image. 6px leaves 38px of content
+          // for a 36px avatar. Expanded keeps its roomier padding.
+          //
+          // ⚠️ The padding is written as an EITHER/OR, not as `p-2` layered over a
+          // base `px-3 py-3`. Tailwind v4 emits the `padding` shorthand BEFORE the
+          // `padding-inline`/`padding-block` longhands, so `px-3 py-3` beats a
+          // later `p-2` in the class list — measured: computed padding stayed 12px
+          // and the tile came out 52×62, since 36px of avatar plus 24px of padding
+          // overflows the square and forces the height. Same shape of trap as the
+          // Deck split-button radius in §30: class order in the attribute is not
+          // precedence. Don't "simplify" this back into a single base + override.
+          collapsed ? "aspect-square justify-center p-1.5" : "px-3 py-3",
         )}
       >
         <Avatar name={displayName} url={displayAvatar} position={displayAvatarPosition} />

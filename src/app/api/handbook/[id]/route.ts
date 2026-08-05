@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageHandbook, "view the handbook");
     const { id } = await params;
     const article = await getHandbookArticle(id);
     if (!article) return apiError("Article not found", 404);
