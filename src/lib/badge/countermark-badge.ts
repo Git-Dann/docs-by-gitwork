@@ -123,11 +123,11 @@ function remaining(input: CountermarkBadgeInput): number {
 
 /** CM-01 · inline, carries its own dark ground so it works on any page. */
 function renderShield(input: CountermarkBadgeInput, t: Tokens, motion: boolean): RenderedBadge {
-  const H = 22, PAD = 9, FS = 9.5, TR = 0.8;
+  const H = 22, PAD = 9, FS = 9.5, TR = 0.8, GLYPH = 14;
   const state = markState(input.grade, input.status, t);
   const label = "COUNTERMARK";
   const value = state.headline;
-  const left = monoWidth(label, FS, TR) + PAD * 2;
+  const left = monoWidth(label, FS, TR) + PAD * 2 + GLYPH;
   const right = monoWidth(value, FS, TR) + PAD * 2;
   const W = Math.round((left + right) * 10) / 10;
 
@@ -138,13 +138,29 @@ function renderShield(input: CountermarkBadgeInput, t: Tokens, motion: boolean):
     `<rect width="${W}" height="${H}" fill="url(#sh)"/>` +
     // An expired mark is struck through, so it reads as void at a glance rather
     // than merely grey.
-    (state.live ? "" : `<path d="M${left} ${H / 2} H${W}" stroke="${WHITE}" stroke-width="1" opacity="0.5"/>`) +
+    (state.live ? "" : `<path d="M${left} ${H / 2} H${W}" stroke="${WHITE}" stroke-width="1" opacity="0.5" class="void"/>`) +
     `</g>` +
-    mono(label, FS, PAD, 14.6, "#E2E8F0", { tracking: TR }) +
+    // A seal that draws itself — the counterpart to the Pulse shield's trace.
+    `<g transform="translate(11 11)" class="seal">` +
+    `<circle r="4.6" fill="none" stroke="${state.tone}" stroke-width="1.5" class="ring"/>` +
+    `<path d="M -2.1 0.1 L -0.6 1.7 L 2.3 -1.6" fill="none" stroke="${state.tone}" ` +
+    `stroke-width="1.5" stroke-linecap="square" class="tick"/></g>` +
+    mono(label, FS, PAD + GLYPH, 14.6, "#E2E8F0", { tracking: TR }) +
     mono(value, FS, left + right / 2, 14.6, WHITE, { tracking: TR, anchor: "middle" }) +
     `<defs>${sheenDef()}</defs>`;
 
-  const style = PING + ".dot{animation:ping 3s ease-in-out infinite}";
+  // The `.dot` rule that used to live here matched nothing in this style, so the
+  // shield shipped with no animation at all.
+  const style =
+    entrance("sealring", 0, "stroke-dashoffset:29", "stroke-dashoffset:0") +
+    entrance("sealtick", 55, "stroke-dashoffset:8", "stroke-dashoffset:0") +
+    ".ring{stroke-dasharray:29;animation:sealring .7s cubic-bezier(.4,0,.2,1)}" +
+    ".tick{stroke-dasharray:8;animation:sealtick 1.05s ease-out}" +
+    // Only emitted for a dead mark, because only a dead mark draws the rule.
+    (state.live
+      ? ""
+      : entrance("strike", 62, `stroke-dashoffset:${right.toFixed(0)}`, "stroke-dashoffset:0") +
+        `.void{stroke-dasharray:${right.toFixed(0)};animation:strike 1.25s ease-out}`);
   return wrap(W, H, body, style, ariaLabel(input), motion);
 }
 
@@ -173,7 +189,7 @@ function renderDisc(input: CountermarkBadgeInput, t: Tokens, motion: boolean): R
         mono(days === 1 ? "DAY LEFT" : "DAYS LEFT", 8, cx, cy + 24, t.faint, { tracking: 1.1, anchor: "middle" })
       : mono(state.headline, 11, cx, cy + 4, t.ink, { tracking: 1.2, anchor: "middle" })) +
     mono(state.live ? state.headline : "NO LONGER ASSERTS", 9, cx, 155, state.tone,
-         { tracking: 1.3, anchor: "middle" }) +
+         { tracking: 1.3, anchor: "middle", cls: "cap" }) +
     mono(input.standard ? `COUNTERMARK · ${input.standard}` : "COUNTERMARK", 7.5, cx, 172, t.muted,
          { tracking: 1.1, anchor: "middle" }) +
     // Inside the ring, below the countdown: at the top of the disc it sat on
@@ -185,8 +201,10 @@ function renderDisc(input: CountermarkBadgeInput, t: Tokens, motion: boolean): R
              `stroke-dasharray:${filled.toFixed(2)} ${circ.toFixed(2)}`) +
     entrance("figp", 50, "opacity:0;transform:scale(.82)", "opacity:1;transform:scale(1)",
              "80%{transform:scale(1.04)}") +
+    entrance("capf", 62, "opacity:0", "opacity:1") +
     ".arc{animation:sweep 1.25s cubic-bezier(.3,.9,.3,1)}" +
-    `.figg{transform-origin:${cx}px ${cy}px;animation:figp 1s cubic-bezier(.2,.8,.3,1)}`;
+    `.figg{transform-origin:${cx}px ${cy}px;animation:figp 1s cubic-bezier(.2,.8,.3,1)}` +
+    ".cap{animation:capf 1.3s ease-out}";
 
   return wrap(W, H, body, style, ariaLabel(input), motion);
 }
@@ -198,9 +216,9 @@ function renderCard(input: CountermarkBadgeInput, t: Tokens, motion: boolean): R
   const days = remaining(input);
   const statusW = monoWidth(STATUS_LABEL[input.status], 9, 0.8);
 
-  const line = (label: string, value: string, y: number) =>
-    mono(label, 7.5, 16, y, t.faint, { tracking: 0.8 }) +
-    mono(value, 8.5, W - 16, y, t.muted, { tracking: 0.6, anchor: "end" });
+  const line = (label: string, value: string, y: number, i: number) =>
+    mono(label, 7.5, 16, y, t.faint, { tracking: 0.8, cls: `row r${i}` }) +
+    mono(value, 8.5, W - 16, y, t.muted, { tracking: 0.6, anchor: "end", cls: `row r${i}` });
 
   const body =
     cardFace(W, H, t) +
@@ -209,15 +227,15 @@ function renderCard(input: CountermarkBadgeInput, t: Tokens, motion: boolean): R
     `<circle cx="${W - 22 - statusW}" cy="19.5" r="3" fill="${state.tone}" class="dot"/>` +
     mono(STATUS_LABEL[input.status], 9, W - 16, 23, state.tone, { tracking: 0.8, anchor: "end" }) +
     // Headline: the grade while live, the reason it is void otherwise.
-    `<rect x="16" y="52" width="4" height="26" rx="2" fill="${state.tone}"/>` +
-    mono(state.headline, 15, 28, 72, t.ink, { tracking: 1.1 }) +
+    `<rect x="16" y="52" width="4" height="26" rx="2" fill="${state.tone}" class="rule"/>` +
+    mono(state.headline, 15, 28, 72, t.ink, { tracking: 1.1, cls: "head" }) +
     (state.live
       ? mono(`${days} ${days === 1 ? "DAY" : "DAYS"} REMAINING`, 8, 28, 88, t.muted, { tracking: 0.9 })
       : mono("THIS MARK NO LONGER ASSERTS ANYTHING", 7.5, 28, 88, t.muted, { tracking: 0.7 })) +
     `<path d="M16 102 H${W - 16}" stroke="${t.hair}"/>` +
-    line("SUBJECT", (input.subject ?? "—").slice(0, 22).toUpperCase(), 118) +
-    line("STANDARD", (input.standard ?? "—").toUpperCase(), 134) +
-    line("SEAL", input.sealed ? "SIGNED" : "UNSEALED", 150) +
+    line("SUBJECT", (input.subject ?? "—").slice(0, 22).toUpperCase(), 118, 0) +
+    line("STANDARD", (input.standard ?? "—").toUpperCase(), 134, 1) +
+    line("SEAL", input.sealed ? "SIGNED" : "UNSEALED", 150, 2) +
     (input.sealed
       ? ""
       : `<rect x="${W - 16 - monoWidth("UNSEALED", 8.5, 0.6) - 5}" y="142" ` +
@@ -229,7 +247,21 @@ function renderCard(input: CountermarkBadgeInput, t: Tokens, motion: boolean): R
     // Drawn, not typed: the mono table is caps-only and carries no arrow glyph.
     `<path d="M${W - 23} 183.4 h6 m-2.4 -2.4 l2.4 2.4 l-2.4 2.4" fill="none" stroke="${t.accent}" stroke-width="1"/>`;
 
-  const style = PING + ".dot{animation:ping 2.4s 1.2s ease-in-out infinite}";
+  const rows = [0, 1, 2]
+    .map((i) => {
+      const dur = 0.85 + i * 0.1;
+      return entrance(`row${i}`, Math.round(((0.45 + i * 0.1) / dur) * 100), "opacity:0", "opacity:1") +
+        `.r${i}{animation:row${i} ${dur.toFixed(2)}s ease-out}`;
+    })
+    .join("");
+  const style =
+    PING +
+    entrance("grow", 8, "transform:scaleY(0)", "transform:scaleY(1)") +
+    entrance("headf", 38, "opacity:0", "opacity:1") +
+    ".rule{transform-origin:0 78px;animation:grow .55s cubic-bezier(.4,0,.2,1)}" +
+    ".head{animation:headf .8s ease-out}" +
+    rows +
+    ".dot{animation:ping 2.4s 1.2s ease-in-out infinite}";
   return wrap(W, H, body, style, ariaLabel(input), motion);
 }
 
