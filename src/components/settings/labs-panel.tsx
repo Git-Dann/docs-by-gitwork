@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowsPointingOutIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
+import { ArrowsPointingOutIcon, ArrowTopRightOnSquareIcon, SparklesIcon } from "@heroicons/react/24/outline";
 
 import { BadgeStudio } from "@/components/settings/labs/badge-studio";
 
@@ -32,11 +32,20 @@ interface LabEntry {
   href?: string;
   /** Opens in place, inside this section's gate. */
   panel?: "badges";
+  /** Runs a server action and then opens what it created. */
+  action?: "block-gallery";
   blurb: string;
   note?: string;
 }
 
 const ENTRIES: LabEntry[] = [
+  {
+    name: "Block gallery",
+    action: "block-gallery",
+    blurb:
+      "Create one real document containing every block Docs can render, with sample content — for reviewing a design change, checking a theme, or seeing what a block actually looks like before you reach for it.",
+    note: "A normal document: same editor, same PDF, same public share. Each section is named for its registry key, so a defect leads straight to src/lib/sections/<key>.tsx. Re-running replaces the previous copy.",
+  },
   {
     name: "Badge studio",
     panel: "badges",
@@ -69,6 +78,24 @@ const ENTRIES: LabEntry[] = [
 
 export function LabsPanel() {
   const [panel, setPanel] = useState<LabEntry["panel"] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function createBlockGallery() {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/dev/seed-block-gallery", { method: "POST" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error ?? "Could not create the gallery.");
+      // Same tab: you asked for a document, so you get taken to it.
+      window.location.href = body.data.href;
+    } catch (cause) {
+      // Surfaced, not swallowed — a silent no-op button is indistinguishable from a broken one.
+      setError(cause instanceof Error ? cause.message : "Could not create the gallery.");
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -89,7 +116,7 @@ export function LabsPanel() {
           // whose note is longer, showed it bottom-left. Both text blocks share
           // one measure (62ch) so a long mono note can't sprawl wider than the
           // blurb above it either.
-          <li key={entry.href ?? entry.panel} className="app-card p-4">
+          <li key={entry.href ?? entry.panel ?? entry.action} className="app-card p-4">
             <div className="flex items-start justify-between gap-3">
               <h3 className="min-w-0 text-[14.5px] font-semibold text-[var(--text-1)]">
                 {entry.name}
@@ -104,6 +131,16 @@ export function LabsPanel() {
                   Open
                   <ArrowTopRightOnSquareIcon className="ml-1.5 h-3.5 w-3.5" />
                 </a>
+              ) : entry.action ? (
+                <button
+                  type="button"
+                  onClick={createBlockGallery}
+                  disabled={busy}
+                  className="app-button app-button-secondary app-button-sm shrink-0 whitespace-nowrap disabled:opacity-60"
+                >
+                  {busy ? "Creating…" : "Create"}
+                  <SparklesIcon className="ml-1.5 h-3.5 w-3.5" />
+                </button>
               ) : (
                 <button
                   type="button"
@@ -125,6 +162,11 @@ export function LabsPanel() {
             {entry.note ? (
               <p className="mt-2 max-w-[62ch] font-mono text-[11px] leading-relaxed text-[var(--text-4)]">
                 {entry.note}
+              </p>
+            ) : null}
+            {entry.action && error ? (
+              <p className="mt-2 max-w-[62ch] text-[12.5px] leading-relaxed text-[var(--danger-500)]">
+                {error}
               </p>
             ) : null}
           </li>

@@ -1,7 +1,7 @@
 /** Section type: `term` — effective date, duration, renewal, notice period, governing law. */
 
 import { ScaleIcon } from "@heroicons/react/24/outline";
-import { TermEditor } from "@/components/proposals/legal-editors";
+import type { SectionField } from "@/lib/sections/field-schema";
 import { defineSection } from "@/lib/sections/types";
 import { PrintTable, Td } from "@/lib/sections/_shared";
 import type { TermSectionData } from "@/types/proposal";
@@ -16,6 +16,34 @@ const DEFAULT: TermSectionData = {
   terminationForCause: "",
 };
 
+/**
+ * The first block to declare its editor rather than write one.
+ *
+ * This replaced `TermEditor`, sixty lines of longhand that also carried a real bug: every number
+ * field ran `Number(e.target.value)`, so clearing "Notice period" saved `0` — "zero days' notice"
+ * — instead of unsetting it. `applyFieldChange` yields `undefined` there, so the block's own
+ * default applies on render.
+ */
+const FIELDS: ReadonlyArray<SectionField<TermSectionData>> = [
+  { kind: "date", key: "effectiveDate", label: "Effective date" },
+  { kind: "number", key: "initialTermMonths", label: "Initial term (months)", min: 1 },
+  { kind: "number", key: "noticePeriodDays", label: "Notice period (days)", min: 0 },
+  { kind: "text", key: "governingLaw", label: "Governing law", placeholder: "England and Wales" },
+  {
+    kind: "checkbox",
+    key: "autoRenew",
+    label: "Auto-renew at end of initial term",
+  },
+  {
+    kind: "text",
+    key: "renewalTerm",
+    label: "Renewal term description",
+    width: "full",
+    placeholder: "Successive 12-month periods",
+  },
+  { kind: "textarea", key: "terminationForCause", label: "Termination for cause", rows: 4 },
+];
+
 export const termSection = defineSection<TermSectionData>({
   key: "term",
   displayName: "Term & Termination",
@@ -27,7 +55,7 @@ export const termSection = defineSection<TermSectionData>({
   defaultDescription: "Duration, renewal, notice period, governing law.",
   recommendedFor: ["SLA", "MSA", "SOW"],
   aiExpandable: true,
-  Editor: ({ data, onChange }) => <TermEditor data={data} onChange={onChange} />,
+  fields: FIELDS,
   Preview: ({ data }) => {
     const rows: Array<[string, string]> = [
       ["Effective date", data.effectiveDate || "—"],

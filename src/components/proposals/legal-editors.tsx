@@ -39,7 +39,6 @@ import type {
   ServiceTiersSectionData,
   SignaturesSectionData,
   SignatureBlockItem,
-  TermSectionData,
 } from "@/types/proposal";
 
 // ── Parties ─────────────────────────────────────────────────────────────────
@@ -721,87 +720,6 @@ export function PenaltiesEditor({
       ) : (
         <EmptyHint>Add at least one credit tier.</EmptyHint>
       )}
-    </div>
-  );
-}
-
-// ── Term ────────────────────────────────────────────────────────────────────
-
-export function TermEditor({
-  data,
-  onChange,
-}: {
-  data: TermSectionData;
-  onChange: (next: TermSectionData) => void;
-}) {
-  return (
-    <div className="app-subtle-panel @container space-y-4 p-5">
-      <div className="grid gap-3 @[26rem]:grid-cols-2">
-        <label className="space-y-1.5">
-          <FieldLabel>Effective date</FieldLabel>
-          <input
-            type="date"
-            value={data.effectiveDate ?? ""}
-            onChange={(e) => onChange({ ...data, effectiveDate: e.target.value })}
-            className="app-input-compact"
-          />
-        </label>
-        <label className="space-y-1.5">
-          <FieldLabel>Initial term (months)</FieldLabel>
-          <input
-            type="number"
-            min={1}
-            value={data.initialTermMonths ?? 12}
-            onChange={(e) => onChange({ ...data, initialTermMonths: Number(e.target.value) })}
-            className="app-input-compact"
-          />
-        </label>
-        <label className="space-y-1.5">
-          <FieldLabel>Notice period (days)</FieldLabel>
-          <input
-            type="number"
-            min={0}
-            value={data.noticePeriodDays ?? 60}
-            onChange={(e) => onChange({ ...data, noticePeriodDays: Number(e.target.value) })}
-            className="app-input-compact"
-          />
-        </label>
-        <label className="space-y-1.5">
-          <FieldLabel>Governing law</FieldLabel>
-          <input
-            value={data.governingLaw ?? ""}
-            onChange={(e) => onChange({ ...data, governingLaw: e.target.value })}
-            className="app-input-compact"
-            placeholder="England and Wales"
-          />
-        </label>
-        <label className="flex items-center gap-2 text-sm text-[var(--text-2)] @[26rem]:col-span-2">
-          <input
-            type="checkbox"
-            checked={data.autoRenew ?? false}
-            onChange={(e) => onChange({ ...data, autoRenew: e.target.checked })}
-            className="app-checkbox"
-          />
-          Auto-renew at end of initial term
-        </label>
-        <label className="space-y-1.5 @[26rem]:col-span-2">
-          <FieldLabel>Renewal term description</FieldLabel>
-          <input
-            value={data.renewalTerm ?? ""}
-            onChange={(e) => onChange({ ...data, renewalTerm: e.target.value })}
-            className="app-input-compact"
-            placeholder="Successive 12-month periods"
-          />
-        </label>
-        <label className="space-y-1.5 @[26rem]:col-span-2">
-          <FieldLabel>Termination for cause</FieldLabel>
-          <textarea
-            value={data.terminationForCause ?? ""}
-            onChange={(e) => onChange({ ...data, terminationForCause: e.target.value })}
-            className="proposal-field-compact"
-          />
-        </label>
-      </div>
     </div>
   );
 }

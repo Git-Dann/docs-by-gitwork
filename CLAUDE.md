@@ -2892,7 +2892,94 @@ needs its own entry point.
   seemingly at random depending on what a commit touched. Now
   `--max-old-space-size=6144` in the builder stage only.
 
+  ⚠️ **That fix went to the Dockerfile and NOT to `checks.yml`, so CI OOMed on
+  `main` for a day** — every `verify` run died on `npx next build` with the same
+  JS heap error while deploys went green, which is a uniquely misleading pair
+  (the gate is red, the thing the gate protects is fine, and a real failure
+  would look identical). The build step in `checks.yml` now carries the same
+  `NODE_OPTIONS` (Aug 2026). **Anything that raises the build's memory ceiling
+  has to be set in BOTH places** — they are two independent builds of the same
+  app and neither reads the other's environment.
+
 ⚠️ **`npm run verify` cannot catch a prerender error** — only `next build` can. A
 `useSearchParams()` added without a Suspense boundary passed tsc, lint, tests and
 `audit:ui`, then broke the production build. **Run `npx next build` before pushing
 anything that touches a page or its client hooks.**
+
+## 41. Recent Changes (August 2026) — Docs: schema-described block editors + the block gallery
+
+### 41.1 A block can declare its editor instead of writing one
+
+Most block editors were the same form written out longhand — scalar fields in a two-column grid,
+each one a `<label>` + control + an `onChange` that spreads `data` and overwrites one key. Twenty
+copies, drifted, each a fresh chance to pick the wrong padding class or mis-coerce a value.
+
+A block now passes **`fields`** to `defineSection` and one renderer draws them:
+
+- **`src/lib/sections/field-schema.ts`** — the vocabulary (`text` · `textarea` · `number` · `date` ·
+  `checkbox` · `select`) and the pure coercion. That coercion is the part worth testing hard,
+  because it is the single point where a control's raw string becomes block data, so a mistake
+  there is a mistake in every declaring block at once. Three rules, decided once: an **empty number
+  yields `undefined`, not `0`** (clearing "Notice period" must not mean *zero days' notice*); an
+  **unparseable number is ignored, not saved as `NaN`** (`NaN` serialises to `null` and would wipe
+  the field on the next save); **text is not trimmed** (trimming per keystroke stops you typing a
+  space between words).
+- **`src/components/proposals/schema-fields-editor.tsx`** — the one renderer. Container queries
+  (`@[26rem]:`) **only**, per `editor-primitives.tsx`: the rail is ~280–360px inside a window that
+  may be 1440px, so a viewport breakpoint puts two columns in a 280px rail.
+- **`defineSection` takes `fields` OR `Editor`**, and the type makes *neither* impossible. Passing
+  both is allowed and `Editor` wins — the escape hatch for a block that outgrows its schema.
+
+⚠️ **This does NOT replace hand-written editors.** Roughly eight blocks — cover, costing, the
+drag-and-drop lists, parties, signatures, pricing tiers — are genuinely bespoke; a schema would
+produce a worse editor and a schema nobody could read. Both stay first-class.
+
+**Migrated so far: `term` and `video_embed`.** The `term` migration fixed a real defect rather than
+just moving code: `TermEditor` ran `Number(e.target.value)` on every number field, so clearing the
+notice period saved `0`. The dead `TermEditor` was deleted rather than left to drift.
+
+⚠️ **`types.ts` stays a `.ts` file and uses `createElement`, not JSX** — it is imported by server
+code (the AI chat route pulls in the registry), and the registry must stay server-safe. Same
+constraint that put `useState` leaves in their own `"use client"` modules (`inline-text.tsx`,
+`copy-code-button.tsx`).
+
+### 41.2 The block gallery — one document with every block
+
+`src/server/documents/block-gallery.ts` builds **one real document containing all 38 blocks** with
+sample content. Created from **Settings → Labs → Block gallery** (Super Admin), which POSTs
+`/api/dev/seed-block-gallery` and opens the result. Idempotent — re-running replaces its own
+previous copy, matched on the title.
+
+It is a **normal document**: same table, same editor, same PDF, same public share. A gallery
+rendered by a bespoke page would prove the blocks work on *that* page and nothing about the one a
+client receives. Each section's `description` is the block's **registry key**, so a defect on the
+page leads straight to `src/lib/sections/<key>.tsx`.
+
+⚠️ **`costing` and `timeline` render DOCUMENT-level collections**, not their own `data` — hence
+`BLOCK_GALLERY_COSTS` / `BLOCK_GALLERY_PHASES`. Seed a gallery without them and both blocks are
+present and blank, while every other check still passes.
+
+**The coverage guard is the point** (`__tests__/block-gallery.test.ts`, same idiom as
+`categories.reconcile.test.ts`): every registered block appears exactly once, and every block is
+**actually rendered** with an assertion that **its own example content reached the page**. A gallery
+that quietly falls behind the registry is worse than none — it looks complete, so the blocks it is
+missing get reviewed by nobody.
+
+**Two things that were learned writing those assertions, both worth keeping:**
+
+1. **"Rendered something" is not an assertion.** `kpi_strip` with `items: []` renders *"No KPIs yet
+   — add one in the editor."*, which satisfied a not-empty check perfectly. The test now asserts a
+   distinctive line from the fixture's own data appears in the output, and treats **"this block has
+   no example content" as a failure rather than a skip** — that was how the weak version let an
+   emptied block through.
+2. **It found a real fixture bug on its first run.** `HeadingSectionData.subtitle` is rendered by
+   the **banner** style only, so the gallery's plain heading set a field that silently did nothing.
+
+**Verified:** `npm run verify` green — tsc + lint 0 errors, **1219 tests**, `audit:ui` 0 findings;
+`npx next build` clean with `/api/dev/seed-block-gallery` registered. Both test suites were proved
+to discriminate by breaking things on purpose — empty-number→0, dropping the editor's write-back,
+swapping the container query for a viewport breakpoint, removing a block from the gallery,
+emptying a block's content, and dropping the document's cost items (6 breaks, each failing with a
+named message). **Not visually verified:** `/app` is auth-gated with no staging or local DB, so how
+38 blocks paginate across the printed page is a **post-deploy** check — create the gallery from
+Labs, then read it at 390 · 768 · 1280×620 · 1440 and export the PDF.

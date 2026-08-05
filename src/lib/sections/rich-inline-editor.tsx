@@ -109,6 +109,51 @@ function inlineNodeToMarkdown(node: Node): string {
   }
 }
 
+/**
+ * The `tag` element the selection sits INSIDE, if any — i.e. "is this already bold?"
+ *
+ * Walks up from the range's common ancestor, stopping at the editor root so a `<strong>` in some
+ * other part of the page can never be unwrapped. `B`/`I` are matched alongside `STRONG`/`EM`
+ * because a browser's own commands and pasted HTML both produce them, and `inlineNodeToMarkdown`
+ * already treats the pairs as equivalent — so a paste-in `<b>` must toggle off like ours.
+ */
+function enclosingTag(
+  root: HTMLElement,
+  range: Range,
+  tag: "strong" | "em" | "code",
+): HTMLElement | null {
+  const names = tag === "strong" ? ["STRONG", "B"] : tag === "em" ? ["EM", "I"] : ["CODE"];
+  let node: Node | null = range.commonAncestorContainer;
+
+  while (node && node !== root) {
+    if (node.nodeType === Node.ELEMENT_NODE && names.includes((node as HTMLElement).tagName)) {
+      return node as HTMLElement;
+    }
+    node = node.parentNode;
+  }
+  return null;
+}
+
+/** Replace an element with its own children, and return a range covering what it held. */
+function unwrap(element: HTMLElement): Range {
+  const parent = element.parentNode;
+  const range = document.createRange();
+  if (!parent) return range;
+
+  const first = element.firstChild;
+  const last = element.lastChild;
+  while (element.firstChild) parent.insertBefore(element.firstChild, element);
+  parent.removeChild(element);
+
+  // Select what was unwrapped, so the text stays highlighted and can be re-toggled immediately.
+  if (first && last) {
+    range.setStartBefore(first);
+    range.setEndAfter(last);
+  }
+  parent.normalize();
+  return range;
+}
+
 function htmlToMarkdown(root: HTMLElement): string {
   const paragraphs: string[] = [];
   let current: Node[] = [];
@@ -185,8 +230,25 @@ export function RichInlineEditor({
       const range = sel.getRangeAt(0);
       if (!el.contains(range.commonAncestorContainer)) return;
 
+      // TOGGLE, not apply. This used to wrap unconditionally, so pressing Bold twice produced
+      // `<strong><strong>x</strong></strong>` — which serialises to `****x****` and reads as
+      // literal asterisks. Bold could be turned on and never off, in every prose and
+      // introduction block. (The <textarea> fields go through `wrapSelection`, which was fixed
+      // separately; this is the OTHER path, and it had no behavioural test at all.)
+      const enclosing = enclosingTag(el, range, tag);
+      if (enclosing) {
+        const restored = unwrap(enclosing);
+        sel.removeAllRanges();
+        sel.addRange(restored);
+        serialize();
+        return;
+      }
+
       const wrapper = document.createElement(tag);
       wrapper.appendChild(range.extractContents());
+      // A selection spanning "plain **bold**" would otherwise nest the existing marker inside
+      // the new one. Strip any same-tag descendants so the result is one flat wrapper.
+      wrapper.querySelectorAll(tag).forEach((nested) => unwrap(nested as HTMLElement));
       range.insertNode(wrapper);
 
       const next = document.createRange();

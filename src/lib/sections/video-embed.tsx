@@ -4,7 +4,7 @@
  */
 
 import { VideoCameraIcon } from "@heroicons/react/24/outline";
-import { SimpleForm, FormInput, FormTextArea } from "@/lib/sections/_shared";
+import type { SectionField } from "@/lib/sections/field-schema";
 import { defineSection } from "@/lib/sections/types";
 import { renderInline } from "@/lib/markdown";
 import type { VideoEmbedSectionData } from "@/types/proposal";
@@ -46,6 +46,28 @@ const ASPECT_PADDING: Record<NonNullable<VideoEmbedSectionData["aspectRatio"]>, 
   "1:1":  "100%",
 };
 
+const FIELDS: ReadonlyArray<SectionField<VideoEmbedSectionData>> = [
+  {
+    kind: "text",
+    key: "url",
+    label: "Video URL",
+    width: "full",
+    placeholder: "https://loom.com/share/…",
+    hint: "YouTube, Loom and Vimeo embed a player. Anything else falls back to a captioned link.",
+  },
+  { kind: "textarea", key: "caption", label: "Caption (optional)", rows: 2 },
+  {
+    kind: "select",
+    key: "aspectRatio",
+    label: "Aspect ratio",
+    options: [
+      { value: "16:9", label: "16:9 (standard widescreen)" },
+      { value: "4:3", label: "4:3" },
+      { value: "1:1", label: "1:1 (square)" },
+    ],
+  },
+];
+
 export const videoEmbedSection = defineSection<VideoEmbedSectionData>({
   key: "video_embed",
   displayName: "Video Embed",
@@ -56,36 +78,7 @@ export const videoEmbedSection = defineSection<VideoEmbedSectionData>({
   defaultTitle: "Walkthrough video",
   defaultDescription: "Embedded video from YouTube, Loom, or Vimeo.",
   aiExpandable: false,
-  Editor: ({ data, onChange }) => (
-    <SimpleForm>
-      <FormInput
-        label="Video URL"
-        value={data.url}
-        onChange={(url) => onChange({ ...data, url })}
-        placeholder="https://loom.com/share/…"
-      />
-      <FormTextArea
-        label="Caption (optional)"
-        value={data.caption ?? ""}
-        onChange={(caption) => onChange({ ...data, caption })}
-        rows={2}
-      />
-      <label className="block space-y-1.5">
-        <span className="text-sm font-medium text-[var(--text-2)]">Aspect ratio</span>
-        <select
-          value={data.aspectRatio ?? "16:9"}
-          onChange={(e) =>
-            onChange({ ...data, aspectRatio: e.target.value as VideoEmbedSectionData["aspectRatio"] })
-          }
-          className="app-select-compact"
-        >
-          <option value="16:9">16:9 (standard widescreen)</option>
-          <option value="4:3">4:3</option>
-          <option value="1:1">1:1 (square)</option>
-        </select>
-      </label>
-    </SimpleForm>
-  ),
+  fields: FIELDS,
   Preview: ({ data }) => {
     const src = toEmbedSrc(data.url);
     const aspect = ASPECT_PADDING[data.aspectRatio ?? "16:9"];
