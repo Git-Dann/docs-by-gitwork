@@ -1318,6 +1318,14 @@ model ClientWiki {
   /// Secret token for the inbound course-request API. When set, external systems
   /// can POST course requests to /api/public/course-requests/[token]. Null = off.
   courseIngestToken   String?                @unique
+  /// Outbound webhook for intake changes — where to POST when a request's status
+  /// changes on OUR side, so the client's tracker can follow without polling.
+  /// Null = no webhook (the default; they poll `?items=1` instead).
+  intakeWebhookUrl    String?
+  /// HMAC-SHA256 key the client verifies deliveries with (sent as
+  /// `X-Foundry-Signature`). Without this a receiver can't tell our POST from
+  /// anyone else's, so it's minted alongside the URL, never optional.
+  intakeWebhookSecret String?
   /// Enabled changelog platforms for this wiki (e.g. ["IOS","ANDROID","WEB"]).
   /// Null falls back to the default IOS/ANDROID/WEB set; FIRESTICK is opt-in.
   platforms           Json?

@@ -173,14 +173,70 @@ vector against our own network. Only `http(s)` links are stored.
 
 ---
 
-## 6. Known limits
+## 6. Status webhook — us → them (optional)
+
+By default the client polls `?items=1` to see changes on our side. If they'd
+rather be told, set a webhook: **Wiki → Settings → `02 // API INTAKE` → Status
+webhook**.
+
+We then `POST` to their URL whenever a request changes here:
+
+| Event | Fires when |
+|---|---|
+| `request.promoted` | We turned it into a task — usually the one they care about |
+| `request.closed` | Marked dealt with |
+| `request.updated` | Any other change (type, priority, title, triaged) |
+| `request.deleted` | The request was removed |
+
+Body:
+
+```json
+{
+  "event": "request.promoted",
+  "client": "wedge",
+  "externalRef": "BWG-1421",
+  "id": "cms…",
+  "title": "Scorecard totals wrong on 9-hole rounds",
+  "type": "BUG",
+  "status": "PROMOTED",
+  "priority": "HIGH",
+  "promotedToTask": true,
+  "sentAt": "2026-08-05T09:12:03.000Z"
+}
+```
+
+`externalRef` is theirs, so they can match it without storing our ids.
+
+**They must verify the signature.** Each delivery carries
+`X-Foundry-Signature: sha256=<hmac>` — HMAC-SHA256 over the raw body using the
+secret shown once when the webhook is saved. Anyone who learns the URL could
+otherwise post fake status changes into their tracker.
+
+```js
+const expected = "sha256=" + crypto.createHmac("sha256", SECRET)
+  .update(rawBody, "utf8").digest("hex");
+// compare with timingSafeEqual against the X-Foundry-Signature header
+```
+
+Operational notes, stated plainly:
+
+- **https only**, and the host must resolve publicly. The host is re-checked on
+  every delivery, not just at save time — a hostname can be repointed at an
+  internal address afterwards.
+- **One attempt, 4-second timeout, no retries.** Delivery must never slow or fail
+  the Gitwork user who just closed a request, so a failure is logged and dropped.
+  Treat the webhook as a nudge, not a guaranteed ledger — `?items=1` remains the
+  source of truth if they need certainty.
+- A client's own `PATCH` does **not** fire a webhook back at them; that would loop.
+
+---
+
+## 7. Known limits
 
 - **One token per client**, rotatable but not per-integrator — you can't revoke
   one system's access while keeping another's. It is also shared with the Wedge
   course-request feed, so rotating affects both for that client. Fine for one
   integration per client; revisit if a client wants several.
-- **No webhooks out.** The client polls `?items=1` to see our side; we don't call
-  them when a status changes here.
 - **Rate limit: 300 new requests/hour, 1000/day per client.** Generous enough for
   a real backfill (a full 200-item batch passes), tight enough to stop a looping
   integration burying the page. It counts items actually CREATED, so deduped

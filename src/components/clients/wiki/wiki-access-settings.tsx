@@ -25,6 +25,8 @@ import {
   useSetWikiSectionShare,
   useCourseIngest,
   useSetCourseIngest,
+  useIntakeWebhook,
+  useSetIntakeWebhook,
 } from "@/hooks/use-wiki";
 import type { WikiSection } from "./wiki-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -410,6 +412,7 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
               { key: "update", label: "Update one — their ref or ours (PATCH)", method: "PATCH", value: `${wikiItemsEndpoint}/{ref}` },
               { key: "list", label: "List what we hold (GET)", method: "GET", value: `${wikiItemsEndpoint}?items=1` },
               { key: "courses", label: "Wedge course requests (POST)", method: "POST", value: courseEndpoint },
+              { key: "image", label: "Attach a screenshot (POST · multipart `file`)", method: "POST", value: token ? `${origin}/api/wiki/${token}/intake-items/{id}/image` : "" },
               { key: "check", label: "Connectivity check (GET)", method: "GET", value: wikiItemsEndpoint },
             ].map((row) => (
               <div key={row.key}>
@@ -446,6 +449,8 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
                 Required: <span style={{ fontFamily: MONO }}>title</span>. Optional: <span style={{ fontFamily: MONO }}>type</span>, <span style={{ fontFamily: MONO }}>description</span>, <span style={{ fontFamily: MONO }}>priority</span>, <span style={{ fontFamily: MONO }}>status</span>, <span style={{ fontFamily: MONO }}>requestedBy</span>, <span style={{ fontFamily: MONO }}>externalRef</span>, <span style={{ fontFamily: MONO }}>externalUrl</span>, and <span style={{ fontFamily: MONO }}>attachmentUrls</span>. Send one object or {`{"items":[…]}`} for a batch of up to 200. Sending the same <span style={{ fontFamily: MONO }}>externalRef</span> twice is deduped, so retries are safe.
               </p>
             </div>
+
+            <IntakeWebhookField slug={slug} />
 
             <div className="rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-1)] p-4">
               <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-4)]">Clean mapping</p>
@@ -863,6 +868,130 @@ function WikiUserModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Outbound webhook for intake changes — the other half of two-way sync. Without
+ * it a client has to poll `?items=1` to notice we triaged, promoted or closed
+ * their request.
+ *
+ * The signing secret is shown ONCE, on save: it's never returned by a read, so
+ * there's nowhere to go back and look it up. Saying so up front avoids someone
+ * closing the panel and losing it.
+ */
+function IntakeWebhookField({ slug }: { slug: string }) {
+  const { data, isPending } = useIntakeWebhook(slug, true);
+  const save = useSetIntakeWebhook(slug);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const current = data?.url ?? "";
+  const value = draft ?? current;
+  const freshSecret = data?.secret ?? null;
+
+  async function submit(next: string | null) {
+    setError(null);
+    try {
+      await save.mutateAsync(next);
+      setDraft(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save that URL.");
+    }
+  }
+
+  return (
+    <div className="rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-1)] p-4">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-4)]">
+        Status webhook (optional)
+      </p>
+      <p className="mt-1.5 max-w-[80ch] text-[12px] leading-5 text-[var(--text-3)]">
+        We POST here when a request changes on our side — triaged, promoted to a task,
+        closed or deleted — so their tracker follows without polling. https only, and the
+        host must be publicly resolvable.
+      </p>
+
+      {isPending ? (
+        <p className="mt-3 text-[12px] text-[var(--text-4)]">Loading…</p>
+      ) : (
+        <>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <input
+              value={value}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="https://their-system.example.com/hooks/foundry"
+              className="min-w-[280px] flex-1 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 text-[13px] text-[var(--text-1)] outline-none transition focus:border-[var(--brand-500)]"
+              style={{ fontFamily: MONO }}
+            />
+            <button
+              type="button"
+              disabled={save.isPending || value.trim() === current}
+              onClick={() => void submit(value.trim() || null)}
+              className="rounded-[7px] bg-[var(--brand-700)] px-3 py-2 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-800)] disabled:opacity-50"
+            >
+              {save.isPending ? "Saving…" : current ? "Update" : "Enable"}
+            </button>
+            {current ? (
+              <button
+                type="button"
+                disabled={save.isPending}
+                onClick={() => void submit(null)}
+                className="rounded-[7px] border border-[var(--border-2)] bg-white px-3 py-2 text-[12px] font-medium text-[var(--text-3)] transition hover:text-[var(--danger-500)] disabled:opacity-50"
+              >
+                Turn off
+              </button>
+            ) : null}
+          </div>
+
+          {error ? (
+            <p className="mt-2 text-[12px] text-[var(--danger-500)]">{error}</p>
+          ) : null}
+
+          {freshSecret ? (
+            <div className="mt-3 rounded-[8px] border border-amber-300 bg-amber-50 p-3">
+              <p className="text-[12px] font-semibold text-amber-800">
+                Signing secret — copy it now, it isn&rsquo;t shown again
+              </p>
+              <p className="mt-1 text-[11px] leading-5 text-amber-800">
+                They verify each delivery with it: HMAC-SHA256 over the raw body, compared
+                against the <span style={{ fontFamily: MONO }}>X-Foundry-Signature</span>{" "}
+                header. Without checking it, anyone who learns the URL could post fake
+                status changes into their tracker.
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <code
+                  className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-[6px] border border-amber-300 bg-white px-2 py-1.5 text-[12px]"
+                  style={{ fontFamily: MONO }}
+                >
+                  {freshSecret}
+                </code>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(freshSecret);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1500);
+                    } catch {
+                      /* clipboard blocked — it's selectable on screen */
+                    }
+                  }}
+                  className="shrink-0 rounded-[6px] border border-amber-300 bg-white px-2 py-1.5 text-[12px] font-medium text-amber-800"
+                >
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+            </div>
+          ) : data?.hasSecret ? (
+            <p className="mt-2 text-[11px] text-[var(--text-4)]">
+              A signing secret is set. It can&rsquo;t be shown again — save a new URL to mint
+              a fresh one.
+            </p>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

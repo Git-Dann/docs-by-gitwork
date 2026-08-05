@@ -19,6 +19,8 @@ import {
   getGolfCourseBackend,
   getGolfIntegrations,
   getLinkableWikiDocumentsApi,
+  getIntakeWebhookApi,
+  setIntakeWebhookApi,
   getGolfClubsList,
   getGolfUserData,
   runGolfJob,
@@ -68,6 +70,27 @@ export function useClientWiki(slug: string) {
     enabled: Boolean(slug),
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
+  });
+}
+
+/** The outbound webhook for intake status changes (docs/client-intake-api.md). */
+export function useIntakeWebhook(slug: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["client-wiki", slug, "intake-webhook"],
+    queryFn: () => getIntakeWebhookApi(slug),
+    enabled: Boolean(slug) && enabled,
+    staleTime: 60_000,
+  });
+}
+
+export function useSetIntakeWebhook(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (url: string | null) => setIntakeWebhookApi(slug, url),
+    onSuccess: (data) => {
+      // Keep the freshly-minted secret in cache so the panel can show it once.
+      queryClient.setQueryData(["client-wiki", slug, "intake-webhook"], data);
+    },
   });
 }
 

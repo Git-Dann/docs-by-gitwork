@@ -3755,6 +3755,30 @@ export async function getLinkableWikiDocumentsApi(
   );
 }
 
+export interface IntakeWebhookState {
+  url: string | null;
+  /** True when a signing secret exists. The secret itself is only ever returned
+   *  by the POST that mints it. */
+  hasSecret?: boolean;
+  /** Present only on the response that set a new URL. */
+  secret?: string | null;
+}
+
+export async function getIntakeWebhookApi(slug: string): Promise<IntakeWebhookState> {
+  return apiFetch<IntakeWebhookState>(`/api/clients/${slug}/wiki/intake-webhook`);
+}
+
+export async function setIntakeWebhookApi(
+  slug: string,
+  url: string | null,
+): Promise<IntakeWebhookState> {
+  return apiFetch<IntakeWebhookState>(`/api/clients/${slug}/wiki/intake-webhook`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+}
+
 /** Portal "Add to wiki" — mirror a Foundry document into the client's wiki Documents section. */
 export async function addDocToWikiApi(slug: string, documentId: string): Promise<WikiDocumentDTO> {
   return apiFetch<WikiDocumentDTO>(`/api/clients/${slug}/wiki/documents/from-doc`, {

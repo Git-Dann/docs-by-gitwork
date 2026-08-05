@@ -23,6 +23,7 @@ import type {
 import type { DesignTokens } from "@/types/design-tokens";
 import { loadWikiMonitors, type WikiMonitorsSection } from "./wiki-monitors";
 import { assertWithinIntakeQuota } from "./wiki-intake-limit";
+import { deliverIntakeWebhook } from "./wiki-intake-webhook";
 import { loadWikiDocuments, type WikiDocumentsSection } from "./wiki-documents";
 import { loadWikiCodeHandover, type WikiCodeHandoverSection } from "./wiki-code";
 
@@ -1383,11 +1384,32 @@ export async function updateWikiIntakeItem(
       ...(data.externalRef !== undefined ? { externalRef: data.externalRef?.trim() || null } : {}),
     },
   });
+  // Tell the client's tracker their request moved on our side. Fire-and-forget:
+  // never awaited, so a dead endpoint can't slow or fail the person who just
+  // clicked. Deliberately NOT fired from the client's own PATCH — echoing their
+  // change straight back would be a loop.
+  void deliverIntakeWebhook({
+    wikiId: row.wikiId,
+    event: row.status === "CLOSED" ? "request.closed" : "request.updated",
+    item: row,
+  });
   return serializeWikiIntakeItem(row);
 }
 
 export async function deleteWikiIntakeItem(id: string): Promise<void> {
+  // Read first: after the delete there's nothing left to describe, and the
+  // client needs the reference to match it on their side.
+  const row = await prisma.clientWikiIntakeItem.findUnique({
+    where: { id },
+    select: {
+      id: true, wikiId: true, externalRef: true, title: true,
+      type: true, status: true, priority: true, taskId: true,
+    },
+  });
   await prisma.clientWikiIntakeItem.delete({ where: { id } });
+  if (row) {
+    void deliverIntakeWebhook({ wikiId: row.wikiId, event: "request.deleted", item: row });
+  }
 }
 
 async function nextWikiPromotedTaskOrderKey(workspaceId: string, clientId: string): Promise<number> {
@@ -1477,6 +1499,13 @@ export async function promoteWikiIntakeItemToTask(
       metadata: { taskIds: [task.id] },
     });
   }
+
+  // The event a client most wants: their request became real work. Fire-and-forget.
+  void deliverIntakeWebhook({
+    wikiId: updated.wikiId,
+    event: "request.promoted",
+    item: updated,
+  });
 
   return { item: serializeWikiIntakeItem(updated), taskId: task.id };
 }
