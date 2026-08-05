@@ -2628,13 +2628,6 @@ under an older validity policy still draws its own window correctly.
 **Studio:** the catalogue gained a third family and `countermarkPath()`; the studio lists it and
 picks a mark. There is no share step — a countermark is public the moment it is struck.
 
-⚠️ **CM-01 shipped with no animation at all**, because its style block was
-`.dot{animation:ping…}` copied from the card — a selector matching no element in that style. The
-rule looked wired and did nothing. Two guards now cover it: every animated class must resolve to an
-element in the same SVG, and every style must have an entrance rather than only an idle `ping`. The
-first guard immediately caught a second instance (the shield's strike-through rule was emitted for
-live marks too, where the element doesn't exist), which is the whole argument for it.
-
 **Verified:** `npm run verify` green — **624 tests** (26 new Countermark tests + the catalogue
 guard extended to `CM-`), `audit:ui` 0 findings; `npx next build` clean with both badge routes
 registered. All fifteen grade × status × seal × theme combinations were rendered and inspected —
@@ -2882,6 +2875,18 @@ needs its own entry point.
   `deploy.yml` now has a `deploy-production` concurrency group; `cancel-in-progress`
   is deliberately **false** so a run can't be interrupted mid-SSH and leave the box
   half-deployed.
+
+  ⚠️ **A `cancelled` deploy in the feed is usually NOT a failure, and does not mean
+  the commit didn't ship.** `cancel-in-progress: false` protects the *running* job,
+  but GitHub still only keeps **one run queued per group** — push twice in quick
+  succession and the older *pending* run is cancelled by the newer one. That is
+  harmless here only because every run deploys the **tip of `main`**, so the newer
+  run builds a superset that already contains the cancelled run's commit. Observed
+  live on 2026-08-05: `901776ff` was cancelled while queued and its content shipped
+  in `d70039cf`. Before concluding a change is missing, check whether the cancelled
+  commit is an ancestor of whatever did deploy
+  (`git merge-base --is-ancestor <cancelled> <deployed>`) — and don't re-push to
+  "force" it, which just queues another run.
 - **The Docker build OOMed.** Nothing set `NODE_OPTIONS`, so the build used Node's
   default heap and the app has outgrown it at ~100 routes — deploys failed
   seemingly at random depending on what a commit touched. Now

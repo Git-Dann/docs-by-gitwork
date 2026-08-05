@@ -92,6 +92,31 @@ export async function revokeIntakeKey(clientId: string, keyId: string): Promise<
 }
 
 /**
+ * PURE — which of the two credential shapes did the caller present?
+ *
+ * Split out from `resolvePresentedIntakeToken` so the branch that must never
+ * regress is unit-testable without a database. `legacy` means "hand it straight
+ * back untouched": that path carries Wedge's live golf-course feed, so a change
+ * that quietly routed a legacy token through the key lookup would break a working
+ * client integration, and no type error would say so.
+ *
+ * The prefix test is case-SENSITIVE and deliberately so — `randomBytes.base64url`
+ * is mixed case, the prefix we mint is always lowercase, and lowercasing the input
+ * to compare would risk someone later lowercasing the whole credential and
+ * silently breaking hash lookups.
+ */
+export function classifyPresentedCredential(
+  presented: string | null | undefined,
+): { kind: "empty" } | { kind: "legacy"; token: string } | { kind: "named"; key: string } {
+  const raw = presented?.trim();
+  if (!raw) return { kind: "empty" };
+  if (!raw.startsWith(KEY_PREFIX)) return { kind: "legacy", token: raw };
+  // A bare prefix with nothing after it is not a key anyone could hold.
+  if (raw.length <= KEY_PREFIX.length) return { kind: "empty" };
+  return { kind: "named", key: raw };
+}
+
+/**
  * Translate whatever credential a caller presented into the wiki's canonical
  * intake token, so every existing downstream lookup works unchanged.
  *
@@ -106,11 +131,12 @@ export async function revokeIntakeKey(clientId: string, keyId: string): Promise<
  * able to switch it on.
  */
 export async function resolvePresentedIntakeToken(presented: string): Promise<string | null> {
-  const raw = presented?.trim();
-  if (!raw) return null;
+  const classified = classifyPresentedCredential(presented);
+  if (classified.kind === "empty") return null;
   // Not our prefix → assume it's the legacy token and leave it alone. Cheapest
   // path, and it keeps the existing behaviour byte-identical.
-  if (!raw.startsWith(KEY_PREFIX)) return raw;
+  if (classified.kind === "legacy") return classified.token;
+  const raw = classified.key;
 
   const key = await prisma.clientIntakeKey.findUnique({
     where: { keyHash: hashKey(raw) },
