@@ -105,6 +105,22 @@ curl -X PATCH https://foundry.gitwork.co.uk/api/public/wiki-items/<token>/BWG-14
 The path segment is **either** their `externalRef` **or** our item `id`, so they
 never need to store our ids. Only the fields sent are changed.
 
+### Attach a real screenshot
+
+`attachmentUrls` is fine when the client hosts the file publicly — but a link into
+their private tracker will often 403 for us, so they can upload the bytes instead.
+Create the item first, take the `id` from the response, then:
+
+```bash
+curl -X POST "https://foundry.gitwork.co.uk/api/wiki/<token>/intake-items/<id>/image" \
+  -F "file=@screenshot.png"
+```
+
+Same token. PNG / JPEG / WebP / GIF / HEIC, up to 8MB — HEIC is transcoded and a
+thumbnail is generated. One image per item (a second upload replaces it); use
+`attachmentUrls` for additional files. Note this path is `/api/wiki/...`, not
+`/api/public/wiki-items/...` — a historical split, not a different credential.
+
 ### List what we hold (to reconcile)
 
 ```bash
@@ -137,6 +153,7 @@ To *change* an existing item, use `PATCH` (above) rather than re-POSTing.
 | `200` | PATCH / GET succeeded |
 | `400` | Validation failed — the message names the field |
 | `404` | Bad or rotated token, Requests section disabled, or (on PATCH) no such item for this token |
+| `429` | Rate limit — see below. Existing items are unaffected |
 
 An item that isn't this client's is indistinguishable from one that doesn't
 exist — deliberately, so the endpoint can't be used to probe for ids.
@@ -158,13 +175,16 @@ vector against our own network. Only `http(s)` links are stored.
 
 ## 6. Known limits
 
-- **Links, not uploads.** Screenshots come in as URLs the client hosts. Binary
-  upload is a UI-only path today.
 - **One token per client**, rotatable but not per-integrator — you can't revoke
   one system's access while keeping another's. It is also shared with the Wedge
   course-request feed, so rotating affects both for that client. Fine for one
   integration per client; revisit if a client wants several.
 - **No webhooks out.** The client polls `?items=1` to see our side; we don't call
   them when a status changes here.
-- **No rate limit** on these endpoints yet. The token is the only gate, so rotate
-  it if a client's system misbehaves.
+- **Rate limit: 300 new requests/hour, 1000/day per client.** Generous enough for
+  a real backfill (a full 200-item batch passes), tight enough to stop a looping
+  integration burying the page. It counts items actually CREATED, so deduped
+  retries cost nothing, and a `?dryRun` connectivity check is never billed.
+  Requests filed by hand in the wiki UI are never blocked by a client's
+  integration. A `429` leaves existing items untouched — don't re-send
+  everything on seeing one.

@@ -22,6 +22,7 @@ import type {
 } from "@prisma/client";
 import type { DesignTokens } from "@/types/design-tokens";
 import { loadWikiMonitors, type WikiMonitorsSection } from "./wiki-monitors";
+import { assertWithinIntakeQuota } from "./wiki-intake-limit";
 import { loadWikiDocuments, type WikiDocumentsSection } from "./wiki-documents";
 import { loadWikiCodeHandover, type WikiCodeHandoverSection } from "./wiki-code";
 
@@ -1164,7 +1165,14 @@ export async function ingestWikiItemsByToken(
   if (!wiki.intakeEnabled) return null;
 
   const client = { id: wiki.client.id, slug: wiki.client.slug, name: wiki.client.name };
+  // A dry run writes nothing, so it isn't billed against the quota — that's what
+  // makes it usable for an integrator's connectivity checks and test runs.
   if (opts.dryRun) return { client, created: [], skipped: 0, count: 0 };
+
+  // Checked BEFORE any write: the token is the only gate on a public write
+  // endpoint, and without a ceiling a looping integration could bury this page.
+  // Throws a 429; existing items are untouched.
+  await assertWithinIntakeQuota(wiki.id);
 
   const seenRefs = new Set(
     wiki.intakeItems.map((item) => item.externalRef).filter((ref): ref is string => Boolean(ref)),
