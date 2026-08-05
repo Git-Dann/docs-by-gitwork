@@ -609,6 +609,17 @@ export interface CodeSnippetSectionData {
   code: string;
   /** Optional caption rendered below the snippet — supports inline markdown. */
   caption?: string;
+  /** Show 1-based line numbers in a gutter. Off by default; useful when prose cites a line. */
+  showLineNumbers?: boolean;
+  /**
+   * Wrap long lines instead of scrolling them.
+   *
+   * ON by default, and that default is deliberate: a document is often printed to PDF, and a
+   * horizontally scrolling `<pre>` silently CUTS OFF everything past the page edge on paper —
+   * there is no scrollbar to drag on a printed page. Turn it off only for a block whose
+   * alignment matters more than its completeness.
+   */
+  wrapLines?: boolean;
 }
 
 export interface ChecklistSectionData {
