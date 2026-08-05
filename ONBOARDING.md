@@ -148,6 +148,12 @@ npm run audit:clipping -- --self-test
   `MODULE_PATHS` in **`src/server/auth/module-gate.ts`** is the source of truth for which is
   canonical, and for which permission gates each route.
 
+  **The sidebar is not the full list of surfaces.** It holds the seven products (Foundry HQ ·
+  Pulse · Code · Docs · Portal · Care · Backstage) plus Handbook, and everything else has an
+  entry point instead — Studio and the labs in **Settings → Labs**, Analytics and Starters as
+  mono links in the **HQ context strip**, Settings and view-as in the **profile flyout**. Adding
+  a surface? CLAUDE.md §4a decides where it goes; a new sidebar item is almost never the answer.
+
 **Schema changes:** the deploy runs `prisma db push` *without* `--accept-data-loss`, and Prisma's
 safety check is all-or-nothing per push — so if your diff drops anything, **the whole sync is
 skipped including the additive parts**, and the live DB silently never gets your new column. Read

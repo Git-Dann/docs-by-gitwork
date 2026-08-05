@@ -10,6 +10,14 @@
  * Internal + gated on managing clients: minting a key grants write access to a
  * client's wiki, so it isn't an action every member should have.
  *
+ * ⚠️ POST is deliberately STRICTER than the other two. `assertCan(null, …)` lets a
+ * workspace-API_KEY-only caller through by design (the convention for server
+ * integrations), but minting additionally calls `requireAuthedUser`, so it needs a
+ * real signed-in person and an API_KEY-only caller gets a 401. That is intended: a
+ * credential granting write access to a client's wiki must have a named issuer, and
+ * "who issued this key" has to have an answer later. List and revoke stay reachable
+ * to a server integration, because neither creates access.
+ *
  * The plaintext key is returned ONCE, by the POST that mints it. Nothing can read
  * it back afterwards — only a hash is stored.
  */
