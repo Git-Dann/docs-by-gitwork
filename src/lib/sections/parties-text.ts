@@ -172,3 +172,43 @@ export function toCoverParties(parties: ReadonlyArray<PartyLike>): CoverPartyCol
     }))
     .filter((party) => party.name || party.lines.length);
 }
+
+/** One signature block, as authored in the `signatures` section. */
+export interface SignatureBlockLike {
+  partyName?: string;
+  signatoryName?: string;
+  signatoryRole?: string;
+  signatoryEmail?: string;
+  details?: string[];
+}
+
+/**
+ * Cover columns derived from the SIGNATURES block, used when the `parties` block has none.
+ *
+ * A contract's signatories are its parties — the two blocks describe the same people, and older
+ * documents carry the names in only one of them. NDA-2026-002 is exactly that: its `parties`
+ * block is empty (it predates the current template) while its `signatures` block holds
+ * "Gitwork Group Ltd" and the client, so the cover had nothing to show and silently fell back to
+ * the meta grid. Reading both means a contract's cover names who is bound whichever block the
+ * author filled in, instead of depending on which template version minted the document.
+ *
+ * `details` is preferred over the signatory's own name/email for the same reason it is in
+ * `partyDetailLines`: it is the authored company detail, and mixing the two would print a
+ * person's email under a company name.
+ */
+export function coverPartiesFromSignatures(
+  blocks: ReadonlyArray<SignatureBlockLike>,
+): CoverPartyColumn[] {
+  return blocks
+    .map((block) => {
+      const name = (block.partyName || block.signatoryName || "").trim();
+      const authored = (block.details ?? []).map((line) => (line ?? "").trim()).filter(Boolean);
+      const lines = authored.length
+        ? authored
+        : [block.signatoryRole, block.signatoryEmail]
+            .map((line) => (line ?? "").trim())
+            .filter(Boolean);
+      return { name, lines };
+    })
+    .filter((party) => party.name || party.lines.length);
+}
