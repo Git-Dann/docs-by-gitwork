@@ -51,6 +51,22 @@ function isPageBreak(section: ProposalSection): boolean {
   );
 }
 
+/**
+ * Do two pagination results place the same blocks on the same pages?
+ *
+ * Compared by section IDENTITY per page, not by object reference: `packPages` rebuilds its arrays
+ * on every run, so a reference check is always "changed" and a deep-equality check would compare
+ * every block's `data` — which is the very thing that changes while you type.
+ */
+function samePagination(a: ProposalSection[][], b: ProposalSection[][]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((page, index) => {
+    const other = b[index];
+    if (!other || page.length !== other.length) return false;
+    return page.every((section, i) => (section.id ?? section.key) === (other[i].id ?? other[i].key));
+  });
+}
+
 /** Greedily pack sections into pages using measured block heights + the per-page available height. */
 function packPages(
   sections: ProposalSection[],
@@ -144,8 +160,17 @@ export function PagedDocument({
       measure.querySelectorAll<HTMLElement>("[data-measure-index]").forEach((el) => {
         heights.set(Number(el.dataset.measureIndex), el.offsetHeight);
       });
-      const next = packPages(sections, heights, availablePx);
-      setPages(next.length ? next : paginateSections(sections));
+      const packed = packPages(sections, heights, availablePx);
+      const next = packed.length ? packed : paginateSections(sections);
+      // ⚠️ Bail when the LAYOUT is unchanged. `packPages` returns fresh arrays every run, so
+      // setting state unconditionally re-rendered the whole paged document on EVERY KEYSTROKE:
+      // `signature` includes each section's `data`, so typing re-ran this effect, which set new
+      // page arrays, which re-rendered every block — and the ResizeObserver watching the growing
+      // textarea then fired and did it again. The visible symptom was the caret drifting as you
+      // typed, because the field itself was being re-laid-out under it.
+      //
+      // Typing inside a block that does not change where a page breaks is now a no-op here.
+      setPages((current) => (samePagination(current, next) ? current : next));
       (window as unknown as { __docPaginated?: boolean }).__docPaginated = true;
     };
     const schedule = () => {
