@@ -95,6 +95,26 @@ export function AppShell({
       /* storage unavailable — stays expanded */
     }
   }, []);
+
+  /**
+   * The document editor auto-collapses the sidebar, giving the canvas back ~204px.
+   *
+   * The editor is the one full-bleed workspace in the app — a fixed-height frame with a document
+   * in the middle and two rails over it — so 280px of navigation is the most expensive thing on
+   * screen exactly where space matters most.
+   *
+   * Two deliberate limits:
+   *  · It does NOT write `SIDEBAR_COLLAPSED_KEY`. This is a per-surface default, not a change to
+   *    the user's preference — leaving the editor restores whatever they had chosen, and toggling
+   *    it manually inside the editor still persists normally through `toggleCollapsed`.
+   *  · It only fires on ENTERING an editor, keyed on the document id, so re-expanding by hand
+   *    while editing is not undone on the next render.
+   */
+  const editorDocId = /^\/app\/docs\/([^/]+)/.exec(pathname ?? "")?.[1] ?? null;
+  const isEditor = Boolean(editorDocId) && editorDocId !== "analytics";
+  useEffect(() => {
+    if (isEditor) setCollapsed(true);
+  }, [isEditor, editorDocId]);
   function toggleCollapsed() {
     setCollapsed((prev) => {
       const next = !prev;

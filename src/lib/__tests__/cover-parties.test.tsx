@@ -183,4 +183,79 @@ describe("cover — parties", () => {
       expect(html).toContain("Shuffle Love Ltd");
     },
   );
+
+  it("falls back to the SIGNATURES block when the parties block is empty", () => {
+    // NDA-2026-002 exactly: a `parties` block that predates the current template and holds
+    // nothing, with the real parties authored in `signatures`. The cover found no parties and
+    // silently rendered the meta grid instead — which is what "parties still don't show" was.
+    const html = renderCover({
+      sections: [
+        COVER_SECTION,
+        { ...PARTIES_SECTION, data: { intro: "", parties: [] } },
+        {
+          id: "sec-sig",
+          key: "signatures",
+          title: "",
+          description: "",
+          sortOrder: 2,
+          isVisible: true,
+          data: {
+            intro: "",
+            blocks: [
+              {
+                id: "b1",
+                partyName: "Gitwork Group Ltd",
+                signatoryName: "",
+                details: ["Company no. 15756347", "Salford Quays, Manchester"],
+              },
+              { id: "b2", partyName: "Test Client", signatoryName: "", details: [] },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(html).toContain("Gitwork Group Ltd");
+    expect(html).toContain("Test Client");
+    expect(html).toContain("Company no. 15756347");
+    expect(html).not.toContain("Prepared by");
+  });
+
+  it("prefers the authored parties block when it HAS parties", () => {
+    // The fallback must never outrank real authored data, or editing Parties would appear
+    // to do nothing on a document that also has signatures.
+    const html = renderCover({
+      sections: [
+        COVER_SECTION,
+        PARTIES_SECTION,
+        {
+          id: "sec-sig",
+          key: "signatures",
+          title: "",
+          description: "",
+          sortOrder: 2,
+          isVisible: true,
+          data: { blocks: [{ id: "b1", partyName: "Someone Else Ltd", details: [] }] },
+        },
+      ],
+    });
+
+    expect(html).toContain("Gitwork Group Ltd");
+    expect(html).not.toContain("Someone Else Ltd");
+  });
+
+  it("renders the DOCUMENT's client name, not a stale copy frozen in the cover section", () => {
+    // The rail and crumb write doc-level `clientName`; the cover was reading its own section
+    // copy, so an edited client never reached the cover. Observed live: rail said "Test Client",
+    // cover still said "TEst Client".
+    // No parties section, so the cover shows the META grid — which is the only mode that
+    // prints the client name (the parties strip REPLACES it).
+    const html = renderCover(
+      { clientName: "Test Client", sections: [COVER_SECTION] },
+      { clientName: "TEst Client" },
+    );
+
+    expect(html).toContain("Test Client");
+    expect(html).not.toContain("TEst Client");
+  });
 });

@@ -11,7 +11,8 @@ import { CoverEditor } from "@/components/proposals/cover-editor";
 import { DocumentCover, DocumentVersionChip } from "@/components/document-cover";
 import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import { defineSection } from "@/lib/sections/types";
-import { toCoverParties } from "@/lib/sections/parties-text";
+import type { SignatureBlockLike } from "@/lib/sections/parties-text";
+import { coverPartiesFromSignatures, toCoverParties } from "@/lib/sections/parties-text";
 import { approvalTrackApplies } from "@/lib/templates";
 import { DEFAULT_DOC_THEME } from "@/types/proposal";
 import type { CoverSectionData, DocumentType, PartyItem, ProposalSection } from "@/types/proposal";
@@ -194,8 +195,16 @@ export const coverSection = defineSection<CoverSectionData>({
       data.confidentiality ||
       "";
 
+    // Document-level `clientName` WINS over the cover section's own copy.
+    //
+    // It was the other way round, and that is why editing the client left the cover unchanged:
+    // the crumb, the Details page and `applyClientNameToSections` all write the document-level
+    // field, while the cover kept rendering a stale copy frozen into its section data when the
+    // document was created. Two fields, one concept, and the one nothing writes was winning.
+    // `data.clientName` stays as the fallback so a document that only ever had the section copy
+    // still renders.
     const clientName =
-      data.clientName || proposal.clientName || proposal.metadata.client || "Client";
+      proposal.clientName || data.clientName || proposal.metadata.client || "Client";
     // "Prepared by" is edited on the cover itself (it writes proposal.metadata.owner), so the
     // cover preview must read it from there first — otherwise edits to the field never showed.
     // Fall back to the signoff footer's prepared-by / team only when owner is blank.
@@ -286,7 +295,19 @@ export const coverSection = defineSection<CoverSectionData>({
     // One shared normaliser with the `parties` block's own prose render, so the cover columns and
     // the clause list can never disagree: label = the authored role (else the cover's auto
     // `PARTY A/B/C…`), lines = `details` with organisation/email as the back-compat fallback.
-    const coverParties = toCoverParties(partiesData?.parties ?? []);
+    // Fall back to the SIGNATURES block when the parties block is empty. A contract's
+    // signatories are its parties, and older documents carry the names in only one of the two —
+    // NDA-2026-002 has an empty `parties` block (it predates the current template) and its real
+    // parties in `signatures`, so the cover found nothing and silently showed the meta grid.
+    const signatureBlocks = (
+      proposal.sections.find((s) => s.key === "signatures" && s.isVisible)?.data as
+        | { blocks?: SignatureBlockLike[] }
+        | undefined
+    )?.blocks;
+    const authoredParties = toCoverParties(partiesData?.parties ?? []);
+    const coverParties = authoredParties.length
+      ? authoredParties
+      : coverPartiesFromSignatures(signatureBlocks ?? []);
 
     // The bordered `COVERS · … · …` scope strip. Authored on the cover (one entry per line in the
     // cover editor) — trimmed and emptied out here, so a blank or whitespace-only list passes
