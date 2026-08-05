@@ -65,10 +65,25 @@ export function InlineTextArea({
     [],
   );
 
+  // ⚠️ `run` reads the LATEST value through a ref, and must keep doing so.
+  //
+  // The registry stores this closure once, on FOCUS. If it closed over `value` directly it would
+  // freeze the text as it was at that moment, so every keystroke after focusing left the command
+  // acting on stale content. The visible symptom was precise and misleading: clicking Bold moved
+  // the selection highlight (setSelectionRange ran) while the text never changed (the edit was
+  // computed from — and written back as — the old string). Bullets looked like a dead button for
+  // the same reason.
+  //
+  // A ref keeps `run` referentially stable AND always current, so registration happens once and
+  // is never wrong.
+  const latest = useRef({ value, onChange });
+  latest.current = { value, onChange };
+
   const run = useCallback(
     (command: FormatCommand) => {
       const textarea = ref.current;
       if (!textarea) return;
+      const { value, onChange } = latest.current;
       const { selectionStart: start, selectionEnd: end } = textarea;
 
       if (command === "bullets") {
@@ -89,7 +104,7 @@ export function InlineTextArea({
         textarea.setSelectionRange(next.start, next.end);
       });
     },
-    [value, onChange],
+    [],
   );
 
   return (

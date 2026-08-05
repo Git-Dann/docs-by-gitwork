@@ -197,17 +197,22 @@ export function RichInlineEditor({
     () => new Set<FormatCommand>(["bold", "italic", "link", "code", "bullets"]),
     [],
   );
-  const runCommand = useCallback(
-    (command: FormatCommand) => {
-      if (command === "bold") return applyInline("strong");
-      if (command === "italic") return applyInline("em");
-      if (command === "code") return applyInline("code");
-      if (command === "link") return applyLink();
-      // Deprecated, but still the only API that participates in the browser's undo stack.
-      document.execCommand("insertUnorderedList");
-    },
-    [applyInline, applyLink],
-  );
+  // Same ref discipline as `InlineTextArea`: the registry stores this closure once, on focus, so
+  // it must not freeze anything. These commands act on the DOM (always current), but they call
+  // `serialize`, which closes over `onChange` — a stale one would write the edit into a handler
+  // the block has moved on from. Stable identity, always-fresh targets.
+  const handlers = useRef({ applyInline, applyLink });
+  handlers.current = { applyInline, applyLink };
+
+  const runCommand = useCallback((command: FormatCommand) => {
+    const { applyInline, applyLink } = handlers.current;
+    if (command === "bold") return applyInline("strong");
+    if (command === "italic") return applyInline("em");
+    if (command === "code") return applyInline("code");
+    if (command === "link") return applyLink();
+    // Deprecated, but still the only API that participates in the browser's undo stack.
+    document.execCommand("insertUnorderedList");
+  }, []);
 
   return (
     <div

@@ -252,7 +252,20 @@ export function PagedDocument({
         </div>
       </div>
 
-      {pages.map((pageSections, pageIndex) => {
+      {pages.map((packedPage, pageIndex) => {
+        // ⚠️ Resolve each page's sections from the CURRENT `sections` prop by id.
+        //
+        // `pages` is LAYOUT — which blocks sit on which sheet — and it is deliberately not
+        // updated when a keystroke leaves the layout unchanged (that guard is what stopped the
+        // caret drifting). But the packed arrays hold the section objects as they were at pack
+        // time, so rendering them directly froze the canvas: toggling "Show line numbers" ticked
+        // the box in the rail and changed nothing on the page, because the page was still drawing
+        // last pack's copy of the block.
+        //
+        // Separating the two means layout stays stable AND content is always current.
+        const pageSections = packedPage.map(
+          (packed) => sections.find((s) => (s.id ?? s.key) === (packed.id ?? packed.key)) ?? packed,
+        );
         const cover = isCoverPage(pageSections);
         if (!cover) contentPageNumber += 1;
 
