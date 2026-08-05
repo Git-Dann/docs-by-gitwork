@@ -11,6 +11,7 @@ import {
   useSyncSupportClient,
   useBatchTriageConversations,
   useMarkConversationRead,
+  useUpdateSupportClient,
 } from "@/hooks/use-support";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
@@ -90,6 +91,8 @@ function ConversationRow({
  * unused per the redesign. Agent-activity logs are hidden here too.
  */
 function CareSettingsPanel({ client, onClose }: { client: SupportClient; onClose: () => void }) {
+  const updateClient = useUpdateSupportClient(client.id);
+  const courseOnly = client.courseRequestOnly ?? false;
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
       <div className="flex shrink-0 items-center gap-3 border-b border-[var(--border-2)] px-5 py-4">
@@ -109,7 +112,39 @@ function CareSettingsPanel({ client, onClose }: { client: SupportClient; onClose
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-        <div className="mx-auto max-w-3xl">
+        <div className="mx-auto max-w-3xl space-y-5">
+          {/* Support-paused / course-requests-only mode */}
+          <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[var(--text-1)]">Support paused — course requests only</p>
+                <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-3)]">
+                  Keep pulling the inbox quietly, but skip all triage, tickets and auto-replies. Incoming
+                  “New Feedback” emails are auto-filed into the Course Requests wiki (course requests only —
+                  bugs and general feedback are left untouched in the inbox).
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={courseOnly}
+                disabled={updateClient.isPending}
+                onClick={() => updateClient.mutate({ courseRequestOnly: !courseOnly })}
+                title={courseOnly ? "Turn off — resume normal triage" : "Turn on — pause support, course requests only"}
+                className={cn(
+                  "relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50",
+                  courseOnly ? "bg-[var(--brand-600)]" : "bg-[var(--border-1)]",
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
+                    courseOnly ? "translate-x-[22px]" : "translate-x-0.5",
+                  )}
+                />
+              </button>
+            </div>
+          </div>
           <ConnectorsView clientId={client.id} clientSlug={client.slug ?? ""} showAgentLogs={false} />
         </div>
       </div>

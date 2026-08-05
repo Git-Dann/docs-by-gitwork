@@ -4,6 +4,7 @@ import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { runChannelSync } from "@/server/support-channels";
 import { decryptScraperConfig, evaluateWorkflowRules } from "@/server/support";
 import { enrichConversations } from "@/server/care-agents/enrich";
+import { runCourseFeedbackImport } from "@/server/wiki-course-feedback";
 import type { SyncContext, SyncResult, FilterReasons } from "@/server/support-channels/types";
 
 // Re-exported for the API routes / agents that import these from here.
@@ -158,7 +159,20 @@ export async function syncClientConnections(
   }
 
   if (newConversationIds.length > 0) {
+    // Course-requests-only clients (support paused): skip triage/enrichment + workflow
+    // rules entirely — the mail is ingested but left untouched — and instead auto-import
+    // the "New Feedback" course requests into the wiki's Course Requests tracker.
+    const sc = await prisma.supportClient.findUnique({
+      where: { id: clientId },
+      select: { courseRequestOnly: true, workspaceClientId: true },
+    });
     after(async () => {
+      if (sc?.courseRequestOnly) {
+        if (sc.workspaceClientId) {
+          await runCourseFeedbackImport(sc.workspaceClientId, { onlyCourseRequests: true }).catch(console.error);
+        }
+        return;
+      }
       await enrichConversations({ workspace }, newConversationIds, { max: 50 }).catch(console.error);
       await Promise.allSettled(newConversationIds.map((convId) => evaluateWorkflowRules(clientId, convId)));
     });

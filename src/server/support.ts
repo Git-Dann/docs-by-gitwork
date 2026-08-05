@@ -195,6 +195,7 @@ export function serializeSupportClient(row: {
   reportingRecipient: string | null;
   reportDueDay: number | null;
   workspaceClientId?: string | null;
+  courseRequestOnly?: boolean | null;
   _count?: { conversations?: number };
 }): SupportClient {
   return {
@@ -207,6 +208,7 @@ export function serializeSupportClient(row: {
     reportingRecipient: row.reportingRecipient ?? undefined,
     reportDueDay: row.reportDueDay ?? undefined,
     workspaceClientId: row.workspaceClientId ?? undefined,
+    courseRequestOnly: row.courseRequestOnly ?? false,
     unreadCount: row._count?.conversations ?? 0,
   };
 }
@@ -616,11 +618,13 @@ export async function updateSupportClient(
     reportingRecipient: string;
     reportDueDay: number;
     workspaceClientId: string | null;
+    courseRequestOnly: boolean;
   }>,
 ): Promise<SupportClient> {
   const row = await prisma.supportClient.update({
     where: { id: clientId },
     data: {
+      ...(data.courseRequestOnly !== undefined ? { courseRequestOnly: data.courseRequestOnly } : {}),
       ...(data.name !== undefined ? { name: data.name } : {}),
       ...(data.slug !== undefined ? { slug: data.slug } : {}),
       ...(data.status !== undefined
