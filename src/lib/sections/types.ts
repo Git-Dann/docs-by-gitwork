@@ -23,7 +23,9 @@
  * proposal-level callback only for cross-section edits.
  */
 
-import type { ComponentType, ReactNode } from "react";
+import { createElement, type ComponentType, type ReactNode } from "react";
+import { SchemaFieldsEditor } from "@/components/proposals/schema-fields-editor";
+import type { SectionField } from "@/lib/sections/field-schema";
 import type { DocumentType, ProposalDocument, ProposalSection, ProposalSectionData, SectionKey } from "@/types/proposal";
 
 /**
@@ -136,7 +138,13 @@ export interface SectionType<TData = ProposalSectionData> {
   defaultTitle: string;
   /** Default description used for the section card under its title. */
   defaultDescription?: string;
-  /** The Builder-panel editor for this section type. */
+  /**
+   * The Builder-panel editor for this section type.
+   *
+   * A block supplies this OR `fields` (see `defineSection`) — never neither. Most simple settings
+   * forms should declare `fields`; hand-write an `Editor` when the block is genuinely bespoke
+   * (cover, costing, drag-and-drop lists, parties, signatures, pricing tiers).
+   */
   Editor: ComponentType<SectionEditorProps<TData>>;
   /** The print/preview render for this section type. */
   Preview: ComponentType<SectionPreviewProps<TData>>;
@@ -150,11 +158,34 @@ export interface SectionType<TData = ProposalSectionData> {
   renderShell?: boolean;
 }
 
-/** Helper so registry consumers can wrap typed editors without losing their data type. */
+/**
+ * Helper so registry consumers can wrap typed editors without losing their data type.
+ *
+ * A block declares its editor one of two ways, and the type makes it impossible to do neither:
+ *
+ *  · `fields: [...]` — a schema. `SchemaFieldsEditor` renders it, so the markup, the container
+ *    queries and the value coercion are decided once for every block that opts in.
+ *  · `Editor` — a hand-written component, for the ~8 blocks a schema would only make worse.
+ *
+ * Passing both is allowed and `Editor` wins, which is the escape hatch for a block that outgrows
+ * its schema: you write the component and leave the field list as documentation of its shape.
+ */
 export function defineSection<TData extends ProposalSectionData>(
-  spec: SectionType<TData>,
+  spec: Omit<SectionType<TData>, "Editor"> &
+    (
+      | { Editor: ComponentType<SectionEditorProps<TData>>; fields?: never }
+      | { Editor?: ComponentType<SectionEditorProps<TData>>; fields: ReadonlyArray<SectionField<TData>> }
+    ),
 ): SectionType<ProposalSectionData> {
-  return spec as unknown as SectionType<ProposalSectionData>;
+  // `createElement`, not JSX: this file is `.ts` and is imported by server code (the AI chat
+  // route pulls in the registry), so it deliberately stays free of a `.tsx` extension.
+  const fields = spec.fields ?? [];
+  const Editor =
+    spec.Editor ??
+    (({ data, onChange }: SectionEditorProps<TData>) =>
+      createElement(SchemaFieldsEditor<TData>, { data, fields, onChange }));
+
+  return { ...spec, Editor } as unknown as SectionType<ProposalSectionData>;
 }
 
 /** Re-export ReactNode for consumers that need to type optional renderShell wrappers. */
