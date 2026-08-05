@@ -97,23 +97,21 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Enrich and evaluate workflow rules for newly-ingested conversations
-    // after the response — non-gating, never blocks sync.
-    if (allNewConversationIds.length > 0) {
-      after(async () => {
-        // "Course-requests-only" clients (support paused): their mail is ingested but
-        // NOT triaged/enriched or rule-routed; instead their "New Feedback" course
-        // requests are auto-imported into the wiki. Partition new convs accordingly.
-        const clientIds = [...new Set(newConvByClient.map((n) => n.clientId))];
-        const clients = await prisma.supportClient.findMany({
-          where: { id: { in: clientIds } },
-          select: { id: true, courseRequestOnly: true, workspaceClientId: true },
-        });
-        const byId = new Map(clients.map((c) => [c.id, c]));
-        const isCourseOnly = (clientId: string) => byId.get(clientId)?.courseRequestOnly ?? false;
+    // ALL course-requests-only clients (support paused), regardless of whether they got
+    // new mail this cycle — the import dedupes, so it drains any backlog and is a cheap
+    // no-op once caught up. Their conversations are never triaged/enriched or rule-routed.
+    const courseOnlyClients = await prisma.supportClient.findMany({
+      where: { workspaceId: workspace.id, courseRequestOnly: true, workspaceClientId: { not: null } },
+      select: { id: true, workspaceClientId: true },
+    });
+    const courseOnlyIds = new Set(courseOnlyClients.map((c) => c.id));
 
+    // Enrich + evaluate workflow rules for newly-ingested conversations belonging to
+    // NON-course-only clients — after the response, non-gating, never blocks sync.
+    if (allNewConversationIds.length > 0 || courseOnlyClients.length > 0) {
+      after(async () => {
         const triageConvIds = newConvByClient
-          .filter(({ clientId }) => !isCourseOnly(clientId))
+          .filter(({ clientId }) => !courseOnlyIds.has(clientId))
           .map(({ convId }) => convId);
 
         if (triageConvIds.length > 0) {
@@ -123,19 +121,17 @@ export async function GET(request: NextRequest) {
         }
         await Promise.allSettled(
           newConvByClient
-            .filter(({ clientId }) => !isCourseOnly(clientId))
+            .filter(({ clientId }) => !courseOnlyIds.has(clientId))
             .map(({ clientId, convId }) => evaluateWorkflowRules(clientId, convId)),
         );
 
-        // Auto-import course requests for the course-requests-only clients that got new mail.
+        // Drain course requests for every course-requests-only client.
         await Promise.allSettled(
-          clients
-            .filter((c) => c.courseRequestOnly && c.workspaceClientId)
-            .map((c) =>
-              runCourseFeedbackImport(c.workspaceClientId as string, { onlyCourseRequests: true }).catch((err) =>
-                log.error("course-feedback auto-import failed", err),
-              ),
+          courseOnlyClients.map((c) =>
+            runCourseFeedbackImport(c.workspaceClientId as string, { onlyCourseRequests: true }).catch((err) =>
+              log.error("course-feedback auto-import failed", err),
             ),
+          ),
         );
       });
     }

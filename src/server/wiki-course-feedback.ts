@@ -107,6 +107,24 @@ async function alreadyImportedIds(workspaceClientId: string): Promise<Set<string
   );
 }
 
+/**
+ * Normalized set of existing non-rejected course names — for name-based dedup so the
+ * auto-import never adds a course that's already tracked (e.g. one already synced from
+ * the Big Wedge API), only genuinely new ones.
+ */
+async function existingCourseNames(workspaceClientId: string): Promise<Set<string>> {
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { clientId: workspaceClientId },
+    select: { courseRequests: { select: { courseName: true, status: true } } },
+  });
+  return new Set(
+    (wiki?.courseRequests ?? [])
+      .filter((r) => r.status !== "REJECTED")
+      .map((r) => r.courseName.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
 /** List "New Feedback from …" support conversations as course-request import candidates. */
 export async function listCourseFeedbackCandidates(
   workspaceClientId: string,
@@ -317,6 +335,13 @@ export async function runCourseFeedbackImport(
   // outage can't silently drop everything — it falls back to importing unfilled).
   const onlyCourse = (opts.onlyCourseRequests ?? !opts.conversationIds?.length) && aiUsed;
 
+  // In auto / only-course mode, dedupe by course name against what's already tracked
+  // AND within this batch, and require a real name — so we never create duplicates or
+  // empty-named junk, only genuinely new course requests. (Explicit manual selection
+  // keeps the old behaviour — nothing is silently dropped there.)
+  const existingNames = onlyCourse ? await existingCourseNames(workspaceClientId) : new Set<string>();
+  const batchNames = new Set<string>();
+
   const created: CourseRequestRecord[] = [];
   let skipped = 0;
   for (const c of items) {
@@ -325,11 +350,20 @@ export async function runCourseFeedbackImport(
       skipped++;
       continue;
     }
+    const name = (v?.courseName || "").trim();
+    if (onlyCourse) {
+      const norm = name.toLowerCase();
+      if (!norm || existingNames.has(norm) || batchNames.has(norm)) {
+        skipped++;
+        continue;
+      }
+      batchNames.add(norm);
+    }
     const date = c.receivedAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
     const notes = `From ${c.customerLabel} (${date}):\n${c.text}`;
     created.push(
       await addCourseRequest(workspaceClientId, {
-        courseName: v?.courseName || "",
+        courseName: name,
         country: v?.country || null,
         notes,
         status: "NEW",
