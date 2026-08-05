@@ -21,14 +21,13 @@
 
 import type {
   BreakdownSectionData,
-  CostLineItemInput,
-  TimelinePhaseInput,
   CalloutSectionData,
   CategoryChecklistSectionData,
   ChecklistSectionData,
   CodeSnippetSectionData,
   ComparisonTableSectionData,
   CostingSectionData,
+  CostLineItemInput,
   CoverSectionData,
   CtaSectionData,
   DataTableSectionData,
@@ -59,6 +58,7 @@ import type {
   SignoffFooterSectionData,
   SupportingLinksSectionData,
   TermSectionData,
+  TimelinePhaseInput,
   TimelineSectionData,
   TouchpointsSectionData,
   VideoEmbedSectionData,

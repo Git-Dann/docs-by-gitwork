@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createElement, type ComponentType, type ReactElement } from "react";
+import { createElement, type ComponentType } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { SECTION_REGISTRY, allSectionKeys } from "@/lib/sections/registry";
@@ -74,10 +74,6 @@ function galleryDocument(sections: ReturnType<typeof buildBlockGallery>) {
   } as unknown as Record<string, unknown>;
 }
 
-/**
- * The longest string anywhere in a block's data, skipping anything React would HTML-escape (so
- * the assertion can be made against stripped markup without re-implementing entity decoding).
- */
 /**
  * Every string in a block's data that a renderer would pass through UNCHANGED — long enough to be
  * distinctive, free of HTML-escapable characters (so the check can run against stripped markup),
@@ -160,9 +156,6 @@ describe("the gallery is a valid document", () => {
       // NOT "rendered something" — that is satisfied by an empty-state message, which is exactly
       // how a block with no example content would sneak through (kpi_strip does precisely this,
       // and passed an earlier, weaker version of this assertion with `items: []`).
-      //
-      // "At least one" rather than "all", because some fields are editor-only or feed another
-      // block: `costing.supportingNarrative` is real data the Preview genuinely doesn't draw.
       const text = html.replace(/<[^>]*>/g, " ");
       const candidates = plainStrings(section.data);
 

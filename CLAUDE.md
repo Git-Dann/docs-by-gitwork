@@ -2892,6 +2892,15 @@ needs its own entry point.
   seemingly at random depending on what a commit touched. Now
   `--max-old-space-size=6144` in the builder stage only.
 
+  ⚠️ **That fix went to the Dockerfile and NOT to `checks.yml`, so CI OOMed on
+  `main` for a day** — every `verify` run died on `npx next build` with the same
+  JS heap error while deploys went green, which is a uniquely misleading pair
+  (the gate is red, the thing the gate protects is fine, and a real failure
+  would look identical). The build step in `checks.yml` now carries the same
+  `NODE_OPTIONS` (Aug 2026). **Anything that raises the build's memory ceiling
+  has to be set in BOTH places** — they are two independent builds of the same
+  app and neither reads the other's environment.
+
 ⚠️ **`npm run verify` cannot catch a prerender error** — only `next build` can. A
 `useSearchParams()` added without a Suspense boundary passed tsc, lint, tests and
 `audit:ui`, then broke the production build. **Run `npx next build` before pushing

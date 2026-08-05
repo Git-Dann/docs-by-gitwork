@@ -62,4 +62,14 @@ jobs:
       # compile and prerender all 101 static pages with no DATABASE_URL set, so it
       # catches the RSC-boundary and static-generation breakage `tsc` can't see.
       - name: Build
+        # Same heap bump the Docker builder stage has carried since 2026-08-04 (§40.3), which
+        # this workflow never got — so CI has been red on `main` with a JS heap OOM at Node's
+        # ~4GB default while deploys went green. The app is past that ceiling at ~100 routes;
+        # a hosted runner has 16GB, so 6144 is comfortably within budget.
+        #
+        # Build step only, mirroring the Dockerfile: tsc, eslint and vitest run in their own
+        # processes and are nowhere near the limit, and giving them a large heap would only
+        # mask a genuine regression in one of them.
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
         run: npx next build
