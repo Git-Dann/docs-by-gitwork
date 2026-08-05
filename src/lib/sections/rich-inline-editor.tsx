@@ -49,6 +49,8 @@ function inlineMarkdownToHtml(text: string): string {
           ? `<a href="${escapeHtml(href)}">${escapeHtml(lm[1])}</a>`
           : escapeHtml(lm?.[1] ?? token),
       );
+    } else if (token.startsWith("***")) {
+      out.push(`<strong><em>${escapeHtml(token.slice(3, -3))}</em></strong>`);
     } else if (token.startsWith("**")) {
       out.push(`<strong>${escapeHtml(token.slice(2, -2))}</strong>`);
     } else if (token.startsWith("*") || token.startsWith("_")) {
@@ -66,7 +68,19 @@ function markdownToHtml(markdown: string): string {
   if (!text.trim()) return "";
   return text
     .split(/\n{2,}/)
-    .map((block) => `<div>${block.split("\n").map(inlineMarkdownToHtml).join("<br>")}</div>`)
+    .map((block) => {
+      const lines = block.split("\n");
+      // A block whose every line is a bullet becomes a real <ul>. Without this the editor could
+      // not RESTORE a list it had just written: the round trip was one-way, so a list survived
+      // until the next re-render and then silently reverted to plain lines.
+      if (lines.length && lines.every((line) => /^\s*[-*]\s+/.test(line))) {
+        const items = lines
+          .map((line) => `<li>${inlineMarkdownToHtml(line.replace(/^\s*[-*]\s+/, ""))}</li>`)
+          .join("");
+        return `<ul>${items}</ul>`;
+      }
+      return `<div>${lines.map(inlineMarkdownToHtml).join("<br>")}</div>`;
+    })
     .join("");
 }
 
@@ -80,6 +94,8 @@ function inlineNodeToMarkdown(node: Node): string {
   switch (el.tagName) {
     case "STRONG":
     case "B":
+      // A <strong> wrapping only an <em> is bold-italic; `inner` already carries the `*`, so
+      // emitting `**` around it produces `***x***` rather than `***x**` + a stray marker.
       return `**${inner}**`;
     case "EM":
     case "I":
@@ -101,7 +117,19 @@ function htmlToMarkdown(root: HTMLElement): string {
     current = [];
   };
   root.childNodes.forEach((node) => {
-    if (node.nodeType === Node.ELEMENT_NODE && /^(DIV|P)$/.test((node as HTMLElement).tagName)) {
+    const tag = node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement).tagName : "";
+    // A list serialises to `- ` lines — the same syntax `renderLines` reads and authors already
+    // type by hand. `htmlToMarkdown` previously had NO list case at all, so `insertUnorderedList`
+    // produced a list in the DOM that the very next serialisation threw away.
+    if (tag === "UL" || tag === "OL") {
+      flush();
+      const items = Array.from((node as HTMLElement).querySelectorAll("li"))
+        .map((li) => `- ${inlineNodeToMarkdown(li).trim()}`)
+        .filter((line) => line !== "- ");
+      if (items.length) paragraphs.push(items.join("\n"));
+      return;
+    }
+    if (/^(DIV|P)$/.test(tag)) {
       flush();
       paragraphs.push(Array.from(node.childNodes).map(inlineNodeToMarkdown).join(""));
     } else {
@@ -201,8 +229,8 @@ export function RichInlineEditor({
   // it must not freeze anything. These commands act on the DOM (always current), but they call
   // `serialize`, which closes over `onChange` — a stale one would write the edit into a handler
   // the block has moved on from. Stable identity, always-fresh targets.
-  const handlers = useRef({ applyInline, applyLink });
-  handlers.current = { applyInline, applyLink };
+  const handlers = useRef({ applyInline, applyLink, serialize });
+  handlers.current = { applyInline, applyLink, serialize };
 
   const runCommand = useCallback((command: FormatCommand) => {
     const { applyInline, applyLink } = handlers.current;
@@ -212,6 +240,11 @@ export function RichInlineEditor({
     if (command === "link") return applyLink();
     // Deprecated, but still the only API that participates in the browser's undo stack.
     document.execCommand("insertUnorderedList");
+    // ⚠️ And SERIALISE. `applyInline` and `applyLink` each end by writing the DOM back to the
+    // value; this path did not, so the list appeared and then vanished on the next render, when
+    // the field is re-rendered from a `value` that never learned about it. That is why the
+    // button looked dead rather than wrong.
+    handlers.current.serialize();
   }, []);
 
   return (
