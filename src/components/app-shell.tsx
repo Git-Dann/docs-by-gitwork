@@ -657,7 +657,12 @@ function Avatar({ name, url, position }: { name: string; url: string; position?:
         height={36}
         loading="lazy"
         decoding="async"
-        className="h-9 w-9 rounded-full object-cover"
+        // `shrink-0` matters: this sits in a flex row, so without it the image is
+        // squashed to whatever width the padding leaves — measured 26px wide by
+        // 36 tall in the 76px collapsed rail, i.e. a circular photo rendered as
+        // an oval. The initials fallback below already had it, which is the tell
+        // that this was an oversight rather than a choice.
+        className="h-9 w-9 shrink-0 rounded-full object-cover"
         style={position ? { objectPosition: position } : undefined}
         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; (e.currentTarget.nextSibling as HTMLElement | null)?.style.setProperty("display", "flex"); }}
       />
@@ -753,8 +758,22 @@ function ProfileMenu({
         onClick={() => setOpen((current) => !current)}
         title={collapsed ? displayName : undefined}
         className={cn(
-          "flex w-full items-center gap-3 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-3 text-left transition hover:bg-[var(--surface-1)]",
-          collapsed && "justify-center px-2",
+          "flex w-full items-center gap-3 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] text-left transition hover:bg-[var(--surface-1)]",
+          // Collapsed: a SQUARE tile. The rail is 76px and its column is `px-3`,
+          // so this button is 76−24 = 52px wide. Padding is 6px, not 8: the 36px
+          // avatar plus 2×8 plus the 1px borders comes to 54 and overflows a
+          // 52px box, which is what shrank the image. 6px leaves 38px of content
+          // for a 36px avatar. Expanded keeps its roomier padding.
+          //
+          // ⚠️ The padding is written as an EITHER/OR, not as `p-2` layered over a
+          // base `px-3 py-3`. Tailwind v4 emits the `padding` shorthand BEFORE the
+          // `padding-inline`/`padding-block` longhands, so `px-3 py-3` beats a
+          // later `p-2` in the class list — measured: computed padding stayed 12px
+          // and the tile came out 52×62, since 36px of avatar plus 24px of padding
+          // overflows the square and forces the height. Same shape of trap as the
+          // Deck split-button radius in §30: class order in the attribute is not
+          // precedence. Don't "simplify" this back into a single base + override.
+          collapsed ? "aspect-square justify-center p-1.5" : "px-3 py-3",
         )}
       >
         <Avatar name={displayName} url={displayAvatar} position={displayAvatarPosition} />
