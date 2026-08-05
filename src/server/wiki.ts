@@ -924,6 +924,34 @@ export async function addCourseRequest(
   return serializeCourseRequest(req);
 }
 
+/**
+ * List a client's course requests, newest first. Supports a courseName substring
+ * search + status filter — used by the MCP `list_course_requests` tool so a manual
+ * "add this course" pass can check for an existing entry before creating a duplicate.
+ */
+export async function listCourseRequests(
+  clientId: string,
+  opts: { search?: string; status?: CourseRequestStatus; limit?: number } = {},
+): Promise<{ requests: CourseRequestRecord[]; total: number }> {
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { clientId },
+    select: { id: true },
+  });
+  if (!wiki) return { requests: [], total: 0 };
+  const where = {
+    wikiId: wiki.id,
+    ...(opts.status ? { status: opts.status } : {}),
+    ...(opts.search ? { courseName: { contains: opts.search, mode: "insensitive" as const } } : {}),
+  };
+  const total = await prisma.clientCourseRequest.count({ where });
+  const rows = await prisma.clientCourseRequest.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: Math.min(Math.max(opts.limit ?? 50, 1), 200),
+  });
+  return { requests: rows.map(serializeCourseRequest), total };
+}
+
 /** Update a course request's editable fields (by id). */
 export async function updateCourseRequest(
   requestId: string,
