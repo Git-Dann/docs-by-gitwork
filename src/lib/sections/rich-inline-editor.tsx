@@ -19,9 +19,12 @@
  * Markdown and pushed via `onChange`.
  */
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { INLINE_RE, safeUrl } from "@/lib/markdown";
-import { InlineFormatBar, type SelectionRect } from "@/lib/sections/inline-format-toolbar";
+import {
+  useFormatTargetRegistration,
+  type FormatCommand,
+} from "@/lib/sections/format-target";
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -129,7 +132,6 @@ export function RichInlineEditor({
 }) {
   const elRef = useRef<HTMLDivElement>(null);
   const focused = useRef(false);
-  const [rect, setRect] = useState<SelectionRect | null>(null);
   const [empty, setEmpty] = useState(!value.trim());
 
   // External value -> DOM, but never while the operator has this field focused — that would
@@ -146,26 +148,6 @@ export function RichInlineEditor({
     if (!el) return;
     onChange(htmlToMarkdown(el));
   }, [onChange]);
-
-  const updateSelectionRect = useCallback(() => {
-    const el = elRef.current;
-    const sel = window.getSelection();
-    if (!el || !focused.current || !sel || sel.rangeCount === 0 || sel.isCollapsed || !el.contains(sel.anchorNode)) {
-      setRect(null);
-      return;
-    }
-    const r = sel.getRangeAt(0).getBoundingClientRect();
-    if (r.width === 0 && r.height === 0) {
-      setRect(null);
-      return;
-    }
-    setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
-  }, []);
-
-  useEffect(() => {
-    document.addEventListener("selectionchange", updateSelectionRect);
-    return () => document.removeEventListener("selectionchange", updateSelectionRect);
-  }, [updateSelectionRect]);
 
   const applyInline = useCallback(
     (tag: "strong" | "em" | "code") => {
@@ -205,6 +187,28 @@ export function RichInlineEditor({
     serialize();
   }, [serialize]);
 
+  // Registers with the ONE persistent formatting bar rather than rendering its own floating one.
+  // Same command set as a plain field, different substrate: this is a contenteditable, so the
+  // browser's own list command is the right tool — it handles the nesting, splitting and merging
+  // that a string transform cannot see. The <textarea> fields use `toggleBulletLines` instead.
+  const formatId = useId();
+  const { register, unregister } = useFormatTargetRegistration();
+  const commands = useMemo(
+    () => new Set<FormatCommand>(["bold", "italic", "link", "code", "bullets"]),
+    [],
+  );
+  const runCommand = useCallback(
+    (command: FormatCommand) => {
+      if (command === "bold") return applyInline("strong");
+      if (command === "italic") return applyInline("em");
+      if (command === "code") return applyInline("code");
+      if (command === "link") return applyLink();
+      // Deprecated, but still the only API that participates in the browser's undo stack.
+      document.execCommand("insertUnorderedList");
+    },
+    [applyInline, applyLink],
+  );
+
   return (
     <div
       className={`inline-edit relative w-full rounded-[4px] transition-colors focus-within:bg-[var(--surface-brand)]/50 ${className ?? ""}`}
@@ -219,6 +223,7 @@ export function RichInlineEditor({
         aria-multiline="true"
         onFocus={() => {
           focused.current = true;
+          register({ id: formatId, commands, run: runCommand });
           // Normalise Enter → a new paragraph <div> across browsers (Firefox otherwise defaults
           // to a bare <br>), so htmlToMarkdown's paragraph splitting behaves consistently.
           if (typeof document.execCommand === "function") {
@@ -231,8 +236,8 @@ export function RichInlineEditor({
         }}
         onBlur={() => {
           focused.current = false;
+          unregister(formatId);
           serialize();
-          setRect(null);
         }}
         onInput={() => setEmpty(!(elRef.current?.textContent ?? "").trim())}
         className="rich-inline-editable min-h-[1.5em] outline-none [&_a]:text-[var(--brand-700)] [&_a]:underline [&_a]:underline-offset-2 [&_code]:rounded [&_code]:bg-[var(--surface-1)] [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.9em]"
@@ -242,20 +247,6 @@ export function RichInlineEditor({
           {placeholder}
         </div>
       ) : null}
-      <InlineFormatBar
-        rect={rect}
-        onBold={() => applyInline("strong")}
-        onItalic={() => applyInline("em")}
-        onCode={() => applyInline("code")}
-        onLink={applyLink}
-        onBullets={() => {
-          // contenteditable, so the browser's own list command is the right tool: it handles
-          // nesting, splitting and merging that a string transform cannot see. The plain
-          // <textarea> fields use `toggleBulletLines` instead — different substrate, same result.
-          // Deprecated but still the only API that participates in the browser's undo stack.
-          document.execCommand("insertUnorderedList");
-        }}
-      />
     </div>
   );
 }

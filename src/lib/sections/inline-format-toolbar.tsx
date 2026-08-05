@@ -115,6 +115,44 @@ export function useTextareaSelectionRect(
 }
 
 /**
+ * Wrap the selection in a Markdown marker — the pure half of bold/italic/code/link.
+ *
+ * Pure and exported so the selection maths is unit-testable, and so the persistent toolbar and
+ * the old wrap-the-selection hook cannot drift apart. Returns null when there is no selection to
+ * wrap, so the caller leaves the field untouched rather than inserting empty markers at the
+ * caret — `****` with the cursor in the middle looks like a bug to whoever typed it.
+ */
+export function wrapSelection(
+  value: string,
+  selectionStart: number,
+  selectionEnd: number,
+  command: "bold" | "italic" | "code" | "link",
+): { value: string; start: number; end: number } | null {
+  if (selectionStart === selectionEnd) return null;
+  const selected = value.slice(selectionStart, selectionEnd);
+
+  if (command === "link") {
+    const insert = `[${selected}](https://)`;
+    // Select the URL, not the text — the label is already what you highlighted, so the next
+    // thing you want to type is where it points.
+    const urlStart = selectionStart + selected.length + 3;
+    return {
+      value: value.slice(0, selectionStart) + insert + value.slice(selectionEnd),
+      start: urlStart,
+      end: urlStart + 8,
+    };
+  }
+
+  const marker = command === "bold" ? "**" : command === "italic" ? "*" : "`";
+  return {
+    value:
+      value.slice(0, selectionStart) + marker + selected + marker + value.slice(selectionEnd),
+    start: selectionStart + marker.length,
+    end: selectionStart + marker.length + selected.length,
+  };
+}
+
+/**
  * Toggle `- ` on every line the selection touches.
  *
  * Pure and exported so the transform is unit-testable without a DOM — the line/selection maths is
