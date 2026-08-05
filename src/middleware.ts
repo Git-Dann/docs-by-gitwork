@@ -266,9 +266,11 @@ export default auth(async (req) => {
       return NextResponse.redirect(new URL("/app", req.url));
     }
 
-    // The Handbook (internal developer knowledgebase) is readable by every internal user — it's the
-    // devs' bible. No module gate here; write access (create/edit/delete) is enforced server-side in
-    // the /api/handbook routes (Admin + Super Admin only).
+    // The Handbook (internal developer knowledgebase) is Admin + Super Admin only — both viewing and
+    // writing. Runs before the Admin-bypass module gate. Developers and staff have no access.
+    if (pathname.startsWith("/app/handbook") && !isAtLeast(req.auth.user.role, "ADMIN")) {
+      return NextResponse.redirect(new URL("/app", req.url));
+    }
 
     // Module gate — Admins and Super Admins reach every module (nav safety: never lock
     // an admin out on a stale token). Staff and Developers are scoped to the modules in
