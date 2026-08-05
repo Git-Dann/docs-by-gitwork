@@ -2603,6 +2603,10 @@ model SupportClient {
   supportDaysUsed     Int?                       @default(0)
   reportingRecipient  String?
   reportDueDay        Int?
+  // "Course-requests-only" mode (support paused): sync still ingests the inbox, but
+  // triage/enrichment + workflow rules are skipped, and "New Feedback" emails are
+  // auto-imported into the wiki's Course Requests tracker. Additive → safe db push.
+  courseRequestOnly   Boolean                    @default(false)
   workspaceClientId   String?
   workspaceClient     WorkspaceClient?           @relation(fields: [workspaceClientId], references: [id], onDelete: SetNull)
   createdAt           DateTime                   @default(now())

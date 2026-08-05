@@ -31,6 +31,8 @@ export interface SupportClient {
   reportingRecipient?: string;
   reportDueDay?: number;
   workspaceClientId?: string;
+  /** Support paused: ingest quietly, skip triage/rules, auto-import course requests. */
+  courseRequestOnly?: boolean;
   unreadCount?: number;
 }
 
