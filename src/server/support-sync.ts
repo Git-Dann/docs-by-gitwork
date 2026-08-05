@@ -158,21 +158,24 @@ export async function syncClientConnections(
     }
   }
 
-  if (newConversationIds.length > 0) {
-    // Course-requests-only clients (support paused): skip triage/enrichment + workflow
-    // rules entirely — the mail is ingested but left untouched — and instead auto-import
-    // the "New Feedback" course requests into the wiki's Course Requests tracker.
-    const sc = await prisma.supportClient.findUnique({
-      where: { id: clientId },
-      select: { courseRequestOnly: true, workspaceClientId: true },
-    });
+  // Course-requests-only clients (support paused): never triage; instead auto-import
+  // the "New Feedback" course requests into the wiki. Run this on EVERY sync — not only
+  // when new mail arrived this run — so an already-ingested backlog still gets filed.
+  // The import dedupes by source conversation, so once caught up it's a cheap no-op
+  // (nothing new → no AI call).
+  const sc = await prisma.supportClient.findUnique({
+    where: { id: clientId },
+    select: { courseRequestOnly: true, workspaceClientId: true },
+  });
+  if (sc?.courseRequestOnly) {
+    const wsClientId = sc.workspaceClientId;
+    if (wsClientId) {
+      after(async () => {
+        await runCourseFeedbackImport(wsClientId, { onlyCourseRequests: true }).catch(console.error);
+      });
+    }
+  } else if (newConversationIds.length > 0) {
     after(async () => {
-      if (sc?.courseRequestOnly) {
-        if (sc.workspaceClientId) {
-          await runCourseFeedbackImport(sc.workspaceClientId, { onlyCourseRequests: true }).catch(console.error);
-        }
-        return;
-      }
       await enrichConversations({ workspace }, newConversationIds, { max: 50 }).catch(console.error);
       await Promise.allSettled(newConversationIds.map((convId) => evaluateWorkflowRules(clientId, convId)));
     });
