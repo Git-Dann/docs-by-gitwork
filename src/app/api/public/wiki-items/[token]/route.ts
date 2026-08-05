@@ -24,6 +24,7 @@ import {
   wikiIntakeTokenState,
 } from "@/server/wiki";
 import { intakeCommonFields } from "@/server/wiki-intake-vocab";
+import { resolvePresentedIntakeToken } from "@/server/wiki-intake-keys";
 
 /**
  * A valid token whose Requests section is switched off is a DIFFERENT problem
@@ -63,7 +64,10 @@ export async function GET(
   { params }: { params: Promise<{ token: string }> },
 ) {
   try {
-    const { token } = await params;
+    const { token: presented } = await params;
+    // A named per-integrator key resolves to this wiki's canonical token; a legacy
+    // token passes through unchanged. Everything below is untouched by keys.
+    const token = (await resolvePresentedIntakeToken(presented)) ?? presented;
     // `?items=1` lists what we hold so an integrator can reconcile their side —
     // and confirm a push landed — without needing a second credential.
     if (req.nextUrl.searchParams.get("items") === "1") {
@@ -87,7 +91,8 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> },
 ) {
   try {
-    const { token } = await params;
+    const { token: presented } = await params;
+    const token = (await resolvePresentedIntakeToken(presented)) ?? presented;
     const parsed = bodySchema.parse(await req.json());
     const items = "items" in parsed ? parsed.items : [parsed];
     const result = await ingestWikiItemsByToken(token, items);

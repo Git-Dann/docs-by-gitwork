@@ -273,12 +273,12 @@ The sidebar uses different labels from the URL routes — mapping below.
 | **Pulse** | `/app/pulse` | `src/server/pulse*.ts` + `pulse-agents/` | AI project validation — ~600 checks in `checks-registry.ts`, gap analysis, GitHub fix-agent, continuous monitors. Also hosts the optional **Study** research tool (no longer a top-level module — see §26) |
 | **Provenance** (lab) | `/app/provenance` | `src/server/provenance/` | Attestation layer — strikes a **Countermark** from a completed Pulse scan: a frozen, digest-and-seal-verified certificate of what a piece of software was found to be, what could **not** be established, and how long the mark is valid for. Public certificate at `/countermark/[token]` (no auth, noindex). **No sidebar item** — entry point is Settings → Labs (§4a) while it's an experiment. Gated by the **admin-only `provenance` feature perm** (default-off, NOT a module id — see §38); issuing/revoking is the separate high-risk `provenance.issue`. See §38 + `docs/provenance.md` |
 | **Code** | `/app/code` (legacy `/app/codeclear`) | `src/server/codeclear*.ts` | Developer hiring pipeline — GitHub analysis, scoring, candidate management. ⚠️ `candidates/`, `pipeline/` and `devsignal/**` still live ONLY under the legacy `/app/codeclear/*` prefix — moving them is a separate PR, and the `/app/codeclear/devsignal` `MODULE_PATHS` entry must be renamed **in place** or admin-only DevSignal silently regates onto the staff-inherited `codeclear` module |
-| **Studio** | `/app/studio` | — (client-side only, no `/api/studio`) | Brand asset studio — design on-brand social assets and App Store / Play Store screenshots, then batch-export at the exact size each platform needs. ~30 components under `src/components/studio/` (`studio-root.tsx` entry, plus `templates/`, `screenshots/`, `costing/`, `brand.tsx`, `export.ts`). Also now hosts the **Demo builder** (`demo-builder.tsx`), moved out of Settings in July 2026 — this is the `Demo {{Feat}}` workstream in §32. Module permission id `studio` |
+| **Studio** | `/app/studio` | — (client-side only, no `/api/studio`) | Brand asset studio — design on-brand social assets and App Store / Play Store screenshots, then batch-export at the exact size each platform needs. ~30 components under `src/components/studio/` (`studio-root.tsx` entry, plus `templates/`, `screenshots/`, `costing/`, `brand.tsx`, `export.ts`). Also now hosts the **Demo builder** (`demo-builder.tsx`), moved out of Settings in July 2026 — this is the `Demo {{Feat}}` workstream in §32. Module permission id `studio`. **No sidebar item since Aug 2026** — reached from **Settings → Labs**, which is Super-Admin-gated, so this narrows it from the `studio` module perm (§4a) |
 | **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). `/app/proposals/*` are redirect stubs (see §16) |
 | **Portal** | `/app/portal` (legacy `/app/clients`) | `src/server/clients.ts` · `meetings.ts` | Client management + detail pages, incl. **Scribe** AI meeting notes per-client (no sidebar item — see §14). `/app/clients(/[slug])` are redirect stubs — they were a live, degraded second copy missing the tasks/wiki/design-system children |
 | **Care** | `/app/care` (legacy `/app/support`) | `src/server/support.ts` | Client support ops. ⚠️ **Two UIs are live.** `/app/care` is the rebuilt cockpit; `/app/support` still serves the 5,535-line legacy dashboard and exclusively owns add-client, Tickets, monthly Reports, health scoring, AI search and workflow rules. `client-cockpit.tsx` imports `ConnectorsView` *out of* the legacy file, so it cannot be deleted yet. Finishing the port is a two-way merge, not a cutover |
-| **Analytics** | `/app/analytics` | `src/server/analytics/` | Delivery, output & AI usage. Super Admin — gated by the page itself (`notFound()` on a live DB role read), not by `MODULE_PATHS`. Reached from the Settings rail |
-| **Starters** | `/app/starters` | `src/server/starters*.ts` | Prompt→production library. **Super Admin only**, enforced by a dedicated check in `middleware.ts` ahead of the module gate |
+| **Analytics** | `/app/analytics` | `src/server/analytics/` | Delivery, output & AI usage. Super Admin — gated by the page itself (`notFound()` on a live DB role read), not by `MODULE_PATHS`. **No sidebar item since Aug 2026** — a mono `· ANALYTICS` link in the HQ context strip beside Decks |
+| **Starters** | `/app/starters` | `src/server/starters*.ts` | Prompt→production library. **Super Admin only**, enforced by a dedicated check in `middleware.ts` ahead of the module gate. **No sidebar item since Aug 2026** — a mono `· STARTERS` link in the HQ context strip |
 | **Handbook** | `/app/handbook` | — | Internal developer knowledgebase. Deliberately readable by every internal user (no module gate); writes are Admin+ (enforced in `/api/handbook`) |
 | **Templates** | `/app/templates` | `src/server/proposals.ts` | Document templates. Linked from the Docs workspace; gated on `proposals` since July 2026 |
 | **Study** (tool) | `/app/study` | `src/server/study*.ts` + `study-agents/` | AI user research — multi-agent persona interviews, synthesis, reports. **No sidebar item** — surfaced as an optional tool inside Pulse (see §26). Routes/API/models unchanged at `/app/study` · `/api/study` |
@@ -2780,3 +2780,107 @@ After both fixes that repo reports clean, which it is.
 **Deferred:** the pillar breakdown and benchmark caveat are computed but not yet rendered in the
 report UI — pillars derive from `scan.checks` per §8, so that is a presentation change with no
 server work behind it.
+
+## 40. Recent Changes (August 2026) — Client intake API, and the sidebar is products only
+
+### 40.1 Clients can push their own bugs/feedback/feature requests in
+
+A client asked to push items from their tracker into Foundry rather than re-typing
+them. Built for **any** client, not one integration: every client wiki already had
+an intake token, so this extended `POST /api/public/wiki-items/[token]` rather than
+adding a parallel credential system. Operator + integrator guide:
+**`docs/client-intake-api.md`** (send it to the client as-is).
+
+What was added: `status`, `externalUrl` (deep link back to their item) and
+`attachmentUrls`; **PATCH `/[ref]`** to update, addressed by OUR id or THEIR
+`externalRef`; **GET `?items=1`** to reconcile; and vocabulary aliases so
+"Feature request" → TASK, "P1" → HIGH, "Done" → CLOSED. Anything unrecognised is a
+400 naming the field, never silently coerced.
+
+**The real blocker was the key.** There was no way to obtain a token short of
+database access, which is why a client asking for "an API key" couldn't be given
+one. It is now surfaced in **Portal → client → Wiki → Settings → `02 // API
+INTAKE`**, with the token, every endpoint pre-substituted, a worked `curl`, and
+Rotate.
+
+⚠️ **Never hand a client the workspace `API_KEY`.** It authorises every `/api/`
+route for the whole workspace. The intake token authorises one thing for ONE
+client, and since the token *identifies* the client there is no way to express
+"write to a different client's wiki".
+
+**Two defects only end-to-end testing found** (verified against production against
+a second client, not just Wedge):
+- Enabling API intake minted a token but did **not** switch on the Requests
+  section — and pushes are rejected while that's off. So you could enable the API,
+  send a client the token, and every call would fail reporting *"Invalid intake
+  token"*, pointing at the credential when the credential was fine. Enabling now
+  turns both on, and the API names the real cause.
+- A malformed image upload returned `500` with sharp's internal error string
+  (`pngload_buffer: libspng read error`) — wrong status and an internal library
+  message leaked externally. Now a 400.
+
+**Screenshots: links AND uploads.** `attachmentUrls` are stored as links and never
+fetched (fetching a caller-supplied URL is an SSRF vector). Real bytes go to
+`POST /api/wiki/[token]/intake-items/[id]/image` (multipart `file`, ≤8MB) — which
+matters because a link into a client's private tracker often 403s for us.
+
+**Rate limited** (`wiki-intake-limit.ts`): 300 new items/hour, 1000/day per client.
+Counts items *created*, not requests received — a retry loop resending the same
+`externalRef` is already deduped to zero rows, so it costs nothing, while genuinely
+new items are what needs a ceiling. Only `source: "api"` rows count, so a client's
+misbehaving integration can never block the team filing a request by hand. A dry
+run is never billed. The threshold logic is pure and unit-tested.
+
+**Status webhook out** (`wiki-intake-webhook.ts`, optional, off by default): we POST
+`request.promoted` / `closed` / `updated` / `deleted` so a client's tracker follows
+without polling. Three things done deliberately — the destination host is validated
+through the Pulse SSRF guard and **re-checked on every delivery** (a hostname that
+resolved publicly when saved can be repointed at `127.0.0.1` later); deliveries are
+**signed** `X-Foundry-Signature: sha256=<hmac>` with a per-client secret shown once,
+because without it a receiver can't tell our POST from anyone else's who learned the
+URL; and delivery is **fire-and-forget with a 4s timeout**, so a client's dead
+endpoint can never slow or fail the Gitwork user who just closed a request. A
+client's own PATCH does not fire a webhook back — that would loop.
+
+**Per-integrator keys** (`wiki-intake-keys.ts`, optional): named keys so a client
+with several systems can have one revoked without breaking the others. Deliberately
+**layered on top of** `courseIngestToken` rather than replacing it — that token is
+live (Wedge's course feed uses it) and is resolved at eight call sites, so a
+presented key is translated to the canonical token at the edge of the public routes
+and every lookup downstream is untouched. Only a SHA-256 hash is stored.
+
+⚠️ **Wedge's shared token also serves the golf-course feed**, so rotating it breaks
+both. Named keys avoid that.
+
+### 40.2 The sidebar is the seven products
+
+`Foundry HQ · Pulse · Code · Docs · Portal · Care · Backstage`, then Handbook.
+Everything else moved to an entry point per §4a: **Studio → Settings → Labs**,
+**Analytics + Starters → mono links in the HQ context strip**, **Settings → the
+profile flyout**, and **View-as collapsed behind one row** inside that flyout
+(expanded it is you + every restricted admin + a teammate picker + two presets,
+long enough to bury Settings, Theme and Sign out). Rows were also tightened —
+smaller logo, 16px icons, `py-1.5`, 11px descriptors — 14% less nav height with the
+descriptors kept.
+
+⚠️ Moving Studio under Labs **narrows** it from the `studio` module permission to
+Super Admin, because Labs is Super-Admin-gated. If a staff member needs Studio it
+needs its own entry point.
+
+### 40.3 Two infrastructure fixes that were failing deploys
+
+- **Deploys raced.** Every run pushes the same `:latest` tag then restarts the box,
+  so two overlapping deploys meant **whichever finished last won — including an
+  older commit**. A fix that reported "deployed successfully" was not running.
+  `deploy.yml` now has a `deploy-production` concurrency group; `cancel-in-progress`
+  is deliberately **false** so a run can't be interrupted mid-SSH and leave the box
+  half-deployed.
+- **The Docker build OOMed.** Nothing set `NODE_OPTIONS`, so the build used Node's
+  default heap and the app has outgrown it at ~100 routes — deploys failed
+  seemingly at random depending on what a commit touched. Now
+  `--max-old-space-size=6144` in the builder stage only.
+
+⚠️ **`npm run verify` cannot catch a prerender error** — only `next build` can. A
+`useSearchParams()` added without a Suspense boundary passed tsc, lint, tests and
+`audit:ui`, then broke the production build. **Run `npx next build` before pushing
+anything that touches a page or its client hooks.**

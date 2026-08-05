@@ -462,7 +462,7 @@ function ExpandedRail({
       >
         {!collapsed ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src="/foundry-logo.svg" alt="Foundry" width={245} height={64} className="h-12 w-auto dark:brightness-0 dark:invert" />
+          <img src="/foundry-logo.svg" alt="Foundry" width={245} height={64} className="h-8 w-auto dark:brightness-0 dark:invert" />
         ) : null}
         <button
           type="button"
@@ -591,7 +591,7 @@ function SidebarNavItem({
 }) {
   const Icon = item.icon;
   const classes = cn(
-    "flex w-full items-start gap-3 rounded-[6px] border px-3 py-2 text-sm font-medium transition",
+    "flex w-full items-start gap-2.5 rounded-[6px] border px-2.5 py-1.5 text-[13px] font-medium leading-snug transition",
     collapsed && "items-center justify-center px-2 py-2.5",
     active
       ? "border-[var(--brand-300)] bg-[var(--surface-brand)] text-[var(--brand-800)] shadow-[var(--shadow-xs)]"
@@ -602,7 +602,7 @@ function SidebarNavItem({
   const icon = (
     <Icon
       className={cn(
-        collapsed ? "h-5 w-5 shrink-0" : "mt-0.5 h-5 w-5 shrink-0",
+        collapsed ? "h-5 w-5 shrink-0" : "mt-[3px] h-4 w-4 shrink-0",
         active ? "text-[var(--brand-700)]" : "text-[var(--text-4)]",
       )}
     />
@@ -616,7 +616,7 @@ function SidebarNavItem({
       <span className="min-w-0">
         <span className="block">{item.label}</span>
         {item.description ? (
-          <span className="mt-0.5 block text-xs font-normal text-[var(--text-4)]">
+          <span className="mt-px block text-[11px] font-normal leading-[1.35] text-[var(--text-4)]">
             {item.description}
           </span>
         ) : null}

@@ -3755,6 +3755,37 @@ export async function getLinkableWikiDocumentsApi(
   );
 }
 
+export interface IntakeKeySummary {
+  id: string;
+  name: string;
+  prefix: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+}
+
+export async function listIntakeKeysApi(slug: string): Promise<{ keys: IntakeKeySummary[] }> {
+  return apiFetch<{ keys: IntakeKeySummary[] }>(`/api/clients/${slug}/wiki/intake-keys`);
+}
+
+/** The plaintext `key` comes back ONCE, here. Nothing can read it afterwards. */
+export async function mintIntakeKeyApi(
+  slug: string,
+  name: string,
+): Promise<{ key: string; summary: IntakeKeySummary }> {
+  return apiFetch<{ key: string; summary: IntakeKeySummary }>(
+    `/api/clients/${slug}/wiki/intake-keys`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) },
+  );
+}
+
+export async function revokeIntakeKeyApi(slug: string, id: string): Promise<{ revoked: boolean }> {
+  return apiFetch<{ revoked: boolean }>(
+    `/api/clients/${slug}/wiki/intake-keys?id=${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+}
+
 export interface IntakeWebhookState {
   url: string | null;
   /** True when a signing secret exists. The secret itself is only ever returned

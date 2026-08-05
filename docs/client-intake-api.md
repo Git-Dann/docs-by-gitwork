@@ -231,12 +231,38 @@ Operational notes, stated plainly:
 
 ---
 
-## 7. Known limits
+## 7. Named keys — one per integrator (optional)
 
-- **One token per client**, rotatable but not per-integrator — you can't revoke
-  one system's access while keeping another's. It is also shared with the Wedge
-  course-request feed, so rotating affects both for that client. Fine for one
-  integration per client; revisit if a client wants several.
+Use these when a client has **more than one system** pushing, or when you want to
+be able to cut one integration off without breaking the rest. The shared token in
+§1 keeps working; these are additive.
+
+Mint one at **Portal → client → Wiki → Settings → `02 // API INTAKE` → Integrator
+keys**: give it a name (`Jira`, `Zendesk`, `Luke's script`), and the key is shown
+**once**. Only a hash is stored, so it cannot be revealed again — a lost key is
+revoked and replaced.
+
+A named key looks like `fdy_ik_…` and is used in **exactly the same place** as the
+token, so nothing about the integration changes:
+
+```
+POST https://foundry.gitwork.co.uk/api/public/wiki-items/fdy_ik_XXXXXXXX
+```
+
+Every endpoint in this document accepts either. The list shows each key's name,
+when it was **last used**, and Revoke. Revoking takes effect immediately and is
+not reversible; the key stays listed so there's a record of who had access when.
+
+⚠️ **Don't mint one key and give it to several systems** — that's the shared
+token again with extra steps, and it defeats the point: you can no longer tell
+which system is pushing or cut one off on its own.
+
+## 8. Known limits
+
+- **The shared client token is also used by other feeds.** For Wedge it
+  authenticates the golf-course request feed too, so rotating it affects both.
+  If a client has more than one system pushing, mint them a **named key each**
+  (§7) instead — then you can revoke one without touching the others.
 - **Rate limit: 300 new requests/hour, 1000/day per client.** Generous enough for
   a real backfill (a full 200-item batch passes), tight enough to stop a looping
   integration burying the page. It counts items actually CREATED, so deduped

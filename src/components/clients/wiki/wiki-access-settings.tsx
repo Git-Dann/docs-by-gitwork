@@ -27,6 +27,9 @@ import {
   useSetCourseIngest,
   useIntakeWebhook,
   useSetIntakeWebhook,
+  useIntakeKeys,
+  useMintIntakeKey,
+  useRevokeIntakeKey,
 } from "@/hooks/use-wiki";
 import type { WikiSection } from "./wiki-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -449,6 +452,8 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
                 Required: <span style={{ fontFamily: MONO }}>title</span>. Optional: <span style={{ fontFamily: MONO }}>type</span>, <span style={{ fontFamily: MONO }}>description</span>, <span style={{ fontFamily: MONO }}>priority</span>, <span style={{ fontFamily: MONO }}>status</span>, <span style={{ fontFamily: MONO }}>requestedBy</span>, <span style={{ fontFamily: MONO }}>externalRef</span>, <span style={{ fontFamily: MONO }}>externalUrl</span>, and <span style={{ fontFamily: MONO }}>attachmentUrls</span>. Send one object or {`{"items":[…]}`} for a batch of up to 200. Sending the same <span style={{ fontFamily: MONO }}>externalRef</span> twice is deduped, so retries are safe.
               </p>
             </div>
+
+            <IntakeKeysField slug={slug} />
 
             <IntakeWebhookField slug={slug} />
 
@@ -992,6 +997,164 @@ function IntakeWebhookField({ slug }: { slug: string }) {
           ) : null}
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * Named per-integrator keys. The shared wiki token above still works — these exist
+ * so a client with SEVERAL systems pushing can have one revoked without breaking
+ * the others, which the single shared token can't express (rotating it breaks
+ * everything at once, including Wedge's course feed).
+ *
+ * A minted key is displayed once and never again: only a hash is stored, so there
+ * is nothing to go back and look up.
+ */
+function IntakeKeysField({ slug }: { slug: string }) {
+  const { data, isPending } = useIntakeKeys(slug, true);
+  const mint = useMintIntakeKey(slug);
+  const revoke = useRevokeIntakeKey(slug);
+  const [name, setName] = useState("");
+  const [fresh, setFresh] = useState<{ name: string; key: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
+
+  const keys = data?.keys ?? [];
+  const active = keys.filter((k) => !k.revokedAt);
+
+  return (
+    <div className="rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-1)] p-4">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-4)]">
+        Per-integrator keys (optional)
+      </p>
+      <p className="mt-1.5 max-w-[80ch] text-[12px] leading-5 text-[var(--text-3)]">
+        Issue a separate key per system so you can revoke one without breaking the others.
+        The shared token above keeps working — only reach for these when a client has more
+        than one integration.
+      </p>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Whose system? e.g. Luke's tracker"
+          className="min-w-[220px] flex-1 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 text-[13px] text-[var(--text-1)] outline-none transition focus:border-[var(--brand-500)]"
+        />
+        <button
+          type="button"
+          disabled={mint.isPending || !name.trim()}
+          onClick={async () => {
+            const res = await mint.mutateAsync(name.trim());
+            setFresh({ name: name.trim(), key: res.key });
+            setName("");
+          }}
+          className="rounded-[7px] bg-[var(--brand-700)] px-3 py-2 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-800)] disabled:opacity-50"
+        >
+          {mint.isPending ? "Creating…" : "Create key"}
+        </button>
+      </div>
+
+      {fresh ? (
+        <div className="mt-3 rounded-[8px] border border-amber-300 bg-amber-50 p-3">
+          <p className="text-[12px] font-semibold text-amber-800">
+            Key for {fresh.name} — copy it now, it isn&rsquo;t shown again
+          </p>
+          <div className="mt-2 flex items-center gap-2">
+            <code
+              className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-[6px] border border-amber-300 bg-white px-2 py-1.5 text-[12px]"
+              style={{ fontFamily: MONO }}
+            >
+              {fresh.key}
+            </code>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(fresh.key);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                } catch {
+                  /* clipboard blocked — selectable on screen */
+                }
+              }}
+              className="shrink-0 rounded-[6px] border border-amber-300 bg-white px-2 py-1.5 text-[12px] font-medium text-amber-800"
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <p className="mt-1.5 text-[11px] text-amber-800">
+            They use it exactly like the shared token — same endpoints, same payloads.
+          </p>
+        </div>
+      ) : null}
+
+      {isPending ? (
+        <p className="mt-3 text-[12px] text-[var(--text-4)]">Loading…</p>
+      ) : keys.length === 0 ? (
+        <p className="mt-3 text-[11px] text-[var(--text-4)]">
+          No named keys — this client uses the shared token above.
+        </p>
+      ) : (
+        <ul className="mt-3 divide-y divide-[var(--border-2)] overflow-hidden rounded-[8px] border border-[var(--border-2)] bg-white">
+          {keys.map((k) => (
+            <li key={k.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-medium text-[var(--text-1)]">
+                  {k.name}
+                  {k.revokedAt ? (
+                    <span className="ml-2 text-[11px] font-normal text-[var(--danger-500)]">
+                      revoked
+                    </span>
+                  ) : null}
+                </span>
+                <span className="block truncate text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+                  {k.prefix}… ·{" "}
+                  {k.lastUsedAt
+                    ? `last used ${formatDate(k.lastUsedAt)}`
+                    : "never used"}
+                </span>
+              </span>
+              {k.revokedAt ? null : confirmRevoke === k.id ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="text-[12px] text-[var(--danger-500)]">Revoke?</span>
+                  <button
+                    type="button"
+                    disabled={revoke.isPending}
+                    onClick={async () => {
+                      await revoke.mutateAsync(k.id);
+                      setConfirmRevoke(null);
+                    }}
+                    className="rounded-[6px] bg-rose-600 px-2 py-1 text-[12px] font-semibold text-white disabled:opacity-60"
+                  >
+                    Revoke
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmRevoke(null)}
+                    className="px-1 text-[12px] text-[var(--text-4)]"
+                  >
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmRevoke(k.id)}
+                  className="shrink-0 rounded-[6px] border border-[var(--border-2)] px-2 py-1 text-[12px] font-medium text-[var(--text-3)] transition hover:border-rose-300 hover:text-rose-600"
+                >
+                  Revoke
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {active.length > 0 ? (
+        <p className="mt-2 text-[11px] text-[var(--text-4)]">
+          {active.length} active {active.length === 1 ? "key" : "keys"}. Revoking one leaves the
+          others — and the shared token — working.
+        </p>
+      ) : null}
     </div>
   );
 }

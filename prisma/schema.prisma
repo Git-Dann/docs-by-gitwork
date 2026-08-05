@@ -1127,6 +1127,7 @@ model WorkspaceClient {
   onboarding               ClientOnboarding?
   designSystem             ClientDesignSystem?
   wiki                     ClientWiki?
+  intakeKeys               ClientIntakeKey[]
   assignments              ClientAssignment[]
   tasks                    Task[]
   featureBlocks            FeatureBlock[]
@@ -1611,6 +1612,39 @@ enum WikiIntakeItemStatus {
   TRIAGED
   PROMOTED
   CLOSED
+}
+
+/// A NAMED intake credential — one per integrator, so a client can have several
+/// systems pushing and you can revoke one without breaking the others.
+///
+/// Layered ON TOP of `ClientWiki.courseIngestToken` rather than replacing it: that
+/// token is live (Wedge's course feed uses it) and is resolved at eight separate
+/// call sites, so rewriting them all to support multiple keys would risk a working
+/// client integration for a feature most clients don't need. Instead a presented
+/// key is translated to the wiki's canonical token at the edge, and every existing
+/// lookup downstream is untouched.
+///
+/// Only a SHA-256 hash is stored; the plaintext is shown once at mint and is
+/// unrecoverable after. `prefix` is the leading public chars so a key can be
+/// identified in a list and revoked without the secret ever being stored.
+model ClientIntakeKey {
+  id          String          @id @default(cuid())
+  clientId    String
+  client      WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  /// Whose system this was issued to — the whole point of per-integrator keys.
+  name        String
+  /// SHA-256 of the plaintext, unique so a lookup is one indexed read.
+  keyHash     String          @unique
+  /// Leading public characters, for display only. Never enough to authenticate.
+  prefix      String
+  lastUsedAt  DateTime?
+  /// Set to disable without deleting, so the audit trail survives a revoke.
+  revokedAt   DateTime?
+  createdById String?
+  createdAt   DateTime        @default(now())
+
+  @@index([clientId])
+  @@map("ClientIntakeKey")
 }
 
 /// A single version-release entry in the client's changelog. Linked to a wiki.

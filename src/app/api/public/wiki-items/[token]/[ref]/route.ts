@@ -17,6 +17,7 @@ import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { updateWikiIntakeItemByToken, wikiIntakeTokenState } from "@/server/wiki";
 import { intakeCommonFields } from "@/server/wiki-intake-vocab";
+import { resolvePresentedIntakeToken } from "@/server/wiki-intake-keys";
 
 const patchSchema = z
   .object({
@@ -35,7 +36,9 @@ export async function PATCH(
   { params }: { params: Promise<{ token: string; ref: string }> },
 ) {
   try {
-    const { token, ref } = await params;
+    const { token: presented, ref } = await params;
+    // See the sibling create route: named keys are translated at the edge.
+    const token = (await resolvePresentedIntakeToken(presented)) ?? presented;
     const patch = patchSchema.parse(await req.json());
     const item = await updateWikiIntakeItemByToken(token, decodeURIComponent(ref), patch);
     if (!item) {

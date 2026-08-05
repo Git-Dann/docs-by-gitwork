@@ -21,6 +21,9 @@ import {
   getLinkableWikiDocumentsApi,
   getIntakeWebhookApi,
   setIntakeWebhookApi,
+  listIntakeKeysApi,
+  mintIntakeKeyApi,
+  revokeIntakeKeyApi,
   getGolfClubsList,
   getGolfUserData,
   runGolfJob,
@@ -70,6 +73,32 @@ export function useClientWiki(slug: string) {
     enabled: Boolean(slug),
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
+  });
+}
+
+/** Named per-integrator intake keys (docs/client-intake-api.md). */
+export function useIntakeKeys(slug: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["client-wiki", slug, "intake-keys"],
+    queryFn: () => listIntakeKeysApi(slug),
+    enabled: Boolean(slug) && enabled,
+    staleTime: 30_000,
+  });
+}
+
+export function useMintIntakeKey(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => mintIntakeKeyApi(slug, name),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug, "intake-keys"] }),
+  });
+}
+
+export function useRevokeIntakeKey(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => revokeIntakeKeyApi(slug, id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug, "intake-keys"] }),
   });
 }
 
