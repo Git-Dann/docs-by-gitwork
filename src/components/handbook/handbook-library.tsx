@@ -22,7 +22,6 @@ import { cn, formatDate } from "@/lib/format";
 import { buttonStyles } from "@/components/ui/button";
 import type { HandbookListItem, HandbookStatus } from "@/server/handbook";
 import { hueFor } from "@/components/handbook/cover-hue";
-import { AttributionChip } from "@/components/handbook/attribution-chip";
 
 type Scope = "all" | "featured" | "drafts" | "archived";
 
@@ -238,7 +237,6 @@ export function HandbookLibrary() {
             className="w-full rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] py-2 pl-9 pr-3 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-400)]"
           />
         </div>
-        <AttributionChip name="Umer Fayyaz" />
         {canManageHandbook ? (
           <Link href="/app/handbook/new" className={buttonStyles({ variant: "primary", size: "sm" })}>
             <PlusIcon className="h-4 w-4" />
