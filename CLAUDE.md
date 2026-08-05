@@ -2628,6 +2628,13 @@ under an older validity policy still draws its own window correctly.
 **Studio:** the catalogue gained a third family and `countermarkPath()`; the studio lists it and
 picks a mark. There is no share step — a countermark is public the moment it is struck.
 
+⚠️ **CM-01 shipped with no animation at all**, because its style block was
+`.dot{animation:ping…}` copied from the card — a selector matching no element in that style. The
+rule looked wired and did nothing. Two guards now cover it: every animated class must resolve to an
+element in the same SVG, and every style must have an entrance rather than only an idle `ping`. The
+first guard immediately caught a second instance (the shield's strike-through rule was emitted for
+live marks too, where the element doesn't exist), which is the whole argument for it.
+
 **Verified:** `npm run verify` green — **624 tests** (26 new Countermark tests + the catalogue
 guard extended to `CM-`), `audit:ui` 0 findings; `npx next build` clean with both badge routes
 registered. All fifteen grade × status × seal × theme combinations were rendered and inspected —

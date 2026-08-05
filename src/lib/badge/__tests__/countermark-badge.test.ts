@@ -160,3 +160,33 @@ describe("self-containment", () => {
     if (style === "disc") expect(still.svg).toMatch(/stroke-dasharray="[\d.]+ [\d.]+"/);
   });
 });
+
+describe("the animation actually attaches to something", () => {
+  // CM-01 shipped with `.dot{animation:ping…}` copied over from the card — a
+  // selector matching no element in that style, so the shield had no animation
+  // at all while looking fully wired. Every animated class must resolve.
+  it.each(STYLES)("%s targets only classes present in its markup", (style) => {
+    const { svg } = renderCountermarkBadge({ ...base, style, motion: true });
+    const styleBlock = svg.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? "";
+    const animated = [...styleBlock.matchAll(/\.([a-zA-Z][\w-]*)\s*\{[^}]*animation:/g)]
+      .map((m) => m[1]);
+    expect(animated.length).toBeGreaterThan(0);
+    const body = svg.replace(/<style>[\s\S]*?<\/style>/, "");
+    const present = new Set(
+      [...body.matchAll(/class="([^"]+)"/g)].flatMap((m) => m[1].split(/\s+/)),
+    );
+    for (const cls of animated) {
+      expect(present.has(cls), `${style}: .${cls} is animated but matches nothing`).toBe(true);
+    }
+  });
+
+  it.each(STYLES)("%s animates on entry, not just an idle pulse", (style) => {
+    // A lone infinite `ping` is not an entrance — every style should compose in.
+    const { svg } = renderCountermarkBadge({ ...base, style, motion: true });
+    const styleBlock = svg.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? "";
+    const entrances = [...styleBlock.matchAll(/animation:([\w-]+)/g)]
+      .map((m) => m[1])
+      .filter((n) => n !== "ping");
+    expect(entrances.length).toBeGreaterThan(0);
+  });
+});
