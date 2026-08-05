@@ -14,7 +14,12 @@
 
 "use client";
 
-import { useCallback, useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
+import {
+  useFormatTargetRegistration,
+  type FormatCommand,
+} from "@/lib/sections/format-target";
+import { toggleBulletLines, wrapSelection } from "@/lib/sections/inline-format-toolbar";
 import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
 
 const FIELD_RESET: CSSProperties = {
@@ -49,14 +54,55 @@ export function InlineTextArea({
   style?: CSSProperties;
   ariaLabel?: string;
 }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const id = useId();
+  const { register, unregister } = useFormatTargetRegistration();
+
+  // Every plain-string field supports the same Markdown-ish set, so the toolbar lights up on any
+  // block's title, caption or body without each block wiring anything.
+  const commands = useMemo(
+    () => new Set<FormatCommand>(["bold", "italic", "link", "code", "bullets"]),
+    [],
+  );
+
+  const run = useCallback(
+    (command: FormatCommand) => {
+      const textarea = ref.current;
+      if (!textarea) return;
+      const { selectionStart: start, selectionEnd: end } = textarea;
+
+      if (command === "bullets") {
+        const next = toggleBulletLines(value, start, end);
+        onChange(next.value);
+        requestAnimationFrame(() => {
+          textarea.focus();
+          textarea.setSelectionRange(next.start, next.end);
+        });
+        return;
+      }
+
+      const next = wrapSelection(value, start, end, command);
+      if (!next) return;
+      onChange(next.value);
+      requestAnimationFrame(() => {
+        textarea.focus();
+        textarea.setSelectionRange(next.start, next.end);
+      });
+    },
+    [value, onChange],
+  );
+
   return (
     <div
       className={`inline-edit grid w-full rounded-[4px] transition-colors focus-within:bg-[var(--surface-brand)]/50 ${className ?? ""}`}
       style={style}
     >
       <textarea
+        ref={ref}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        onFocus={() => register({ id, commands, run })}
+        onBlur={() => unregister(id)}
         placeholder={placeholder}
         aria-label={ariaLabel}
         rows={1}

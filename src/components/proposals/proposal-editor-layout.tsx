@@ -69,6 +69,8 @@ import { useProposal, useUpdateProposal } from "@/hooks/use-proposals";
 import { useDeleteSnippet, useSnippets } from "@/hooks/use-snippets";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatCurrency, formatDate, statusLabel } from "@/lib/format";
+import { DocumentFormatBar } from "@/components/proposals/document-format-bar";
+import { FormatTargetProvider } from "@/lib/sections/format-target";
 import type { ReadinessFinding } from "@/lib/sections/document-readiness";
 import { documentReadiness, readinessSummary } from "@/lib/sections/document-readiness";
 import { deriveProposalStatus } from "@/lib/proposal-workflow";
@@ -955,6 +957,11 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     // the header/toolbar are fixed and the canvas + outline scroll internally. Mobile keeps normal
     // document flow. (Never revert this to an unbounded flow: a long doc used to grow the whole
     // page. See DESIGN.md → "Docs editor is a fixed-height frame".)
+    // The provider wraps the WHOLE editor, not just the toolbar: every editable field on the
+    // canvas and in the properties rail registers itself while focused, and the bar in row 2
+    // reads that registration. Anything outside a provider (the public share page, the PDF
+    // route) simply gets no formatting rather than crashing.
+    <FormatTargetProvider>
     <div className="flex flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-hidden">
       {/* 01 // DOCUMENT — ONE compact toolbar row (Deck's topbar shape). Everything that used to
           stack vertically here is either a mono readout in this header strip (doc number, version,
@@ -1463,6 +1470,12 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               tighter vertical rhythm (44px vs row 1's 49px) so the two read as a stacked pair
               rather than two toolbars that happen to be adjacent. */}
           <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--border-2)] px-2.5 py-1.5 sm:px-3">
+            {/* The ONE formatting bar. Persistent and always in the same place, rather than a
+                floating bar that only existed on selection — formatting you cannot see is
+                formatting nobody uses. Controls are inert until a field that supports them holds
+                focus, so it never claims to do something it can't. */}
+            <DocumentFormatBar className="order-last w-full border-t border-[var(--border-3)] pt-1.5 sm:order-none sm:w-auto sm:border-0 sm:pt-0" />
+            <span aria-hidden="true" className="hidden h-5 w-px bg-[var(--border-2)] sm:block" />
 
           {/* Pane toggles (Deck's left/right panel toggles) — outline left, properties right. */}
           <span className="flex shrink-0 items-center gap-1">
@@ -1748,6 +1761,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
         }
       />
     </div>
+    </FormatTargetProvider>
   );
 }
 
