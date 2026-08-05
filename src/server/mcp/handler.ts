@@ -52,7 +52,7 @@ import {
 } from "@/server/clients";
 import { listConversations, listSupportClients } from "@/server/support";
 import { createMonitor, loadWikiMonitors } from "@/server/wiki-monitors";
-import { getOrCreateWiki, upsertWikiPage, deleteWikiPage } from "@/server/wiki";
+import { getOrCreateWiki, upsertWikiPage, deleteWikiPage, addCourseRequest, listCourseRequests } from "@/server/wiki";
 import {
   assignedClientIds,
   listTasks,
@@ -359,6 +359,25 @@ const addMonitorSchema = z.object({
 });
 
 const listMonitorsSchema = z.object({ client: z.string().min(1) });
+
+// ── course requests ──
+const COURSE_REQUEST_STATUS_VALUES = ["NEW", "SENT", "ADDED", "REJECTED"] as const;
+
+const createCourseRequestSchema = z.object({
+  client: z.string().min(1),
+  courseName: z.string().min(1).max(300),
+  country: z.string().max(120).nullable().optional(),
+  notes: z.string().max(4000).nullable().optional(),
+  status: z.enum(COURSE_REQUEST_STATUS_VALUES).optional(),
+  requestedBy: z.string().max(200).nullable().optional(),
+});
+
+const listCourseRequestsSchema = z.object({
+  client: z.string().min(1),
+  search: z.string().max(300).optional(),
+  status: z.enum(COURSE_REQUEST_STATUS_VALUES).optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+});
 
 // ── wiki pages ──
 const WIKI_PAGE_TYPE_VALUES = [
@@ -812,6 +831,101 @@ const TOOLS: ToolDef[] = [
         section,
         `${resolved.name} — ${section.monitors.length} monitor${section.monitors.length === 1 ? "" : "s"}` +
           `${section.enabled ? "" : " (section currently hidden)"}.`,
+      );
+    },
+  },
+  {
+    name: "create_course_request",
+    description:
+      "Add a course request to a client wiki's Course Requests tracker (e.g. Big Wedge Golf — a golfer " +
+      "asks for a course to be added). Requires the 'Manage clients' permission. Resolve the client by " +
+      "slug, name, or cuid. De-duplicates: if a non-rejected request with the same course name already " +
+      "exists it is returned unchanged rather than creating a duplicate — so it's safe to re-run. Use " +
+      "list_course_requests first if you want to review what's already tracked.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        courseName: { type: "string", description: "The golf course being requested (e.g. 'Pebble Beach Golf Links')." },
+        country: { type: "string", description: "Country the course is in, if known." },
+        notes: { type: "string", description: "Any extra context for this request." },
+        status: {
+          type: "string",
+          enum: [...COURSE_REQUEST_STATUS_VALUES],
+          description: "Tracker status (default NEW). SENT = sent to the course provider, ADDED = live, REJECTED = declined.",
+        },
+        requestedBy: { type: "string", description: "Who asked for it (name/email); folded into notes." },
+      },
+      required: ["client", "courseName"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "add course requests");
+      const parsed = createCourseRequestSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const name = parsed.courseName.trim();
+      const norm = name.toLowerCase();
+      // Dedup against existing non-rejected entries (there can be hundreds) so a manual
+      // re-run doesn't double-log the same course.
+      const existing = await listCourseRequests(resolved.id, { search: name, limit: 200 });
+      const dupe = existing.requests.find(
+        (r) => r.courseName.trim().toLowerCase() === norm && r.status !== "REJECTED",
+      );
+      if (dupe) {
+        return textResult(
+          dupe,
+          `"${dupe.courseName}" is already tracked for ${resolved.name} (status ${dupe.status}) — left as-is, no duplicate created.`,
+        );
+      }
+      const notes = parsed.requestedBy
+        ? `${parsed.notes ? `${parsed.notes} · ` : ""}Requested by ${parsed.requestedBy}`
+        : parsed.notes ?? null;
+      const req = await addCourseRequest(resolved.id, {
+        courseName: name,
+        country: parsed.country ?? null,
+        notes,
+        status: parsed.status,
+        source: "mcp",
+      });
+      return textResult(
+        req,
+        `Added course request "${req.courseName}"${req.country ? ` (${req.country})` : ""} to ${resolved.name} — status ${req.status}.`,
+      );
+    },
+  },
+  {
+    name: "list_course_requests",
+    description:
+      "List a client wiki's Course Requests — newest first, with an optional course-name search and " +
+      "status filter. Use before create_course_request to check what's already tracked. Resolve the " +
+      "client by slug, name, or cuid.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        search: { type: "string", description: "Optional case-insensitive course-name substring." },
+        status: {
+          type: "string",
+          enum: [...COURSE_REQUEST_STATUS_VALUES],
+          description: "Optional status filter (NEW / SENT / ADDED / REJECTED).",
+        },
+        limit: { type: "integer", description: "Max rows to return (default 50, max 200)." },
+      },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = listCourseRequestsSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const { requests, total } = await listCourseRequests(resolved.id, {
+        search: parsed.search,
+        status: parsed.status,
+        limit: parsed.limit,
+      });
+      const filtered = parsed.search || parsed.status ? " matching the filter" : "";
+      return textResult(
+        { requests, total },
+        `${resolved.name} — ${total} course request${total === 1 ? "" : "s"}${filtered} (showing ${requests.length}).`,
       );
     },
   },
