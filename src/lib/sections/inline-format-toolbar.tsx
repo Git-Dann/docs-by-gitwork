@@ -16,7 +16,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { LinkIcon } from "@heroicons/react/24/outline";
+import { LinkIcon, ListBulletIcon } from "@heroicons/react/24/outline";
 
 export interface SelectionRect {
   top: number;
@@ -114,6 +114,47 @@ export function useTextareaSelectionRect(
   return rect;
 }
 
+/**
+ * Toggle `- ` on every line the selection touches.
+ *
+ * Pure and exported so the transform is unit-testable without a DOM — the line/selection maths is
+ * where this goes wrong, not the button.
+ *
+ * Whole-line, not selection-wrapping: a bullet is a property of a LINE, so selecting three words
+ * mid-line still bullets that whole line. Removal is only offered when EVERY touched line is
+ * already a bullet; a mixed selection normalises into a clean list instead.
+ */
+export function toggleBulletLines(
+  value: string,
+  selectionStart: number,
+  selectionEnd: number,
+): { value: string; start: number; end: number } {
+  const lineStart = value.lastIndexOf("\n", Math.max(0, selectionStart - 1)) + 1;
+  const lineEndIndex = value.indexOf("\n", selectionEnd);
+  const lineEnd = lineEndIndex === -1 ? value.length : lineEndIndex;
+
+  const lines = value.slice(lineStart, lineEnd).split("\n");
+  const BULLET = /^(\s*)[-*]\s+/;
+  const allBulleted = lines.every((line) => !line.trim() || BULLET.test(line));
+
+  const next = lines
+    .map((line) => {
+      // A blank line is spacing; bulleting it would print an empty list item.
+      if (!line.trim()) return line;
+      if (allBulleted) return line.replace(BULLET, "$1");
+      // Already a bullet in a MIXED selection: leave it, rather than adding a second marker.
+      if (BULLET.test(line)) return line;
+      return line.replace(/^(\s*)/, "$1- ");
+    })
+    .join("\n");
+
+  return {
+    value: value.slice(0, lineStart) + next + value.slice(lineEnd),
+    start: lineStart,
+    end: lineStart + next.length,
+  };
+}
+
 /** Bold/italic/link/code wrap-the-selection helpers for a plain <textarea> — the same
  *  string-splice approach MarkdownField's static toolbar already uses, factored out so
  *  InlineTextArea can share it instead of re-implementing selection-preserving edits. */
@@ -159,7 +200,15 @@ export function useTextareaFormatting(
     restoreSelection(urlStart, urlStart + 8);
   }, [ref, value, onChange, restoreSelection]);
 
-  return { wrap, link };
+  const bullets = useCallback(() => {
+    const ta = ref.current;
+    if (!ta) return;
+    const next = toggleBulletLines(value, ta.selectionStart, ta.selectionEnd);
+    onChange(next.value);
+    restoreSelection(next.start, next.end);
+  }, [ref, value, onChange, restoreSelection]);
+
+  return { wrap, link, bullets };
 }
 
 function clamp(n: number, min: number, max: number): number {
@@ -167,13 +216,14 @@ function clamp(n: number, min: number, max: number): number {
 }
 
 const BAR_HEIGHT = 40;
-const BAR_WIDTH = 244;
+const BAR_WIDTH = 276;
 const VIEWPORT_GAP = 8;
 
 export function InlineFormatBar({
   rect,
   onBold,
   onItalic,
+  onBullets,
   onLink,
   onCode,
   onSize,
@@ -181,6 +231,7 @@ export function InlineFormatBar({
   rect: SelectionRect | null;
   onBold: () => void;
   onItalic: () => void;
+  onBullets?: () => void;
   onLink: () => void;
   onCode: () => void;
   /** Optional — wrap the current selection in a size marker. Undefined = size UI hidden (used by
@@ -213,6 +264,11 @@ export function InlineFormatBar({
       <BarButton label="Italic" onClick={onItalic}>
         <span className="text-[13px] italic">I</span>
       </BarButton>
+      {onBullets ? (
+        <BarButton label="Bulleted list" onClick={onBullets}>
+          <ListBulletIcon className="h-4 w-4" />
+        </BarButton>
+      ) : null}
       <BarButton label="Code" onClick={onCode}>
         <span className="font-mono text-[11px]">{"</>"}</span>
       </BarButton>

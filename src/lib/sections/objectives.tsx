@@ -3,6 +3,7 @@
 import { FlagIcon } from "@heroicons/react/24/outline";
 import { ObjectivesEditor } from "@/components/proposals/objectives-editor";
 import { getObjectiveIcon } from "@/components/proposals/icon-select";
+import { renderLines } from "@/lib/markdown";
 import { defineSection } from "@/lib/sections/types";
 import { InlineAddButton, InlineRemoveButton, InlineTextArea } from "@/lib/sections/inline-text";
 import type { ObjectivesSectionData } from "@/types/proposal";
@@ -119,7 +120,7 @@ export const objectivesSection = defineSection<ObjectivesSectionData>({
                 ) : null}
                 <div className="min-w-0">
                   <p className="text-base font-semibold text-[var(--text-1)]">{item.title}</p>
-                  <p className="mt-2 text-sm leading-7 text-[var(--text-2)]">{item.description}</p>
+                  <p className="mt-2 text-sm leading-7 text-[var(--text-2)]">{renderLines(item.description, "obj")}</p>
                 </div>
               </div>
             </article>

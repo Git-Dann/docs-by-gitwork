@@ -15,6 +15,7 @@ import { CostBreakdownTable } from "@/components/proposals/cost-breakdown-table"
 import { proposalSectionBlueprints } from "@/lib/default-template";
 import { formatCurrency } from "@/lib/format";
 import { InfoCard, Row } from "@/lib/sections/_shared";
+import { renderLines } from "@/lib/markdown";
 import { defineSection } from "@/lib/sections/types";
 import type { CostingSectionData } from "@/types/proposal";
 
@@ -137,7 +138,7 @@ export const costingSection = defineSection<CostingSectionData>({
                     <td className="text-[var(--text-2)]">{item.category || "-"}</td>
                     <td>
                       {item.description?.trim() ? (
-                        <p className="text-sm leading-6 text-[var(--text-2)]">{item.description}</p>
+                        <p className="text-sm leading-6 text-[var(--text-2)]">{renderLines(item.description, "cost")}</p>
                       ) : (
                         <span className="text-xs text-[var(--text-3)]">—</span>
                       )}

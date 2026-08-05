@@ -248,6 +248,13 @@ export function RichInlineEditor({
         onItalic={() => applyInline("em")}
         onCode={() => applyInline("code")}
         onLink={applyLink}
+        onBullets={() => {
+          // contenteditable, so the browser's own list command is the right tool: it handles
+          // nesting, splitting and merging that a string transform cannot see. The plain
+          // <textarea> fields use `toggleBulletLines` instead — different substrate, same result.
+          // Deprecated but still the only API that participates in the browser's undo stack.
+          document.execCommand("insertUnorderedList");
+        }}
       />
     </div>
   );
