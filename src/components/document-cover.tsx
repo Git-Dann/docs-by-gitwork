@@ -34,6 +34,7 @@
  */
 
 import type { CSSProperties, ReactNode } from "react";
+import { blendOver } from "@/lib/blend-over";
 import { InlineEditableText, InlineTextArea } from "@/lib/sections/inline-text";
 import {
   coverStripMode,
@@ -499,8 +500,21 @@ export function DocumentCover({
               //
               // With both endpoints on the same RGB, premultiplied and non-premultiplied
               // interpolation produce an identical ramp, so screen and PDF agree by construction.
-              background:
-                "radial-gradient(circle at 75% 15%, rgba(107,82,255,0.28), rgba(107,82,255,0) 60%)",
+              // NO ALPHA. The purple is pre-blended onto `paper`, so both stops are opaque.
+              //
+              // A CSS gradient containing alpha becomes a TRANSPARENCY GROUP WITH A SOFT MASK
+              // when Chrome exports to PDF, and renderers disagree about compositing those. One
+              // file, three renderers, observed live: Slack's server-generated channel thumbnail
+              // was correct, the downloaded file was correct, and Slack's IN-APP viewer showed a
+              // flat magenta wash over the whole cover. Nothing was wrong with the export.
+              //
+              // Matching both stops on one RGB (the previous fix) solves INTERPOLATION but not
+              // this — the alpha is still there, so the mask is still there. Pre-blending removes
+              // the alpha, which removes the mask, which removes the disagreement. An opaque
+              // gradient is the one thing every renderer has to agree on.
+              //
+              // Derived from `paper` rather than hardcoded, so the two can never drift apart.
+              background: `radial-gradient(circle at 75% 15%, ${blendOver([107, 82, 255], 0.28, paper)}, ${paper} 60%)`,
               pointerEvents: "none",
               zIndex: 0,
             }}
