@@ -8,6 +8,7 @@
 
 import { ListBulletIcon } from "@heroicons/react/24/outline";
 import { SimpleForm, FormInput, FormTextArea } from "@/lib/sections/_shared";
+import { renderLines } from "@/lib/markdown";
 import { defineSection } from "@/lib/sections/types";
 import { InlineAddButton, InlineRemoveButton, InlineTextArea } from "@/lib/sections/inline-text";
 import type { BreakdownItem, BreakdownSectionData } from "@/types/proposal";
@@ -126,7 +127,7 @@ export const breakdownSection = defineSection<BreakdownSectionData>({
               {item.count ? <span className="text-[var(--doc-accent)]"> — {item.count}</span> : null}
             </p>
             {item.description ? (
-              <p className="mt-1 text-[13px] leading-6 text-[var(--doc-muted)]">{item.description}</p>
+              <p className="mt-1 text-[13px] leading-6 text-[var(--doc-muted)]">{renderLines(item.description, `bd-${i}`)}</p>
             ) : null}
           </div>
         ))}

@@ -1,6 +1,7 @@
 /** Section type: `process_steps` — a numbered step / workflow flow (infographic-inspired). */
 
 import { ArrowLongRightIcon } from "@heroicons/react/24/outline";
+import { renderLines } from "@/lib/markdown";
 import { defineSection } from "@/lib/sections/types";
 import { SimpleForm } from "@/lib/sections/_shared";
 import { InlineTextArea, InlineAddButton, InlineRemoveButton } from "@/lib/sections/inline-text";
@@ -190,7 +191,7 @@ export const processStepsSection = defineSection<ProcessStepsSectionData>({
                   </p>
                   {step.description ? (
                     <p className="mt-1.5 text-[13px] leading-6" style={{ color: "var(--doc-ink-soft, #4b4a44)" }}>
-                      {step.description}
+                      {renderLines(step.description, `step-${i}`)}
                     </p>
                   ) : null}
                   {step.note ? (

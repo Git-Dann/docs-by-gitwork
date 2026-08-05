@@ -278,3 +278,66 @@ export function Markdown({
     <div className={className ?? "space-y-4"}>{blocks.map((block, idx) => renderBlock(block, idx, Boolean(compact)))}</div>
   );
 }
+
+/**
+ * Render a plain-text field as LINES, turning `- ` / `* ` runs into real bullet lists.
+ *
+ * Block text fields (a step's description, a breakdown item, an objective) are stored as plain
+ * strings with newlines, and were rendered straight into a `<p>`. HTML collapses newlines to
+ * spaces, so everything an author typed on separate lines came out as one run-on paragraph —
+ * which is exactly what happened to a seven-line ingest description.
+ *
+ * Authors were already typing `- ` at the start of each line to fake a list, so that is the
+ * syntax this honours rather than inventing one. Consecutive dashed lines become a single `<ul>`;
+ * everything else keeps its own line. Inline markdown (bold, italic, links, code) still applies
+ * per line via `renderInline`, so this composes with the existing formatting rather than
+ * replacing it.
+ *
+ * Used by every block that renders a multi-line text field, so bullets work the same everywhere.
+ */
+export function renderLines(text: string, keyPrefix: string): ReactNode[] {
+  // Empty in, empty out — otherwise `"".split("\n")` yields one blank line and the field
+  // renders a stray spacer where the author left nothing at all.
+  if (!text) return [];
+
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  const out: ReactNode[] = [];
+  let bullets: string[] = [];
+
+  const flushBullets = () => {
+    if (!bullets.length) return;
+    const items = bullets;
+    bullets = [];
+    out.push(
+      <ul key={`${keyPrefix}-ul-${out.length}`} className="my-1 list-disc space-y-0.5 pl-5">
+        {items.map((item, index) => (
+          <li key={index}>{renderInline(item, `${keyPrefix}-li-${out.length}-${index}`)}</li>
+        ))}
+      </ul>,
+    );
+  };
+
+  lines.forEach((line, index) => {
+    // `- ` or `* ` with optional leading indent. The trailing space is required, so a line that
+    // merely starts with a hyphen (a negative number, an en-dashed aside) is not a bullet.
+    const bullet = /^\s*[-*]\s+(.*)$/.exec(line);
+    if (bullet) {
+      bullets.push(bullet[1]);
+      return;
+    }
+    flushBullets();
+    if (!line.trim()) {
+      // A blank line is deliberate spacing between paragraphs, not something to drop.
+      out.push(<span key={`${keyPrefix}-gap-${index}`} className="block h-2" aria-hidden="true" />);
+      return;
+    }
+    out.push(
+      <span key={`${keyPrefix}-line-${index}`} className="block">
+        {renderInline(line, `${keyPrefix}-t-${index}`)}
+      </span>,
+    );
+  });
+
+  flushBullets();
+  return out;
+}

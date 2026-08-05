@@ -488,7 +488,19 @@ export function DocumentCover({
             style={{
               position: "absolute",
               inset: 0,
-              background: "radial-gradient(circle at 75% 15%, rgba(107,82,255,0.28), transparent 60%)",
+              // ⚠️ Fades to `rgba(107,82,255,0)` — the SAME colour at zero alpha — never to the
+              // `transparent` keyword.
+              //
+              // `transparent` is `rgba(0,0,0,0)`: transparent BLACK. Fading purple → transparent
+              // black means the mid-ramp colour depends on whether the renderer interpolates in
+              // premultiplied space (what browsers do on screen) or not (Chrome's print/PDF
+              // rasteriser). That is why the cover read blue-ish in Docs and noticeably more purple
+              // in the exported PDF — same CSS, two different interpolations.
+              //
+              // With both endpoints on the same RGB, premultiplied and non-premultiplied
+              // interpolation produce an identical ramp, so screen and PDF agree by construction.
+              background:
+                "radial-gradient(circle at 75% 15%, rgba(107,82,255,0.28), rgba(107,82,255,0) 60%)",
               pointerEvents: "none",
               zIndex: 0,
             }}

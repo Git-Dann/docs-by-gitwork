@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LinkIcon, ListBulletIcon, NumberedListIcon } from "@heroicons/react/24/outline";
 import { MERGE_VARIABLES } from "@/lib/merge-variables";
+import { toggleBulletLines } from "@/lib/sections/inline-format-toolbar";
 import { InlineFormatBar, useTextareaSelectionRect } from "@/lib/sections/inline-format-toolbar";
 
 export function MarkdownField({
@@ -61,6 +62,15 @@ export function MarkdownField({
     },
     [onChange],
   );
+
+  /** Toggle `- ` on the touched lines. Shares the pure transform with the inline canvas fields, so
+   *  a bulleted list behaves identically wherever text is edited. */
+  const bullets = useCallback(() => {
+    const ta = ref.current;
+    if (!ta) return;
+    const next = toggleBulletLines(ta.value, ta.selectionStart, ta.selectionEnd);
+    applyEdit(next.value, next.start, next.end);
+  }, [applyEdit]);
 
   const wrap = useCallback(
     (prefix: string, suffix = prefix, placeholderText = "text") => {
@@ -248,6 +258,7 @@ export function MarkdownField({
         onItalic={() => wrap("*")}
         onCode={() => wrap("`")}
         onLink={link}
+        onBullets={bullets}
         onSize={applySize}
       />
     </label>
