@@ -756,11 +756,19 @@ export function DocumentCover({
                     which the gap analysis found disagrees with both references — the brand mark is
                     a disc. Using the shared component means there is now exactly one G. mark. */}
                 <GitworkMark size={36} />
+                {/* ONE line, dot-separated — not a stacked column.
+                    Two mono lines stacked read as an address block and pull the eye down into the
+                    page edge; the letterhead is one statement, so it sits on one line and uses the
+                    reference's own ` · ` separator. `flexWrap` keeps it honest if a white-label
+                    workspace supplies more lines than fit. */}
                 <div
                   style={{
                     display: "flex",
-                    flexDirection: "column",
-                    gap: 4,
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                    columnGap: 8,
+                    rowGap: 2,
                     textAlign: "right",
                     minWidth: 0,
                   }}
@@ -777,6 +785,7 @@ export function DocumentCover({
                         color: muted,
                       }}
                     >
+                      {i > 0 ? <span aria-hidden="true" style={{ opacity: 0.5 }}>{"·  "}</span> : null}
                       {row}
                     </span>
                   ))}
