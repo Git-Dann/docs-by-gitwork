@@ -54,8 +54,12 @@ describe("formatting commands never freeze", () => {
   it("RichInlineEditor applies the same discipline", () => {
     const body = source("lib", "sections", "rich-inline-editor.tsx");
 
-    expect(body).toContain("const handlers = useRef({ applyInline, applyLink });");
-    expect(body).toContain("const { applyInline, applyLink } = handlers.current;");
+    // `serialize` joined the ref when the list command was fixed: that path writes the DOM back
+    // to the value, and a stale `serialize` would write into a handler the block has moved on
+    // from. Asserted loosely enough to survive another command being added, tightly enough to
+    // fail if the ref is removed.
+    expect(body).toMatch(/const handlers = useRef\(\{[^}]*applyInline[^}]*serialize[^}]*\}\);/);
+    expect(body).toContain("handlers.current");
   });
 });
 

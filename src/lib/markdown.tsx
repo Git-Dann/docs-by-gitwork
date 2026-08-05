@@ -23,7 +23,7 @@ import { cn } from "@/lib/format";
 // Exported so rich-inline-editor.tsx's canvas editor can parse/serialize with the exact same
 // rules as this renderer — one source of truth for what counts as Markdown here.
 export const INLINE_RE =
-  /(\[[^\]]+\]\([^)\s]+\))|(<(?:sm|lg)>[^\n<]+<\/(?:sm|lg)>)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(_[^_\n]+_)|(`[^`\n]+`)/;
+  /(\[[^\]]+\]\([^)\s]+\))|(<(?:sm|lg)>[^\n<]+<\/(?:sm|lg)>)|(\*\*\*[^*\n]+\*\*\*)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(_[^_\n]+_)|(`[^`\n]+`)/;
 
 /** Allow only safe URL schemes; bare domains become https; anything odd (javascript:, data:) is dropped. */
 export function safeUrl(raw: string): string | null {
@@ -75,6 +75,15 @@ export function renderInline(text: string, keyPrefix: string): ReactNode[] {
         <span key={key} className={sizeClass}>
           {renderInline(inner, `${key}-in`)}
         </span>,
+      );
+    } else if (token.startsWith("***")) {
+      // Bold-italic. Without this the toolbar could WRITE `***x***` (italic applied to bold text)
+      // and the document would render literal asterisks around it — stray punctuation in a
+      // client's proposal.
+      out.push(
+        <strong key={key} className="font-semibold text-[var(--text-1)]">
+          <em>{token.slice(3, -3)}</em>
+        </strong>,
       );
     } else if (token.startsWith("**")) {
       out.push(

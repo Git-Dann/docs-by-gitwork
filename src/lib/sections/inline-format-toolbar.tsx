@@ -144,6 +144,48 @@ export function wrapSelection(
   }
 
   const marker = command === "bold" ? "**" : command === "italic" ? "*" : "`";
+
+  // TOGGLE, don't just wrap. Pressing Bold twice used to give `****text****` — every editor
+  // people have ever used turns it back off, and bullets in this same toolbar already did.
+  //
+  // Two ways a selection can already be formatted, and both have to be handled or the toggle
+  // only works depending on how you happened to drag:
+  //   · the markers are INSIDE the selection  — you selected `**File**`
+  //   · the markers are OUTSIDE it            — you selected `File` between them
+  const italicOnBold = (text: string) => command === "italic" && text.startsWith("**");
+
+  if (
+    selected.startsWith(marker) &&
+    selected.endsWith(marker) &&
+    selected.length >= marker.length * 2 + 1 &&
+    !italicOnBold(selected)
+  ) {
+    const inner = selected.slice(marker.length, -marker.length);
+    return {
+      value: value.slice(0, selectionStart) + inner + value.slice(selectionEnd),
+      start: selectionStart,
+      end: selectionStart + inner.length,
+    };
+  }
+
+  const before = value.slice(Math.max(0, selectionStart - marker.length), selectionStart);
+  const after = value.slice(selectionEnd, selectionEnd + marker.length);
+  // For italic, `*` sitting inside a `**` pair is a BOLD marker — stripping one side would turn
+  // `**x**` into `*x**` and corrupt the text rather than un-italicise it.
+  const insideBold =
+    command === "italic" &&
+    (value.slice(Math.max(0, selectionStart - 2), selectionStart).endsWith("**") ||
+      value.slice(selectionEnd, selectionEnd + 2) === "**");
+
+  if (before === marker && after === marker && !insideBold) {
+    return {
+      value:
+        value.slice(0, selectionStart - marker.length) + selected + value.slice(selectionEnd + marker.length),
+      start: selectionStart - marker.length,
+      end: selectionEnd - marker.length,
+    };
+  }
+
   return {
     value:
       value.slice(0, selectionStart) + marker + selected + marker + value.slice(selectionEnd),
