@@ -75,12 +75,15 @@ export function AppShell({
   children,
   title,
   subtitle,
+  titleAccessory,
   hideContentHeader = false,
   mainClassName,
 }: {
   children: React.ReactNode;
   title: string;
   subtitle?: string;
+  /** Optional element rendered inline next to the page title (e.g. an attribution chip). */
+  titleAccessory?: React.ReactNode;
   hideContentHeader?: boolean;
   forceCollapsedSidebar?: boolean;
   mainClassName?: string;
@@ -319,9 +322,12 @@ export function AppShell({
       {/* ── Mobile page title (hidden on lg+) ── */}
       {!hideContentHeader && (
         <div className="shrink-0 border-b border-[var(--border-2)] bg-[var(--surface-0)] px-4 py-4 lg:hidden">
-          <h1 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--text-1)]">
-            {title}
-          </h1>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h1 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--text-1)]">
+              {title}
+            </h1>
+            {titleAccessory}
+          </div>
           {subtitle ? (
             <p className="mt-0.5 text-sm text-[var(--text-3)]">{subtitle}</p>
           ) : null}
@@ -376,9 +382,12 @@ export function AppShell({
             <header className="hidden lg:block border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-0)_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8">
               <div className="flex items-start justify-between gap-4">
                 <div className="max-w-4xl">
-                  <h1 className="text-[44px] font-normal leading-[1.15] tracking-[-0.03em] text-[var(--text-1)]">
-                    {title}
-                  </h1>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <h1 className="text-[44px] font-normal leading-[1.15] tracking-[-0.03em] text-[var(--text-1)]">
+                      {title}
+                    </h1>
+                    {titleAccessory}
+                  </div>
                   {subtitle ? (
                     <p className="mt-1.5 text-sm leading-6 text-[var(--text-3)]">{subtitle}</p>
                   ) : null}
