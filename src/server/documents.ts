@@ -9,6 +9,7 @@ import { DocumentType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
+import { planSectionWrites } from "@/server/documents/section-writes";
 import type { proposalUpdateSchema } from "@/server/validators";
 import {
   allowedDocTypesForUser,
@@ -199,23 +200,35 @@ export async function updateDocument(
       // For a no-viewCosts editor, keep the real costing section instead of their blanked
       // copy — they can't see costs, so they can't be allowed to overwrite them.
       const existingCosting = existing.sections.find((s) => s.key === "costing");
-      await tx.documentSection.deleteMany({ where: { documentId: id } });
-      await tx.documentSection.createMany({
-        data: payload.sections.map((section, index) => ({
-          documentId: id,
-          key: section.key,
-          title: section.title,
-          description: section.description,
-          sortOrder: section.sortOrder ?? index,
-          isVisible: section.isVisible,
-          speakerNotes: section.speakerNotes ?? null,
-          fontSize: section.fontSize ?? null,
-          data:
-            !showCosts && section.key === "costing" && existingCosting
-              ? (existingCosting.data as Prisma.InputJsonValue)
-              : (section.data as unknown as Prisma.InputJsonValue),
-        })),
+
+      // Section rows keep their identity across saves — see `planSectionWrites` for why that
+      // matters (assets and comments were being orphaned every 900ms) and for every rule about
+      // what counts as new, changed or removed. This block only executes the plan.
+      const plan = planSectionWrites(existing.sections, payload.sections, {
+        preserveCostingData:
+          !showCosts && existingCosting ? existingCosting.data : undefined,
       });
+
+      for (const { id: sectionId, fields } of plan.updates) {
+        await tx.documentSection.update({
+          where: { id: sectionId },
+          data: { ...fields, data: fields.data as Prisma.InputJsonValue },
+        });
+      }
+
+      if (plan.creates.length) {
+        await tx.documentSection.createMany({
+          data: plan.creates.map((fields) => ({
+            documentId: id,
+            ...fields,
+            data: fields.data as Prisma.InputJsonValue,
+          })),
+        });
+      }
+
+      if (plan.deleteIds.length) {
+        await tx.documentSection.deleteMany({ where: { id: { in: plan.deleteIds } } });
+      }
     }
 
     if (payload.costLineItems && showCosts) {

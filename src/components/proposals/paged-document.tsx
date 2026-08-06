@@ -16,7 +16,7 @@
  * measured layout settles — the server PDF route waits on it before capturing.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { paginateSections } from "@/lib/proposal-pagination";
 import { ProposalSectionPreview } from "@/components/proposals/proposal-section-preview";
 import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
@@ -141,12 +141,25 @@ export function PagedDocument({
   const measureRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  // Re-measure whenever the content (order / visibility / data) changes.
-  const signature = useMemo(
-    () => JSON.stringify(sections.map((s) => [s.id ?? s.key, s.key, s.isVisible, s.data])),
-    [sections],
-  );
+  // `sections` is read by the measure pass but must NOT be a dependency of the effect that owns
+  // the observers — see below. A ref keeps the pass reading the current value.
+  const sectionsRef = useRef(sections);
+  sectionsRef.current = sections;
+  const scheduleRef = useRef<() => void>(() => {});
 
+  // ⚠️ Mount-only, and that is the fix rather than a tidy-up.
+  //
+  // This effect used to depend on `[signature, sections]`, where `signature` was a
+  // `JSON.stringify` of every section's `data`. Two things were wrong with that. The stringify
+  // serialised the WHOLE DOCUMENT on every render — one of three full-document serialisations the
+  // editor performed per keystroke. And it bought nothing: `sections` was in the same dependency
+  // array and gets a fresh array identity on every keystroke, so the effect re-ran regardless of
+  // what the signature said. The signature could only ever agree with a dependency that had
+  // already fired.
+  //
+  // Worse than the wasted string: re-running this effect per keystroke tore down and rebuilt the
+  // ResizeObserver and the resize listener each time. The observers are now created once and a
+  // content change just asks for another measure pass (the effect below).
   useEffect(() => {
     const measure = measureRef.current;
     const bodyEl = bodyRef.current;
@@ -154,14 +167,15 @@ export function PagedDocument({
 
     let raf = 0;
     const recompute = () => {
+      const current = sectionsRef.current;
       const availablePx = bodyEl.clientHeight; // exact per-page content height (A4 body)
       if (availablePx <= 0) return;
       const heights = new Map<number, number>();
       measure.querySelectorAll<HTMLElement>("[data-measure-index]").forEach((el) => {
         heights.set(Number(el.dataset.measureIndex), el.offsetHeight);
       });
-      const packed = packPages(sections, heights, availablePx);
-      const next = packed.length ? packed : paginateSections(sections);
+      const packed = packPages(current, heights, availablePx);
+      const next = packed.length ? packed : paginateSections(current);
       // ⚠️ Bail when the LAYOUT is unchanged. `packPages` returns fresh arrays every run, so
       // setting state unconditionally re-rendered the whole paged document on EVERY KEYSTROKE:
       // `signature` includes each section's `data`, so typing re-ran this effect, which set new
@@ -177,6 +191,7 @@ export function PagedDocument({
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(recompute);
     };
+    scheduleRef.current = schedule;
 
     schedule();
     const ro = new ResizeObserver(schedule);
@@ -188,8 +203,19 @@ export function PagedDocument({
       cancelAnimationFrame(raf);
       ro.disconnect();
       window.removeEventListener("resize", schedule);
+      // Anything that fires between teardown and the next setup must be a no-op, not a call
+      // into a cancelled frame loop.
+      scheduleRef.current = () => {};
     };
-  }, [signature, sections]);
+  }, []);
+
+  // Content changed — ask for a measure pass. Deliberately separate from the effect above so a
+  // keystroke re-measures without rebuilding the observers. `schedule` coalesces into one
+  // animation frame, and `samePagination` still bails when the layout is unchanged, so typing
+  // inside a block that does not move a page break costs a measure and no re-render.
+  useEffect(() => {
+    scheduleRef.current();
+  }, [sections]);
 
   const contentPageCount = pages.filter((p) => !isCoverPage(p)).length;
   const docTypeLabel = DOC_TYPE_LABEL[proposal.documentType] ?? "Document";

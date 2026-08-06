@@ -105,3 +105,163 @@ describe("commands act on the text as it is now", () => {
     );
   });
 });
+
+/**
+ * Undo history is structurally shared, not serialised.
+ *
+ * Each snapshot used to be `JSON.stringify(draft)`, restored with `JSON.parse` — so a hundred
+ * steps of history held a hundred independent copies of the whole document, and every
+ * non-coalesced edit paid a full-document serialisation to produce one.
+ *
+ * Snapshots are now the draft objects themselves. Every edit path rebuilds only what it touches,
+ * so consecutive snapshots share all their unchanged sections. That is safe because drafts are
+ * never mutated in place — which is not a convention but a requirement: this editor repaints off
+ * reference changes, so anything mutating a section's data in place would already fail to render.
+ * If that ever stops being true, the aliasing shows up here as corrupted history, so the
+ * assertions below are the tripwire.
+ */
+describe("undo history does not copy the document", () => {
+  const body = () => source("components", "proposals", "proposal-editor-layout.tsx");
+
+  it("pushes the draft itself onto the stacks", () => {
+    expect(body()).toMatch(/pastRef\.current\.push\(draft\)/);
+    expect(body()).toMatch(/futureRef\.current\.push\(draft\)/);
+  });
+
+  it("never serialises or revives a history entry", () => {
+    expect(body()).not.toMatch(/(past|future)Ref\.current\.push\(JSON\.stringify/);
+    expect(body()).not.toMatch(/JSON\.parse\((past|future)Ref\.current\.pop/);
+  });
+
+  it("types the stacks as documents, so a string can never be pushed again", () => {
+    // The type is what stops this regressing quietly — a stringify would no longer compile.
+    expect(body()).toMatch(/pastRef = useRef<ProposalDocument\[\]>/);
+    expect(body()).toMatch(/futureRef = useRef<ProposalDocument\[\]>/);
+  });
+
+  it("still bounds the history", () => {
+    // Structural sharing makes each step cheap, not free — an unbounded stack still leaks.
+    expect(body()).toMatch(/pastRef\.current\.length > 100\) pastRef\.current\.shift\(\)/);
+  });
+});
+
+/**
+ * The outline does not re-render while you type.
+ *
+ * `sectionEntries` is derived from the draft, so it — and every entry object in it — gets a fresh
+ * identity on every keystroke. Handing that straight to the outline meant re-rendering up to 38
+ * dnd-kit sortable rows per character, none of which could look any different: the outline draws
+ * a number, a title, an icon and a visibility state, and none of those is what changes while
+ * typing.
+ *
+ * The fix has three halves and all three are load-bearing — a memo is defeated by a new array, by
+ * a new entry object, OR by a new callback. The dangerous shortcut is a memo comparator that
+ * ignores the callbacks: that pins the outline to whichever render it last accepted, so deleting
+ * a section acts on the document as it was several keystrokes ago. That is precisely the
+ * staleness class the top of this file exists for, which is why the callbacks are stabilised
+ * through a ref instead.
+ */
+describe("the outline is projected, not re-rendered", () => {
+  const body = () => source("components", "proposals", "proposal-editor-layout.tsx");
+
+  type Entry = { id: string; order: number; title: string; sectionKey: string; isVisible: boolean };
+
+  // Reimplemented, like `samePagination` in the pagination suite: it is an implementation detail
+  // of the component, not API, and the last assertion checks the component still uses it.
+  function sameOutlineEntries(a: Entry[], b: Entry[]): boolean {
+    if (a.length !== b.length) return false;
+    return a.every((entry, index) => {
+      const other = b[index];
+      return (
+        entry.id === other.id &&
+        entry.order === other.order &&
+        entry.title === other.title &&
+        entry.sectionKey === other.sectionKey &&
+        entry.isVisible === other.isVisible
+      );
+    });
+  }
+
+  const OUTLINE: Entry[] = [
+    { id: "a", order: 1, title: "Cover", sectionKey: "cover", isVisible: true },
+    { id: "b", order: 2, title: "Introduction", sectionKey: "introduction", isVisible: true },
+  ];
+
+  it("treats a rebuilt-but-identical projection as unchanged", () => {
+    // Typing rebuilds the array and every entry in it. If this were false the projection would
+    // change identity on every keystroke and the memo would never once bite.
+    const after = OUTLINE.map((entry) => ({ ...entry }));
+
+    expect(after).not.toBe(OUTLINE);
+    expect(after[0]).not.toBe(OUTLINE[0]);
+    expect(sameOutlineEntries(OUTLINE, after)).toBe(true);
+  });
+
+  it("notices every structural change the outline actually draws", () => {
+    const changes: Array<Partial<Entry>> = [
+      { title: "Renamed" },
+      { order: 9 },
+      { sectionKey: "prose" },
+      { isVisible: false },
+      { id: "different" },
+    ];
+
+    for (const change of changes) {
+      const after = [{ ...OUTLINE[0], ...change }, OUTLINE[1]];
+      expect(
+        sameOutlineEntries(OUTLINE, after),
+        `change ${JSON.stringify(change)} slipped through`,
+      ).toBe(false);
+    }
+
+    expect(sameOutlineEntries(OUTLINE, [OUTLINE[0]])).toBe(false);
+  });
+
+  it("projects away `data` — the one field that changes while typing", () => {
+    // The projection must not carry the section object through, or the memo compares an object
+    // that is new on every keystroke.
+    expect(body()).toMatch(/const projectedOutline = sectionEntries\.map/);
+    expect(body()).not.toMatch(/const projectedOutline[\s\S]{0,200}section: entry\.section/);
+    expect(body()).toMatch(/interface OutlineEntry \{[^}]*\}/);
+    expect(body()).not.toMatch(/interface OutlineEntry \{[^}]*data/);
+  });
+
+  it("holds the projection at a stable identity", () => {
+    expect(body()).toMatch(
+      /if \(!sameOutlineEntries\(outlineRef\.current, projectedOutline\)\) \{\s*\n\s*outlineRef\.current = projectedOutline;/,
+    );
+  });
+
+  it("memoises both outline components", () => {
+    expect(body()).toMatch(/const OutlineRail = memo\(OutlineRailBase\)/);
+    expect(body()).toMatch(/const TableOfContentsCard = memo\(TableOfContentsCardBase\)/);
+  });
+
+  it("passes the projection, not the raw entries", () => {
+    // Passing `sectionEntries` to either would silently undo all of the above.
+    const outlineProps = body().slice(body().indexOf("<TableOfContentsCard"), body().indexOf("<TableOfContentsCard") + 500);
+    expect(outlineProps).toContain("sections={outlineEntries}");
+    const railProps = body().slice(body().indexOf("<OutlineRail"), body().indexOf("<OutlineRail") + 300);
+    expect(railProps).toContain("sections={outlineEntries}");
+  });
+
+  it("stabilises the callbacks through a ref, not a memo comparator", () => {
+    // The ref is what keeps them from going stale. A custom `areEqual` that skipped the callbacks
+    // would memo just as well and be wrong.
+    expect(body()).toMatch(/function useStableCallback/);
+    expect(body()).toMatch(/ref\.current = fn;/);
+    expect(body()).toMatch(/ref\.current\(\.\.\.args\)/);
+    expect(body()).not.toMatch(/memo\((OutlineRailBase|TableOfContentsCardBase), /);
+
+    for (const handler of [
+      "onSelect={onOutlineSelect}",
+      "onEditOptions={onOutlineEditOptions}",
+      "onInsertAt={onOutlineInsertAt}",
+      "onDeleteSection={onOutlineDelete}",
+      "onReorder={onOutlineReorder}",
+      "onToggleVisibility={onOutlineToggleVisibility}",
+    ]) {
+      expect(body(), `${handler} is not a stable callback`).toContain(handler);
+    }
+  });
+});

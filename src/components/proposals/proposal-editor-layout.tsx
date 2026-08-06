@@ -44,7 +44,7 @@ import {
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityFeed } from "@/components/proposals/activity-feed";
 import { DocumentAnalyticsPanel } from "@/components/proposals/document-analytics-panel";
 import { ProposalPreview } from "@/components/proposals/proposal-preview";
@@ -142,6 +142,52 @@ function buildShareMailto(documentTitle: string, shareUrl: string): string {
 
 function getSectionEntryId(section: ProposalSection) {
   return section.id ?? section.key;
+}
+
+/**
+ * Everything the outline draws — and deliberately NOT `data`, which is the one thing that changes
+ * while you type. Projecting to this is what lets the outline skip re-rendering per keystroke.
+ */
+interface OutlineEntry {
+  id: string;
+  order: number;
+  title: string;
+  sectionKey: ProposalSection["key"];
+  isVisible: boolean;
+}
+
+function sameOutlineEntries(a: OutlineEntry[], b: OutlineEntry[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((entry, index) => {
+    const other = b[index];
+    return (
+      entry.id === other.id &&
+      entry.order === other.order &&
+      entry.title === other.title &&
+      entry.sectionKey === other.sectionKey &&
+      entry.isVisible === other.isVisible
+    );
+  });
+}
+
+/**
+ * A callback whose IDENTITY never changes but which always runs the latest closure.
+ *
+ * Needed because memoising the outline is pointless if its handlers are new functions every
+ * render — and the obvious workaround (a memo comparator that ignores callbacks) is worse than
+ * no memo at all: it would pin the outline to the closures from whichever render it last
+ * accepted, so deleting a section would act on the document as it was several keystrokes ago.
+ * That is the staleness class `editor-staleness.test.tsx` exists for. Same ref discipline the
+ * undo/redo handlers already use.
+ */
+function useStableCallback<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  const ref = useRef(fn);
+  ref.current = fn;
+  const stable = useRef<((...args: A) => R) | null>(null);
+  if (!stable.current) {
+    stable.current = (...args: A) => ref.current(...args);
+  }
+  return stable.current;
 }
 
 function cloneSectionData(section: ProposalSection["data"]) {
@@ -256,8 +302,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   // ── Undo / redo history (Phase 2b) ──────────────────────────────────────────
   // Snapshots of the draft (JSON) before each change. Rapid text edits coalesce into one step
   // (700ms window); structural ops (add/delete/reorder/toggle) are always discrete steps.
-  const pastRef = useRef<string[]>([]);
-  const futureRef = useRef<string[]>([]);
+  const pastRef = useRef<ProposalDocument[]>([]);
+  const futureRef = useRef<ProposalDocument[]>([]);
   const lastEditAtRef = useRef(0);
   const undoRef = useRef<() => void>(() => {});
   const redoRef = useRef<() => void>(() => {});
@@ -319,6 +365,41 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
         order: index + 1,
       }));
   }, [draft]);
+
+  // Structural projection of the outline, held at a STABLE IDENTITY while the structure is
+  // unchanged. `sectionEntries` gets a fresh array — and fresh entry objects — on every
+  // keystroke, because it is derived from the draft; without this the outline re-renders 38 rows
+  // of dnd-kit sortables per character typed, none of which can look any different.
+  //
+  // Recomputing the projection every render is cheap on purpose: it walks the section list but
+  // never touches `data`, so it costs O(sections), not O(document).
+  const projectedOutline = sectionEntries.map((entry) => ({
+    id: entry.id,
+    order: entry.order,
+    title: entry.section.title,
+    sectionKey: entry.section.key,
+    isVisible: entry.section.isVisible !== false,
+  }));
+  const outlineRef = useRef<OutlineEntry[]>(projectedOutline);
+  if (!sameOutlineEntries(outlineRef.current, projectedOutline)) {
+    outlineRef.current = projectedOutline;
+  }
+  const outlineEntries = outlineRef.current;
+
+  // Stable identities, so the memo on the outline actually bites — a new function per render
+  // would defeat it as surely as a new array. Each still runs the latest closure. (These read
+  // hoisted `function` declarations from further down the component.)
+  const onOutlineSelect = useStableCallback((id: string) => handleOutlineSelect(id));
+  const onOutlineEditOptions = useStableCallback((id: string) => openOptions(id));
+  const onOutlineInsertAt = useStableCallback((index: number) => setPaletteInsertAt(index));
+  const onOutlineDelete = useStableCallback((id: string) => handleDeleteSection(id));
+  const onOutlineReorder = useStableCallback((activeId: string, overId: string) =>
+    updateSectionOrder(activeId, overId),
+  );
+  const onOutlineToggleVisibility = useStableCallback((id: string, next: boolean) =>
+    handleToggleVisibility(id, next),
+  );
+  const onOutlineExpand = useStableCallback(() => setOutlineOpen(true));
 
   const defaultActiveSectionId = useMemo(() => {
     if (!sectionEntries.length) {
@@ -536,8 +617,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       return;
     }
 
-    const nextSerialized = JSON.stringify(localDraft);
-    if (!baselineRef.current || baselineRef.current === nextSerialized) {
+    if (!baselineRef.current) {
       return;
     }
 
@@ -546,6 +626,15 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     }
 
     autoSaveTimerRef.current = setTimeout(() => {
+      // The dirty check lives INSIDE the debounce deliberately. It used to run in the effect
+      // body, which is once per keystroke — a full-document `JSON.stringify` per character, and
+      // the third of three the editor performed per keystroke. Nothing acts on the result until
+      // the timer fires, and the timer is reset by every keystroke, so comparing here runs it
+      // once when typing pauses instead. A save still happens if and only if the content differs
+      // from the last saved baseline; only the frequency of asking changed.
+      if (JSON.stringify(localDraft) === baselineRef.current) {
+        return;
+      }
       void saveDraft(localDraft);
     }, 900);
 
@@ -607,7 +696,16 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       const within = now - lastEditAtRef.current < 700;
       lastEditAtRef.current = now;
       if (!(opts?.coalesce && within)) {
-        pastRef.current.push(JSON.stringify(draft));
+        // The snapshot is the draft OBJECT, not a serialisation of it. Every edit path here
+        // rebuilds the objects it touches and leaves the rest alone, so consecutive snapshots
+        // share all their unchanged sections — 100 steps of history costs a little more than one
+        // document instead of 100 copies of it, and pushing costs nothing.
+        //
+        // That rests on drafts never being mutated in place, which is not merely a convention
+        // here: the editor re-renders off reference changes, so anything mutating a section's
+        // data in place would already fail to repaint. A snapshot cannot alias something the
+        // rest of the app is free to change underneath it.
+        pastRef.current.push(draft);
         if (pastRef.current.length > 100) pastRef.current.shift();
         futureRef.current = [];
         forceHistory((v) => v + 1);
@@ -627,16 +725,16 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   // the toolbar buttons and the keyboard shortcut effect (which binds once).
   undoRef.current = () => {
     if (pastRef.current.length === 0 || !draft) return;
-    futureRef.current.push(JSON.stringify(draft));
-    const restored = JSON.parse(pastRef.current.pop() as string) as ProposalDocument;
+    futureRef.current.push(draft);
+    const restored = pastRef.current.pop() as ProposalDocument;
     setLocalDraft(restored);
     setSaveState("saving");
     forceHistory((v) => v + 1);
   };
   redoRef.current = () => {
     if (futureRef.current.length === 0 || !draft) return;
-    pastRef.current.push(JSON.stringify(draft));
-    const restored = JSON.parse(futureRef.current.pop() as string) as ProposalDocument;
+    pastRef.current.push(draft);
+    const restored = futureRef.current.pop() as ProposalDocument;
     setLocalDraft(restored);
     setSaveState("saving");
     forceHistory((v) => v + 1);
@@ -1605,18 +1703,27 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           {outlineOpen ? (
             <div className="mb-3 max-h-[45vh] overflow-y-auto rounded-[10px] border border-[var(--border-2)] bg-white lg:absolute lg:left-4 lg:top-4 lg:bottom-4 lg:z-20 lg:mb-0 lg:max-h-none lg:w-[236px] lg:overflow-visible lg:shadow-[0_8px_28px_rgba(15,23,42,0.13)] 2xl:w-[260px]">
               <TableOfContentsCard
-                sections={sectionEntries}
+                sections={outlineEntries}
                 activeId={viewingSectionId ?? activeEntry?.id ?? null}
                 editable
-                onSelect={handleOutlineSelect}
-                onEditOptions={openOptions}
-                onInsertAt={(index) => setPaletteInsertAt(index)}
-                onDeleteSection={handleDeleteSection}
-                onReorder={updateSectionOrder}
-                onToggleVisibility={handleToggleVisibility}
+                onSelect={onOutlineSelect}
+                onEditOptions={onOutlineEditOptions}
+                onInsertAt={onOutlineInsertAt}
+                onDeleteSection={onOutlineDelete}
+                onReorder={onOutlineReorder}
+                onToggleVisibility={onOutlineToggleVisibility}
               />
             </div>
-          ) : null}
+          ) : (
+            // Collapsed ≠ gone. Closing the outline reclaims the width without giving up
+            // jump-to-section, which is the thing you want most while editing.
+            <OutlineRail
+              sections={outlineEntries}
+              activeId={viewingSectionId ?? activeEntry?.id ?? null}
+              onSelect={onOutlineSelect}
+              onExpand={onOutlineExpand}
+            />
+          )}
 
           {/* 03 // CANVAS — the live document; ALL text edited inline. Clicking a block selects it
               and opens its Options in the right rail. */}
@@ -1642,18 +1749,21 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                   frame (root is lg:h-full), so this pane is lg:flex-1 lg:min-h-0 and the document
                   scrolls here — the page itself never scrolls past the viewport. On mobile it
                   flows normally. NEVER give this an unbounded height on desktop. */}
-              <div
-                className={cn(
-                  "overflow-auto p-4 sm:p-6 lg:min-h-0 lg:flex-1 [scrollbar-gutter:stable]",
-                  // Inset the DOCUMENT clear of the floating rails rather than shrinking the
-                  // canvas: the scroll surface still spans the full width, so the page scrolls
-                  // under the rails and nothing is trapped behind them. Rail + 16px gutter each
-                  // side, written as literal class strings because Tailwind only scans static
-                  // text — a template literal here would emit no class at all.
-                  outlineOpen ? "lg:pl-[268px] 2xl:pl-[292px]" : null,
-                  optionsEntry ? "lg:pr-[368px] 2xl:pr-[392px]" : null,
-                )}
-              >
+              {/* ⚠️ NO rail-width padding here, and that is the point.
+                  The rails are already `position: absolute`, so the intent was always that the
+                  canvas is the full surface and they sit ON it. Padding the canvas clear of them
+                  cancelled exactly that: it cost the document 636px (684 at 2xl) whenever a
+                  block's options were open, and because `.doc-a4-page` is
+                  `width: 100%; max-width: 210mm`, a container narrower than A4 SHRINKS the page
+                  rather than scrolling it — so on a 1280 laptop the "A4 sheet" rendered at 81%
+                  of A4, and at 1440 it never quite reached 100%.
+                  The page is `mx-auto max-w-[210mm]`, so with no padding it centres in the full
+                  width and the rails float over its own margins: 323px of clear margin each side
+                  at 1440, 243px at 1280. The 56px collapsed rail and the 236px outline both fit
+                  in that at either size. The options panel is wider than the margin at 1280 and
+                  will overlap the page edge — that is the correct trade for a panel you opened
+                  deliberately and can close, and it is what every design tool does. */}
+              <div className="overflow-auto p-4 sm:p-6 lg:min-h-0 lg:flex-1 [scrollbar-gutter:stable]">
                 <ProposalPreview
                   proposal={draft}
                   showTableOfContents={false}
@@ -1671,11 +1781,15 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           {/* PROPERTIES rail — the selected block's Options, in numbered groups like Deck's props
               rail. 340px (was a 280px shared rail), which is what finally lets the editors' own
               `@[26rem]:grid-cols-2` container queries engage. */}
+          {/* Height follows the block's own fields — `lg:bottom-4` used to pin it to the full
+              frame, so a three-field block drew a full-height wall down the side of the page and
+              obscured far more of the document than it needed to. Capped so a long editor
+              (costing) still scrolls inside itself rather than running off the frame. */}
           {optionsEntry ? (
-            <div className="mt-3 max-h-[60vh] overflow-y-auto rounded-[10px] border border-[var(--border-2)] lg:absolute lg:right-4 lg:top-4 lg:bottom-4 lg:z-20 lg:mt-0 lg:max-h-none lg:w-[336px] lg:overflow-visible lg:shadow-[0_8px_28px_rgba(15,23,42,0.13)] 2xl:w-[360px]">
+            <div className="mt-3 max-h-[60vh] overflow-y-auto rounded-[10px] border border-[var(--border-2)] lg:absolute lg:right-4 lg:top-4 lg:z-20 lg:mt-0 lg:max-h-[calc(100%-2rem)] lg:w-[336px] lg:overflow-visible lg:shadow-[0_8px_28px_rgba(15,23,42,0.13)] 2xl:w-[360px]">
               {/* `widget-card` is gone — the wrapper above now owns the frame and the lift, so
                   the rail is one floating panel rather than a card inside a column. */}
-              <aside className="proposal-form-theme overflow-hidden rounded-[10px] bg-white lg:flex lg:h-full lg:flex-col">
+              <aside className="proposal-form-theme overflow-hidden rounded-[10px] bg-white lg:flex lg:max-h-full lg:flex-col">
                 <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto [scrollbar-gutter:stable]">
                   <RailGroup
                     index="01"
@@ -1840,7 +1954,72 @@ function RailGroup({
   );
 }
 
-function TableOfContentsCard({
+/**
+ * The outline, collapsed to a rail of section numbers.
+ *
+ * Closing the outline used to remove it entirely, which meant the only way to reclaim the 268px
+ * it cost the document was to give up jumping between sections — and you want to jump most while
+ * you are editing, not least. This keeps navigation permanently available at 56px: every section
+ * as its `NN`, the one you are reading lit, the title on hover.
+ *
+ * It is `lg`-only on purpose. Below the desktop split the rails stack in normal flow above the
+ * canvas, so a strip of numbers there would be noise rather than navigation.
+ */
+function OutlineRailBase({
+  sections,
+  activeId,
+  onSelect,
+  onExpand,
+}: {
+  sections: OutlineEntry[];
+  activeId: string | null;
+  onSelect: (id: string) => void;
+  onExpand: () => void;
+}) {
+  return (
+    <div className="hidden lg:absolute lg:left-4 lg:top-4 lg:bottom-4 lg:z-20 lg:flex lg:w-[56px] lg:flex-col lg:overflow-hidden lg:rounded-[10px] lg:border lg:border-[var(--border-2)] lg:bg-white lg:shadow-[0_8px_28px_rgba(15,23,42,0.13)]">
+      <button
+        type="button"
+        onClick={onExpand}
+        aria-label="Expand outline"
+        title="Expand outline"
+        className="flex h-9 shrink-0 items-center justify-center border-b border-[var(--border-2)] font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+      >
+        02
+      </button>
+      <div className="min-h-0 flex-1 overflow-y-auto py-1.5">
+        {sections.map((entry) => {
+          const isActive = entry.id === activeId;
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={() => onSelect(entry.id)}
+              // The title is the whole reason a number is enough — hover names the section, so
+              // the rail stays legible without costing the document any width.
+              title={entry.title}
+              aria-label={`Go to ${entry.title}`}
+              aria-current={isActive ? "true" : undefined}
+              className={cn(
+                "flex h-7 w-full items-center justify-center font-mono text-[10px] font-semibold tracking-[1px] transition",
+                isActive
+                  ? "bg-[var(--surface-brand)] text-[var(--brand-700)]"
+                  : "text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
+                // A hidden block still gets a rail slot — it is part of the document's structure
+                // and you need to be able to reach it to turn it back on.
+                !entry.isVisible ? "opacity-40" : null,
+              )}
+            >
+              {String(entry.order).padStart(2, "0")}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TableOfContentsCardBase({
   sections,
   activeId,
   editable,
@@ -1851,7 +2030,7 @@ function TableOfContentsCard({
   onReorder,
   onToggleVisibility,
 }: {
-  sections: Array<{ id: string; section: ProposalSection; order: number }>;
+  sections: OutlineEntry[];
   activeId: string | null;
   editable?: boolean;
   onSelect: (id: string) => void;
@@ -1920,7 +2099,7 @@ function TableOfContentsCard({
                         : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
                     )}
                   >
-                    {entry.order}. {entry.section.title}
+                    {entry.order}. {entry.title}
                   </button>
                 </li>
               ))}
@@ -1949,6 +2128,18 @@ function TableOfContentsCard({
   );
 }
 
+/**
+ * Memoised so a keystroke does not re-render the outline.
+ *
+ * Both take `OutlineEntry[]` — a projection that excludes `data` — held at a stable identity by
+ * the editor, and callbacks with stable identities from `useStableCallback`. So React's default
+ * shallow compare is enough, and the expensive one (38 dnd-kit sortable rows) only re-renders
+ * when the document's STRUCTURE moves: a title, an order, a visibility toggle, an add or a
+ * delete. Typing changes none of those.
+ */
+const OutlineRail = memo(OutlineRailBase);
+const TableOfContentsCard = memo(TableOfContentsCardBase);
+
 function SortableTableOfContentsItem({
   entry,
   isActive,
@@ -1959,7 +2150,7 @@ function SortableTableOfContentsItem({
   onInsertAt,
   onToggleVisibility,
 }: {
-  entry: { id: string; section: ProposalSection; order: number };
+  entry: OutlineEntry;
   isActive: boolean;
   /** This row's index in the section list. Used by the hover-"+" to know where to insert. */
   insertIndex: number;
@@ -1972,11 +2163,11 @@ function SortableTableOfContentsItem({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: entry.id,
   });
-  const sectionType = SECTION_REGISTRY[entry.section.key];
+  const sectionType = SECTION_REGISTRY[entry.sectionKey];
   // Fall back to a neutral icon for unregistered keys (e.g. Pulse's injected "audit_results")
   // so every outline row stays visually aligned.
   const Icon = sectionType?.icon ?? DocumentTextIcon;
-  const isVisible = entry.section.isVisible !== false;
+  const isVisible = entry.isVisible;
 
   return (
     <li
@@ -1993,7 +2184,7 @@ function SortableTableOfContentsItem({
           type="button"
           onClick={() => onInsertAt(insertIndex)}
           className="group/insert absolute -top-2 left-0 right-0 z-10 flex h-3 cursor-pointer items-center justify-center"
-          aria-label={`Insert block before ${entry.section.title}`}
+          aria-label={`Insert block before ${entry.title}`}
         >
           <span className="h-px w-full bg-transparent transition group-hover/insert:bg-[var(--brand-300)]" />
           <span className="absolute flex h-5 w-5 items-center justify-center rounded-full border border-[var(--border-2)] bg-white text-[var(--text-3)] opacity-0 transition group-hover/insert:opacity-100">
@@ -2014,7 +2205,7 @@ function SortableTableOfContentsItem({
       >
         <button
           type="button"
-          aria-label={`Reorder ${entry.section.title}`}
+          aria-label={`Reorder ${entry.title}`}
           className="flex h-7 w-5 cursor-grab items-center justify-center text-[var(--text-4)] transition hover:text-[var(--text-2)] active:cursor-grabbing"
           {...attributes}
           {...listeners}
@@ -2033,7 +2224,7 @@ function SortableTableOfContentsItem({
           onClick={() => onSelect(entry.id)}
           // The rail is narrow, so long block titles ellipse — carry the full title so it stays
           // readable on hover (and so the clipping audit's TRUNCATED rule is satisfied).
-          title={entry.section.title}
+          title={entry.title}
           className={cn(
             "min-w-0 flex-1 overflow-hidden text-left text-sm tracking-[-0.01em]",
             isActive ? "font-medium text-[var(--text-1)]" : "text-[var(--text-2)]",
@@ -2041,8 +2232,8 @@ function SortableTableOfContentsItem({
         >
           {/* `title` repeated on the ellipsing element itself: audit-clipping's TRUNCATED rule reads
               the element's own title/aria-label, not an ancestor's. */}
-          <span title={entry.section.title} className="block truncate whitespace-nowrap">
-            {entry.section.title}
+          <span title={entry.title} className="block truncate whitespace-nowrap">
+            {entry.title}
           </span>
         </button>
 
@@ -2054,7 +2245,7 @@ function SortableTableOfContentsItem({
           {onEditOptions ? (
             <button
               type="button"
-              aria-label={`${entry.section.title} options and notes`}
+              aria-label={`${entry.title} options and notes`}
               onClick={(event) => {
                 event.stopPropagation();
                 onEditOptions(entry.id);
@@ -2068,7 +2259,7 @@ function SortableTableOfContentsItem({
           {onToggleVisibility ? (
             <button
               type="button"
-              aria-label={isVisible ? `Hide ${entry.section.title}` : `Show ${entry.section.title}`}
+              aria-label={isVisible ? `Hide ${entry.title}` : `Show ${entry.title}`}
               onClick={(event) => {
                 event.stopPropagation();
                 onToggleVisibility(entry.id, !isVisible);
@@ -2085,7 +2276,7 @@ function SortableTableOfContentsItem({
           ) : null}
           <button
             type="button"
-            aria-label={`Delete ${entry.section.title}`}
+            aria-label={`Delete ${entry.title}`}
             onClick={(event) => {
               event.stopPropagation();
               onDelete?.(entry.id);
