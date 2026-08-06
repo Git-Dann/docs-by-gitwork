@@ -183,3 +183,63 @@ describe("the format registry", () => {
     expect(surface.isConnected).toBe(true);
   });
 });
+
+/** Select everything, the way ⌘A does — ProseMirror's own keymap, not a simulated selection. */
+function selectAll(surface: HTMLElement) {
+  act(() => {
+    surface.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "a", ctrlKey: true, bubbles: true, cancelable: true }),
+    );
+  });
+}
+
+/**
+ * Bold toggling OFF — ported from `rich-inline-toggle.test.tsx` before that file is deleted with
+ * the engine it tested.
+ *
+ * This is the single most-repeated defect in Docs' history: `applyInline` wrapped unconditionally,
+ * so a second Bold produced `<strong><strong>x</strong></strong>` → `****x****`, which renders as
+ * literal asterisks on a client document. Bold could be turned on and never off.
+ *
+ * A real editor makes it structurally impossible — marks are a SET on a text node, so bold cannot
+ * nest inside bold. Worth asserting anyway rather than trusting that: the coverage would otherwise
+ * vanish with the old engine, and this is exactly the bug that keeps coming back.
+ */
+describe("marks toggle off, not just on", () => {
+  for (const [label, marker] of [
+    ["Bold", "**"],
+    ["Italic", "*"],
+    ["Code", "`"],
+  ] as const) {
+    it(`${label} applies and then removes`, () => {
+      const { state, surface } = mount("Preferred file formats");
+
+      act(() => {
+        surface.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+      });
+
+      selectAll(surface);
+      press(label);
+      expect(state.markdown, `${label} did not apply`).toBe(
+        `${marker}Preferred file formats${marker}`,
+      );
+
+      selectAll(surface);
+      press(label);
+      expect(state.markdown, `${label} did not toggle off`).toBe("Preferred file formats");
+    });
+  }
+
+  it("never produces ****, however many times Bold is pressed", () => {
+    const { state, surface } = mount("Preferred file formats");
+    act(() => {
+      surface.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    });
+
+    for (let i = 0; i < 4; i += 1) {
+      selectAll(surface);
+      press("Bold");
+      expect(state.markdown, `after ${i + 1} presses`).not.toContain("****");
+    }
+  });
+});

@@ -11,7 +11,7 @@
  * ⚠️ `"use client"` is REQUIRED, not stylistic. `sections/registry` is imported by server code
  * (`src/server/document-ai.ts` and the AI chat route), and the registry imports every block file.
  * Without the directive, ProseMirror's browser-only code follows that import into the server
- * bundle. Same boundary `rich-inline-editor.tsx`, `inline-text.tsx` and `format-target.tsx`
+ * bundle. Same boundary `inline-text.tsx` and `format-target.tsx`
  * already hold.
  *
  * Markdown stays the stored format (19 files render it back out), so everything here goes through
@@ -158,7 +158,7 @@ export function RichTextField({
     // ⚠️ Focus is tracked from the DOM (`onFocus`/`onBlur` delegate to focusin/focusout), NOT from
     // TipTap's own `focus`/`blur` events. Those only fire when ProseMirror's view sees the focus
     // itself, so anything that focuses the surface another way leaves the toolbar registered to
-    // nothing and every control inert. This is the discipline `rich-inline-editor.tsx` already
+    // nothing and every control inert. This is the discipline the outgoing contenteditable already
     // used, and the component test catches the regression by asserting the button is not disabled
     // rather than clicking a dead one and passing.
     <div

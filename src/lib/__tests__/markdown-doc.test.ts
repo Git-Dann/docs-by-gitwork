@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MARKDOWN_CORPUS } from "@/lib/__tests__/markdown-corpus";
+import { renderLines } from "@/lib/markdown";
 import { docSchema, docToMarkdown, markdownToDoc, roundTripMarkdown } from "@/lib/sections/markdown-doc";
 
 /**
@@ -209,5 +210,41 @@ describe("known difference: a markdown image in a prose field", () => {
     const out = roundTripMarkdown("![alt](https://example.com/i.png)");
     expect(out).toContain("alt");
     expect(out).toContain("https://example.com/i.png");
+  });
+});
+
+/**
+ * Renderer agreement — moved here from `markdown-roundtrip.test.tsx` when the old engine was
+ * deleted, because the property belongs to the FORMAT, not to whichever editor is writing it.
+ *
+ * The renderer that draws the client's document has to understand everything the editor can
+ * produce. `***bold-italic***` shipped once as literal asterisks on a client proposal because the
+ * toolbar could write syntax `INLINE_RE` had no case for — that is what this catches.
+ */
+describe("the client renderer understands everything the editor can write", () => {
+  const text = (markdown: string): string => {
+    const walk = (node: unknown): string => {
+      if (node === null || node === undefined || typeof node === "boolean") return "";
+      if (typeof node === "string" || typeof node === "number") return String(node);
+      if (Array.isArray(node)) return node.map(walk).join("");
+      const el = node as { props?: { children?: unknown } };
+      return el.props ? walk(el.props.children) : "";
+    };
+    return walk(renderLines(markdown, "agreement"));
+  };
+
+  for (const { name, markdown } of MARKDOWN_CORPUS) {
+    it(name, () => {
+      // Not a markup assertion — just that no marker leaks through as literal punctuation, which
+      // is what a client actually sees when the two sides disagree.
+      expect(text(markdown), `${name}: markers leaked into the rendered output`).not.toMatch(
+        /\*\*|`|\]\(/,
+      );
+    });
+  }
+
+  it("agrees on bold-italic, the case that actually shipped broken", () => {
+    expect(roundTripMarkdown("***Critical***")).toBe("***Critical***");
+    expect(text("***Critical***")).not.toContain("*");
   });
 });

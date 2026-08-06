@@ -9,7 +9,7 @@
  * exactly why CI runs `next build` as well as a typecheck.
  *
  * Same pattern the other interactive section pieces use (`inline-text.tsx`,
- * `rich-inline-editor.tsx`): the stateful leaf is a client component, the section definition that
+ * `rich-text-field.tsx`): the stateful leaf is a client component, the section definition that
  * references it is not.
  */
 

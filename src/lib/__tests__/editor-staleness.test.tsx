@@ -50,15 +50,14 @@ describe("formatting commands never freeze", () => {
     expect(run).toMatch(/\},\s*\[\],?\s*$/);
   });
 
-  it("RichInlineEditor applies the same discipline", () => {
-    const body = source("lib", "sections", "rich-inline-editor.tsx");
+  it("RichTextField applies the same discipline", () => {
+    // The contenteditable this used to check was deleted with the old engine, but the rule it
+    // encoded outlives it: the format registry stores `run` ONCE, on focus, so a closure over
+    // `onChange` captured then would write later edits into a stale handler.
+    const body = source("lib", "sections", "rich-text-field.tsx");
 
-    // `serialize` joined the ref when the list command was fixed: that path writes the DOM back
-    // to the value, and a stale `serialize` would write into a handler the block has moved on
-    // from. Asserted loosely enough to survive another command being added, tightly enough to
-    // fail if the ref is removed.
-    expect(body).toMatch(/const handlers = useRef\(\{[^}]*applyInline[^}]*serialize[^}]*\}\);/);
-    expect(body).toContain("handlers.current");
+    expect(body).toContain("const latest = useRef(onChange);");
+    expect(body).toContain("latest.current(markdown);");
   });
 });
 
