@@ -63,7 +63,7 @@ function inlineMarkdownToHtml(text: string): string {
   return out.join("");
 }
 
-function markdownToHtml(markdown: string): string {
+export function markdownToHtml(markdown: string): string {
   const text = (markdown ?? "").replace(/\r\n/g, "\n");
   if (!text.trim()) return "";
   return text
@@ -158,7 +158,7 @@ function unwrap(element: HTMLElement): Range {
   return range;
 }
 
-function htmlToMarkdown(root: HTMLElement): string {
+export function htmlToMarkdown(root: HTMLElement): string {
   const paragraphs: string[] = [];
   let current: Node[] = [];
   const flush = () => {
