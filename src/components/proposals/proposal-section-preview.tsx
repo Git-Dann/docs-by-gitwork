@@ -11,6 +11,7 @@
 
 import type { ReactNode } from "react";
 import { PencilSquareIcon, PlusIcon } from "@heroicons/react/24/outline";
+import { CanvasActionsProvider } from "@/lib/sections/canvas-actions";
 import { getSectionType } from "@/lib/sections/registry";
 import { InlineTextArea } from "@/lib/sections/inline-text";
 import { resolveSectionNumber } from "@/lib/sections/section-number";
@@ -145,7 +146,13 @@ export function ProposalSectionPreview({
             <PencilSquareIcon className="h-3.5 w-3.5" />
           </button>
         ) : null}
-        {content}
+        {onInsertAfter ? (
+          <CanvasActionsProvider actions={{ insertAfter: () => onInsertAfter(selectionId) }}>
+            {content}
+          </CanvasActionsProvider>
+        ) : (
+          content
+        )}
         {onInsertAfter ? (
           /* Sits in the 32px gap below the block (`space-y-8`), so it reads as "insert HERE"
              rather than as another control belonging to this block. Same hover/opacity grammar

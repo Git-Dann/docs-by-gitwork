@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { DocumentFormatBar } from "@/components/proposals/document-format-bar";
+import { CanvasActionsProvider } from "@/lib/sections/canvas-actions";
 import { FormatTargetProvider } from "@/lib/sections/format-target";
-import { RichTextField } from "@/lib/sections/rich-text-field";
+import { isBlockMenuTrigger, RichTextField } from "@/lib/sections/rich-text-field";
 
 /**
  * The replacement field, driven for real rather than asserted from source.
@@ -21,6 +24,8 @@ declare global {
   // eslint-disable-next-line no-var
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
+
+const source = (...parts: string[]) => readFileSync(join(__dirname, "..", "..", ...parts), "utf8");
 
 let host: HTMLDivElement;
 
@@ -241,5 +246,61 @@ describe("marks toggle off, not just on", () => {
       press("Bold");
       expect(state.markdown, `after ${i + 1} presses`).not.toContain("****");
     }
+  });
+});
+
+/**
+ * `/` opens the block menu — but only where it is a gesture rather than a character.
+ *
+ * ⚠️ The RULE is asserted directly rather than by simulating a keystroke. jsdom does not drive
+ * ProseMirror's text-input path (`beforeinput` never reaches it — verified by trying), so a test
+ * that "typed" a slash would be asserting against its own simulation rather than the editor. The
+ * toolbar-driven tests above work because a command is a real code path; typing is not.
+ */
+describe("the slash trigger", () => {
+  it("fires on a field holding exactly a slash", () => {
+    // Typing `/` into an empty field, or select-all then `/`. Both deliberate.
+    expect(isBlockMenuTrigger("/")).toBe(true);
+  });
+
+  it("does NOT fire on a slash inside real text", () => {
+    // The case that would make the editor feel possessed.
+    for (const content of [
+      "Delivery is 4/5 weeks",
+      "and/or",
+      "/app/docs/[id]",
+      "/ Scope",
+      "Scope /",
+      "//",
+    ]) {
+      expect(isBlockMenuTrigger(content), `${content} was treated as a trigger`).toBe(false);
+    }
+  });
+
+  it("does NOT fire on an empty field", () => {
+    expect(isBlockMenuTrigger("")).toBe(false);
+  });
+
+  it("never lets the trigger reach the document or the draft", () => {
+    // Two properties, both load-bearing: the field clears itself so an autosave cannot persist a
+    // stray `/` if the menu is dismissed, and it returns BEFORE `latest.current(markdown)` so the
+    // trigger is never emitted as content.
+    const body = source("lib", "sections", "rich-text-field.tsx");
+    const branch = body.slice(
+      body.indexOf("if (canvasRef.current && isBlockMenuTrigger(markdown))"),
+      body.indexOf("lastEmitted.current = markdown;"),
+    );
+    expect(branch).toContain("clearContent()");
+    expect(branch).toContain("insertAfter()");
+    expect(branch).toContain("return;");
+    expect(branch).not.toContain("latest.current(");
+  });
+
+  it("has no slash menu at all without a canvas", () => {
+    // The public, print and preview renders provide no CanvasActionsProvider, so the branch is
+    // unreachable there — the menu does not exist rather than being hidden.
+    const body = source("lib", "sections", "rich-text-field.tsx");
+    expect(body).toContain("const canvas = useCanvasActions();");
+    expect(body).toMatch(/if \(canvasRef\.current && isBlockMenuTrigger/);
   });
 });
