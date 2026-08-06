@@ -105,3 +105,42 @@ describe("commands act on the text as it is now", () => {
     );
   });
 });
+
+/**
+ * Undo history is structurally shared, not serialised.
+ *
+ * Each snapshot used to be `JSON.stringify(draft)`, restored with `JSON.parse` — so a hundred
+ * steps of history held a hundred independent copies of the whole document, and every
+ * non-coalesced edit paid a full-document serialisation to produce one.
+ *
+ * Snapshots are now the draft objects themselves. Every edit path rebuilds only what it touches,
+ * so consecutive snapshots share all their unchanged sections. That is safe because drafts are
+ * never mutated in place — which is not a convention but a requirement: this editor repaints off
+ * reference changes, so anything mutating a section's data in place would already fail to render.
+ * If that ever stops being true, the aliasing shows up here as corrupted history, so the
+ * assertions below are the tripwire.
+ */
+describe("undo history does not copy the document", () => {
+  const body = () => source("components", "proposals", "proposal-editor-layout.tsx");
+
+  it("pushes the draft itself onto the stacks", () => {
+    expect(body()).toMatch(/pastRef\.current\.push\(draft\)/);
+    expect(body()).toMatch(/futureRef\.current\.push\(draft\)/);
+  });
+
+  it("never serialises or revives a history entry", () => {
+    expect(body()).not.toMatch(/(past|future)Ref\.current\.push\(JSON\.stringify/);
+    expect(body()).not.toMatch(/JSON\.parse\((past|future)Ref\.current\.pop/);
+  });
+
+  it("types the stacks as documents, so a string can never be pushed again", () => {
+    // The type is what stops this regressing quietly — a stringify would no longer compile.
+    expect(body()).toMatch(/pastRef = useRef<ProposalDocument\[\]>/);
+    expect(body()).toMatch(/futureRef = useRef<ProposalDocument\[\]>/);
+  });
+
+  it("still bounds the history", () => {
+    // Structural sharing makes each step cheap, not free — an unbounded stack still leaks.
+    expect(body()).toMatch(/pastRef\.current\.length > 100\) pastRef\.current\.shift\(\)/);
+  });
+});

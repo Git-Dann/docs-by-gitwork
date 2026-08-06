@@ -79,3 +79,47 @@ describe("pagination stability", () => {
     expect(source).toMatch(/setPages\(\(current\) =>\s*\(?samePagination\(current, next\)/);
   });
 });
+
+/**
+ * The measure pass must not serialise the document, and must not rebuild its observers per edit.
+ *
+ * The guard above stopped the *re-render* on every keystroke. It did not stop the work that led
+ * to it: the effect was keyed on a `JSON.stringify` of every section's `data`, which was one of
+ * three full-document serialisations the editor ran per keystroke — and which bought nothing,
+ * because `sections` sat in the same dependency array and changes identity on every keystroke
+ * anyway. So the effect re-ran regardless, tearing down and rebuilding a ResizeObserver each time.
+ *
+ * Source assertions for the same reason the test above uses them: this is about how the component
+ * is wired, and the wiring is not reachable from its rendered output.
+ */
+describe("measure pass cost", () => {
+  it("does not serialise section data to decide whether to re-measure", () => {
+    expect(source).not.toMatch(/JSON\.stringify\([^)]*sections/);
+    expect(source).not.toContain("const signature");
+  });
+
+  it("owns its observers in a mount-only effect", () => {
+    // The ResizeObserver is constructed inside an effect that closes with `}, []);` — if the
+    // deps ever regain `sections`, the observer is rebuilt on every keystroke again.
+    const observerEffect = source.slice(
+      source.indexOf("new ResizeObserver"),
+      source.indexOf("new ResizeObserver") + 900,
+    );
+    expect(observerEffect).toMatch(/\}, \[\]\);/);
+    expect(observerEffect).not.toMatch(/\}, \[[^\]]*sections[^\]]*\]\);/);
+  });
+
+  it("re-measures on a content change through a separate effect", () => {
+    // Dropping the observers out of the sections-keyed effect is only safe if something still
+    // asks for a new measure pass when the content changes.
+    expect(source).toMatch(/scheduleRef\.current\(\);\s*\n\s*\}, \[sections\]\);/);
+  });
+
+  it("reads the current sections through a ref, not a stale closure", () => {
+    // A mount-only effect closes over the FIRST `sections`. Without the ref, every later measure
+    // would pack the document as it was when the editor opened.
+    expect(source).toContain("sectionsRef.current = sections");
+    expect(source).toMatch(/const current = sectionsRef\.current;/);
+    expect(source).toMatch(/packPages\(current,/);
+  });
+});

@@ -256,8 +256,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   // ── Undo / redo history (Phase 2b) ──────────────────────────────────────────
   // Snapshots of the draft (JSON) before each change. Rapid text edits coalesce into one step
   // (700ms window); structural ops (add/delete/reorder/toggle) are always discrete steps.
-  const pastRef = useRef<string[]>([]);
-  const futureRef = useRef<string[]>([]);
+  const pastRef = useRef<ProposalDocument[]>([]);
+  const futureRef = useRef<ProposalDocument[]>([]);
   const lastEditAtRef = useRef(0);
   const undoRef = useRef<() => void>(() => {});
   const redoRef = useRef<() => void>(() => {});
@@ -536,8 +536,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       return;
     }
 
-    const nextSerialized = JSON.stringify(localDraft);
-    if (!baselineRef.current || baselineRef.current === nextSerialized) {
+    if (!baselineRef.current) {
       return;
     }
 
@@ -546,6 +545,15 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     }
 
     autoSaveTimerRef.current = setTimeout(() => {
+      // The dirty check lives INSIDE the debounce deliberately. It used to run in the effect
+      // body, which is once per keystroke — a full-document `JSON.stringify` per character, and
+      // the third of three the editor performed per keystroke. Nothing acts on the result until
+      // the timer fires, and the timer is reset by every keystroke, so comparing here runs it
+      // once when typing pauses instead. A save still happens if and only if the content differs
+      // from the last saved baseline; only the frequency of asking changed.
+      if (JSON.stringify(localDraft) === baselineRef.current) {
+        return;
+      }
       void saveDraft(localDraft);
     }, 900);
 
@@ -607,7 +615,16 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       const within = now - lastEditAtRef.current < 700;
       lastEditAtRef.current = now;
       if (!(opts?.coalesce && within)) {
-        pastRef.current.push(JSON.stringify(draft));
+        // The snapshot is the draft OBJECT, not a serialisation of it. Every edit path here
+        // rebuilds the objects it touches and leaves the rest alone, so consecutive snapshots
+        // share all their unchanged sections — 100 steps of history costs a little more than one
+        // document instead of 100 copies of it, and pushing costs nothing.
+        //
+        // That rests on drafts never being mutated in place, which is not merely a convention
+        // here: the editor re-renders off reference changes, so anything mutating a section's
+        // data in place would already fail to repaint. A snapshot cannot alias something the
+        // rest of the app is free to change underneath it.
+        pastRef.current.push(draft);
         if (pastRef.current.length > 100) pastRef.current.shift();
         futureRef.current = [];
         forceHistory((v) => v + 1);
@@ -627,16 +644,16 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   // the toolbar buttons and the keyboard shortcut effect (which binds once).
   undoRef.current = () => {
     if (pastRef.current.length === 0 || !draft) return;
-    futureRef.current.push(JSON.stringify(draft));
-    const restored = JSON.parse(pastRef.current.pop() as string) as ProposalDocument;
+    futureRef.current.push(draft);
+    const restored = pastRef.current.pop() as ProposalDocument;
     setLocalDraft(restored);
     setSaveState("saving");
     forceHistory((v) => v + 1);
   };
   redoRef.current = () => {
     if (futureRef.current.length === 0 || !draft) return;
-    pastRef.current.push(JSON.stringify(draft));
-    const restored = JSON.parse(futureRef.current.pop() as string) as ProposalDocument;
+    pastRef.current.push(draft);
+    const restored = futureRef.current.pop() as ProposalDocument;
     setLocalDraft(restored);
     setSaveState("saving");
     forceHistory((v) => v + 1);
