@@ -13,6 +13,7 @@ export function ProposalPreview({
   trackSections = false,
   activeSectionId,
   onSelectSection,
+  onInsertAfter,
   editable = false,
   onSectionChange,
   onSectionMetaChange,
@@ -32,6 +33,8 @@ export function ProposalPreview({
   activeSectionId?: string | null;
   /** Editor-only: click a non-inline block to open its inspector. Omitted on public/print. */
   onSelectSection?: (id: string) => void;
+  /** Editor-only: add a block after the given one (by ID — see ProposalSectionPreview). */
+  onInsertAfter?: (id: string) => void;
   /** Editor-only: the canvas is editable — text-first blocks render inline-editable fields. */
   editable?: boolean;
   /** Editor-only: write a block's data back to the draft (inline editing). */
@@ -63,6 +66,7 @@ export function ProposalPreview({
         trackSections={trackSections}
         activeSectionId={activeSectionId}
         onSelectSection={onSelectSection}
+        onInsertAfter={onInsertAfter}
         editable={editable}
         onSectionChange={onSectionChange}
         onSectionMetaChange={onSectionMetaChange}
@@ -95,6 +99,7 @@ export function ProposalPreview({
               index={index}
               activeSectionId={activeSectionId}
               onSelectSection={onSelectSection}
+              onInsertAfter={onInsertAfter}
               editable={editable}
               onChange={
                 onSectionChange

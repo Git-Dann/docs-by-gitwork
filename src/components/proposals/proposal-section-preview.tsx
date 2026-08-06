@@ -10,7 +10,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { PencilSquareIcon } from "@heroicons/react/24/outline";
+import { PencilSquareIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { getSectionType } from "@/lib/sections/registry";
 import { InlineTextArea } from "@/lib/sections/inline-text";
 import { resolveSectionNumber } from "@/lib/sections/section-number";
@@ -59,6 +59,7 @@ export function ProposalSectionPreview({
   section,
   proposal,
   onSelectSection,
+  onInsertAfter,
   editable,
   onChange,
   onMetaChange,
@@ -70,6 +71,17 @@ export function ProposalSectionPreview({
   activeSectionId?: string | null;
   /** Editor-only: click a NON-inline block to open its inspector. Absent on public view. */
   onSelectSection?: (id: string) => void;
+  /**
+   * Editor-only: add a block directly after this one, from the page.
+   *
+   * ⚠️ Takes the section's ID, not its index, and that is deliberate — it mirrors
+   * `onSelectSection` for the same reason. `PagedDocument` renders blocks inside a per-page
+   * `map`, so the `index` prop here is the block's position ON ITS PAGE: block 1 of page 3 has
+   * index 0. Handing that to `handleAddSection` would insert at the top of the document. Passing
+   * the id lets the editor layout — which owns the ordered list — resolve the real position, so
+   * the mistake is not available to make.
+   */
+  onInsertAfter?: (id: string) => void;
   /** Editor-only: canvas is in edit mode (text-first blocks render inline-editable fields). */
   editable?: boolean;
   /** Editor-only: write this block's data back to the draft (for inline editing). */
@@ -134,6 +146,20 @@ export function ProposalSectionPreview({
           </button>
         ) : null}
         {content}
+        {onInsertAfter ? (
+          /* Sits in the 32px gap below the block (`space-y-8`), so it reads as "insert HERE"
+             rather than as another control belonging to this block. Same hover/opacity grammar
+             as the ✎ above — appears on hover, stays on keyboard focus. */
+          <button
+            type="button"
+            onClick={() => onInsertAfter(selectionId)}
+            aria-label={`Add a block after ${section.title}`}
+            title="Add a block here"
+            className="absolute -bottom-4 left-1/2 z-10 inline-flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-[6px] border border-[var(--border-2)] bg-white text-[var(--text-3)] opacity-0 shadow-[var(--shadow-xs)] transition hover:border-[var(--border-1)] hover:text-[var(--brand-700)] focus-visible:opacity-100 group-hover/block:opacity-100"
+          >
+            <PlusIcon className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
       </div>
     );
   }

@@ -115,6 +115,7 @@ export function PagedDocument({
   trackSections = false,
   activeSectionId,
   onSelectSection,
+  onInsertAfter,
   editable = false,
   onSectionChange,
   onSectionMetaChange,
@@ -127,6 +128,9 @@ export function PagedDocument({
   activeSectionId?: string | null;
   /** Editor-only: click a non-inline block to open its inspector. Omitted on public/print. */
   onSelectSection?: (id: string) => void;
+  /** Editor-only: add a block after this one. Takes the ID — the `index` inside a page is
+   *  per-PAGE, so only the editor layout can resolve a real position. */
+  onInsertAfter?: (id: string) => void;
   /** Editor-only: the canvas is editable — text-first blocks render inline-editable fields. */
   editable?: boolean;
   /** Editor-only: write a block's data back to the draft (inline editing). */
@@ -303,6 +307,7 @@ export function PagedDocument({
               index={index}
               activeSectionId={activeSectionId}
               onSelectSection={onSelectSection}
+              onInsertAfter={onInsertAfter}
               editable={editable}
               onChange={
                 onSectionChange ? (next) => onSectionChange(section.id ?? section.key, next) : undefined
