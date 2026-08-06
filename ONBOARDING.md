@@ -87,7 +87,7 @@ Run `npm install` on a fresh clone or the hook can't run and will refuse the pus
 
 Report what `verify` actually printed. Never call something verified that you didn't run.
 
-## 4. Six traps that have actually bitten people here
+## 4. Seven traps that have actually bitten people here
 
 1. **Never run `npm run build`** against a real `DATABASE_URL` — it does a `prisma db push` and
    will mutate the database. Use `npx next build`.
@@ -99,7 +99,9 @@ Report what `verify` actually printed. Never call something verified that you di
    tablets. Check base (<640), the 640–1023 band, and `lg+`.
 4. **Never hardcode a model id.** Resolve via `resolveAiConfig(workspace)`; fallbacks live only in
    `DEFAULT_MODELS` (`src/server/ai-provider.ts`). We pay per token, so prefer `completeText()` —
-   it handles prompt caching, the cheap Haiku tier, and cost tracking for you.
+   it handles prompt caching, the cheap Haiku tier, and cost tracking for you. Same rule for
+   Gitwork's own company number / VAT / registered office: `src/lib/gitwork.ts` only. Both have a
+   test that fails naming any file that pastes a copy back out.
 5. **Tables scroll, they don't reflow.** Wrap wide ones in `overflow-x-auto`. Note
    `overflow-hidden` is *not* a scroller — it clips the content away where nobody can reach it.
 6. **A new page under `/app` needs a gate, explicitly.** Add a `MODULE_PATHS` entry (or a row in
@@ -107,6 +109,12 @@ Report what `verify` actually printed. Never call something verified that you di
    both and non-admins get redirected to `/app` — a unit test will tell you. This replaced the old
    default, which was to let *any* signed-in member reach an unlisted page; that's how three pages
    ended up ungated.
+7. **In Docs, the renderer is the limit — not the editor.** Text fields store Markdown, and
+   `renderLines` (`src/lib/markdown.tsx`) draws a deliberately small subset: bold, italic, code,
+   links, and bulleted / numbered / nested lists. Anything else prints **verbatim on the client's
+   document**. So the editor's schema (`src/lib/sections/markdown-doc.ts`) is clamped to match, and
+   widening it — adding a heading extension, say — ships a literal `## Scope of work` to a client.
+   Teach the renderer first, in the same change. `markdown-doc.test.ts` is the tripwire.
 
 ## 5. Verifying honestly
 
