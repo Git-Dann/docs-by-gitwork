@@ -352,7 +352,9 @@ which does not exist**; the class is `widget-status-dot`, with tone modifiers
 - `<h1>` uses `{typography.heading-1}`: 44px / weight 400 / DM Serif Display / `leading-[1.15]` / `tracking-[-0.03em]`.
 
 **Sidebar nav** (Row 2, Col 1) — `ExpandedRail` component. Right border `1px solid {colors.hairline}`. Background: same brand-soft gradient. Width 280px fixed.
-- Nav items: 6px radius, 12px padding, Inter 14px/500. Active state: `{colors.surface-brand}` bg, `{colors.brand-300}` border, `{colors.brand-800}` text.
+- Nav items: 6px radius, 10px horizontal / 6px vertical padding, Inter 13px/500, 16px icon. Active state: `{colors.surface-brand}` bg, `{colors.brand-300}` border, `{colors.brand-800}` text.
+- **Descriptors are 2–3 words, and must fit one line.** The second line under each label is 11px/400 in `{colors.text-4}`. At the 280px rail a descriptor has ~204px, which is about three short words; longer copy wraps and the row grows from 47px to 62px, so a couple of long entries make the whole rail look ragged and inconsistently spaced. Say what the product *is* ("Developer vetting"), not what it contains ("Proposals, SLAs, SOWs and other documents"). If it won't fit in three words, the label is doing the work and the descriptor should be dropped — Foundry HQ has none.
+- **Collapsed rail is 76px**, so a nav row is 52px wide; every collapsed control is a **square** 52×52 tile. See the profile button in `app-shell.tsx` for the padding arithmetic and the Tailwind shorthand/longhand trap it documents.
 
 **When `hideContentHeader` is true** — grid collapses to single row (`grid-rows-[minmax(0,1fr)]`). Brand cell and content header are both hidden. Sidebar fills full height.
 

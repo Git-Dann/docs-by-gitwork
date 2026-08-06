@@ -192,21 +192,21 @@ export function AppShell({
       {
         href: "/app/pulse",
         label: "Pulse",
-        description: "Health and delivery tracking",
+        description: "Project health checks",
         icon: SignalIcon,
         module: "pulse",
       },
       {
         href: "/app/code",
         label: "Code",
-        description: "Dev review and validation",
+        description: "Developer vetting",
         icon: CodeBracketIcon,
         module: "codeclear",
       },
       {
         href: "/app/docs",
         label: "Docs",
-        description: "Proposals, SLAs, SOWs and other documents",
+        description: "Proposals and contracts",
         icon: DocumentTextIcon,
         module: "proposals",
       },
@@ -227,7 +227,7 @@ export function AppShell({
       {
         href: "/app/backstage",
         label: "Backstage",
-        description: "Leave, public holidays and team availability",
+        description: "Leave and availability",
         icon: WrenchScrewdriverIcon,
         module: "backstage",
       },
