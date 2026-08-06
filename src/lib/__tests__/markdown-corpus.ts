@@ -40,4 +40,9 @@ export const MARKDOWN_CORPUS: MarkdownCase[] = [
   // is not — worth an explicit case, because it is the behaviour a replacement could easily regress
   // by normalising every break to a paragraph.
   { name: "a soft line break inside a paragraph", markdown: "Line one\nLine two" },
+  // ⚠️ A list that does NOT start at 1. The existing ordered-list case starts at 1, so it passed
+  // while the editor was silently renumbering every list to 1 — `100. Item` came back as
+  // `1. Item`. A fixture that cannot distinguish the bug from the fix is not covering it.
+  { name: "an ordered list that does not start at 1", markdown: "100. Item\n101. Next" },
+  { name: "a year read as a list marker", markdown: "1975. A good year" },
 ];
