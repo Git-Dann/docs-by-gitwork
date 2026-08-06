@@ -42,25 +42,80 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import MarkdownIt from "markdown-it";
 import { MarkdownParser, MarkdownSerializer } from "prosemirror-markdown";
 
-/** The editor's schema. Exported so the editor component and this module cannot drift apart. */
-export const docSchema = getSchema([StarterKit]);
+/**
+ * The editor's schema — deliberately NARROWER than StarterKit's default.
+ *
+ * ⚠️ An editor that can express more than the renderer can draw is a defect generator, not a
+ * feature. `renderLines` (`src/lib/markdown.tsx`) is what puts a document in front of a client,
+ * and it understands exactly two block shapes — a paragraph and a FLAT bullet list — plus the
+ * inline marks in `INLINE_RE`. Everything else it prints verbatim. Measured, by rendering each
+ * construct through it:
+ *
+ *   "## Heading"      → <span>## Heading</span>
+ *   "1. One"          → <span>1. One</span>
+ *   "> A quote"       → <span>&gt; A quote</span>
+ *   "---"             → <span>---</span>
+ *   "```code```"      → three literal spans
+ *   "~~struck~~"      → <span>~~struck~~</span>
+ *   "- a\n  - nested" → ONE flat <ul>; the nesting is dropped
+ *
+ * So with the full StarterKit an author could press a button, see a heading in the editor, and
+ * ship `## Scope of work` as literal text on a client proposal. That is precisely the class of bug
+ * the round-trip contract exists to catch — `***bold-italic***` already did it once.
+ *
+ * These extensions come back the day `renderLines` learns to draw them, and not before. Ordered
+ * lists and nested lists are the two worth having; both need the renderer, the Drive-backup
+ * renderer (`document-to-html.ts`) and this schema extended together, which is its own change.
+ */
+export const docExtensions = [
+  StarterKit.configure({
+    heading: false,
+    blockquote: false,
+    codeBlock: false,
+    horizontalRule: false,
+    strike: false,
+    underline: false,
+  }),
+];
+
+/**
+ * ⚠️ The editor MUST be built from `docExtensions`, not from a bare `StarterKit`. Two schemas
+ * would let the editor create a node this serialiser has no rule for — the doc would hold a
+ * heading and the stored Markdown would silently lose it, or throw.
+ */
+export const docSchema = getSchema(docExtensions);
 
 const markdownIt = MarkdownIt("commonmark", {
   html: false,
   linkify: false,
   typographer: false,
-}).disable("entity");
+})
+  .disable("entity")
+  // ⚠️ These rules are disabled so the tokens are never PRODUCED, not merely unmapped.
+  // prosemirror-markdown throws on a token type it has no rule for ("Token type `heading_open`
+  // not supported"), so simply dropping the mappings meant any stored document with `## x`,
+  // `> x` or a code fence in a prose field CRASHED the editor on open. A test caught it; it
+  // would have been a support ticket from whoever opened that document.
+  //
+  // Disabling the rule instead degrades exactly the way the renderer already does: `## Scope`
+  // becomes a paragraph whose text is "## Scope", which is precisely what `renderLines` puts on
+  // the client's page. Editor and renderer agree, and the author's words are never dropped.
+  .disable(["heading", "lheading", "blockquote", "fence", "code", "hr", "html_block"])
+  // `image` too, found the same way: `![alt](url)` threw. Disabled, the `!` stays text and
+  // `[alt](url)` is still tokenised as a link — which is EXACTLY what renderLines draws for it,
+  // since INLINE_RE matches the link and has no image case.
+  .disable("image");
 
 const markdownParser = new MarkdownParser(docSchema, markdownIt, {
   paragraph: { block: "paragraph" },
-  heading: { block: "heading", getAttrs: (token) => ({ level: Number(token.tag.slice(1)) }) },
-  blockquote: { block: "blockquote" },
   bullet_list: { block: "bulletList" },
+  // Kept ONLY so a pre-existing `1. ` cannot crash the editor — markdown-it has a single
+  // `list` rule covering both kinds, so this one cannot be switched off without losing bullets.
+  // No toolbar command offers it, and `renderLines` still draws it literally, so it is the one
+  // construct where the editor can show more than the client sees. That is the strongest
+  // argument for teaching `renderLines` ordered lists next.
   ordered_list: { block: "orderedList" },
   list_item: { block: "listItem" },
-  code_block: { block: "codeBlock", noCloseToken: true },
-  fence: { block: "codeBlock", getAttrs: (token) => ({ language: token.info || null }), noCloseToken: true },
-  hr: { node: "horizontalRule" },
   hardbreak: { node: "hardBreak" },
   // ⚠️ THIS is what preserves a single newline as a line break — not the `breaks` option. Under the
   // commonmark preset a lone newline arrives as `softbreak`, and Docs' stored format means a break
@@ -68,7 +123,6 @@ const markdownParser = new MarkdownParser(docSchema, markdownIt, {
   softbreak: { node: "hardBreak" },
   em: { mark: "italic" },
   strong: { mark: "bold" },
-  s: { mark: "strike" },
   code_inline: { mark: "code", noCloseToken: true },
   link: {
     mark: "link",
@@ -82,14 +136,6 @@ const markdownSerializer = new MarkdownSerializer(
       state.renderInline(node);
       state.closeBlock(node);
     },
-    heading(state, node) {
-      state.write(`${"#".repeat(node.attrs.level as number)} `);
-      state.renderInline(node);
-      state.closeBlock(node);
-    },
-    blockquote(state, node) {
-      state.wrapBlock("> ", null, node, () => state.renderContent(node));
-    },
     // `- ` rather than `* `, because that is what every stored document already uses and what
     // `renderLines` matches on. A serialiser that emitted `* ` would rewrite every bullet in the
     // corpus on first save — technically equivalent Markdown, gratuitously noisy diff.
@@ -98,25 +144,11 @@ const markdownSerializer = new MarkdownSerializer(
     },
     orderedList(state, node) {
       const start = (node.attrs.start as number | undefined) ?? 1;
-      const maxWidth = String(start + node.childCount - 1).length;
-      state.renderList(node, " ".repeat(maxWidth + 2), (i) => {
-        const label = String(start + i);
-        return `${label.padStart(maxWidth)}. `;
-      });
+      const width = String(start + node.childCount - 1).length;
+      state.renderList(node, " ".repeat(width + 2), (i) => `${String(start + i).padStart(width)}. `);
     },
     listItem(state, node) {
       state.renderContent(node);
-    },
-    codeBlock(state, node) {
-      state.write(`\`\`\`${(node.attrs.language as string) || ""}\n`);
-      state.text(node.textContent, false);
-      state.ensureNewLine();
-      state.write("```");
-      state.closeBlock(node);
-    },
-    horizontalRule(state, node) {
-      state.write("---");
-      state.closeBlock(node);
     },
     // A bare newline, NOT prosemirror-markdown's default `\\\n`. The stored format uses a plain
     // newline for a soft break and `renderLines` splits on it; a trailing backslash would render as
@@ -131,7 +163,6 @@ const markdownSerializer = new MarkdownSerializer(
   {
     bold: { open: "**", close: "**", mixable: true, expelEnclosingWhitespace: true },
     italic: { open: "*", close: "*", mixable: true, expelEnclosingWhitespace: true },
-    strike: { open: "~~", close: "~~", mixable: true, expelEnclosingWhitespace: true },
     code: { open: "`", close: "`", escape: false },
     link: {
       open: "[",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MARKDOWN_CORPUS } from "@/lib/__tests__/markdown-corpus";
-import { docToMarkdown, markdownToDoc, roundTripMarkdown } from "@/lib/sections/markdown-doc";
+import { docSchema, docToMarkdown, markdownToDoc, roundTripMarkdown } from "@/lib/sections/markdown-doc";
 
 /**
  * The replacement engine, held to the contract the outgoing one was measured against.
@@ -82,5 +82,132 @@ describe("bullets serialise the way the stored documents already write them", ()
     // Emitting `* ` would rewrite every bullet in the product on first save.
     expect(roundTripMarkdown("- Discovery")).toBe("- Discovery");
     expect(docToMarkdown(markdownToDoc("- One\n- Two"))).not.toContain("* ");
+  });
+});
+
+/**
+ * The editor cannot express more than the client renderer can draw.
+ *
+ * `renderLines` understands a paragraph, a FLAT bullet list, and the inline marks in `INLINE_RE`.
+ * Everything else it prints verbatim — so a schema wider than that is a defect generator: an
+ * author presses a button, sees a heading in the editor, and ships `## Scope of work` as literal
+ * text on a client proposal. `***bold-italic***` already did exactly that once.
+ *
+ * These assertions are the tripwire on that gap. When `renderLines` learns to draw ordered or
+ * nested lists, the schema opens up in the same change and these expectations move with it —
+ * deliberately, not by accident.
+ */
+describe("the schema is bounded by what the renderer supports", () => {
+  const UNRENDERABLE = ["heading", "blockquote", "codeBlock", "horizontalRule"] as const;
+
+  for (const node of UNRENDERABLE) {
+    it(`has no ${node} node`, () => {
+      expect(Object.keys(docSchema.nodes)).not.toContain(node);
+    });
+  }
+
+  for (const mark of ["strike", "underline"] as const) {
+    it(`has no ${mark} mark`, () => {
+      expect(Object.keys(docSchema.marks)).not.toContain(mark);
+    });
+  }
+
+  it("keeps everything the renderer DOES draw", () => {
+    expect(Object.keys(docSchema.nodes)).toEqual(
+      expect.arrayContaining(["paragraph", "text", "hardBreak", "bulletList", "listItem"]),
+    );
+    expect(Object.keys(docSchema.marks)).toEqual(
+      expect.arrayContaining(["bold", "italic", "code", "link"]),
+    );
+  });
+
+  it("keeps orderedList — the one node retained purely so nothing throws", () => {
+    // markdown-it has a single `list` rule covering bullet AND ordered, so ordered cannot be
+    // switched off without losing bullets. The node stays; no toolbar command offers it.
+    expect(Object.keys(docSchema.nodes)).toContain("orderedList");
+  });
+});
+
+/**
+ * ⚠️ The property that matters most in this file.
+ *
+ * Removing the unrenderable nodes from the schema was not enough: markdown-it still EMITTED their
+ * tokens, and prosemirror-markdown throws on a token type it has no rule for. So the first cut of
+ * the constraint meant any stored document containing `## x`, `> x`, `1. x` or a code fence in a
+ * prose field CRASHED the editor the moment someone opened it — strictly worse than the literal
+ * syntax it was trying to prevent. The rules are disabled at source now, so the tokens never
+ * appear, and each construct degrades exactly the way `renderLines` already draws it.
+ *
+ * A crash here is not a formatting nit; it is a document nobody can open.
+ */
+describe("no stored content can crash the editor", () => {
+  const REAL_WORLD = [
+    "## Scope of work",
+    "### Deliverables",
+    "Setext heading\n===",
+    "> A quote from the client",
+    "1. One\n2. Two",
+    "```\nconst x = 1;\n```",
+    "    indented code",
+    "---",
+    "~~struck~~",
+    "<div>raw html</div>",
+    "| a | b |\n| - | - |",
+    "![alt](https://example.com/i.png)",
+    "",
+    "   ",
+  ];
+
+  for (const md of REAL_WORLD) {
+    it(`parses ${JSON.stringify(md)} without throwing`, () => {
+      expect(() => roundTripMarkdown(md)).not.toThrow();
+    });
+  }
+
+  it("keeps the author's words when it cannot keep the structure", () => {
+    // Degrading to literal syntax is acceptable — it is what the client renderer already shows.
+    // Dropping the line is not.
+    expect(markdownToDoc("## Scope of work").textContent).toContain("Scope of work");
+    expect(markdownToDoc("> A quote").textContent).toContain("A quote");
+    expect(markdownToDoc("```\ncode\n```").textContent).toContain("code");
+  });
+
+  it("round-trips an ordered list rather than mangling it", () => {
+    // No command offers it, but pre-existing content has it. Rewriting `1.` to `-` would be
+    // silent data modification, which is worse than a construct the renderer draws literally.
+    expect(roundTripMarkdown("1. One\n2. Two")).toBe("1. One\n2. Two");
+  });
+});
+
+/**
+ * ⚠️ One known difference from the outgoing engine, recorded rather than hidden.
+ *
+ * A markdown IMAGE inside a prose field (`![alt](url)`) round-tripped unchanged through the old
+ * engine. Through this one it comes back as `\![alt](url)` — prosemirror-markdown escapes a `!`
+ * that directly precedes a link so it cannot re-parse as an image.
+ *
+ * Kept deliberately, because the alternative was worse. Leaving markdown-it's `image` rule on
+ * threw outright ("Token type `image` not supported"), which meant a document containing one
+ * could not be OPENED. `ignore: true` on the token would drop the alt text entirely. So the
+ * choice was: crash, silently lose the author's words, or add one backslash to a construct the
+ * client renderer never drew as an image anyway (`INLINE_RE` has no image case — it renders a
+ * stray `!` followed by a link, with or without the escape).
+ *
+ * The clean fix is an Image node in the schema serialising back to `![alt](url)`, which needs
+ * `@tiptap/extension-image` and only pays off once `renderLines` can draw one. Images have their
+ * own block type in Docs, so a markdown image inside a prose field is already an odd case.
+ */
+describe("known difference: a markdown image in a prose field", () => {
+  it("gains an escaping backslash rather than crashing or vanishing", () => {
+    expect(roundTripMarkdown("![alt](https://example.com/i.png)")).toBe(
+      "\\![alt](https://example.com/i.png)",
+    );
+  });
+
+  it("still keeps the alt text and the URL", () => {
+    // The part that actually matters: nothing the author wrote is lost.
+    const out = roundTripMarkdown("![alt](https://example.com/i.png)");
+    expect(out).toContain("alt");
+    expect(out).toContain("https://example.com/i.png");
   });
 });

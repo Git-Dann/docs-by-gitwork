@@ -20,8 +20,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import { docToMarkdown, markdownToDoc } from "@/lib/sections/markdown-doc";
+import { docExtensions, docToMarkdown, markdownToDoc } from "@/lib/sections/markdown-doc";
 import {
   useFormatTargetRegistration,
   type FormatCommand,
@@ -75,7 +74,9 @@ export function RichTextField({
   latest.current = onChange;
 
   const editor = useEditor({
-    extensions: [StarterKit],
+    // Shared with the serialiser on purpose — see `docExtensions`. A bare StarterKit here
+    // would give the editor nodes the serialiser cannot write.
+    extensions: docExtensions,
     content: markdownToDoc(value).toJSON(),
     // Required under Next: rendering the editor during SSR throws in TipTap 3.
     immediatelyRender: false,
