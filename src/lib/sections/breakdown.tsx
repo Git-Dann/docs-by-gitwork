@@ -10,6 +10,7 @@ import { ListBulletIcon } from "@heroicons/react/24/outline";
 import { SimpleForm, FormInput, FormTextArea } from "@/lib/sections/_shared";
 import { renderLines } from "@/lib/markdown";
 import { defineSection } from "@/lib/sections/types";
+import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import { InlineAddButton, InlineRemoveButton, InlineTextArea } from "@/lib/sections/inline-text";
 import type { BreakdownItem, BreakdownSectionData } from "@/types/proposal";
 
@@ -102,7 +103,7 @@ export const breakdownSection = defineSection<BreakdownSectionData>({
                     className="mt-0.5 text-[15px] font-semibold leading-6 text-[var(--doc-ink)]"
                   />
                 </div>
-                <InlineTextArea
+                <RichTextField
                   value={item.description}
                   onChange={(description) => update(i, { description })}
                   placeholder="Short description…"

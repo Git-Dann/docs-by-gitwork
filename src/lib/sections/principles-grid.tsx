@@ -3,6 +3,7 @@
 import { Squares2X2Icon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { SimpleForm } from "@/lib/sections/_shared";
+import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import { InlineTextArea, InlineAddButton, InlineRemoveButton } from "@/lib/sections/inline-text";
 import type { PrinciplesGridSectionData } from "@/types/proposal";
 
@@ -158,7 +159,7 @@ export const principlesGridSection = defineSection<PrinciplesGridSectionData>({
                   ariaLabel={`Principle ${i + 1} title`}
                   className="mt-1 font-[family-name:var(--font-display)] text-[18px] leading-tight text-[var(--text-1)]"
                 />
-                <InlineTextArea
+                <RichTextField
                   value={item.detail ?? ""}
                   onChange={(detail) => update(i, { detail })}
                   placeholder="Detail (optional)"
@@ -178,7 +179,7 @@ export const principlesGridSection = defineSection<PrinciplesGridSectionData>({
                 ariaLabel="Footer card title"
                 className="font-[family-name:var(--font-display)] text-[18px] leading-tight text-[var(--text-1)]"
               />
-              <InlineTextArea
+              <RichTextField
                 value={data.footer.body ?? ""}
                 onChange={(body) => onChange({ ...data, footer: { ...(data.footer ?? {}), body } })}
                 placeholder="Footer card body (optional)"
