@@ -20,7 +20,7 @@ import { cn } from "@/lib/format";
 // selection-based font-size control. Never rendered via dangerouslySetInnerHTML; the renderer
 // explicitly maps the tag to a styled <span> and recursively parses the inner text so nested
 // formatting still works.
-// Exported so rich-inline-editor.tsx's canvas editor can parse/serialize with the exact same
+// Exported so the canvas editor's seam can parse/serialize with the exact same
 // rules as this renderer — one source of truth for what counts as Markdown here.
 export const INLINE_RE =
   /(\[[^\]]+\]\([^)\s]+\))|(<(?:sm|lg)>[^\n<]+<\/(?:sm|lg)>)|(\*\*\*[^*\n]+\*\*\*)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(_[^_\n]+_)|(`[^`\n]+`)/;

@@ -3,6 +3,7 @@
 import { CubeIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { EditorHint, PlatformSupportField, SimpleForm } from "@/lib/sections/_shared";
+import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import { InlineTextArea } from "@/lib/sections/inline-text";
 import type { ProductOverviewSectionData } from "@/types/proposal";
 
@@ -90,7 +91,7 @@ function InfoCard({
       <p className="text-xs font-semibold tracking-wide text-[var(--text-4)] uppercase">{title}</p>
       {onChange ? (
         <div className="mt-2">
-          <InlineTextArea
+          <RichTextField
             value={content}
             onChange={onChange}
             placeholder={`${title}…`}

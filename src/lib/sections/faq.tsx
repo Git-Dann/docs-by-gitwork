@@ -8,6 +8,7 @@ import { SimpleForm, FormInput } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
 import { MarkdownField } from "@/components/proposals/markdown-field";
 import { Markdown, renderInline } from "@/lib/markdown";
+import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import { InlineAddButton, InlineRemoveButton, InlineTextArea } from "@/lib/sections/inline-text";
 import type { FaqItem, FaqSectionData } from "@/types/proposal";
 
@@ -97,7 +98,7 @@ export const faqSection = defineSection<FaqSectionData>({
       const list = data.items ?? [];
       return (
         <div className="space-y-3">
-          <InlineTextArea
+          <RichTextField
             value={data.intro ?? ""}
             onChange={(intro) => onChange({ ...data, intro })}
             placeholder="Intro (optional)…"
@@ -122,7 +123,7 @@ export const faqSection = defineSection<FaqSectionData>({
                     ariaLabel="Question"
                     className="text-sm font-medium text-[var(--text-1)]"
                   />
-                  <InlineTextArea
+                  <RichTextField
                     value={item.answer}
                     onChange={(answer) =>
                       onChange({ ...data, items: list.map((it, j) => (j === i ? { ...it, answer } : it)) })

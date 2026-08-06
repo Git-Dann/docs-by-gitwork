@@ -4,6 +4,7 @@ import { ArrowLongRightIcon } from "@heroicons/react/24/outline";
 import { renderLines } from "@/lib/markdown";
 import { defineSection } from "@/lib/sections/types";
 import { SimpleForm } from "@/lib/sections/_shared";
+import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import { InlineTextArea, InlineAddButton, InlineRemoveButton } from "@/lib/sections/inline-text";
 import { romanNumeral } from "@/lib/sections/variant-helpers";
 import type { ProcessStepsSectionData } from "@/types/proposal";
@@ -104,7 +105,7 @@ export const processStepsSection = defineSection<ProcessStepsSectionData>({
         onChange({ ...data, steps: steps.map((s, j) => (j === i ? { ...s, ...patch } : s)) });
       return (
         <div className="space-y-3">
-          <InlineTextArea
+          <RichTextField
             value={data.intro ?? ""}
             onChange={(intro) => onChange({ ...data, intro })}
             placeholder="Intro (optional)"
@@ -141,7 +142,7 @@ export const processStepsSection = defineSection<ProcessStepsSectionData>({
                     }
                   />
                   {stepped ? (
-                    <InlineTextArea
+                    <RichTextField
                       value={step.description ?? ""}
                       onChange={(description) => update(i, { description })}
                       placeholder="Description (optional)"

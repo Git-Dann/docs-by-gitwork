@@ -5,7 +5,7 @@ import { defineSection } from "@/lib/sections/types";
 import { EditorHint, FormTextArea, SimpleForm } from "@/lib/sections/_shared";
 import { Markdown } from "@/lib/markdown";
 import { InlineTextArea } from "@/lib/sections/inline-text";
-import { RichInlineEditor } from "@/lib/sections/rich-inline-editor";
+import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import type { IntroductionSectionData } from "@/types/proposal";
 
 const DEFAULT: IntroductionSectionData = { statement: "", summary: "", graphic: "" };
@@ -33,7 +33,7 @@ export const introductionSection = defineSection<IntroductionSectionData>({
         <span className="text-sm font-medium text-[var(--text-2)]">Positioning summary</span>
         {/* WYSIWYG: shows bold/italic/links as real formatting (not **stars**), stores Markdown. */}
         <div className="rounded-[8px] border border-[var(--border-2)] px-3 py-2 text-sm leading-6 focus-within:border-[var(--brand-500)]">
-          <RichInlineEditor
+          <RichTextField
             value={data.summary}
             onChange={(summary) => onChange({ ...data, summary })}
             placeholder="Positioning summary — highlight text to bold / italicise / link it."
@@ -56,7 +56,7 @@ export const introductionSection = defineSection<IntroductionSectionData>({
             ariaLabel="Company statement"
             className="text-[22px] leading-[1.7] tracking-[-0.02em] text-[var(--text-1)]"
           />
-          <RichInlineEditor
+          <RichTextField
             value={data.summary}
             onChange={(summary) => onChange({ ...data, summary })}
             placeholder="Positioning summary — highlight text to bold/italicise/link it."

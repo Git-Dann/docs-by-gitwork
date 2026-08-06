@@ -5,6 +5,7 @@ import { ObjectivesEditor } from "@/components/proposals/objectives-editor";
 import { getObjectiveIcon } from "@/components/proposals/icon-select";
 import { renderLines } from "@/lib/markdown";
 import { defineSection } from "@/lib/sections/types";
+import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import { InlineAddButton, InlineRemoveButton, InlineTextArea } from "@/lib/sections/inline-text";
 import type { ObjectivesSectionData } from "@/types/proposal";
 
@@ -66,7 +67,7 @@ export const objectivesSection = defineSection<ObjectivesSectionData>({
                       className="text-base font-semibold text-[var(--text-1)]"
                     />
                     <div className="mt-2">
-                      <InlineTextArea
+                      <RichTextField
                         value={item.description}
                         onChange={(description) =>
                           onChange({

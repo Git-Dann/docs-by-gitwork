@@ -10,6 +10,7 @@ import { CheckIcon, XMarkIcon } from "@heroicons/react/24/solid";
 import { ShieldCheckIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { SimpleForm } from "@/lib/sections/_shared";
+import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import { InlineTextArea, InlineStringList } from "@/lib/sections/inline-text";
 import type { DoDontSectionData } from "@/types/proposal";
 
@@ -118,7 +119,7 @@ export const doDontSection = defineSection<DoDontSectionData>({
               addLabel="Add item"
             />
             <div className="mt-3">
-              <InlineTextArea
+              <RichTextField
                 value={data.footnote ?? ""}
                 onChange={(footnote) => onChange({ ...data, footnote })}
                 placeholder="Footnote (optional)"

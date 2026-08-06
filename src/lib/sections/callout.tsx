@@ -3,6 +3,7 @@
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { SimpleForm } from "@/lib/sections/_shared";
+import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import { InlineTextArea } from "@/lib/sections/inline-text";
 import type { CalloutSectionData } from "@/types/proposal";
 
@@ -95,7 +96,7 @@ export const calloutSection = defineSection<CalloutSectionData>({
               className={headlineClass}
             />
             <div className="mt-2">
-              <InlineTextArea
+              <RichTextField
                 value={data.body}
                 onChange={(body) => onChange({ ...data, body })}
                 placeholder="Callout body…"
@@ -131,7 +132,7 @@ export const calloutSection = defineSection<CalloutSectionData>({
             style={{ color: palette.eyebrow }}
           />
           <div className="mt-2">
-            <InlineTextArea
+            <RichTextField
               value={data.body}
               onChange={(body) => onChange({ ...data, body })}
               placeholder="Callout body…"
