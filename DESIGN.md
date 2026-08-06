@@ -345,11 +345,21 @@ which does not exist**; the class is `widget-status-dot`, with tone modifiers
 └──────────────────────┴──────────────────────────────┘
 ```
 
-**Brand cell** (Row 1, Col 1) — same padding as the content header (`px-6 pt-7 pb-5`). Centred logo (`items-center justify-center`). Background: `linear-gradient(180deg, {colors.surface-brand-soft} 0%, #ffffff 38%)`. Right + bottom border `1px solid {colors.hairline}`.
-- Logo: `/foundry-logo.svg`, `h-12 w-auto`. **No text. No icon placeholder. Nothing else.**
+⚠️ **The top band is 80px, and both cells must read it from one place.** The brand cell and the
+content header sit side by side and have to show ONE continuous hairline across the top of the
+app — but they are *not* in a shared grid row (the rail spans full height and carries its own
+brand block), so nothing structural keeps them level. `HEADER_BAND_H` / `HEADER_BAND_MIN` in
+`app-shell.tsx` are that one place. When the logo was reduced from 48px to 32px in August 2026
+the two silently drifted **48.6px** apart — brand line at 81px, header line at 129.6px. Do not
+set a height, or vertical padding that implies one, on either cell independently.
 
-**Content header** (Row 1, Col 2) — `px-6 pt-7 pb-5`. Background: `linear-gradient(180deg, #ffffff 0%, {colors.surface-brand-soft} 100%)`. Bottom border `1px solid {colors.hairline}`.
-- `<h1>` uses `{typography.heading-1}`: 44px / weight 400 / DM Serif Display / `leading-[1.15]` / `tracking-[-0.03em]`.
+**Brand cell** (Row 1, Col 1) — `HEADER_BAND_H` (80px, exact — its content is fixed), `px-3`, `items-center`. Background: `linear-gradient(180deg, {colors.surface-brand-soft} 0%, #ffffff 38%)`. Right + bottom border `1px solid {colors.hairline}`.
+- Logo: `/foundry-logo.svg`, `h-8 w-auto`. **No text. No icon placeholder. Nothing else.**
+
+**Content header** (Row 1, Col 2) — `HEADER_BAND_MIN` (80px minimum, so an unusually tall accessory grows it rather than overflowing), `px-6 py-3`, `items-center`. Background: `linear-gradient(180deg, #ffffff 0%, {colors.surface-brand-soft} 100%)`. Bottom border `1px solid {colors.hairline}`.
+- `<h1>` is **28px** / weight 400 / DM Serif Display / `leading-[1.15]` / `tracking-[-0.02em]`. Subtitle 13px/`leading-5`.
+- Both **truncate** with a `title=` attribute rather than wrapping. Wrapping would grow the band and knock the hairlines out of step; truncating without `title=` would be a TRUNCATED defect under `audit:clipping`. It needs to be both.
+- ⚠️ This is **not** `{typography.heading-1}`. That token is 44px and remains correct for public/standalone pages (`/timeline/[token]`, `/sign/[token]`, marketing) where a full-bleed serif headline is the point. Inside the app shell a 44px headline made the band 129.6px tall on every single page.
 
 **Sidebar nav** (Row 2, Col 1) — `ExpandedRail` component. Right border `1px solid {colors.hairline}`. Background: same brand-soft gradient. Width 280px fixed.
 - Nav items: 6px radius, 10px horizontal / 6px vertical padding, Inter 13px/500, 16px icon. Active state: `{colors.surface-brand}` bg, `{colors.brand-300}` border, `{colors.brand-800}` text.

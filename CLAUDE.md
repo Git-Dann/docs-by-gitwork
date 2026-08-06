@@ -2872,6 +2872,25 @@ ragged rows is what made the rail look unevenly spaced. Say what the product **i
 Super Admin, because Labs is Super-Admin-gated. If a staff member needs Studio it
 needs its own entry point.
 
+**The top band was left 48.6px out of true by the smaller logo.** The sidebar's brand
+cell and the page header sit side by side and are meant to show one continuous hairline,
+but they are **not in a shared grid row** — the rail spans full height and carries its own
+brand block — so nothing structural kept them level. Shrinking the logo moved one line and
+not the other: brand at 81px, header at 129.6px. Both now read `HEADER_BAND_H` /
+`HEADER_BAND_MIN` in `app-shell.tsx`, measured level at **80px** (off by 0). The page `<h1>`
+came down 44px → 28px with it, and title + subtitle **truncate with a `title=` attribute**
+rather than wrapping: wrapping would grow the band and break the alignment again, while
+truncating without `title=` is a TRUNCATED defect under `audit:clipping` — it has to be both.
+
+⚠️ **44px is still right elsewhere.** `{typography.heading-1}` stays 44px for the public
+and standalone pages (`/timeline/[token]`, `/sign/[token]`, marketing) where a full-bleed
+serif headline is the point; it was only ever wrong *inside the app shell*, where it made
+the band 129.6px on every page. **`src/components/demo/demo-shell.tsx` still has the old
+44px header and `pb-5 pt-7` band** — it is a separate mirror of the shell used by the 16
+public sales demos, and its two sides do not line up either. Left alone deliberately rather
+than restyling customer-facing sales material in a UI-tidy PR; worth doing as its own change,
+and those pages are public so they can actually be verified in a browser.
+
 ### 40.3 Two infrastructure fixes that were failing deploys
 
 - **Deploys raced.** Every run pushes the same `:latest` tag then restarts the box,
