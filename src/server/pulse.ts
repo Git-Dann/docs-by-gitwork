@@ -312,6 +312,15 @@ export async function deletePulseScan(id: string): Promise<void> {
   await prisma.pulseScan.delete({ where: { id } });
 }
 
+export async function renamePulseScan(id: string, projectName: string): Promise<PulseScanRecord> {
+  const record = await prisma.pulseScan.update({
+    where: { id },
+    data: { projectName },
+    include: pulseInclude,
+  });
+  return serializePulseScan(record);
+}
+
 /** Health-score history for the same target (URL / repo) in the workspace — powers
  *  the score-over-time trend. Read-only over existing scans; chronological. */
 export async function getScanHistory(scanId: string): Promise<{ id: string; completedAt: string | null; healthScore: number | null }[]> {

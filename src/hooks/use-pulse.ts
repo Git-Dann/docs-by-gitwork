@@ -13,6 +13,7 @@ import {
   getPulseScanDiff,
   emailPulseAudit,
   deletePulseScan,
+  renamePulseScan,
   cancelPulseScan,
   retryPulseScan,
   reanalysePulseScan,
@@ -252,6 +253,18 @@ export function useDeletePulseScan() {
       queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
       queryClient.invalidateQueries({ queryKey: ["pulse-stats"] });
       queryClient.invalidateQueries({ queryKey: ["pulse-portfolio"] });
+    },
+  });
+}
+
+export function useRenamePulseScan() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ scanId, projectName }: { scanId: string; projectName: string }) => renamePulseScan(scanId, projectName),
+    onSuccess: (_data, { scanId }) => {
+      queryClient.invalidateQueries({ queryKey: ["pulse-scan", scanId] });
+      queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
     },
   });
 }

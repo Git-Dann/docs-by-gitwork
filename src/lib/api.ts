@@ -1416,6 +1416,14 @@ export async function deletePulseScan(scanId: string): Promise<{ deleted: boolea
   });
 }
 
+export async function renamePulseScan(scanId: string, projectName: string): Promise<{ scan: PulseScanRecord }> {
+  return apiFetch<{ scan: PulseScanRecord }>(`/api/pulse/scans/${scanId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ projectName }),
+  });
+}
+
 export async function cancelPulseScan(scanId: string): Promise<{ cancelled: boolean }> {
   return apiFetch<{ cancelled: boolean }>(`/api/pulse/scans/${scanId}/cancel`, {
     method: "POST",

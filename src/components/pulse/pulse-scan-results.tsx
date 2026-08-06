@@ -29,7 +29,7 @@ import {
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal, usePulseBenchmarks, usePulseScanHistory, usePulseScanDiff, useEmailPulseAudit } from "@/hooks/use-pulse";
+import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal, usePulseBenchmarks, usePulseScanHistory, usePulseScanDiff, useEmailPulseAudit, useRenamePulseScan } from "@/hooks/use-pulse";
 import { computeGrades } from "@/server/pulse-checks/grades";
 import { rankFindings } from "@/server/pulse-checks/priority";
 import { useBatchCreateTasks, useTasks } from "@/hooks/use-tasks";
@@ -1423,6 +1423,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const { mutateAsync: reanalyse, isPending: reanalysing } = useReanalysePulseScan();
   const { mutateAsync: generateProposal, isPending: generatingProposal } = useGeneratePulseProposal();
   const { mutateAsync: emailAudit, isPending: emailing } = useEmailPulseAudit();
+  const { mutate: renameScan } = useRenamePulseScan();
   const [proposalGenError, setProposalGenError] = useState<string | null>(null);
   const [pdfPending, setPdfPending] = useState(false);
   const [emailModalOpen, setEmailModalOpen] = useState(false);
@@ -1446,6 +1447,10 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const [checkStatusFilter, setCheckStatusFilter] = useState<"ALL" | "FAIL" | "WARN" | "PASS">("ALL");
   const [pricingTier, setPricingTier] = useState(2); // selected team size for the engagement estimate
   const [checksSortBySeverity, setChecksSortBySeverity] = useState(false);
+  // Cover title is editable (see the Hero below) — local state for responsive typing,
+  // debounced-saved via renameScan so we don't fire a PATCH on every keystroke.
+  const [scanTitle, setScanTitle] = useState(scan.projectName);
+  const renameTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Scan → Action: "+ Task" on failing checks creates a Portal task on the linked
   // client's board. We read the client's tasks to show "Added" for checks that
@@ -1499,6 +1504,27 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
     setShareToken(scan.shareToken);
     setIsShared(scan.isShared);
   }, [scan.shareToken, scan.isShared]);
+
+  useEffect(() => {
+    setScanTitle(scan.projectName);
+  }, [scan.projectName]);
+
+  useEffect(() => {
+    return () => {
+      if (renameTimeoutRef.current) clearTimeout(renameTimeoutRef.current);
+    };
+  }, []);
+
+  function handleTitleChange(next: string) {
+    setScanTitle(next);
+    if (renameTimeoutRef.current) clearTimeout(renameTimeoutRef.current);
+    renameTimeoutRef.current = setTimeout(() => {
+      const trimmed = next.trim();
+      if (trimmed && trimmed !== scan.projectName) {
+        renameScan({ scanId: scan.id, projectName: trimmed });
+      }
+    }, 800);
+  }
 
   function toggleCategory(category: string) {
     setExpandedCategories((prev: Set<string>) => {
@@ -1879,7 +1905,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         <div className="flex flex-wrap items-center justify-end gap-2">
           {isShared && reportUrl && (
             <div className="flex items-center gap-2">
-              <span className="max-w-[220px] truncate rounded border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-1 font-mono text-[11px] text-[var(--text-3)]">
+              <span className="select-all break-all rounded border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-1 font-mono text-[11px] text-[var(--text-3)]">
                 {reportUrl}
               </span>
               <button
@@ -1907,7 +1933,8 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           variant="screen"
           boldPalette="navy"
           eyebrow="PULSE // PROJECT HEALTH"
-          title={scan.projectName}
+          title={scanTitle}
+          onTitleChange={handleTitleChange}
           subtitle={scan.inputUrl ?? githubRepoLabel(scan.inputGithubRepo) ?? undefined}
           rightSlot={scan.healthScore !== null ? <HealthScoreRing score={scan.healthScore} /> : undefined}
           meta={heroMeta}

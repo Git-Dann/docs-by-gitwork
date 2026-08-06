@@ -1817,3 +1817,7 @@ export const countermarkRevokeSchema = z.object({
   // holding the certificate, who is the only reader that matters here.
   reason: z.string().trim().min(10).max(2000),
 });
+
+export const pulseScanRenameSchema = z.object({
+  projectName: z.string().trim().min(1).max(200),
+});
