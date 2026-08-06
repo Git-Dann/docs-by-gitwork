@@ -341,30 +341,58 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   // Keyed on the block-id list (not the array identity) so it doesn't rebuild on every keystroke.
   const sectionIdsKey = sectionEntries.map((entry) => entry.id).join("|");
   useEffect(() => {
-    if (activeTab === "overview" || typeof IntersectionObserver === "undefined") {
-      return;
-    }
-    const blocks = Array.from(document.querySelectorAll<HTMLElement>("[data-canvas-block]"));
-    if (!blocks.length) {
-      return;
-    }
-    const order = blocks.map((block) => block.dataset.canvasBlock ?? "");
-    const visible = new Set<string>();
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const id = (entry.target as HTMLElement).dataset.canvasBlock;
-          if (!id) continue;
-          if (entry.isIntersecting) visible.add(id);
-          else visible.delete(id);
+    if (activeTab === "overview" || typeof window === "undefined") return;
+
+    // Measured on each scroll rather than watched with an IntersectionObserver, and that is the
+    // fix rather than a style preference: the observer collected `[data-canvas-block]` ONCE and
+    // observed those nodes, but the canvas re-paginates — `paged-document` rebuilds its pages, so
+    // the observed elements are detached and never fire again. The outline then froze on whatever
+    // block was in view at mount (reliably "Introduction") while you scrolled past everything
+    // else. Reading the live DOM each time cannot go stale.
+    let frame = 0;
+
+    const measure = () => {
+      frame = 0;
+      const blocks = Array.from(document.querySelectorAll<HTMLElement>("[data-canvas-block]"));
+      if (!blocks.length) return;
+
+      // The block that owns the reading line — a band near the top of the viewport, so the
+      // outline names what you are looking at rather than what is technically topmost.
+      const line = window.innerHeight * 0.28;
+      let current: string | null = null;
+      for (const block of blocks) {
+        const { top, bottom } = block.getBoundingClientRect();
+        if (top <= line && bottom > line) {
+          current = block.dataset.canvasBlock ?? null;
+          break;
         }
-        const topmost = order.find((id) => visible.has(id));
-        if (topmost) setViewingSectionId(topmost);
-      },
-      { rootMargin: "-12% 0px -72% 0px", threshold: 0 },
-    );
-    blocks.forEach((block) => observer.observe(block));
-    return () => observer.disconnect();
+        // Past the line and nothing has claimed it yet: the first block below the line wins, so
+        // scrolling to the very top still names the first block instead of nothing.
+        if (top > line) {
+          current = current ?? block.dataset.canvasBlock ?? null;
+          break;
+        }
+        current = block.dataset.canvasBlock ?? current;
+      }
+      if (current) setViewingSectionId(current);
+    };
+
+    const onScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(measure);
+    };
+
+    // `capture: true` — the canvas scrolls inside <main>, not the window, and a scroll event does
+    // not bubble. Capturing at the document catches it wherever it happens.
+    document.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    measure();
+
+    return () => {
+      document.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onScroll);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
   }, [activeTab, sectionIdsKey]);
 
   // Public share is now token-gated under /docs/[token]. The token comes from the document

@@ -61,13 +61,34 @@ export const timelineSection = defineSection<TimelineSectionData>({
     const phases = [...proposal.timelinePhases].sort((a, b) => a.sortOrder - b.sortOrder);
     if (data.viewMode === "MILESTONE") {
       return (
-        <div className="space-y-4 border-l-2 border-[var(--border-2)] pl-5">
-          {phases.map((phase) => (
+        // The rule is drawn PER ROW rather than on the container, for two reasons Dan hit:
+        //
+        //  1. A container `border-l-2` plus a hand-tuned `-left-[1.35rem]` put the dot's centre
+        //     ~4px off the rule's centre. The geometry below is derived instead: the marker
+        //     column centre is 0.5rem, the dot is 0.625rem wide (so left = 0.1875rem) and the
+        //     rule 0.125rem (left = 0.4375rem) — both expressed relative to the card, which sits
+        //     at the container's 1.5rem padding.
+        //  2. A container border runs the full height, so the stroke carried on past the last
+        //     phase into nothing. Drawn per row and skipped on the last, it terminates ON the
+        //     final dot, which is what a timeline's end should look like.
+        //
+        // `-bottom-4` matches the `space-y-4` gap exactly, so each segment reaches the next dot.
+        <div className="relative pl-6">
+          {phases.map((phase, index) => (
             <div
               key={phase.id ?? phase.name}
-              className="proposal-block-avoid relative rounded-[10px] border border-[var(--border-2)] p-4"
+              className="proposal-block-avoid relative mt-4 rounded-[10px] border border-[var(--border-2)] p-4 first:mt-0"
             >
-              <span className="absolute -left-[1.35rem] top-3 h-2.5 w-2.5 rounded-full bg-[var(--brand-500)]" />
+              {index < phases.length - 1 ? (
+                <span
+                  aria-hidden
+                  className="absolute -bottom-4 -left-[1.0625rem] top-[1.0625rem] w-0.5 bg-[var(--border-2)]"
+                />
+              ) : null}
+              <span
+                aria-hidden
+                className="absolute -left-[1.3125rem] top-3 h-2.5 w-2.5 rounded-full bg-[var(--brand-500)]"
+              />
               <p className="text-base font-semibold text-[var(--text-1)]">{phase.name}</p>
               <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[var(--text-4)]">{phase.duration}</p>
               <p className="mt-3 text-sm leading-7 text-[var(--text-2)]">{phase.summary}</p>

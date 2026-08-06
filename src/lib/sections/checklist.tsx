@@ -80,10 +80,13 @@ export const checklistSection = defineSection<ChecklistSectionData>({
     const arrow = (data.marker ?? "icon") === "arrow";
     const Icon = data.polarity === "INCLUDE" ? CheckCircleIcon : XCircleIcon;
     const iconColor = data.polarity === "INCLUDE" ? "var(--success-500)" : "var(--danger-500)";
+    // A fixed box the height of one text line, with the glyph centred INSIDE it. The arrow used
+    // to be bare inline text: mono glyph metrics differ from the sans body, so it sat off the
+    // text's centre on every row, and further off on a row that wrapped.
     const ArrowMarker = () => (
       <span
         aria-hidden
-        className="font-mono text-[13px] font-semibold leading-6"
+        className="inline-flex h-6 w-3.5 shrink-0 items-center justify-center font-mono text-[13px] font-semibold leading-none"
         style={{ color: "var(--doc-accent, #4f5bd5)" }}
       >
         &rarr;

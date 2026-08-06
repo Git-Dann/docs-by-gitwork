@@ -107,7 +107,9 @@ export const faqSection = defineSection<FaqSectionData>({
           <div className="divide-y divide-[var(--border-3)] rounded-[10px] border border-[var(--border-2)] bg-white">
             {list.map((item, i) => (
               <div key={i} className="group/row flex items-start gap-3 px-5 py-3">
-                <span className="pt-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]">
+                {/* `leading-6` matches the question's line box exactly, so the small mono numeral
+                    aligns to the TOP of the text rather than to an eyeballed `pt-1.5`. */}
+                <span className="font-mono text-[10px] font-semibold uppercase leading-6 tracking-[0.1em] text-[var(--text-4)]">
                   {String(i + 1).padStart(2, "0")}
                 </span>
                 <div className="flex-1 space-y-1">
@@ -158,11 +160,14 @@ export const faqSection = defineSection<FaqSectionData>({
         <div className="divide-y divide-[var(--border-3)] rounded-[10px] border border-[var(--border-2)] bg-white">
           {items.map((item, i) => (
             <details key={i} className="group">
-              <summary className="flex cursor-pointer list-none items-baseline justify-between gap-3 px-5 py-3 [&::-webkit-details-marker]:hidden">
-                <span className="text-sm font-medium text-[var(--text-1)]">
+              {/* `items-start`, not `items-baseline`: a 10px numeral baseline-aligned to 14px text
+                  sits visibly BELOW the top of the question, and worse on a question that wraps.
+                  Sharing `leading-6` puts their line boxes — and so their tops — together. */}
+              <summary className="flex cursor-pointer list-none items-start justify-between gap-3 px-5 py-3 [&::-webkit-details-marker]:hidden">
+                <span className="text-sm font-medium leading-6 text-[var(--text-1)]">
                   {item.question ? renderInline(item.question, `faq-q${i}`) : "Untitled question"}
                 </span>
-                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)] transition group-open:text-[var(--brand-700)]">
+                <span className="font-mono text-[10px] font-semibold uppercase leading-6 tracking-[0.1em] text-[var(--text-4)] transition group-open:text-[var(--brand-700)]">
                   {String(i + 1).padStart(2, "0")}
                 </span>
               </summary>

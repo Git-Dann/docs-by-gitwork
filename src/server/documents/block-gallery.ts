@@ -298,7 +298,7 @@ const ENTRIES: Array<{ key: SectionKey; title: string; data: ProposalSectionData
   } satisfies FaqSectionData),
 
   block("image", "Image", {
-    url: "/gitwork-header.png",
+    url: "/gitwork-logo-home-page.png",
     altText: "Sample image placeholder in the block gallery",
     caption: "Images take a size and an alignment. Alt text is required — a document is read aloud more often than people expect.",
     size: "large",

@@ -108,10 +108,16 @@ export const categoryChecklistSection = defineSection<CategoryChecklistSectionDa
         {cleanGroups.map((group, i) => (
           <div key={i} className="rounded-[10px] border border-[var(--doc-line,rgba(0,0,0,0.14))] bg-[var(--doc-panel,#f7f5ef)] p-4">
             <p className="mb-3 text-sm font-semibold text-[var(--doc-ink,#1a1a17)]">{group.title}</p>
-            <ul className="space-y-2">
+            {/* `leading-[1.45]` not `leading-6`: at 13px that was a 1.85 ratio, which reads as a
+                loose paragraph rather than a list and cost each item most of a blank line.
+                `text-pretty` keeps a lone word off its own last line. */}
+            <ul className="space-y-1.5">
               {group.items.map((item, j) => (
-                <li key={j} className="flex items-start gap-2 text-[13px] leading-6 text-[var(--doc-ink-soft,#4b4a44)]">
-                  <CheckIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--success-500)]" />
+                <li
+                  key={j}
+                  className="flex items-start gap-2 text-pretty text-[13px] leading-[1.45] text-[var(--doc-ink-soft,#4b4a44)]"
+                >
+                  <CheckIcon className="mt-[0.15em] h-3.5 w-3.5 shrink-0 text-[var(--success-500)]" />
                   <span>{item}</span>
                 </li>
               ))}

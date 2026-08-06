@@ -153,6 +153,16 @@ export function ProposalSectionPreview({
         {/* Title + caption are editable inline on EVERY block (they live on the section, not
             its data) — so even blocks whose body isn't inline-editable can have their heading
             and caption changed straight on the canvas. */}
+        {/* The caption is an OVERLINE — above the title, not under it. Mono small-caps under a
+            display serif reads as a stranded subtitle; above it, it does the job the section
+            number does elsewhere in the house style and hierarchy reads top-to-bottom. */}
+        <InlineTextArea
+          value={section.description ?? ""}
+          onChange={(description) => onMetaChange({ description })}
+          placeholder="Caption (optional)"
+          ariaLabel="Section caption"
+          className="font-mono text-[10px] font-semibold uppercase leading-5 tracking-[0.12em] text-[var(--doc-muted)]"
+        />
         {/* `doc-serif` is required on the EDITABLE title: a <textarea> doesn't inherit font-family,
             so without it the inline editor showed sans while the read-only render was serif. */}
         <InlineTextArea
@@ -162,25 +172,19 @@ export function ProposalSectionPreview({
           ariaLabel="Section title"
           className="doc-serif text-[24px] leading-[1.3] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]"
         />
-        <InlineTextArea
-          value={section.description ?? ""}
-          onChange={(description) => onMetaChange({ description })}
-          placeholder="Caption (optional)"
-          ariaLabel="Section caption"
-          className="font-mono text-[10px] font-semibold uppercase leading-5 tracking-[0.12em] text-[var(--doc-muted)]"
-        />
       </>
     ) : (
       <>
-        {/* leading-[1.3] (not 1.15) so serif descenders — the g/y/p in a title — aren't clipped. */}
-        <h2 className="doc-serif text-[24px] leading-[1.3] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]">
-          {renderInline(section.title, `sec-title-${section.id ?? section.key}`)}
-        </h2>
+        {/* Overline first — see the note on the editable branch above. */}
         {section.description ? (
           <p className="font-mono text-[10px] font-semibold uppercase leading-5 tracking-[0.12em] text-[var(--doc-muted)]">
             {renderInline(section.description, `sec-desc-${section.id ?? section.key}`)}
           </p>
         ) : null}
+        {/* leading-[1.3] (not 1.15) so serif descenders — the g/y/p in a title — aren't clipped. */}
+        <h2 className="doc-serif text-[24px] leading-[1.3] tracking-[-0.01em] text-[var(--doc-ink)] sm:text-[26px]">
+          {renderInline(section.title, `sec-title-${section.id ?? section.key}`)}
+        </h2>
       </>
     );
 

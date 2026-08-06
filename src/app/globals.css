@@ -1316,6 +1316,12 @@ h2, h3, h4, h5 {
   --doc-line-soft: rgba(0, 0, 0, 0.08);
   --doc-accent: #4f5bd5;
   --doc-accent-tint: rgba(79, 91, 213, 0.12);
+  /* The ONLY red a document may use, and it exists because the block below deliberately remaps
+     `--danger-500` to `--doc-muted` so app signal colours can't leak onto a client document.
+     That remap is right — but it also means a block that genuinely needs red (the out-of-scope
+     crosses) silently renders GREY if it reaches for a `--danger-*` token. Reach for this.
+     Deep and slightly warm, so it sits on cream rather than buzzing against it. */
+  --doc-danger: #a5322a;
   /* The document display weight. NEVER hardcode a weight on a `--font-display` element — read
      this token, because the correct value is a property of the THEME's face, not of the block:
      Foundry's DM Serif Display ships a single 400 cut (700 would synthesise a fake bold), while

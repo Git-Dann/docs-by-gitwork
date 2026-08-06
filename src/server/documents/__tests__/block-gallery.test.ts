@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ComponentType } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -197,5 +199,26 @@ describe("the gallery is a valid document", () => {
     );
 
     expect(html).toContain(BLOCK_GALLERY_COSTS[0].category);
+  });
+
+  it("only references images that actually exist in public/", () => {
+    // The gallery shipped pointing at `/gitwork-header.png`, which CLAUDE.md still lists but which
+    // was deleted — so the image block rendered a broken-image icon. A fixture referencing a
+    // missing asset is invisible to every other check here: the block renders, and its alt text
+    // even satisfies the content assertion.
+    const urls: string[] = [];
+    const collect = (value: unknown) => {
+      if (typeof value === "string" && value.startsWith("/") && /\.(png|jpe?g|svg|webp|gif)$/i.test(value)) {
+        urls.push(value);
+      } else if (Array.isArray(value)) value.forEach(collect);
+      else if (value && typeof value === "object") Object.values(value).forEach(collect);
+    };
+    sections.forEach((section) => collect(section.data));
+
+    expect(urls.length, "no image asset referenced at all — has the image block lost its url?")
+      .toBeGreaterThan(0);
+    for (const url of urls) {
+      expect(existsSync(join(process.cwd(), "public", url)), `public${url} does not exist`).toBe(true);
+    }
   });
 });

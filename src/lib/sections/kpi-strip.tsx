@@ -117,18 +117,11 @@ export const kpiStripSection = defineSection<KpiStripSectionData>({
                   dark ? "border-[var(--doc-panel-dark)] bg-[var(--doc-panel-dark)]" : "border-[var(--border-2)] bg-white"
                 }`}
               >
+                {/* The dark-card toggle lives in the Options rail, not here. On the canvas it sat
+                    a moon icon on top of every KPI card — a control rendered INSIDE the artwork,
+                    which reads as part of the design rather than as chrome. The rail already has
+                    a `Dark` button per KPI, so this was a second copy of the same switch. */}
                 <span className="absolute right-1 top-1 flex items-center gap-0.5">
-                  <button
-                    type="button"
-                    onClick={() => update(i, { emphasis: !dark })}
-                    aria-label="Toggle dark card"
-                    title="Toggle dark card"
-                    className={`inline-flex h-5 w-5 items-center justify-center rounded-[5px] transition ${
-                      dark ? "text-white/70 hover:text-white" : "text-[var(--text-4)] hover:text-[var(--brand-700)]"
-                    }`}
-                  >
-                    <MoonIcon className="h-3.5 w-3.5" />
-                  </button>
                   <InlineRemoveButton onClick={() => onChange({ ...data, items: items.filter((_, j) => j !== i) })} />
                 </span>
                 <InlineTextArea

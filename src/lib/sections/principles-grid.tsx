@@ -62,29 +62,34 @@ export const principlesGridSection = defineSection<PrinciplesGridSectionData>({
           </select>
         </label>
 
+        {/* NOT gated on `style === "cards"`. Every style renders `item.highlighted` — the light
+            and dark grids tint the highlighted item's number in the accent — but the control was
+            only offered for cards, so on two of the three styles the highlight was visible and
+            unchangeable. */}
+        <label className="block space-y-1.5">
+          <span className="text-sm font-medium text-[var(--text-2)]">Highlighted item</span>
+          <select
+            value={highlightedIndex >= 0 ? String(highlightedIndex) : ""}
+            onChange={(e) => {
+              const next = e.target.value === "" ? -1 : Number(e.target.value);
+              onChange({
+                ...data,
+                items: items.map((item, i) => ({ ...item, highlighted: i === next })),
+              });
+            }}
+            className="app-select w-full"
+          >
+            <option value="">None</option>
+            {items.map((item, i) => (
+              <option key={i} value={String(i)}>
+                {num(i)} — {item.title || "Untitled"}
+              </option>
+            ))}
+          </select>
+        </label>
+
         {style === "cards" ? (
           <>
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-[var(--text-2)]">Highlighted card</span>
-              <select
-                value={highlightedIndex >= 0 ? String(highlightedIndex) : ""}
-                onChange={(e) => {
-                  const next = e.target.value === "" ? -1 : Number(e.target.value);
-                  onChange({
-                    ...data,
-                    items: items.map((item, i) => ({ ...item, highlighted: i === next })),
-                  });
-                }}
-                className="app-select w-full"
-              >
-                <option value="">None</option>
-                {items.map((item, i) => (
-                  <option key={i} value={String(i)}>
-                    {num(i)} — {item.title || "Untitled"}
-                  </option>
-                ))}
-              </select>
-            </label>
             <label className="flex items-center gap-2 text-sm text-[var(--text-2)]">
               <input
                 type="checkbox"

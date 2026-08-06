@@ -83,21 +83,23 @@ export const breakdownSection = defineSection<BreakdownSectionData>({
                 <span className="absolute right-0 top-3">
                   <InlineRemoveButton onClick={() => onChange({ ...data, items: items.filter((_, j) => j !== i) })} label="Remove item" />
                 </span>
-                <div className="flex flex-wrap items-baseline gap-x-1.5 pr-6">
-                  <InlineTextArea
-                    value={item.label}
-                    onChange={(label) => update(i, { label })}
-                    placeholder="Label"
-                    ariaLabel="Item label"
-                    className="text-[15px] font-semibold leading-6 text-[var(--doc-ink)]"
-                  />
-                  <span className="text-[15px] leading-6 text-[var(--doc-accent)]">—</span>
+                {/* Count ABOVE the label, not "label — count" on one line. Inline, the number was
+                    the third thing read and the dash did the work of a separator that a line
+                    break does better; stacked, the figure leads and the label explains it. */}
+                <div className="pr-6">
                   <InlineTextArea
                     value={item.count ?? ""}
                     onChange={(count) => update(i, { count })}
                     placeholder="0"
                     ariaLabel="Item count"
-                    className="text-[15px] leading-6 text-[var(--doc-accent)]"
+                    className="doc-serif text-[26px] leading-[1.1] text-[var(--doc-accent)]"
+                  />
+                  <InlineTextArea
+                    value={item.label}
+                    onChange={(label) => update(i, { label })}
+                    placeholder="Label"
+                    ariaLabel="Item label"
+                    className="mt-0.5 text-[15px] font-semibold leading-6 text-[var(--doc-ink)]"
                   />
                 </div>
                 <InlineTextArea
@@ -122,9 +124,14 @@ export const breakdownSection = defineSection<BreakdownSectionData>({
       <div className="proposal-block-avoid divide-y divide-[var(--border-3)]">
         {items.map((item, i) => (
           <div key={i} className="py-3.5 first:pt-0 last:pb-0">
-            <p className="text-[15px] leading-6 text-[var(--doc-ink)]">
-              <span className="font-semibold">{item.label || "—"}</span>
-              {item.count ? <span className="text-[var(--doc-accent)]"> — {item.count}</span> : null}
+            {/* Count above the label — see the note on the editable branch. */}
+            {item.count ? (
+              <p className="doc-serif text-[26px] leading-[1.1] text-[var(--doc-accent)]">{item.count}</p>
+            ) : null}
+            <p
+              className={`text-[15px] font-semibold leading-6 text-[var(--doc-ink)] ${item.count ? "mt-0.5" : ""}`}
+            >
+              {item.label || "—"}
             </p>
             {item.description ? (
               <p className="mt-1 text-[13px] leading-6 text-[var(--doc-muted)]">{renderLines(item.description, `bd-${i}`)}</p>

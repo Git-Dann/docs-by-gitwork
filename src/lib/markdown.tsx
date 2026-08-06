@@ -318,7 +318,12 @@ export function renderLines(text: string, keyPrefix: string): ReactNode[] {
     const items = bullets;
     bullets = [];
     out.push(
-      <ul key={`${keyPrefix}-ul-${out.length}`} className="my-1 list-disc space-y-0.5 pl-5">
+      // Same `doc-bullets` house marker as `renderList` above. This used to be `list-disc` only,
+      // so the SAME markdown rendered as a purple → in one block and a grey dot in another.
+      <ul
+        key={`${keyPrefix}-ul-${out.length}`}
+        className="doc-bullets my-1 list-disc space-y-0.5 pl-5"
+      >
         {items.map((item, index) => (
           <li key={index}>{renderInline(item, `${keyPrefix}-li-${out.length}-${index}`)}</li>
         ))}

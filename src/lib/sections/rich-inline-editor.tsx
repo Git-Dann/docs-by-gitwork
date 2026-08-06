@@ -77,7 +77,11 @@ function markdownToHtml(markdown: string): string {
         const items = lines
           .map((line) => `<li>${inlineMarkdownToHtml(line.replace(/^\s*[-*]\s+/, ""))}</li>`)
           .join("");
-        return `<ul>${items}</ul>`;
+        // `doc-bullets` is REQUIRED, not decoration: Tailwind's preflight resets `ul` to
+        // `list-style: none`, and there is no bare `ul` rule inside `.proposal-document` — so a
+        // classless <ul> renders with no marker at all. That is why bullets looked dead across
+        // the whole document while the markup was perfectly correct.
+        return `<ul class="doc-bullets">${items}</ul>`;
       }
       return `<div>${lines.map(inlineMarkdownToHtml).join("<br>")}</div>`;
     })
@@ -302,6 +306,10 @@ export function RichInlineEditor({
     if (command === "link") return applyLink();
     // Deprecated, but still the only API that participates in the browser's undo stack.
     document.execCommand("insertUnorderedList");
+    // The browser makes a bare <ul>, which has no marker inside `.proposal-document` (preflight
+    // resets `list-style`). Without this the list you just made looks unmarked until you click
+    // away and the field re-renders from Markdown.
+    elRef.current?.querySelectorAll("ul, ol").forEach((list) => list.classList.add("doc-bullets"));
     // ⚠️ And SERIALISE. `applyInline` and `applyLink` each end by writing the DOM back to the
     // value; this path did not, so the list appeared and then vanished on the next render, when
     // the field is re-rendered from a `value` that never learned about it. That is why the

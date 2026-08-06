@@ -235,7 +235,17 @@ export const pricingTiersSection = defineSection<PricingTiersSectionData>({
       return (
         <div className="proposal-block-avoid space-y-4">
           {intro}
-          <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${tiers.length}, minmax(0, 1fr))` }}>
+          {/* The recommended tier is WIDER (1.12fr vs 1fr) and TALLER (it overhangs its row by
+              1rem top and bottom). Equal-sized cards made the badge the only thing distinguishing
+              it, and the badge was itself the problem — see below. */}
+          <div
+            className="grid items-center gap-3"
+            style={{
+              gridTemplateColumns: tiers
+                .map((_, i) => (i === recommendedIndex ? "1.12fr" : "1fr"))
+                .join(" "),
+            }}
+          >
             {tiers.map((tier, i) => {
               const featured = i === recommendedIndex;
               const ink = featured ? "#f7f5ef" : "var(--doc-ink, #1a1a17)";
@@ -243,7 +253,9 @@ export const pricingTiersSection = defineSection<PricingTiersSectionData>({
               return (
                 <article
                   key={i}
-                  className="flex flex-col rounded-[12px] border p-5"
+                  className={`relative flex flex-col rounded-[12px] border p-5 ${
+                    featured ? "z-10 -my-4 self-stretch pt-7" : ""
+                  }`}
                   style={
                     featured
                       ? { background: "var(--doc-panel-dark, #191817)", borderColor: "transparent" }
@@ -253,9 +265,14 @@ export const pricingTiersSection = defineSection<PricingTiersSectionData>({
                         }
                   }
                 >
+                  {/* The badge is OUT of the flow, sitting on the card's top edge. In flow it was
+                      a `mb-3` block that pushed the featured tier's name, price and features down
+                      by its own height — so the one card meant to stand out was the only one whose
+                      rows didn't line up with its neighbours, which reads as broken rather than
+                      featured. `pt-7` above reserves the room it occupies. */}
                   {featured ? (
                     <span
-                      className="mb-3 inline-flex w-fit items-center rounded-full px-2.5 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.16em]"
+                      className="absolute -top-2.5 left-5 inline-flex w-fit items-center rounded-full px-2.5 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.16em]"
                       style={{ background: "var(--doc-accent, #4f5bd5)", color: "#fff" }}
                     >
                       {(tier.badgeLabel || "Recommended").toUpperCase()}
