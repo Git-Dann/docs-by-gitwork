@@ -61,6 +61,7 @@ import { ProposalProofPanel } from "@/components/proposals/proposal-proof-panel"
 import { SignaturePanel } from "@/components/proposals/signature-panel";
 import { EnvelopeIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { SECTION_REGISTRY } from "@/lib/sections/registry";
+import { resolveInsertIndex } from "@/lib/proposal-insert-position";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { StatusBadge } from "@/components/status-badge";
@@ -400,6 +401,14 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     handleToggleVisibility(id, next),
   );
   const onOutlineExpand = useStableCallback(() => setOutlineOpen(true));
+
+  // Insert from the CANVAS. The page hands back a section id, never an index — see
+  // `ProposalSectionPreview.onInsertAfter`. Resolving the position here is what makes that safe:
+  // `sectionEntries` is the ordered list, so `+ 1` means "after the block you hovered", whereas
+  // the index a block sees inside `PagedDocument` is its position on its own PAGE.
+  const onCanvasInsertAfter = useStableCallback((sectionId: string) => {
+    setPaletteInsertAt(resolveInsertIndex(sectionEntries, sectionId));
+  });
 
   const defaultActiveSectionId = useMemo(() => {
     if (!sectionEntries.length) {
@@ -1770,6 +1779,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                   frame={false}
                   editable
                   onSelectSection={openOptions}
+                  onInsertAfter={onCanvasInsertAfter}
                   onSectionChange={handleSectionDataChange}
                   onSectionMetaChange={handleSectionMetaChange}
                   pageMode="paged"

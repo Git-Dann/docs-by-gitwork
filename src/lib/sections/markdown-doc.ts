@@ -114,7 +114,21 @@ const markdownParser = new MarkdownParser(docSchema, markdownIt, {
   // No toolbar command offers it, and `renderLines` still draws it literally, so it is the one
   // construct where the editor can show more than the client sees. That is the strongest
   // argument for teaching `renderLines` ordered lists next.
-  ordered_list: { block: "orderedList" },
+  // ⚠️ `getAttrs` reads `start`, and without it the editor RENUMBERS the author's list.
+  //
+  // markdown-it carries the first number as an attribute; dropping it made every ordered list
+  // restart at 1, so opening a document containing `100. Item` and typing one character in that
+  // field saved it back as `1. Item`. The number the author wrote was gone, silently, in the
+  // client's copy.
+  //
+  // It hid behind the renderer: `renderLines` drew ordered lists as literal text, so nobody was
+  // looking at them. And the existing round-trip test could not catch it — it asserts
+  // `"1. One\n2. Two"` survives, which passes trivially for a list that already starts at 1.
+  // The corpus now carries one that does not.
+  ordered_list: {
+    block: "orderedList",
+    getAttrs: (token) => ({ start: Number(token.attrGet("start") ?? 1) }),
+  },
   list_item: { block: "listItem" },
   hardbreak: { node: "hardBreak" },
   // ⚠️ THIS is what preserves a single newline as a line break — not the `breaks` option. Under the

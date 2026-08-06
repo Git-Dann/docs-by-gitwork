@@ -21,10 +21,26 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { docExtensions, docToMarkdown, markdownToDoc } from "@/lib/sections/markdown-doc";
+import { useCanvasActions } from "@/lib/sections/canvas-actions";
 import {
   useFormatTargetRegistration,
   type FormatCommand,
 } from "@/lib/sections/format-target";
+
+/**
+ * Is this field's content the block-menu gesture rather than something the author wrote?
+ *
+ * True only when the field holds EXACTLY a slash — which happens when you type `/` into an empty
+ * field, or select-all and type `/`. Both are deliberate.
+ *
+ * Everything else is content. A `/` mid-sentence is a real character (dates, paths, "and/or"), and
+ * hijacking it would make the editor feel possessed. Exported so the rule can be asserted directly:
+ * jsdom will not drive ProseMirror's text-input path, so a test that "typed" a slash would be
+ * simulating the thing it claims to check.
+ */
+export function isBlockMenuTrigger(markdown: string): boolean {
+  return markdown === "/";
+}
 
 const COMMANDS: ReadonlySet<FormatCommand> = new Set<FormatCommand>([
   "bold",
@@ -32,6 +48,7 @@ const COMMANDS: ReadonlySet<FormatCommand> = new Set<FormatCommand>([
   "link",
   "code",
   "bullets",
+  "numbers",
 ]);
 
 export function RichTextField({
@@ -53,6 +70,11 @@ export function RichTextField({
 }) {
   const formatId = useId();
   const { register, unregister } = useFormatTargetRegistration();
+  // Null on the public, print and preview renders — so there is no slash menu there at all,
+  // rather than one that is hidden.
+  const canvas = useCanvasActions();
+  const canvasRef = useRef(canvas);
+  canvasRef.current = canvas;
   const focused = useRef(false);
   const [empty, setEmpty] = useState(!value.trim());
 
@@ -98,6 +120,23 @@ export function RichTextField({
       // majority behaviour and removes a real way to lose work. Serialising ONE field's document
       // is O(field); it is not the whole-document work removed from the keystroke path earlier.
       const markdown = docToMarkdown(instance.state.doc);
+
+      // `/` in an otherwise EMPTY field is the block-menu gesture, not content.
+      //
+      // Deliberately only when the field is empty. A `/` mid-sentence is a real character — dates,
+      // paths, "and/or" — and hijacking it would make the editor feel possessed. Empty-field-only
+      // is also the case that matters: you reach for a new block BETWEEN blocks, not mid-thought.
+      //
+      // The trigger never reaches the document. Clearing it here means an autosave can never
+      // persist a stray "/" if the menu is dismissed, and it leaves the field exactly as the
+      // author found it. Deferred a microtask because dispatching a transaction from inside
+      // ProseMirror's own update handler is re-entrant.
+      if (canvasRef.current && isBlockMenuTrigger(markdown)) {
+        queueMicrotask(() => instance.commands.clearContent());
+        canvasRef.current.insertAfter();
+        return;
+      }
+
       lastEmitted.current = markdown;
       setEmpty(!markdown.trim());
       latest.current(markdown);
@@ -130,6 +169,11 @@ export function RichTextField({
           break;
         case "bullets":
           chain.toggleBulletList().run();
+          break;
+        case "numbers":
+          // Nesting needs no command of its own — StarterKit binds Tab/Shift-Tab to
+          // `sinkListItem`/`liftListItem` inside a list, and the renderer draws the indent.
+          chain.toggleOrderedList().run();
           break;
         case "link": {
           // Unchanged from the outgoing behaviour — a real link UI is step 5, not this swap.

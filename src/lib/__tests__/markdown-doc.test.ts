@@ -89,14 +89,19 @@ describe("bullets serialise the way the stored documents already write them", ()
 /**
  * The editor cannot express more than the client renderer can draw.
  *
- * `renderLines` understands a paragraph, a FLAT bullet list, and the inline marks in `INLINE_RE`.
- * Everything else it prints verbatim — so a schema wider than that is a defect generator: an
- * author presses a button, sees a heading in the editor, and ships `## Scope of work` as literal
- * text on a client proposal. `***bold-italic***` already did exactly that once.
+ * `renderLines` understands a paragraph, lists — bulleted, numbered and nested — and the inline
+ * marks in `INLINE_RE`. Everything else it prints verbatim, so a schema wider than that is a defect
+ * generator: an author presses a button, sees a heading in the editor, and ships `## Scope of work`
+ * as literal text on a client proposal. `***bold-italic***` already did exactly that once.
  *
- * These assertions are the tripwire on that gap. When `renderLines` learns to draw ordered or
- * nested lists, the schema opens up in the same change and these expectations move with it —
- * deliberately, not by accident.
+ * ⚠️ The list half of this boundary MOVED, on purpose. It used to read "a FLAT bullet list", and
+ * these assertions said ordered lists were retained only so nothing threw. `renderLines` now draws
+ * ordered and nested lists (`render-lines-lists.test.tsx`), the Drive renderer agrees with it
+ * (`renderer-agreement.test.tsx`), and the toolbar offers a numbered-list command. So the schema
+ * opened up in the same change — which is what this comment always said would happen, rather than
+ * the assertions being quietly relaxed to make something pass.
+ *
+ * Headings, blockquotes, code blocks and horizontal rules did NOT move and are still the tripwire.
  */
 describe("the schema is bounded by what the renderer supports", () => {
   const UNRENDERABLE = ["heading", "blockquote", "codeBlock", "horizontalRule"] as const;
@@ -115,18 +120,25 @@ describe("the schema is bounded by what the renderer supports", () => {
 
   it("keeps everything the renderer DOES draw", () => {
     expect(Object.keys(docSchema.nodes)).toEqual(
-      expect.arrayContaining(["paragraph", "text", "hardBreak", "bulletList", "listItem"]),
+      expect.arrayContaining([
+        "paragraph",
+        "text",
+        "hardBreak",
+        "bulletList",
+        "orderedList",
+        "listItem",
+      ]),
     );
     expect(Object.keys(docSchema.marks)).toEqual(
       expect.arrayContaining(["bold", "italic", "code", "link"]),
     );
   });
 
-  it("keeps orderedList — the one node retained purely so nothing throws", () => {
-    // markdown-it has a single `list` rule covering bullet AND ordered, so ordered cannot be
-    // switched off without losing bullets. The node stays; no toolbar command offers it.
-    expect(Object.keys(docSchema.nodes)).toContain("orderedList");
-  });
+  // `orderedList` used to be in the schema with NO command offering it — retained only so
+  // pre-existing `1. ` content could not crash the editor — which made it the one construct where
+  // the editor could show more than the client saw. That is closed, and it is asserted where it can
+  // actually fail: `rich-text-field.test.tsx` presses the real Numbered list button and checks the
+  // Markdown that comes out. A membership check on a constant here could not tell the two apart.
 });
 
 /**

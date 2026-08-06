@@ -13,6 +13,15 @@
 
 import type { ReactNode } from "react";
 import { cn } from "@/lib/format";
+// Parsing and nesting are SHARED with the Drive/PDF renderer (`src/server/document-to-html.ts`)
+// rather than written twice — see the header of that module for why. Only the drawing is local.
+import {
+  buildListTree,
+  listStartAttr,
+  parseListLine,
+  type ListTree,
+  type ParsedListLine,
+} from "@/lib/markdown-lists";
 
 // One pass matches the earliest inline marker; precedence:
 //   link → size wrapper → bold → italic → underscore-italic → code.
@@ -111,76 +120,56 @@ export function renderInline(text: string, keyPrefix: string): ReactNode[] {
 }
 
 /**
- * Leading indentation of a line, in "columns". A tab counts as 2 columns so a tab-indented list
- * nests the same as a 2-space-indented one (the two are mixed freely in pasted content).
+ * Options rather than more positional parameters, because the two callers differ in ways that
+ * matter and getting either wrong is a silent visual change across every document.
  */
-function leadingIndent(line: string): number {
-  let columns = 0;
-  for (const char of line) {
-    if (char === " ") columns += 1;
-    else if (char === "\t") columns += 2;
-    else break;
-  }
-  return columns;
-}
-
-type ParsedListLine = { indent: number; ordered: boolean; text: string };
-
-/** A single list line → its depth, kind and text. Null when the line isn't a list item at all. */
-function parseListLine(line: string): ParsedListLine | null {
-  const unordered = /^\s*[-*]\s+(.*)$/.exec(line);
-  if (unordered) return { indent: leadingIndent(line), ordered: false, text: unordered[1] };
-  const ordered = /^\s*\d+\.\s+(.*)$/.exec(line);
-  if (ordered) return { indent: leadingIndent(line), ordered: true, text: ordered[1] };
-  return null;
-}
-
-type ListTree = { ordered: boolean; items: Array<{ text: string; child: ListTree | null }> };
-
-/**
- * Build a nested list tree from flat lines, using INDENTATION as the only depth signal: a line
- * indented further than the one before it opens a nested list under that previous item; a line
- * indented less closes back out to the matching level. Depth is unlimited, so ≥2 levels work.
- */
-function buildListTree(lines: ParsedListLine[]): ListTree {
-  const root: ListTree = { ordered: lines[0].ordered, items: [] };
-  // Stack of open lists, each remembering the indentation its own items sit at.
-  const open: Array<{ indent: number; list: ListTree }> = [{ indent: lines[0].indent, list: root }];
-
-  for (const line of lines) {
-    while (open.length > 1 && line.indent < open[open.length - 1].indent) open.pop();
-    let top = open[open.length - 1];
-    if (line.indent > top.indent && top.list.items.length > 0) {
-      const parent = top.list.items[top.list.items.length - 1];
-      // A parent may already own a nested list (indent out, then back in) — append to it.
-      if (!parent.child) parent.child = { ordered: line.ordered, items: [] };
-      open.push({ indent: line.indent, list: parent.child });
-      top = open[open.length - 1];
-    }
-    top.list.items.push({ text: line.text, child: null });
-  }
-  return root;
+interface ListRenderOptions {
+  /**
+   * Spacing/indent utilities for the list element itself. Block Markdown sits in prose and wants
+   * `space-y-1`; a document FIELD is tighter at `space-y-0.5`.
+   */
+  listClass?: string;
+  /**
+   * Extra classes for the TOP-LEVEL list only — the body type scale and colour.
+   *
+   * ⚠️ Empty by default, and that is deliberate. This used to be a hard-coded
+   * `cn("text-[var(--text-2)]", bodySize)`, which was correct for block Markdown and wrong for a
+   * document field: fields had no text colour on their lists, so routing them through here added
+   * one to every bullet in every existing document — a change nobody asked for, arriving as a side
+   * effect of teaching this renderer ordered lists. Callers state what they want.
+   */
+  topClass?: string;
 }
 
 function renderListTree(
   list: ListTree,
   keyPrefix: string,
-  bodySize: string,
   depth: number,
+  { listClass = "space-y-1 pl-5", topClass = "" }: ListRenderOptions = {},
 ): ReactNode {
   const items = list.items.map((item, i) => (
     <li key={i}>
       {renderInline(item.text, `${keyPrefix}-li${i}`)}
-      {item.child ? renderListTree(item.child, `${keyPrefix}-li${i}-n`, bodySize, depth + 1) : null}
+      {item.child
+        ? renderListTree(item.child, `${keyPrefix}-li${i}-n`, depth + 1, { listClass, topClass })
+        : null}
     </li>
   ));
 
   // Only the top level carries the body type scale; nested lists inherit it from their parent item.
-  const scale = depth === 0 ? cn("text-[var(--text-2)]", bodySize) : "";
+  const scale = depth === 0 ? topClass : "";
 
   if (list.ordered) {
     return (
-      <ol key={keyPrefix} className={cn("list-decimal space-y-1 pl-5", scale)}>
+      <ol
+        key={keyPrefix}
+        // A list that starts anywhere other than 1 keeps its number. The editor stores what the
+        // author wrote (`100.`), so drawing `1.` here would be the renderer disagreeing with the
+        // document — the same class of gap that let ordered lists work in the Drive copy and not
+        // on the page. Omitted when it is 1, which is the HTML default.
+        start={listStartAttr(list)}
+        className={cn("list-decimal", listClass, scale)}
+      >
         {items}
       </ol>
     );
@@ -191,7 +180,7 @@ function renderListTree(
   // `.proposal-document` and unlayered, so inside a document they win over Tailwind's
   // `@layer utilities` and these classes are inert — outside one they're the only marker there is.
   return (
-    <ul key={keyPrefix} className={cn("doc-bullets list-disc space-y-1 pl-5", scale)}>
+    <ul key={keyPrefix} className={cn("doc-bullets list-disc", listClass, scale)}>
       {items}
     </ul>
   );
@@ -252,7 +241,9 @@ function renderBlock(block: string, idx: number, compact: boolean): ReactNode {
     listLines.push(parsed);
   }
   if (allLines && listLines.length > 0) {
-    return renderListTree(buildListTree(listLines), key, bodySize, 0);
+    return renderListTree(buildListTree(listLines), key, 0, {
+      topClass: cn("text-[var(--text-2)]", bodySize),
+    });
   }
 
   // Paragraph
@@ -311,35 +302,45 @@ export function renderLines(text: string, keyPrefix: string): ReactNode[] {
 
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   const out: ReactNode[] = [];
-  let bullets: string[] = [];
+  let listLines: ParsedListLine[] = [];
 
-  const flushBullets = () => {
-    if (!bullets.length) return;
-    const items = bullets;
-    bullets = [];
+  // ⚠️ Accumulate the PARSED lines, not their text.
+  //
+  // This used to push `bullet[1]` — the text after the marker — into a string array and emit one
+  // flat <ul>. That threw away two things before anything could use them: the indentation (so
+  // `- a\n  - nested` rendered as two siblings) and the marker KIND (so `1. One` was not a list at
+  // all, and fell through to a plain <span> that showed the author a literal "1."). Keeping the
+  // parse result means both survive to the tree builder.
+  const flushList = () => {
+    if (!listLines.length) return;
+    const parsed = listLines;
+    listLines = [];
     out.push(
-      // Same `doc-bullets` house marker as `renderList` above. This used to be `list-disc` only,
-      // so the SAME markdown rendered as a purple → in one block and a grey dot in another.
-      <ul
-        key={`${keyPrefix}-ul-${out.length}`}
-        className="doc-bullets my-1 list-disc space-y-0.5 pl-5"
-      >
-        {items.map((item, index) => (
-          <li key={index}>{renderInline(item, `${keyPrefix}-li-${out.length}-${index}`)}</li>
-        ))}
-      </ul>,
+      // The same `buildListTree` / `renderListTree` pair that block Markdown has always used —
+      // ordered lists and unlimited nesting, already written, already correct, 180 lines up this
+      // file. `my-1 space-y-0.5 pl-5` is the spacing a document field already had; only the
+      // markers and the indentation are new.
+      renderListTree(buildListTree(parsed), `${keyPrefix}-list-${out.length}`, 0, {
+        listClass: "my-1 space-y-0.5 pl-5",
+      }),
     );
   };
 
   lines.forEach((line, index) => {
-    // `- ` or `* ` with optional leading indent. The trailing space is required, so a line that
-    // merely starts with a hyphen (a negative number, an en-dashed aside) is not a bullet.
-    const bullet = /^\s*[-*]\s+(.*)$/.exec(line);
-    if (bullet) {
-      bullets.push(bullet[1]);
+    // `- `, `* ` or `1. ` with optional leading indent. The trailing space is required, so a line
+    // that merely starts with a hyphen (a negative number, an en-dashed aside) or with digits and
+    // a full stop ("1.5 million") is not a list item.
+    //
+    // ⚠️ "1975. A good year" IS one, at `start="1975"` — the space is there. That is CommonMark's
+    // own reading and, more to the point, the editor's: markdown-it parses it as an ordered list,
+    // so drawing it as a paragraph here would put the renderer and the editor back out of step.
+    // Ambiguous, and resolved the same way on both sides rather than resolved differently.
+    const listLine = parseListLine(line);
+    if (listLine) {
+      listLines.push(listLine);
       return;
     }
-    flushBullets();
+    flushList();
     if (!line.trim()) {
       // A blank line is deliberate spacing between paragraphs, not something to drop.
       out.push(<span key={`${keyPrefix}-gap-${index}`} className="block h-2" aria-hidden="true" />);
@@ -352,6 +353,6 @@ export function renderLines(text: string, keyPrefix: string): ReactNode[] {
     );
   });
 
-  flushBullets();
+  flushList();
   return out;
 }

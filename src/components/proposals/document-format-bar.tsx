@@ -21,6 +21,7 @@ import {
   ItalicIcon,
   LinkIcon,
   ListBulletIcon,
+  NumberedListIcon,
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import {
@@ -38,6 +39,9 @@ const CONTROLS: Array<{
   { command: "bold", label: "Bold", hint: "Bold (⌘B)", icon: BoldIcon },
   { command: "italic", label: "Italic", hint: "Italic (⌘I)", icon: ItalicIcon },
   { command: "bullets", label: "Bulleted list", hint: "Bulleted list", icon: ListBulletIcon },
+  // Numbered lists became offerable only when `renderLines` learned to draw them. Before that a
+  // button here would have written `1. ` into a field the client's page rendered as literal text.
+  { command: "numbers", label: "Numbered list", hint: "Numbered list", icon: NumberedListIcon },
   { command: "link", label: "Link", hint: "Link (⌘K)", icon: LinkIcon },
   { command: "code", label: "Code", hint: "Inline code", icon: CodeBracketIcon },
 ];
