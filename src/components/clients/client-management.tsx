@@ -35,7 +35,21 @@ import { cn, formatDate } from "@/lib/format";
 import type { ClientEngagementType, ClientListItem, LeadStage } from "@/types/client";
 import type { OnboardingLinkRecord } from "@/lib/api";
 
-type Tab = "active" | "leads" | "inactive" | "pending" | "onboarding";
+type Tab = "active" | "suggested" | "leads" | "inactive" | "pending" | "onboarding";
+
+/**
+ * Split the ACTIVE fetch into the two tabs it feeds.
+ *
+ * SUGGESTED is a `source`, not a status, so suggested clients arrive inside the active list.
+ * Exported and pure so the counting rule can be tested: the tab badges must show the same
+ * numbers regardless of which tab is currently open. Before this split, `suggestedCount` was
+ * derived from the *displayed* list, so it silently read 0 from any tab but Active.
+ */
+export function partitionActiveClients<T extends { source?: string | null }>(all: readonly T[]) {
+  const suggested = all.filter((c) => c.source === "SUGGESTED");
+  const active = all.filter((c) => c.source !== "SUGGESTED");
+  return { active, suggested };
+}
 
 /** Format a whole-currency amount, e.g. 6200 USD → "$6,200". Falls back to "6200 USD". */
 /** Live preview of the channel name as the operator types — matches the slug
@@ -1130,6 +1144,7 @@ export function ClientManagement() {
       requestedTab === "onboarding" ||
       requestedTab === "pending" ||
       requestedTab === "leads" ||
+      requestedTab === "suggested" ||
       requestedTab === "inactive"
     ) {
       setTab(requestedTab);
@@ -1143,7 +1158,7 @@ export function ClientManagement() {
 
   // Drive the right list off the selected tab.
   const listQuery =
-    tab === "active"
+    tab === "active" || tab === "suggested"
       ? activeQuery
       : tab === "leads"
         ? leadsQuery
@@ -1154,18 +1169,35 @@ export function ClientManagement() {
   const error = tab === "onboarding" ? onboardingQuery.error : listQuery.error;
   const data = listQuery.data;
 
-  const clients = useMemo(() => data?.clients ?? [], [data]);
+  /**
+   * SUGGESTED is a `source`, not a status — suggested clients come back inside the ACTIVE
+   * list. They used to render mixed into the Active grid, which made "Active 13" a count of
+   * two different things. Active and Suggested are now separate tabs over the same fetch.
+   */
+  const rawClients = useMemo(() => data?.clients ?? [], [data]);
+  const clients = useMemo(() => {
+    if (tab === "active") return partitionActiveClients(rawClients).active;
+    if (tab === "suggested") return partitionActiveClients(rawClients).suggested;
+    return rawClients;
+  }, [rawClients, tab]);
   const onboardingLinks = useMemo(
     () => onboardingQuery.data?.links ?? [],
     [onboardingQuery.data?.links],
   );
-  const suggestedCount = clients.filter((c) => c.source === "SUGGESTED").length;
+  // Off `activeQuery`, NOT the currently-displayed list: the tab badges have to show the
+  // same numbers whichever tab you are standing on.
+  const activeClientsAll = useMemo(
+    () => activeQuery.data?.clients ?? [],
+    [activeQuery.data?.clients],
+  );
+  const activeSplit = useMemo(() => partitionActiveClients(activeClientsAll), [activeClientsAll]);
+  const suggestedCount = activeSplit.suggested.length;
   const pendingClients = useMemo(
     () => pendingQuery.data?.clients ?? [],
     [pendingQuery.data],
   );
   const pendingCount = pendingClients.length;
-  const activeCount = activeQuery.data?.clients?.length ?? 0;
+  const activeCount = activeSplit.active.length;
   const leadsCount = leadsQuery.data?.clients?.length ?? 0;
   const inactiveCount = inactiveQuery.data?.clients?.length ?? 0;
   const openOnboardingCount = useMemo(
@@ -1279,8 +1311,8 @@ export function ClientManagement() {
               </label>
 
               {/* Stats — shown on all client-list tabs (not onboarding) so the header keeps a
-                  constant height when toggling between Active / Leads / Inactive. "suggested"
-                  is only meaningful on Active. */}
+                  constant height when toggling between tabs. The "suggested" figure that used
+                  to sit here is now the Suggested tab's own badge. */}
               {!isPending && !error && tab !== "onboarding" && (
                 <div className="flex items-center gap-5 ml-auto">
                   <div className="text-center">
@@ -1292,20 +1324,7 @@ export function ClientManagement() {
                     </p>
                     <p className="widget-data-label mt-1">total</p>
                   </div>
-                  {tab === "active" && (
-                    <>
-                      <div className="h-8 w-px bg-[rgba(0,0,0,0.08)]" />
-                      <div className="text-center">
-                        <p
-                          className="text-2xl leading-none tracking-tight text-[var(--text-1)]"
-                          style={{ fontFamily: "var(--font-display)" }}
-                        >
-                          {suggestedCount}
-                        </p>
-                        <p className="widget-data-label mt-1">suggested</p>
-                      </div>
-                    </>
-                  )}
+
                 </div>
               )}
             </div>
@@ -1318,6 +1337,15 @@ export function ClientManagement() {
                 label="Active"
                 count={activeCount}
               />
+              {/* Suggested sits beside Active because it is the same fetch, split by source. */}
+              {suggestedCount > 0 || tab === "suggested" ? (
+                <TabButton
+                  active={tab === "suggested"}
+                  onClick={() => setTab("suggested")}
+                  label="Suggested"
+                  count={suggestedCount}
+                />
+              ) : null}
               {isSuperAdmin ? (
                 <TabButton
                   active={tab === "leads"}
@@ -1386,11 +1414,13 @@ export function ClientManagement() {
               <span className="widget-data-label">
                 {tab === "leads"
                   ? "Leads"
-                  : tab === "inactive"
-                    ? "Inactive"
-                    : tab === "pending"
-                      ? "Pending review"
-                      : "Active"}
+                  : tab === "suggested"
+                    ? "Suggested"
+                    : tab === "inactive"
+                      ? "Inactive"
+                      : tab === "pending"
+                        ? "Pending review"
+                        : "Active"}
               </span>
               <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--surface-2)] px-1.5 text-[11px] font-semibold text-[var(--text-3)]">
                 {clients.length}
@@ -1433,18 +1463,22 @@ export function ClientManagement() {
                   ? "Nothing waiting for review"
                   : tab === "leads"
                     ? "No leads yet"
-                    : tab === "inactive"
-                      ? "No paused clients"
-                      : "No clients yet"}
+                    : tab === "suggested"
+                      ? "No suggestions right now"
+                      : tab === "inactive"
+                        ? "No paused clients"
+                        : "No clients yet"}
               </p>
               <p className="mt-1 text-sm text-[var(--text-4)]">
                 {tab === "pending"
                   ? "Submitted onboardings will show up here for you and Harry to approve."
                   : tab === "leads"
                     ? "Click “Add lead” above to track a prospect or follow-up."
-                    : tab === "inactive"
-                      ? "Pause an active client (e.g. between project phases) to park it here."
-                      : "Click “Add client” above, or send an onboarding link to a new prospect."}
+                    : tab === "suggested"
+                      ? "Clients Foundry has spotted but you haven’t confirmed yet will appear here."
+                      : tab === "inactive"
+                        ? "Pause an active client (e.g. between project phases) to park it here."
+                        : "Click “Add client” above, or send an onboarding link to a new prospect."}
               </p>
             </div>
           </div>
