@@ -5,7 +5,7 @@ import { DocumentTextIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { SimpleForm } from "@/lib/sections/_shared";
 import { Markdown, renderInline } from "@/lib/markdown";
-import { RichInlineEditor } from "@/lib/sections/rich-inline-editor";
+import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import type { ProseSectionData } from "@/types/proposal";
 
 type ProseStyle = NonNullable<ProseSectionData["style"]>;
@@ -145,7 +145,7 @@ export const proseSection = defineSection<ProseSectionData>({
             <span className="text-sm font-medium text-[var(--text-2)]">Content</span>
             {/* WYSIWYG: shows bold/italic/links as real formatting (not **stars**), stores Markdown. */}
             <div className="rounded-[8px] border border-[var(--border-2)] px-3 py-2 text-sm leading-6 focus-within:border-[var(--brand-500)]">
-              <RichInlineEditor
+              <RichTextField
                 value={data.content}
                 onChange={(content) => onChange({ ...data, content })}
                 placeholder="Write freely. Highlight text to bold / italicise / link it."
@@ -168,7 +168,7 @@ export const proseSection = defineSection<ProseSectionData>({
     // per-clause editable list would break inline typing (paste, multi-line select, ⌘Z).
     if (editable && onChange) {
       return (
-        <RichInlineEditor
+        <RichTextField
           value={data.content}
           onChange={(content) => onChange({ ...data, content })}
           placeholder="Write freely. Highlight text to bold/italicise/link it."
