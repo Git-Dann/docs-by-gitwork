@@ -96,6 +96,11 @@ export function InlineTextArea({
         return;
       }
 
+      // `numbers` is deliberately NOT in this field's command set — it is a plain textarea on a
+      // short label, and the toolbar disables what a field does not declare. Unreachable, and
+      // guarded rather than cast so adding a command to the union has to be answered here.
+      if (command === "numbers") return;
+
       const next = wrapSelection(value, start, end, command);
       if (!next) return;
       onChange(next.value);

@@ -136,6 +136,46 @@ describe("what leaves the field is markdown", () => {
   });
 });
 
+/**
+ * The numbered-list command — the construct the editor could hold but not offer.
+ *
+ * `orderedList` has always been in the schema (markdown-it has one `list` rule covering both kinds,
+ * so it could not be switched off without losing bullets), but there was no button for it because
+ * `renderLines` drew `1. One` as a paragraph beginning with a literal "1." on the client's page.
+ * Now that the renderer draws it, the button exists — and this is the test that ties the two
+ * together, because it asserts on the MARKDOWN that leaves the field, which is what the renderer
+ * is then handed.
+ */
+describe("numbered lists", () => {
+  it("writes a numbered list, and toggles back off", () => {
+    const { state, surface } = mount("Discovery");
+
+    act(() => {
+      surface.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    });
+
+    press("Numbered list");
+    expect(state.markdown, "Numbered list did not apply").toBe("1. Discovery");
+    expect(surface.querySelector("ol"), "the author sees a list, not a literal marker").not.toBeNull();
+    expect(surface.textContent).not.toContain("1. ");
+
+    press("Numbered list");
+    expect(state.markdown, "Numbered list did not toggle off").toBe("Discovery");
+  });
+
+  it("is a separate list kind from bullets, not a second name for them", () => {
+    const { state, surface } = mount("Discovery");
+    act(() => {
+      surface.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    });
+
+    press("Bulleted list");
+    expect(state.markdown).toBe("- Discovery");
+    press("Numbered list");
+    expect(state.markdown).toBe("1. Discovery");
+  });
+});
+
 describe("external changes do not fight the author", () => {
   it("takes a new value in when the field is not focused", () => {
     // Undo, an AI apply and a refetch all arrive this way.

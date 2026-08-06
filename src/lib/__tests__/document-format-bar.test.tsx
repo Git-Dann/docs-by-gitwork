@@ -21,7 +21,7 @@ function bar(inProvider: boolean): string {
   );
 }
 
-const CONTROLS = ["Bold", "Italic", "Bulleted list", "Link", "Code"];
+const CONTROLS = ["Bold", "Italic", "Bulleted list", "Numbered list", "Link", "Code"];
 
 describe("DocumentFormatBar", () => {
   it("renders every control", () => {

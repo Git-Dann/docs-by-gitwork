@@ -45,4 +45,13 @@ export const MARKDOWN_CORPUS: MarkdownCase[] = [
   // `1. Item`. A fixture that cannot distinguish the bug from the fix is not covering it.
   { name: "an ordered list that does not start at 1", markdown: "100. Item\n101. Next" },
   { name: "a year read as a list marker", markdown: "1975. A good year" },
+  // Nesting. Until the renderer learned it, `- a\n  - nested` was flattened to two siblings on the
+  // client's page while the editor happily held the indent — so a nested list survived a save and
+  // then rendered wrong. Both directions are now exercised, including the mixed-kind case, which
+  // is where the Drive renderer's old all-bullets-or-all-numbers test fell through to a paragraph.
+  { name: "an ordered list", markdown: "1. One\n2. Two\n3. Three" },
+  { name: "a nested bullet list", markdown: "- Discovery\n  - Interviews\n  - Audit\n- Build" },
+  { name: "three levels of nesting", markdown: "- One\n  - Two\n    - Three" },
+  { name: "an ordered list nested under a bullet", markdown: "- Phase one\n  1. Discovery\n  2. Audit" },
+  { name: "a nested list that closes back out", markdown: "- One\n  - Inner\n- Two" },
 ];

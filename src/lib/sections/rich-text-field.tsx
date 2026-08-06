@@ -48,6 +48,7 @@ const COMMANDS: ReadonlySet<FormatCommand> = new Set<FormatCommand>([
   "link",
   "code",
   "bullets",
+  "numbers",
 ]);
 
 export function RichTextField({
@@ -168,6 +169,11 @@ export function RichTextField({
           break;
         case "bullets":
           chain.toggleBulletList().run();
+          break;
+        case "numbers":
+          // Nesting needs no command of its own — StarterKit binds Tab/Shift-Tab to
+          // `sinkListItem`/`liftListItem` inside a list, and the renderer draws the indent.
+          chain.toggleOrderedList().run();
           break;
         case "link": {
           // Unchanged from the outgoing behaviour — a real link UI is step 5, not this swap.

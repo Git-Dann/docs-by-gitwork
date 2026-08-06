@@ -16,6 +16,15 @@
  */
 
 import { safeUrl } from "@/lib/markdown";
+// The SAME parse and nesting the on-page renderer uses — see `markdown-lists.ts`. Only the drawing
+// differs (a string here, React nodes there), and that is the only thing that may differ.
+import {
+  buildListTree,
+  listStartAttr,
+  parseListLine,
+  type ListTree,
+  type ParsedListLine,
+} from "@/lib/markdown-lists";
 import type {
   CostingSectionData,
   DocumentType,
@@ -71,7 +80,26 @@ function renderInline(text: string): string {
 }
 
 /** Block-level Markdown → HTML string. `baseLevel` shifts headings so they nest under the doc <h1>. */
-function markdownToHtml(md: string | null | undefined, baseLevel = 2): string {
+/**
+ * A list tree → semantic HTML. Nested lists sit INSIDE their parent `<li>`, which is the only
+ * placement Google Docs' HTML importer reads as an indent level; a sibling `<ul>` between two
+ * `<li>`s imports as a second flat list.
+ */
+function renderListTree(list: ListTree): string {
+  const items = list.items
+    .map((item) => `<li>${renderInline(item.text)}${item.child ? renderListTree(item.child) : ""}</li>`)
+    .join("");
+  if (!list.ordered) return `<ul>${items}</ul>`;
+  const start = listStartAttr(list);
+  return `<ol${start ? ` start="${start}"` : ""}>${items}</ol>`;
+}
+
+/**
+ * Exported ONLY so the agreement test can hold this renderer against the on-page one
+ * (`src/lib/__tests__/renderer-agreement.test.tsx`). Not part of the module's API — callers want
+ * `renderDocumentToHtml`.
+ */
+export function markdownToHtml(md: string | null | undefined, baseLevel = 2): string {
   const text = (md ?? "").replace(/\r\n/g, "\n");
   const blocks = text
     .split(/\n{2,}/)
@@ -87,11 +115,13 @@ function markdownToHtml(md: string | null | undefined, baseLevel = 2): string {
         const level = Math.min(baseLevel + heading[1].length - 1, 6);
         return `<h${level}>${renderInline(heading[2])}</h${level}>`;
       }
-      if (lines.every((l) => /^\s*[-*]\s+/.test(l))) {
-        return `<ul>${lines.map((l) => `<li>${renderInline(l.replace(/^\s*[-*]\s+/, ""))}</li>`).join("")}</ul>`;
-      }
-      if (lines.every((l) => /^\s*\d+\.\s+/.test(l))) {
-        return `<ol>${lines.map((l) => `<li>${renderInline(l.replace(/^\s*\d+\.\s+/, ""))}</li>`).join("")}</ol>`;
+      // A block whose every line is a list item, of EITHER kind. Tested together rather than as
+      // two separate all-bullets / all-numbers passes: a nested list may be a different kind from
+      // its parent (`- Phase one` / `  1. Discovery`), and under the old split test that block
+      // matched neither and fell through to a paragraph showing literal markers.
+      const listLines = lines.map(parseListLine);
+      if (listLines.every((l): l is ParsedListLine => l !== null)) {
+        return renderListTree(buildListTree(listLines));
       }
       return `<p>${lines.map(renderInline).join("<br>")}</p>`;
     })

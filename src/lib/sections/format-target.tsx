@@ -34,7 +34,7 @@ import {
 } from "react";
 
 /** Everything the bar can offer. A target opts in to the subset it genuinely supports. */
-export type FormatCommand = "bold" | "italic" | "link" | "code" | "bullets";
+export type FormatCommand = "bold" | "italic" | "link" | "code" | "bullets" | "numbers";
 
 export interface FormatTarget {
   /** Stable id for the focused field, so re-registration of the same field is a no-op. */
