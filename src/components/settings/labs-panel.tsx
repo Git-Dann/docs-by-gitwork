@@ -88,8 +88,15 @@ export function LabsPanel() {
       const response = await fetch("/api/dev/seed-block-gallery", { method: "POST" });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error ?? "Could not create the gallery.");
+
+      // `apiOk(data)` returns the payload UNWRAPPED — there is no `{ data: … }` envelope.
+      // This read `body.data.href` and threw "Cannot read properties of undefined" on every
+      // click, because the gallery was built and the redirect was the only untested line.
+      const href = typeof body?.href === "string" ? body.href : null;
+      if (!href) throw new Error("The gallery was created but the server returned no link to it.");
+
       // Same tab: you asked for a document, so you get taken to it.
-      window.location.href = body.data.href;
+      window.location.href = href;
     } catch (cause) {
       // Surfaced, not swallowed — a silent no-op button is indistinguishable from a broken one.
       setError(cause instanceof Error ? cause.message : "Could not create the gallery.");
