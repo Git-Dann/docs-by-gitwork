@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { GITWORK, companyDisclosureLine } from "@/lib/gitwork";
 
 /**
  * Footer for the client portal login — which is the public front door of this host
@@ -45,7 +46,7 @@ const STRUCTURED_DATA = {
       "@type": "Organization",
       "@id": "https://gitwork.co.uk/#organization",
       name: "Gitwork",
-      legalName: "Gitwork Group Ltd",
+      legalName: GITWORK.legalName,
       url: "https://gitwork.co.uk",
       logo: "https://foundry.gitwork.co.uk/foundry-icon.png",
       description:
@@ -109,8 +110,7 @@ export function PortalFooter() {
       </p>
 
       <p className="mt-2.5 text-[10.5px] leading-relaxed text-[#9b958a]">
-        © {new Date().getFullYear()} Gitwork Group Ltd · Company No. 15756347 · VAT 468314867 ·
-        Registered in England and Wales
+        © {new Date().getFullYear()} {companyDisclosureLine()}
       </p>
     </footer>
   );

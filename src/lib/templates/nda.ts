@@ -42,6 +42,7 @@
  */
 
 import type { SectionBlueprint } from "@/lib/default-template";
+import { GITWORK, registeredPartyDetailLines } from "@/lib/gitwork";
 
 function id() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -93,7 +94,7 @@ export const ndaSectionBlueprints: SectionBlueprint[] = [
       content: lines(
         "This agreement is dated **{{date}}** and is made between:",
         sub(
-          '**Gitwork Group Ltd**, a company registered in England and Wales under number 15756347 whose registered office is at 3rd Floor, Anchorage One, Anchorage Quay, Salford Quays, Manchester M50 3YJ ("Gitwork");',
+          `**${GITWORK.legalName}**, ${registeredPartyDetailLines().join(" ")} ("${GITWORK.name}");`,
         ),
         sub(
           '**{{client_name}}**, a company registered in England and Wales under number [company number] whose registered office is at [registered office address] ("the Client"); and',
@@ -395,10 +396,10 @@ export const ndaSectionBlueprints: SectionBlueprint[] = [
       parties: [
         {
           id: id(),
-          name: "Gitwork Group Ltd",
+          name: GITWORK.legalName,
           role: "",
-          organization: "Company no. 15756347",
-          email: "3rd Floor, Anchorage One, Anchorage Quay, Salford Quays, Manchester M50 3YJ",
+          organization: `Company no. ${GITWORK.companyNumber}`,
+          email: GITWORK.registeredOffice,
           signatureRequired: true,
         },
         {
@@ -441,7 +442,7 @@ export const ndaSectionBlueprints: SectionBlueprint[] = [
           signatoryRole: "",
           signatoryEmail: "",
           signatureDate: "",
-          details: ["Company no. 15756347", "Salford Quays, Manchester"],
+          details: [`Company no. ${GITWORK.companyNumber}`, "Salford Quays, Manchester"],
         },
         {
           id: id(),

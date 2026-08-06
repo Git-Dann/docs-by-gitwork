@@ -20,6 +20,7 @@ import { useEffect, useRef, useState } from "react";
 import { paginateSections } from "@/lib/proposal-pagination";
 import { ProposalSectionPreview } from "@/components/proposals/proposal-section-preview";
 import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
+import { letterheadShort } from "@/lib/gitwork";
 import { DEFAULT_DOC_THEME } from "@/types/proposal";
 import type { ProposalDocument, ProposalSection } from "@/types/proposal";
 
@@ -238,7 +239,7 @@ export function PagedDocument({
   // Legal line: workspace letterhead when set, else the Gitwork registration line from the cover.
   const legalLine =
     branding?.companyFooter?.left?.[0] ??
-    (agencyLabel ? "GITWORK GROUP LTD  ·  COMPANY NO. 15756347" : "");
+    (agencyLabel ? letterheadShort() : "");
   let contentPageNumber = 0;
 
   // Blocks that participate in measurement: everything except the cover and page-break markers.

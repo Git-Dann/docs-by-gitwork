@@ -117,6 +117,16 @@ export interface CoverSectionData {
    * document in the cover editor; empty/absent → no strip is rendered at all.
    */
   covers?: string[];
+  /**
+   * Show the cover's `INSIDE` contents list — the document's own block titles, numbered.
+   *
+   * ⚠️ A BOOLEAN, not the list. The entries are derived from the live document at render
+   * (`coverContentsEntries`), because a stored copy would be correct exactly once — rename, add,
+   * hide or reorder a block and the cover would advertise the old contents to a client.
+   *
+   * `undefined` → the per-document-type default (on for PROPOSAL). See `coverContentsEnabled`.
+   */
+  showContents?: boolean;
 }
 
 export interface IntroductionSectionData {

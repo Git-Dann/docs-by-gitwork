@@ -4,6 +4,7 @@ import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import { useClientList } from "@/hooks/use-proposals";
 import { ImagePicker } from "@/components/ui/image-picker";
 import { LogoQuickSwap } from "@/components/ui/logo-quick-swap";
+import { coverContentsEnabled } from "@/lib/sections/cover-contents";
 import type { CoverSectionData } from "@/types/proposal";
 
 export function CoverEditor({
@@ -18,6 +19,8 @@ export function CoverEditor({
   linkedClientName,
   linkedClientId,
   onLinkClient,
+  contentsPreview,
+  documentType,
 }: {
   value: CoverSectionData;
   onChange: (value: CoverSectionData) => void;
@@ -37,6 +40,10 @@ export function CoverEditor({
   linkedClientId?: string | null;
   /** Link/unlink the document to a real Portal client. clientId null → unlink (prospect). */
   onLinkClient?: (clientId: string | null, clientName: string) => void;
+  /** The block titles the contents list WOULD show — derived, passed in so the toggle can say
+   *  how many and name the first few rather than being an unexplained switch. */
+  contentsPreview?: { number: number; title: string }[];
+  documentType?: string;
 }) {
   const brandingQuery = useWorkspaceBranding();
   const branding = brandingQuery.data;
@@ -144,6 +151,31 @@ export function CoverEditor({
           <span className="mt-1.5 block text-xs leading-5 text-[var(--text-4)]">
             Shown on the cover as a single <span className="font-mono">COVERS</span> strip. Leave
             blank to hide it.
+          </span>
+        </Field>
+        {/* The `INSIDE` contents list. A toggle, not a list to maintain — the entries are derived
+            from the document's own blocks at render, so there is nothing here to keep in sync and
+            no way for the cover to disagree with the document. The preview is shown so the control
+            explains itself: an author can see what it will print without leaving the panel. */}
+        <Field label="Contents list">
+          <label className="flex cursor-pointer items-start gap-2.5">
+            <input
+              type="checkbox"
+              checked={coverContentsEnabled(value.showContents, documentType)}
+              onChange={(event) => onChange({ ...value, showContents: event.target.checked })}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--brand-600)]"
+            />
+            <span className="text-sm leading-6 text-[var(--text-2)]">
+              Show an <span className="font-mono text-xs">INSIDE</span> list on the cover
+            </span>
+          </label>
+          <span className="mt-1.5 block text-xs leading-5 text-[var(--text-4)]">
+            {contentsPreview?.length
+              ? `Lists this document's ${contentsPreview.length} blocks, numbered — ${contentsPreview
+                  .slice(0, 3)
+                  .map((entry) => entry.title)
+                  .join(", ")}${contentsPreview.length > 3 ? ", …" : ""}. Follows the document, so renaming a block updates it.`
+              : "Adds a numbered list of the document's blocks. Nothing to maintain — it follows the document."}
           </span>
         </Field>
         <Field label="Prepared by">

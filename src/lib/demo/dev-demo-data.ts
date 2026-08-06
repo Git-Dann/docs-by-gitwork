@@ -23,6 +23,7 @@ import type {
 import type { GanttBlock, GanttMilestone } from "@/components/tasks/gantt-chart";
 import type { ClientDetailRecord } from "@/types/client";
 import type { WikiDTO } from "@/server/wiki";
+import { GITWORK } from "@/lib/gitwork";
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
 
@@ -1066,7 +1067,7 @@ function buildApiHandoverDoc(item: (typeof demoProposals.proposals)[number]) {
           intro: "Each person signing below confirms they are authorised to sign in the capacity shown.",
           note: "This document may be signed electronically. An electronic signature applied through a recognised signing platform has the same effect as a wet ink signature. Once all parties have signed, each party should keep a copy.",
           blocks: [
-            { id: "sig-1", partyName: "Gitwork Group Ltd", signatoryName: "Alex Rivera", signatoryRole: "Delivery Lead", signatoryEmail: "", signatureDate: "", details: ["Company no. 15756347", "Salford Quays, Manchester"] },
+            { id: "sig-1", partyName: GITWORK.legalName, signatoryName: "Alex Rivera", signatoryRole: "Delivery Lead", signatoryEmail: "", signatureDate: "", details: [`Company no. ${GITWORK.companyNumber}`, "Salford Quays, Manchester"] },
             { id: "sig-2", partyName: "Northwind Studio", signatoryName: "", signatoryRole: "Head of Product", signatoryEmail: "", signatureDate: "", details: ["Company no. 09183477", "Shoreditch, London"] },
             { id: "sig-3", partyName: "Priya Raman", signatoryName: "", signatoryRole: "", signatoryEmail: "", signatureDate: "", personal: true, details: ["In her personal capacity, as technical contact"] },
           ],

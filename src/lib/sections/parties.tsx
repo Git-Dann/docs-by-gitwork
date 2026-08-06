@@ -9,8 +9,8 @@
  * party, exactly as the reference NDA reads:
  *
  *   This agreement is dated 4 August 2026 and is made between:
- *     (a) **Gitwork Group Ltd**, a company registered in England and Wales under number 15756347,
- *         whose registered office is at … ("Gitwork");
+ *     (a) **Gitwork Group Ltd**, a company registered in England and Wales under number …,
+ *         whose registered office is at … ("Gitwork");  ← the real values come from `@/lib/gitwork`
  *     (b) **Shuffle Love Ltd**, a company registered in England and Wales … ("the Client"); and
  *     (c) **Alex Doe**, in a personal capacity, care of … ("the Founder").
  *

@@ -116,6 +116,29 @@ const SERVER_INSTRUCTIONS =
   "(reusable prompts/skills/kits) are exposed as MCP prompts — list them with prompts/list and " +
   "pull one in with prompts/get. Prefer resolving a client by slug; use list_members for assignee ids.";
 
+/**
+ * What a document's text fields actually support — stated in the tool description because an agent
+ * writing over MCP has no other way to find out.
+ *
+ * ⚠️ This is a REAL constraint, not a style note. Text fields store Markdown and the renderers draw
+ * a deliberately small subset; anything outside it is printed verbatim on the client's page. So an
+ * agent writing `## Scope of work` does not produce a heading — it ships a literal `##` onto a
+ * document a client reads. The document builder's own toolbar cannot write those constructs (the
+ * editor's schema is clamped to the same subset — see `src/lib/sections/markdown-doc.ts`), so MCP
+ * was the one way into the product that could, silently.
+ *
+ * Ordered and nested lists moved from the second sentence to the first in August 2026, when the
+ * renderers learned to draw them. Keep this in step with `docExtensions` and `renderListTree`:
+ * the whole point is that it describes what is TRUE, and a stale allow-list here is worse than
+ * none, because an agent will believe it.
+ */
+const MARKDOWN_SUBSET =
+  "Text fields store Markdown, and only this subset is rendered: **bold**, *italic*, `code`, " +
+  "[links](url), bulleted lists, numbered lists (a list may start at any number) and nested " +
+  "lists (indent by two spaces). Headings (#), blockquotes (>), code fences, horizontal rules " +
+  "and images are NOT rendered — they appear verbatim on the client's document, so use a " +
+  "section's own `title` for headings rather than `#`.";
+
 // ── tool shapes ────────────────────────────────────────────────────────────
 
 type ToolDef = {
@@ -1518,7 +1541,9 @@ const TOOLS: ToolDef[] = [
       "shape depends on its `key` (e.g. \"prose\" → {content}, \"checklist\" → {intro, items}, " +
       "\"data_table\" → {caption, columns, rows}, \"callout\" → {tone, headline, body}) — read the " +
       "document's existing sections (via Foundry's editor, or ask for them) to match the shapes " +
-      "already in use. Omitted fields are left untouched. Requires the 'Manage documents' permission.",
+      "already in use. Omitted fields are left untouched. " +
+      MARKDOWN_SUBSET +
+      " Requires the 'Manage documents' permission.",
     inputSchema: {
       type: "object",
       properties: {

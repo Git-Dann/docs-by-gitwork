@@ -10,9 +10,11 @@ import { BookOpenIcon } from "@heroicons/react/24/outline";
 import { CoverEditor } from "@/components/proposals/cover-editor";
 import { DocumentCover, DocumentVersionChip } from "@/components/document-cover";
 import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
+import { GITWORK, letterheadLines } from "@/lib/gitwork";
 import { defineSection } from "@/lib/sections/types";
 import type { SignatureBlockLike } from "@/lib/sections/parties-text";
 import { coverPartiesFromSignatures, toCoverParties } from "@/lib/sections/parties-text";
+import { coverContentsEnabled, coverContentsEntries } from "@/lib/sections/cover-contents";
 import { approvalTrackApplies } from "@/lib/templates";
 import { DEFAULT_DOC_THEME } from "@/types/proposal";
 import type { CoverSectionData, DocumentType, PartyItem, ProposalSection } from "@/types/proposal";
@@ -134,6 +136,8 @@ export const coverSection = defineSection<CoverSectionData>({
       executiveSummary={executiveSummary}
       onExecutiveSummaryChange={handleExecutiveSummaryChange}
       executiveSummaryLinkedToIntro={summaryTarget === "intro"}
+      documentType={proposal.documentType}
+      contentsPreview={coverContentsEntries(proposal.sections)}
       linkedClientLogoUrl={proposal.linkedClientLogoUrl ?? undefined}
       linkedClientName={proposal.clientName ?? proposal.metadata.client ?? undefined}
       linkedClientId={proposal.clientId ?? null}
@@ -254,12 +258,9 @@ export const coverSection = defineSection<CoverSectionData>({
     // default — so the live product is unchanged and a white-label / demo workspace can override or
     // blank it (empty arrays → the cover renders no footer strip).
     const companyFooter = branding?.companyFooter ?? {
-      left: [
-        "GITWORK GROUP LTD  /  COMPANY NO. 15756347  /  VAT REG. 468314867",
-        "3RD FLOOR, ANCHORAGE ONE, ANCHORAGE QUAY, SALFORD QUAYS, M50 3YJ",
-      ],
+      left: letterheadLines("/"),
       // Reference NDA footer copy — the positioning line, then the domain.
-      right: ["GLOBAL BUILD CAPACITY. UK QUALITY CONTROL.", "GITWORK.CO.UK"],
+      right: [GITWORK.strapline.toUpperCase(), GITWORK.website.toUpperCase()],
     };
 
     const visibleSections = proposal.sections.filter((s) => s.isVisible).length;
@@ -372,6 +373,13 @@ export const coverSection = defineSection<CoverSectionData>({
           dated={prettyPrepared}
           classification={classification}
           covers={coversStrip.length ? coversStrip : undefined}
+          // Derived from the LIVE document every render — never stored. Rename a block and the
+          // contents entry follows it, with no save and nothing to keep in sync.
+          contents={
+            coverContentsEnabled(data.showContents, proposal.documentType)
+              ? coverContentsEntries(proposal.sections)
+              : undefined
+          }
           companyFooter={companyFooter}
           parties={coverParties.length ? coverParties : undefined}
           logoUrl={brandLogoUrl}
