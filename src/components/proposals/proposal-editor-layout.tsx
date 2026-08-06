@@ -1616,7 +1616,16 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 onToggleVisibility={handleToggleVisibility}
               />
             </div>
-          ) : null}
+          ) : (
+            // Collapsed ≠ gone. Closing the outline reclaims the width without giving up
+            // jump-to-section, which is the thing you want most while editing.
+            <OutlineRail
+              sections={sectionEntries}
+              activeId={viewingSectionId ?? activeEntry?.id ?? null}
+              onSelect={handleOutlineSelect}
+              onExpand={() => setOutlineOpen(true)}
+            />
+          )}
 
           {/* 03 // CANVAS — the live document; ALL text edited inline. Clicking a block selects it
               and opens its Options in the right rail. */}
@@ -1642,18 +1651,21 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                   frame (root is lg:h-full), so this pane is lg:flex-1 lg:min-h-0 and the document
                   scrolls here — the page itself never scrolls past the viewport. On mobile it
                   flows normally. NEVER give this an unbounded height on desktop. */}
-              <div
-                className={cn(
-                  "overflow-auto p-4 sm:p-6 lg:min-h-0 lg:flex-1 [scrollbar-gutter:stable]",
-                  // Inset the DOCUMENT clear of the floating rails rather than shrinking the
-                  // canvas: the scroll surface still spans the full width, so the page scrolls
-                  // under the rails and nothing is trapped behind them. Rail + 16px gutter each
-                  // side, written as literal class strings because Tailwind only scans static
-                  // text — a template literal here would emit no class at all.
-                  outlineOpen ? "lg:pl-[268px] 2xl:pl-[292px]" : null,
-                  optionsEntry ? "lg:pr-[368px] 2xl:pr-[392px]" : null,
-                )}
-              >
+              {/* ⚠️ NO rail-width padding here, and that is the point.
+                  The rails are already `position: absolute`, so the intent was always that the
+                  canvas is the full surface and they sit ON it. Padding the canvas clear of them
+                  cancelled exactly that: it cost the document 636px (684 at 2xl) whenever a
+                  block's options were open, and because `.doc-a4-page` is
+                  `width: 100%; max-width: 210mm`, a container narrower than A4 SHRINKS the page
+                  rather than scrolling it — so on a 1280 laptop the "A4 sheet" rendered at 81%
+                  of A4, and at 1440 it never quite reached 100%.
+                  The page is `mx-auto max-w-[210mm]`, so with no padding it centres in the full
+                  width and the rails float over its own margins: 323px of clear margin each side
+                  at 1440, 243px at 1280. The 56px collapsed rail and the 236px outline both fit
+                  in that at either size. The options panel is wider than the margin at 1280 and
+                  will overlap the page edge — that is the correct trade for a panel you opened
+                  deliberately and can close, and it is what every design tool does. */}
+              <div className="overflow-auto p-4 sm:p-6 lg:min-h-0 lg:flex-1 [scrollbar-gutter:stable]">
                 <ProposalPreview
                   proposal={draft}
                   showTableOfContents={false}
@@ -1671,11 +1683,15 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
           {/* PROPERTIES rail — the selected block's Options, in numbered groups like Deck's props
               rail. 340px (was a 280px shared rail), which is what finally lets the editors' own
               `@[26rem]:grid-cols-2` container queries engage. */}
+          {/* Height follows the block's own fields — `lg:bottom-4` used to pin it to the full
+              frame, so a three-field block drew a full-height wall down the side of the page and
+              obscured far more of the document than it needed to. Capped so a long editor
+              (costing) still scrolls inside itself rather than running off the frame. */}
           {optionsEntry ? (
-            <div className="mt-3 max-h-[60vh] overflow-y-auto rounded-[10px] border border-[var(--border-2)] lg:absolute lg:right-4 lg:top-4 lg:bottom-4 lg:z-20 lg:mt-0 lg:max-h-none lg:w-[336px] lg:overflow-visible lg:shadow-[0_8px_28px_rgba(15,23,42,0.13)] 2xl:w-[360px]">
+            <div className="mt-3 max-h-[60vh] overflow-y-auto rounded-[10px] border border-[var(--border-2)] lg:absolute lg:right-4 lg:top-4 lg:z-20 lg:mt-0 lg:max-h-[calc(100%-2rem)] lg:w-[336px] lg:overflow-visible lg:shadow-[0_8px_28px_rgba(15,23,42,0.13)] 2xl:w-[360px]">
               {/* `widget-card` is gone — the wrapper above now owns the frame and the lift, so
                   the rail is one floating panel rather than a card inside a column. */}
-              <aside className="proposal-form-theme overflow-hidden rounded-[10px] bg-white lg:flex lg:h-full lg:flex-col">
+              <aside className="proposal-form-theme overflow-hidden rounded-[10px] bg-white lg:flex lg:max-h-full lg:flex-col">
                 <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto [scrollbar-gutter:stable]">
                   <RailGroup
                     index="01"
@@ -1836,6 +1852,71 @@ function RailGroup({
         {right}
       </div>
       {open ? <div className="p-4">{children}</div> : null}
+    </div>
+  );
+}
+
+/**
+ * The outline, collapsed to a rail of section numbers.
+ *
+ * Closing the outline used to remove it entirely, which meant the only way to reclaim the 268px
+ * it cost the document was to give up jumping between sections — and you want to jump most while
+ * you are editing, not least. This keeps navigation permanently available at 56px: every section
+ * as its `NN`, the one you are reading lit, the title on hover.
+ *
+ * It is `lg`-only on purpose. Below the desktop split the rails stack in normal flow above the
+ * canvas, so a strip of numbers there would be noise rather than navigation.
+ */
+function OutlineRail({
+  sections,
+  activeId,
+  onSelect,
+  onExpand,
+}: {
+  sections: Array<{ id: string; section: ProposalSection; order: number }>;
+  activeId: string | null;
+  onSelect: (id: string) => void;
+  onExpand: () => void;
+}) {
+  return (
+    <div className="hidden lg:absolute lg:left-4 lg:top-4 lg:bottom-4 lg:z-20 lg:flex lg:w-[56px] lg:flex-col lg:overflow-hidden lg:rounded-[10px] lg:border lg:border-[var(--border-2)] lg:bg-white lg:shadow-[0_8px_28px_rgba(15,23,42,0.13)]">
+      <button
+        type="button"
+        onClick={onExpand}
+        aria-label="Expand outline"
+        title="Expand outline"
+        className="flex h-9 shrink-0 items-center justify-center border-b border-[var(--border-2)] font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+      >
+        02
+      </button>
+      <div className="min-h-0 flex-1 overflow-y-auto py-1.5">
+        {sections.map((entry) => {
+          const isActive = entry.id === activeId;
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={() => onSelect(entry.id)}
+              // The title is the whole reason a number is enough — hover names the section, so
+              // the rail stays legible without costing the document any width.
+              title={entry.section.title}
+              aria-label={`Go to ${entry.section.title}`}
+              aria-current={isActive ? "true" : undefined}
+              className={cn(
+                "flex h-7 w-full items-center justify-center font-mono text-[10px] font-semibold tracking-[1px] transition",
+                isActive
+                  ? "bg-[var(--surface-brand)] text-[var(--brand-700)]"
+                  : "text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
+                // A hidden block still gets a rail slot — it is part of the document's structure
+                // and you need to be able to reach it to turn it back on.
+                entry.section.isVisible === false ? "opacity-40" : null,
+              )}
+            >
+              {String(entry.order).padStart(2, "0")}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
