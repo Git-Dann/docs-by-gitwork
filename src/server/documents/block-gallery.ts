@@ -709,14 +709,20 @@ export const BLOCK_GALLERY_PHASES: TimelinePhaseInput[] = [
 /**
  * The gallery as sections, in order.
  *
- * `description` is the block's registry key on purpose — it is what the outline shows, and it is
- * how you get from "this looks wrong" to the file that draws it.
+ * ⚠️ `description` used to be the block's registry key, as a trace affordance — "this looks wrong"
+ * → the file that draws it. It was the wrong field for that: `description` is USER-FACING, rendered
+ * as the subtitle of the block's editor panel, so every block in the gallery opened with a stray
+ * lowercase `cover` / `costing` / `faq` sitting above its first control. A debugging convenience
+ * that only a builder wanted, shown in the place a reader looks first.
+ *
+ * The block's identity is already on screen without it — the panel header reads `NN // BLOCK` with
+ * the type in mono caps on the right — so nothing was lost by dropping it. If a key→file trace is
+ * wanted again, put it somewhere a builder looks and a user does not.
  */
 export function buildBlockGallery(): ProposalSection[] {
   return ENTRIES.map((entry, index) => ({
     key: entry.key,
     title: entry.title,
-    description: entry.key,
     sortOrder: index,
     isVisible: true,
     data: entry.data,

@@ -1,13 +1,11 @@
 "use client";
 
-import { BookmarkIcon, PlusIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { useState, type ReactNode } from "react";
 import { ProposalSectionEditor } from "@/components/proposals/proposal-section-editor";
 import { SpeakerNotesField } from "@/components/proposals/speaker-notes-field";
 import { Button } from "@/components/ui/button";
-import { Modal } from "@/components/ui/modal";
 import { apiFetch } from "@/lib/api";
-import { useCreateSnippet } from "@/hooks/use-snippets";
 import { usePermissions } from "@/hooks/use-permissions";
 import { SECTION_REGISTRY } from "@/lib/sections/registry";
 import type {
@@ -38,10 +36,7 @@ export function ProposalBuilderPanel({
    *  copy inside the block group. Default true keeps every other embedded caller unchanged. */
   withSpeakerNotes?: boolean;
 }) {
-  const createSnippet = useCreateSnippet();
   const { canGenerateAi } = usePermissions(); // per-section "Expand with AI" spends tokens
-  const [snippetOpen, setSnippetOpen] = useState(false);
-  const [snippetName, setSnippetName] = useState("");
 
   const activeEntry = sections.find((entry) => entry.id === activeId) ?? sections[0];
   const activeSection = activeEntry?.section;
@@ -243,18 +238,6 @@ export function ProposalBuilderPanel({
                 onApplied={onProposalChange}
               />
             ) : null}
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              leadingIcon={<BookmarkIcon className="h-4 w-4" />}
-              onClick={() => {
-                setSnippetName(activeSection.title);
-                setSnippetOpen(true);
-              }}
-            >
-              Save as snippet
-            </Button>
             {headerAction}
           </div>
         </div>
@@ -279,19 +262,6 @@ export function ProposalBuilderPanel({
                   onApplied={onProposalChange}
                 />
               ) : null}
-              <Button
-                type="button"
-                variant="secondary"
-                size="icon-md"
-                aria-label="Save as snippet"
-                title="Save as snippet"
-                onClick={() => {
-                  setSnippetName(activeSection.title);
-                  setSnippetOpen(true);
-                }}
-              >
-                <BookmarkIcon className="h-4 w-4" />
-              </Button>
               {headerAction}
             </div>
           </div>
@@ -311,50 +281,6 @@ export function ProposalBuilderPanel({
         </div>
       )}
 
-      <Modal
-        open={snippetOpen}
-        onClose={() => setSnippetOpen(false)}
-        title="SAVE AS SNIPPET"
-        panelClassName="w-full max-w-md"
-      >
-        <div className="space-y-4 p-6">
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-[var(--text-2)]">Snippet name</span>
-            <input
-              value={snippetName}
-              onChange={(e) => setSnippetName(e.target.value)}
-              className="app-input"
-              placeholder="e.g. Standard payment terms"
-            />
-          </label>
-          <p className="text-xs leading-5 text-[var(--text-3)]">
-            Saves this {sectionType?.displayName ?? "section"}&rsquo;s content to your library so you can
-            drop it into any document from the Add-block panel.
-          </p>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" size="md" onClick={() => setSnippetOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              size="md"
-              loading={createSnippet.isPending}
-              disabled={!snippetName.trim()}
-              onClick={async () => {
-                await createSnippet.mutateAsync({
-                  name: snippetName.trim(),
-                  sectionKey: activeSection.key,
-                  data: activeSection.data,
-                });
-                setSnippetOpen(false);
-              }}
-            >
-              Save snippet
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </Wrapper>
   );
 }

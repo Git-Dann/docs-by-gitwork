@@ -4,7 +4,15 @@ import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import { useClientList } from "@/hooks/use-proposals";
 import { ImagePicker } from "@/components/ui/image-picker";
 import { LogoQuickSwap } from "@/components/ui/logo-quick-swap";
-import type { CoverSectionData } from "@/types/proposal";
+import { CoverDetailStrip } from "@/components/proposals/cover-detail-strip";
+import {
+  COVER_ELEMENTS,
+  coverElementEmpty,
+  coverElementVisible,
+  type CoverDetailContext,
+  type CoverElementContext,
+} from "@/lib/sections/cover-elements";
+import type { CoverElementId, CoverSectionData } from "@/types/proposal";
 
 export function CoverEditor({
   value,
@@ -18,6 +26,10 @@ export function CoverEditor({
   linkedClientName,
   linkedClientId,
   onLinkClient,
+  contentsPreview,
+  elementContext,
+  detailValues,
+  partiesEditor,
 }: {
   value: CoverSectionData;
   onChange: (value: CoverSectionData) => void;
@@ -37,6 +49,16 @@ export function CoverEditor({
   linkedClientId?: string | null;
   /** Link/unlink the document to a real Portal client. clientId null → unlink (prospect). */
   onLinkClient?: (clientId: string | null, clientName: string) => void;
+  /** The block titles the contents list WOULD show — derived, passed in so the toggle can say
+   *  how many and name the first few rather than being an unexplained switch. */
+  contentsPreview?: { number: number; title: string }[];
+  /** Everything the element resolvers need — gathered by `cover.tsx`, which can see the document. */
+  elementContext: CoverElementContext;
+  /** Live values for the detail-strip preview, so each row shows what it will actually print. */
+  detailValues: CoverDetailContext;
+  /** The Parties block's own editor, rendered inline here. The data stays in that block — this
+   *  panel edits it in place, the same way the executive summary edits the Introduction. */
+  partiesEditor?: React.ReactNode;
 }) {
   const brandingQuery = useWorkspaceBranding();
   const branding = brandingQuery.data;
@@ -49,6 +71,103 @@ export function CoverEditor({
       : branding?.defaultConfidentialityInternal) ||
     value.confidentiality ||
     "";
+
+  /** Write an explicit on/off. Explicit always beats the default, so a choice sticks. */
+  const setElement = (id: CoverElementId, on: boolean) =>
+    onChange({ ...value, elements: { ...(value.elements ?? {}), [id]: on } });
+
+  /**
+   * The controls belonging to one element, shown under its own toggle.
+   *
+   * ⚠️ A function CALLED into the tree (`renderElementBody(id)`), never a component rendered as
+   * `<ElementBody id={id} />`. Defining a component inside another component gives it a new
+   * identity on every render, so React unmounts and remounts its subtree — which drops focus out
+   * of a text field on the keystroke after the one you typed. Calling it just inlines the JSX.
+   */
+  const renderElementBody = (id: CoverElementId): React.ReactNode => {
+    switch (id) {
+      case "executiveSummary":
+        return onExecutiveSummaryChange ? (
+          <Body>
+            <textarea
+              value={executiveSummary ?? ""}
+              onChange={(event) => onExecutiveSummaryChange(event.target.value)}
+              rows={4}
+              aria-label="Executive summary"
+              placeholder="The lead paragraph shown on the cover…"
+              className="app-input min-h-[96px] resize-y leading-6"
+            />
+            {executiveSummaryLinkedToIntro ? (
+              <Hint>Shared with the Introduction section — editing here edits that block.</Hint>
+            ) : null}
+          </Body>
+        ) : null;
+
+      case "covers":
+        // Stored as a string[] and split/joined raw, so a newline you just typed survives; the
+        // cover trims and drops blanks at render.
+        return (
+          <Body>
+            <textarea
+              value={(value.covers ?? []).join("\n")}
+              onChange={(event) => onChange({ ...value, covers: event.target.value.split("\n") })}
+              rows={3}
+              aria-label="Covers"
+              placeholder={"One per line, e.g.\nThe Matchmaker UK platform\nShuffle Love (in formation)"}
+              className="app-input min-h-[76px] resize-y leading-6"
+            />
+          </Body>
+        );
+
+      case "contents":
+        return (
+          <Body>
+            <Hint>
+              {contentsPreview?.length
+                ? `${contentsPreview.length} blocks — ${contentsPreview
+                    .slice(0, 3)
+                    .map((entry) => entry.title)
+                    .join(", ")}${contentsPreview.length > 3 ? ", …" : ""}. Follows the document, so renaming a block updates it.`
+                : "Nothing to list yet — add some blocks."}
+            </Hint>
+          </Body>
+        );
+
+      case "parties":
+        return partiesEditor ? <Body>{partiesEditor}</Body> : null;
+
+      case "confidentiality":
+        return (
+          <Body>
+            <select
+              value={confidentialityMode}
+              aria-label="Confidentiality"
+              onChange={(event) => {
+                const nextMode = event.target.value as CoverSectionData["confidentialityMode"];
+                const fromBranding =
+                  nextMode === "EXTERNAL"
+                    ? branding?.defaultConfidentialityExternal
+                    : branding?.defaultConfidentialityInternal;
+                onChange({
+                  ...value,
+                  confidentialityMode: nextMode,
+                  confidentiality: fromBranding || value.confidentiality || "",
+                });
+              }}
+              className="app-select w-full"
+            >
+              <option value="INTERNAL">Internal</option>
+              <option value="EXTERNAL">External</option>
+            </select>
+            {confidentialityText ? <Hint>{confidentialityText}</Hint> : null}
+          </Body>
+        );
+
+      // Stats have no controls of their own — the numbers come from the document.
+      case "stats":
+        return null;
+    }
+  };
 
   const clientLogoOverride = (value.clientLogoUrl ?? "").trim();
   const inheritsPortalLogo = !clientLogoOverride && Boolean(linkedClientLogoUrl);
@@ -109,42 +228,17 @@ export function CoverEditor({
       {/* Cover style control removed: there are only two document themes now (Gitwork / Foundry),
           chosen with the theme toggle in the editor header. The cover derives its look from that. */}
 
-      {/* Document meta — stacked single column. */}
+      {/* ── Document ────────────────────────────────────────────────────────────────────
+          The things that are true of every cover, whatever else is switched on. `Prepared by` and
+          `Date` live HERE even though they also appear as detail-strip rows: a strip row shows the
+          document's value read-only, so without these there would be no way to change it. */}
       <div className="space-y-4">
-        {onExecutiveSummaryChange ? (
-          <Field label="Executive summary">
-            <textarea
-              value={executiveSummary ?? ""}
-              onChange={(event) => onExecutiveSummaryChange(event.target.value)}
-              rows={4}
-              placeholder="The lead paragraph shown on the cover…"
-              className="app-input min-h-[96px] resize-y leading-6"
-            />
-            <span className="mt-1.5 block text-xs leading-5 text-[var(--text-4)]">
-              Shown as the cover&rsquo;s lead paragraph.
-              {executiveSummaryLinkedToIntro
-                ? " Shared with the Introduction section."
-                : null}
-            </span>
-          </Field>
-        ) : null}
-        {/* The cover's `COVERS · … · …` scope strip. One entry per line — stored as a string[] and
-            split/joined raw (no per-keystroke filtering, so a newline you type survives); the cover
-            trims and drops blanks at render, and omits the strip when nothing is left. */}
-        <Field label="Covers">
-          <textarea
-            value={(value.covers ?? []).join("\n")}
-            onChange={(event) =>
-              onChange({ ...value, covers: event.target.value.split("\n") })
-            }
-            rows={3}
-            placeholder={"One per line, e.g.\nThe Matchmaker UK platform\nShuffle Love (in formation)"}
-            className="app-input min-h-[76px] resize-y leading-6"
+        <Field label="Product / project name">
+          <input
+            value={value.productName}
+            onChange={(event) => onChange({ ...value, productName: event.target.value })}
+            className="app-input"
           />
-          <span className="mt-1.5 block text-xs leading-5 text-[var(--text-4)]">
-            Shown on the cover as a single <span className="font-mono">COVERS</span> strip. Leave
-            blank to hide it.
-          </span>
         </Field>
         <Field label="Prepared by">
           <input
@@ -161,30 +255,72 @@ export function CoverEditor({
             className="app-input"
           />
         </Field>
-        <Field label="Confidentiality">
-          <select
-            value={confidentialityMode}
-            onChange={(event) => {
-              const nextMode = event.target.value as CoverSectionData["confidentialityMode"];
-              const fromBranding =
-                nextMode === "EXTERNAL"
-                  ? branding?.defaultConfidentialityExternal
-                  : branding?.defaultConfidentialityInternal;
-              onChange({
-                ...value,
-                confidentialityMode: nextMode,
-                confidentiality: fromBranding || value.confidentiality || "",
-              });
-            }}
-            className="app-select w-full"
-          >
-            <option value="INTERNAL">Internal</option>
-            <option value="EXTERNAL">External</option>
-          </select>
-          {confidentialityText ? (
-            <p className="mt-2 text-xs leading-5 text-[var(--text-4)]">{confidentialityText}</p>
-          ) : null}
-        </Field>
+      </div>
+
+      {/* ── On this cover ──────────────────────────────────────────────────────────────
+          One row per optional element, replacing five different implicit rules. Every element
+          states whether it is on, and separately whether it has anything to show — the old
+          behaviour conflated those, so an author could not tell "off" from "unfilled". */}
+      <div className="space-y-3">
+        <span className="block font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-4)]">
+          On this cover
+        </span>
+        <div className="space-y-1.5">
+          {COVER_ELEMENTS.map((element) => {
+            const on = coverElementVisible(element.id, value, elementContext);
+            const empty = coverElementEmpty(element.id, value, elementContext);
+            return (
+              <div
+                key={element.id}
+                className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)]"
+              >
+                <label className="flex cursor-pointer items-start gap-2.5 p-2.5">
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={(event) => setElement(element.id, event.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--brand-600)]"
+                  />
+                  {/* min-w-0 — a flex child's automatic minimum is its content, so without it the
+                      blurb pushes the row wider than the ~300px rail. */}
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="text-sm font-medium text-[var(--text-2)]">{element.label}</span>
+                      {element.ownedBy ? (
+                        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]">
+                          in {element.ownedBy}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="mt-0.5 block text-xs leading-5 text-[var(--text-4)]">
+                      {on && empty ? "On, but nothing to show yet." : element.blurb}
+                    </span>
+                  </span>
+                </label>
+
+                {/* The element's own controls, revealed where it lives rather than in a separate
+                    list somewhere else in the panel. */}
+                {on ? renderElementBody(element.id) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── The detail strip ───────────────────────────────────────────────────────────── */}
+      <div className="space-y-3">
+        <span className="block font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-4)]">
+          Detail strip
+        </span>
+        <CoverDetailStrip
+          rows={value.details}
+          onChange={(details) => onChange({ ...value, details })}
+          values={detailValues}
+        />
+        <p className="text-xs leading-5 text-[var(--text-4)]">
+          The row of details along the bottom of the cover. Picked rows follow the document; a
+          custom row is yours to type. A row with no value never prints.
+        </p>
       </div>
 
       <details className="app-subtle-panel overflow-hidden p-0">
@@ -195,14 +331,6 @@ export function CoverEditor({
           </span>
         </summary>
         <div className="space-y-5 px-4 pb-5">
-          <Field label="Product / project name">
-            <input
-              value={value.productName}
-              onChange={(event) => onChange({ ...value, productName: event.target.value })}
-              className="app-input"
-            />
-          </Field>
-
           <Field label="Cover lockup">
             <select
               value={value.brandLockup ?? "GITWORK"}
@@ -271,6 +399,15 @@ export function CoverEditor({
       </details>
     </div>
   );
+}
+
+/** The controls under an element's toggle — inset so they read as belonging to it. */
+function Body({ children }: { children: React.ReactNode }) {
+  return <div className="space-y-2 border-t border-[var(--border-2)] px-2.5 py-2.5">{children}</div>;
+}
+
+function Hint({ children }: { children: React.ReactNode }) {
+  return <p className="text-xs leading-5 text-[var(--text-4)]">{children}</p>;
 }
 
 /** A labelled field group — quiet label above its control(s), generous spacing for the narrow panel.

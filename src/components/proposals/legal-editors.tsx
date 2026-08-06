@@ -17,6 +17,7 @@
 
 import { PlusIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
+import { registeredPartyDetailLines } from "@/lib/gitwork";
 import {
   EmptyHint,
   FieldLabel,
@@ -155,7 +156,7 @@ export function PartiesEditor({
                     className="app-textarea"
                     rows={3}
                     placeholder={
-                      "a company registered in England and Wales under number 15756347\nwhose registered office is at 3rd Floor, Anchorage One, Salford Quays, M50 3YJ"
+                      registeredPartyDetailLines().join("\n")
                     }
                   />
                   <span className="block text-xs leading-5 text-[var(--text-4)]">

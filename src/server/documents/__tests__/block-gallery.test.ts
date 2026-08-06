@@ -127,9 +127,16 @@ describe("the gallery is a valid document", () => {
     expect(sections.every((section) => section.isVisible)).toBe(true);
   });
 
-  it("labels each section with its registry key, so a defect is traceable to a file", () => {
+  it("does not put the registry key in a user-facing field", () => {
+    // It used to: `description` was set to the key as a trace affordance ("this looks wrong" → the
+    // file that draws it). But `description` is rendered as the SUBTITLE of the block's editor
+    // panel, so every block in the gallery opened with a stray lowercase `cover` / `faq` sitting
+    // above its first control — a builder's convenience placed where a reader looks first.
+    //
+    // The block's identity is still on screen: the panel header reads `NN // BLOCK` with the type
+    // in mono caps. If a key→file trace is wanted again, it belongs somewhere only a builder looks.
     for (const section of sections) {
-      expect(section.description, section.title).toBe(section.key);
+      expect(section.description, section.title).not.toBe(section.key);
     }
   });
 

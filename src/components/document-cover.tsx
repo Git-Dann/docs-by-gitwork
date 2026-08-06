@@ -142,6 +142,14 @@ export interface DocumentCoverProps {
    */
   covers?: string[];
   /**
+   * Gitwork cover only: the `INSIDE` contents list — the document's own block titles, numbered.
+   *
+   * ⚠️ DERIVED by the caller from the live document (`coverContentsEntries`), never stored. A
+   * contents list that disagrees with the document is worse than none, because a reader trusts it.
+   * Empty/absent → the block is not rendered at all.
+   */
+  contents?: { number: number; title: string }[];
+  /**
    * The parties bound by the document (contracts). When present, the cover's ONE bottom strip
    * renders party columns INSTEAD of the `meta` grid, and the executive summary / stat tiles are
    * dropped — a contract front page leads with who is bound, not with delivery metrics. Layout
@@ -367,6 +375,7 @@ export function DocumentCover({
   classification,
   companyFooter,
   covers,
+  contents,
   parties,
   docTheme = "gitwork",
 }: DocumentCoverProps) {
@@ -591,6 +600,73 @@ export function DocumentCover({
 
           {/* Breathing space above the title. Grows to fill the sheet; floors out on a dense cover. */}
           <div aria-hidden="true" style={{ flex: "1.4 1 auto", minHeight: isPrint ? 40 : 20 }} />
+
+          {/* ── INSIDE — the contents list ───────────────────────────────────────────────────
+              Above the title on purpose: it is what the reader scans for before deciding to read,
+              and the title block is already anchored to the bottom third of the sheet.
+
+              Numbers are mono in the accent, titles are Inter, rows separated by a hairline —
+              the house `NN //` grammar without the slashes, which would fight the numbering.
+              `minimal` drops it along with the other optional blocks. */}
+          {!minimal && contents?.length ? (
+            <div style={{ position: "relative", zIndex: 1, marginBottom: isPrint ? 44 : 30 }}>
+              <div
+                style={{
+                  fontFamily: gMono,
+                  fontSize: 9.5,
+                  fontWeight: 600,
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase",
+                  color: muted,
+                  marginBottom: 10,
+                }}
+              >
+                Inside
+              </div>
+              <div style={{ borderTop: `1px solid ${line}` }}>
+                {contents.map((entry) => (
+                  <div
+                    key={entry.number}
+                    style={{
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: 18,
+                      padding: isPrint ? "9px 0" : "7px 0",
+                      borderBottom: `1px solid ${line}`,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: gMono,
+                        fontSize: 9.5,
+                        fontWeight: 600,
+                        letterSpacing: "0.1em",
+                        color: accent,
+                        // Fixed width so the titles align down the page regardless of 01 vs 10.
+                        flex: "0 0 auto",
+                        minWidth: 18,
+                      }}
+                    >
+                      {String(entry.number).padStart(2, "0")}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: gSans,
+                        fontSize: isPrint ? 13 : 12.5,
+                        lineHeight: 1.4,
+                        color: ink,
+                        // A long block title wraps under itself rather than pushing the row wide —
+                        // `min-width: 0` because a flex child's automatic minimum is its content.
+                        minWidth: 0,
+                      }}
+                    >
+                      {entry.title}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {/* Accent bar + title + subtitle. */}
           <div style={{ position: "relative", zIndex: 1 }}>

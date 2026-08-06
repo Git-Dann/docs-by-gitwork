@@ -2920,3 +2920,172 @@ and those pages are public so they can actually be verified in a browser.
 `useSearchParams()` added without a Suspense boundary passed tsc, lint, tests and
 `audit:ui`, then broke the production build. **Run `npx next build` before pushing
 anything that touches a page or its client hooks.**
+
+## 41. Recent Changes (August 2026) — The Docs architecture review (Routes A–C) + the renderer's ceiling
+
+Prompted by Dan's read of the Docs editor: *"nothing necessarily… it just doesn't feel optimised.
+The layouts feels tight and slow… something just feels off and outdated."* Not a missing feature —
+three separate complaints, each of which turned out to be measurable. Three PRs, all merged:
+**#544** (layout + performance), **#545** (the text engine), **#546** (the editing model + the
+renderer). One follow-up open at the time of writing (**#547**).
+
+### 41.1 "Tight" — the canvas was rendering the document at 49–81% of A4
+
+The editor canvas is meant to show an A4 page. It was showing a squeezed one at every width below
+~1432px, and badly at the low end: **49% of A4 at 1024px**. The cause was the options rail's
+padding compounding with the canvas's own, so the page had nowhere to go.
+
+⚠️ **The first measurement of this was invalid, and the way it was invalid is worth knowing.**
+Tailwind only emits arbitrary classes it finds *in source*, so deleting `lg:pl-[268px]` removed it
+from the compiled CSS — and the "before" run then reported 100% everywhere, i.e. no bug. Each
+state has to be **built separately and measured against its own CSS**. An earlier claim in the
+plan that 1440 rendered at 95% was also wrong (double-counting the `sm:p-6` the rail padding
+replaces); it was already 100%, and the real defect is bounded below ~1432px.
+
+Route A also **kept the outline** rather than merging it into the options rail — the first plan
+proposed merging them, and Dan pushed back: you would lose the outline exactly when you need it.
+It collapses to a slim numbered strip instead; the options panel is the one that overlays.
+
+### 41.2 "Slow" — three whole-document `JSON.stringify` per keystroke
+
+Per keystroke, on the whole document. Plus 38 dnd-kit rows re-rendering, and a `signature` memo in
+`paged-document.tsx` that re-ran the pagination on every render. Fixed by moving the dirty check
+**inside** the 900ms debounce, mounting the observers once with refs, and a stable-callback pattern.
+
+`updateDocument` also stopped doing `deleteMany` + `createMany` on every save. It now runs a plan
+(`src/server/documents/section-writes.ts`, pure and unit-tested) that updates what changed, creates
+what is new and deletes what is gone. ⚠️ It trusts an id **only when it names a row we already
+hold** — the editor mints `draft-section-<uuid>` for unsaved blocks — and compares payloads through
+`canonicalise` from `provenance/digest`, because jsonb does not preserve key order and a naive
+compare would rewrite every section on every save.
+
+### 41.3 "Outdated" — and the thing that was actually the ceiling
+
+The text layer was hand-rolled regex over a `<textarea>` (45 fields showing literal `**asterisks**`)
+and a `contentEditable` driven by `document.execCommand` (5 fields). Route B replaced both with
+TipTap/ProseMirror behind **one** component, `src/lib/sections/rich-text-field.tsx`, a drop-in for
+both outgoing substrates.
+
+**Markdown stays the stored format.** 19 files render it back out, so the seam
+(`src/lib/sections/markdown-doc.ts`) has to round-trip byte-for-byte. The contract
+(`markdown-roundtrip.test.tsx` + `markdown-corpus.ts`) was written **against the old engine first**,
+precisely so the replacement could be held to it rather than to whatever it happened to do.
+
+**But the editor was never the limit — the renderer was.** `renderLines` (`src/lib/markdown.tsx`)
+understood a paragraph, a **flat** bullet list and the inline marks in `INLINE_RE`. Measured:
+`1. One` → `<span>1. One</span>`; `- a\n  - nested` → one flat `<ul>`. So Route B had to *clamp the
+editor's schema* to match, and the toolbar stayed at five verbs — a button that writes syntax the
+renderer cannot draw ships a literal `1.` onto a client's proposal.
+
+#### The rule that follows, and it is permanent
+
+**The editor's schema may never be wider than what `renderLines` can draw.** `markdown-doc.test.ts`
+is the tripwire. Headings, blockquotes, code blocks and horizontal rules are still out — a heading
+*inside* a prose block competes with the document's own section headings and `NN` numbering, which
+is a layout decision, not a renderer gap.
+
+⚠️ **Removing a node from the schema is not enough.** markdown-it still EMITS its tokens and
+prosemirror-markdown **throws** on an unmapped one, so the first cut meant any stored document
+containing `## x`, `> x`, a fence or `![alt](url)` **crashed the editor on open** — strictly worse
+than the literal syntax it was preventing. The rules are `.disable()`d at source now, so the tokens
+never appear and each construct degrades exactly as the renderer already draws it.
+
+### 41.4 The renderer learned ordered and nested lists (#546)
+
+Mostly deletion: `parseListLine` → `buildListTree` → `renderListTree` already existed 180 lines up
+the same file and already handled ordered lists and unlimited nesting. `renderLines` had its own
+accumulator that threw the indentation away.
+
+**Parsing and nesting now live in `src/lib/markdown-lists.ts`** — framework-free, imported by both
+the client renderer and `document-to-html.ts`. They had genuinely drifted: the Drive backup emitted
+`<ol>` while the page drew literal text, so the same list was a real ordered list in the client's
+Drive copy and a numbered paragraph on the page they read. It also tested all-bullets **or**
+all-numbers, so a nested list of a different kind from its parent fell through to a paragraph with
+markers showing. `renderer-agreement.test.tsx` holds both to the same tag sequence over the corpus.
+
+⚠️ **A live data-mangling bug shipped in #545 and was found by this work.** `ordered_list` had no
+`getAttrs`, so markdown-it's `start` was never read: open a document containing `100. Item`, type
+one character in that field, and the autosave wrote back `1. Item`. The author's number, gone.
+It was invisible because ordered lists rendered as literal text, and **#545's own round-trip test
+could not catch it** — its only ordered-list fixture was `1. One\n2. Two`, which passes whether or
+not `start` is read. **A fixture that cannot distinguish the bug from the fix is not covering it.**
+
+⚠️ **The near-miss:** `renderListTree` applied `text-[var(--text-2)]` to the top-level list —
+correct for block Markdown, wrong for a document field, which never had a colour on its lists.
+Routing fields through it would have changed the colour of **every bullet in every existing
+document**, as a side effect of adding ordered lists. The scale is a caller option now, with a test
+asserting the bullet classes did *not* change.
+
+**Two changes are visible on documents clients already hold**, both intended: a sent proposal
+containing `1. One` now renders as a real ordered list on its public view, and taller lists mean
+`packPages` can add a page.
+
+### 41.5 Things that generalise
+
+- **`/app` is auth-gated with no staging, so none of this was visually verified pre-merge.** The
+  technique that helps: server-render a gated component with `renderToStaticMarkup` inside the real
+  providers, wrap it in the compiled CSS and screenshot it (§39.1). It does not run effects, but it
+  checks real geometry — it is how two layout bugs in the badge studio were caught.
+- **Prove tests discriminate by breaking things on purpose.** Every claim in #546 was checked that
+  way: dropping the ordered branch fails 2, stripping the indent 3, dropping `start` 1, flushing a
+  flat list 5, re-hardcoding the scale 1, reverting the server renderer 9 agreement cases.
+- **Comments get the same treatment.** Two in this work were confidently wrong and only found by
+  deleting the thing they described: `breaks: true` was documented as essential to preserving a
+  single newline and removing it failed *nothing* (the `softbreak → hardBreak` mapping is what
+  carries it), and a `lastEmitted` echo-guard was described as protecting the caret when the
+  `focused` check does that. **If deleting the code changes no test, the comment claiming it is
+  load-bearing is wrong.**
+- **jsdom does not drive ProseMirror's text-input path.** A test that "types" a slash asserts
+  against its own simulation. Toolbar commands are a real code path and work; typing does not.
+  Where a rule cannot be driven, export the predicate and assert it directly (`isBlockMenuTrigger`).
+
+### 41.6 Cover contents, and Gitwork's identity (#547)
+
+The cover can show an **`INSIDE` contents list** — the document's own block titles, numbered.
+On by default for `PROPOSAL`, off for other types; an explicit `showContents` always wins.
+
+⚠️ **Derived at render, never stored** (`src/lib/sections/cover-contents.ts`). A stored copy would
+be correct exactly once — rename, add, hide or reorder a block and the cover would advertise the old
+contents to a client. Deliberately the **opposite** call from `Countermark` (§38) and
+`OnboardingForm` (§16), which snapshot, and for the opposite reason: those record what was true at a
+moment, this describes the page it is printed on. Hiding a block **renumbers** rather than leaving
+`01, 02, 04`, which reads as a missing page to the one audience a cover is for.
+
+**Gitwork's company details now live in `src/lib/gitwork.ts` and nowhere else.** They were
+hard-coded at **eight sites in three formats** — the NDA template's contractual preamble, the cover
+letterhead, the portal footer, the parties editor, the demo data. Same failure mode as the
+model-name literals in §31.
+
+⚠️ **They had already drifted: three different registered-office addresses were live** — one
+dropping "Anchorage Quay", one adding "Manchester". The NDA template's form is canonical, being the
+wording inside an actual contract rather than a page decoration; the letterhead keeps a shorter form
+deliberately (fixed-width mono strip), and a test asserts that difference is intentional.
+`gitwork-identity.test.ts` sweeps source for the company and VAT numbers and **fails naming any file
+carrying a copy** — it found three sites a hand grep had missed.
+
+**MCP tool descriptions now state which Markdown subset renders.** No MCP route needed changing for
+any of the above — `update_document` calls the same `updateDocument` as the editor — but the tool
+never said what a text field supports, and the builder's own toolbar *cannot* write a heading. So
+**MCP was the one way into the product that could ship a literal `## Scope of work` onto a client's
+document, silently.** Keep `MARKDOWN_SUBSET` in step with `docExtensions`; a stale allow-list there
+is worse than none, because an agent will believe it.
+
+Also: `buildBlockGallery` wrote the registry key into `description` as a key→file trace affordance,
+and `description` is rendered as the **subtitle of the block's editor panel** — so every gallery
+block opened with a stray lowercase `cover` / `faq` above its first control. A builder's convenience
+in the place a reader looks first. **"Save as snippet"** was removed from the block panel (the
+`/api/snippets` route and library are untouched, so it is reversible).
+
+### 41.7 Known gaps
+
+- **Canvas drag-to-reorder is deliberately not built.** Reordering re-paginates, so a dragged block
+  can jump to another page mid-gesture — the same churn class as the drifting-caret bug — and the
+  outline rail already does it reliably. Hardest part of Route C for the least new capability.
+- **Short-label fields are still the old `InlineTextArea`.** Route B's scope was prose fields; those
+  45 fields still show literal `**asterisks**`. The Numbered-list command correctly stays inert on
+  them (a field only lights the commands it declares).
+- **There is a FOURTH Markdown renderer** — `src/components/clients/wiki/wiki-page-editor.tsx`,
+  using `dangerouslySetInnerHTML`. It escapes `& < >` up front so it is not obviously unsafe, but
+  the client intake API (§40.1) writes into that surface and nothing holds it to the other three.
+- **The cover editor still shows every field always.** Making fields addable/removable — across all
+  blocks, not just the cover — is an open design question, not a coded decision.
