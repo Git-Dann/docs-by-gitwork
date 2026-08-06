@@ -14,7 +14,13 @@ import { GITWORK, letterheadLines } from "@/lib/gitwork";
 import { defineSection } from "@/lib/sections/types";
 import type { SignatureBlockLike } from "@/lib/sections/parties-text";
 import { coverPartiesFromSignatures, toCoverParties } from "@/lib/sections/parties-text";
-import { coverContentsEnabled, coverContentsEntries } from "@/lib/sections/cover-contents";
+import { coverContentsEntries } from "@/lib/sections/cover-contents";
+import {
+  coverElementVisible,
+  resolveCoverDetails,
+  type CoverDetailContext,
+  type CoverElementContext,
+} from "@/lib/sections/cover-elements";
 import { approvalTrackApplies } from "@/lib/templates";
 import { DEFAULT_DOC_THEME } from "@/types/proposal";
 import type { CoverSectionData, DocumentType, PartyItem, ProposalSection } from "@/types/proposal";
@@ -122,6 +128,40 @@ export const coverSection = defineSection<CoverSectionData>({
       }
     };
 
+    // The same inputs the Preview resolves, so the panel's toggles agree with the page. Parties
+    // are read (not owned) here — exactly as the Preview reads them — because the data lives in
+    // the `parties` block; see the Preview's note.
+    const partiesForCtx = (
+      proposal.sections.find((s) => s.key === "parties" && s.isVisible)?.data as
+        | { parties?: PartyItem[] }
+        | undefined
+    )?.parties;
+    const signaturesForCtx = (
+      proposal.sections.find((s) => s.key === "signatures" && s.isVisible)?.data as
+        | { blocks?: SignatureBlockLike[] }
+        | undefined
+    )?.blocks;
+    const hasParties =
+      toCoverParties(partiesForCtx ?? []).length > 0 ||
+      coverPartiesFromSignatures(signaturesForCtx ?? []).length > 0;
+
+    const elementContext: CoverElementContext = {
+      documentType: proposal.documentType,
+      sections: proposal.sections,
+      executiveSummary,
+      hasParties,
+      confidentiality: data.confidentiality,
+    };
+
+    const detailValues: CoverDetailContext = {
+      client: proposal.clientName ?? proposal.metadata.client ?? undefined,
+      preparedBy: proposal.metadata.owner || undefined,
+      date: data.date || undefined,
+      version: proposal.version || undefined,
+      status: statusLabelForCover(proposal.status),
+      documentNumber: proposal.documentNumber ?? undefined,
+    };
+
     return (
     <CoverEditor
       value={data}
@@ -136,8 +176,9 @@ export const coverSection = defineSection<CoverSectionData>({
       executiveSummary={executiveSummary}
       onExecutiveSummaryChange={handleExecutiveSummaryChange}
       executiveSummaryLinkedToIntro={summaryTarget === "intro"}
-      documentType={proposal.documentType}
       contentsPreview={coverContentsEntries(proposal.sections)}
+      elementContext={elementContext}
+      detailValues={detailValues}
       linkedClientLogoUrl={proposal.linkedClientLogoUrl ?? undefined}
       linkedClientName={proposal.clientName ?? proposal.metadata.client ?? undefined}
       linkedClientId={proposal.clientId ?? null}
@@ -281,11 +322,6 @@ export const coverSection = defineSection<CoverSectionData>({
         }).format(grandTotal)
       : "—";
 
-    const meta: Array<{ label: string; value: string }> = [];
-    if (clientName && clientName !== "Client") meta.push({ label: "Client", value: clientName });
-    if (authorLine) meta.push({ label: "Prepared by", value: authorLine });
-    meta.push({ label: "Date", value: prettyPrepared });
-    if (proposal.version) meta.push({ label: "Version", value: proposal.version });
 
     // Contract-style documents (NDA / MSA / SLA / DSA) carry a Parties block — surface it on the
     // cover, which then leads with who is bound instead of the meta grid / stat strip. No visible
@@ -323,6 +359,31 @@ export const coverSection = defineSection<CoverSectionData>({
       coverSubtitle ||
       "";
 
+    // ── What is on this cover ───────────────────────────────────────────────────────────
+    // One resolver for every optional element, replacing five different implicit rules. See
+    // `cover-elements.ts`; the author's explicit choice always wins over the per-type default.
+    const elementCtx: CoverElementContext = {
+      documentType: proposal.documentType,
+      sections: proposal.sections,
+      executiveSummary: summary,
+      hasParties: coverParties.length > 0,
+      confidentiality: confidentialityText,
+    };
+    const showElement = (id: Parameters<typeof coverElementVisible>[0]) =>
+      coverElementVisible(id, data, elementCtx);
+
+    // The bottom detail strip, composed by the author. `data.details === undefined` means "never
+    // edited" and resolves to the exact four rows the strip was hard-coded to, so an untouched
+    // document — including one already sent to a client — is unchanged.
+    const meta = resolveCoverDetails(data.details, {
+      client: clientName && clientName !== "Client" ? clientName : undefined,
+      preparedBy: authorLine,
+      date: prettyPrepared,
+      version: proposal.version || undefined,
+      status: statusLabelForCover(proposal.status),
+      documentNumber: proposal.documentNumber ?? undefined,
+    });
+
     // Lightweight docs (handover, report, brief, blank) live in DRAFT until shared — they have no
     // review track, so the "DRAFT" watermark is misleading on a finished doc. Suppress it there;
     // keep the SENT / ARCHIVED watermarks for everyone.
@@ -358,7 +419,7 @@ export const coverSection = defineSection<CoverSectionData>({
           // sense for proposals — lightweight docs (handover, report, brief, blank) get a clean
           // cover with no zeroed-out metrics.
           stats={
-            proposal.documentType === "PROPOSAL"
+            showElement("stats")
               ? [
                   { count: visibleSections, label: "Sections" },
                   { count: phasesCount, label: "Phases" },
@@ -368,20 +429,20 @@ export const coverSection = defineSection<CoverSectionData>({
                 ]
               : undefined
           }
-          executiveSummary={summary || undefined}
-          callout={confidentialityText ? { text: confidentialityText, tone: "neutral" } : undefined}
-          dated={prettyPrepared}
-          classification={classification}
-          covers={coversStrip.length ? coversStrip : undefined}
-          // Derived from the LIVE document every render — never stored. Rename a block and the
-          // contents entry follows it, with no save and nothing to keep in sync.
-          contents={
-            coverContentsEnabled(data.showContents, proposal.documentType)
-              ? coverContentsEntries(proposal.sections)
+          executiveSummary={showElement("executiveSummary") ? summary || undefined : undefined}
+          callout={
+            showElement("confidentiality") && confidentialityText
+              ? { text: confidentialityText, tone: "neutral" }
               : undefined
           }
+          dated={prettyPrepared}
+          classification={classification}
+          covers={showElement("covers") && coversStrip.length ? coversStrip : undefined}
+          // Derived from the LIVE document every render — never stored. Rename a block and the
+          // contents entry follows it, with no save and nothing to keep in sync.
+          contents={showElement("contents") ? coverContentsEntries(proposal.sections) : undefined}
           companyFooter={companyFooter}
-          parties={coverParties.length ? coverParties : undefined}
+          parties={showElement("parties") && coverParties.length ? coverParties : undefined}
           logoUrl={brandLogoUrl}
           boldPalette="navy"
           coBrand={

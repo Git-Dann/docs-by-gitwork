@@ -91,6 +91,33 @@ export type AssetAlignment = "LEFT" | "CENTER" | "RIGHT" | "FULL";
 export type TimelineViewMode = "LIST" | "MILESTONE";
 export type AssignmentTimelineMode = "DEFAULT" | "MANUAL";
 
+/**
+ * The optional parts of a cover. The registry that gives each one a label, a default and an
+ * empty-check lives in `src/lib/sections/cover-elements.ts` — these ids are here because this is
+ * where the section data shapes live, and importing them back would invert the dependency.
+ */
+export type CoverElementId =
+  | "contents"
+  | "covers"
+  | "parties"
+  | "executiveSummary"
+  | "stats"
+  | "confidentiality";
+
+/** A detail-strip row whose value the document already knows — picked, never retyped. */
+export type CoverDetailSource =
+  | "client"
+  | "preparedBy"
+  | "date"
+  | "version"
+  | "status"
+  | "documentNumber";
+
+export type CoverDetailRow =
+  /** `label` overrides the source's own ("Prepared for" instead of "Client"). */
+  | { kind: "auto"; source: CoverDetailSource; label?: string }
+  | { kind: "custom"; label: string; value: string };
+
 export interface CoverSectionData {
   proposalTitle: string;
   productName: string;
@@ -118,15 +145,28 @@ export interface CoverSectionData {
    */
   covers?: string[];
   /**
-   * Show the cover's `INSIDE` contents list — the document's own block titles, numbered.
-   *
-   * ⚠️ A BOOLEAN, not the list. The entries are derived from the live document at render
-   * (`coverContentsEntries`), because a stored copy would be correct exactly once — rename, add,
-   * hide or reorder a block and the cover would advertise the old contents to a client.
-   *
-   * `undefined` → the per-document-type default (on for PROPOSAL). See `coverContentsEnabled`.
+   * @deprecated Superseded by `elements.contents`. **Kept and still read** as a fallback in
+   * `coverElementVisible` — documents saved while this was the only shape carry it, and dropping it
+   * would silently flip those covers back on. Write `elements` for anything new.
    */
   showContents?: boolean;
+  /**
+   * Per-element visibility overrides for the cover. Absent → each element's own default
+   * (`COVER_ELEMENTS` in `src/lib/sections/cover-elements.ts`).
+   *
+   * An explicit choice always wins, so turning something off sticks rather than being re-applied
+   * by the default on the next render.
+   */
+  elements?: Partial<Record<CoverElementId, boolean>>;
+  /**
+   * The cover's bottom detail strip, composed by the author — known sources (Client, Date, Status…)
+   * plus free label/value rows, in order.
+   *
+   * ⚠️ `undefined` means "never edited" and renders `DEFAULT_DETAIL_ROWS` — the exact strip every
+   * cover showed before it was composable. That is a back-compat contract: an untouched document,
+   * including one already sent to a client, must not change.
+   */
+  details?: CoverDetailRow[];
 }
 
 export interface IntroductionSectionData {
