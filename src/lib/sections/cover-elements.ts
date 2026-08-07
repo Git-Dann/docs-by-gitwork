@@ -67,7 +67,7 @@ export const COVER_ELEMENTS: CoverElementDef[] = [
   {
     id: "executiveSummary",
     label: "Executive summary",
-    blurb: "The lead paragraph under the title.",
+    blurb: "Lead paragraph under the title.",
     ownedBy: "introduction",
     // Always on where there is one — it is the cover's only prose and was never optional before.
     defaultOn: () => true,
@@ -76,7 +76,7 @@ export const COVER_ELEMENTS: CoverElementDef[] = [
   {
     id: "contents",
     label: "Contents list",
-    blurb: "A numbered INSIDE list of the document's own blocks.",
+    blurb: "Numbered list of the document's blocks.",
     // A proposal is read front to back and wants navigating; a one-page NDA listing its own
     // clauses on the front is noise. (This is #547's `coverContentsEnabled`, moved here so there
     // is ONE place a cover element's default lives.)
@@ -86,7 +86,7 @@ export const COVER_ELEMENTS: CoverElementDef[] = [
   {
     id: "covers",
     label: "Covers strip",
-    blurb: "A bordered one-line COVERS · … scope readout.",
+    blurb: "One-line scope readout.",
     // Historically implicit: on iff filled in. Preserved as a default so no existing cover moves.
     defaultOn: () => true,
     isEmpty: (data) => (data.covers ?? []).every((item) => !(item ?? "").trim()),
@@ -94,7 +94,7 @@ export const COVER_ELEMENTS: CoverElementDef[] = [
   {
     id: "parties",
     label: "Parties",
-    blurb: "Who is bound — replaces the detail strip on a contract.",
+    blurb: "Who is bound. Replaces the detail strip.",
     ownedBy: "parties",
     defaultOn: () => true,
     isEmpty: (_data, ctx) => !ctx.hasParties,
@@ -102,7 +102,7 @@ export const COVER_ELEMENTS: CoverElementDef[] = [
   {
     id: "stats",
     label: "Stat tiles",
-    blurb: "Sections · Phases · Touchpoints · Value.",
+    blurb: "Sections, phases, touchpoints, value.",
     // Lightweight docs get a clean cover rather than zeroed-out metrics — the existing rule.
     defaultOn: isProposal,
     isEmpty: () => false,
@@ -110,7 +110,7 @@ export const COVER_ELEMENTS: CoverElementDef[] = [
   {
     id: "confidentiality",
     label: "Confidentiality note",
-    blurb: "The classification sentence in the cover footer.",
+    blurb: "Classification line in the footer.",
     defaultOn: () => true,
     isEmpty: (_data, ctx) => !ctx.confidentiality?.trim(),
   },
