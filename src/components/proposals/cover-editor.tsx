@@ -31,6 +31,8 @@ export function CoverEditor({
   elementContext,
   detailValues,
   partiesEditor,
+  productName,
+  onProductNameChange,
 }: {
   value: CoverSectionData;
   onChange: (value: CoverSectionData) => void;
@@ -60,6 +62,9 @@ export function CoverEditor({
   /** The Parties block's own editor, rendered inline here. The data stays in that block — this
    *  panel edits it in place, the same way the executive summary edits the Introduction. */
   partiesEditor?: React.ReactNode;
+  /** The DOCUMENT's product/project name — the one the cover actually renders. */
+  productName?: string;
+  onProductNameChange?: (next: string) => void;
 }) {
   const brandingQuery = useWorkspaceBranding();
   const branding = brandingQuery.data;
@@ -231,10 +236,14 @@ export function CoverEditor({
           `Date` live HERE even though they also appear as detail-strip rows: a strip row shows the
           document's value read-only, so without these there would be no way to change it. */}
       <div className="space-y-4">
+        {/* ⚠️ Writes the DOCUMENT's `productName`, not the cover section's. There were two fields
+            with this exact label — this one and Document details — and this one wrote
+            `CoverSectionData.productName`, which nothing has ever rendered. You could type in it
+            all day and the cover never changed. */}
         <Field label="Product / project name">
           <input
-            value={value.productName}
-            onChange={(event) => onChange({ ...value, productName: event.target.value })}
+            value={productName ?? ""}
+            onChange={(event) => onProductNameChange?.(event.target.value)}
             className="app-input"
           />
         </Field>
