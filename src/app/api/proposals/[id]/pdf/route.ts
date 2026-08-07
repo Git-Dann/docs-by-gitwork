@@ -27,6 +27,7 @@
 
 import { NextRequest } from "next/server";
 import { apiError, fromError } from "@/lib/api-response";
+import { buildDocumentFilename } from "@/lib/document-filename";
 import { prisma } from "@/lib/prisma";
 import { originFrom } from "@/lib/request-origin";
 import { launchHeadlessBrowser } from "@/server/headless-browser";
@@ -46,7 +47,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const doc = await prisma.document.findFirst({
       where: { id },
-      select: { id: true, shareToken: true, isShared: true, title: true, documentNumber: true },
+      select: {
+        id: true,
+        shareToken: true,
+        isShared: true,
+        title: true,
+        clientName: true,
+        documentNumber: true,
+      },
     });
     if (!doc) return apiError("Document not found", 404);
     if (!doc.shareToken || !doc.isShared) {
@@ -77,7 +85,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         margin: { top: "0mm", bottom: "0mm", left: "0mm", right: "0mm" },
       });
 
-      const filename = `${doc.documentNumber ?? doc.title ?? "document"}.pdf`.replace(/[^\w.\-]+/g, "-");
+      const filename = `${buildDocumentFilename(doc)}.pdf`;
       return new Response(Buffer.from(pdf), {
         headers: {
           "Content-Type": "application/pdf",

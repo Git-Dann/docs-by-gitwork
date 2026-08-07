@@ -1733,8 +1733,14 @@ h2, h3, h4, h5 {
     box-shadow: none !important;
     border-radius: 0 !important;
     max-width: none !important;
-    /* One .doc-a4-page = exactly one physical A4 sheet. Clip any overflow (a rare block taller than
-       a page) so it can't bleed onto the next sheet. */
+    /* One .doc-a4-page = exactly one physical A4 sheet. `height` (not just the base rule's
+       `min-height`) is what makes `overflow: hidden` actually clip a block taller than a page —
+       with only `min-height` the box has no ceiling, so it simply grows past 297mm to fit its
+       content instead of clipping it. That tail (usually just the running footer, which sits last
+       in the flex column) then bleeds onto its OWN near-blank physical sheet once the forced
+       `break-after` fires after the oversized box finishes — a wasted page with a stray footer
+       floating alone at its top, not the invisible clip the comment above always claimed. */
+    height: 297mm;
     overflow: hidden;
     break-after: page;
     page-break-after: always;
