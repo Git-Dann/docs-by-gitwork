@@ -177,10 +177,15 @@ export const coverSection = defineSection<CoverSectionData>({
       onExecutiveSummaryChange={handleExecutiveSummaryChange}
       executiveSummaryLinkedToIntro={summaryTarget === "intro"}
       contentsPreview={coverContentsEntries(proposal.sections)}
+      productName={proposal.productName ?? ""}
+      onProductNameChange={(productName) => onProposalChange({ ...proposal, productName })}
       elementContext={elementContext}
       detailValues={detailValues}
       linkedClientLogoUrl={proposal.linkedClientLogoUrl ?? undefined}
-      linkedClientName={proposal.clientName ?? proposal.metadata.client ?? undefined}
+      // ⚠️ `||` not `??`, matching the cover's own resolution. `??` does not fall through an
+      // EMPTY STRING, so a cleared name showed blank in the field while the cover fell through to
+      // a stale one — the two disagreed about the same document.
+      linkedClientName={proposal.clientName || proposal.metadata.client || ""}
       linkedClientId={proposal.clientId ?? null}
       onLinkClient={(clientId, clientName) =>
         onProposalChange({
@@ -190,7 +195,25 @@ export const coverSection = defineSection<CoverSectionData>({
           // unlinked (a prospect typed by hand). It used to be forced to "" when unlinked, which
           // made a prospect name set at creation permanently uneditable (a typo was stuck forever).
           clientName,
-          metadata: { ...proposal.metadata, client: clientName || proposal.metadata.client },
+          // ⚠️ `clientName` verbatim, NOT `clientName || proposal.metadata.client`. That fallback
+          // meant unlinking a client cleared the field but LEFT the old name in metadata — and the
+          // cover's own resolution (`proposal.clientName || data.clientName || metadata.client`)
+          // fell straight through the now-empty values onto it. So the editor showed an empty
+          // client while the cover still printed the previous one, with no way to clear it.
+          metadata: { ...proposal.metadata, client: clientName },
+          // The cover section's own copy is a third place the same name can hide. Clear it too, or
+          // it becomes the next stale fallback.
+          sections: proposal.sections.map((entry) =>
+            entry.key === "cover"
+              ? {
+                  ...entry,
+                  data: {
+                    ...(entry.data as unknown as Record<string, unknown>),
+                    clientName: "",
+                  } as unknown as ProposalSection["data"],
+                }
+              : entry,
+          ),
         })
       }
     />
@@ -441,6 +464,7 @@ export const coverSection = defineSection<CoverSectionData>({
           // Derived from the LIVE document every render — never stored. Rename a block and the
           // contents entry follows it, with no save and nothing to keep in sync.
           contents={showElement("contents") ? coverContentsEntries(proposal.sections) : undefined}
+          productName={proposal.productName ?? undefined}
           companyFooter={companyFooter}
           parties={showElement("parties") && coverParties.length ? coverParties : undefined}
           logoUrl={brandLogoUrl}

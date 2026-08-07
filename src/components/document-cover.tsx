@@ -150,6 +150,14 @@ export interface DocumentCoverProps {
    */
   contents?: { number: number; title: string }[];
   /**
+   * The product / project this document is about, shown under the title.
+   *
+   * ⚠️ This is the DOCUMENT's `productName`, not the cover section's. The cover block carries a
+   * `productName` of its own that nothing has ever rendered — two fields, one label, one of them
+   * inert. The editor now writes this one.
+   */
+  productName?: string;
+  /**
    * The parties bound by the document (contracts). When present, the cover's ONE bottom strip
    * renders party columns INSTEAD of the `meta` grid, and the executive summary / stat tiles are
    * dropped — a contract front page leads with who is bound, not with delivery metrics. Layout
@@ -376,6 +384,7 @@ export function DocumentCover({
   companyFooter,
   covers,
   contents,
+  productName,
   parties,
   docTheme = "gitwork",
 }: DocumentCoverProps) {
@@ -727,6 +736,23 @@ export function DocumentCover({
               ) : (
                 <p style={{ margin: "18px 0 0", ...subtitleType, maxWidth: "58ch" }}>{subtitle}</p>
               )
+            ) : null}
+            {/* The product / project line. Mono caps so it reads as a label rather than competing
+                with the serif title above it. */}
+            {productName?.trim() ? (
+              <p
+                style={{
+                  margin: "10px 0 0",
+                  fontFamily: gMono,
+                  fontSize: 9.5,
+                  fontWeight: 600,
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase",
+                  color: muted,
+                }}
+              >
+                {productName.trim()}
+              </p>
             ) : null}
           </div>
 
