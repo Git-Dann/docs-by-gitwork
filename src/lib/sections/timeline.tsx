@@ -93,9 +93,11 @@ export const timelineSection = defineSection<TimelineSectionData>({
               <p className="text-base font-semibold text-[var(--text-1)]">{phase.name}</p>
               <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[var(--text-4)]">{phase.duration}</p>
               <p className="mt-3 text-sm leading-7 text-[var(--text-2)]">{phase.summary}</p>
-              <p className="mt-3 text-xs text-[var(--text-3)]">
-                Deliverables: {phase.deliverables.join(", ")}
-              </p>
+              {phase.deliverables.length ? (
+                <p className="mt-3 text-xs text-[var(--text-3)]">
+                  Deliverables: {phase.deliverables.join(", ")}
+                </p>
+              ) : null}
             </div>
           ))}
         </div>
@@ -113,9 +115,11 @@ export const timelineSection = defineSection<TimelineSectionData>({
               <p className="text-xs uppercase tracking-[0.12em] text-[var(--text-4)]">{phase.duration}</p>
             </div>
             <p className="mt-3 text-sm leading-7 text-[var(--text-2)]">{phase.summary}</p>
-            <p className="mt-3 text-xs text-[var(--text-3)]">
-              Deliverables: {phase.deliverables.join(", ")}
-            </p>
+            {phase.deliverables.length ? (
+              <p className="mt-3 text-xs text-[var(--text-3)]">
+                Deliverables: {phase.deliverables.join(", ")}
+              </p>
+            ) : null}
           </article>
         ))}
       </div>

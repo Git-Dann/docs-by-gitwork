@@ -162,7 +162,7 @@ export function TimelineEditor({
 
                     <label className="mt-3 block space-y-1.5">
                       <span className="text-sm font-medium text-[var(--text-2)]">
-                        Deliverables (comma separated)
+                        Deliverables (optional, comma separated)
                       </span>
                       <input
                         value={phase.deliverables.join(", ")}
