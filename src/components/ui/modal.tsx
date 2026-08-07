@@ -38,6 +38,16 @@ export function Modal({
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
 
+  // Most callers pass an inline/non-memoized `onClose` (a plain function declared in the parent's
+  // body), which gets a new identity on every render of that parent — including every keystroke
+  // inside the modal, since typing updates state in the same component that owns `onClose`. If the
+  // effect below depended on `onClose` directly, that meant it reran on every keystroke and re-ran
+  // its "focus the first focusable element" line too, yanking the caret out of whatever field the
+  // user was actually typing into and back onto the panel's first input. A ref keeps the effect
+  // keyed on `open` alone while `onKeyDown` still calls whatever `onClose` currently is.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
     restoreFocusRef.current = (document.activeElement as HTMLElement | null) ?? null;
@@ -49,7 +59,7 @@ export function Modal({
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key === "Tab" && panel) {
@@ -76,7 +86,7 @@ export function Modal({
       document.body.style.overflow = prevOverflow;
       restoreFocusRef.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

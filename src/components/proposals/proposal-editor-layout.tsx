@@ -377,7 +377,12 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const projectedOutline = sectionEntries.map((entry) => ({
     id: entry.id,
     order: entry.order,
-    title: entry.section.title,
+    // A blank outline row isn't a valid state to display — it reads as a broken block rather than
+    // an untitled one. AI-authored sections (written via the Foundry MCP `update_document` tool)
+    // don't always bother setting a title for a block whose type doesn't obviously need one (a
+    // callout, a signatures block), so fall back to the block type's own display name rather than
+    // showing nothing.
+    title: entry.section.title?.trim() || SECTION_REGISTRY[entry.section.key]?.displayName || "Untitled block",
     sectionKey: entry.section.key,
     isVisible: entry.section.isVisible !== false,
   }));
@@ -1819,7 +1824,9 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                     right={
                       <span className="flex min-w-0 items-center gap-1.5">
                         <span className="widget-header-right truncate">
-                          {optionsEntry.section.title}
+                          {optionsEntry.section.title?.trim() ||
+                            SECTION_REGISTRY[optionsEntry.section.key]?.displayName ||
+                            "Untitled block"}
                         </span>
                         <button
                           type="button"
