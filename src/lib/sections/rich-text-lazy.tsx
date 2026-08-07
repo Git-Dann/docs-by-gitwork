@@ -34,19 +34,24 @@ export function RichTextField(props: {
   style?: CSSProperties;
   ariaLabel?: string;
 }) {
+  // ⚠️ Same guard as `rich-text-field.tsx`, and needed independently here: this fallback renders
+  // synchronously, before the lazy chunk even arrives, so an unguarded `.trim()` on a genuinely
+  // `undefined` stored value (a field added after an older document was created) throws before the
+  // Suspense boundary has anything to catch.
+  const value = props.value ?? "";
   return (
     <Suspense
       fallback={
         <div className={props.className} style={props.style}>
-          {props.value.trim() ? (
-            renderLines(props.value, "rich-text-loading")
+          {value.trim() ? (
+            renderLines(value, "rich-text-loading")
           ) : (
             <span className="text-[var(--text-4)]">{props.placeholder ?? ""}</span>
           )}
         </div>
       }
     >
-      <Editor {...props} />
+      <Editor {...props} value={value} />
     </Suspense>
   );
 }

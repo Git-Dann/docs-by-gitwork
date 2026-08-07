@@ -52,7 +52,7 @@ const COMMANDS: ReadonlySet<FormatCommand> = new Set<FormatCommand>([
 ]);
 
 export function RichTextField({
-  value,
+  value: rawValue,
   onChange,
   placeholder,
   className,
@@ -68,6 +68,12 @@ export function RichTextField({
   style?: CSSProperties;
   ariaLabel?: string;
 }) {
+  // ⚠️ Typed as a required string, but a caller can hand this real, stored data for a field that
+  // did not exist when an older document was created — the type says `string`, the row says
+  // `undefined`. `InlineTextArea` (the plain <textarea> this replaces) tolerated that silently;
+  // `.trim()` below does not, and an uncaught throw here takes out the whole editor page, not just
+  // this field. Coerce once, at the top, rather than trusting every call site to guard it.
+  const value = rawValue ?? "";
   const formatId = useId();
   const { register, unregister } = useFormatTargetRegistration();
   // Null on the public, print and preview renders — so there is no slash menu there at all,
