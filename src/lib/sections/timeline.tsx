@@ -78,7 +78,7 @@ export const timelineSection = defineSection<TimelineSectionData>({
           {phases.map((phase, index) => (
             <div
               key={phase.id ?? phase.name}
-              className="proposal-block-avoid relative mt-4 rounded-[10px] border border-[var(--border-2)] p-4 first:mt-0"
+              className="proposal-block-avoid relative mt-4 rounded-[10px] border border-[var(--border-2)] bg-white p-4 first:mt-0"
             >
               {index < phases.length - 1 ? (
                 <span
@@ -106,7 +106,7 @@ export const timelineSection = defineSection<TimelineSectionData>({
         {phases.map((phase) => (
           <article
             key={phase.id ?? phase.name}
-            className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] p-4"
+            className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-white p-4"
           >
             <div className="flex items-center justify-between gap-2">
               <p className="text-base font-semibold text-[var(--text-1)]">{phase.name}</p>
