@@ -3,7 +3,6 @@
 import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import { useClientList } from "@/hooks/use-proposals";
 import { ImagePicker } from "@/components/ui/image-picker";
-import { LogoQuickSwap } from "@/components/ui/logo-quick-swap";
 import { CoverDetailStrip } from "@/components/proposals/cover-detail-strip";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -348,21 +347,22 @@ export function CoverEditor({
             </select>
           </Field>
 
-          {/* Cover logos — both editable here so you can swap the Foundry mark per-document and
-              supply a client logo even for a prospect that isn't in Portal yet. */}
+          {/* ⚠️ The Foundry/Gitwork quick-swap is GONE from here, deliberately.
+              The document THEME already decides the cover's whole brand treatment — palette,
+              typeface, mark — so a second per-document control picking between the same two brands
+              was a duplicate decision, and the two could disagree: a cover could show the Gitwork
+              "G." while this picker read Foundry. Two controls for one decision is how that
+              happens.
+
+              The free image picker stays. That is a different need the theme cannot serve — a
+              white-label cover, or a one-off client mark. Settings → Branding keeps its own
+              quick-swap, which sets the workspace default rather than one document. */}
           <Field label="Brand logo">
-            <LogoQuickSwap
-              value={value.brandLogoUrl ?? ""}
-              onChange={(brandLogoUrl) => onChange({ ...value, brandLogoUrl })}
-            />
             <ImagePicker
               value={value.brandLogoUrl ?? ""}
               onChange={(brandLogoUrl) => onChange({ ...value, brandLogoUrl })}
             />
-            <span className="mt-1.5 block text-xs leading-5 text-[var(--text-4)]">
-              Overrides the cover&rsquo;s logo for this document. Leave blank to use the
-              Settings → Branding logo.
-            </span>
+            <Hint>Overrides this document&rsquo;s logo. Blank uses the theme&rsquo;s.</Hint>
           </Field>
 
           {(value.brandLockup ?? "GITWORK") === "CLIENT_X_GITWORK" ? (
