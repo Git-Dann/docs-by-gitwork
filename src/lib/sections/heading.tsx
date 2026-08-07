@@ -3,7 +3,7 @@
 import { HashtagIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { SimpleForm } from "@/lib/sections/_shared";
-import { InlineTextArea } from "@/lib/sections/inline-text";
+import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import { hasAccentTail, parseAccentSegments } from "@/lib/sections/variant-helpers";
 import type { HeadingSectionData } from "@/types/proposal";
 
@@ -124,7 +124,7 @@ export const headingSection = defineSection<HeadingSectionData>({
       if (editable && onChange) {
         return (
           <div style={band} className="proposal-block-avoid">
-            <InlineTextArea
+            <RichTextField
               value={data.eyebrow ?? ""}
               onChange={(eyebrow) => onChange({ ...data, eyebrow })}
               placeholder="Eyebrow (optional)"
@@ -132,7 +132,7 @@ export const headingSection = defineSection<HeadingSectionData>({
               className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-white/55"
             />
             <div className="mt-3">
-              <InlineTextArea
+              <RichTextField
                 value={data.text}
                 onChange={(text) => onChange({ ...data, text })}
                 placeholder="Banner title"
@@ -141,7 +141,7 @@ export const headingSection = defineSection<HeadingSectionData>({
               />
             </div>
             <div className="mt-3 max-w-[62ch]">
-              <InlineTextArea
+              <RichTextField
                 value={data.subtitle ?? ""}
                 onChange={(subtitle) => onChange({ ...data, subtitle })}
                 placeholder="Lead paragraph (optional)"
@@ -198,14 +198,14 @@ export const headingSection = defineSection<HeadingSectionData>({
     if (editable && onChange) {
       return (
         <div className="space-y-2">
-          <InlineTextArea
+          <RichTextField
             value={data.eyebrow ?? ""}
             onChange={(eyebrow) => onChange({ ...data, eyebrow })}
             placeholder="Eyebrow (optional)"
             ariaLabel="Heading eyebrow"
             className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]"
           />
-          <InlineTextArea
+          <RichTextField
             value={data.text}
             onChange={(text) => onChange({ ...data, text })}
             placeholder="Heading"

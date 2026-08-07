@@ -4,7 +4,6 @@ import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { SimpleForm } from "@/lib/sections/_shared";
 import { RichTextField } from "@/lib/sections/rich-text-lazy";
-import { InlineTextArea } from "@/lib/sections/inline-text";
 import type { CalloutSectionData } from "@/types/proposal";
 
 const TONE_PALETTE: Record<CalloutSectionData["tone"], { border: string; bg: string; eyebrow: string }> = {
@@ -88,7 +87,7 @@ export const calloutSection = defineSection<CalloutSectionData>({
       if (editable && onChange) {
         return (
           <div className="proposal-block-avoid" style={box}>
-            <InlineTextArea
+            <RichTextField
               value={data.headline ?? ""}
               onChange={(headline) => onChange({ ...data, headline })}
               placeholder="Headline (optional)"
@@ -123,7 +122,7 @@ export const calloutSection = defineSection<CalloutSectionData>({
           className="proposal-block-avoid rounded-[10px] px-5 py-4"
           style={{ background: palette.bg, borderLeft: `3px solid ${palette.border}` }}
         >
-          <InlineTextArea
+          <RichTextField
             value={data.headline ?? ""}
             onChange={(headline) => onChange({ ...data, headline })}
             placeholder="Headline (optional)"

@@ -4,7 +4,8 @@ import { CheckIcon } from "@heroicons/react/24/solid";
 import { ClipboardDocumentCheckIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { SimpleForm } from "@/lib/sections/_shared";
-import { InlineTextArea, InlineStringList, InlineAddButton, InlineRemoveButton } from "@/lib/sections/inline-text";
+import { InlineStringList, InlineAddButton, InlineRemoveButton } from "@/lib/sections/inline-text";
+import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import type { CategoryChecklistSectionData } from "@/types/proposal";
 
 export const categoryChecklistSection = defineSection<CategoryChecklistSectionData>({
@@ -68,7 +69,7 @@ export const categoryChecklistSection = defineSection<CategoryChecklistSectionDa
             {groups.map((group, i) => (
               <div key={i} className="group/row rounded-[10px] border border-[var(--border-2)] bg-white p-4">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <InlineTextArea
+                  <RichTextField
                     value={group.title}
                     onChange={(title) => updateGroup(i, { title })}
                     placeholder="Category"

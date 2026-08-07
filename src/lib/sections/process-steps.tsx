@@ -5,7 +5,7 @@ import { renderLines } from "@/lib/markdown";
 import { defineSection } from "@/lib/sections/types";
 import { SimpleForm } from "@/lib/sections/_shared";
 import { RichTextField } from "@/lib/sections/rich-text-lazy";
-import { InlineTextArea, InlineAddButton, InlineRemoveButton } from "@/lib/sections/inline-text";
+import { InlineAddButton, InlineRemoveButton } from "@/lib/sections/inline-text";
 import { romanNumeral } from "@/lib/sections/variant-helpers";
 import type { ProcessStepsSectionData } from "@/types/proposal";
 
@@ -130,7 +130,7 @@ export const processStepsSection = defineSection<ProcessStepsSectionData>({
                   {stepped ? `${romanNumeral(i)}.` : num(i)}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <InlineTextArea
+                  <RichTextField
                     value={step.label}
                     onChange={(label) => update(i, { label })}
                     placeholder="Step"

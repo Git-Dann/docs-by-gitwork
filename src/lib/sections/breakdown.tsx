@@ -11,7 +11,7 @@ import { SimpleForm, FormInput, FormTextArea } from "@/lib/sections/_shared";
 import { renderLines } from "@/lib/markdown";
 import { defineSection } from "@/lib/sections/types";
 import { RichTextField } from "@/lib/sections/rich-text-lazy";
-import { InlineAddButton, InlineRemoveButton, InlineTextArea } from "@/lib/sections/inline-text";
+import { InlineAddButton, InlineRemoveButton } from "@/lib/sections/inline-text";
 import type { BreakdownItem, BreakdownSectionData } from "@/types/proposal";
 
 function newItem(): BreakdownItem {
@@ -88,14 +88,14 @@ export const breakdownSection = defineSection<BreakdownSectionData>({
                     the third thing read and the dash did the work of a separator that a line
                     break does better; stacked, the figure leads and the label explains it. */}
                 <div className="pr-6">
-                  <InlineTextArea
+                  <RichTextField
                     value={item.count ?? ""}
                     onChange={(count) => update(i, { count })}
                     placeholder="0"
                     ariaLabel="Item count"
                     className="doc-serif text-[26px] leading-[1.1] text-[var(--doc-accent)]"
                   />
-                  <InlineTextArea
+                  <RichTextField
                     value={item.label}
                     onChange={(label) => update(i, { label })}
                     placeholder="Label"

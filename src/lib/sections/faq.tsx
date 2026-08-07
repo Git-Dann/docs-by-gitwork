@@ -9,7 +9,7 @@ import { defineSection } from "@/lib/sections/types";
 import { MarkdownField } from "@/components/proposals/markdown-field";
 import { Markdown, renderInline } from "@/lib/markdown";
 import { RichTextField } from "@/lib/sections/rich-text-lazy";
-import { InlineAddButton, InlineRemoveButton, InlineTextArea } from "@/lib/sections/inline-text";
+import { InlineAddButton, InlineRemoveButton } from "@/lib/sections/inline-text";
 import type { FaqItem, FaqSectionData } from "@/types/proposal";
 
 function newItem(): FaqItem {
@@ -114,7 +114,7 @@ export const faqSection = defineSection<FaqSectionData>({
                   {String(i + 1).padStart(2, "0")}
                 </span>
                 <div className="flex-1 space-y-1">
-                  <InlineTextArea
+                  <RichTextField
                     value={item.question}
                     onChange={(question) =>
                       onChange({ ...data, items: list.map((it, j) => (j === i ? { ...it, question } : it)) })

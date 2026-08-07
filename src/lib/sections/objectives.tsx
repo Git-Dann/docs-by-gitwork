@@ -6,7 +6,7 @@ import { getObjectiveIcon } from "@/components/proposals/icon-select";
 import { renderLines } from "@/lib/markdown";
 import { defineSection } from "@/lib/sections/types";
 import { RichTextField } from "@/lib/sections/rich-text-lazy";
-import { InlineAddButton, InlineRemoveButton, InlineTextArea } from "@/lib/sections/inline-text";
+import { InlineAddButton, InlineRemoveButton } from "@/lib/sections/inline-text";
 import type { ObjectivesSectionData } from "@/types/proposal";
 
 function newObjectiveId() {
@@ -54,7 +54,7 @@ export const objectivesSection = defineSection<ObjectivesSectionData>({
                     </span>
                   ) : null}
                   <div className="min-w-0 flex-1">
-                    <InlineTextArea
+                    <RichTextField
                       value={item.title}
                       onChange={(title) =>
                         onChange({
