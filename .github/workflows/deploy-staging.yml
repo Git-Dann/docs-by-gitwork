@@ -76,6 +76,7 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           envs: FOUNDRY_GITHUB_TOKEN
           script: |
+            set -e
             cd /opt/apps/foundry-staging
 
             upsert_env() {
@@ -105,7 +106,13 @@ jobs:
 
             docker compose pull app
             docker compose up -d db
+            # --accept-data-loss is safe HERE ONLY: this is the isolated
+            # foundry-staging DB (its own volume, no real client data — see
+            # docker-compose-staging.yml), never the shared production DB.
+            # Without it, Prisma's all-or-nothing push silently no-ops on any
+            # diff it deems destructive, `set -e` above now makes that failure
+            # fatal instead of restarting the app against a stale schema.
             docker compose run --rm --no-deps --user root --entrypoint sh app \
-              -c "npx --yes prisma@6.16.2 db push --schema=prisma/schema.prisma --skip-generate"
+              -c "npx --yes prisma@6.16.2 db push --schema=prisma/schema.prisma --skip-generate --accept-data-loss"
             docker compose up -d --no-deps --force-recreate app
             docker image prune -f
