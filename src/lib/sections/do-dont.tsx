@@ -11,7 +11,7 @@ import { ShieldCheckIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { SimpleForm } from "@/lib/sections/_shared";
 import { RichTextField } from "@/lib/sections/rich-text-lazy";
-import { InlineTextArea, InlineStringList } from "@/lib/sections/inline-text";
+import { InlineStringList } from "@/lib/sections/inline-text";
 import type { DoDontSectionData } from "@/types/proposal";
 
 export const doDontSection = defineSection<DoDontSectionData>({
@@ -78,7 +78,7 @@ export const doDontSection = defineSection<DoDontSectionData>({
       return (
         <div className="grid gap-3 md:grid-cols-2">
           <div className="rounded-[10px] border border-[var(--border-2)] bg-white p-4">
-            <InlineTextArea
+            <RichTextField
               value={data.doTitle ?? ""}
               onChange={(doTitle) => onChange({ ...data, doTitle })}
               placeholder="Do"
@@ -99,7 +99,7 @@ export const doDontSection = defineSection<DoDontSectionData>({
             />
           </div>
           <div className="rounded-[10px] border border-[var(--border-2)] bg-white p-4">
-            <InlineTextArea
+            <RichTextField
               value={data.dontTitle ?? ""}
               onChange={(dontTitle) => onChange({ ...data, dontTitle })}
               placeholder="Don't"

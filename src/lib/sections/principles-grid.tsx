@@ -4,7 +4,7 @@ import { Squares2X2Icon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { SimpleForm } from "@/lib/sections/_shared";
 import { RichTextField } from "@/lib/sections/rich-text-lazy";
-import { InlineTextArea, InlineAddButton, InlineRemoveButton } from "@/lib/sections/inline-text";
+import { InlineAddButton, InlineRemoveButton } from "@/lib/sections/inline-text";
 import type { PrinciplesGridSectionData } from "@/types/proposal";
 
 const num = (i: number) => String(i + 1).padStart(2, "0");
@@ -140,7 +140,7 @@ export const principlesGridSection = defineSection<PrinciplesGridSectionData>({
                     <span className="font-mono text-[10px] font-semibold text-[var(--text-4)]">{num(i)}</span>
                     {cards ? (
                       <span className="min-w-0 flex-1">
-                        <InlineTextArea
+                        <RichTextField
                           value={item.label ?? ""}
                           onChange={(label) => update(i, { label })}
                           placeholder="/ LABEL"
@@ -152,7 +152,7 @@ export const principlesGridSection = defineSection<PrinciplesGridSectionData>({
                   </span>
                   <InlineRemoveButton onClick={() => onChange({ ...data, items: items.filter((_, j) => j !== i) })} />
                 </div>
-                <InlineTextArea
+                <RichTextField
                   value={item.title}
                   onChange={(title) => update(i, { title })}
                   placeholder="Title"
@@ -172,7 +172,7 @@ export const principlesGridSection = defineSection<PrinciplesGridSectionData>({
           <InlineAddButton label="Add principle" onClick={() => onChange({ ...data, items: [...items, { title: "" }] })} />
           {cards && data.footer ? (
             <div className="rounded-[10px] border border-[var(--border-2)] bg-white p-3">
-              <InlineTextArea
+              <RichTextField
                 value={data.footer.title ?? ""}
                 onChange={(title) => onChange({ ...data, footer: { ...(data.footer ?? {}), title } })}
                 placeholder="Footer card title"

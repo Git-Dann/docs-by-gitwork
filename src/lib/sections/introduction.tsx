@@ -4,7 +4,6 @@ import { ChatBubbleLeftEllipsisIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
 import { EditorHint, FormTextArea, SimpleForm } from "@/lib/sections/_shared";
 import { Markdown } from "@/lib/markdown";
-import { InlineTextArea } from "@/lib/sections/inline-text";
 import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import type { IntroductionSectionData } from "@/types/proposal";
 
@@ -49,7 +48,7 @@ export const introductionSection = defineSection<IntroductionSectionData>({
     if (editable && onChange) {
       return (
         <div className="max-w-4xl space-y-5">
-          <InlineTextArea
+          <RichTextField
             value={data.statement}
             onChange={(statement) => onChange({ ...data, statement })}
             placeholder="Company statement…"

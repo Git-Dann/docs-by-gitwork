@@ -8,7 +8,8 @@
 import { PlusIcon, TrashIcon, ChartBarSquareIcon, MoonIcon } from "@heroicons/react/24/outline";
 import { SimpleForm, FormInput } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
-import { InlineAddButton, InlineRemoveButton, InlineTextArea } from "@/lib/sections/inline-text";
+import { InlineAddButton, InlineRemoveButton } from "@/lib/sections/inline-text";
+import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import type { KpiStripItem, KpiStripSectionData } from "@/types/proposal";
 
 function newKpi(value = "", label = ""): KpiStripItem {
@@ -124,7 +125,7 @@ export const kpiStripSection = defineSection<KpiStripSectionData>({
                 <span className="absolute right-1 top-1 flex items-center gap-0.5">
                   <InlineRemoveButton onClick={() => onChange({ ...data, items: items.filter((_, j) => j !== i) })} />
                 </span>
-                <InlineTextArea
+                <RichTextField
                   value={item.context ?? ""}
                   onChange={(context) => update(i, { context })}
                   placeholder="Context"
@@ -132,7 +133,7 @@ export const kpiStripSection = defineSection<KpiStripSectionData>({
                   className={`font-mono text-[10px] font-semibold uppercase tracking-[0.12em] ${dark ? "text-white/55" : "text-[var(--text-4)]"}`}
                 />
                 <div className="mt-1.5">
-                  <InlineTextArea
+                  <RichTextField
                     value={item.value}
                     onChange={(value) => update(i, { value })}
                     placeholder="85%"
@@ -141,7 +142,7 @@ export const kpiStripSection = defineSection<KpiStripSectionData>({
                   />
                 </div>
                 <div className="mt-2">
-                  <InlineTextArea
+                  <RichTextField
                     value={item.label}
                     onChange={(label) => update(i, { label })}
                     placeholder="Retention"

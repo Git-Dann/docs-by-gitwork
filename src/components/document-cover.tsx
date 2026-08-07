@@ -699,6 +699,59 @@ export function DocumentCover({
 
           {/* Accent bar + title + subtitle. */}
           <div style={{ position: "relative", zIndex: 1 }}>
+            {/* Client × Gitwork lockup — ABOVE the accent rule, so the co-brand reads as the
+                document's ownership line before the title rather than as decoration after it.
+                The Gitwork cover never rendered `coBrand` at all: picking "Client x Gitwork" in
+                the editor changed nothing on the page. */}
+            {coBrand && (coBrand.clientLogoUrl || coBrand.clientName?.trim()) ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  marginBottom: 18,
+                  // A long client name wraps under itself rather than pushing the row wide.
+                  minWidth: 0,
+                }}
+              >
+                {coBrand.clientLogoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={coBrand.clientLogoUrl}
+                    alt=""
+                    style={{ height: 22, objectFit: "contain", display: "block" }}
+                  />
+                ) : (
+                  <span
+                    style={{
+                      fontFamily: gMono,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      letterSpacing: "0.14em",
+                      textTransform: "uppercase",
+                      color: ink,
+                    }}
+                  >
+                    {coBrand.clientName?.trim()}
+                  </span>
+                )}
+                <span aria-hidden style={{ fontFamily: gSans, fontSize: 13, color: muted }}>
+                  ×
+                </span>
+                <span
+                  style={{
+                    fontFamily: gMono,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    letterSpacing: "0.14em",
+                    textTransform: "uppercase",
+                    color: ink,
+                  }}
+                >
+                  Gitwork<span style={{ color: accent }}>.</span>
+                </span>
+              </div>
+            ) : null}
             <div aria-hidden="true" style={{ width: 44, height: 3, background: accent, marginBottom: 22 }} />
 
             {/* Editing and read-only share ONE markup shape — an h1 whose last child is the accent

@@ -9,7 +9,12 @@
 import { TrashIcon, PlusIcon, TableCellsIcon } from "@heroicons/react/24/outline";
 import { SimpleForm, FormTextArea } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
-import { InlineAddButton, InlineRemoveButton, InlineTextArea } from "@/lib/sections/inline-text";
+import { InlineAddButton, InlineRemoveButton } from "@/lib/sections/inline-text";
+// ⚠️ NOT `InlineTextArea`. That is a transparent <textarea>, so a cell containing `**Subtotal**`
+// showed the author literal asterisks while the read-only render (`renderInline`, below) drew it
+// bold — the editor and the page disagreeing about the same cell. `RichTextField` is the same
+// drop-in used by the prose blocks and renders the formatting.
+import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import { renderInline } from "@/lib/markdown";
 import type { DataTableSectionData } from "@/types/proposal";
 
@@ -206,7 +211,7 @@ export const dataTableSection = defineSection<DataTableSectionData>({
 
       return (
         <div className="space-y-3">
-          <InlineTextArea
+          <RichTextField
             value={data.caption ?? ""}
             onChange={(caption) => onChange({ ...data, caption })}
             placeholder="Caption (optional)…"
@@ -234,7 +239,7 @@ export const dataTableSection = defineSection<DataTableSectionData>({
                     >
                       <div className="flex items-start gap-1">
                         <div className="flex-1">
-                          <InlineTextArea
+                          <RichTextField
                             value={col}
                             onChange={(v) => updateCol(i, v)}
                             placeholder={`Column ${i + 1}`}
@@ -269,7 +274,7 @@ export const dataTableSection = defineSection<DataTableSectionData>({
                         key={ci}
                         className="border-t border-[var(--border-3)] px-3 py-2 align-top text-[13px] leading-6 text-[var(--text-2)]"
                       >
-                        <InlineTextArea
+                        <RichTextField
                           value={row[ci] ?? ""}
                           onChange={(v) => updateCell(ri, ci, v)}
                           placeholder="—"

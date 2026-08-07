@@ -9,7 +9,8 @@
 import { CheckCircleIcon, XCircleIcon, ClipboardDocumentCheckIcon } from "@heroicons/react/24/outline";
 import { SimpleForm } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
-import { InlineStringList, InlineTextArea } from "@/lib/sections/inline-text";
+import { InlineStringList } from "@/lib/sections/inline-text";
+import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import type { ChecklistSectionData } from "@/types/proposal";
 
 export const checklistSection = defineSection<ChecklistSectionData>({
@@ -96,7 +97,7 @@ export const checklistSection = defineSection<ChecklistSectionData>({
     if (editable && onChange) {
       return (
         <div className="space-y-3">
-          <InlineTextArea
+          <RichTextField
             value={data.intro ?? ""}
             onChange={(intro) => onChange({ ...data, intro })}
             placeholder="Intro (optional)…"
