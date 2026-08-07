@@ -41,6 +41,18 @@ const DOC_TYPE_LABEL: Record<string, string> = {
 // Vertical gap between blocks on a page (Tailwind space-y-8 = 2rem).
 const GAP_PX = 32;
 
+// Safety margin subtracted from the measured available height before packing.
+//
+// ⚠️ `availablePx` is measured once, off-screen, from a page carrying PLACEHOLDER header/footer
+// text ("GITWORK" / "—") rather than the real running header ("REPORT · RPT-2026-008" etc) and
+// footer ("Page N of M") every real page prints. Same font-size and layout rules on both, so this
+// is normally a sub-pixel difference — but a print/PDF capture is a fresh layout pass (not a live
+// reflow the packer can react to), so even a few px of drift has nowhere to go: the packed page
+// ends up very slightly taller than 297mm, and its footer — last in the flex column — is what gets
+// pushed past the fold, landing alone on its own near-blank physical sheet. A small buffer makes
+// that the rare case `.doc-a4-page`'s own clip (globals.css) has to catch, not the routine one.
+const PAGE_SAFETY_PX = 16;
+
 function isCoverPage(pageSections: ProposalSection[]): boolean {
   return pageSections.length === 1 && pageSections[0].key === "cover";
 }
@@ -179,7 +191,7 @@ export function PagedDocument({
       measure.querySelectorAll<HTMLElement>("[data-measure-index]").forEach((el) => {
         heights.set(Number(el.dataset.measureIndex), el.offsetHeight);
       });
-      const packed = packPages(current, heights, availablePx);
+      const packed = packPages(current, heights, availablePx - PAGE_SAFETY_PX);
       const next = packed.length ? packed : paginateSections(current);
       // ⚠️ Bail when the LAYOUT is unchanged. `packPages` returns fresh arrays every run, so
       // setting state unconditionally re-rendered the whole paged document on EVERY KEYSTROKE:

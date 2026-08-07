@@ -7,6 +7,7 @@ import { PrintToolbar } from "@/components/proposals/print-toolbar";
 import { ProposalPreview } from "@/components/proposals/proposal-preview";
 import { useProposal } from "@/hooks/use-proposals";
 import { useSignatureRequests } from "@/hooks/use-signatures";
+import { buildDocumentFilename } from "@/lib/document-filename";
 
 export default function ProposalPrintPage() {
   const params = useParams<{ id: string }>();
@@ -17,6 +18,19 @@ export default function ProposalPrintPage() {
   // Append the Certificate of Completion appendix only when there's a COMPLETED request. Other
   // states (SENT / DECLINED / REVOKED / DRAFT) do not warrant a certificate.
   const completedRequest = (signaturesQuery.data ?? []).find((r) => r.status === "COMPLETED");
+
+  // The browser's own "Print / Save PDF" dialog suggests `document.title` as the filename — left
+  // at the app's default title, every export saved as "Foundry by Gitwork". Set it to
+  // `{client}-{title}-{ref}` once the document loads, so the Save As field is already filled in.
+  const proposal = data?.proposal;
+  useEffect(() => {
+    if (!proposal) return;
+    const previousTitle = document.title;
+    document.title = buildDocumentFilename(proposal);
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [proposal]);
 
   // Auto-print once the document has loaded AND the client height pagination has settled (the
   // paged renderer sets window.__docPaginated) — otherwise print() fires mid-measure and the

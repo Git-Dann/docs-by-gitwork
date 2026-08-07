@@ -12,6 +12,7 @@
  */
 
 import { notFound } from "next/navigation";
+import { buildDocumentFilename } from "@/lib/document-filename";
 import { prisma } from "@/lib/prisma";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 import { ProposalPreview } from "@/components/proposals/proposal-preview";
@@ -110,7 +111,7 @@ export default async function PublicDocumentPage({ params, searchParams }: PageP
       <DocsTracker token={token} />
       {/* Let the client download the document as a PDF straight from the share link (fixed,
           print-hidden button top-right). */}
-      <DownloadPdfButton token={token} filename={record.documentNumber ?? record.title} />
+      <DownloadPdfButton token={token} filename={buildDocumentFilename(record)} />
 
       {/*
        * The cover (with Foundry logo, doc number, type label, dated) now comes from
