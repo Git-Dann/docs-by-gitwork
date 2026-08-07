@@ -6,8 +6,21 @@ import { Button } from "@/components/ui/button";
 import { EditorSectionHeader, editorId } from "@/components/proposals/editor-primitives";
 import type { PaymentScheduleRow, TimelinePhaseInput } from "@/types/proposal";
 
+// ⚠️ `name`, `duration` and `summary` are all `z.string().min(1)` server-side
+// (timelinePhaseSchema) — a phase with any of the three blank fails validation on the very next
+// autosave, and since one PATCH saves the whole document, that one bad phase blocks every other
+// edit from persisting too, silently, until it's fixed or removed. Seed non-empty placeholders so
+// a freshly added phase is valid the instant it's created, before the author has touched a field.
 function newPhase(sortOrder: number, viewMode: "LIST" | "MILESTONE"): TimelinePhaseInput {
-  return { id: editorId(), name: "", duration: "", summary: "", deliverables: [], sortOrder, viewMode };
+  return {
+    id: editorId(),
+    name: "New phase",
+    duration: "TBC",
+    summary: "Describe what happens in this phase.",
+    deliverables: [],
+    sortOrder,
+    viewMode,
+  };
 }
 
 export function TimelineEditor({
@@ -135,6 +148,17 @@ export function TimelineEditor({
                         />
                       </label>
                     </div>
+
+                    <label className="mt-3 block space-y-1.5">
+                      <span className="text-sm font-medium text-[var(--text-2)]">Summary</span>
+                      <textarea
+                        value={phase.summary}
+                        onChange={(event) => updatePhase(index, { summary: event.target.value })}
+                        className="app-input"
+                        rows={2}
+                        placeholder="Discovery, data model, and a pivot to consuming the client's own data instead of a public API."
+                      />
+                    </label>
 
                     <label className="mt-3 block space-y-1.5">
                       <span className="text-sm font-medium text-[var(--text-2)]">
