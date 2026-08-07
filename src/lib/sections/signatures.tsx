@@ -2,6 +2,7 @@
 
 import { FingerPrintIcon } from "@heroicons/react/24/outline";
 import { SignaturesEditor } from "@/components/proposals/legal-editors";
+import { asTrimmedText } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
 import { renderInline } from "@/lib/markdown";
 import type { ReactNode } from "react";
@@ -60,7 +61,7 @@ function SignatureCard({ block }: { block: SignatureBlockItem }) {
   const personal = block.personal === true;
   // Blank lines are kept in the data so the editor's one-line-per-detail textarea stays typable;
   // they're dropped here so they never print as gaps.
-  const details = (block.details ?? []).filter((line) => line.trim());
+  const details = (block.details ?? []).filter((line) => asTrimmedText(line));
   return (
     <div
       className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-white"

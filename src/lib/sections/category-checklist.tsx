@@ -3,7 +3,7 @@
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { ClipboardDocumentCheckIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
-import { SimpleForm } from "@/lib/sections/_shared";
+import { asTrimmedText, SimpleForm } from "@/lib/sections/_shared";
 import { InlineStringList, InlineAddButton, InlineRemoveButton } from "@/lib/sections/inline-text";
 import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import type { CategoryChecklistSectionData } from "@/types/proposal";
@@ -100,8 +100,8 @@ export const categoryChecklistSection = defineSection<CategoryChecklistSectionDa
     }
 
     const cleanGroups = groups
-      .map((g) => ({ title: g.title, items: (g.items ?? []).filter((i) => i.trim()) }))
-      .filter((g) => g.title.trim() || g.items.length);
+      .map((g) => ({ title: asTrimmedText(g.title), items: (g.items ?? []).filter((i) => asTrimmedText(i)) }))
+      .filter((g) => g.title || g.items.length);
     if (cleanGroups.length === 0) return null;
 
     return (

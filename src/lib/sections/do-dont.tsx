@@ -9,7 +9,7 @@
 import { CheckIcon, XMarkIcon } from "@heroicons/react/24/solid";
 import { ShieldCheckIcon } from "@heroicons/react/24/outline";
 import { defineSection } from "@/lib/sections/types";
-import { SimpleForm } from "@/lib/sections/_shared";
+import { asTrimmedText, SimpleForm } from "@/lib/sections/_shared";
 import { RichTextField } from "@/lib/sections/rich-text-lazy";
 import { InlineStringList } from "@/lib/sections/inline-text";
 import type { DoDontSectionData } from "@/types/proposal";
@@ -132,8 +132,8 @@ export const doDontSection = defineSection<DoDontSectionData>({
       );
     }
 
-    const cleanDo = doItems.filter((i) => i.trim());
-    const cleanDont = dontItems.filter((i) => i.trim());
+    const cleanDo = doItems.filter((i) => asTrimmedText(i));
+    const cleanDont = dontItems.filter((i) => asTrimmedText(i));
 
     // ── Ledger — two mono-headed columns of hairline rows, accent ✓ against muted ✕. ──
     if (ledger) {

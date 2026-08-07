@@ -10,7 +10,7 @@ import { ArrowRightCircleIcon, ArrowRightIcon } from "@heroicons/react/24/outlin
 import { CTAEditor } from "@/components/proposals/cta-editor";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { defineSection } from "@/lib/sections/types";
-import { FormInput, SimpleForm } from "@/lib/sections/_shared";
+import { asTrimmedText, FormInput, SimpleForm } from "@/lib/sections/_shared";
 import { ItemCard, EditorSectionHeader, EmptyHint, makeMover } from "@/components/proposals/editor-primitives";
 import { MarkdownField } from "@/components/proposals/markdown-field";
 import { Markdown, safeUrl } from "@/lib/markdown";
@@ -158,7 +158,7 @@ export const ctaNextStepsSection = defineSection<CtaSectionData>({
     // ── Contact card + one full-width accent button + optional small print. ──
     if ((data.style ?? "default") === "contact") {
       const contact = data.contact ?? {};
-      const alsoOn = (data.alsoOn ?? []).filter((person) => person.name?.trim());
+      const alsoOn = (data.alsoOn ?? []).filter((person) => asTrimmedText(person?.name));
       const buttonLabel = data.buttonLabel?.trim() || primary?.label;
       const buttonHref = safeUrl(data.buttonUrl?.trim() || primary?.destination || "") ?? "#";
       const mutedLabel = "font-mono text-[9px] font-semibold uppercase tracking-[0.18em]";

@@ -5,12 +5,13 @@
 
 import { CalendarDaysIcon } from "@heroicons/react/24/outline";
 import { TimelineEditor } from "@/components/proposals/timeline-editor";
+import { asTrimmedText } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
 import type { CostingSectionData, TimelineSectionData } from "@/types/proposal";
 
 function summarizeTimelineDuration(phases: { duration: string }[]) {
   if (!phases.length) return "";
-  const durations = phases.map((phase) => phase.duration.trim()).filter(Boolean);
+  const durations = phases.map((phase) => asTrimmedText(phase.duration)).filter(Boolean);
   if (!durations.length) return "";
   return durations.join(" • ");
 }

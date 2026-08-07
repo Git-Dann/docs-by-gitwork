@@ -7,7 +7,7 @@
  */
 
 import { CheckCircleIcon, XCircleIcon, ClipboardDocumentCheckIcon } from "@heroicons/react/24/outline";
-import { SimpleForm } from "@/lib/sections/_shared";
+import { asTrimmedText, SimpleForm } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
 import { InlineStringList } from "@/lib/sections/inline-text";
 import { RichTextField } from "@/lib/sections/rich-text-lazy";
@@ -117,7 +117,7 @@ export const checklistSection = defineSection<ChecklistSectionData>({
       );
     }
 
-    const items = (data.items ?? []).filter((item) => item.trim().length > 0);
+    const items = (data.items ?? []).filter((item) => asTrimmedText(item).length > 0);
     if (items.length === 0) {
       return (
         <p className="text-sm italic text-[var(--text-4)]">

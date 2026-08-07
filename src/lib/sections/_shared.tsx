@@ -7,6 +7,18 @@
 import type { ReactNode } from "react";
 import { renderInline } from "@/lib/markdown";
 
+/**
+ * Trim a value that's TYPED as a string but isn't guaranteed to arrive as one. Section data
+ * authored through the Foundry MCP tool (`update_document`) isn't validated against these types
+ * the way the editor UI's own inputs are, so a string-array field can genuinely hold a non-string
+ * entry (an object, a number, `null`) at runtime. A bare `.trim()` on that throws `.trim is not a
+ * function` and takes out the whole page — this treats anything that isn't a string as empty
+ * instead, the same tolerance `InlineTextArea` already gave a single missing field.
+ */
+export function asTrimmedText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export function SectionIntro({ intro }: { intro?: string }) {
   if (!intro?.trim()) return null;
   // Inline markdown: bold/italic/links/code inside intros work across every section that uses
