@@ -3,13 +3,14 @@
 import { LinkIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { DragHandle, SortableList, SortableRow, reorder } from "@/components/proposals/sortable-list";
+import { GITWORK } from "@/lib/gitwork";
 import type { ProposalLinkInput } from "@/types/proposal";
 
 const linkTypeOptions: Array<{ value: ProposalLinkInput["type"]; label: string; placeholder: string }> = [
   { value: "EXTERNAL_URL", label: "Website link", placeholder: "example.com" },
   { value: "DECK_LINK", label: "Deck link", placeholder: "pitch.com/..." },
   { value: "DOCUMENT_LINK", label: "Document link", placeholder: "docs.google.com/..." },
-  { value: "EMAIL_LINK", label: "Email link", placeholder: "hello@gitwork.io" },
+  { value: "EMAIL_LINK", label: "Email link", placeholder: GITWORK.email },
   { value: "INTERNAL_ROUTE", label: "Internal page", placeholder: "/app/docs/123" },
 ];
 

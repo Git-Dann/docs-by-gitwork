@@ -1,6 +1,7 @@
 import { DocumentType, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { DEFAULT_PROPOSAL_METADATA, getDefaultProposalSections } from "@/lib/default-template";
+import { GITWORK } from "@/lib/gitwork";
 import {
   TEMPLATE_DESCRIPTION_BY_TYPE,
   TEMPLATE_NAME_BY_TYPE,
@@ -919,7 +920,7 @@ async function ensureSampleProposal({
       data: {
         preparedBy: user.name ?? "Dan Lindsay",
         team: "Gitwork",
-        contactDetails: "hello@gitwork.io",
+        contactDetails: GITWORK.email,
         footerNote:
           "This proposal is valid for 30 days from the date above. Get in touch if you need an extension.",
         showBrandingBlock: true,
