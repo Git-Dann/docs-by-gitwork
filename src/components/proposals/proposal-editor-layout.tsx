@@ -74,7 +74,7 @@ import { DocumentFormatBar } from "@/components/proposals/document-format-bar";
 import { FormatTargetProvider } from "@/lib/sections/format-target";
 import type { ReadinessFinding } from "@/lib/sections/document-readiness";
 import { documentReadiness, readinessSummary } from "@/lib/sections/document-readiness";
-import { deriveProposalStatus } from "@/lib/proposal-workflow";
+import { resolveProposalStatus } from "@/lib/proposal-workflow";
 import { approvalTrackApplies } from "@/lib/templates";
 import { createTemplateFromDocument } from "@/lib/api";
 import { DEFAULT_DOC_THEME } from "@/types/proposal";
@@ -725,9 +725,18 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
         forceHistory((v) => v + 1);
       }
     }
+    // `nextDraft.status` is unchanged from `draft.status` for every edit path EXCEPT the editor's
+    // own Status dropdown (`set({ status })`, below) — metadata/section edits always spread the
+    // current draft through untouched. So a difference here means the caller just made a
+    // deliberate status change, and `resolveProposalStatus` needs to know that to let it win
+    // instead of silently recomputing it from the sign-off checkboxes on this same update.
+    const explicitStatus =
+      draft && nextDraft.status !== draft.status ? nextDraft.status : undefined;
     setLocalDraft({
       ...nextDraft,
-      status: deriveProposalStatus(
+      status: resolveProposalStatus(
+        draft?.status ?? nextDraft.status,
+        explicitStatus,
         nextDraft.metadata,
         approvalTrackApplies(nextDraft.documentType, nextDraft.metadata),
       ),
