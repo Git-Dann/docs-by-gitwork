@@ -1,0 +1,111 @@
+name: Build, Push & Deploy (staging)
+
+on:
+  push:
+    branches:
+      - staging
+  workflow_dispatch:
+
+# Same reasoning as deploy.yml's group: never let two staging deploys race each
+# other. This group is intentionally separate from `deploy-production`, and that
+# separation is only safe because staging now has its own directory/tag/containers
+# — before that fix, a concurrent main + staging push could still race on the same
+# VPS resources despite the different concurrency groups.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Capture build metadata
+        id: meta
+        run: |
+          echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "version=${PKG_VERSION}.${{ github.run_number }}-staging" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          # :warning: Never :latest here — that tag is production's. Pushing it from this
+          # workflow is exactly the 2026-07-28 "concurrent deploy reverted prod"
+          # incident, just via a different trigger.
+          tags: |
+            ghcr.io/git-dann/docs-by-gitwork:staging
+            ghcr.io/git-dann/docs-by-gitwork:staging-${{ github.sha }}
+          build-args: |
+            COMMIT_SHA=${{ github.sha }}
+            BUILD_TIME=${{ steps.meta.outputs.time }}
+            APP_VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Deploy to VPS (staging)
+        uses: appleboy/ssh-action@v1
+        env:
+          FOUNDRY_GITHUB_TOKEN: ${{ secrets.FOUNDRY_GITHUB_TOKEN }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: FOUNDRY_GITHUB_TOKEN
+          script: |
+            cd /opt/apps/foundry-staging
+
+            upsert_env() {
+              key="$1"
+              val="$2"
+              if [ -z "$val" ]; then
+                echo "  $key: not provided by CI — leaving .env untouched"
+                return 0
+              fi
+              touch .env
+              if [ -n "$(tail -c1 .env 2>/dev/null)" ]; then printf '\n' >> .env; fi
+              if grep -q "^${key}=" .env; then
+                grep -v "^${key}=" .env > .env.next
+                printf '%s=%s\n' "$key" "$val" >> .env.next
+                cat .env.next > .env
+                rm -f .env.next
+                echo "  $key: updated from CI"
+              else
+                printf '%s=%s\n' "$key" "$val" >> .env
+                echo "  $key: added from CI"
+              fi
+              chmod 600 .env
+            }
+
+            echo "Syncing managed secrets into .env"
+            upsert_env GITHUB_TOKEN "${FOUNDRY_GITHUB_TOKEN:-}"
+
+            docker compose pull app
+            docker compose up -d db
+            docker compose run --rm --no-deps --user root --entrypoint sh app \
+              -c "npx --yes prisma@6.16.2 db push --schema=prisma/schema.prisma --skip-generate"
+            docker compose up -d --no-deps --force-recreate app
+            docker image prune -f
