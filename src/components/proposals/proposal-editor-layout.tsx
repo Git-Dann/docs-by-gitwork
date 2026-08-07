@@ -1795,11 +1795,23 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               frame, so a three-field block drew a full-height wall down the side of the page and
               obscured far more of the document than it needed to. Capped so a long editor
               (costing) still scrolls inside itself rather than running off the frame. */}
+          {/* ⚠️ `lg:bottom-4` + `pointer-events-none` is what makes the panel SCROLL, and it is
+              not cosmetic. The wrapper was `top-4` with `max-h-[calc(100%-2rem)]` and no
+              `bottom`, so its own height was auto — and a percentage `max-h-full` on the `aside`
+              below resolves to *none* against an auto-height parent. The aside therefore grew to
+              its content, the inner `overflow-y-auto` div never got a bounded height, and a long
+              editor (the cover with everything switched on) simply could not be scrolled. Pinning
+              top AND bottom gives a definite height for the percentages to resolve against — the
+              same thing the outline rail above already does.
+
+              `pointer-events-none` because the wrapper is now full-height whether or not the
+              panel fills it; without it the empty space below a short panel would swallow clicks
+              on the document underneath. The aside re-enables them for itself. */}
           {optionsEntry ? (
-            <div className="mt-3 max-h-[60vh] overflow-y-auto rounded-[10px] border border-[var(--border-2)] lg:absolute lg:right-4 lg:top-4 lg:z-20 lg:mt-0 lg:max-h-[calc(100%-2rem)] lg:w-[336px] lg:overflow-visible lg:shadow-[0_8px_28px_rgba(15,23,42,0.13)] 2xl:w-[360px]">
+            <div className="pointer-events-auto mt-3 max-h-[60vh] overflow-y-auto rounded-[10px] border border-[var(--border-2)] lg:pointer-events-none lg:absolute lg:right-4 lg:top-4 lg:bottom-4 lg:z-20 lg:mt-0 lg:flex lg:max-h-none lg:flex-col lg:items-stretch lg:overflow-visible lg:rounded-none lg:border-0 lg:w-[336px] 2xl:w-[360px]">
               {/* `widget-card` is gone — the wrapper above now owns the frame and the lift, so
                   the rail is one floating panel rather than a card inside a column. */}
-              <aside className="proposal-form-theme overflow-hidden rounded-[10px] bg-white lg:flex lg:max-h-full lg:flex-col">
+              <aside className="proposal-form-theme overflow-hidden rounded-[10px] bg-white lg:pointer-events-auto lg:flex lg:max-h-full lg:min-h-0 lg:flex-col lg:border lg:border-[var(--border-2)] lg:shadow-[0_8px_28px_rgba(15,23,42,0.13)]">
                 <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto [scrollbar-gutter:stable]">
                   <RailGroup
                     index="01"

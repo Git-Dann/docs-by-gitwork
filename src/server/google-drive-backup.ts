@@ -104,10 +104,7 @@ export async function backupDocument(
         fields: "id",
       });
       const fileId = res.data.id ?? record.gdriveFileId;
-      await prisma.document.update({
-        where: { id: documentId },
-        data: { gdriveFileId: fileId, gdriveBackedUpAt: new Date() },
-      });
+      await stampBackup(documentId, fileId);
       return { documentId, fileId, action: "updated", title };
     } catch (err) {
       if (!isNotFound(err)) throw err;
@@ -122,11 +119,39 @@ export async function backupDocument(
   const fileId = res.data.id;
   if (!fileId) throw new Error("Drive did not return a file id");
 
-  await prisma.document.update({
-    where: { id: documentId },
-    data: { gdriveFileId: fileId, gdriveBackedUpAt: new Date() },
-  });
+  await stampBackup(documentId, fileId);
   return { documentId, fileId, action: "created", title };
+}
+
+/**
+ * Stamp the backup metadata WITHOUT touching `Document.updatedAt`.
+ *
+ * ⚠️ Raw SQL, and it has to be. `updatedAt` is `@updatedAt`, so Prisma bumps it on *any*
+ * `document.update()` — including one that only writes backup bookkeeping. There is no Prisma
+ * option to opt out, so the only way to leave it alone is to bypass the model layer.
+ *
+ * Two things went wrong because of that, both live:
+ *
+ * 1. **Every document's "last updated" became 03:00 BST, every day.** The backup cron runs at
+ *    02:00 UTC and touches every document, so the whole Docs list reported the backup's timestamp
+ *    instead of when anyone last edited anything. The list's most useful column was measuring the
+ *    wrong thing — and it looked like a formatting bug, which it was not.
+ *
+ * 2. **The backup re-uploaded everything, nightly, forever.** The re-sync test is
+ *    `updatedAt > gdriveBackedUpAt` (see the cron route). `gdriveBackedUpAt` was built in JS before
+ *    the query and `updatedAt` stamped by Prisma when it ran, so `updatedAt` always landed a hair
+ *    LATER — leaving every backed-up document permanently "changed since last backup". The check
+ *    that exists to skip unchanged documents could never skip one.
+ *
+ * `NOW()` rather than a JS timestamp so the stamp is the database's own clock, which is what
+ * `updatedAt` is compared against.
+ */
+async function stampBackup(documentId: string, fileId: string): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "Document"
+    SET "gdriveFileId" = ${fileId}, "gdriveBackedUpAt" = NOW()
+    WHERE "id" = ${documentId}
+  `;
 }
 
 /**

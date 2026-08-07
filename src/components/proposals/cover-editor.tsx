@@ -5,6 +5,7 @@ import { useClientList } from "@/hooks/use-proposals";
 import { ImagePicker } from "@/components/ui/image-picker";
 import { LogoQuickSwap } from "@/components/ui/logo-quick-swap";
 import { CoverDetailStrip } from "@/components/proposals/cover-detail-strip";
+import { Switch } from "@/components/ui/switch";
 import {
   COVER_ELEMENTS,
   coverElementEmpty,
@@ -98,7 +99,7 @@ export function CoverEditor({
               className="app-input min-h-[96px] resize-y leading-6"
             />
             {executiveSummaryLinkedToIntro ? (
-              <Hint>Shared with the Introduction section — editing here edits that block.</Hint>
+              <Hint>Shared with the Introduction block.</Hint>
             ) : null}
           </Body>
         ) : null;
@@ -124,11 +125,8 @@ export function CoverEditor({
           <Body>
             <Hint>
               {contentsPreview?.length
-                ? `${contentsPreview.length} blocks — ${contentsPreview
-                    .slice(0, 3)
-                    .map((entry) => entry.title)
-                    .join(", ")}${contentsPreview.length > 3 ? ", …" : ""}. Follows the document, so renaming a block updates it.`
-                : "Nothing to list yet — add some blocks."}
+                ? `${contentsPreview.length} blocks, follows the document.`
+                : "No blocks to list yet."}
             </Hint>
           </Body>
         );
@@ -175,7 +173,7 @@ export function CoverEditor({
   // Single-column throughout — this panel lives in the ~300px outline drill-in, so the old
   // md:grid-cols-2 rows cramped badly. Generous vertical rhythm, fields grouped under quiet labels.
   return (
-    <div className="space-y-7">
+    <div className="space-y-5">
       {/* Linked client — attribute the doc to a real Portal client (drives the cover lockup,
           {{client_name}}, and per-client grouping). Falls back to free text for a prospect. */}
       {onLinkClient ? (
@@ -214,12 +212,12 @@ export function CoverEditor({
               className="app-input mt-2"
             />
           ) : (
-            <p className="mt-2 text-xs leading-5 text-[var(--text-4)]">
+            <p className="mt-1.5 text-[11px] leading-[1.45] text-[var(--text-4)]">
               Linked to{" "}
               <span className="font-medium text-[var(--text-2)]">
                 {linkedClientName?.trim() || "a Portal client"}
               </span>
-              . The cover, sharing, and analytics now track this client.
+              .
             </p>
           )}
         </Field>
@@ -274,29 +272,24 @@ export function CoverEditor({
                 key={element.id}
                 className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)]"
               >
-                <label className="flex cursor-pointer items-start gap-2.5 p-2.5">
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    onChange={(event) => setElement(element.id, event.target.checked)}
-                    className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--brand-600)]"
-                  />
+                <div className="flex items-start gap-2.5 p-2">
+                  <Switch checked={on} onChange={(next) => setElement(element.id, next)} label={element.label} />
                   {/* min-w-0 — a flex child's automatic minimum is its content, so without it the
                       blurb pushes the row wider than the ~300px rail. */}
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                      <span className="text-sm font-medium text-[var(--text-2)]">{element.label}</span>
+                      <span className="text-[13px] font-medium text-[var(--text-2)]">{element.label}</span>
                       {element.ownedBy ? (
-                        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]">
-                          in {element.ownedBy}
+                        <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-[var(--text-4)]">
+                          {element.ownedBy}
                         </span>
                       ) : null}
                     </span>
-                    <span className="mt-0.5 block text-xs leading-5 text-[var(--text-4)]">
-                      {on && empty ? "On, but nothing to show yet." : element.blurb}
+                    <span className="mt-0.5 block text-[11px] leading-[1.45] text-[var(--text-4)]">
+                      {on && empty ? "Nothing to show yet." : element.blurb}
                     </span>
                   </span>
-                </label>
+                </div>
 
                 {/* The element's own controls, revealed where it lives rather than in a separate
                     list somewhere else in the panel. */}
@@ -317,9 +310,8 @@ export function CoverEditor({
           onChange={(details) => onChange({ ...value, details })}
           values={detailValues}
         />
-        <p className="text-xs leading-5 text-[var(--text-4)]">
-          The row of details along the bottom of the cover. Picked rows follow the document; a
-          custom row is yours to type. A row with no value never prints.
+        <p className="text-[11px] leading-[1.45] text-[var(--text-4)]">
+          Along the bottom of the cover. Empty rows never print.
         </p>
       </div>
 
@@ -403,11 +395,11 @@ export function CoverEditor({
 
 /** The controls under an element's toggle — inset so they read as belonging to it. */
 function Body({ children }: { children: React.ReactNode }) {
-  return <div className="space-y-2 border-t border-[var(--border-2)] px-2.5 py-2.5">{children}</div>;
+  return <div className="space-y-1.5 border-t border-[var(--border-2)] px-2 py-2">{children}</div>;
 }
 
 function Hint({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs leading-5 text-[var(--text-4)]">{children}</p>;
+  return <p className="text-[11px] leading-[1.45] text-[var(--text-4)]">{children}</p>;
 }
 
 /** A labelled field group — quiet label above its control(s), generous spacing for the narrow panel.
@@ -416,7 +408,7 @@ function Hint({ children }: { children: React.ReactNode }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">{label}</span>
+      <span className="mb-1 block text-[13px] font-medium text-[var(--text-2)]">{label}</span>
       {children}
     </div>
   );

@@ -427,6 +427,9 @@ export function DocumentCover({
       const dot = "  ·  "; // NBSP-padded — plain spaces collapse in HTML.
 
       const coverItems = minimal ? [] : (covers ?? []).map((item) => item.trim()).filter(Boolean);
+      // The contents list is the one variable-height element on a fixed A4 sheet, so it tightens
+      // as it grows rather than pushing everything below it off the page.
+      const dense = (contents?.length ?? 0) > 8;
       // `minimal` is the bare front page — no strip in either mode.
       // Parties are EXEMPT from `minimal`. `minimal` is a bare front page — it drops the covers
       // strip, the exec summary and the stat tiles — but who is legally bound is not decoration,
@@ -608,8 +611,10 @@ export function DocumentCover({
               Numbers are mono in the accent, titles are Inter, rows separated by a hairline —
               the house `NN //` grammar without the slashes, which would fight the numbering.
               `minimal` drops it along with the other optional blocks. */}
+          {/* Dense once the list is long enough that its natural rhythm would push the cover
+              past its single sheet. */}
           {!minimal && contents?.length ? (
-            <div style={{ position: "relative", zIndex: 1, marginBottom: isPrint ? 44 : 30 }}>
+            <div style={{ position: "relative", zIndex: 1, marginBottom: isPrint ? 28 : 20 }}>
               <div
                 style={{
                   fontFamily: gMono,
@@ -623,16 +628,31 @@ export function DocumentCover({
               >
                 Inside
               </div>
-              <div style={{ borderTop: `1px solid ${line}` }}>
+              {/* ⚠️ Two columns past 8 entries, and tighter rows as it grows. The cover is pinned
+                  to exactly one A4 sheet (`.doc-a4-page__inner--cover { height: 297mm; overflow:
+                  hidden }`), so a long single-column list does not wrap onto a second page — it is
+                  CLIPPED, silently, taking the stat tiles and the letterhead with it. An 11-block
+                  proposal did exactly that. Columns turn a linear growth in height into roughly
+                  half of one, which is what keeps a normal document on its sheet. */}
+              <div
+                style={{
+                  borderTop: `1px solid ${line}`,
+                  ...(contents.length > 8
+                    ? { columnCount: 2, columnGap: 28 }
+                    : {}),
+                }}
+              >
                 {contents.map((entry) => (
                   <div
                     key={entry.number}
                     style={{
                       display: "flex",
                       alignItems: "baseline",
-                      gap: 18,
-                      padding: isPrint ? "9px 0" : "7px 0",
+                      gap: 14,
+                      padding: dense ? (isPrint ? "5px 0" : "4px 0") : isPrint ? "9px 0" : "7px 0",
                       borderBottom: `1px solid ${line}`,
+                      // Keeps a row from being split across the column break mid-line.
+                      breakInside: "avoid",
                     }}
                   >
                     <span
@@ -652,8 +672,8 @@ export function DocumentCover({
                     <span
                       style={{
                         fontFamily: gSans,
-                        fontSize: isPrint ? 13 : 12.5,
-                        lineHeight: 1.4,
+                        fontSize: dense ? (isPrint ? 11.5 : 11) : isPrint ? 13 : 12.5,
+                        lineHeight: 1.35,
                         color: ink,
                         // A long block title wraps under itself rather than pushing the row wide —
                         // `min-width: 0` because a flex child's automatic minimum is its content.
