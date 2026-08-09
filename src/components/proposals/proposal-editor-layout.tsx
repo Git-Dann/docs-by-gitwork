@@ -59,7 +59,8 @@ import { SpeakerNotesField } from "@/components/proposals/speaker-notes-field";
 import { useDocumentRelations } from "@/hooks/use-document-relations";
 import { ProposalProofPanel } from "@/components/proposals/proposal-proof-panel";
 import { SignaturePanel } from "@/components/proposals/signature-panel";
-import { EnvelopeIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import { usePushDocuSeal } from "@/hooks/use-signatures";
+import { EnvelopeIcon, PaperAirplaneIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { SECTION_REGISTRY } from "@/lib/sections/registry";
 import { resolveInsertIndex } from "@/lib/proposal-insert-position";
 import { Button } from "@/components/ui/button";
@@ -228,6 +229,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const searchParams = useSearchParams();
   const { data, isPending, error } = useProposal(proposalId);
   const updateMutation = useUpdateProposal(proposalId);
+  const docusealMutation = usePushDocuSeal(proposalId);
   const snippetsQuery = useSnippets();
   const deleteSnippet = useDeleteSnippet();
   const urlTab = parseEditorTab(searchParams.get("tab"));
@@ -1563,27 +1565,48 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                     </div>
 
                     {/* Actions */}
-                    <div className="mt-5 flex items-center gap-2 border-t border-[var(--border-2)] pt-4">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="flex-1 justify-center"
-                        onClick={handleShareLink}
-                        leadingIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
-                      >
-                        {copied ? "Copied" : "Share"}
-                      </Button>
+                    <div className="mt-5 space-y-2 border-t border-[var(--border-2)] pt-4">
                       <Button
                         type="button"
                         variant="primary"
                         size="sm"
-                        className="flex-1 justify-center"
-                        onClick={handleExportPdf}
-                        leadingIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
+                        className="w-full justify-center"
+                        onClick={async () => {
+                          try {
+                            await docusealMutation.mutateAsync();
+                            setApprovalOpen(false);
+                            setActiveTab("overview");
+                          } catch (err) {
+                            console.error(err);
+                          }
+                        }}
+                        loading={docusealMutation.isPending}
+                        leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
                       >
-                        Export
+                        Push to DocuSeal
                       </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="flex-1 justify-center"
+                          onClick={handleShareLink}
+                          leadingIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                        >
+                          {copied ? "Copied" : "Share"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="flex-1 justify-center"
+                          onClick={handleExportPdf}
+                          leadingIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
+                        >
+                          Export
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="mt-3 border-t border-[var(--border-2)] pt-3">
