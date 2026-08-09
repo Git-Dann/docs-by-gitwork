@@ -62,12 +62,22 @@ function SignatureCard({ block }: { block: SignatureBlockItem }) {
   // Blank lines are kept in the data so the editor's one-line-per-detail textarea stays typable;
   // they're dropped here so they never print as gaps.
   const details = (block.details ?? []).filter((line) => asTrimmedText(line));
+  const sigLabel = block.variableName?.trim()
+    ? `Signature ({{${block.variableName.trim()}}})`
+    : "Signature";
   return (
     <div
       className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-white"
       style={{ padding: 24 }}
     >
-      <MonoLabel accent>{personal ? "Signed personally by" : "For and on behalf of"}</MonoLabel>
+      <div className="flex items-center justify-between gap-2">
+        <MonoLabel accent>{personal ? "Signed personally by" : "For and on behalf of"}</MonoLabel>
+        {block.type ? (
+          <span className="rounded bg-[var(--bg-3)] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-[var(--text-3)]">
+            {block.type}
+          </span>
+        ) : null}
+      </div>
       <p className="mt-2 font-[family-name:var(--font-display)] text-[19px] font-normal leading-tight text-[var(--text-1)]">
         {block.partyName || "—"}
       </p>
@@ -81,7 +91,7 @@ function SignatureCard({ block }: { block: SignatureBlockItem }) {
         </div>
       ) : null}
       <div className="mt-6 space-y-4">
-        <SigningField label="Signature" />
+        <SigningField label={sigLabel} />
         <SigningField label="Name" value={block.signatoryName} />
         {/* A personal signatory is witnessed rather than holding a position in a company. */}
         {personal ? (
