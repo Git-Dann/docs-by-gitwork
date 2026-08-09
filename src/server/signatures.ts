@@ -47,6 +47,8 @@ export interface CreateSignerInput {
   role: string;
   organization?: string;
   signatureBlockId?: string;
+  type?: "gitwork" | "client";
+  variableName?: string;
 }
 
 export interface CreateSignatureRequestInput {
@@ -430,6 +432,8 @@ export function inferSignersFromSections(sections: Array<{ key: string; data: un
       role: block.signatoryRole || "Signatory",
       organization: block.partyName || undefined,
       signatureBlockId: block.id,
+      type: block.type,
+      variableName: block.variableName,
     }));
   }
 

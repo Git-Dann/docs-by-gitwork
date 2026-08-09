@@ -413,6 +413,10 @@ export interface SignatureBlockItem {
    *  signing for a company — the card then reads "SIGNED PERSONALLY BY" and asks for a witness
    *  name in place of a position. */
   personal?: boolean;
+  /** Signatory classification for DocuSeal integration: "gitwork" (supplier) or "client" (counterparty). */
+  type?: "gitwork" | "client";
+  /** Variable key for the signature field in doc / DocuSeal tags (e.g. "gitwork_signature", "client_signature_1"). */
+  variableName?: string;
 }
 
 export interface SignaturesSectionData {
