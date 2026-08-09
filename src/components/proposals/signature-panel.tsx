@@ -23,6 +23,7 @@ import { cn } from "@/lib/format";
 import {
   findActiveRequest,
   useCreateSignatureRequest,
+  usePushDocuSeal,
   useRevokeSignatureRequest,
   useSendSignatureRequest,
   useSignatureRequests,
@@ -51,15 +52,25 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
   const [error, setError] = useState<string | null>(null);
 
   const active = findActiveRequest(requestsQuery.data);
-  const isWorking = createMutation.isPending || sendMutation.isPending || revokeMutation.isPending;
+  const docusealMutation = usePushDocuSeal(documentId);
+  const isWorking = createMutation.isPending || sendMutation.isPending || revokeMutation.isPending || docusealMutation.isPending;
 
   async function handleSendNow() {
     setError(null);
     try {
-      // Create then immediately send so the user only has to click once. If they need to edit
-      // signers before sending we can split this into two steps later.
+      // Create then immediately send so the user only has to click once.
       const created = await createMutation.mutateAsync({ message: message.trim() || undefined });
       await sendMutation.mutateAsync(created.id);
+      setMessage("");
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function handlePushDocuSeal() {
+    setError(null);
+    try {
+      await docusealMutation.mutateAsync();
       setMessage("");
     } catch (err) {
       setError((err as Error).message);
@@ -99,7 +110,7 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
       <div className="widget-header">
         <span className="widget-header-label">SIGNATURE</span>
         <span className="widget-header-right">
-          {active ? active.status : "READY"}
+          {active?.docusealSubmissionId ? "DOCUSEAL" : active ? active.status : "READY"}
         </span>
       </div>
 
@@ -117,12 +128,11 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
             <div>
               <p className="text-sm leading-6 text-[var(--text-2)]">
                 Send the document to every signatory in the <strong>Signatures</strong> section.
-                Signers receive a unique link (one per signer); you can email it directly or paste
-                it into Slack / WhatsApp. The document is frozen at send-time.
+                Both <strong>Gitwork</strong> and <strong>Client</strong> signers receive tokenized embedded links
+                served on our Foundry staging domain.
               </p>
               <p className="mt-2 text-xs text-[var(--text-4)]">
-                Tip: add a <code>parties</code> or <code>signatures</code> section to the document
-                first if no signers appear after sending.
+                Tip: signature blocks with custom variables and DocuSeal roles (Gitwork vs Client) will map automatically.
               </p>
             </div>
             <label className="block">
@@ -135,16 +145,27 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
                 placeholder="Quick note that shows up next to the signing box."
               />
             </label>
-            <Button
-              type="button"
-              variant="primary"
-              size="md"
-              onClick={handleSendNow}
-              loading={isWorking}
-              leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
-            >
-              Send for signature
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                onClick={handlePushDocuSeal}
+                loading={docusealMutation.isPending}
+                leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
+              >
+                Push to DocuSeal
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                onClick={handleSendNow}
+                loading={isWorking}
+              >
+                Native E-Sign
+              </Button>
+            </div>
           </div>
         ) : null}
 
@@ -281,11 +302,23 @@ function SignerList({
             className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3"
           >
             <div className="min-w-0">
-              <p className="text-sm font-medium text-[var(--text-1)]">
-                {s.name} <span className="text-[var(--text-4)]">·</span>{" "}
-                <span className="text-[var(--text-3)]">{s.role}</span>
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium text-[var(--text-1)]">
+                  {s.name} <span className="text-[var(--text-4)]">·</span>{" "}
+                  <span className="text-[var(--text-3)]">{s.role}</span>
+                </p>
+                {s.signerType ? (
+                  <span className="rounded bg-[var(--bg-3)] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-[var(--brand-700)]">
+                    {s.signerType}
+                  </span>
+                ) : null}
+              </div>
               <p className="text-xs text-[var(--text-4)]">{s.email}</p>
+              {s.docusealEmbedSrc ? (
+                <p className="mt-0.5 font-mono text-[10px] text-[var(--brand-600)]">
+                  DocuSeal Embedded: {s.variableName || "signature"}
+                </p>
+              ) : null}
               {s.signedAt ? (
                 <p className="mt-0.5 text-[11px] text-[var(--text-4)]">
                   Signed {new Date(s.signedAt).toLocaleString()}

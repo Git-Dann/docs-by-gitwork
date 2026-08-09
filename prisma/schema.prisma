@@ -879,6 +879,8 @@ model SignatureRequest {
   /// /sign/[token] page so subsequent edits don't change what's being signed. Null while the
   /// request is still DRAFT.
   documentSnapshot Json?
+  /// DocuSeal submission ID if created via DocuSeal API.
+  docusealSubmissionId String?
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
   document         Document               @relation(fields: [documentId], references: [id], onDelete: Cascade)
@@ -903,6 +905,10 @@ model SignatureSigner {
   email            String
   role             String
   organization     String?
+  /// Signatory classification for DocuSeal ("gitwork" or "client").
+  signerType       String?
+  /// Variable key for signature tag (e.g. "gitwork_signature", "client_signature").
+  variableName     String?
   /// Mirror of the signature block the parties/signatures section produced. Used to render the
   /// right block in the signed PDF.
   signatureBlockId String?
@@ -923,6 +929,10 @@ model SignatureSigner {
   signedUserAgent  String?                 @db.Text
   invitedAt        DateTime?
   firstViewedAt    DateTime?
+  /// DocuSeal submitter ID, slug, and direct embed src URL.
+  docusealSubmitterId String?
+  docusealSlug        String?
+  docusealEmbedSrc    String?
   request          SignatureRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)
   events           SignatureEvent[]
   documentViews    DocumentView[]

@@ -92,6 +92,8 @@ export default async function SignPage({ params }: PageProps) {
   }
 
   // ── Active signing flow ─────────────────────────────────────────────────────────────
+  const embedSrc = signer.docusealEmbedSrc;
+
   return (
     <main className="min-h-screen bg-[var(--surface-canvas)]">
       <SignerViewBeacon token={token} />
@@ -103,41 +105,57 @@ export default async function SignPage({ params }: PageProps) {
             <img src="/foundry-logo.png" alt="Foundry by Gitwork" className="h-7 w-auto" />
             <div className="hidden h-6 w-px bg-[var(--border-2)] sm:block" />
             <span className="font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--brand-700)]">
-              OUT FOR SIGNATURE
+              {embedSrc ? "DOCUSEAL EMBEDDED SIGNING" : "OUT FOR SIGNATURE"}
             </span>
           </div>
           <p className="text-xs text-[var(--text-3)]">
             Signing as <span className="font-medium text-[var(--text-1)]">{signer.name}</span>
             {signer.role ? ` · ${signer.role}` : ""}
+            {signer.signerType ? ` (${signer.signerType.toUpperCase()})` : ""}
           </p>
         </div>
       </div>
 
-      <div className="px-4 py-8 sm:px-6 sm:py-12">
-        {snapshot ? (
-          <ProposalPreview
-            proposal={snapshot}
-            showTableOfContents={false}
-            frame
-            className="mx-auto w-full max-w-[880px]"
-          />
-        ) : (
-          <p className="mx-auto max-w-[880px] text-sm text-[var(--text-3)]">
-            Document snapshot unavailable. Contact your Gitwork representative.
-          </p>
-        )}
-      </div>
-
-      <div className="border-t border-[var(--border-2)] bg-white">
-        <div className="mx-auto max-w-[920px] px-4 py-10 sm:px-6">
-          <SignatureCapturePanel
-            token={token}
-            signerName={signer.name}
-            signerRole={signer.role}
-            requestMessage={request.message ?? null}
-          />
+      {embedSrc ? (
+        <div className="mx-auto w-full max-w-[960px] px-4 py-8 sm:px-6 sm:py-10">
+          <div className="rounded-[12px] border border-[var(--border-2)] bg-white overflow-hidden shadow-lg min-h-[680px]">
+            <iframe
+              src={embedSrc}
+              className="w-full h-[720px] border-0"
+              title="DocuSeal Signature Form"
+              allow="camera; microphone"
+            />
+          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="px-4 py-8 sm:px-6 sm:py-12">
+            {snapshot ? (
+              <ProposalPreview
+                proposal={snapshot}
+                showTableOfContents={false}
+                frame
+                className="mx-auto w-full max-w-[880px]"
+              />
+            ) : (
+              <p className="mx-auto max-w-[880px] text-sm text-[var(--text-3)]">
+                Document snapshot unavailable. Contact your Gitwork representative.
+              </p>
+            )}
+          </div>
+
+          <div className="border-t border-[var(--border-2)] bg-white">
+            <div className="mx-auto max-w-[920px] px-4 py-10 sm:px-6">
+              <SignatureCapturePanel
+                token={token}
+                signerName={signer.name}
+                signerRole={signer.role}
+                requestMessage={request.message ?? null}
+              />
+            </div>
+          </div>
+        </>
+      )}
     </main>
   );
 }
