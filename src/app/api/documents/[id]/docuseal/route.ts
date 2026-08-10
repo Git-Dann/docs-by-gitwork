@@ -50,15 +50,22 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return apiError("Document must have at least one signature block to send via DocuSeal.", 400);
     }
 
-    // Format submitters for DocuSeal
+    // Format submitters for DocuSeal with guaranteed unique roles per submitter
+    const roleCounts: Record<string, number> = {};
     const submittersInput = rawBlocks.map((block, index) => {
-      const defaultType = block.type ?? (index === 0 ? "gitwork" : "client");
-      const defaultVar = defaultType === "gitwork" ? "gitwork_signature" : "client_signature";
+      const baseType = (block.type?.trim().toLowerCase() || (index === 0 ? "gitwork" : "client")).replace(/[^a-z0-9_]/g, "_");
+      roleCounts[baseType] = (roleCounts[baseType] || 0) + 1;
+
+      // Unique role per submitter (DocuSeal invariant: role must be unique in submitters)
+      const role = roleCounts[baseType] === 1 ? baseType : `${baseType}_${roleCounts[baseType]}`;
+      const defaultVar = baseType === "gitwork" ? "gitwork_signature" : `client_signature${roleCounts[baseType] > 1 ? `_${roleCounts[baseType]}` : ""}`;
+      const variableName = (block.variableName?.trim() || defaultVar).toLowerCase().replace(/[^a-z0-9_]/g, "_");
+
       return {
         name: block.signatoryName?.trim() || block.partyName?.trim() || `Signatory ${index + 1}`,
         email: block.signatoryEmail?.trim() || `signer_${index + 1}@example.com`,
-        role: defaultType,
-        variableName: block.variableName?.trim() || defaultVar,
+        role,
+        variableName,
       };
     });
 
