@@ -11,6 +11,7 @@ const patchSchema = z.object({
   status: z.enum(["NEW", "TRIAGED", "PROMOTED", "CLOSED"]).optional(),
   requestedBy: z.string().trim().max(120).optional().nullable(),
   externalRef: z.string().trim().max(180).optional().nullable(),
+  label: z.enum(["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN"]).optional().nullable(),
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string; id: string }> }) {

@@ -21,6 +21,7 @@ import type {
   TaskPriority,
 } from "@prisma/client";
 import type { DesignTokens } from "@/types/design-tokens";
+import { buildTaskStatusCounts, type TaskLabel, type TaskStatus } from "@/types/tasks";
 import { loadWikiMonitors, type WikiMonitorsSection } from "./wiki-monitors";
 import { assertWithinIntakeQuota } from "./wiki-intake-limit";
 import { deliverIntakeWebhook } from "./wiki-intake-webhook";
@@ -88,6 +89,9 @@ export interface WikiIntakeItemRecord {
   status: WikiIntakeItemStatus;
   requestedBy: string | null;
   externalRef: string | null;
+  /** The dev-facing label (Backend/Frontend/UI-UX/Research/Design) — the same
+   *  taxonomy Task.label uses, carried onto the task a request is promoted to. */
+  label: TaskLabel | null;
   /** Deep link back to the item in the client's own tracker (API-supplied). */
   externalUrl: string | null;
   /** Screenshot/attachment links supplied by the API (http(s) only). */
@@ -110,6 +114,7 @@ export interface WikiTimelineBlock {
   color: string | null;
   progress: number;
   tasks: { title: string; done: boolean }[];
+  statusCounts: Record<TaskStatus, number>;
 }
 
 export interface WikiTimelineMilestone {
@@ -282,6 +287,7 @@ function serializeWikiIntakeItem(item: {
   status: WikiIntakeItemStatus;
   requestedBy: string | null;
   externalRef: string | null;
+  label?: TaskLabel | null;
   externalUrl?: string | null;
   attachmentUrls?: unknown;
   source: string | null;
@@ -300,6 +306,7 @@ function serializeWikiIntakeItem(item: {
     status: item.status,
     requestedBy: item.requestedBy,
     externalRef: item.externalRef,
+    label: item.label ?? null,
     externalUrl: item.externalUrl ?? null,
     // Json column — guard the shape rather than trusting it.
     attachmentUrls: Array.isArray(item.attachmentUrls) ? (item.attachmentUrls as string[]) : [],
@@ -464,6 +471,7 @@ async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
         color: b.color,
         progress: taskCount === 0 ? 0 : Math.round((doneCount / taskCount) * 100),
         tasks: b.tasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
+        statusCounts: buildTaskStatusCounts(b.tasks),
       };
     })
     .filter((b): b is WikiTimelineBlock => b !== null);
@@ -1137,6 +1145,8 @@ export interface WikiItemIngestItem {
   priority?: "LOW" | "MEDIUM" | "HIGH";
   requestedBy?: string | null;
   externalRef?: string | null;
+  /** The same dev-facing label Task.label uses — carried onto the task if promoted. */
+  label?: TaskLabel | null;
   /** Deep link back to the item in the client's own tracker. */
   externalUrl?: string | null;
   /** Screenshot / attachment LINKS (http(s) only). Never fetched server-side. */
@@ -1238,6 +1248,7 @@ export async function ingestWikiItemsByToken(
         priority: raw.priority ?? "MEDIUM",
         requestedBy: raw.requestedBy?.trim() || null,
         externalRef,
+        label: raw.label ?? null,
         externalUrl: safeIntakeLink(raw.externalUrl),
         attachmentUrls: safeIntakeLinks(raw.attachmentUrls),
         source: "api",
@@ -1334,6 +1345,7 @@ export async function updateWikiIntakeItemByToken(
       ...(patch.requestedBy !== undefined
         ? { requestedBy: patch.requestedBy?.trim() || null }
         : {}),
+      ...(patch.label !== undefined ? { label: patch.label ?? null } : {}),
       ...(patch.externalUrl !== undefined
         ? { externalUrl: safeIntakeLink(patch.externalUrl) }
         : {}),
@@ -1391,6 +1403,7 @@ export async function addWikiIntakeItem(
       priority: item.priority ?? "MEDIUM",
       requestedBy: item.requestedBy?.trim() || null,
       externalRef: item.externalRef?.trim() || null,
+      label: item.label ?? null,
       source: "manual",
     },
   });
@@ -1411,6 +1424,7 @@ export async function updateWikiIntakeItem(
       ...(data.status ? { status: data.status } : {}),
       ...(data.requestedBy !== undefined ? { requestedBy: data.requestedBy?.trim() || null } : {}),
       ...(data.externalRef !== undefined ? { externalRef: data.externalRef?.trim() || null } : {}),
+      ...(data.label !== undefined ? { label: data.label ?? null } : {}),
     },
   });
   // Tell the client's tracker their request moved on our side. Fire-and-forget:
@@ -1471,6 +1485,9 @@ export async function promoteWikiIntakeItemToTask(
       description: item.description,
       status: "BACKLOG",
       priority: item.priority,
+      // Carry the client's chosen label straight onto the board, so a promoted
+      // request arrives already categorised the way devs filter — no re-triage.
+      label: item.label,
       orderKey: await nextWikiPromotedTaskOrderKey(item.wiki.client.workspaceId, item.wiki.client.id),
       metadata: {
         wikiIntake: {

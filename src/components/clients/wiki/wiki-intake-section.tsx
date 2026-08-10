@@ -40,6 +40,21 @@ const STATUS_LABEL: Record<string, string> = {
   CLOSED: "Closed",
 };
 
+/** The dev-facing label taxonomy, mirrored from TASK_LABELS/TASK_LABEL_LABELS
+ *  (`src/types/tasks.ts`) so a request lands on the board already categorised
+ *  the way devs filter. Kept as a literal list rather than imported so this
+ *  client component doesn't pull the whole task types module into the public
+ *  wiki bundle — the reconcile test below keeps the two in step. */
+type DevLabel = "BACKEND" | "FRONTEND" | "UI_UX" | "RESEARCH" | "DESIGN";
+const DEV_LABELS: DevLabel[] = ["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN"];
+const DEV_LABEL_LABEL: Record<DevLabel, string> = {
+  BACKEND: "Backend",
+  FRONTEND: "Frontend",
+  UI_UX: "UI/UX Done",
+  RESEARCH: "Research",
+  DESIGN: "Design",
+};
+
 /** Filter tabs above the intake list — "ALL" first, then one per label, so a
  *  dev can sit on the Bug/Request tabs and never see a client's Design items,
  *  without the two being separated into different pages/components. */
@@ -72,6 +87,7 @@ export function WikiIntakeSection({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [requestedBy, setRequestedBy] = useState("");
+  const [label, setLabel] = useState<DevLabel | "">("");
   const [image, setImage] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewingImageId, setViewingImageId] = useState<string | null>(null);
@@ -109,6 +125,7 @@ export function WikiIntakeSection({
       title: title.trim(),
       description: description.trim() || null,
       requestedBy: requestedBy.trim() || null,
+      label: label || null,
     };
     if (!payload.title) {
       setError("Add a short title first.");
@@ -131,6 +148,7 @@ export function WikiIntakeSection({
       setRequestedBy("");
       setPriority("MEDIUM");
       setType("FEEDBACK");
+      setLabel("");
       setImage(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not submit this item.");
@@ -198,6 +216,22 @@ export function WikiIntakeSection({
               className="app-input"
             />
           </div>
+
+          {/* Dev label — the same taxonomy the task board uses, so a promoted
+              request arrives already categorised for whoever picks it up. */}
+          <select
+            value={label}
+            onChange={(e) => setLabel(e.target.value as DevLabel | "")}
+            aria-label="Label"
+            className="app-select"
+          >
+            <option value="">No label (optional)</option>
+            {DEV_LABELS.map((value) => (
+              <option key={value} value={value}>
+                {DEV_LABEL_LABEL[value]}
+              </option>
+            ))}
+          </select>
 
           {/* Screenshot — optional, attached after the item is created. */}
           <div>
@@ -320,6 +354,15 @@ export function WikiIntakeSection({
                       >
                         {STATUS_LABEL[item.status] ?? item.status}
                       </span>
+                      {item.label ? (
+                        <span
+                          title="Dev label — carried onto the task when this is promoted"
+                          className="rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]"
+                          style={{ fontFamily: MONO }}
+                        >
+                          {DEV_LABEL_LABEL[item.label as DevLabel] ?? item.label}
+                        </span>
+                      ) : null}
                     </div>
                     <h3 className="text-[15px] font-semibold text-[var(--text-1)]">{item.title}</h3>
                     {item.description && (

@@ -31,6 +31,7 @@ export default async function PublicTimelinePage({
     color: b.color,
     progress: b.progress,
     tasks: b.tasks,
+    statusCounts: b.statusCounts,
   }));
 
   const overall =

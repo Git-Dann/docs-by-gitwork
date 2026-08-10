@@ -10,6 +10,7 @@ const bodySchema = z.object({
   priority: z.enum(["LOW", "MEDIUM", "HIGH"]).default("MEDIUM"),
   requestedBy: z.string().trim().max(120).optional().nullable(),
   externalRef: z.string().trim().max(180).optional().nullable(),
+  label: z.enum(["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN"]).optional().nullable(),
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {

@@ -14,8 +14,9 @@ export type GanttBlock = {
   progress: number;
   tasks: { title: string; done: boolean }[];
   /** Per-status task counts for this block. When present, the bar fill is coloured
-   *  by status composition (Done → UI Done → In Review → Doing) instead of a single
-   *  progress fill. Omitted on the public client timeline (progress fill only). */
+   *  by status composition (Done → In Review → Doing) instead of a single progress
+   *  fill. Every caller (internal Tasks Gantt, wiki Timeline, public /timeline share)
+   *  supplies this now, so the client sees the same breakdown as the team. */
   statusCounts?: Record<TaskStatus, number>;
 };
 

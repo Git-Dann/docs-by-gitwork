@@ -1575,6 +1575,11 @@ model ClientWikiIntakeItem {
   status      WikiIntakeItemStatus @default(NEW)
   requestedBy String?
   externalRef String?
+  /// The SAME dev-facing label Task.label uses (Backend/Frontend/UI-UX/Research/
+  /// Design) — a client picks one in the Wiki form so a promoted request lands
+  /// on the board already categorised the way devs already filter/label tasks,
+  /// rather than needing a dev to re-triage it after the fact.
+  label       TaskLabel?
   /// Deep link back to the item in the client's own tracker, sent by the intake
   /// API so the team can open the source of a request. Rendered as a link on the
   /// Requests row; never fetched server-side.

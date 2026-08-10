@@ -38,6 +38,7 @@ function makeItem(id: string, type: WikiIntakeItemRecord["type"]): WikiIntakeIte
     status: "NEW",
     requestedBy: null,
     externalRef: null,
+    label: null,
     externalUrl: null,
     attachmentUrls: [],
     source: "wiki",

@@ -3460,6 +3460,8 @@ export interface WikiIntakeItemPayload {
   priority?: "LOW" | "MEDIUM" | "HIGH";
   requestedBy?: string | null;
   externalRef?: string | null;
+  /** The dev-facing label (same taxonomy as Task.label). */
+  label?: "BACKEND" | "FRONTEND" | "UI_UX" | "RESEARCH" | "DESIGN" | null;
 }
 
 export async function createWikiIntakeItem(
