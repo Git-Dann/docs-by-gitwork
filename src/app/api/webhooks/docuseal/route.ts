@@ -19,8 +19,11 @@ export async function POST(request: NextRequest) {
     const submitterId = String(submitterData.id || "");
     const submitterSlug = String(submitterData.slug || "");
 
+    const isCompletedEvent = eventType.includes("completed") || payload.status === "completed";
+    const isSignedEvent = eventType.includes("signed") || submitterData?.status === "completed" || submitterData?.status === "signed";
+
     // 1. If submission is completed
-    if (eventType === "submission.completed" || eventType === "form.completed") {
+    if (isCompletedEvent) {
       const activeRequest = await prisma.signatureRequest.findFirst({
         where: {
           OR: [
@@ -47,7 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Individual signer signed
-    if (eventType === "form.signed" || submitterData) {
+    if (isSignedEvent && (submitterId || submitterSlug)) {
       const signer = await prisma.signatureSigner.findFirst({
         where: {
           OR: [
