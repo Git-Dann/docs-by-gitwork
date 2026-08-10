@@ -175,28 +175,22 @@ export function WikiIntakeSection({
           </span>
         </div>
         <div className="space-y-4 p-6">
-          {/* Category — segmented pills, this client's own list. Wraps rather
-              than forcing a fixed column count, since a custom label can be
-              much longer than "Bug" and the list can run to a dozen. */}
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {/* Category — a dropdown rather than segmented pills: a client's own
+              list can run to a dozen entries with long labels ("Quick Design
+              fix (V1)"), which as pills wrapped to three-plus rows and pushed
+              the actual form off the fold. One control, one line, any length. */}
+          <select
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+            aria-label="Category"
+            className="app-select"
+          >
             {categories.map((cat) => (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => setCategoryId(cat.id)}
-                title={cat.label}
-                className={[
-                  "rounded-[8px] border px-3 py-2 text-[12px] font-semibold uppercase tracking-[0.06em] transition",
-                  categoryId === cat.id
-                    ? "border-[var(--brand-500)] bg-[var(--surface-brand)] text-[var(--brand-800)]"
-                    : "border-[var(--border-2)] bg-[var(--surface-0)] text-[var(--text-3)] hover:bg-[var(--surface-1)]",
-                ].join(" ")}
-                style={{ fontFamily: MONO }}
-              >
+              <option key={cat.id} value={cat.id}>
                 {cat.label}
-              </button>
+              </option>
             ))}
-          </div>
+          </select>
 
           <input
             value={title}

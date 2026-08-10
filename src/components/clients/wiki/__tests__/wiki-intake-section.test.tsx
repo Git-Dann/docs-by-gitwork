@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { WikiIntakeItemRecord } from "@/lib/api";
-import type { IntakeCategory } from "@/lib/wiki-intake-categories";
+import { DEFAULT_INTAKE_CATEGORIES, type IntakeCategory } from "@/lib/wiki-intake-categories";
 import { WikiIntakeSection } from "@/components/clients/wiki/wiki-intake-section";
 
 /**
@@ -78,10 +78,10 @@ function render(opts: { items?: WikiIntakeItemRecord[]; categories?: IntakeCateg
   );
 }
 
-// The "01 // ADD REQUEST" form has its own type pills with the same labels
-// ("Bug", "Feedback", "Request", "Design") — only the filter tabs are pills
-// (`rounded-full`) carrying a trailing count, so key off both to avoid
-// clicking the wrong button.
+// Filter tabs are the `rounded-full` buttons carrying a trailing count. (The
+// form's own category picker is a <select>, not buttons, so it can't be hit
+// by accident here — but keep the class check so that stays true if it ever
+// goes back to pills.)
 function tabButton(label: string): HTMLButtonElement {
   const button = Array.from(host.querySelectorAll("button")).find(
     (b) => b.className.includes("rounded-full") && b.textContent?.trim().startsWith(label),
@@ -233,5 +233,47 @@ describe("WikiIntakeSection — per-client categories", () => {
     render({ items: [makeItem("legacy", "BUG")], categories: CUSTOM });
     click(tabButton("Bug"));
     expect(articleCount()).toBe(1);
+  });
+});
+
+describe("WikiIntakeSection — the category picker is a dropdown", () => {
+  /** The form's category control, distinguished from the priority/label
+   *  selects by its aria-label. */
+  function categorySelect(): HTMLSelectElement {
+    const el = host.querySelector<HTMLSelectElement>('select[aria-label="Category"]');
+    if (!el) throw new Error("No category select in the Add Request form");
+    return el;
+  }
+
+  it("offers every one of the client's categories as an option, in order", () => {
+    const custom: IntakeCategory[] = [
+      { id: "bug", label: "Bug", mapsTo: "BUG" },
+      { id: "content-tweak", label: "Content tweak", mapsTo: "TASK" },
+      { id: "quick-design-v1", label: "Quick Design fix (V1)", mapsTo: "DESIGN" },
+      { id: "quick-tech-v1", label: "Quick Tech fix (V1)", mapsTo: "TASK" },
+    ];
+    render({ items: [], categories: custom });
+
+    const options = Array.from(categorySelect().options);
+    expect(options.map((o) => o.value)).toEqual(custom.map((c) => c.id));
+    expect(options.map((o) => o.textContent)).toEqual(custom.map((c) => c.label));
+  });
+
+  it("defaults to the client's first category", () => {
+    const custom: IntakeCategory[] = [
+      { id: "content-tweak", label: "Content tweak", mapsTo: "TASK" },
+      { id: "bug", label: "Bug", mapsTo: "BUG" },
+    ];
+    render({ items: [], categories: custom });
+    expect(categorySelect().value).toBe("content-tweak");
+  });
+
+  it("does not render the old pill grid for categories", () => {
+    render({ items: [], categories: DEFAULT_INTAKE_CATEGORIES });
+    // The only remaining category buttons are the filter tabs (rounded-full).
+    const categoryPills = Array.from(host.querySelectorAll("button")).filter(
+      (b) => b.className.includes("rounded-[8px]") && b.textContent?.trim() === "Feedback",
+    );
+    expect(categoryPills).toHaveLength(0);
   });
 });
