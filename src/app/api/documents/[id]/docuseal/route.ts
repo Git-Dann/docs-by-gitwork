@@ -33,6 +33,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const doc = await prisma.document.findUnique({
       where: { id },
       include: {
+        client: true,
         sections: { orderBy: { sortOrder: "asc" } },
       },
     });
@@ -50,10 +51,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return apiError("Document must have at least one signature block to send via DocuSeal.", 400);
     }
 
-    // Format submitters for DocuSeal with guaranteed unique roles per submitter
+    // Format submitters for DocuSeal with guaranteed unique roles and real email addresses
     const roleCounts: Record<string, number> = {};
     const submittersInput = rawBlocks.map((block, index) => {
-      const baseType = (block.type?.trim().toLowerCase() || (index === 0 ? "gitwork" : "client")).replace(/[^a-z0-9_]/g, "_");
+      const isGitwork = block.type === "gitwork" || (index === 0 && block.type !== "client");
+      const baseType = (block.type?.trim().toLowerCase() || (isGitwork ? "gitwork" : "client")).replace(/[^a-z0-9_]/g, "_");
       roleCounts[baseType] = (roleCounts[baseType] || 0) + 1;
 
       // Unique role per submitter (DocuSeal invariant: role must be unique in submitters)
@@ -61,9 +63,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
       const defaultVar = baseType === "gitwork" ? "gitwork_signature" : `client_signature${roleCounts[baseType] > 1 ? `_${roleCounts[baseType]}` : ""}`;
       const variableName = (block.variableName?.trim() || defaultVar).toLowerCase().replace(/[^a-z0-9_]/g, "_");
 
+      // Smart name resolution
+      let name = block.signatoryName?.trim() || block.partyName?.trim();
+      if (!name || name.startsWith("{{") || name.startsWith("[")) {
+        name = isGitwork
+          ? (user?.name || "Gitwork Signatory")
+          : (doc.client?.primaryContactName || doc.clientName || "Client Signatory");
+      }
+
+      // Smart email resolution
+      let email = block.signatoryEmail?.trim();
+      if (!email || email.includes("example.com") || email.startsWith("{{") || email.startsWith("[")) {
+        if (isGitwork) {
+          email = user?.email || "legal@gitwork.tech";
+        } else {
+          email = doc.client?.primaryContactEmail || (doc.clientName ? `${doc.clientName.toLowerCase().replace(/[^a-z0-9]/g, "")}@client.com` : `client_${index + 1}@client.com`);
+        }
+      }
+
       return {
-        name: block.signatoryName?.trim() || block.partyName?.trim() || `Signatory ${index + 1}`,
-        email: block.signatoryEmail?.trim() || `signer_${index + 1}@example.com`,
+        name,
+        email,
         role,
         variableName,
       };
