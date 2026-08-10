@@ -17,18 +17,16 @@ import {
 import { usePermissions } from "@/hooks/use-permissions";
 import {
   SAVED_VIEWS,
+  VIEW_GROUPS,
   DEFAULT_VIEW_ID,
   SourceIcon,
   SOURCE_LABEL,
-  STATUS_TONE,
   STATUS_LABEL,
-  PRIORITY_DOT,
-  SENTIMENT_DOT,
-  REPLY_STATE_LABEL,
-  REPLY_STATE_TONE,
   formatAge,
+  initialsOf,
   isLongWait,
   lastActivityAt,
+  rowState,
   waitingSince,
 } from "./care-constants";
 import { ConversationDetail } from "./conversation-detail";
@@ -55,71 +53,110 @@ function ConversationRow({
   onToggleSelect: () => void;
   assigneeName?: string;
 }) {
-  const awaiting = conv.replyState === "awaiting_reply";
+  const awaiting = conv.replyState === "awaiting_reply" && conv.status !== "closed" && conv.status !== "ignored";
   const waitingFrom = waitingSince(conv);
-  const longWait = waitingFrom ? isLongWait(waitingFrom) : false;
+  const longWait = awaiting && waitingFrom ? isLongWait(waitingFrom) : false;
+  const state = rowState(conv);
+  const urgent = conv.priority === "urgent";
 
   return (
     <div
       className={cn(
-        "flex cursor-pointer items-start gap-2.5 border-b border-[var(--border-2)] py-2.5 pr-3 transition",
-        // A left accent bar carries "this one needs answering" down the whole list at a glance,
-        // without needing the row read. Unanswered work should be visible from across the room.
-        awaiting ? "border-l-2 border-l-amber-400 pl-[10px]" : "pl-3",
+        "group relative cursor-pointer border-b border-[var(--border-2)] py-2.5 pr-3 transition",
+        // One accent bar per row carries "this needs answering" down the whole column, readable
+        // without parsing a single word. It is the only structural colour in the list.
+        awaiting ? "border-l-2 border-l-amber-400 pl-[10px]" : "border-l-2 border-l-transparent pl-[10px]",
         active ? "bg-[var(--brand-50)]" : "hover:bg-[var(--surface-1)]",
       )}
       onClick={onOpen}
     >
-      {selectable && (
-        <input
-          type="checkbox"
-          checked={selected}
-          onClick={(e) => e.stopPropagation()}
-          onChange={onToggleSelect}
-          className="mt-1"
-        />
-      )}
-      <span className={cn("mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full", PRIORITY_DOT[conv.priority])} title={conv.priority} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 text-[var(--text-1)]">
-          <SourceIcon source={conv.source} className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
-          <span className={cn("truncate text-sm", conv.unread ? "font-semibold" : "font-medium")}>{conv.subject}</span>
-        </div>
-        <div className="mt-0.5 truncate text-xs text-[var(--text-3)]">{conv.preview || conv.customerLabel}</div>
-        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          {/* Reply state leads — it answers "has anyone dealt with this?", which is the
-              question the board exists for. Triage status follows it. */}
-          <span
+      {/* ── Line 1: who + when. Sender leads, because triage is about people, and the subject
+             is frequently a reference number that identifies nothing. ── */}
+      <div className="flex items-center gap-2">
+        {selectable && (
+          <input
+            type="checkbox"
+            checked={selected}
+            onClick={(e) => e.stopPropagation()}
+            onChange={onToggleSelect}
+            // Reveal on hover / when in use, so a resting list is content rather than controls.
             className={cn(
-              "rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold",
-              REPLY_STATE_TONE[conv.replyState],
-              longWait && "bg-amber-100 text-amber-900 border-amber-400",
+              "h-3.5 w-3.5 shrink-0 rounded-[3px] transition group-hover:opacity-100",
+              selected ? "opacity-100" : "opacity-0 focus:opacity-100",
             )}
-            title={
-              awaiting
-                ? `Customer waiting since ${new Date(conv.lastInboundAt ?? conv.receivedAt).toLocaleString()}`
-                : conv.replyState === "replied"
-                  ? `Last replied ${new Date(conv.lastOutboundAt ?? "").toLocaleString()}`
-                  : "No customer message captured on this thread"
-            }
-          >
-            {REPLY_STATE_LABEL[conv.replyState]}
-            {waitingFrom && ` · ${formatAge(waitingFrom)}`}
-          </span>
-          <span className={cn("rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium", STATUS_TONE[conv.status])}>
-            {STATUS_LABEL[conv.status]}
-          </span>
-          <span className={cn("inline-block h-1.5 w-1.5 rounded-full", SENTIMENT_DOT[conv.sentiment])} />
-          {assigneeName && (
-            <span className="truncate font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">{assigneeName}</span>
+          />
+        )}
+        <SourceIcon
+          source={conv.source}
+          className={cn("h-3.5 w-3.5 shrink-0", awaiting ? "text-amber-500" : "text-[var(--text-4)]")}
+        />
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-[13px]",
+            conv.unread ? "font-semibold text-[var(--text-1)]" : "font-medium text-[var(--text-2)]",
           )}
-        </div>
+        >
+          {conv.customerLabel || SOURCE_LABEL[conv.source]}
+        </span>
+        {urgent && (
+          <span className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.6px] text-red-600">
+            Urgent
+          </span>
+        )}
+        {/* Age of the LATEST message, not the thread's first — a thread replied to an hour ago
+            must not read as three months old. Goes amber once a wait crosses the threshold, so
+            the passage of time is itself the alarm. */}
+        <span
+          className={cn(
+            "shrink-0 font-mono text-[11px]",
+            longWait ? "font-semibold text-amber-600" : "text-[var(--text-4)]",
+          )}
+          title={new Date(lastActivityAt(conv)).toLocaleString()}
+        >
+          {formatAge(lastActivityAt(conv))}
+        </span>
       </div>
-      {/* Age of the LATEST message, not of the thread's first — a thread that got a reply an
-          hour ago should not read as three months old. */}
-      <span className="shrink-0 font-mono text-[11px] text-[var(--text-4)]" title={new Date(lastActivityAt(conv)).toLocaleString()}>
-        {formatAge(lastActivityAt(conv))}
-      </span>
+
+      {/* ── Line 2: what it is about ── */}
+      <div
+        className={cn(
+          "mt-1 truncate pl-[22px] text-[13px]",
+          conv.unread ? "text-[var(--text-1)]" : "text-[var(--text-2)]",
+        )}
+      >
+        {conv.subject}
+      </div>
+
+      {/* ── Line 3: state, then the gist, then who owns it ──
+             State sits FIRST at a fixed x-position so the colour forms a scannable column down
+             the list, rather than floating at a ragged right edge. It carries no duration: for
+             an awaiting thread the last activity IS the customer's message and for a replied one
+             it is our reply, so the time on line 1 is already that number — printing it twice
+             ("6d … NEEDS REPLY 6D") was pure duplication. */}
+      <div className="mt-0.5 flex items-baseline gap-2 pl-[22px]">
+        <span
+          // Fixed width so the labels form an aligned column; `truncate` so a longer label added
+          // later clips instead of shoving the preview out of alignment on that one row.
+          // 80px fits the longest ("NEEDS REPLY" ≈ 73px at 10px mono + 0.6px tracking).
+          className={cn("w-[80px] shrink-0 truncate font-mono text-[10px] font-semibold uppercase tracking-[0.6px]", state.tone)}
+          title={state.since ? `${state.label} — ${new Date(state.since).toLocaleString()}` : state.label}
+        >
+          {state.label}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-4)]">
+          {conv.preview || "No preview"}
+        </span>
+        {assigneeName && (
+          <span
+            // Its own muted tone and a gap keep it from reading as part of the state readout —
+            // "HB NEEDS REPLY" ran together as one string when they sat adjacent.
+            className="shrink-0 rounded-[3px] bg-[var(--surface-1)] px-1 font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-3)]"
+            title={`Assigned to ${assigneeName}`}
+          >
+            {initialsOf(assigneeName)}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -309,18 +346,45 @@ export function ClientCockpit({
         </div>
         <nav className="flex-1 overflow-y-auto px-2 py-2">
           <div className="mb-1 px-2 font-mono text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]">01 // Views</div>
-          {SAVED_VIEWS.map((v) => (
-            <button
-              key={v.id}
-              onClick={() => setActiveView(v.id)}
-              className={cn(
-                "flex w-full items-center justify-between rounded-[6px] px-2 py-1.5 text-sm transition",
-                activeView === v.id ? "bg-[var(--brand-50)] font-medium text-[var(--brand-700)]" : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
-              )}
-            >
-              <span>{v.label}</span>
-              <span className="font-mono text-[11px] text-[var(--text-4)]">{viewCounts[v.id] ?? 0}</span>
-            </button>
+          {VIEW_GROUPS.map((group, gi) => (
+            <div key={group.label} className={cn(gi > 0 && "mt-3 border-t border-[var(--border-2)] pt-3")}>
+              {/* Queues (work to pick up) vs Browse (everything else). Nine undifferentiated
+                  rows read as a filter dropdown; two named groups read as a place to start. */}
+              <div className="mb-1 px-2 font-mono text-[9px] uppercase tracking-[1.2px] text-[var(--text-4)]">
+                {group.label}
+              </div>
+              {group.ids.map((id) => {
+                const v = SAVED_VIEWS.find((s) => s.id === id);
+                if (!v) return null;
+                const count = viewCounts[v.id] ?? 0;
+                const isActive = activeView === v.id;
+                // The awaiting queue is the only count that is a call to action, so it is the
+                // only one that carries colour. Everything else stays a quiet readout.
+                const isQueue = v.id === DEFAULT_VIEW_ID && count > 0;
+                return (
+                  <button
+                    key={v.id}
+                    onClick={() => setActiveView(v.id)}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-[6px] px-2 py-1.5 text-[13px] transition",
+                      isActive
+                        ? "bg-[var(--brand-50)] font-medium text-[var(--brand-700)]"
+                        : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+                    )}
+                  >
+                    <span className="truncate">{v.label}</span>
+                    <span
+                      className={cn(
+                        "shrink-0 font-mono text-[11px]",
+                        isQueue ? "font-semibold text-amber-600" : "text-[var(--text-4)]",
+                      )}
+                    >
+                      {countsQ.isLoading ? "·" : count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           ))}
         </nav>
         <div className="space-y-1.5 border-t border-[var(--border-2)] p-2">

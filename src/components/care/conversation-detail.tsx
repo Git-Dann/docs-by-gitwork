@@ -30,7 +30,7 @@ import {
   PRIORITY_TONE,
   SENTIMENT_DOT,
   REPLY_STATE_LABEL,
-  REPLY_STATE_TONE,
+  REPLY_STATE_DOT,
   formatAge,
   isLongWait,
 } from "./care-constants";
@@ -65,24 +65,35 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
  */
 function ReplyStateBanner({ conversation }: { conversation: Conversation }) {
   const { replyState, lastInboundAt, lastOutboundAt } = conversation;
-  const longWait = replyState === "awaiting_reply" && lastInboundAt ? isLongWait(lastInboundAt) : false;
+  const awaiting = replyState === "awaiting_reply";
+  const longWait = awaiting && lastInboundAt ? isLongWait(lastInboundAt) : false;
 
+  // A rule + a dot + a sentence, not a filled alert box. The old block put a saturated panel
+  // under every header — including on threads that were perfectly fine — which trains people to
+  // stop seeing it. Weight is carried by the accent rule and the dot; the sentence just says
+  // plainly whose turn it is, which is the thing an operator actually needs to read.
   return (
     <div
       className={cn(
-        "mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-[8px] border px-3 py-2 text-[13px]",
-        REPLY_STATE_TONE[replyState],
-        longWait && "bg-amber-100 text-amber-900 border-amber-400",
+        "mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-l-2 py-1 pl-3 text-[13px]",
+        awaiting ? "border-l-amber-400" : replyState === "replied" ? "border-l-emerald-400" : "border-l-[var(--border-1)]",
       )}
     >
-      <span className="font-semibold">{REPLY_STATE_LABEL[replyState]}</span>
-      {replyState === "awaiting_reply" && lastInboundAt && (
-        <span>· customer waiting {formatAge(lastInboundAt)}</span>
+      <span className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", REPLY_STATE_DOT[replyState])} />
+      <span className={cn("font-semibold", awaiting ? "text-amber-700" : replyState === "replied" ? "text-emerald-700" : "text-[var(--text-3)]")}>
+        {REPLY_STATE_LABEL[replyState]}
+      </span>
+      {awaiting && lastInboundAt && (
+        <span className={cn(longWait ? "font-medium text-amber-700" : "text-[var(--text-3)]")}>
+          — the customer has been waiting {formatAge(lastInboundAt)}
+        </span>
       )}
       {replyState === "replied" && lastOutboundAt && (
-        <span>· we answered {formatAge(lastOutboundAt)} ago</span>
+        <span className="text-[var(--text-3)]">— we answered {formatAge(lastOutboundAt)} ago</span>
       )}
-      {replyState === "no_inbound" && <span>· nothing from the customer on this thread yet</span>}
+      {replyState === "no_inbound" && (
+        <span className="text-[var(--text-3)]">— we started this thread; nothing back yet</span>
+      )}
     </div>
   );
 }

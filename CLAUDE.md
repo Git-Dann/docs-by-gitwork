@@ -3242,3 +3242,59 @@ cache is an infinite query of pages, so that lookup would have found nothing and
 stopped patching** — no error, just a UI that stopped feeling instant. It now sweeps every
 conversation query for the client via `getQueriesData`/`setQueriesData` and handles both shapes,
 and mutations invalidate the counts key as well, or the badges disagree with the list beside them.
+
+### 42.7 The row redesign, and a bug the first cut shipped
+
+Dan's read of the live list: *"very confusing, and things like this are present when we can see it
+has been replied to"*, pointing at a row labelled **"No customer message"** whose preview plainly
+read *"This has now been cancelled. Thank you…"*.
+
+**The bug is mine and it is the §35 mistake again — "we could not look" rendered as "it isn't
+there".** `backfillConversationActivity` derived `lastInboundAt` purely from `SupportMessage`
+rows, so any conversation whose message bodies were never captured (empty body, a purge, a
+pre-message-capture sync) got `lastInboundAt = null` → `no_inbound` → a confident *"No customer
+message"* on a thread with visible content, **and** it dropped out of the awaiting queue
+entirely. A conversation exists *because a connector ingested something inbound*, so `receivedAt`
+is the honest floor: with **no** message rows at all it is now stamped from `receivedAt`. Rows
+that DO exist are still trusted as-is, so a genuinely outbound-only thread (one we started, or
+one rebuilt from the Sent folder) correctly stays `no_inbound` — now labelled **"Sent by us"**,
+which says what it means. The same fallback runs in `runChannelSync` for a newly-created
+conversation that yielded no messages.
+
+**The row was carrying four competing status objects.** Reply chip + status chip + priority dot +
+sentiment dot, all at the same visual weight — and two of them were *defaults*: `status: NEW`
+printed a "New" pill on essentially every untriaged row, and neutral sentiment printed a dot on
+nearly all of them. A signal that appears on everything is not a signal. The redesign:
+
+- **Sender leads, not subject.** Support triage is about people, and the subject is frequently a
+  reference number that identifies nothing (`Follow-up [Case 1001-134555]`).
+- **One state readout**, in the house mono data-label voice rather than a bordered pill —
+  `NEEDS REPLY` / `REPLIED` / `SENT BY US` / `SNOOZED`. It sits **first on line 3 at a fixed 80px
+  width**, so the labels form an aligned, colour-coded column you can scan vertically; floating
+  it right made a ragged edge across three lines. Status *wins over* reply state when snoozed or
+  closed — a snoozed thread is in nobody's queue regardless of who spoke last — which is what
+  removes the double-chip.
+- **The readout carries no duration.** For an awaiting thread the last activity IS the customer's
+  message and for a replied one it is our reply, so the line-1 age is already that number —
+  printing both gave `6d … NEEDS REPLY 6D`.
+- **Time is the alarm.** It ages the *latest* message and turns amber + semibold past
+  `LONG_WAIT_HOURS`, so lateness is legible without another object on the row.
+- Priority renders **only when urgent**, sentiment is gone from the row (it lives in the detail),
+  the checkbox reveals on hover so a resting list is content rather than controls, and the
+  assignee is a distinct muted tile — adjacent plain mono read as one string (`HB NEEDS REPLY`).
+- The rail splits into **Queues** vs **Browse**; nine flat rows read as a filter dropdown. Only
+  the awaiting count carries colour, because it is the only one that is a call to action.
+- The detail pane's reply banner became a **rule + dot + sentence** instead of a filled alert
+  panel that appeared on every thread including healthy ones.
+
+**Verified by rendering, not by reading.** `/app/care` is auth-gated with no staging, so the list
+was server-rendered against the app's **real compiled CSS** in headless Chromium (the §39.1
+technique) at the true production rail width (`xl:w-80` = 320px) and at 390px. That caught two
+things a code read did not: the `NEEDS REPLY 6D` / `6d` duplication, and that the first
+screenshot's labels were *not* aligning — the injected CSS predated the arbitrary `w-[74px]`
+class, and once rebuilt the measured longest label (`NEEDS REPLY` ≈ 73px) needed 80px with
+`truncate` so a future longer label clips rather than shoving the preview out of column.
+Horizontal overflow measured **0** at both widths via `documentElement.clientWidth` (per the
+playbook — `innerWidth` lies). ⚠️ The first overflow reading of 227px was **my harness**, not the
+component: I had written `flex-1` where the real section has `w-full`, so it shrink-wrapped to
+content. Mirror the component's actual classes or the harness tests itself.

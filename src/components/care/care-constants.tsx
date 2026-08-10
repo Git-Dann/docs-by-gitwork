@@ -106,17 +106,31 @@ export const SENTIMENT_DOT: Record<Conversation["sentiment"], string> = {
 // important fact on the board, and it used to be invisible.
 
 export const REPLY_STATE_LABEL: Record<ReplyState, string> = {
-  awaiting_reply: "Awaiting reply",
+  awaiting_reply: "Needs reply",
   replied: "Replied",
-  no_inbound: "No customer message",
+  // Only reachable for a thread WE started (or one reconstructed from the Sent folder). A
+  // conversation with no captured message rows is stamped from its arrival time instead, so
+  // this no longer lands on threads that plainly have customer content — see
+  // backfillConversationActivity.
+  no_inbound: "Sent by us",
 };
 
-export const REPLY_STATE_TONE: Record<ReplyState, string> = {
-  // Amber, not red: "someone must answer this" is not the same alarm as "urgent", and priority
-  // already owns red. A board where everything is red communicates nothing.
-  awaiting_reply: "bg-amber-50 text-amber-800 border border-amber-300",
-  replied: "bg-emerald-50 text-emerald-700 border border-emerald-200",
-  no_inbound: "bg-[var(--surface-1)] text-[var(--text-4)] border border-[var(--border-2)]",
+/**
+ * Row state is a mono READOUT, not a pill.
+ *
+ * The list previously stacked a reply chip, a status chip, a priority dot and a sentiment dot on
+ * every row — four bordered/filled objects competing at the same visual weight, on rows where
+ * two of them ("New", neutral sentiment) were the default and therefore said nothing. Colour on
+ * uppercase mono is the house data-label voice (DESIGN.md {typography.data-label}), reads as an
+ * instrument readout rather than decoration, and lets the state carry real colour because
+ * nothing around it is competing for attention.
+ */
+export const REPLY_STATE_READOUT: Record<ReplyState, string> = {
+  // Amber, never red: "someone must answer this" is not the same alarm as "urgent", and priority
+  // owns red. A board where everything is red communicates nothing.
+  awaiting_reply: "text-amber-600",
+  replied: "text-emerald-600",
+  no_inbound: "text-[var(--text-4)]",
 };
 
 export const REPLY_STATE_DOT: Record<ReplyState, string> = {
@@ -184,6 +198,47 @@ export const SAVED_VIEWS: SavedView[] = [
 ];
 
 export const DEFAULT_VIEW_ID = "awaiting-reply";
+
+/**
+ * The rail splits into QUEUES (work to pick up) and EVERYTHING ELSE (browsing). Without the
+ * break, "Awaiting reply" and "Closed" sat in one undifferentiated list of nine, which is what
+ * made the rail read as a filter dropdown rather than a place to start the day.
+ */
+export const VIEW_GROUPS: Array<{ label: string; ids: string[] }> = [
+  { label: "Queues", ids: ["awaiting-reply", "unassigned", "assigned-me", "urgent"] },
+  { label: "Browse", ids: ["replied", "open", "snoozed", "closed", "all"] },
+];
+
+/**
+ * What the row's state slot should say. Status WINS over reply state when it is snoozed or
+ * closed, because a snoozed thread is not in anyone's queue no matter who spoke last — showing
+ * both was the double-chip problem. Everything else reads its reply state.
+ */
+export function rowState(c: Conversation): { label: string; tone: string; since?: string } {
+  if (c.status === "snoozed") return { label: "Snoozed", tone: "text-purple-600" };
+  if (c.status === "closed") return { label: "Closed", tone: "text-[var(--text-4)]" };
+  if (c.status === "ignored") return { label: "Ignored", tone: "text-[var(--text-4)]" };
+  return {
+    label: REPLY_STATE_LABEL[c.replyState],
+    tone: REPLY_STATE_READOUT[c.replyState],
+    since:
+      c.replyState === "awaiting_reply"
+        ? (c.lastInboundAt ?? undefined)
+        : c.replyState === "replied"
+          ? (c.lastOutboundAt ?? undefined)
+          : undefined,
+  };
+}
+
+/** Initials for the assignee marker — two letters max, so the column stays a fixed width. */
+export function initialsOf(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("");
+}
 
 /**
  * A wait longer than this reads as a problem rather than a queue. Not an SLA — Care has no

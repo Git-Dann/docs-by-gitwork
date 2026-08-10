@@ -122,6 +122,18 @@ export async function runChannelSync(ctx: SyncContext): Promise<SyncResult> {
       createdMessages.push({ direction: msg.direction, createdAt: msg.createdAt });
     }
 
+    // A conversation the connector created but for which it captured no message rows (empty
+    // body, a source that carries everything in the item itself) is still an INBOUND arrival —
+    // stamping it from the item's own timestamp keeps it in the awaiting queue instead of
+    // labelling a thread with visible preview text "no customer message". Same reasoning as the
+    // backfill; see backfillConversationActivity.
+    if (createdMessages.length === 0 && conv.lastMessageAt === null) {
+      await prisma.supportConversation.update({
+        where: { id: conv.id },
+        data: { lastInboundAt: item.receivedAt, lastMessageAt: item.receivedAt },
+      });
+    }
+
     if (createdMessages.length > 0) {
       // Maintains lastInboundAt/lastOutboundAt/lastMessageAt and — crucially — sets `unread`
       // ONLY for an inbound message. This used to set `unread: true` for ANY new message, so

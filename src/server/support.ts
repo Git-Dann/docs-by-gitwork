@@ -1268,16 +1268,28 @@ export async function backfillConversationActivity(
     await Promise.all(
       stale.slice(i, i + CHUNK).map((conv) => {
         const found = byConv.get(conv.id);
-        const latest = [found?.lastInboundAt, found?.lastOutboundAt]
+        // ⚠️ NO message rows at all is not the same as "no customer message". A conversation
+        // exists because a connector ingested something INBOUND — an email, a review, a post —
+        // and plenty of older rows carry a `preview` while their message bodies were never
+        // captured (empty body, a purge, a pre-message-capture sync). Treating those as
+        // no_inbound put a confident "No customer message" on threads with visible content and
+        // dropped them out of the awaiting queue entirely. `receivedAt` is when that inbound
+        // thing arrived, so it is the honest floor.
+        //
+        // Rows that DO exist are trusted as-is: an all-outbound thread (one we started, or one
+        // reconstructed from the Sent folder) correctly stays no_inbound.
+        const hasMessageRows = byConv.has(conv.id);
+        const lastInboundAt = hasMessageRows ? (found?.lastInboundAt ?? null) : conv.receivedAt;
+        const latest = [lastInboundAt, found?.lastOutboundAt]
           .filter((d): d is Date => d instanceof Date)
           .sort((a, b) => b.getTime() - a.getTime())[0];
         return prisma.supportConversation.update({
           where: { id: conv.id },
           data: {
-            lastInboundAt: found?.lastInboundAt ?? null,
+            lastInboundAt,
             lastOutboundAt: found?.lastOutboundAt ?? null,
-            // Falls back to receivedAt for a conversation with no captured messages — otherwise
-            // it would match the "needs backfill" filter on every sync forever.
+            // Falls back to receivedAt so a conversation with nothing at all still drains —
+            // otherwise it would re-match the "needs backfill" filter on every sync forever.
             lastMessageAt: latest ?? conv.receivedAt,
           },
         });
