@@ -23,13 +23,14 @@ import {
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
-type ItemType = "BUG" | "FEEDBACK" | "TASK";
+type ItemType = "BUG" | "FEEDBACK" | "TASK" | "DESIGN";
 type Priority = "LOW" | "MEDIUM" | "HIGH";
 
 const TYPE_LABEL: Record<ItemType, string> = {
   BUG: "Bug",
   FEEDBACK: "Feedback",
   TASK: "Request",
+  DESIGN: "Design",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -38,6 +39,12 @@ const STATUS_LABEL: Record<string, string> = {
   PROMOTED: "Task created",
   CLOSED: "Closed",
 };
+
+/** Filter tabs above the intake list — "ALL" first, then one per label, so a
+ *  dev can sit on the Bug/Request tabs and never see a client's Design items,
+ *  without the two being separated into different pages/components. */
+const FILTER_TABS: Array<"ALL" | ItemType> = ["ALL", "BUG", "FEEDBACK", "TASK", "DESIGN"];
+const PAGE_SIZE = 10;
 
 export function WikiIntakeSection({
   slug,
@@ -70,9 +77,20 @@ export function WikiIntakeSection({
   const [viewingImageId, setViewingImageId] = useState<string | null>(null);
   /** Which row's delete is armed — see the two-step delete in the actions below. */
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"ALL" | ItemType>("ALL");
+  const [page, setPage] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const visibleItems = isInternal ? items : localItems;
+  function selectTab(tab: "ALL" | ItemType) {
+    setActiveTab(tab);
+    setPage(1);
+  }
+
+  const allItems = isInternal ? items : localItems;
+  const filteredItems = activeTab === "ALL" ? allItems : allItems.filter((item) => item.type === activeTab);
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedItems = filteredItems.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
   const busy = createInternal.isPending || createPublic.isPending;
   const uploadingImage = uploadImageInternal.isPending || uploadImagePublic.isPending;
 
@@ -131,8 +149,8 @@ export function WikiIntakeSection({
         </div>
         <div className="space-y-4 p-6">
           {/* Type — segmented pills */}
-          <div className="grid gap-2 sm:grid-cols-3">
-            {(["BUG", "FEEDBACK", "TASK"] as ItemType[]).map((value) => (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {(["BUG", "FEEDBACK", "TASK", "DESIGN"] as ItemType[]).map((value) => (
               <button
                 key={value}
                 type="button"
@@ -241,17 +259,45 @@ export function WikiIntakeSection({
             <span className="widget-header__label--number">02</span>
             {" // INTAKE LIST"}
           </span>
-          {visibleItems.length > 0 && (
+          {filteredItems.length > 0 && (
             <span className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
-              {visibleItems.length} ITEM{visibleItems.length === 1 ? "" : "S"}
+              {filteredItems.length} ITEM{filteredItems.length === 1 ? "" : "S"}
             </span>
           )}
         </div>
+        {/* Category tabs — filters the list below; doesn't affect what a client
+            can submit on the left. Keeps Design items out of a dev's way without
+            splitting them into a separate page. */}
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--border-1)] px-5 py-3">
+          {FILTER_TABS.map((tab) => {
+            const count = tab === "ALL" ? allItems.length : allItems.filter((item) => item.type === tab).length;
+            const active = activeTab === tab;
+            return (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => selectTab(tab)}
+                className={[
+                  "rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] transition",
+                  active
+                    ? "bg-[var(--brand-600)] text-white"
+                    : "text-[var(--text-3)] ring-1 ring-[var(--border-1)] hover:bg-[var(--surface-1)]",
+                ].join(" ")}
+                style={{ fontFamily: MONO }}
+              >
+                {tab === "ALL" ? "All" : TYPE_LABEL[tab]}{" "}
+                <span className={active ? "text-white/70" : "text-[var(--text-4)]"}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
         <div className="divide-y divide-[var(--border-1)]">
-          {visibleItems.length === 0 ? (
-            <p className="p-8 text-center text-sm text-[var(--text-4)]">No bugs, feedback, or requests yet.</p>
+          {filteredItems.length === 0 ? (
+            <p className="p-8 text-center text-sm text-[var(--text-4)]">
+              {activeTab === "ALL" ? "No bugs, feedback, or requests yet." : `No ${TYPE_LABEL[activeTab].toLowerCase()} items yet.`}
+            </p>
           ) : (
-            visibleItems.map((item) => (
+            pagedItems.map((item) => (
               <article key={item.id} className="p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -414,6 +460,29 @@ export function WikiIntakeSection({
             ))
           )}
         </div>
+        {filteredItems.length > PAGE_SIZE && (
+          <div className="flex items-center justify-between gap-3 border-t border-[var(--border-1)] px-5 py-3">
+            <button
+              type="button"
+              disabled={currentPage <= 1}
+              onClick={() => setPage(currentPage - 1)}
+              className="rounded-[7px] border border-[var(--border-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <span className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+              PAGE {currentPage} OF {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={currentPage >= totalPages}
+              onClick={() => setPage(currentPage + 1)}
+              className="rounded-[7px] border border-[var(--border-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </section>
 
       {viewingImageId ? (

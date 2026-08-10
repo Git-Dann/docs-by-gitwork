@@ -30,9 +30,16 @@ export const INTAKE_TYPE = z.preprocess((v) => {
     FEATURE_REQUEST: "TASK",
     ENHANCEMENT: "TASK",
     REQUEST: "TASK",
+    DESIGN: "DESIGN",
+    DESIGN_CHANGE: "DESIGN",
+    DESIGN_EDIT: "DESIGN",
+    DESIGN_REQUEST: "DESIGN",
+    UI: "DESIGN",
+    UX: "DESIGN",
+    VISUAL: "DESIGN",
   };
   return map[k] ?? v;
-}, z.enum(["BUG", "FEEDBACK", "TASK"]));
+}, z.enum(["BUG", "FEEDBACK", "TASK", "DESIGN"]));
 
 export const INTAKE_PRIORITY = z.preprocess((v) => {
   if (typeof v !== "string") return v;

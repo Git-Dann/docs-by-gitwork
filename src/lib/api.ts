@@ -3454,7 +3454,7 @@ export async function deleteWikiCodeVersionApi(slug: string, versionId: string):
 
 
 export interface WikiIntakeItemPayload {
-  type?: "BUG" | "FEEDBACK" | "TASK";
+  type?: "BUG" | "FEEDBACK" | "TASK" | "DESIGN";
   title: string;
   description?: string | null;
   priority?: "LOW" | "MEDIUM" | "HIGH";

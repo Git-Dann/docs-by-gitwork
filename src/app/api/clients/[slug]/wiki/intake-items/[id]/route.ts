@@ -4,7 +4,7 @@ import { apiOk, fromError } from "@/lib/api-response";
 import { deleteWikiIntakeItem, updateWikiIntakeItem } from "@/server/wiki";
 
 const patchSchema = z.object({
-  type: z.enum(["BUG", "FEEDBACK", "TASK"]).optional(),
+  type: z.enum(["BUG", "FEEDBACK", "TASK", "DESIGN"]).optional(),
   title: z.string().trim().min(1).max(180).optional(),
   description: z.string().trim().max(10_000).optional().nullable(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),

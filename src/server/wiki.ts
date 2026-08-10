@@ -1131,7 +1131,7 @@ export async function ingestCourseRequestsByToken(
 
 
 export interface WikiItemIngestItem {
-  type?: "BUG" | "FEEDBACK" | "TASK";
+  type?: "BUG" | "FEEDBACK" | "TASK" | "DESIGN";
   title: string;
   description?: string | null;
   priority?: "LOW" | "MEDIUM" | "HIGH";
@@ -1163,9 +1163,10 @@ export interface WikiItemIngestResult {
   count: number;
 }
 
-function wikiItemPrefix(type: "BUG" | "FEEDBACK" | "TASK"): string {
+function wikiItemPrefix(type: "BUG" | "FEEDBACK" | "TASK" | "DESIGN"): string {
   if (type === "BUG") return "[Bug]";
   if (type === "TASK") return "[Task]";
+  if (type === "DESIGN") return "[Design]";
   return "[Feedback]";
 }
 

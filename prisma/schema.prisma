@@ -1605,6 +1605,7 @@ enum WikiIntakeItemType {
   BUG
   FEEDBACK
   TASK
+  DESIGN
 }
 
 enum WikiIntakeItemStatus {

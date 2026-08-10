@@ -1,0 +1,158 @@
+// @vitest-environment jsdom
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { WikiIntakeItemRecord } from "@/lib/api";
+import { WikiIntakeSection } from "@/components/clients/wiki/wiki-intake-section";
+
+/**
+ * Category tabs + 10-per-page pagination on the Requests intake list.
+ *
+ * A client wanted to log design edits/changes without them mixing into a dev's
+ * Bug/Request view — this drives the real component with a mixed set of items
+ * (including the new DESIGN type) and clicks through tabs and Next/Previous,
+ * rather than only asserting on the filtering/paging math in isolation.
+ */
+
+let host: HTMLDivElement;
+
+beforeEach(() => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  document.body.innerHTML = "";
+  host = document.createElement("div");
+  document.body.appendChild(host);
+});
+
+afterEach(() => {
+  document.body.innerHTML = "";
+});
+
+function makeItem(id: string, type: WikiIntakeItemRecord["type"]): WikiIntakeItemRecord {
+  return {
+    id,
+    type,
+    title: `${type} item ${id}`,
+    description: null,
+    priority: "MEDIUM",
+    status: "NEW",
+    requestedBy: null,
+    externalRef: null,
+    externalUrl: null,
+    attachmentUrls: [],
+    source: "wiki",
+    taskId: null,
+    hasImage: false,
+    imageFilename: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+// 12 BUG + 5 FEEDBACK + 3 TASK + 3 DESIGN = 23 — enough to push both "ALL" and
+// the "Bug" tab past one page of 10, while "Design" stays a single page.
+const ITEMS: WikiIntakeItemRecord[] = [
+  ...Array.from({ length: 12 }, (_, i) => makeItem(`bug-${i}`, "BUG")),
+  ...Array.from({ length: 5 }, (_, i) => makeItem(`fb-${i}`, "FEEDBACK")),
+  ...Array.from({ length: 3 }, (_, i) => makeItem(`task-${i}`, "TASK")),
+  ...Array.from({ length: 3 }, (_, i) => makeItem(`design-${i}`, "DESIGN")),
+];
+
+function render() {
+  const root = createRoot(host);
+  act(() =>
+    root.render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <WikiIntakeSection slug="acme" items={ITEMS} mode="internal" />
+      </QueryClientProvider>,
+    ),
+  );
+}
+
+// The "01 // ADD REQUEST" form has its own type pills with the same labels
+// ("Bug", "Feedback", "Request", "Design") — only the filter tabs are pills
+// (`rounded-full`) carrying a trailing count, so key off both to avoid
+// clicking the wrong button.
+function tabButton(label: string): HTMLButtonElement {
+  const button = Array.from(host.querySelectorAll("button")).find(
+    (b) => b.className.includes("rounded-full") && b.textContent?.trim().startsWith(label),
+  );
+  if (!button) throw new Error(`No filter tab starting with "${label}"`);
+  return button;
+}
+
+function pagerButton(label: "Next" | "Previous"): HTMLButtonElement {
+  const button = Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.trim() === label);
+  if (!button) throw new Error(`No pager button "${label}"`);
+  return button;
+}
+
+function click(button: HTMLButtonElement) {
+  act(() => button.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+}
+
+function articleCount(): number {
+  return host.querySelectorAll("article").length;
+}
+
+describe("WikiIntakeSection — category tabs + pagination", () => {
+  it("renders one tab per label, starting with ALL, each carrying its own count", () => {
+    render();
+    expect(tabButton("All").textContent).toContain("23");
+    expect(tabButton("Bug").textContent).toContain("12");
+    expect(tabButton("Feedback").textContent).toContain("5");
+    expect(tabButton("Request").textContent).toContain("3");
+    expect(tabButton("Design").textContent).toContain("3");
+  });
+
+  it("caps the ALL tab at 10 rows per page and reports the page count", () => {
+    render();
+    expect(articleCount()).toBe(10);
+    expect(host.textContent).toContain("PAGE 1 OF 3");
+  });
+
+  it("Next/Previous page through the remaining rows without changing the filter", () => {
+    render();
+    click(pagerButton("Next"));
+    expect(articleCount()).toBe(10);
+    expect(host.textContent).toContain("PAGE 2 OF 3");
+
+    click(pagerButton("Next"));
+    expect(articleCount()).toBe(3);
+    expect(host.textContent).toContain("PAGE 3 OF 3");
+    expect(pagerButton("Next").hasAttribute("disabled")).toBe(true);
+
+    click(pagerButton("Previous"));
+    expect(host.textContent).toContain("PAGE 2 OF 3");
+  });
+
+  it("filtering to Bug hides Design/Feedback/Request items and still paginates", () => {
+    render();
+    click(tabButton("Bug"));
+    expect(articleCount()).toBe(10);
+    expect(host.textContent).toContain("PAGE 1 OF 2");
+    expect(host.textContent).not.toContain("DESIGN item");
+    expect(host.textContent).not.toContain("FEEDBACK item");
+
+    click(pagerButton("Next"));
+    expect(articleCount()).toBe(2);
+    expect(host.textContent).toContain("PAGE 2 OF 2");
+  });
+
+  it("filtering to Design shows only the 3 design items with no pagination bar", () => {
+    render();
+    click(tabButton("Design"));
+    expect(articleCount()).toBe(3);
+    expect(host.textContent).not.toContain("PAGE 1 OF");
+    expect(host.textContent).not.toContain("BUG item");
+  });
+
+  it("switching tabs resets back to page 1", () => {
+    render();
+    click(pagerButton("Next"));
+    expect(host.textContent).toContain("PAGE 2 OF 3");
+
+    click(tabButton("Bug"));
+    expect(host.textContent).toContain("PAGE 1 OF 2");
+  });
+});
