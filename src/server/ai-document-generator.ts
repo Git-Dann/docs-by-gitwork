@@ -156,8 +156,8 @@ ${extractedText.slice(0, 18_000)}`;
           if (block.type === "gitwork" || block.partyName?.toString().toLowerCase().includes("gitwork")) {
             return {
               ...block,
-              signatoryName: extractedData?.gitworkSignatoryName || block.signatoryName || "Director",
-              signatoryEmail: extractedData?.gitworkSignatoryEmail || block.signatoryEmail || "hello@gitwork.io",
+              signatoryName: actor?.name || extractedData?.gitworkSignatoryName || block.signatoryName || "Director",
+              signatoryEmail: actor?.email || extractedData?.gitworkSignatoryEmail || block.signatoryEmail || "legal@gitwork.tech",
               signatoryRole: extractedData?.gitworkSignatoryRole || block.signatoryRole || "Director",
             };
           }
@@ -177,10 +177,10 @@ ${extractedText.slice(0, 18_000)}`;
             variableName: block.variableName || (isGitwork ? "gitwork_signature" : `client_signature${bIndex > 1 ? `_${bIndex}` : ""}`),
             partyName: isGitwork ? "Gitwork Group Ltd" : resolvedClientName,
             signatoryName: isGitwork
-              ? extractedData?.gitworkSignatoryName || block.signatoryName || "Director"
+              ? actor?.name || extractedData?.gitworkSignatoryName || block.signatoryName || "Director"
               : extractedData?.clientSignatoryName || block.signatoryName || "Authorised Signatory",
             signatoryEmail: isGitwork
-              ? extractedData?.gitworkSignatoryEmail || block.signatoryEmail || "hello@gitwork.io"
+              ? actor?.email || extractedData?.gitworkSignatoryEmail || block.signatoryEmail || "legal@gitwork.tech"
               : extractedData?.clientSignatoryEmail || block.signatoryEmail || "signer@client.com",
             signatoryRole: isGitwork
               ? extractedData?.gitworkSignatoryRole || block.signatoryRole || "Director"
