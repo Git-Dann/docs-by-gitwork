@@ -338,18 +338,28 @@ function SignerList({
                 {tone.label}
               </span>
               {requestSent && s.status !== "SIGNED" && s.status !== "DECLINED" ? (
-                <button
-                  type="button"
-                  onClick={() => onCopyLink(s.accessToken)}
-                  className={cn(
-                    "inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 text-xs font-medium text-[var(--text-2)] transition",
-                    "hover:bg-[var(--surface-1)]",
-                  )}
-                  title="Copy this signer's link"
-                >
-                  <ClipboardDocumentIcon className="h-3.5 w-3.5" />
-                  {copiedToken === s.accessToken ? "Copied" : "Copy link"}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onCopyLink(s.accessToken)}
+                    className={cn(
+                      "inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 text-xs font-medium text-[var(--text-2)] transition",
+                      "hover:bg-[var(--surface-1)]",
+                    )}
+                    title="Copy this signer's link"
+                  >
+                    <ClipboardDocumentIcon className="h-3.5 w-3.5" />
+                    {copiedToken === s.accessToken ? "Copied" : "Copy link"}
+                  </button>
+                  <a
+                    href={`/sign/${s.accessToken}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-8 items-center gap-1 rounded-[6px] border border-[var(--brand-600)] bg-[var(--brand-50)] px-2.5 text-xs font-medium text-[var(--brand-700)] transition hover:bg-[var(--brand-100)]"
+                  >
+                    Open
+                  </a>
+                </div>
               ) : null}
             </div>
           </li>
