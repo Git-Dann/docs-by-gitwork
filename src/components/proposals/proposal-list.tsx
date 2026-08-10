@@ -413,6 +413,20 @@ export function ProposalList() {
     });
   }
 
+  function handleOpenNewModal() {
+    setForm({
+      title: "",
+      clientName: "",
+      clientId: undefined,
+      documentType: "PROPOSAL",
+      templateId: null,
+      deckTemplate: null,
+    });
+    setIntakeFile(null);
+    setIntakeBrief("");
+    setShowCreate(true);
+  }
+
   const totalCount = proposals.length;
   const liveCount = liveDocs.length;
   const favoriteCount = favoriteDocs.length;
@@ -476,7 +490,7 @@ export function ProposalList() {
                   type="button"
                   variant="primary"
                   size="md"
-                  onClick={() => setShowCreate(true)}
+                  onClick={handleOpenNewModal}
                   leadingIcon={<PlusIcon className="h-4 w-4" />}
                 >
                   Create your first document
@@ -632,7 +646,7 @@ export function ProposalList() {
                 type="button"
                 variant="primary"
                 size="md"
-                onClick={() => setShowWizardModal(true)}
+                onClick={handleOpenNewModal}
                 leadingIcon={<PlusIcon className="h-4 w-4" />}
               >
                 New Document

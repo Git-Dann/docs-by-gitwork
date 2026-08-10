@@ -91,6 +91,23 @@ export default async function SignPage({ params }: PageProps) {
     );
   }
 
+  // ── Sequential Signing Check (Gitwork signs 1st, Client signs 2nd) ─────────────
+  const isGitworkSigner = signer.signerType === "gitwork" || signer.role?.toLowerCase().includes("gitwork");
+  if (!isGitworkSigner) {
+    const gitworkSigner = request.signers.find(
+      (s) => s.signerType === "gitwork" || s.role?.toLowerCase().includes("gitwork"),
+    );
+    if (gitworkSigner && gitworkSigner.status !== "SIGNED") {
+      return (
+        <NoticePage
+          title="Awaiting Gitwork Signature"
+          body="Gitwork Group Ltd must sign this document first. Once Gitwork completes their signature, your signing session will automatically activate and you will be notified to sign."
+          tone="neutral"
+        />
+      );
+    }
+  }
+
   // ── Active signing flow ─────────────────────────────────────────────────────────────
   const embedSrc = signer.docusealEmbedSrc;
 
@@ -116,8 +133,36 @@ export default async function SignPage({ params }: PageProps) {
         </div>
       </div>
 
+      {/* Full Document Text Preview */}
+      <div className="px-4 py-6 sm:px-6 sm:py-8">
+        {snapshot ? (
+          <ProposalPreview
+            proposal={snapshot}
+            showTableOfContents={false}
+            frame
+            className="mx-auto w-full max-w-[880px]"
+          />
+        ) : null}
+      </div>
+
       {embedSrc ? (
-        <div className="mx-auto w-full max-w-[960px] px-4 py-8 sm:px-6 sm:py-10">
+        <div className="mx-auto w-full max-w-[960px] px-4 pb-12 sm:px-6">
+          <div className="mb-4 flex items-center justify-between rounded-lg border border-[var(--border-2)] bg-white p-4 shadow-sm">
+            <div>
+              <p className="text-xs font-semibold text-[var(--text-1)]">Interactive Signature Canvas</p>
+              <p className="text-[11px] text-[var(--text-3)]">
+                Sign directly below or open in full window if restricted by browser security policies.
+              </p>
+            </div>
+            <a
+              href={embedSrc}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-md bg-[var(--brand-600)] px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-[var(--brand-700)] transition"
+            >
+              Open Direct Signing Canvas →
+            </a>
+          </div>
           <div className="rounded-[12px] border border-[var(--border-2)] bg-white overflow-hidden shadow-lg min-h-[680px]">
             <iframe
               src={embedSrc}
@@ -128,33 +173,16 @@ export default async function SignPage({ params }: PageProps) {
           </div>
         </div>
       ) : (
-        <>
-          <div className="px-4 py-8 sm:px-6 sm:py-12">
-            {snapshot ? (
-              <ProposalPreview
-                proposal={snapshot}
-                showTableOfContents={false}
-                frame
-                className="mx-auto w-full max-w-[880px]"
-              />
-            ) : (
-              <p className="mx-auto max-w-[880px] text-sm text-[var(--text-3)]">
-                Document snapshot unavailable. Contact your Gitwork representative.
-              </p>
-            )}
+        <div className="border-t border-[var(--border-2)] bg-white">
+          <div className="mx-auto max-w-[920px] px-4 py-10 sm:px-6">
+            <SignatureCapturePanel
+              token={token}
+              signerName={signer.name}
+              signerRole={signer.role}
+              requestMessage={request.message ?? null}
+            />
           </div>
-
-          <div className="border-t border-[var(--border-2)] bg-white">
-            <div className="mx-auto max-w-[920px] px-4 py-10 sm:px-6">
-              <SignatureCapturePanel
-                token={token}
-                signerName={signer.name}
-                signerRole={signer.role}
-                requestMessage={request.message ?? null}
-              />
-            </div>
-          </div>
-        </>
+        </div>
       )}
     </main>
   );
