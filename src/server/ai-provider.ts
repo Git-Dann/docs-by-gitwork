@@ -45,7 +45,7 @@ export interface ResolvedAiConfig {
 export const DEFAULT_MODELS: Record<AiProvider, string> = {
   ANTHROPIC: "claude-3-5-sonnet-20241022",
   OPENAI: "gpt-4o",
-  GROQ: "llama-3.3-70b-versatile",
+  GROQ: "openai/gpt-oss-120b",
   GEMINI: "gemini-2.0-flash",
   LOCAL: "llama3.1",
 };
