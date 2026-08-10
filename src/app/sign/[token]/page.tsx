@@ -91,6 +91,23 @@ export default async function SignPage({ params }: PageProps) {
     );
   }
 
+  // ── Sequential Signing Check (Gitwork signs 1st, Client signs 2nd) ─────────────
+  const isGitworkSigner = signer.signerType === "gitwork" || signer.role?.toLowerCase().includes("gitwork");
+  if (!isGitworkSigner) {
+    const gitworkSigner = request.signers.find(
+      (s) => s.signerType === "gitwork" || s.role?.toLowerCase().includes("gitwork"),
+    );
+    if (gitworkSigner && gitworkSigner.status !== "SIGNED") {
+      return (
+        <NoticePage
+          title="Awaiting Gitwork Signature"
+          body="Gitwork Group Ltd must sign this document first. Once Gitwork completes their signature, your signing session will automatically activate and you will be notified to sign."
+          tone="neutral"
+        />
+      );
+    }
+  }
+
   // ── Active signing flow ─────────────────────────────────────────────────────────────
   const embedSrc = signer.docusealEmbedSrc;
   const iframeSrc = embedSrc
