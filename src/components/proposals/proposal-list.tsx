@@ -632,7 +632,7 @@ export function ProposalList() {
                 type="button"
                 variant="primary"
                 size="md"
-                onClick={() => setShowCreate(true)}
+                onClick={() => setShowWizardModal(true)}
                 leadingIcon={<PlusIcon className="h-4 w-4" />}
               >
                 New Document
