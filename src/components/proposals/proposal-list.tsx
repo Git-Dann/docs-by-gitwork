@@ -90,6 +90,7 @@ function DocLink({
 }
 import { StatusBadge } from "@/components/status-badge";
 import { TemplateGallery } from "@/components/proposals/template-gallery";
+import { CreateDocumentWizardModal } from "@/components/proposals/create-document-wizard-modal";
 import type { DocumentType } from "@/types/proposal";
 
 const statusOptions = [
@@ -223,6 +224,7 @@ export function ProposalList() {
   // Collections rail scope — the primary left-rail selector. `all`/`favorites` exclude archived;
   // `archived` shows only archived. Drives the card grid, table, and grouped views alike.
   const [scope, setScope] = useState<"all" | "favorites" | "archived">("all");
+  const [showWizardModal, setShowWizardModal] = useState(false);
   // Doc-type filter (rail's TYPE list). Scopes the visible set to one document type.
   const [docTypeFilter, setDocTypeFilter] = useState<DocumentType | "ALL">(
     typeParam && typeParam !== "ALL" ? (typeParam as DocumentType) : "ALL",
@@ -607,14 +609,19 @@ export function ProposalList() {
                 type="button"
                 variant="primary"
                 size="md"
-                onClick={() => setShowCreate(true)}
+                onClick={() => setShowWizardModal(true)}
                 leadingIcon={<PlusIcon className="h-4 w-4" />}
               >
-                New
+                New Document
               </Button>
             ) : null}
           </div>
         </div>
+
+        <CreateDocumentWizardModal
+          open={showWizardModal}
+          onClose={() => setShowWizardModal(false)}
+        />
 
         {/* Collections rail + the active view. Rail stacks above the content below lg. */}
         <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[212px_minmax(0,1fr)]">

@@ -8,10 +8,16 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { originFrom } from "@/lib/request-origin";
 import { createDocuSealSubmission } from "@/server/docuseal";
-import { createSignatureRequest, mintSignerToken } from "@/server/signatures";
+import { enableDocumentShare } from "@/server/documents";
+import { launchHeadlessBrowser } from "@/server/headless-browser";
+import { createSignatureRequest } from "@/server/signatures";
 import { assertCan, canShareDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import type { SignatureBlockItem } from "@/types/proposal";
+
+export const maxDuration = 60;
+export const runtime = "nodejs";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -135,9 +141,37 @@ export async function POST(request: NextRequest, context: RouteContext) {
       </html>
     `;
 
+    // Try generating a pixel-perfect PDF via headless browser rendering
+    let pdfBase64: string | undefined = undefined;
+    try {
+      let shareToken = doc.shareToken;
+      if (!shareToken || !doc.isShared) {
+        const updated = await enableDocumentShare(id);
+        shareToken = updated.shareToken;
+      }
+      const origin = originFrom(request);
+      const targetUrl = `${origin}/docs/${shareToken}?print=1`;
+      const browser = await launchHeadlessBrowser();
+      const page = await browser.newPage();
+      await page.goto(targetUrl, { waitUntil: "networkidle0", timeout: 35_000 });
+      await page
+        .waitForFunction("window.__docPaginated === true", { timeout: 10_000 })
+        .catch(() => undefined);
+      const pdfBuffer = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: { top: "0mm", bottom: "0mm", left: "0mm", right: "0mm" },
+      });
+      await page.close().catch(() => undefined);
+      pdfBase64 = Buffer.from(pdfBuffer).toString("base64");
+    } catch (pdfErr) {
+      console.warn("Headless PDF generation warning, using HTML fallback:", pdfErr);
+    }
+
     // Call DocuSeal API (or local mock fallback if API key is blank)
     const dsResult = await createDocuSealSubmission({
       title: doc.title,
+      pdfBase64,
       html: fullDocumentHtml,
       submitters: submittersInput,
     });
