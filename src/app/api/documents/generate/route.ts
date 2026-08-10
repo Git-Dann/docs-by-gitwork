@@ -30,10 +30,13 @@ export async function POST(request: NextRequest) {
     let filename: string | undefined;
     let mimeType: string | undefined;
 
+    let clientName: string | undefined;
+
     if (contentType.includes("multipart/form-data")) {
       const formData = await request.formData();
       documentType = ((formData.get("documentType") as string) || "NDA") as DocumentType;
       title = (formData.get("title") as string) || undefined;
+      clientName = (formData.get("clientName") as string) || undefined;
       briefText = (formData.get("brief") as string) || undefined;
 
       const file = formData.get("file") as File | null;
@@ -47,6 +50,7 @@ export async function POST(request: NextRequest) {
       const json = await request.json();
       documentType = (json.documentType || "NDA") as DocumentType;
       title = json.title || undefined;
+      clientName = json.clientName || undefined;
       briefText = json.brief || undefined;
     }
 
@@ -85,6 +89,7 @@ export async function POST(request: NextRequest) {
       workspace,
       actor,
       customTitle: title,
+      clientName,
     });
 
     return apiOk(result, { status: 201 });

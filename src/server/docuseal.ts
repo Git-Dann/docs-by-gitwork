@@ -116,6 +116,15 @@ export async function createDocuSealSubmission(
       ? input.pdfBase64
       : `data:application/pdf;base64,${input.pdfBase64}`;
 
+    const templateFields = formattedSubmitters.flatMap((s) =>
+      s.fields.map((f) => ({
+        name: f.name,
+        type: f.type || "signature",
+        role: s.role,
+        required: f.required ?? true,
+      })),
+    );
+
     // PDF template creation
     let pdfRes = await fetch(`${baseUrl}/templates/pdf`, {
       method: "POST",
@@ -129,8 +138,10 @@ export async function createDocuSealSubmission(
           {
             name: `${input.title.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`,
             file: base64File,
+            fields: templateFields,
           },
         ],
+        fields: templateFields,
       }),
     });
 
@@ -147,8 +158,10 @@ export async function createDocuSealSubmission(
             {
               name: `${input.title.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`,
               file: base64File,
+              fields: templateFields,
             },
           ],
+          fields: templateFields,
         }),
       });
     }
