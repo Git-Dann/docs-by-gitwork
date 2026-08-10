@@ -29,7 +29,7 @@ export interface WorkspaceAiFields {
   localLlmModel: string | null;
 }
 
-export type AiProvider = "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
+export type AiProvider = "ANTHROPIC" | "OPENAI" | "GROQ" | "GEMINI" | "LOCAL";
 
 export interface ResolvedAiConfig {
   provider: AiProvider;
@@ -40,21 +40,28 @@ export interface ResolvedAiConfig {
 
 /**
  * Current-generation default model per provider — the single source of truth for
- * fallback models when a workspace hasn't pinned its own. Every resolver (here,
- * study.ts, pulse agents, route handlers) must read from this, never inline a literal.
- * Within-tier generation is cost-neutral (Sonnet 5 = Sonnet 4.6 pricing, etc.).
+ * fallback models when a workspace hasn't pinned its own.
  */
 export const DEFAULT_MODELS: Record<AiProvider, string> = {
-  ANTHROPIC: "claude-sonnet-5",
+  ANTHROPIC: "claude-3-5-sonnet-20241022",
   OPENAI: "gpt-4o",
+  GROQ: "llama-3.3-70b-versatile",
   GEMINI: "gemini-2.0-flash",
   LOCAL: "llama3.1",
 };
 
 /** Resolve the active provider, API key, model and (OpenAI-compatible) base URL. */
 export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
-  const provider = (ws.aiProvider || "ANTHROPIC") as AiProvider;
+  const provider = (ws.aiProvider || (process.env.GROQ_API_KEY ? "GROQ" : "ANTHROPIC")) as AiProvider;
 
+  if (provider === "GROQ" || process.env.GROQ_API_KEY) {
+    return {
+      provider: "GROQ",
+      apiKey: process.env.GROQ_API_KEY ?? ws.openaiApiKey ?? null,
+      model: ws.openaiModel ?? DEFAULT_MODELS.GROQ,
+      baseUrl: "https://api.groq.com/openai/v1",
+    };
+  }
   if (provider === "OPENAI") {
     return {
       provider,
@@ -82,21 +89,18 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
   return {
     provider: "ANTHROPIC",
     apiKey: process.env.ANTHROPIC_API_KEY ?? ws.anthropicApiKey ?? null,
-    model: ws.anthropicModel ?? DEFAULT_MODELS.ANTHROPIC,
+    model: ws.anthropicModel && !ws.anthropicModel.includes("-5") ? ws.anthropicModel : DEFAULT_MODELS.ANTHROPIC,
     baseUrl: null,
   };
 }
 
 /**
- * Cheaper models used when tier="light". Routes to Haiku/mini for classification,
- * short summaries, and tagging tasks that don't need full Sonnet quality.
- * ~3.75× cheaper than Sonnet on both input and output.
+ * Cheaper models used when tier="light".
  */
 const LIGHT_MODELS: Partial<Record<AiProvider, string>> = {
-  ANTHROPIC: "claude-haiku-4-5",
+  ANTHROPIC: "claude-3-5-haiku-20241022",
   OPENAI: "gpt-4o-mini",
-  // GEMINI: gemini-2.0-flash is already the cheapest tier — no change needed
-  // LOCAL: no cost either way — keep workspace model
+  GROQ: "llama-3.1-8b-instant",
 };
 
 /**

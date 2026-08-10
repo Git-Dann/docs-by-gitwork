@@ -5,7 +5,7 @@ import { resolveAgentPrompt } from "@/server/agent-config";
 import { dedupeGapsAgainstBlockers } from "@/server/pulse-checks/dedupe-findings";
 import { recordAiUsage, usageFromAnthropic, usageFromOpenAI } from "@/server/ai-usage";
 
-export type AiConfig = { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null };
+export type AiConfig = { provider: "ANTHROPIC" | "OPENAI" | "GROQ" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null };
 export type AiTask = "synthesis" | "discovery" | "competitor" | "fix-agent";
 export { getModelForTask };
 
