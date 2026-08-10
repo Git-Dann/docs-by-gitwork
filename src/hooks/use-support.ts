@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createSupportClient,
   createSupportConnection,
@@ -20,6 +20,7 @@ import {
   listSupportClients,
   listSupportConnections,
   listSupportConversations,
+  getSupportConversationCounts,
   listSupportDraftActions,
   listSupportMembers,
   listSupportMessages,
@@ -48,6 +49,7 @@ import {
   addConversationNote,
   syncSupportClient,
   type TriageData,
+  type ConversationListParams,
 } from "@/lib/api";
 import type { SupportReport, SupportReportPayload } from "@/types/support";
 import type { SupportClient, Conversation, DraftAction, Ticket, WorkflowRule, Connection } from "@/types/support";
@@ -96,10 +98,46 @@ export function useUpdateSupportClient(clientId: string) {
 
 // ─── Conversations ────────────────────────────────────────────────────────────
 
-export function useSupportConversations(clientId: string | null) {
+export function useSupportConversations(clientId: string | null, params?: ConversationListParams) {
   return useQuery({
-    queryKey: ["support", "conversations", clientId],
-    queryFn: () => listSupportConversations(clientId as string),
+    queryKey: ["support", "conversations", clientId, params ?? null],
+    queryFn: () => listSupportConversations(clientId as string, params),
+    enabled: Boolean(clientId),
+    staleTime: 1000 * 15,
+  });
+}
+
+/**
+ * The cockpit's conversation list — one page (50) at a time, with "Load more".
+ *
+ * Every filter that shapes a view is applied server-side, so the pages are a complete walk of
+ * the view rather than a client-side whittling of the most recent N rows. That distinction is
+ * the difference between a queue you can trust to be empty and one that merely looks empty.
+ *
+ * `getNextPageParam` returns undefined when the server reports no cursor, which is what stops
+ * the "Load more" button rendering at the end of the list.
+ */
+export function useSupportConversationsPaged(clientId: string | null, params?: ConversationListParams) {
+  return useInfiniteQuery({
+    queryKey: ["support", "conversations", clientId, params ?? null],
+    queryFn: ({ pageParam }) =>
+      listSupportConversations(clientId as string, { ...params, cursor: pageParam as string | undefined }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    enabled: Boolean(clientId),
+    staleTime: 1000 * 15,
+  });
+}
+
+/**
+ * True per-view totals. Kept as its own query rather than derived from the list, because the
+ * list is paginated — counting its rows would only ever describe the loaded page, which is how
+ * every badge in Care came to mean "…of the first 100 we happened to fetch".
+ */
+export function useSupportConversationCounts(clientId: string | null) {
+  return useQuery({
+    queryKey: ["support", "conversation-counts", clientId],
+    queryFn: () => getSupportConversationCounts(clientId as string),
     enabled: Boolean(clientId),
     staleTime: 1000 * 15,
   });
@@ -118,31 +156,69 @@ export function useUpdateConversation(clientId: string | null) {
     mutationFn: ({ convId, data }: { convId: string; data: Partial<Conversation> }) =>
       updateSupportConversation(clientId as string, convId, data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+      invalidateConversationQueries(qc, clientId);
     },
   });
 }
 
 // ─── Triage (the conversation is the unit of triage; optimistic for Front-like feel) ──
 //
-// The cockpit fetches all conversations for a client into ONE cache key and filters
-// client-side (saved views are predicates), so optimistic patches target that key.
+// The cockpit's views are SERVER-side filters, so a client now has one cached query PER VIEW
+// (the query key carries its params) and each is an infinite query of pages. An optimistic
+// patch therefore has to sweep every conversation query for the client and handle both cache
+// shapes — the paged `{pages:[…]}` used by the cockpit and the flat `{conversations}` still
+// returned by the plain hook. Targeting the single bare key, as this did when one query held
+// everything, would now silently patch nothing.
+
+type PagedCache = { pages: ConversationsCache[]; pageParams: unknown[] };
+type AnyConvCache = ConversationsCache | PagedCache;
+
+function mapConv(c: Conversation, convId: string, patch: Partial<Conversation>): Conversation {
+  return c.id === convId ? { ...c, ...patch } : c;
+}
 
 function patchConversationInCache(
   qc: ReturnType<typeof useQueryClient>,
   clientId: string | null,
   convId: string,
   patch: Partial<Conversation>,
-): ConversationsCache | undefined {
-  const key = ["support", "conversations", clientId];
-  const prev = qc.getQueryData<ConversationsCache>(key);
-  if (prev) {
-    qc.setQueryData<ConversationsCache>(key, {
-      ...prev,
-      conversations: prev.conversations.map((c) => (c.id === convId ? { ...c, ...patch } : c)),
-    });
-  }
+): Array<[readonly unknown[], AnyConvCache | undefined]> {
+  const filter = { queryKey: ["support", "conversations", clientId] };
+  const prev = qc.getQueriesData<AnyConvCache>(filter);
+
+  qc.setQueriesData<AnyConvCache>(filter, (old) => {
+    if (!old) return old;
+    if ("pages" in old) {
+      return {
+        ...old,
+        pages: old.pages.map((p) => ({ ...p, conversations: p.conversations.map((c) => mapConv(c, convId, patch)) })),
+      };
+    }
+    return { ...old, conversations: old.conversations.map((c) => mapConv(c, convId, patch)) };
+  });
+
   return prev;
+}
+
+/** Restore every conversation query this mutation optimistically touched. */
+function restoreConversationCaches(
+  qc: ReturnType<typeof useQueryClient>,
+  prev: Array<[readonly unknown[], AnyConvCache | undefined]> | undefined,
+): void {
+  for (const [key, data] of prev ?? []) qc.setQueryData(key, data);
+}
+
+/**
+ * Counts are server-computed, so any change to status/assignee/reply state moves them. They live
+ * under their own key and would otherwise stay stale until the staleTime elapsed, leaving the
+ * rail badges disagreeing with the list next to them.
+ */
+function invalidateConversationQueries(
+  qc: ReturnType<typeof useQueryClient>,
+  clientId: string | null,
+): void {
+  void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+  void qc.invalidateQueries({ queryKey: ["support", "conversation-counts", clientId] });
 }
 
 /** Optimistically set status/priority/issueType/assignee on a conversation. */
@@ -162,10 +238,10 @@ export function useTriageConversation(clientId: string | null) {
       return { prev };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(["support", "conversations", clientId], ctx.prev);
+      restoreConversationCaches(qc, ctx?.prev);
     },
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+      invalidateConversationQueries(qc, clientId);
     },
   });
 }
@@ -194,7 +270,7 @@ export function useMarkConversationRead(clientId: string | null) {
       return { prev };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(["support", "conversations", clientId], ctx.prev);
+      restoreConversationCaches(qc, ctx?.prev);
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
@@ -216,10 +292,10 @@ export function useSnoozeConversation(clientId: string | null) {
       return { prev };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(["support", "conversations", clientId], ctx.prev);
+      restoreConversationCaches(qc, ctx?.prev);
     },
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+      invalidateConversationQueries(qc, clientId);
     },
   });
 }
@@ -236,10 +312,10 @@ export function useCloseConversation(clientId: string | null) {
       return { prev };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(["support", "conversations", clientId], ctx.prev);
+      restoreConversationCaches(qc, ctx?.prev);
     },
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+      invalidateConversationQueries(qc, clientId);
     },
   });
 }
@@ -252,7 +328,7 @@ export function useBatchTriageConversations(clientId: string | null) {
       data: Partial<{ status: string; priority: string; assigneeId: string | null }>;
     }) => batchTriageConversations(clientId as string, conversationIds, data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+      invalidateConversationQueries(qc, clientId);
     },
   });
 }
@@ -444,7 +520,7 @@ export function usePurgeConversations(clientId: string | null) {
   return useMutation({
     mutationFn: (connId: string) => purgeConnectionConversations(clientId as string, connId),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+      invalidateConversationQueries(qc, clientId);
     },
   });
 }

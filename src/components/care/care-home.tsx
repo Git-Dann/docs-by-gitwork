@@ -1,36 +1,25 @@
 "use client";
 
-import { useMemo } from "react";
 import { ArrowPathIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
-import type { SupportClient, ConversationStatus } from "@/types/support";
-import { useSupportClients, useSupportConversations, useSyncSupportClient } from "@/hooks/use-support";
-import { formatAge, STATUS_TONE, STATUS_LABEL } from "./care-constants";
+import type { SupportClient, ConversationViewCounts } from "@/types/support";
+import { useSupportClients, useSupportConversationCounts, useSyncSupportClient } from "@/hooks/use-support";
+import { formatAge } from "./care-constants";
 
-// Statuses shown on the overview breakdown, in workflow order.
-const OVERVIEW_STATUSES: ConversationStatus[] = ["new", "open", "snoozed", "closed"];
+// The overview breakdown, in workflow order. Each reads a true server-side total.
+const OVERVIEW_ROWS: Array<{ key: keyof ConversationViewCounts; label: string; tone: string }> = [
+  { key: "replied", label: "Replied", tone: "bg-emerald-50 text-emerald-700 border border-emerald-200" },
+  { key: "snoozed", label: "Snoozed", tone: "bg-purple-50 text-purple-700 border border-purple-200" },
+  { key: "closed", label: "Closed", tone: "bg-[var(--surface-1)] text-[var(--text-4)] border border-[var(--border-2)]" },
+];
 
 function ClientCard({ client, onOpen }: { client: SupportClient; onOpen: () => void }) {
-  const convsQ = useSupportConversations(client.id);
+  // Counts, not conversations. This card used to pull a page of up to 100 conversation rows per
+  // client purely to tally them — N clients × 100 rows on every visit to Care home, and the
+  // totals were still capped at the page size. These are server-side COUNTs over everything.
+  const countsQ = useSupportConversationCounts(client.id);
   const sync = useSyncSupportClient(client.id);
-
-  const stats = useMemo(() => {
-    const convs = convsQ.data?.conversations ?? [];
-    const active = convs.filter((c) => c.status === "new" || c.status === "open");
-    // "Awaiting reply" replaces "needs action" as the headline: an active conversation someone
-    // has already answered is not a call on anyone's time, so counting it here overstated the
-    // backlog and made the number easy to ignore.
-    const awaiting = active.filter((c) => c.replyState === "awaiting_reply");
-    const urgent = awaiting.filter((c) => c.priority === "urgent");
-    // Longest-waiting CUSTOMER, measured from their message — not from when the thread opened.
-    const oldest = awaiting.reduce<string | null>((acc, c) => {
-      const since = c.lastInboundAt ?? c.receivedAt;
-      return !acc || new Date(since) < new Date(acc) ? since : acc;
-    }, null);
-    const byStatus = {} as Record<ConversationStatus, number>;
-    for (const c of convs) byStatus[c.status] = (byStatus[c.status] ?? 0) + 1;
-    return { awaiting: awaiting.length, urgent: urgent.length, oldest, byStatus };
-  }, [convsQ.data]);
+  const counts = countsQ.data?.counts;
 
   return (
     <button
@@ -50,32 +39,32 @@ function ClientCard({ client, onOpen }: { client: SupportClient; onOpen: () => v
       <h3 className="mt-1 text-base font-semibold text-[var(--text-1)]">{client.name}</h3>
       <div className="mt-3 flex items-end gap-5">
         <div>
-          <div className={cn("font-[var(--font-display)] text-3xl leading-none", stats.awaiting > 0 ? "text-amber-600" : "text-[var(--text-4)]")}>
-            {stats.awaiting}
+          <div className={cn("font-[var(--font-display)] text-3xl leading-none", (counts?.awaiting ?? 0) > 0 ? "text-amber-600" : "text-[var(--text-4)]")}>
+            {counts?.awaiting ?? "—"}
           </div>
           <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">Awaiting reply</div>
         </div>
         <div>
-          <div className={cn("font-[var(--font-display)] text-3xl leading-none", stats.urgent > 0 ? "text-red-600" : "text-[var(--text-4)]")}>
-            {stats.urgent}
+          <div className={cn("font-[var(--font-display)] text-3xl leading-none", (counts?.urgent ?? 0) > 0 ? "text-red-600" : "text-[var(--text-4)]")}>
+            {counts?.urgent ?? "—"}
           </div>
           <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">Urgent</div>
         </div>
       </div>
-      {/* All-status breakdown — colour-coded so the overview monitors every status, not just
-          "needs action". Only non-zero statuses render. */}
+      {/* Breakdown of everything that is NOT awaiting a reply, so the headline number stays the
+          one call to action. Only non-zero rows render. */}
       <div className="mt-3 flex flex-wrap gap-1.5">
-        {OVERVIEW_STATUSES.filter((s) => (stats.byStatus[s] ?? 0) > 0).map((s) => (
-          <span key={s} className={cn("rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium", STATUS_TONE[s])}>
-            {stats.byStatus[s]} {STATUS_LABEL[s]}
+        {OVERVIEW_ROWS.filter((r) => ((counts?.[r.key] as number) ?? 0) > 0).map((r) => (
+          <span key={r.key} className={cn("rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium", r.tone)}>
+            {counts?.[r.key] as number} {r.label}
           </span>
         ))}
       </div>
       <div className="mt-2 font-mono text-[11px] text-[var(--text-4)]">
-        {stats.oldest
-          ? `Longest wait ${formatAge(stats.oldest)}`
-          : convsQ.isLoading
-            ? "Loading…"
+        {countsQ.isLoading
+          ? "Loading…"
+          : counts?.oldestAwaitingAt
+            ? `Longest wait ${formatAge(counts.oldestAwaitingAt)}`
             : "All replied"}
       </div>
     </button>

@@ -181,6 +181,24 @@ export interface Conversation {
   ticketId?: string;
 }
 
+/**
+ * True per-view totals, counted in SQL over the whole client rather than derived from whatever
+ * page happened to be loaded. Keys mirror the SAVED_VIEWS ids.
+ */
+export interface ConversationViewCounts {
+  awaiting: number;
+  replied: number;
+  assignedMe: number;
+  unassigned: number;
+  urgent: number;
+  open: number;
+  snoozed: number;
+  closed: number;
+  all: number;
+  /** ISO timestamp of the longest-waiting customer message, or null when nobody is waiting. */
+  oldestAwaitingAt: string | null;
+}
+
 /** An internal, staff-only note on a conversation (never shown to the customer). */
 export interface ConversationNote {
   id: string;

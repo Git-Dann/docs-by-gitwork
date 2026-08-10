@@ -3,6 +3,7 @@ import type {
   AuditLog,
   Connection,
   Conversation,
+  ConversationViewCounts,
   DraftAction,
   Message,
   SupportClient,
@@ -1816,9 +1817,17 @@ export async function getSupportReport(reportId: string): Promise<{ report: Supp
 export interface ConversationListParams {
   status?: string | string[];
   assigneeId?: string;
+  /** Only conversations with no assignee. */
+  unassigned?: boolean;
   priority?: string;
   issueType?: string;
   source?: string;
+  /** Derived reply state — filtered in SQL, so a page is complete rather than a sample. */
+  replyState?: string;
+  /** Free-text over subject / preview / customer, matched server-side across ALL rows. */
+  q?: string;
+  /** "oldest_inbound" = longest-waiting first, for working the awaiting queue. */
+  sort?: string;
   includeSnoozedDue?: boolean;
   limit?: number;
   cursor?: string;
@@ -1834,11 +1843,22 @@ export async function listSupportConversations(
   if (params?.priority) qs.set("priority", params.priority);
   if (params?.issueType) qs.set("issueType", params.issueType);
   if (params?.source) qs.set("source", params.source);
+  if (params?.unassigned) qs.set("unassigned", "1");
+  if (params?.replyState) qs.set("replyState", params.replyState);
+  if (params?.q) qs.set("q", params.q);
+  if (params?.sort) qs.set("sort", params.sort);
   if (params?.includeSnoozedDue) qs.set("includeSnoozedDue", "1");
   if (params?.limit) qs.set("limit", String(params.limit));
   if (params?.cursor) qs.set("cursor", params.cursor);
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
   return apiFetch(`/api/support/clients/${clientId}/conversations${suffix}`);
+}
+
+/** True per-view totals across the whole client — not a tally of the loaded page. */
+export async function getSupportConversationCounts(
+  clientId: string,
+): Promise<{ counts: ConversationViewCounts }> {
+  return apiFetch(`/api/support/clients/${clientId}/conversations/counts`);
 }
 
 // ── Conversation triage (monitor + route; never reply in-app) ──

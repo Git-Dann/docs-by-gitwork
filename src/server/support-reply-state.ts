@@ -59,6 +59,32 @@ export function deriveReplyState(activity: ReplyActivity): ReplyState {
 }
 
 /**
+ * Does this activity fall in `state`? The spec `replyStateWhere()` in support.ts mirrors in SQL.
+ *
+ * The rule is expressed twice out of necessity — once here for serializing a row, once as a
+ * Prisma `where` so a filtered page is complete rather than a sample — and the two drifting
+ * apart would let a conversation be listed in the Awaiting queue and then render a "Replied"
+ * chip. This function pins the intended semantics, and its test asserts the three states
+ * PARTITION the space: every conversation matches exactly one, so none can appear in two
+ * queues or vanish from all of them.
+ */
+export function matchesReplyState(state: ReplyState, activity: ReplyActivity): boolean {
+  const inbound = toMs(activity.lastInboundAt);
+  const outbound = toMs(activity.lastOutboundAt);
+  switch (state) {
+    // Mirrors: lastInboundAt NOT NULL AND (lastOutboundAt IS NULL OR lastOutboundAt <= lastInboundAt)
+    case "awaiting_reply":
+      return inbound !== null && (outbound === null || outbound <= inbound);
+    // Mirrors: lastInboundAt NOT NULL AND lastOutboundAt > lastInboundAt
+    case "replied":
+      return inbound !== null && outbound !== null && outbound > inbound;
+    // Mirrors: lastInboundAt IS NULL
+    case "no_inbound":
+      return inbound === null;
+  }
+}
+
+/**
  * How long the customer has been waiting, in ms — the number that makes a triage board
  * trustworthy ("waiting 3 days" is actionable; "received 3 days ago" is not, because it says
  * nothing about whether anyone answered).

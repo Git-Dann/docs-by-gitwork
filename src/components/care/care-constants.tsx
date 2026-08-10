@@ -13,8 +13,10 @@ import type {
   ConversationStatus,
   ConversationPriority,
   Conversation,
+  ConversationViewCounts,
   ReplyState,
 } from "@/types/support";
+import type { ConversationListParams } from "@/lib/api";
 
 export function SourceIcon({ source, className }: { source: SupportSource; className?: string }) {
   const cls = cn("h-4 w-4", className);
@@ -133,31 +135,52 @@ export function lastActivityAt(c: Conversation): string {
   return c.lastMessageAt ?? c.receivedAt;
 }
 
-// Saved views are pure client-side predicates over the fetched conversation array.
+/**
+ * A saved view is a SERVER query, not a client-side predicate.
+ *
+ * It used to be a predicate over whatever page had been fetched, which meant every view was
+ * silently "…among the 100 most recent conversations" — so an old unanswered thread could sit
+ * outside the page and the queue would look empty when it wasn't. Pushing the filter into SQL
+ * is what makes a 50-row page safe: the page is 50 rows *of the view*, and "Load more" walks
+ * the rest.
+ *
+ * `counts` names the field on ConversationViewCounts that badges this view, so the number in
+ * the rail is a true total rather than a tally of loaded rows.
+ */
 export interface SavedView {
   id: string;
   label: string;
-  predicate: (c: Conversation, currentUserId?: string) => boolean;
-  /** Longest-waiting first instead of most-recent-first (see client-cockpit sorting). */
-  oldestFirst?: boolean;
+  params: ConversationListParams;
+  counts: keyof Omit<ConversationViewCounts, "oldestAwaitingAt">;
 }
 
-const isActive = (c: Conversation) => c.status === "new" || c.status === "open";
-const isAwaiting = (c: Conversation) => isActive(c) && c.replyState === "awaiting_reply";
+const ACTIVE = ["new", "open"];
 
 export const SAVED_VIEWS: SavedView[] = [
-  // The default, and the only queue that matters for "has this been answered?". Sorted
-  // longest-waiting first — a triage board that buries the oldest unanswered thread under
+  // The default, and the only queue that answers "has this been dealt with?". Sorted
+  // longest-waiting first — a triage board that buries the oldest unanswered message under
   // today's noise is how things fall through.
-  { id: "awaiting-reply", label: "Awaiting reply", predicate: isAwaiting, oldestFirst: true },
-  { id: "replied", label: "Replied", predicate: (c) => isActive(c) && c.replyState === "replied" },
-  { id: "assigned-me", label: "Assigned to me", predicate: (c, me) => isActive(c) && !!me && c.assigneeId === me },
-  { id: "unassigned", label: "Unassigned", predicate: (c) => isAwaiting(c) && !c.assigneeId },
-  { id: "urgent", label: "Urgent", predicate: (c) => isActive(c) && c.priority === "urgent" },
-  { id: "open", label: "All open", predicate: isActive },
-  { id: "snoozed", label: "Snoozed", predicate: (c) => c.status === "snoozed" },
-  { id: "closed", label: "Closed", predicate: (c) => c.status === "closed" || c.status === "ignored" },
-  { id: "all", label: "All", predicate: () => true },
+  {
+    id: "awaiting-reply",
+    label: "Awaiting reply",
+    params: { status: ACTIVE, replyState: "awaiting_reply", sort: "oldest_inbound" },
+    counts: "awaiting",
+  },
+  { id: "replied", label: "Replied", params: { status: ACTIVE, replyState: "replied" }, counts: "replied" },
+  { id: "assigned-me", label: "Assigned to me", params: { status: ACTIVE, assigneeId: "me" }, counts: "assignedMe" },
+  {
+    id: "unassigned",
+    label: "Unassigned",
+    // Unassigned means unowned WORK: a thread nobody owns but that has already been answered is
+    // not sitting on anyone's desk, so it does not belong in this queue.
+    params: { status: ACTIVE, replyState: "awaiting_reply", unassigned: true, sort: "oldest_inbound" },
+    counts: "unassigned",
+  },
+  { id: "urgent", label: "Urgent", params: { status: ACTIVE, priority: "urgent" }, counts: "urgent" },
+  { id: "open", label: "All open", params: { status: ACTIVE }, counts: "open" },
+  { id: "snoozed", label: "Snoozed", params: { status: "snoozed" }, counts: "snoozed" },
+  { id: "closed", label: "Closed", params: { status: ["closed", "ignored"] }, counts: "closed" },
+  { id: "all", label: "All", params: {}, counts: "all" },
 ];
 
 export const DEFAULT_VIEW_ID = "awaiting-reply";

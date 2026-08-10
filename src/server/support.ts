@@ -11,6 +11,8 @@ import type {
   Connection,
   Conversation,
   ConversationNote,
+  ConversationViewCounts,
+  ReplyState,
   Message,
   Ticket,
   DraftAction,
@@ -667,6 +669,32 @@ export async function deleteSupportClient(clientId: string): Promise<void> {
 
 // ─── Conversations ────────────────────────────────────────────────────────────
 
+/**
+ * The reply-state rule, expressed as a query.
+ *
+ * ⚠️ This is the SAME rule as `deriveReplyState()` and the two must agree exactly, or a
+ * conversation can be listed in the Awaiting queue and then render a "Replied" chip. In
+ * particular `awaiting` uses `lte` (not `lt`) so an exact timestamp tie lands in the awaiting
+ * queue, matching the pure function's deliberate fail-toward-being-seen choice.
+ *
+ * A null `lastOutboundAt` needs its own branch: SQL comparisons against NULL yield NULL, not
+ * true, so a never-answered conversation would be silently dropped from its own queue.
+ */
+function replyStateWhere(state: ReplyState): Prisma.SupportConversationWhereInput {
+  const inbound = prisma.supportConversation.fields.lastInboundAt;
+  switch (state) {
+    case "awaiting_reply":
+      return {
+        lastInboundAt: { not: null },
+        OR: [{ lastOutboundAt: null }, { lastOutboundAt: { lte: inbound } }],
+      };
+    case "replied":
+      return { lastInboundAt: { not: null }, lastOutboundAt: { gt: inbound } };
+    case "no_inbound":
+      return { lastInboundAt: null };
+  }
+}
+
 export async function listConversations(
   clientId: string,
   opts: {
@@ -674,33 +702,78 @@ export async function listConversations(
     cursor?: string;
     status?: ConversationStatus | ConversationStatus[];
     assigneeId?: string;
+    /** Only conversations with no assignee. Mutually exclusive with assigneeId. */
+    unassigned?: boolean;
     priority?: ConversationPriority;
     issueType?: string;
     source?: SupportSource;
+    /** Filter by derived reply state — applied in SQL so a page is complete, not a sample. */
+    replyState?: ReplyState;
+    /** Free-text over subject / preview / customer, applied in SQL for the same reason. */
+    q?: string;
+    /** "oldest_inbound" = longest-waiting first, for working the awaiting queue. */
+    sort?: "activity" | "oldest_inbound";
     /** When true, snoozed conversations whose snoozeUntil has passed are surfaced. */
     includeSnoozedDue?: boolean;
   } = {},
 ): Promise<{ conversations: Conversation[]; nextCursor: string | null }> {
-  const limit = Math.min(opts.limit ?? 100, 200);
+  // 50, not 100. Every filter that shapes a view is applied in SQL below, so a page is 50 rows
+  // OF THE THING YOU ASKED FOR and "Load more" reaches the rest — rather than 100 recent rows
+  // that a client-side predicate then whittles down to an arbitrary and silently partial subset.
+  const limit = Math.min(opts.limit ?? 50, 200);
 
   const statusList = opts.status
     ? (Array.isArray(opts.status) ? opts.status : [opts.status]).map(toDbConversationStatus)
     : undefined;
 
-  const where: Prisma.SupportConversationWhereInput = { clientId };
+  // Composed with AND so independent filters can each contribute their own OR branch without
+  // overwriting one another — replyState and includeSnoozedDue both need one.
+  const and: Prisma.SupportConversationWhereInput[] = [];
+  const where: Prisma.SupportConversationWhereInput = { clientId, AND: and };
+
   if (statusList) where.status = { in: statusList };
   if (opts.assigneeId) where.assigneeId = opts.assigneeId;
+  else if (opts.unassigned) where.assigneeId = null;
   if (opts.priority) where.priority = toDbConversationPriority(opts.priority);
   if (opts.issueType) where.issueType = opts.issueType;
   if (opts.source) where.source = toDbSource(opts.source);
+  if (opts.replyState) and.push(replyStateWhere(opts.replyState));
+
+  const q = opts.q?.trim();
+  if (q) {
+    and.push({
+      OR: [
+        { subject: { contains: q, mode: "insensitive" } },
+        { preview: { contains: q, mode: "insensitive" } },
+        { customerLabel: { contains: q, mode: "insensitive" } },
+      ],
+    });
+  }
+
   if (opts.includeSnoozedDue) {
     // Surface snoozed items whose timer has elapsed alongside the requested status set.
-    where.OR = [
-      ...(statusList ? [{ status: { in: statusList } }] : []),
-      { status: "SNOOZED", snoozeUntil: { lte: new Date() } },
-    ];
+    and.push({
+      OR: [
+        ...(statusList ? [{ status: { in: statusList } }] : []),
+        { status: "SNOOZED" as PrismaConversationStatus, snoozeUntil: { lte: new Date() } },
+      ],
+    });
     delete where.status;
   }
+
+  // Order by ACTIVITY, not by when the thread started. `receivedAt` is stamped once at creation
+  // and never updated, so ordering by it stranded a months-old thread that got a reply an hour
+  // ago at the bottom of the list. `nulls: "last"` covers the window before
+  // backfillConversationActivity has drained a client; `id` is a deterministic tiebreaker so
+  // cursor pagination can't skip or repeat a row.
+  const orderBy: Prisma.SupportConversationOrderByWithRelationInput[] =
+    opts.sort === "oldest_inbound"
+      ? [{ lastInboundAt: { sort: "asc", nulls: "last" } }, { id: "desc" }]
+      : [
+          { lastMessageAt: { sort: "desc", nulls: "last" } },
+          { receivedAt: "desc" },
+          { id: "desc" },
+        ];
 
   const rows = await prisma.supportConversation.findMany({
     where,
@@ -708,16 +781,7 @@ export async function listConversations(
       tickets: { select: { id: true }, take: 1 },
       _count: { select: { notes: true } },
     },
-    // Order by ACTIVITY, not by when the thread started. `receivedAt` is stamped once at
-    // creation and never updated, so ordering by it stranded a months-old thread that got a
-    // reply an hour ago at the bottom of the list — past the page limit, i.e. invisible.
-    // `nulls: "last"` covers the window before backfillConversationActivity has drained a
-    // client; `id` is a deterministic tiebreaker so cursor pagination can't skip or repeat a row.
-    orderBy: [
-      { lastMessageAt: { sort: "desc", nulls: "last" } },
-      { receivedAt: "desc" },
-      { id: "desc" },
-    ],
+    orderBy,
     take: limit + 1,
     ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
   });
@@ -770,6 +834,69 @@ export async function createConversation(
     include: { tickets: { select: { id: true }, take: 1 } },
   });
   return serializeConversation(row);
+}
+
+/**
+ * True counts per saved view, plus the longest-waiting customer.
+ *
+ * These were previously derived client-side from the fetched page, so every badge silently
+ * meant "…within the first 100 rows we happened to load" — a count that under-reports exactly
+ * when it matters most, on a busy client. Counting in SQL costs a handful of indexed COUNTs and
+ * is the difference between a number you can act on and one you learn to ignore.
+ *
+ * Care home also uses this instead of pulling every conversation per client just to tally them.
+ */
+export async function getConversationViewCounts(
+  clientId: string,
+  currentUserId?: string,
+): Promise<ConversationViewCounts> {
+  const active: Prisma.SupportConversationWhereInput = { clientId, status: { in: ["NEW", "OPEN"] } };
+  const awaiting = { ...active, AND: [replyStateWhere("awaiting_reply")] };
+
+  const [
+    awaitingCount,
+    repliedCount,
+    assignedMe,
+    unassigned,
+    urgent,
+    open,
+    snoozed,
+    closed,
+    all,
+    oldest,
+  ] = await Promise.all([
+    prisma.supportConversation.count({ where: awaiting }),
+    prisma.supportConversation.count({ where: { ...active, AND: [replyStateWhere("replied")] } }),
+    currentUserId
+      ? prisma.supportConversation.count({ where: { ...active, assigneeId: currentUserId } })
+      : Promise.resolve(0),
+    // Unassigned counts only what is AWAITING a reply: an unowned thread that has already been
+    // answered is not work sitting on nobody's desk, and counting it there inflated the badge.
+    prisma.supportConversation.count({ where: { ...awaiting, assigneeId: null } }),
+    prisma.supportConversation.count({ where: { ...active, priority: "URGENT" } }),
+    prisma.supportConversation.count({ where: active }),
+    prisma.supportConversation.count({ where: { clientId, status: "SNOOZED" } }),
+    prisma.supportConversation.count({ where: { clientId, status: { in: ["CLOSED", "IGNORED"] } } }),
+    prisma.supportConversation.count({ where: { clientId } }),
+    prisma.supportConversation.findFirst({
+      where: awaiting,
+      orderBy: { lastInboundAt: { sort: "asc", nulls: "last" } },
+      select: { lastInboundAt: true },
+    }),
+  ]);
+
+  return {
+    awaiting: awaitingCount,
+    replied: repliedCount,
+    assignedMe,
+    unassigned,
+    urgent,
+    open,
+    snoozed,
+    closed,
+    all,
+    oldestAwaitingAt: oldest?.lastInboundAt?.toISOString() ?? null,
+  };
 }
 
 export async function updateConversation(

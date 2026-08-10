@@ -5,7 +5,8 @@ import { ArrowPathIcon, ArrowLeftIcon, Cog8ToothIcon, DocumentChartBarIcon, XMar
 import { cn } from "@/lib/format";
 import type { Conversation, SupportClient } from "@/types/support";
 import {
-  useSupportConversations,
+  useSupportConversationsPaged,
+  useSupportConversationCounts,
   useSupportConnections,
   useSupportMembers,
   useSyncSupportClient,
@@ -32,6 +33,10 @@ import {
 } from "./care-constants";
 import { ConversationDetail } from "./conversation-detail";
 import { ConnectorsView } from "@/components/support/support-dashboard";
+
+// One page. Small on purpose: because the views are server-side filters, 50 rows is 50 rows of
+// the thing you asked for, and "Load more" walks the rest.
+const PAGE_SIZE = 50;
 
 function ConversationRow({
   conv,
@@ -190,14 +195,13 @@ function CareSettingsPanel({ client, onClose }: { client: SupportClient; onClose
 
 export function ClientCockpit({
   client,
-  currentUserId,
   onBack,
 }: {
   client: SupportClient;
-  currentUserId?: string;
+  // No currentUserId: "Assigned to me" is now a server query (assigneeId=me), resolved from the
+  // session server-side, so the client no longer needs to know who it is to filter.
   onBack: () => void;
 }) {
-  const convsQ = useSupportConversations(client.id);
   const connectionsQ = useSupportConnections(client.id);
   const membersQ = useSupportMembers(client.id);
   const sync = useSyncSupportClient(client.id);
@@ -214,39 +218,47 @@ export function ClientCockpit({
   // In-place channel/settings hub — opens inside the cockpit instead of jumping to /app/support.
   const [showSettings, setShowSettings] = useState(false);
 
-  const conversations = useMemo(() => convsQ.data?.conversations ?? [], [convsQ.data]);
   const members = useMemo(() => membersQ.data?.members ?? [], [membersQ.data]);
   const memberName = useMemo(() => new Map(members.map((m) => [m.id, m.name])), [members]);
 
   const view = SAVED_VIEWS.find((v) => v.id === activeView) ?? SAVED_VIEWS[0];
 
-  const filtered = useMemo(() => {
-    const q = deferredSearch.trim().toLowerCase();
-    const rows = conversations.filter((c) => {
-      if (!view.predicate(c, currentUserId)) return false;
-      if (sourceFilter !== "all" && c.source !== sourceFilter) return false;
-      if (q && !(`${c.subject} ${c.preview} ${c.customerLabel}`.toLowerCase().includes(q))) return false;
-      return true;
-    });
+  // The view IS the query. Source and search are folded in as server params too, so a filtered
+  // list is a complete walk of the match set rather than a client-side sieve over one page —
+  // searching or filtering by channel can no longer hide a conversation that simply hadn't
+  // been fetched yet.
+  const params = useMemo(
+    () => ({
+      ...view.params,
+      ...(sourceFilter !== "all" ? { source: sourceFilter } : {}),
+      ...(deferredSearch.trim() ? { q: deferredSearch.trim() } : {}),
+      limit: PAGE_SIZE,
+    }),
+    [view, sourceFilter, deferredSearch],
+  );
 
-    // The awaiting-reply queue runs longest-waiting FIRST: the whole failure mode being fixed
-    // here is a customer message quietly ageing at the bottom of a list. Every other view keeps
-    // most-recent-first, which is what you want when browsing rather than working a queue.
-    const dir = view.oldestFirst ? 1 : -1;
-    const key = (c: Conversation) =>
-      new Date(view.oldestFirst ? (c.lastInboundAt ?? lastActivityAt(c)) : lastActivityAt(c)).getTime();
-    return [...rows].sort((a, b) => (key(a) - key(b)) * dir);
-  }, [conversations, view, sourceFilter, deferredSearch, currentUserId]);
+  const convsQ = useSupportConversationsPaged(client.id, params);
+  const countsQ = useSupportConversationCounts(client.id);
 
-  // View counts (over all conversations, ignoring source/search) for the rail badges.
+  const conversations = useMemo(
+    () => convsQ.data?.pages.flatMap((p) => p.conversations) ?? [],
+    [convsQ.data],
+  );
+
+  // Badge numbers come from server-side COUNTs over the whole client, so they mean what they
+  // say. Deriving them from the loaded rows would make every badge cap at the page size.
+  const counts = countsQ.data?.counts;
   const viewCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const v of SAVED_VIEWS) counts[v.id] = conversations.filter((c) => v.predicate(c, currentUserId)).length;
-    return counts;
-  }, [conversations, currentUserId]);
+    const out: Record<string, number> = {};
+    for (const v of SAVED_VIEWS) out[v.id] = counts ? counts[v.counts] : 0;
+    return out;
+  }, [counts]);
 
   const selected = selectedId ? conversations.find((c) => c.id === selectedId) ?? null : null;
-  const sources = useMemo(() => Array.from(new Set(conversations.map((c) => c.source))), [conversations]);
+  const sources = useMemo(
+    () => Array.from(new Set(connectionsQ.data?.connections.map((c) => c.source) ?? [])),
+    [connectionsQ.data],
+  );
 
   // Opening a conversation is what marks it read — the same contract the legacy
   // dashboard has always had. Guarded on `conv.unread` so re-opening an already-read
@@ -385,7 +397,10 @@ export function ClientCockpit({
         </div>
         <div className="flex items-center justify-between border-b border-[var(--border-2)] px-3 py-2">
           <span className="font-mono text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]">02 // Conversations</span>
-          <span className="font-mono text-[11px] text-[var(--text-4)]">{filtered.length}</span>
+          <span className="font-mono text-[11px] text-[var(--text-4)]">
+            {conversations.length}
+            {convsQ.hasNextPage ? "+" : ""}
+          </span>
         </div>
         <div className="flex items-center gap-2 border-b border-[var(--border-2)] px-3 py-2">
           <input
@@ -408,14 +423,14 @@ export function ClientCockpit({
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {convsQ.isLoading && <p className="px-3 py-4 text-sm text-[var(--text-4)]">Loading…</p>}
-          {!convsQ.isLoading && filtered.length === 0 && (
+          {!convsQ.isLoading && conversations.length === 0 && (
             <p className="px-3 py-8 text-center text-sm text-[var(--text-4)]">
-              {activeView === DEFAULT_VIEW_ID
+              {activeView === DEFAULT_VIEW_ID && !deferredSearch.trim()
                 ? "Nothing awaiting a reply — every customer message has been answered."
                 : "Nothing here. Try another view or Sync now."}
             </p>
           )}
-          {filtered.map((c) => (
+          {conversations.map((c) => (
             <ConversationRow
               key={c.id}
               conv={c}
@@ -427,6 +442,23 @@ export function ClientCockpit({
               assigneeName={c.assigneeId ? memberName.get(c.assigneeId) : undefined}
             />
           ))}
+          {convsQ.hasNextPage && (
+            <button
+              type="button"
+              onClick={() => void convsQ.fetchNextPage()}
+              disabled={convsQ.isFetchingNextPage}
+              className="w-full border-b border-[var(--border-2)] px-3 py-2.5 text-xs font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+            >
+              {convsQ.isFetchingNextPage ? "Loading…" : `Load ${PAGE_SIZE} more`}
+            </button>
+          )}
+          {/* Says outright when the list is complete, so an empty-looking queue is never
+              confused with a truncated one — the ambiguity the old fixed 100-row page created. */}
+          {!convsQ.isLoading && !convsQ.hasNextPage && conversations.length > 0 && (
+            <p className="px-3 py-3 text-center font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">
+              End of list · {conversations.length} shown
+            </p>
+          )}
         </div>
 
         {/* Bulk action bar */}

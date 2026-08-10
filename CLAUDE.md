@@ -3189,8 +3189,8 @@ The legacy `/app/support` dashboard reads the **same** server-derived field (a s
 ### 42.5 Verified / not verified
 
 `npm run verify` green: tsc + lint **0 errors** (30 warnings, all pre-existing — confirmed
-identical on the stashed tree), **1497 tests** passing across 110 files, `audit:ui` **0 findings**
-with its self-test passing. `npx next build` clean, 98 static pages, no database. The 17 new tests
+identical on the stashed tree), **1534 tests** passing across 113 files, `audit:ui` **0 findings**
+with its self-test passing. `npx next build` clean, 98 static pages, no database. The 21 new tests
 were **proved to discriminate** by breaking three things on purpose: relaxing the tie to `>=`
 (1 failure), raising `sawInbound` for any message (1), and dropping the backwards-drag guard (1) —
 each failing only the test named for it.
@@ -3204,11 +3204,41 @@ a draining one); confirm rows show Awaiting/Replied correctly; reply to a thread
 mailbox, outside Care**, sync, and confirm it flips to Replied — that single check is the whole
 point of the change; then confirm the unread badge stops climbing on its own.
 
-**Known limits (unchanged by this work, but they bound the queue):** the cockpit fetches one page
-of **100** conversations per client and filters client-side, so on a client with more history the
-awaiting queue is "the 100 most recently active", not "everything". Ordering by activity rather
-than thread-start makes this strictly better (a revived thread now comes *into* the page instead
-of being stranded), but it is not a complete queue and should not be described as one. Discord and
-App Store replies made outside Care are still undetectable — no equivalent of a Sent folder — so
-those rely on "Copy & mark replied". `AWAITING_CUSTOMER` on the dormant `SupportTicket` remains
-unused; reply state lives on the conversation.
+**Known limits:** Discord and App Store replies made outside Care are still undetectable — there
+is no equivalent of a Sent folder to read — so those rely on "Copy & mark replied".
+`AWAITING_CUSTOMER` on the dormant `SupportTicket` remains unused; reply state lives on the
+conversation.
+
+### 42.6 The views became server queries, so a 50-row page is safe
+
+The first cut kept the cockpit's existing shape: fetch one page of conversations, filter it
+client-side with saved-view predicates. That made every view silently mean "…among the rows we
+happened to load", and the awaiting queue is the one list where that is unacceptable — an old
+unanswered thread outside the page makes the queue look empty when it is not. **Shrinking the
+page to 50 would have made that strictly worse**, so the filter moved into SQL first.
+
+- **`listConversations` gained `replyState`, `unassigned`, `q` and `sort`**, and `SAVED_VIEWS`
+  entries are now `ConversationListParams` rather than predicates. Source filter and search are
+  server params too — searching used to match only loaded rows, the same class of lie.
+- **Reply state is filtered with a Prisma field reference** (`lastOutboundAt lte
+  fields.lastInboundAt`), so no raw SQL and no denormalised boolean to drift.
+  ⚠️ A null `lastOutboundAt` needs **its own OR branch**: SQL comparisons against NULL yield
+  NULL, not true, so without it the query drops exactly the never-answered conversations the
+  queue exists for. ⚠️ It uses `lte`, matching `deriveReplyState`'s deliberate tie behaviour —
+  **the query rule and the display rule must agree**, or a row appears under "Awaiting reply"
+  wearing a "Replied" chip. `matchesReplyState()` pins the semantics and its test asserts the
+  three states **partition** the space (exactly one match per conversation, so none is in two
+  queues or in none).
+- **Pagination is 50/page with "Load more"**, and the list says *"End of list · N shown"* when
+  complete — so an empty queue is never confused with a truncated one.
+- **Badges come from `getConversationViewCounts()`** (indexed COUNTs over the whole client), not
+  from tallying loaded rows, which capped every badge at the page size. Care home uses it too,
+  replacing a fetch of up to 100 conversation rows *per client* that existed only to be counted.
+
+⚠️ **Optimistic triage patching had to be rewritten and this is the trap to remember.** The
+cockpit used to hold every conversation under ONE key, so `patchConversationInCache` targeted
+`["support","conversations",clientId]` directly. Now the key carries the view's params and the
+cache is an infinite query of pages, so that lookup would have found nothing and **silently
+stopped patching** — no error, just a UI that stopped feeling instant. It now sweeps every
+conversation query for the client via `getQueriesData`/`setQueriesData` and handles both shapes,
+and mutations invalidate the counts key as well, or the badges disagree with the list beside them.

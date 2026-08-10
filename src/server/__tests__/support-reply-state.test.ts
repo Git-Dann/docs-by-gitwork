@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { deriveReplyState, waitingMs, foldMessageActivity } from "@/server/support-reply-state";
+import {
+  deriveReplyState,
+  waitingMs,
+  foldMessageActivity,
+  matchesReplyState,
+} from "@/server/support-reply-state";
+import type { ReplyState } from "@/types/support";
 
 const T = (iso: string) => new Date(iso);
 const MON_9AM = "2026-08-10T09:00:00.000Z";
@@ -113,5 +119,51 @@ describe("foldMessageActivity", () => {
     expect(patch.lastMessageAt).toEqual(T(MON_11AM));
     // …and the folded result is what flips the conversation to "replied".
     expect(deriveReplyState({ lastInboundAt: T(MON_9AM), lastOutboundAt: patch.lastOutboundAt })).toBe("replied");
+  });
+});
+
+describe("matchesReplyState — the filter rule and the display rule must agree", () => {
+  // Every combination that can reach the database, including both nulls and the exact tie.
+  const A = "2026-08-10T09:00:00.000Z";
+  const B = "2026-08-10T11:00:00.000Z";
+  const MATRIX: Array<{ lastInboundAt: string | null; lastOutboundAt: string | null }> = [
+    { lastInboundAt: null, lastOutboundAt: null },
+    { lastInboundAt: null, lastOutboundAt: A },
+    { lastInboundAt: A, lastOutboundAt: null },
+    { lastInboundAt: A, lastOutboundAt: B }, // we answered
+    { lastInboundAt: B, lastOutboundAt: A }, // they came back
+    { lastInboundAt: A, lastOutboundAt: A }, // tie
+  ];
+  const STATES: ReplyState[] = ["awaiting_reply", "replied", "no_inbound"];
+
+  it("partitions the space — every conversation matches exactly one state", () => {
+    // If this fails, a conversation is either in two queues at once or has fallen out of all of
+    // them. The awaiting queue silently losing rows is the failure this whole feature exists to
+    // remove, so it must be impossible by construction rather than by inspection.
+    for (const row of MATRIX) {
+      const hits = STATES.filter((s) => matchesReplyState(s, row));
+      expect(hits, `expected exactly one state for ${JSON.stringify(row)}`).toHaveLength(1);
+    }
+  });
+
+  it("agrees with deriveReplyState on every case", () => {
+    // The list is filtered by the query rule and each row is then labelled by the display rule.
+    // If they disagree, a row appears under "Awaiting reply" wearing a "Replied" chip.
+    for (const row of MATRIX) {
+      const shown = deriveReplyState(row);
+      expect(matchesReplyState(shown, row), `mismatch for ${JSON.stringify(row)}`).toBe(true);
+    }
+  });
+
+  it("puts an exact tie in the awaiting queue, matching the `lte` in the SQL branch", () => {
+    expect(matchesReplyState("awaiting_reply", { lastInboundAt: A, lastOutboundAt: A })).toBe(true);
+    expect(matchesReplyState("replied", { lastInboundAt: A, lastOutboundAt: A })).toBe(false);
+  });
+
+  it("keeps a never-answered conversation in its own queue (the NULL-comparison trap)", () => {
+    // SQL comparisons against NULL yield NULL, not true — so without an explicit
+    // `lastOutboundAt IS NULL` branch the query drops exactly the conversations nobody has
+    // replied to, which are the only ones that matter.
+    expect(matchesReplyState("awaiting_reply", { lastInboundAt: A, lastOutboundAt: null })).toBe(true);
   });
 });
