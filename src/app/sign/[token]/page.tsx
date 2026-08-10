@@ -20,6 +20,7 @@ import { ProposalPreview } from "@/components/proposals/proposal-preview";
 import type { ProposalDocument } from "@/types/proposal";
 import { SignatureCapturePanel } from "./signature-capture-panel";
 import { SignerViewBeacon } from "./signer-view-beacon";
+import { DocuSealSigner } from "./docuseal-signer";
 
 export const dynamic = "force-dynamic";
 
@@ -150,41 +151,13 @@ export default async function SignPage({ params }: PageProps) {
         ) : null}
       </div>
 
-      {iframeSrc ? (
+      {embedSrc ? (
         <div className="mx-auto w-full max-w-[960px] px-4 pb-12 sm:px-6">
-          <div className="mb-4 flex items-center justify-between rounded-lg border border-[var(--border-2)] bg-white p-4 shadow-sm">
-            <div>
-              <p className="text-xs font-semibold text-[var(--text-1)]">Interactive Signature Canvas</p>
-              <p className="text-[11px] text-[var(--text-3)]">
-                Sign directly in the form below, or open in full window / draw your signature below.
-              </p>
-            </div>
-            <a
-              href={embedSrc!}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-md bg-[var(--brand-600)] px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-[var(--brand-700)] transition"
-            >
-              Open Direct Signing Canvas →
-            </a>
-          </div>
-          <div className="rounded-[12px] border border-[var(--border-2)] bg-white overflow-hidden shadow-lg min-h-[680px] mb-8">
-            <iframe
-              src={iframeSrc}
-              className="w-full h-[720px] border-0"
-              title="DocuSeal Signature Form"
-              allow="camera; microphone"
-            />
-          </div>
-
-          <div className="border-t border-[var(--border-2)] bg-white rounded-[12px] p-6 shadow-sm">
-            <SignatureCapturePanel
-              token={token}
-              signerName={signer.name}
-              signerRole={signer.role}
-              requestMessage={request.message ?? null}
-            />
-          </div>
+          <DocuSealSigner
+            src={embedSrc}
+            email={signer.email}
+            name={signer.name}
+          />
         </div>
       ) : (
         <div className="border-t border-[var(--border-2)] bg-white">
