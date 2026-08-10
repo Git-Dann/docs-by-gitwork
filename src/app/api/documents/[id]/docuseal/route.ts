@@ -56,10 +56,89 @@ export async function POST(request: NextRequest, context: RouteContext) {
       };
     });
 
+    // Build HTML representation of the document with DocuSeal signature tags
+    const sectionHtmls = sections
+      .filter((sec) => sec.key !== "signatures")
+      .map((sec) => {
+        const d = (sec.data as Record<string, unknown> | null) ?? {};
+        const title = (d.title as string) || (sec as { title?: string }).title || sec.key;
+        let bodyText = "";
+
+        if (d.description && typeof d.description === "string") {
+          bodyText += `<p style="font-size: 13px; color: #64748b; margin-bottom: 12px; font-style: italic;">${d.description}</p>`;
+        }
+
+        if (d.content && typeof d.content === "string") {
+          bodyText += `<div style="font-size: 14px; line-height: 1.7; color: #334155;">${d.content.replace(/\n/g, "<br/>")}</div>`;
+        } else if (d.body && typeof d.body === "string") {
+          bodyText += `<div style="font-size: 14px; line-height: 1.7; color: #334155;">${d.body.replace(/\n/g, "<br/>")}</div>`;
+        }
+
+        if (Array.isArray(d.clauses)) {
+          bodyText += `<div style="margin-top: 12px;">`;
+          for (const c of d.clauses) {
+            if (typeof c === "object" && c !== null) {
+              const clause = c as Record<string, unknown>;
+              const cNum = clause.number ? `<strong>${clause.number}.</strong> ` : "";
+              const cTitle = clause.title ? `<strong style="color: #0f172a;">${clause.title}</strong> — ` : "";
+              const cBody = (clause.body as string) || (clause.text as string) || "";
+              bodyText += `<div style="margin-bottom: 12px; font-size: 14px; line-height: 1.6; color: #334155;">${cNum}${cTitle}${cBody}</div>`;
+            }
+          }
+          bodyText += `</div>`;
+        }
+
+        return `
+          <div style="margin-bottom: 32px; page-break-inside: avoid;">
+            <h2 style="font-size: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 12px; color: #1e293b;">${title}</h2>
+            ${bodyText}
+          </div>
+        `;
+      });
+
+    const signatureBlocksHtml = submittersInput
+      .map(
+        (s) => `
+        <div style="margin-bottom: 30px; display: inline-block; width: 45%; vertical-align: top; margin-right: 4%;">
+          <p style="font-weight: bold; font-size: 14px; margin-bottom: 4px; color: #0f172a;">${s.name}</p>
+          <p style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Role: ${s.role.toUpperCase()} (${s.email})</p>
+          <div style="border: 1px dashed #cbd5e1; padding: 16px; min-height: 80px; background: #f8fafc; border-radius: 6px;">
+            <p style="font-size: 11px; color: #94a3b8; margin-bottom: 8px; font-family: monospace;">SIGNATURE FIELD:</p>
+            <p style="font-size: 14px; color: #0284c7;">{{${s.role}:signature:${s.variableName}}}</p>
+          </div>
+        </div>
+      `,
+      )
+      .join("");
+
+    const fullDocumentHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8"/>
+          <title>${doc.title}</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 40px; color: #0f172a; line-height: 1.6; max-width: 800px; margin: 0 auto; }
+            h1 { font-size: 28px; margin-bottom: 20px; border-bottom: 2px solid #0f172a; padding-bottom: 12px; color: #0f172a; }
+            h2 { font-size: 20px; color: #1e293b; margin-top: 24px; }
+            .signatures-container { margin-top: 40px; padding-top: 24px; border-top: 2px solid #cbd5e1; }
+          </style>
+        </head>
+        <body>
+          <h1>${doc.title}</h1>
+          ${sectionHtmls.join("")}
+          <div class="signatures-container">
+            <h2>Signatures & Execution</h2>
+            ${signatureBlocksHtml}
+          </div>
+        </body>
+      </html>
+    `;
+
     // Call DocuSeal API (or local mock fallback if API key is blank)
     const dsResult = await createDocuSealSubmission({
       title: doc.title,
-      html: `<h1>${doc.title}</h1><p>Document ID: ${doc.id}</p>`,
+      html: fullDocumentHtml,
       submitters: submittersInput,
     });
 
