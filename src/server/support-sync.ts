@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { after } from "next/server";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { runChannelSync } from "@/server/support-channels";
-import { decryptScraperConfig, evaluateWorkflowRules } from "@/server/support";
+import { backfillConversationActivity, decryptScraperConfig, evaluateWorkflowRules } from "@/server/support";
 import { enrichConversations } from "@/server/care-agents/enrich";
 import { runCourseFeedbackImport } from "@/server/wiki-course-feedback";
 import type { SyncContext, SyncResult, FilterReasons } from "@/server/support-channels/types";
@@ -156,6 +156,17 @@ export async function syncClientConnections(
     } else {
       errors.push(String(res.reason));
     }
+  }
+
+  // Populate reply-tracking stamps on conversations that predate the feature. Bounded and
+  // self-terminating (it only matches rows with a null lastMessageAt), so once a client has
+  // drained this costs one indexed lookup per sync — which is why reply tracking needs no
+  // migration step and no one-shot route to become correct on existing history.
+  try {
+    await backfillConversationActivity(clientId);
+  } catch (err) {
+    // A backfill failure must never mask or fail a sync that ingested real mail.
+    console.error("[support-sync] activity backfill failed", err);
   }
 
   // Course-requests-only clients (support paused): never triage; instead auto-import

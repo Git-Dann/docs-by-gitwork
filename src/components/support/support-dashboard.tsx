@@ -84,6 +84,10 @@ import {
   useClientHealth,
 } from "@/hooks/use-support";
 import { getTicketStats } from "@/lib/api";
+// Reply-state presentation is shared with the Care cockpit rather than re-declared, so the two
+// UIs cannot drift into disagreeing about what "replied" looks like. care-constants imports
+// nothing from here, so this is not a cycle.
+import { REPLY_STATE_DOT, REPLY_STATE_LABEL } from "@/components/care/care-constants";
 import type { AnalyticsReportMetric, SupportReport, SupportReportPayload } from "@/types/support";
 import { useClientList } from "@/hooks/use-proposals";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -2156,12 +2160,19 @@ function ConversationCard({
               {convo.unread && (
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-700)]" title="Unread" />
               )}
+              {/* Reply state, shown here too so the legacy dashboard and the Care cockpit can
+                  never tell an operator two different stories about whether a customer has been
+                  answered. Both read the same server-derived field. */}
+              <span
+                className={cn("h-1.5 w-1.5 shrink-0 rounded-full", REPLY_STATE_DOT[convo.replyState])}
+                title={REPLY_STATE_LABEL[convo.replyState]}
+              />
               {convo.sentiment === "negative" && (
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-400" title="Negative sentiment" />
               )}
               <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-1)]">{subjectMain}</h3>
               <span className="shrink-0 whitespace-nowrap text-[11px] text-[var(--text-4)]">
-                {formatShort(convo.receivedAt)}
+                {formatShort(convo.lastMessageAt ?? convo.receivedAt)}
               </span>
             </div>
             {/* Row 2: email detail or preview */}

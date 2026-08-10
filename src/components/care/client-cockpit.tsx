@@ -16,13 +16,19 @@ import {
 import { usePermissions } from "@/hooks/use-permissions";
 import {
   SAVED_VIEWS,
+  DEFAULT_VIEW_ID,
   SourceIcon,
   SOURCE_LABEL,
   STATUS_TONE,
   STATUS_LABEL,
   PRIORITY_DOT,
   SENTIMENT_DOT,
+  REPLY_STATE_LABEL,
+  REPLY_STATE_TONE,
   formatAge,
+  isLongWait,
+  lastActivityAt,
+  waitingSince,
 } from "./care-constants";
 import { ConversationDetail } from "./conversation-detail";
 import { ConnectorsView } from "@/components/support/support-dashboard";
@@ -44,10 +50,17 @@ function ConversationRow({
   onToggleSelect: () => void;
   assigneeName?: string;
 }) {
+  const awaiting = conv.replyState === "awaiting_reply";
+  const waitingFrom = waitingSince(conv);
+  const longWait = waitingFrom ? isLongWait(waitingFrom) : false;
+
   return (
     <div
       className={cn(
-        "flex cursor-pointer items-start gap-2.5 border-b border-[var(--border-2)] px-3 py-2.5 transition",
+        "flex cursor-pointer items-start gap-2.5 border-b border-[var(--border-2)] py-2.5 pr-3 transition",
+        // A left accent bar carries "this one needs answering" down the whole list at a glance,
+        // without needing the row read. Unanswered work should be visible from across the room.
+        awaiting ? "border-l-2 border-l-amber-400 pl-[10px]" : "pl-3",
         active ? "bg-[var(--brand-50)]" : "hover:bg-[var(--surface-1)]",
       )}
       onClick={onOpen}
@@ -68,7 +81,26 @@ function ConversationRow({
           <span className={cn("truncate text-sm", conv.unread ? "font-semibold" : "font-medium")}>{conv.subject}</span>
         </div>
         <div className="mt-0.5 truncate text-xs text-[var(--text-3)]">{conv.preview || conv.customerLabel}</div>
-        <div className="mt-1 flex items-center gap-1.5">
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          {/* Reply state leads — it answers "has anyone dealt with this?", which is the
+              question the board exists for. Triage status follows it. */}
+          <span
+            className={cn(
+              "rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold",
+              REPLY_STATE_TONE[conv.replyState],
+              longWait && "bg-amber-100 text-amber-900 border-amber-400",
+            )}
+            title={
+              awaiting
+                ? `Customer waiting since ${new Date(conv.lastInboundAt ?? conv.receivedAt).toLocaleString()}`
+                : conv.replyState === "replied"
+                  ? `Last replied ${new Date(conv.lastOutboundAt ?? "").toLocaleString()}`
+                  : "No customer message captured on this thread"
+            }
+          >
+            {REPLY_STATE_LABEL[conv.replyState]}
+            {waitingFrom && ` · ${formatAge(waitingFrom)}`}
+          </span>
           <span className={cn("rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium", STATUS_TONE[conv.status])}>
             {STATUS_LABEL[conv.status]}
           </span>
@@ -78,7 +110,11 @@ function ConversationRow({
           )}
         </div>
       </div>
-      <span className="shrink-0 font-mono text-[11px] text-[var(--text-4)]">{formatAge(conv.receivedAt)}</span>
+      {/* Age of the LATEST message, not of the thread's first — a thread that got a reply an
+          hour ago should not read as three months old. */}
+      <span className="shrink-0 font-mono text-[11px] text-[var(--text-4)]" title={new Date(lastActivityAt(conv)).toLocaleString()}>
+        {formatAge(lastActivityAt(conv))}
+      </span>
     </div>
   );
 }
@@ -169,7 +205,7 @@ export function ClientCockpit({
   const markRead = useMarkConversationRead(client.id);
   const { canManageSupport } = usePermissions();
 
-  const [activeView, setActiveView] = useState("needs-action");
+  const [activeView, setActiveView] = useState(DEFAULT_VIEW_ID);
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
@@ -186,12 +222,20 @@ export function ClientCockpit({
 
   const filtered = useMemo(() => {
     const q = deferredSearch.trim().toLowerCase();
-    return conversations.filter((c) => {
+    const rows = conversations.filter((c) => {
       if (!view.predicate(c, currentUserId)) return false;
       if (sourceFilter !== "all" && c.source !== sourceFilter) return false;
       if (q && !(`${c.subject} ${c.preview} ${c.customerLabel}`.toLowerCase().includes(q))) return false;
       return true;
     });
+
+    // The awaiting-reply queue runs longest-waiting FIRST: the whole failure mode being fixed
+    // here is a customer message quietly ageing at the bottom of a list. Every other view keeps
+    // most-recent-first, which is what you want when browsing rather than working a queue.
+    const dir = view.oldestFirst ? 1 : -1;
+    const key = (c: Conversation) =>
+      new Date(view.oldestFirst ? (c.lastInboundAt ?? lastActivityAt(c)) : lastActivityAt(c)).getTime();
+    return [...rows].sort((a, b) => (key(a) - key(b)) * dir);
   }, [conversations, view, sourceFilter, deferredSearch, currentUserId]);
 
   // View counts (over all conversations, ignoring source/search) for the rail badges.
@@ -365,7 +409,11 @@ export function ClientCockpit({
         <div className="min-h-0 flex-1 overflow-y-auto">
           {convsQ.isLoading && <p className="px-3 py-4 text-sm text-[var(--text-4)]">Loading…</p>}
           {!convsQ.isLoading && filtered.length === 0 && (
-            <p className="px-3 py-8 text-center text-sm text-[var(--text-4)]">Nothing here. Try another view or Sync now.</p>
+            <p className="px-3 py-8 text-center text-sm text-[var(--text-4)]">
+              {activeView === DEFAULT_VIEW_ID
+                ? "Nothing awaiting a reply — every customer message has been answered."
+                : "Nothing here. Try another view or Sync now."}
+            </p>
           )}
           {filtered.map((c) => (
             <ConversationRow

@@ -39,9 +39,37 @@ export interface ImapConnectionConfig {
   fromName?: string;
   fromAddress?: string;
   folder?: string;
+  /** Override the Sent mailbox. Leave unset — it is auto-discovered by its \Sent special-use flag. */
+  sentFolder?: string;
+  /** Set false to stop reading Sent (replies made outside Care then stay invisible to Care). */
+  readSentFolder?: boolean;
 }
 
 const MAX_MESSAGES_PER_RUN = 300;
+
+/**
+ * Locate the Sent mailbox.
+ *
+ * Its name is not standardised — "Sent", "Sent Items", "[Gmail]/Sent Mail", "INBOX.Sent" — and
+ * it is localised on many hosts, so guessing by name fails silently on exactly the mailboxes we
+ * care about. RFC 6154 gives every modern server a `\Sent` special-use flag; that is what we
+ * match, falling back to a name only if the server advertises no flag.
+ */
+async function findSentMailbox(
+  client: ImapFlow,
+  override?: string,
+): Promise<string | null> {
+  if (override?.trim()) return override.trim();
+  try {
+    const boxes = await client.list();
+    const flagged = boxes.find((b) => b.specialUse === "\\Sent");
+    if (flagged) return flagged.path;
+    const named = boxes.find((b) => /^(sent|sent items|sent mail)$/i.test(b.name));
+    return named ? named.path : null;
+  } catch {
+    return null;
+  }
+}
 
 /** First id in a References/In-Reply-To chain → the thread root; else the message's own id. */
 function threadKeyFor(
@@ -52,6 +80,13 @@ function threadKeyFor(
   const refs = Array.isArray(references) ? references : references ? [references] : [];
   const root = refs[0] ?? inReplyTo ?? messageId ?? "";
   return root.trim() || messageId || `imap:${Date.now()}`;
+}
+
+/** mailparser types `to` as one address object OR an array of them; flatten to a display string. */
+function addressText(field: { text?: string } | Array<{ text?: string }> | undefined): string {
+  if (!field) return "";
+  const parts = Array.isArray(field) ? field : [field];
+  return parts.map((p) => p.text ?? "").filter(Boolean).join(", ").trim();
 }
 
 function firstAddress(text: string | undefined): string {
@@ -98,70 +133,113 @@ export async function fetchImapItems(ctx: SyncContext): Promise<ChannelFetchResu
   const byThread = new Map<string, RawConversationItem>();
   let fetched = 0;
 
-  try {
-    await client.connect();
-    const lock = await client.getMailboxLock(folder);
+  /**
+   * Scan one mailbox into `byThread`.
+   *
+   * `forceOutbound` is set for the Sent mailbox: a message sitting in Sent is ours by virtue of
+   * WHERE IT IS, which is strictly more reliable than comparing the From address — a mailbox
+   * that sends from an alias (support@ vs app@) would otherwise have its own replies classified
+   * inbound, marking the thread unread and leaving it in the awaiting-reply queue forever. That
+   * is a false positive in the one direction this work exists to eliminate.
+   */
+  async function scanMailbox(mailbox: string, forceOutbound: boolean): Promise<void> {
+    const lock = await client.getMailboxLock(mailbox);
     try {
       const uids = (await client.search({ since }, { uid: true })) || [];
       // Newest N only, so a huge mailbox can't blow the run; older mail backfills over runs.
       const slice = uids.slice(-MAX_MESSAGES_PER_RUN);
+      if (slice.length === 0) return;
 
-      if (slice.length > 0) {
-        // `source: true` uses BODY.PEEK[] — reading never sets the \Seen flag (leaves the
-        // client's inbox exactly as we found it).
-        for await (const msg of client.fetch(slice, { source: true, uid: true }, { uid: true })) {
-          fetched++;
-          try {
-            const parsed = await simpleParser(msg.source as Buffer);
-            const body = (parsed.text ?? parsed.html ?? "").toString().trim();
-            const subject = parsed.subject?.trim() || "(no subject)";
-            if (!body && subject === "(no subject)") {
-              reasons.empty = (reasons.empty ?? 0) + 1;
-              continue;
-            }
-
-            const messageId = parsed.messageId ?? `imap:${msg.uid}`;
-            const references = parsed.references;
-            const key = threadKeyFor(messageId, parsed.inReplyTo, references);
-            const fromText = parsed.from?.text ?? "unknown";
-            const fromAddr = firstAddress(fromText);
-            const receivedAt = parsed.date ?? new Date();
-            const isOutbound = fromAddr === ownAddress;
-
-            const message: RawMessageItem = {
-              externalId: messageId,
-              direction: isOutbound ? "outbound" : "inbound",
-              authorLabel: fromText.replace(/<[^>]+>/g, "").trim() || fromText,
-              body: (body || subject).slice(0, 8000),
-              createdAt: receivedAt,
-            };
-
-            const existing = byThread.get(key);
-            if (existing) {
-              existing.messages.push(message);
-              if (receivedAt > existing.receivedAt) {
-                existing.receivedAt = receivedAt;
-                existing.preview = body.slice(0, 150);
-              }
-            } else {
-              byThread.set(key, {
-                externalId: key,
-                customerLabel: fromText,
-                subject: subject.replace(/^(re|fwd?):\s*/i, "").trim() || subject,
-                preview: body.slice(0, 150),
-                receivedAt,
-                tags: ["email"],
-                messages: [message],
-              });
-            }
-          } catch (err) {
-            errors.push(`Parse failed for one message: ${err instanceof Error ? err.message : String(err)}`);
+      // `source: true` uses BODY.PEEK[] — reading never sets the \Seen flag (leaves the
+      // client's inbox exactly as we found it).
+      for await (const msg of client.fetch(slice, { source: true, uid: true }, { uid: true })) {
+        fetched++;
+        try {
+          const parsed = await simpleParser(msg.source as Buffer);
+          const body = (parsed.text ?? parsed.html ?? "").toString().trim();
+          const subject = parsed.subject?.trim() || "(no subject)";
+          if (!body && subject === "(no subject)") {
+            reasons.empty = (reasons.empty ?? 0) + 1;
+            continue;
           }
+
+          const messageId = parsed.messageId ?? `imap:${mailbox}:${msg.uid}`;
+          const references = parsed.references;
+          const key = threadKeyFor(messageId, parsed.inReplyTo, references);
+          const fromText = parsed.from?.text ?? "unknown";
+          const receivedAt = parsed.date ?? new Date();
+          const isOutbound = forceOutbound || firstAddress(fromText) === ownAddress;
+
+          const message: RawMessageItem = {
+            externalId: messageId,
+            direction: isOutbound ? "outbound" : "inbound",
+            authorLabel: fromText.replace(/<[^>]+>/g, "").trim() || fromText,
+            body: (body || subject).slice(0, 8000),
+            createdAt: receivedAt,
+          };
+
+          const existing = byThread.get(key);
+          if (existing) {
+            existing.messages.push(message);
+            if (receivedAt > existing.receivedAt) {
+              existing.receivedAt = receivedAt;
+              existing.preview = body.slice(0, 150);
+            }
+            // A thread first seen in Sent is labelled with the recipient; if the customer's own
+            // message turns up later, prefer their real From line.
+            if (!isOutbound && firstAddress(existing.customerLabel) === ownAddress) {
+              existing.customerLabel = fromText;
+            }
+          } else {
+            byThread.set(key, {
+              externalId: key,
+              // For an outbound message WE are the sender, so the counterparty is the recipient.
+              // Labelling a Sent-discovered thread with our own address would show the operator
+              // as the customer on their own board.
+              customerLabel: isOutbound ? (addressText(parsed.to) || fromText) : fromText,
+              subject: subject.replace(/^(re|fwd?):\s*/i, "").trim() || subject,
+              preview: body.slice(0, 150),
+              receivedAt,
+              tags: ["email"],
+              messages: [message],
+            });
+          }
+        } catch (err) {
+          errors.push(`Parse failed for one message: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
     } finally {
       lock.release();
     }
+  }
+
+  try {
+    await client.connect();
+
+    await scanMailbox(folder, false);
+
+    // ── Sent ──────────────────────────────────────────────────────────────────
+    // Without this, a reply typed in Apple Mail / Outlook / the webmail UI is invisible to
+    // Care, so the thread reads "awaiting reply" forever and the board cannot be trusted as
+    // the source of truth. Reading Sent is what closes the "sometimes we just go straight to
+    // the email" gap: however the reply was sent, Care sees it and marks the thread Replied.
+    // Message-ID dedup and References threading already merge it onto the right conversation.
+    if (cfg.readSentFolder !== false) {
+      const sentBox = await findSentMailbox(client, cfg.sentFolder);
+      if (sentBox && sentBox !== folder) {
+        try {
+          await scanMailbox(sentBox, true);
+        } catch (err) {
+          // Never fail the whole sync over Sent — the inbox read is the critical half.
+          errors.push(`Sent folder "${sentBox}" unreadable: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      } else if (!sentBox) {
+        hints.push(
+          "No Sent mailbox found, so replies sent outside Care won't be detected and those threads will keep showing as awaiting reply. Set 'sentFolder' on this connector to its exact name.",
+        );
+      }
+    }
+
     await client.logout();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

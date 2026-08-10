@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import { prisma } from "@/lib/prisma";
+import { recordMessageActivity } from "@/server/support";
 import type { ChannelAdapter, SyncResult, SyncContext, FilterReasons } from "./types";
 import { normalizeKeywords, lookbackSeconds, extractGmailBodyText } from "./shared";
 
@@ -131,7 +132,9 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
               subject,
               preview: subject,
               receivedAt,
-              unread: true,
+              // Raised by recordMessageActivity below IFF an inbound message lands — a thread
+              // we started ourselves has nothing unread about it.
+              unread: false,
               tags: gmailTags,
               // "Open in Gmail" → the thread in the impersonated mailbox's web UI.
               externalUrl: `https://mail.google.com/mail/u/0/#all/${item.threadId}`,
@@ -150,6 +153,7 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
           reasons.duplicate = (reasons.duplicate ?? 0) + 1;
         }
 
+        const createdMessages: Array<{ direction: string; createdAt: Date }> = [];
         for (const msg of threadMessages) {
           if (!msg.id) continue;
           const already = await prisma.supportMessage.findFirst({
@@ -166,6 +170,7 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
             const msgHdrs = (msg.payload?.headers ?? []) as Array<{ name?: string | null; value?: string | null }>;
             const msgFrom = msgHdrs.find((h) => h.name === "From")?.value ?? "";
             const isOutbound = impersonateEmail ? msgFrom.includes(impersonateEmail) : false;
+            const createdAt = msg.internalDate ? new Date(parseInt(msg.internalDate)) : receivedAt;
 
             await prisma.supportMessage.create({
               data: {
@@ -174,13 +179,20 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
                 authorLabel: msgFrom.replace(/<[^>]+>/g, "").trim() || msgFrom,
                 body: body.slice(0, 4000),
                 externalId: msg.id,
-                createdAt: msg.internalDate ? new Date(parseInt(msg.internalDate)) : receivedAt,
+                createdAt,
               },
             });
+            createdMessages.push({ direction: isOutbound ? "outbound" : "inbound", createdAt });
           } catch {
             // skip individual message errors
           }
         }
+
+        // Gmail's thread-walk returns EVERY message in the thread regardless of label, so a
+        // reply someone sent straight from the Gmail web UI (bypassing Care entirely) lands
+        // here as an outbound message — and flips this conversation to "Replied" with nobody
+        // marking anything. That is the whole point of deriving the state from the messages.
+        await recordMessageActivity(conv.id, createdMessages);
         // Restore UNREAD so the inbox looks untouched after the sync.
         if (wasUnread) {
           await gmail.users.threads.modify({

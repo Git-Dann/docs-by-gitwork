@@ -29,7 +29,10 @@ import {
   PRIORITY_LABEL,
   PRIORITY_TONE,
   SENTIMENT_DOT,
+  REPLY_STATE_LABEL,
+  REPLY_STATE_TONE,
   formatAge,
+  isLongWait,
 } from "./care-constants";
 import { OpenInChannelButton } from "./open-in-channel-button";
 
@@ -52,6 +55,35 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
     <span className="mb-1 block font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">
       {children}
     </span>
+  );
+}
+
+/**
+ * States plainly whose turn it is, and — for a reply that did NOT go through Care — where it
+ * came from. Without this the operator has to read the thread and reason about who spoke last,
+ * which is exactly the manual step that made people open the mailbox instead.
+ */
+function ReplyStateBanner({ conversation }: { conversation: Conversation }) {
+  const { replyState, lastInboundAt, lastOutboundAt } = conversation;
+  const longWait = replyState === "awaiting_reply" && lastInboundAt ? isLongWait(lastInboundAt) : false;
+
+  return (
+    <div
+      className={cn(
+        "mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-[8px] border px-3 py-2 text-[13px]",
+        REPLY_STATE_TONE[replyState],
+        longWait && "bg-amber-100 text-amber-900 border-amber-400",
+      )}
+    >
+      <span className="font-semibold">{REPLY_STATE_LABEL[replyState]}</span>
+      {replyState === "awaiting_reply" && lastInboundAt && (
+        <span>· customer waiting {formatAge(lastInboundAt)}</span>
+      )}
+      {replyState === "replied" && lastOutboundAt && (
+        <span>· we answered {formatAge(lastOutboundAt)} ago</span>
+      )}
+      {replyState === "no_inbound" && <span>· nothing from the customer on this thread yet</span>}
+    </div>
   );
 }
 
@@ -128,11 +160,38 @@ export function ConversationDetail({
     }
   }
 
-  function handleCopy() {
-    if (!replyText.trim()) return;
+  /**
+   * Manual-channel path (App Store Connect, webhook, …): copy the text out AND record it on the
+   * thread, which is what flips the conversation to "Replied".
+   *
+   * The logging half was already built server-side — the messages route deliberately falls
+   * through to `createMessage` for sources with no automated send path ("still get logged so
+   * the copy-to-send flow works") — but nothing ever called it: the button only ever wrote to
+   * the clipboard. So on those channels a reply left no trace in Care whatsoever and the thread
+   * sat in the awaiting queue for good, which is precisely the reason people stopped believing
+   * the board and went to the mailbox instead.
+   *
+   * The copy happens first and independently: if the log request fails, the operator still has
+   * their text and gets an error, rather than losing the draft to a failed write.
+   */
+  async function handleCopyAndLog() {
+    const text = replyText.trim();
+    if (!text) return;
     void navigator.clipboard.writeText(replyText);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
+
+    setReplyError(null);
+    try {
+      await sendMessage.mutateAsync({ direction: "outbound", authorLabel: "Gitwork Support", body: text });
+      setReplyText("");
+    } catch (e) {
+      setReplyError(
+        `Copied, but logging it on the thread failed — it will still show as awaiting a reply. ${
+          e instanceof Error ? e.message : ""
+        }`.trim(),
+      );
+    }
   }
 
   return (
@@ -156,6 +215,7 @@ export function ConversationDetail({
           <h2 className="min-w-0 flex-1 break-words text-lg font-semibold leading-snug text-[var(--text-1)]">{conversation.subject}</h2>
           <OpenInChannelButton conversation={conversation} connection={connection} />
         </div>
+        <ReplyStateBanner conversation={conversation} />
       </div>
 
       {/* Thread + composer (center) beside the triage/notes rail. Stacks into one
@@ -244,13 +304,13 @@ export function ConversationDetail({
                   {!canSend ? (
                     <button
                       type="button"
-                      onClick={handleCopy}
-                      disabled={!replyText.trim()}
-                      title={manualHint}
+                      onClick={() => void handleCopyAndLog()}
+                      disabled={!replyText.trim() || sendMessage.isPending}
+                      title={`${manualHint}. Copying also records the reply here, so the thread stops showing as awaiting one.`}
                       className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
                     >
                       <ClipboardDocumentIcon className="h-3.5 w-3.5" />
-                      {copied ? "Copied" : "Copy reply"}
+                      {copied ? "Copied & logged" : sendMessage.isPending ? "Logging…" : "Copy & mark replied"}
                     </button>
                   ) : (
                     <button

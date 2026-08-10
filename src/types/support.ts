@@ -15,6 +15,12 @@ export type ConversationSentiment = "positive" | "neutral" | "negative";
 /** Triage state machine for the shared-inbox cockpit (the conversation is the unit of triage). */
 export type ConversationStatus = "new" | "open" | "snoozed" | "closed" | "ignored";
 export type ConversationPriority = "urgent" | "high" | "normal" | "low";
+/**
+ * Whether the customer is waiting on us. DERIVED server-side from lastInboundAt/lastOutboundAt
+ * (see src/server/support-reply-state.ts) and never stored — so a reply sent outside Care flips
+ * it as soon as the connector sees it. Orthogonal to `status`, which is triage, not answering.
+ */
+export type ReplyState = "awaiting_reply" | "replied" | "no_inbound";
 export type TicketStatus = "open" | "in_progress" | "dev_review" | "awaiting_customer" | "resolved";
 export type TicketPriority = "urgent" | "high" | "normal" | "low";
 export type DraftType = "reply" | "stripe_cancel" | "stripe_refund";
@@ -158,6 +164,15 @@ export interface Conversation {
   firstTriagedAt?: string;
   /** ISO timestamp the conversation was closed/ignored. */
   closedAt?: string;
+  // ── reply tracking (see ReplyState) ──
+  /** ISO timestamp of the customer's last message. */
+  lastInboundAt?: string;
+  /** ISO timestamp of our last message — sent in Care OR synced back from outside it. */
+  lastOutboundAt?: string;
+  /** ISO timestamp of the latest message either way; the activity sort key. */
+  lastMessageAt?: string;
+  /** Derived server-side so web and iOS can never disagree about what "replied" means. */
+  replyState: ReplyState;
   /** Canonical native-thread URL — the "Open in {channel}" deep-link. */
   externalUrl?: string;
   /** Count of internal staff notes on this conversation. */

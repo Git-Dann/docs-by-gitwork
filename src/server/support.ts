@@ -26,6 +26,7 @@ import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { canSeeAllClients, ForbiddenError } from "@/server/auth/effective-user";
 import { assignedClientIds } from "@/server/tasks";
+import { deriveReplyState, foldMessageActivity } from "@/server/support-reply-state";
 import { encrypt, decrypt } from "@/lib/encryption";
 import type {
   SupportClientStatus,
@@ -320,6 +321,12 @@ export function serializeConversation(row: {
   firstTriagedAt: Date | null;
   closedAt: Date | null;
   externalUrl: string | null;
+  // Required, NOT optional: replyState is derived from these, so a caller that narrows its
+  // `select` and omits them would get a silent, confident "no_inbound" on a conversation that
+  // is actually awaiting a reply. Requiring them turns that into a compile error.
+  lastInboundAt: Date | null;
+  lastOutboundAt: Date | null;
+  lastMessageAt: Date | null;
   tickets?: Array<{ id: string }>;
   _count?: { notes?: number };
 }): Conversation {
@@ -342,6 +349,12 @@ export function serializeConversation(row: {
     firstTriagedAt: row.firstTriagedAt?.toISOString(),
     closedAt: row.closedAt?.toISOString(),
     externalUrl: row.externalUrl ?? undefined,
+    lastInboundAt: row.lastInboundAt?.toISOString(),
+    lastOutboundAt: row.lastOutboundAt?.toISOString(),
+    lastMessageAt: row.lastMessageAt?.toISOString(),
+    // Derived here, once, so every consumer (cockpit, legacy dashboard, iOS) agrees on what
+    // "replied" means instead of each re-implementing the comparison.
+    replyState: deriveReplyState({ lastInboundAt: row.lastInboundAt, lastOutboundAt: row.lastOutboundAt }),
     noteCount: row._count?.notes,
     ticketId: row.tickets?.[0]?.id,
   };
@@ -695,7 +708,16 @@ export async function listConversations(
       tickets: { select: { id: true }, take: 1 },
       _count: { select: { notes: true } },
     },
-    orderBy: { receivedAt: "desc" },
+    // Order by ACTIVITY, not by when the thread started. `receivedAt` is stamped once at
+    // creation and never updated, so ordering by it stranded a months-old thread that got a
+    // reply an hour ago at the bottom of the list — past the page limit, i.e. invisible.
+    // `nulls: "last"` covers the window before backfillConversationActivity has drained a
+    // client; `id` is a deterministic tiebreaker so cursor pagination can't skip or repeat a row.
+    orderBy: [
+      { lastMessageAt: { sort: "desc", nulls: "last" } },
+      { receivedAt: "desc" },
+      { id: "desc" },
+    ],
     take: limit + 1,
     ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
   });
@@ -1010,6 +1032,10 @@ export async function createMessage(
     },
   });
 
+  // Move the conversation's reply state on the same call that sends the reply, so the row
+  // flips to "Replied" immediately rather than waiting for the next connector sync.
+  await recordMessageActivity(convId, [row]);
+
   // Stamp firstReplyAt on any linked ticket the first time an outbound message is sent.
   if (data.direction === "outbound") {
     const ticket = await prisma.supportTicket.findFirst({
@@ -1025,6 +1051,115 @@ export async function createMessage(
   }
 
   return serializeMessage(row);
+}
+
+// ─── Reply tracking ───────────────────────────────────────────────────────────
+//
+// One writer for the activity stamps, shared by every ingest path (the channel core, the
+// Gmail adapter, and in-app replies) so no connector can forget to maintain them and quietly
+// leave its conversations reading "awaiting reply" forever.
+
+/**
+ * Fold newly-stored messages into a conversation's activity stamps.
+ *
+ * `unread` is set ONLY when an inbound message landed. Previously any new message re-flagged
+ * the thread — including our own reply syncing back from Gmail — so the unread counters could
+ * only ever grow and the badge meant nothing.
+ */
+export async function recordMessageActivity(
+  convId: string,
+  messages: Array<{ direction: string; createdAt: Date }>,
+): Promise<void> {
+  if (messages.length === 0) return;
+
+  const current = await prisma.supportConversation.findUnique({
+    where: { id: convId },
+    select: { lastInboundAt: true, lastOutboundAt: true },
+  });
+  if (!current) return;
+
+  const { sawInbound, ...stamps } = foldMessageActivity(messages, current);
+  if (Object.keys(stamps).length === 0 && !sawInbound) return;
+
+  await prisma.supportConversation.update({
+    where: { id: convId },
+    data: { ...stamps, ...(sawInbound ? { unread: true } : {}) },
+  });
+}
+
+/**
+ * Populate the activity stamps on conversations that predate reply tracking.
+ *
+ * Bounded and self-terminating: it only looks at rows where `lastMessageAt` is null, so once a
+ * client is drained the query matches nothing and the call costs one indexed lookup. That is
+ * why it can run on the ordinary sync path with no one-shot route and no manual migration step.
+ *
+ * A conversation with no captured messages is stamped from `receivedAt` rather than skipped —
+ * otherwise it would match the "needs backfill" filter on every sync, forever.
+ */
+export async function backfillConversationActivity(
+  clientId: string,
+  opts: { batch?: number } = {},
+): Promise<{ updated: number }> {
+  // Sized so one sync drains a typical client outright — until a client is drained its
+  // conversations have no stamps, which renders as "No customer message" and an empty
+  // awaiting-reply queue. That transient state looks exactly like a broken feature, so the
+  // window wants to be one sync, not five.
+  const take = Math.min(opts.batch ?? 500, 500);
+
+  const stale = await prisma.supportConversation.findMany({
+    where: { clientId, lastMessageAt: null },
+    select: { id: true, receivedAt: true },
+    take,
+  });
+  if (stale.length === 0) return { updated: 0 };
+
+  const ids = stale.map((c) => c.id);
+  // One grouped read for the whole batch rather than a query per conversation.
+  const grouped = await prisma.supportMessage.groupBy({
+    by: ["conversationId", "direction"],
+    where: { conversationId: { in: ids } },
+    _max: { createdAt: true },
+  });
+
+  const byConv = new Map<string, { lastInboundAt?: Date; lastOutboundAt?: Date }>();
+  for (const g of grouped) {
+    const at = g._max.createdAt;
+    if (!at) continue;
+    const entry = byConv.get(g.conversationId) ?? {};
+    if (g.direction === "outbound") entry.lastOutboundAt = at;
+    else entry.lastInboundAt = at;
+    byConv.set(g.conversationId, entry);
+  }
+
+  // Each row needs its own values, so this cannot be one updateMany. Chunked rather than
+  // sequential so 500 rows is a handful of round trips instead of 500, and rather than one
+  // giant Promise.all so a large client can't open 500 connections at once.
+  let updated = 0;
+  const CHUNK = 25;
+  for (let i = 0; i < stale.length; i += CHUNK) {
+    await Promise.all(
+      stale.slice(i, i + CHUNK).map((conv) => {
+        const found = byConv.get(conv.id);
+        const latest = [found?.lastInboundAt, found?.lastOutboundAt]
+          .filter((d): d is Date => d instanceof Date)
+          .sort((a, b) => b.getTime() - a.getTime())[0];
+        return prisma.supportConversation.update({
+          where: { id: conv.id },
+          data: {
+            lastInboundAt: found?.lastInboundAt ?? null,
+            lastOutboundAt: found?.lastOutboundAt ?? null,
+            // Falls back to receivedAt for a conversation with no captured messages — otherwise
+            // it would match the "needs backfill" filter on every sync forever.
+            lastMessageAt: latest ?? conv.receivedAt,
+          },
+        });
+      }),
+    );
+    updated += Math.min(CHUNK, stale.length - i);
+  }
+
+  return { updated };
 }
 
 // ─── Tickets ─────────────────────────────────────────────────────────────────

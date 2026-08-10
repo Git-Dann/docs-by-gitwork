@@ -2730,6 +2730,17 @@ model SupportConversation {
   snoozeUntil     DateTime?
   firstTriagedAt  DateTime? // first transition out of NEW (replaces ticket.firstReplyAt for metrics)
   closedAt        DateTime? // set on CLOSED/IGNORED (replaces ticket.resolvedAt)
+  // ── reply tracking ──
+  // FACTS ONLY. The reply state ("awaiting reply" / "replied") is DERIVED from these by
+  // deriveReplyState() in src/server/support-reply-state.ts and is never stored — so a reply
+  // sent OUTSIDE Care (a mail client, the Gmail web UI) flips the state the moment the sync
+  // sees it, with nobody marking anything. A stored flag would drift, which is the whole
+  // reason Care could not be trusted as the source of truth.
+  lastInboundAt   DateTime? // last message FROM the customer
+  lastOutboundAt  DateTime? // last message FROM us (sent in Care, or synced back from outside)
+  lastMessageAt   DateTime? // max(lastInboundAt, lastOutboundAt) — the real activity sort key.
+  // ^ receivedAt is the thread START and is never updated after creation, so ordering by it
+  //   strands a months-old thread that got a reply an hour ago at the bottom of the list.
   // ── deep-link out to the native channel ──
   externalUrl     String? // canonical native-thread URL ("Open in {channel}")
   externalGuildId String? // Discord guild id, used to build the channel deep-link
@@ -2743,6 +2754,8 @@ model SupportConversation {
   @@index([clientId, status])
   @@index([clientId, assigneeId])
   @@index([clientId, snoozeUntil])
+  @@index([clientId, lastMessageAt])
+  @@index([clientId, lastInboundAt])
 }
 
 // Internal staff-only notes on a conversation. Kept separate from SupportMessage so

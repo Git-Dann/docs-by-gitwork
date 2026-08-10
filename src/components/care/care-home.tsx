@@ -17,14 +17,19 @@ function ClientCard({ client, onOpen }: { client: SupportClient; onOpen: () => v
   const stats = useMemo(() => {
     const convs = convsQ.data?.conversations ?? [];
     const active = convs.filter((c) => c.status === "new" || c.status === "open");
-    const urgent = active.filter((c) => c.priority === "urgent");
-    const oldest = active.reduce<string | null>(
-      (acc, c) => (!acc || new Date(c.receivedAt) < new Date(acc) ? c.receivedAt : acc),
-      null,
-    );
+    // "Awaiting reply" replaces "needs action" as the headline: an active conversation someone
+    // has already answered is not a call on anyone's time, so counting it here overstated the
+    // backlog and made the number easy to ignore.
+    const awaiting = active.filter((c) => c.replyState === "awaiting_reply");
+    const urgent = awaiting.filter((c) => c.priority === "urgent");
+    // Longest-waiting CUSTOMER, measured from their message — not from when the thread opened.
+    const oldest = awaiting.reduce<string | null>((acc, c) => {
+      const since = c.lastInboundAt ?? c.receivedAt;
+      return !acc || new Date(since) < new Date(acc) ? since : acc;
+    }, null);
     const byStatus = {} as Record<ConversationStatus, number>;
     for (const c of convs) byStatus[c.status] = (byStatus[c.status] ?? 0) + 1;
-    return { needsAction: active.length, urgent: urgent.length, oldest, byStatus };
+    return { awaiting: awaiting.length, urgent: urgent.length, oldest, byStatus };
   }, [convsQ.data]);
 
   return (
@@ -45,10 +50,10 @@ function ClientCard({ client, onOpen }: { client: SupportClient; onOpen: () => v
       <h3 className="mt-1 text-base font-semibold text-[var(--text-1)]">{client.name}</h3>
       <div className="mt-3 flex items-end gap-5">
         <div>
-          <div className={cn("font-[var(--font-display)] text-3xl leading-none", stats.needsAction > 0 ? "text-[var(--text-1)]" : "text-[var(--text-4)]")}>
-            {stats.needsAction}
+          <div className={cn("font-[var(--font-display)] text-3xl leading-none", stats.awaiting > 0 ? "text-amber-600" : "text-[var(--text-4)]")}>
+            {stats.awaiting}
           </div>
-          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">Needs action</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">Awaiting reply</div>
         </div>
         <div>
           <div className={cn("font-[var(--font-display)] text-3xl leading-none", stats.urgent > 0 ? "text-red-600" : "text-[var(--text-4)]")}>
@@ -67,7 +72,11 @@ function ClientCard({ client, onOpen }: { client: SupportClient; onOpen: () => v
         ))}
       </div>
       <div className="mt-2 font-mono text-[11px] text-[var(--text-4)]">
-        {stats.oldest ? `Oldest unactioned ${formatAge(stats.oldest)} ago` : convsQ.isLoading ? "Loading…" : "All clear"}
+        {stats.oldest
+          ? `Longest wait ${formatAge(stats.oldest)}`
+          : convsQ.isLoading
+            ? "Loading…"
+            : "All replied"}
       </div>
     </button>
   );

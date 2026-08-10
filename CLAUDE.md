@@ -3089,3 +3089,126 @@ in the place a reader looks first. **"Save as snippet"** was removed from the bl
   the client intake API (§40.1) writes into that surface and nothing holds it to the other three.
 - **The cover editor still shows every field always.** Making fields addable/removable — across all
   blocks, not just the cover — is an open design question, not a coded decision.
+
+## 42. Recent Changes (August 2026) — Care tells you whether a reply was actually sent
+
+Dan's charge was that Care could not be trusted for the one question a support desk exists to
+answer — *"has this been replied to?"* — so the team worked out of the mailbox instead and Care
+drifted further out of date. Reading the code, the complaint decomposed into **five independent
+defects**, four of which made Care actively state something false. None was a missing feature in
+the sense of "we never got to it"; each was a mechanism that produced a confident wrong answer.
+
+### 42.1 The five defects
+
+1. **There was no reply state at all.** `SupportConversation` recorded no notion of who spoke
+   last. The only "first reply" timestamp in the schema is `SupportTicket.firstReplyAt`, and
+   tickets are **dormant** in the cockpit (schema note, line ~2553), so nothing in Care read it.
+2. **`unread` was raised by ANY new message, including our own.** `runChannelSync` set
+   `unread: true` whenever it created messages, and Gmail's `threads.get` returns the *entire*
+   thread — so **a reply you sent from Gmail re-flagged the conversation as unread on the next
+   sync**. The badge grew because of your own replies. (CLAUDE.md §33 fixed nothing ever
+   *clearing* `unread`; this is the other half — something wrongly *setting* it.)
+3. **The IMAP connector never read the Sent folder.** It opened `INBOX` only, so a reply typed in
+   Apple Mail / Outlook / webmail was invisible to Care and the thread showed as unanswered
+   **forever**. This is precisely the "sometimes we go straight to the email" gap: Gmail happened
+   to be fine (whole-thread walk), IMAP structurally was not. Flagged as optional/v2 in
+   `docs/care-imap-smtp-connector-plan.md` line 85 — it is not optional if Care is the record.
+4. **Conversations were ordered by `receivedAt`, which is stamped once at creation and never
+   updated.** So the list sorted by *when a thread started*. A months-old thread that got a reply
+   an hour ago sat at the bottom — past the 100-row page limit, i.e. gone.
+5. **On manual-reply channels the reply was never recorded.** The messages route was *built* to
+   log replies for sources with no automated send path ("still get logged so the copy-to-send
+   flow works"), but the UI's manual button only ever wrote to the clipboard and never called it.
+   App Store Connect replies therefore left **no trace in Care at all**.
+
+### 42.2 The design — store facts, derive the judgement
+
+New pure module **`src/server/support-reply-state.ts`** (no Prisma, no I/O, 17 unit tests).
+The conversation stores only what a connector can *observe* — `lastInboundAt`, `lastOutboundAt`,
+`lastMessageAt` (additive, nullable → applies via the guarded `prisma db push`) — and
+`deriveReplyState()` decides `awaiting_reply | replied | no_inbound` from them at serialize time.
+
+**The reply state is never stored, and that is the whole point.** A `repliedAt` column can only
+be correct if every reply goes through Care, and they demonstrably do not. A flag nobody updated
+reads exactly like a conversation nobody answered. Deriving it means a reply sent from *anywhere*
+flips the state the moment a sync sees it, with nobody marking anything — so the board self-heals
+instead of drifting. Same call as Docs cover contents (§41.6): derive what describes current
+state, snapshot only what records a moment.
+
+⚠️ **`replied` requires the outbound message to be STRICTLY newer than the inbound one; an exact
+tie returns `awaiting_reply`.** The two errors are not symmetric — a false "replied" hides a
+customer who is actually waiting, which is the failure this work exists to remove, while a false
+"awaiting" costs one glance. **Never relax `>` to `>=`.** There is a test named for it.
+
+⚠️ **The three columns are REQUIRED (not optional) in `serializeConversation`'s parameter type.**
+A caller that narrowed its `select` and omitted them would otherwise get a silent, confident
+`no_inbound` on a conversation that is really awaiting a reply. Requiring them makes that a
+compile error.
+
+### 42.3 What changed per defect
+
+- **`recordMessageActivity()`** (`support.ts`) is the single writer for the stamps, shared by the
+  channel core, the Gmail adapter and in-app replies, so no connector can forget them. It sets
+  `unread` **only when an inbound message landed** — which is defect 2. New conversations are now
+  created `unread: false` and raised by a real customer message, so an outbound-only thread (one
+  we started, or one reconstructed from Sent) never arrives pre-flagged.
+- **IMAP reads Sent** (`imap.ts`). The mailbox is found by its RFC 6154 **`\Sent` special-use
+  flag**, not by name — names are non-standard *and localised* (`[Gmail]/Sent Mail`,
+  `INBOX.Sent`, `Sent Items`), so name-guessing fails silently on exactly the mailboxes that
+  matter. `sentFolder` overrides; `readSentFolder: false` disables. Existing Message-ID dedup and
+  References threading merge the sent copy onto the right conversation with no new logic.
+  ⚠️ Messages found in Sent are marked outbound **because of where they are**, not by comparing
+  the From address — a mailbox that sends from an alias (`support@` vs `app@`) would otherwise
+  have its own replies classified inbound, marking the thread unread and stranding it in the
+  awaiting queue. A Sent-discovered thread takes its `customerLabel` from `To`, else the operator
+  shows up as the customer on their own board.
+- **Ordering is by `lastMessageAt`** (nulls last, `id` tiebreaker so cursor pagination cannot skip
+  or repeat a row). `receivedAt` keeps its meaning as the thread start.
+- **"Copy & mark replied"** on manual channels copies *and* logs, so the thread stops claiming it
+  is unanswered. The copy happens first and independently — a failed log leaves the draft intact
+  and shows an error rather than silently losing it.
+- **`backfillConversationActivity()`** populates history. Bounded (500/run, chunked 25-wide) and
+  **self-terminating** — it only matches rows with a null `lastMessageAt`, so a drained client
+  costs one indexed lookup. That is why this needed no migration, no one-shot route and no manual
+  step: it runs on the ordinary sync path. A conversation with no captured messages is stamped
+  from `receivedAt` rather than skipped, or it would re-match the filter every sync forever.
+
+### 42.4 UI — the queue is now "awaiting reply", not "needs action"
+
+`SAVED_VIEWS` leads with **Awaiting reply** (the default) and adds **Replied**; "Needs action"
+became "All open". The awaiting view sorts **longest-waiting first** — a triage board that buries
+the oldest unanswered message under today's noise is how things fall through. Rows carry an amber
+left accent bar plus a `Awaiting reply · 3h` chip that escalates past `LONG_WAIT_HOURS` (24);
+the detail pane states whose turn it is outright. Care home's headline number is now **Awaiting
+reply**, not active-conversation count, which overstated the backlog and was easy to ignore.
+The legacy `/app/support` dashboard reads the **same** server-derived field (a shared dot +
+`lastMessageAt` timestamp) so the two UIs cannot tell an operator different stories.
+
+⚠️ Amber, not red — priority owns red, and a board where everything is red says nothing.
+
+### 42.5 Verified / not verified
+
+`npm run verify` green: tsc + lint **0 errors** (30 warnings, all pre-existing — confirmed
+identical on the stashed tree), **1497 tests** passing across 110 files, `audit:ui` **0 findings**
+with its self-test passing. `npx next build` clean, 98 static pages, no database. The 17 new tests
+were **proved to discriminate** by breaking three things on purpose: relaxing the tie to `>=`
+(1 failure), raising `sawInbound` for any message (1), and dropping the backwards-drag guard (1) —
+each failing only the test named for it.
+
+**Not verified:** none of this was seen in a browser. `/app/care` is auth-gated, there is no
+staging and no local DB, so the reply-state chips, the awaiting queue and the Sent-folder read
+have not been driven against real data. **Post-deploy, in order:** hit **Sync now** on each Care
+client once (that is what runs the backfill — until it does, existing conversations read "No
+customer message" and the Awaiting queue is empty, which looks like a broken feature rather than
+a draining one); confirm rows show Awaiting/Replied correctly; reply to a thread **from the
+mailbox, outside Care**, sync, and confirm it flips to Replied — that single check is the whole
+point of the change; then confirm the unread badge stops climbing on its own.
+
+**Known limits (unchanged by this work, but they bound the queue):** the cockpit fetches one page
+of **100** conversations per client and filters client-side, so on a client with more history the
+awaiting queue is "the 100 most recently active", not "everything". Ordering by activity rather
+than thread-start makes this strictly better (a revived thread now comes *into* the page instead
+of being stranded), but it is not a complete queue and should not be described as one. Discord and
+App Store replies made outside Care are still undetectable — no equivalent of a Sent folder — so
+those rely on "Copy & mark replied". `AWAITING_CUSTOMER` on the dormant `SupportTicket` remains
+unused; reply state lives on the conversation.
