@@ -632,7 +632,7 @@ export function ProposalList() {
                 type="button"
                 variant="primary"
                 size="md"
-                onClick={() => setShowWizardModal(true)}
+                onClick={() => setShowCreate(true)}
                 leadingIcon={<PlusIcon className="h-4 w-4" />}
               >
                 New Document
@@ -641,10 +641,7 @@ export function ProposalList() {
           </div>
         </div>
 
-        <CreateDocumentWizardModal
-          open={showWizardModal}
-          onClose={() => setShowWizardModal(false)}
-        />
+
 
         {/* Collections rail + the active view. Rail stacks above the content below lg. */}
         <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[212px_minmax(0,1fr)]">
