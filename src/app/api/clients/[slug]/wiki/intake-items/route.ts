@@ -13,6 +13,8 @@ const bodySchema = z.object({
   requestedBy: z.string().trim().max(120).optional().nullable(),
   externalRef: z.string().trim().max(180).optional().nullable(),
   label: z.enum(["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN"]).optional().nullable(),
+  /** One of the client's own category ids — decides `type` server-side. */
+  categoryId: z.string().trim().max(64).optional().nullable(),
 });
 
 const toggleSchema = z.object({ enabled: z.boolean() });

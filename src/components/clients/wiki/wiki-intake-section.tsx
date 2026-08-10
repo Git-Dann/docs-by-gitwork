@@ -12,6 +12,11 @@ import {
 } from "@heroicons/react/24/outline";
 import type { WikiIntakeItemRecord } from "@/lib/api";
 import {
+  DEFAULT_INTAKE_CATEGORIES,
+  displayCategory,
+  type IntakeCategory,
+} from "@/lib/wiki-intake-categories";
+import {
   useCreatePublicWikiIntakeItem,
   useCreateWikiIntakeItem,
   useDeleteWikiIntakeItem,
@@ -23,15 +28,7 @@ import {
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
-type ItemType = "BUG" | "FEEDBACK" | "TASK" | "DESIGN";
 type Priority = "LOW" | "MEDIUM" | "HIGH";
-
-const TYPE_LABEL: Record<ItemType, string> = {
-  BUG: "Bug",
-  FEEDBACK: "Feedback",
-  TASK: "Request",
-  DESIGN: "Design",
-};
 
 const STATUS_LABEL: Record<string, string> = {
   NEW: "New",
@@ -55,10 +52,6 @@ const DEV_LABEL_LABEL: Record<DevLabel, string> = {
   DESIGN: "Design",
 };
 
-/** Filter tabs above the intake list — "ALL" first, then one per label, so a
- *  dev can sit on the Bug/Request tabs and never see a client's Design items,
- *  without the two being separated into different pages/components. */
-const FILTER_TABS: Array<"ALL" | ItemType> = ["ALL", "BUG", "FEEDBACK", "TASK", "DESIGN"];
 const PAGE_SIZE = 10;
 
 export function WikiIntakeSection({
@@ -66,11 +59,14 @@ export function WikiIntakeSection({
   token,
   items,
   mode,
+  categories = DEFAULT_INTAKE_CATEGORIES,
 }: {
   slug: string;
   token?: string;
   items: WikiIntakeItemRecord[];
   mode: "internal" | "public";
+  /** The client's own categories — defaults to the built-in four. */
+  categories?: IntakeCategory[];
 }) {
   const isInternal = mode === "internal";
   const createInternal = useCreateWikiIntakeItem(slug);
@@ -82,7 +78,7 @@ export function WikiIntakeSection({
   const uploadImagePublic = useUploadPublicWikiIntakeItemImage(token ?? "");
 
   const [localItems, setLocalItems] = useState(items);
-  const [type, setType] = useState<ItemType>("FEEDBACK");
+  const [categoryId, setCategoryId] = useState<string>(categories[0]?.id ?? "FEEDBACK");
   const [priority, setPriority] = useState<Priority>("MEDIUM");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -93,17 +89,28 @@ export function WikiIntakeSection({
   const [viewingImageId, setViewingImageId] = useState<string | null>(null);
   /** Which row's delete is armed — see the two-step delete in the actions below. */
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"ALL" | ItemType>("ALL");
+  const [activeTab, setActiveTab] = useState<string>("ALL");
   const [page, setPage] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  function selectTab(tab: "ALL" | ItemType) {
+  function selectTab(tab: string) {
     setActiveTab(tab);
     setPage(1);
   }
 
+  /** A request belongs to a tab by its categoryId. Requests raised BEFORE this
+   *  client had categories carry none, so they fall back to the first category
+   *  that behaves as their underlying type — otherwise switching a client onto
+   *  custom categories would drop every existing request out of every tab.
+   *  First-match keeps each item in exactly one tab, so the counts still sum;
+   *  an item whose type no category covers stays visible under "All". */
+  function inCategory(item: WikiIntakeItemRecord, id: string): boolean {
+    if (item.categoryId) return item.categoryId === id;
+    return categories.find((c) => c.mapsTo === item.type)?.id === id;
+  }
+
   const allItems = isInternal ? items : localItems;
-  const filteredItems = activeTab === "ALL" ? allItems : allItems.filter((item) => item.type === activeTab);
+  const filteredItems = activeTab === "ALL" ? allItems : allItems.filter((item) => inCategory(item, activeTab));
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const pagedItems = filteredItems.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -119,8 +126,10 @@ export function WikiIntakeSection({
 
   async function submit() {
     setError(null);
+    // Only the categoryId is sent — the server derives the underlying type from
+    // it, so the client's wording and the board's behaviour can't drift apart.
     const payload = {
-      type,
+      categoryId,
       priority,
       title: title.trim(),
       description: description.trim() || null,
@@ -147,7 +156,7 @@ export function WikiIntakeSection({
       setDescription("");
       setRequestedBy("");
       setPriority("MEDIUM");
-      setType("FEEDBACK");
+      setCategoryId(categories[0]?.id ?? "FEEDBACK");
       setLabel("");
       setImage(null);
     } catch (err) {
@@ -166,22 +175,25 @@ export function WikiIntakeSection({
           </span>
         </div>
         <div className="space-y-4 p-6">
-          {/* Type — segmented pills */}
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {(["BUG", "FEEDBACK", "TASK", "DESIGN"] as ItemType[]).map((value) => (
+          {/* Category — segmented pills, this client's own list. Wraps rather
+              than forcing a fixed column count, since a custom label can be
+              much longer than "Bug" and the list can run to a dozen. */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {categories.map((cat) => (
               <button
-                key={value}
+                key={cat.id}
                 type="button"
-                onClick={() => setType(value)}
+                onClick={() => setCategoryId(cat.id)}
+                title={cat.label}
                 className={[
                   "rounded-[8px] border px-3 py-2 text-[12px] font-semibold uppercase tracking-[0.06em] transition",
-                  type === value
+                  categoryId === cat.id
                     ? "border-[var(--brand-500)] bg-[var(--surface-brand)] text-[var(--brand-800)]"
                     : "border-[var(--border-2)] bg-[var(--surface-0)] text-[var(--text-3)] hover:bg-[var(--surface-1)]",
                 ].join(" ")}
                 style={{ fontFamily: MONO }}
               >
-                {TYPE_LABEL[value]}
+                {cat.label}
               </button>
             ))}
           </div>
@@ -303,14 +315,16 @@ export function WikiIntakeSection({
             can submit on the left. Keeps Design items out of a dev's way without
             splitting them into a separate page. */}
         <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--border-1)] px-5 py-3">
-          {FILTER_TABS.map((tab) => {
-            const count = tab === "ALL" ? allItems.length : allItems.filter((item) => item.type === tab).length;
-            const active = activeTab === tab;
+          {[{ id: "ALL", label: "All" }, ...categories].map((tab) => {
+            const count =
+              tab.id === "ALL" ? allItems.length : allItems.filter((item) => inCategory(item, tab.id)).length;
+            const active = activeTab === tab.id;
             return (
               <button
-                key={tab}
+                key={tab.id}
                 type="button"
-                onClick={() => selectTab(tab)}
+                onClick={() => selectTab(tab.id)}
+                title={tab.label}
                 className={[
                   "rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] transition",
                   active
@@ -319,8 +333,7 @@ export function WikiIntakeSection({
                 ].join(" ")}
                 style={{ fontFamily: MONO }}
               >
-                {tab === "ALL" ? "All" : TYPE_LABEL[tab]}{" "}
-                <span className={active ? "text-white/70" : "text-[var(--text-4)]"}>{count}</span>
+                {tab.label} <span className={active ? "text-white/70" : "text-[var(--text-4)]"}>{count}</span>
               </button>
             );
           })}
@@ -328,7 +341,9 @@ export function WikiIntakeSection({
         <div className="divide-y divide-[var(--border-1)]">
           {filteredItems.length === 0 ? (
             <p className="p-8 text-center text-sm text-[var(--text-4)]">
-              {activeTab === "ALL" ? "No bugs, feedback, or requests yet." : `No ${TYPE_LABEL[activeTab].toLowerCase()} items yet.`}
+              {activeTab === "ALL"
+                ? "No bugs, feedback, or requests yet."
+                : `No ${(categories.find((c) => c.id === activeTab)?.label ?? activeTab).toLowerCase()} items yet.`}
             </p>
           ) : (
             pagedItems.map((item) => (
@@ -340,7 +355,7 @@ export function WikiIntakeSection({
                         className="rounded-full bg-[var(--surface-brand)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)]"
                         style={{ fontFamily: MONO }}
                       >
-                        {TYPE_LABEL[item.type as ItemType]}
+                        {displayCategory(categories, item)}
                       </span>
                       <span
                         className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)] ring-1 ring-[var(--border-1)]"

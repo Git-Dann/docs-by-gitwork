@@ -1353,6 +1353,12 @@ model ClientWiki {
   /// Defaults false so a fresh wiki starts minimal (Dashboard + Timeline only);
   /// existing wikis keep whatever value they already have stored.
   intakeEnabled       Boolean                @default(false)
+  /// This client's OWN Requests categories, as `[{ id, label, mapsTo }]` where
+  /// `mapsTo` is a WikiIntakeItemType. Lets a client use their own vocabulary
+  /// ("Quick Design fix (V1)") without their wording becoming a global enum
+  /// value on every other client's form. Null/empty → the built-in four.
+  /// Shape is parsed defensively in lib/wiki-intake-categories.ts.
+  intakeCategories    Json?
   /// Whether the Code Handover section is enabled — versioned source per hardware
   /// module (e.g. Receiver / Sender firmware) handed to the client to flash.
   codeHandoverEnabled Boolean                @default(false)
@@ -1580,6 +1586,15 @@ model ClientWikiIntakeItem {
   /// on the board already categorised the way devs already filter/label tasks,
   /// rather than needing a dev to re-triage it after the fact.
   label       TaskLabel?
+  /// Which of the CLIENT's own categories was picked (ClientWiki.intakeCategories).
+  /// `type` above stays the underlying behaviour; this is the client's wording.
+  /// Resolved live at render, so renaming a category updates requests already
+  /// raised under it.
+  categoryId  String?
+  /// The category's label AS IT READ when the request was raised. Fallback only —
+  /// used when the category has since been deleted, so a client's own wording
+  /// isn't silently rewritten to a generic type.
+  categoryLabel String?
   /// Deep link back to the item in the client's own tracker, sent by the intake
   /// API so the team can open the source of a request. Rendered as a link on the
   /// Requests row; never fetched server-side.

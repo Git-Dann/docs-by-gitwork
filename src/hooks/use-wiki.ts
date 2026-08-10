@@ -57,6 +57,7 @@ import {
   addDocToWikiApi,
   removeDocFromWikiApi,
   createWikiIntakeItem,
+  setWikiIntakeCategoriesApi,
   createPublicWikiIntakeItem,
   updateWikiIntakeItemApi,
   deleteWikiIntakeItemApi,
@@ -357,6 +358,17 @@ export function useCreateWikiIntakeItem(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: WikiIntakeItemPayload) => createWikiIntakeItem(slug, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+/** Staff-only: replace this client's Requests categories (empty → defaults). */
+export function useSetWikiIntakeCategories(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      categories: { id?: string; label: string; mapsTo: "BUG" | "FEEDBACK" | "TASK" | "DESIGN" }[],
+    ) => setWikiIntakeCategoriesApi(slug, categories),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });
 }

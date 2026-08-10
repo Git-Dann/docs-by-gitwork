@@ -22,6 +22,13 @@ import type {
 } from "@prisma/client";
 import type { DesignTokens } from "@/types/design-tokens";
 import { buildTaskStatusCounts, type TaskLabel, type TaskStatus } from "@/types/tasks";
+import {
+  resolveIntakeCategories,
+  typeForCategory,
+  usesDefaultCategories,
+  validateIntakeCategories,
+  type IntakeCategory,
+} from "@/lib/wiki-intake-categories";
 import { loadWikiMonitors, type WikiMonitorsSection } from "./wiki-monitors";
 import { assertWithinIntakeQuota } from "./wiki-intake-limit";
 import { deliverIntakeWebhook } from "./wiki-intake-webhook";
@@ -92,6 +99,10 @@ export interface WikiIntakeItemRecord {
   /** The dev-facing label (Backend/Frontend/UI-UX/Research/Design) — the same
    *  taxonomy Task.label uses, carried onto the task a request is promoted to. */
   label: TaskLabel | null;
+  /** Which of the client's own categories was picked (null → none/default). */
+  categoryId: string | null;
+  /** The category's label when raised — fallback if it's since been deleted. */
+  categoryLabel: string | null;
   /** Deep link back to the item in the client's own tracker (API-supplied). */
   externalUrl: string | null;
   /** Screenshot/attachment links supplied by the API (http(s) only). */
@@ -176,6 +187,12 @@ export interface WikiDTO {
   intakeItems: WikiIntakeItemRecord[];
   /** Whether the Requests (client intake) section is enabled for this wiki. */
   intakeEnabled: boolean;
+  /** The categories a client picks from when raising a request. Resolved —
+   *  always populated, falling back to the built-in four when this client has
+   *  no custom list, so consumers never re-implement that fallback. */
+  intakeCategories: IntakeCategory[];
+  /** True when the above is the built-in list rather than a configured one. */
+  intakeCategoriesAreDefault: boolean;
   /** Tasks the devs flagged blocked-on-client — surfaced in the Requests section as an
    *  "Action needed" list. Client-safe subset (no assignees/internal notes). */
   blockers: WikiBlockerRecord[];
@@ -288,6 +305,8 @@ function serializeWikiIntakeItem(item: {
   requestedBy: string | null;
   externalRef: string | null;
   label?: TaskLabel | null;
+  categoryId?: string | null;
+  categoryLabel?: string | null;
   externalUrl?: string | null;
   attachmentUrls?: unknown;
   source: string | null;
@@ -307,6 +326,8 @@ function serializeWikiIntakeItem(item: {
     requestedBy: item.requestedBy,
     externalRef: item.externalRef,
     label: item.label ?? null,
+    categoryId: item.categoryId ?? null,
+    categoryLabel: item.categoryLabel ?? null,
     externalUrl: item.externalUrl ?? null,
     // Json column — guard the shape rather than trusting it.
     attachmentUrls: Array.isArray(item.attachmentUrls) ? (item.attachmentUrls as string[]) : [],
@@ -513,6 +534,7 @@ async function buildDTO(
   shareToken: string | null;
   shareEnabled: boolean;
   intakeEnabled?: boolean;
+  intakeCategories?: unknown;
   platforms: unknown;
   pageShares?: unknown;
   hiddenSections?: unknown;
@@ -630,6 +652,8 @@ async function buildDTO(
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .map(serializeWikiIntakeItem),
     intakeEnabled: wiki.intakeEnabled ?? true,
+    intakeCategories: resolveIntakeCategories(wiki.intakeCategories),
+    intakeCategoriesAreDefault: usesDefaultCategories(wiki.intakeCategories),
     blockers,
     timeline,
     designSystem,
@@ -1147,6 +1171,8 @@ export interface WikiItemIngestItem {
   externalRef?: string | null;
   /** The same dev-facing label Task.label uses — carried onto the task if promoted. */
   label?: TaskLabel | null;
+  /** One of the client's own category ids. When it resolves, it decides `type`. */
+  categoryId?: string | null;
   /** Deep link back to the item in the client's own tracker. */
   externalUrl?: string | null;
   /** Screenshot / attachment LINKS (http(s) only). Never fetched server-side. */
@@ -1196,6 +1222,7 @@ export async function ingestWikiItemsByToken(
     select: {
       id: true,
       intakeEnabled: true,
+      intakeCategories: true,
       client: { select: { id: true, slug: true, name: true, workspaceId: true } },
       intakeItems: { select: { title: true, externalRef: true, status: true } },
     },
@@ -1224,6 +1251,8 @@ export async function ingestWikiItemsByToken(
       .filter(Boolean),
   );
 
+  const categories = resolveIntakeCategories(wiki.intakeCategories);
+
   const created: WikiIntakeItemRecord[] = [];
   let skipped = 0;
   for (const raw of items) {
@@ -1239,10 +1268,13 @@ export async function ingestWikiItemsByToken(
       continue;
     }
 
+    const resolved = typeForCategory(categories, raw.categoryId, raw.type ?? "FEEDBACK");
     const item = await prisma.clientWikiIntakeItem.create({
       data: {
         wikiId: wiki.id,
-        type: raw.type ?? "FEEDBACK",
+        type: resolved.type,
+        categoryId: resolved.categoryId,
+        categoryLabel: resolved.categoryLabel,
         title,
         description: raw.description?.trim() || null,
         priority: raw.priority ?? "MEDIUM",
@@ -1392,12 +1424,19 @@ export async function addWikiIntakeItem(
     where: { clientId },
     create: { clientId },
     update: {},
-    select: { id: true },
+    select: { id: true, intakeCategories: true },
   });
+  // The type is DERIVED from the picked category, never taken from the caller —
+  // a form that could send its own (categoryId, type) pair could file a "Design"
+  // category as a BUG and split the client's wording from the board's behaviour.
+  const categories = resolveIntakeCategories(wiki.intakeCategories);
+  const resolved = typeForCategory(categories, item.categoryId, item.type ?? "FEEDBACK");
   const row = await prisma.clientWikiIntakeItem.create({
     data: {
       wikiId: wiki.id,
-      type: item.type ?? "FEEDBACK",
+      type: resolved.type,
+      categoryId: resolved.categoryId,
+      categoryLabel: resolved.categoryLabel,
       title: item.title.trim(),
       description: item.description?.trim() || null,
       priority: item.priority ?? "MEDIUM",
@@ -1408,6 +1447,30 @@ export async function addWikiIntakeItem(
     },
   });
   return serializeWikiIntakeItem(row);
+}
+
+/**
+ * Set this client's own Requests categories. Staff-only (the routes gate it) —
+ * a client picking from the list is not the same as editing it, and an unmapped
+ * or duplicate category would muddy the devs' view of the board.
+ * An empty list clears back to the built-in four.
+ */
+export async function setWikiIntakeCategories(
+  clientId: string,
+  input: unknown,
+): Promise<IntakeCategory[]> {
+  const result = validateIntakeCategories(input);
+  if (!result.ok) throw new Error(result.error);
+  // Prisma's Json input type doesn't accept a plain interface array; the shape
+  // is guaranteed by validateIntakeCategories immediately above.
+  const value = result.categories as unknown as Prisma.InputJsonValue;
+  const wiki = await prisma.clientWiki.upsert({
+    where: { clientId },
+    create: { clientId, intakeCategories: value },
+    update: { intakeCategories: value },
+    select: { intakeCategories: true },
+  });
+  return resolveIntakeCategories(wiki.intakeCategories);
 }
 
 export async function updateWikiIntakeItem(

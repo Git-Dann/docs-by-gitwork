@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { WikiIntakeItemRecord } from "@/lib/api";
+import type { IntakeCategory } from "@/lib/wiki-intake-categories";
 import { WikiIntakeSection } from "@/components/clients/wiki/wiki-intake-section";
 
 /**
@@ -39,6 +40,8 @@ function makeItem(id: string, type: WikiIntakeItemRecord["type"]): WikiIntakeIte
     requestedBy: null,
     externalRef: null,
     label: null,
+    categoryId: null,
+    categoryLabel: null,
     externalUrl: null,
     attachmentUrls: [],
     source: "wiki",
@@ -59,12 +62,17 @@ const ITEMS: WikiIntakeItemRecord[] = [
   ...Array.from({ length: 3 }, (_, i) => makeItem(`design-${i}`, "DESIGN")),
 ];
 
-function render() {
+function render(opts: { items?: WikiIntakeItemRecord[]; categories?: IntakeCategory[] } = {}) {
   const root = createRoot(host);
   act(() =>
     root.render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <WikiIntakeSection slug="acme" items={ITEMS} mode="internal" />
+        <WikiIntakeSection
+          slug="acme"
+          items={opts.items ?? ITEMS}
+          mode="internal"
+          categories={opts.categories}
+        />
       </QueryClientProvider>,
     ),
   );
@@ -155,5 +163,75 @@ describe("WikiIntakeSection — category tabs + pagination", () => {
 
     click(tabButton("Bug"));
     expect(host.textContent).toContain("PAGE 1 OF 2");
+  });
+});
+
+/**
+ * Per-client categories: a client uses their own wording ("Quick Design fix
+ * (V1)") without that phrasing becoming a global type on every other client's
+ * form. The underlying type still drives dev behaviour, so both must line up.
+ */
+describe("WikiIntakeSection — per-client categories", () => {
+  const CUSTOM: IntakeCategory[] = [
+    { id: "bug", label: "Bug", mapsTo: "BUG" },
+    { id: "content-tweak", label: "Content tweak", mapsTo: "TASK" },
+    { id: "quick-design-v1", label: "Quick Design fix (V1)", mapsTo: "DESIGN" },
+  ];
+
+  let seq = 0;
+  function categorised(id: string, type: WikiIntakeItemRecord["type"], label: string) {
+    seq += 1;
+    return { ...makeItem(`c-${id}-${seq}`, type), categoryId: id, categoryLabel: label };
+  }
+
+  it("renders the client's own categories as the tabs, not the built-in four", () => {
+    render({ items: [], categories: CUSTOM });
+    expect(tabButton("All")).toBeTruthy();
+    expect(tabButton("Content tweak")).toBeTruthy();
+    expect(tabButton("Quick Design fix (V1)")).toBeTruthy();
+    // "Feedback" is not one of this client's categories.
+    expect(() => tabButton("Feedback")).toThrow();
+  });
+
+  it("filters by the client's category, not the underlying type", () => {
+    const items = [
+      categorised("content-tweak", "TASK", "Content tweak"),
+      categorised("quick-design-v1", "DESIGN", "Quick Design fix (V1)"),
+      categorised("quick-design-v1", "DESIGN", "Quick Design fix (V1)"),
+    ];
+    render({ items, categories: CUSTOM });
+
+    click(tabButton("Quick Design fix (V1)"));
+    expect(articleCount()).toBe(2);
+    click(tabButton("Content tweak"));
+    expect(articleCount()).toBe(1);
+  });
+
+  it("shows a renamed category's NEW name on requests already raised under it", () => {
+    const renamed: IntakeCategory[] = [
+      { id: "content-tweak", label: "Copy change", mapsTo: "TASK" },
+    ];
+    render({
+      items: [categorised("content-tweak", "TASK", "Content tweak")],
+      categories: renamed,
+    });
+    expect(host.textContent).toContain("Copy change");
+    expect(host.textContent).not.toContain("Content tweak");
+  });
+
+  it("keeps a deleted category's original wording rather than rewriting it to a type", () => {
+    render({
+      items: [categorised("gone", "TASK", "Retired category")],
+      categories: CUSTOM,
+    });
+    expect(host.textContent).toContain("Retired category");
+  });
+
+  it("still tabs legacy requests that predate custom categories", () => {
+    // No categoryId — falls back to matching the underlying type, and the
+    // default ids ARE the type names, so nothing falls out of its tab.
+    render({ items: [makeItem("legacy", "BUG")], categories: CUSTOM });
+    click(tabButton("Bug"));
+    expect(articleCount()).toBe(1);
   });
 });

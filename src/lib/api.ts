@@ -3379,6 +3379,8 @@ export async function setClientDesignSystemGuidelinesEnabled(
 
 import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiBlockerRecord, WikiUserSummary } from "@/server/wiki";
 export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiBlockerRecord, WikiUserSummary };
+import type { IntakeCategory } from "@/lib/wiki-intake-categories";
+export type { IntakeCategory };
 import type {
   WikiCodeHandoverSection,
   WikiCodeModuleRecord,
@@ -3462,6 +3464,23 @@ export interface WikiIntakeItemPayload {
   externalRef?: string | null;
   /** The dev-facing label (same taxonomy as Task.label). */
   label?: "BACKEND" | "FRONTEND" | "UI_UX" | "RESEARCH" | "DESIGN" | null;
+  /** One of the client's own category ids — the server derives `type` from it. */
+  categoryId?: string | null;
+}
+
+/** Staff-only: replace this client's Requests categories (empty → defaults). */
+export async function setWikiIntakeCategoriesApi(
+  slug: string,
+  categories: { id?: string; label: string; mapsTo: "BUG" | "FEEDBACK" | "TASK" | "DESIGN" }[],
+): Promise<{ categories: IntakeCategory[] }> {
+  return apiFetch<{ categories: IntakeCategory[] }>(
+    `/api/clients/${slug}/wiki/intake-categories`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ categories }),
+    },
+  );
 }
 
 export async function createWikiIntakeItem(

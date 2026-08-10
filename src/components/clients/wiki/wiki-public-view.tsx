@@ -193,7 +193,13 @@ export function WikiPublicView({
         <>
           <WikiBlockersSection blockers={wiki.blockers} mode="public" token={token} />
           {wiki.intakeEnabled ? (
-            <WikiIntakeSection slug={wiki.clientSlug} token={token} items={wiki.intakeItems} mode="public" />
+            <WikiIntakeSection
+              slug={wiki.clientSlug}
+              token={token}
+              items={wiki.intakeItems}
+              mode="public"
+              categories={wiki.intakeCategories}
+            />
           ) : null}
         </>
       );

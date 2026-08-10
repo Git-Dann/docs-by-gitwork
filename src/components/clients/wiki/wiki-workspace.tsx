@@ -43,6 +43,7 @@ import { WikiDashboard } from "./wiki-dashboard";
 import { MonitorsManager } from "./monitors-section";
 import { DocumentsManager } from "./documents-section";
 import { WikiAccessSettings } from "./wiki-access-settings";
+import { WikiIntakeCategoriesPanel } from "./wiki-intake-categories-panel";
 import {
   ApiDocsPageEditor,
   normalizeApiDocsContent,
@@ -1219,7 +1220,18 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     // ── Settings — set the public-link username/password gate (internal only).
     if (activeSection === "settings") {
       return (
-        <WikiAccessSettings slug={slug} wiki={wiki!} availableSections={availableSections} />
+        <div className="space-y-4">
+          <WikiAccessSettings slug={slug} wiki={wiki!} availableSections={availableSections} />
+          {/* Only meaningful while the Requests section is on — the categories
+              are what a client picks from when raising one. */}
+          {wiki!.intakeEnabled ? (
+            <WikiIntakeCategoriesPanel
+              slug={slug}
+              categories={wiki!.intakeCategories}
+              isDefault={wiki!.intakeCategoriesAreDefault}
+            />
+          ) : null}
+        </div>
       );
     }
 
@@ -1268,7 +1280,14 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       return (
         <>
           <WikiBlockersSection blockers={wiki!.blockers} mode="internal" />
-          {wiki!.intakeEnabled ? <WikiIntakeSection slug={slug} items={wiki!.intakeItems} mode="internal" /> : null}
+          {wiki!.intakeEnabled ? (
+            <WikiIntakeSection
+              slug={slug}
+              items={wiki!.intakeItems}
+              mode="internal"
+              categories={wiki!.intakeCategories}
+            />
+          ) : null}
         </>
       );
     }
