@@ -525,6 +525,7 @@ export function GanttChart({
                             <button
                               type="button"
                               onClick={onBlockClick ? () => onBlockClick(b.id) : undefined}
+                              title={b.name}
                               className={cn(
                                 "block w-full truncate text-left text-sm font-medium text-[var(--text-1)]",
                                 onBlockClick && "hover:text-[var(--brand-700)]",
@@ -549,7 +550,10 @@ export function GanttChart({
                                   className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
                                   style={{ background: task.done ? "#16A34A" : "#CBD5E1" }}
                                 />
-                                <span className={cn("truncate", task.done && "line-through opacity-60")}>
+                                <span
+                                  title={task.title}
+                                  className={cn("truncate", task.done && "line-through opacity-60")}
+                                >
                                   {task.title}
                                 </span>
                               </li>
