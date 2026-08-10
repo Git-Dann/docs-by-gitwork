@@ -1,9 +1,9 @@
 /**
  * AI-Powered Document Generation Engine.
  *
- * Takes reference intake text + document type, calls AI to extract key facts,
- * maps extracted entities into structured section blueprints, and creates
- * the document in PostgreSQL.
+ * Takes reference intake text + document type, calls AI to extract key facts and generate
+ * tailored content for EVERY section blueprint in the chosen template, and creates the
+ * populated document in PostgreSQL.
  */
 
 import type { DocumentType } from "@prisma/client";
@@ -34,6 +34,7 @@ export interface ExtractedDocMetadata {
   clientSignatoryRole?: string;
   summaryText?: string;
   clauses?: Array<{ title: string; body: string }>;
+  sectionData?: Record<string, Record<string, unknown>>;
 }
 
 function replacePlaceholdersInJson(obj: unknown, replacements: Record<string, string>): unknown {
@@ -62,37 +63,60 @@ function replacePlaceholdersInJson(obj: unknown, replacements: Record<string, st
 export async function generateDocumentFromIntake(input: GenerateDocumentInput) {
   const { extractedText, documentType, workspace, actor, customTitle, clientName: inputClientName } = input;
 
-  // 1. Resolve AI provider config (Anthropic Claude 3.5 Sonnet default, Groq / OpenAI compatible fallback)
+  // 1. Resolve AI provider config (Anthropic Claude 3.5 Sonnet / Groq / OpenAI compatible)
   const aiConfig = resolveAiConfig(workspace);
 
-  const systemPrompt = `You are a legal and commercial document processing AI for Gitwork.
-Your task is to analyze reference documents or briefs and extract key facts to populate a ${documentType} template.
+  // 2. Load base section blueprints for this document type
+  const baseBlueprints = getTemplateBlueprintsForType(documentType);
+  const blueprintSummaries = baseBlueprints.map((b) => ({
+    key: b.key,
+    title: b.title,
+    description: b.description,
+    dataKeys: Object.keys((b.data as unknown as Record<string, unknown>) ?? {}),
+  }));
 
-Extract structured JSON strictly matching this interface:
+  const systemPrompt = `You are an expert commercial and legal document processing AI for Gitwork.
+Your task is to analyze reference documents or briefs and generate fully populated, tailored section contents for a ${documentType} template.
+
+Here are the section components in the ${documentType} template:
+${JSON.stringify(blueprintSummaries, null, 2)}
+
+Extract and generate structured JSON strictly matching this interface:
 {
   "title": "Document Title",
   "clientName": "Client Organisation Name",
   "clientEmail": "client.contact@example.com",
   "clientAddress": "Client Registered Address",
-  "gitworkSignatoryName": "Gitwork Director Name",
-  "gitworkSignatoryEmail": "director@gitwork.io",
+  "gitworkSignatoryName": "${actor?.name || "Gitwork Director"}",
+  "gitworkSignatoryEmail": "${actor?.email || "legal@gitwork.tech"}",
   "gitworkSignatoryRole": "Director",
-  "clientSignatoryName": "Authorized Client Name",
+  "clientSignatoryName": "Authorised Client Signatory",
   "clientSignatoryEmail": "signer@client.com",
   "clientSignatoryRole": "CEO / Director / VP",
-  "summaryText": "Executive summary of the agreement or scope",
+  "summaryText": "Executive summary of the agreement or project scope",
   "clauses": [
     { "title": "Clause Title", "body": "Clause detailed text..." }
-  ]
+  ],
+  "sectionData": {
+    "key_name": {
+      "title": "Tailored Section Title",
+      "description": "Tailored Section Overview",
+      "content": "Tailored body text or markdown paragraph based on the uploaded document...",
+      "body": "Tailored body paragraph text..."
+    }
+  }
 }
 
-Return JSON only. No markdown fences outside the JSON object.`;
+Important Instructions:
+1. For every section key in the template (e.g. cover, introduction, objectives, scope, cost_breakdown, terms, cta, clauses), generate customized content inside sectionData under that exact key.
+2. Incorporate specific facts, scope points, dates, deliverables, and requirements found in the reference material.
+3. Return JSON only. No markdown fences outside the JSON object.`;
 
   const userPrompt = `Document Type: ${documentType}
 ${customTitle ? `Requested Title: ${customTitle}` : ""}
 ${inputClientName ? `Provided Client Name: ${inputClientName}` : ""}
 
-Reference Material:
+Uploaded Reference Material:
 ${extractedText.slice(0, 18_000)}`;
 
   let extractedData: ExtractedDocMetadata | null = null;
@@ -102,18 +126,15 @@ ${extractedText.slice(0, 18_000)}`;
       system: systemPrompt,
       user: userPrompt,
       tier: "standard",
-      maxTokens: 3000,
+      maxTokens: 4000,
     });
     extractedData = parseJsonObject<ExtractedDocMetadata>(rawAiResponse);
   } catch (err) {
-    console.warn("AI extraction warning, using default template mapping:", err);
+    console.warn("AI extraction warning, falling back to default template blueprints:", err);
   }
 
   const resolvedClientName = inputClientName?.trim() || extractedData?.clientName?.trim() || "Client Organisation";
   const docTitle = customTitle?.trim() || extractedData?.title?.trim() || `${documentType} — ${resolvedClientName}`;
-
-  // 2. Load section blueprints for this document type
-  const baseBlueprints = getTemplateBlueprintsForType(documentType);
 
   const replacements: Record<string, string> = {
     "{{client_name}}": resolvedClientName,
@@ -121,12 +142,21 @@ ${extractedText.slice(0, 18_000)}`;
     "[client_name]": resolvedClientName,
     "[REVIEW] Authorised client signatory": extractedData?.clientSignatoryName || "Authorised Client Signatory",
     "[REVIEW] signatory email": extractedData?.clientSignatoryEmail || "signatory@client.com",
-    "[REVIEW] Authorised Gitwork signatory": extractedData?.gitworkSignatoryName || "Director of Operations",
+    "[REVIEW] Authorised Gitwork signatory": actor?.name || extractedData?.gitworkSignatoryName || "Director of Operations",
   };
 
-  // 3. Map extracted metadata into section component data
+  // 3. Populate section blueprints with AI-generated section data + metadata
   const sectionsPayload = baseBlueprints.map((blueprint, index) => {
     let sectionData = JSON.parse(JSON.stringify(blueprint.data));
+
+    // Merge AI generated sectionData if present for this section key
+    if (extractedData?.sectionData?.[blueprint.key]) {
+      const aiSec = extractedData.sectionData[blueprint.key];
+      sectionData = {
+        ...sectionData,
+        ...aiSec,
+      };
+    }
 
     // Perform recursive placeholder replacement across the whole section JSON
     sectionData = replacePlaceholdersInJson(sectionData, replacements);
@@ -190,7 +220,7 @@ ${extractedText.slice(0, 18_000)}`;
       }
     }
 
-    // Inject AI extracted clauses into prose/clause sections
+    // Inject AI extracted clauses into clause / legal sections
     if (blueprint.key.includes("clause") || blueprint.key.includes("scope") || blueprint.key === "prose") {
       if (extractedData?.clauses?.length && typeof sectionData === "object" && sectionData) {
         sectionData.clauses = extractedData.clauses.map((c, cIdx) => ({
@@ -198,20 +228,13 @@ ${extractedText.slice(0, 18_000)}`;
           title: c.title,
           body: c.body,
         }));
-        // Also build readable markdown content if content string exists
-        if (typeof sectionData.content === "string") {
-          const formattedClauses = extractedData.clauses
-            .map((c, cIdx) => `### ${cIdx + 1}. ${c.title}\n\n${c.body}`)
-            .join("\n\n");
-          sectionData.content = `${formattedClauses}\n\n${sectionData.content}`;
-        }
       }
     }
 
     return {
       key: blueprint.key,
-      title: blueprint.title,
-      description: blueprint.description,
+      title: (extractedData?.sectionData?.[blueprint.key]?.title as string) || blueprint.title,
+      description: (extractedData?.sectionData?.[blueprint.key]?.description as string) || blueprint.description,
       sortOrder: (index + 1) * 10,
       data: sectionData,
     };
