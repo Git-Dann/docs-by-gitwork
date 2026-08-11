@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useDeferredValue } from "react";
-import { ArrowPathIcon, ArrowLeftIcon, Cog8ToothIcon, DocumentChartBarIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { Fragment, useEffect, useMemo, useRef, useState, useDeferredValue } from "react";
+import {
+  ArrowDownIcon,
+  ArrowPathIcon,
+  ArrowLeftIcon,
+  ArrowUpIcon,
+  Cog8ToothIcon,
+  DocumentChartBarIcon,
+} from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
-import type { Conversation, ConversationViewCounts, SupportClient } from "@/types/support";
+import type { Conversation, SupportClient } from "@/types/support";
 import {
   useSupportConversationsPaged,
   useSupportConversationCounts,
@@ -31,6 +38,7 @@ import {
   rowState,
   waitingSince,
 } from "./care-constants";
+import { CareEmpty } from "./care-panel";
 import { ConversationDetail } from "./conversation-detail";
 import { ConnectorsView } from "@/components/support/support-dashboard";
 
@@ -38,123 +46,8 @@ import { ConnectorsView } from "@/components/support/support-dashboard";
 // the thing you asked for, and "Load more" walks the rest.
 const PAGE_SIZE = 50;
 
-/**
- * What the right-hand 60% of the screen shows when nothing is open.
- *
- * It said "Select a conversation to triage." — an instruction, occupying the largest area on the
- * page, telling you to do the thing you were obviously about to do. It is the natural home for
- * the state of the queue: how much is waiting, how long the worst one has waited, and one button
- * that starts you on it.
- */
-function QueueOverview({
-  counts,
-  loading,
-  nextUp,
-  onOpen,
-  onStart,
-}: {
-  counts?: ConversationViewCounts;
-  loading: boolean;
-  /** The longest-waiting few, so the pane is a place to start work rather than a status card. */
-  nextUp: Conversation[];
-  onOpen: (c: Conversation) => void;
-  onStart: () => void;
-}) {
-  if (loading || !counts) {
-    return <div className="flex h-full w-full items-center justify-center text-sm text-[var(--text-4)]">Loading queue…</div>;
-  }
-
-  const clear = counts.awaiting === 0;
-  const stats: Array<{ label: string; value: number | string; tone?: string }> = [
-    { label: "Awaiting reply", value: counts.awaiting, tone: counts.awaiting > 0 ? "text-amber-600" : undefined },
-    { label: "Unassigned", value: counts.unassigned },
-    { label: "Urgent", value: counts.urgent, tone: counts.urgent > 0 ? "text-red-600" : undefined },
-    { label: "Replied", value: counts.replied, tone: "text-emerald-600" },
-  ];
-
-  return (
-    <div className="flex h-full w-full items-center justify-center overflow-y-auto p-8">
-      <div className="w-full max-w-md">
-        <div className="font-mono text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]">Queue</div>
-        <h2 className="mt-1 text-[22px] font-semibold leading-snug text-[var(--text-1)]">
-          {clear ? "Everything has been answered." : `${counts.awaiting} waiting on a reply`}
-        </h2>
-        {counts.oldestAwaitingAt && (
-          <p className="mt-1 text-[13px] text-[var(--text-3)]">
-            The longest has been waiting{" "}
-            <span className={cn(isLongWait(counts.oldestAwaitingAt) && "font-semibold text-amber-700")}>
-              {formatAge(counts.oldestAwaitingAt)}
-            </span>
-            .
-          </p>
-        )}
-
-        {/* Stat figures in DM Serif Display + mono unit labels, per DESIGN.md's stat grammar. */}
-        <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-[var(--border-2)] pt-5">
-          {stats.map((s) => (
-            <div key={s.label}>
-              <div
-                className={cn(
-                  "font-[var(--font-display)] text-[32px] leading-none",
-                  s.tone ?? "text-[var(--text-1)]",
-                  s.value === 0 && !s.tone && "text-[var(--text-4)]",
-                )}
-              >
-                {s.value}
-              </div>
-              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">{s.label}</div>
-            </div>
-          ))}
-        </div>
-
-        {!clear && (
-          <button
-            type="button"
-            onClick={onStart}
-            className="mt-6 w-full rounded-[6px] bg-[var(--brand-700)] px-4 py-2.5 text-[13px] font-semibold text-white transition hover:bg-[var(--brand-800)]"
-          >
-            Start with the longest wait
-          </button>
-        )}
-
-        {/* Next up — the pane is otherwise a status card floating in a very large empty area.
-            These are the actual longest waits, one click each, so the space does work. */}
-        {nextUp.length > 0 && (
-          <div className="mt-6 border-t border-[var(--border-2)] pt-4">
-            <div className="mb-2 font-mono text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]">Next up</div>
-            <div className="overflow-hidden rounded-[8px] border border-[var(--border-2)]">
-              {nextUp.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => onOpen(c)}
-                  className="flex w-full items-center gap-3 border-b border-[var(--border-2)] px-3 py-2 text-left transition last:border-b-0 hover:bg-[var(--surface-1)]"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-medium text-[var(--text-1)]">{c.customerLabel}</span>
-                    <span className="block truncate text-[12px] text-[var(--text-4)]">{c.preview || c.subject}</span>
-                  </span>
-                  <span
-                    className={cn(
-                      "shrink-0 font-mono text-[11px]",
-                      c.lastInboundAt && isLongWait(c.lastInboundAt) ? "font-semibold text-amber-600" : "text-[var(--text-4)]",
-                    )}
-                  >
-                    {formatAge(lastActivityAt(c))}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <p className="mt-4 text-center font-mono text-[10px] tracking-[0.4px] text-[var(--text-4)]">
-          <Kbd>J</Kbd> <Kbd>K</Kbd> move · <Kbd>↵</Kbd> open · <Kbd>E</Kbd> close · <Kbd>S</Kbd> snooze
-        </p>
-      </div>
-    </div>
-  );
-}
+/** The two orders the server can actually produce. Anything else would be a lie — see SortHeader. */
+type SortKey = "activity" | "oldest_inbound";
 
 /** A key cap. 3px radius per DESIGN.md's micro-control scale — full radius is status dots only. */
 function Kbd({ children }: { children: React.ReactNode }) {
@@ -165,9 +58,17 @@ function Kbd({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ConversationRow({
+/**
+ * One conversation as a TABLE row.
+ *
+ * Care showed conversations as stacked cards in a 320px rail — three lines of mixed-weight text per
+ * row, which reads fine for five and is a wall at two hundred and twenty-six. A table puts each fact
+ * in its own column, so the eye scans DOWN one attribute ("who has waited longest?", "what is
+ * unowned?") instead of re-parsing every row. It is also why HubSpot, Linear and Zendesk all landed
+ * on a table for a queue this size.
+ */
+function ConversationTableRow({
   conv,
-  active,
   focused,
   selected,
   selectable,
@@ -177,172 +78,176 @@ function ConversationRow({
   assigneeName,
 }: {
   conv: Conversation;
-  active: boolean;
-  /** Keyboard cursor. Distinct from `active` (opened) so j/k can move without loading a thread. */
+  /** Keyboard cursor. Distinct from "open", which now leaves the index entirely. */
   focused: boolean;
   selected: boolean;
   selectable: boolean;
   /**
-   * False when the current view already filters to this state — in "Awaiting reply" every row is
-   * awaiting, so stamping NEEDS REPLY on all 226 of them is 226 repetitions of the view's own
-   * name. A signal that is constant within a view carries no information there; suppressing it
-   * is what lets the eye reach the content.
+   * False when the current tab already filters to this state — on "Awaiting reply" every row is
+   * awaiting, so stamping NEEDS REPLY on all 226 of them is the tab's own name, 226 times. A
+   * signal that is constant within a view carries no information there.
    */
   showState: boolean;
   onOpen: () => void;
   onToggleSelect: () => void;
   assigneeName?: string;
 }) {
-  const awaiting = conv.replyState === "awaiting_reply" && conv.status !== "closed" && conv.status !== "ignored";
-  const waitingFrom = waitingSince(conv);
-  const longWait = awaiting && waitingFrom ? isLongWait(waitingFrom) : false;
   const state = rowState(conv);
-  const urgent = conv.priority === "urgent";
+  const waited = waitingSince(conv);
+  const late = waited ? isLongWait(waited) : false;
 
   return (
-    <div
+    <tr
       data-conv-row
-      className={cn(
-        "group relative cursor-pointer border-b border-[var(--border-2)] py-2 pr-3 transition",
-        // The accent bar marks unanswered work in MIXED views. In a view that is already filtered
-        // to awaiting it would paint every row amber, which is wallpaper rather than a signal.
-        showState && awaiting ? "border-l-2 border-l-amber-400 pl-[10px]" : "border-l-2 border-l-transparent pl-[10px]",
-        active
-          ? "bg-[var(--brand-50)]"
-          : focused
-            ? "bg-[var(--surface-1)] ring-1 ring-inset ring-[var(--brand-200,var(--border-1))]"
-            : "hover:bg-[var(--surface-1)]",
-      )}
       onClick={onOpen}
+      className={cn(
+        "cursor-pointer",
+        selected
+          ? "bg-[var(--surface-brand)]"
+          : focused
+            ? "bg-[var(--surface-1)] ring-1 ring-inset ring-[var(--brand-200)]"
+            : undefined,
+      )}
     >
-      {/* ── Line 1: who + when. Sender leads, because triage is about people, and the subject
-             is frequently a reference number that identifies nothing. ── */}
-      <div className="flex items-center gap-2">
-        {selectable && (
+      {selectable && (
+        <td className="w-8" onClick={(e) => e.stopPropagation()}>
           <input
             type="checkbox"
             checked={selected}
-            onClick={(e) => e.stopPropagation()}
             onChange={onToggleSelect}
-            // Reveal on hover / when in use, so a resting list is content rather than controls.
-            className={cn(
-              "h-3.5 w-3.5 shrink-0 rounded-[3px] transition group-hover:opacity-100",
-              selected ? "opacity-100" : "opacity-0 focus:opacity-100",
-            )}
+            className="app-checkbox"
+            aria-label={`Select conversation from ${conv.customerLabel}`}
           />
-        )}
-        <SourceIcon
-          source={conv.source}
-          className={cn("h-3.5 w-3.5 shrink-0", awaiting ? "text-amber-500" : "text-[var(--text-4)]")}
-        />
-        <span
-          className={cn(
-            "min-w-0 flex-1 truncate text-[13px]",
-            conv.unread ? "font-semibold text-[var(--text-1)]" : "font-medium text-[var(--text-2)]",
-          )}
-        >
-          {conv.customerLabel || SOURCE_LABEL[conv.source]}
-        </span>
-        {urgent && (
-          <span className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.6px] text-red-600">
-            Urgent
+        </td>
+      )}
+      {/*
+        Column caps step with the viewport, because the two columns that must survive a phone are
+        CUSTOMER and WAITING — how long someone has been ignored is the whole point of the queue.
+        Left uncapped, the subject took its natural width and pushed Waiting and Owner off the right
+        edge at 390px: reachable by scrolling the table, but nobody scrolls sideways to find the
+        number they came for.
+      */}
+      <td className="max-w-[104px] sm:max-w-[160px] lg:max-w-[200px]">
+        <div className="flex items-center gap-2">
+          <SourceIcon source={conv.source} className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
+          <span
+            className={cn(
+              "truncate text-[13px]",
+              conv.unread ? "font-semibold text-[var(--text-1)]" : "text-[var(--text-2)]",
+            )}
+            title={conv.customerLabel}
+          >
+            {conv.customerLabel || SOURCE_LABEL[conv.source]}
           </span>
+        </div>
+      </td>
+      <td className="max-w-[124px] sm:max-w-[240px] md:max-w-[300px] lg:max-w-[380px] xl:max-w-[460px]">
+        <div
+          className={cn("truncate text-[13px]", conv.unread ? "font-medium text-[var(--text-1)]" : "text-[var(--text-2)]")}
+          title={conv.subject}
+        >
+          {conv.subject}
+        </div>
+        {/* The preview earns a second line only when it says something the subject doesn't — on a
+            forwarding inbox the two are frequently the identical string. Dropped below `sm`: 106px
+            of a 270-character message is not a preview, and a `title` tooltip is no answer on a
+            touch device — the subject is the line that has to survive a phone. */}
+        {conv.preview && conv.preview.trim() !== conv.subject.trim() && (
+          <div className="hidden truncate text-[12px] text-[var(--text-4)] sm:block" title={conv.preview}>
+            {conv.preview}
+          </div>
         )}
-        {/* Age of the LATEST message, not the thread's first — a thread replied to an hour ago
-            must not read as three months old. Goes amber once a wait crosses the threshold, so
-            the passage of time is itself the alarm. */}
+      </td>
+      <td className="hidden lg:table-cell">
+        <span className="widget-data-label">{SOURCE_LABEL[conv.source]}</span>
+      </td>
+      {showState && (
+        <td className="hidden md:table-cell">
+          <span className={cn("widget-data-label", state.tone)}>{state.label}</span>
+        </td>
+      )}
+      <td className="text-right">
         <span
           className={cn(
-            "shrink-0 font-mono text-[11px]",
-            longWait ? "font-semibold text-amber-600" : "text-[var(--text-4)]",
+            "font-mono text-[12px] whitespace-nowrap",
+            late ? "font-semibold text-[var(--warning-500)]" : "text-[var(--text-3)]",
           )}
           title={new Date(lastActivityAt(conv)).toLocaleString()}
         >
           {formatAge(lastActivityAt(conv))}
         </span>
-      </div>
-
-      {/* ── Line 2: what it is about ── */}
-      <div
-        className={cn(
-          "mt-1 truncate pl-[22px] text-[13px]",
-          conv.unread ? "text-[var(--text-1)]" : "text-[var(--text-2)]",
+      </td>
+      <td className="hidden sm:table-cell">
+        {assigneeName ? (
+          <span className="widget-data-label" title={`Assigned to ${assigneeName}`}>
+            {initialsOf(assigneeName)}
+          </span>
+        ) : (
+          <span className="widget-data-label text-[var(--border-1)]">—</span>
         )}
-      >
-        {conv.subject}
-      </div>
+      </td>
+    </tr>
+  );
+}
 
-      {/* ── Line 3: only rendered when it has something to say ──
-             The Gmail connector used to write `preview: subject`, so this line repeated the line
-             above it on every row. It is now the real message body, and null when the body adds
-             nothing — in which case the row collapses to two lines and more of the queue fits on
-             screen, which matters far more at 226 rows than at 6. */}
-      {(conv.preview || showState || assigneeName) && (
-        <div className="mt-0.5 flex items-baseline gap-2 pl-[22px]">
-          {showState && (
-            <span
-              // Fixed width so the labels form an aligned column; `truncate` so a longer label
-              // added later clips instead of shoving the preview out of alignment on that row.
-              className={cn(
-                "w-[80px] shrink-0 truncate font-mono text-[10px] font-semibold uppercase tracking-[0.6px]",
-                state.tone,
-              )}
-              title={state.since ? `${state.label} — ${new Date(state.since).toLocaleString()}` : state.label}
-            >
-              {state.label}
-            </span>
-          )}
-          {conv.preview && (
-            <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-4)]">{conv.preview}</span>
-          )}
-          {assigneeName && (
-            <span
-              // Its own muted tone and a gap keep it from reading as part of the state readout —
-              // "HB NEEDS REPLY" ran together as one string when they sat adjacent.
-              className="ml-auto shrink-0 rounded-[3px] bg-[var(--surface-1)] px-1 font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-3)]"
-              title={`Assigned to ${assigneeName}`}
-            >
-              {initialsOf(assigneeName)}
-            </span>
-          )}
-        </div>
+/**
+ * A sortable column header.
+ *
+ * Only ever offered for orders the SERVER can produce (`activity` / `oldest_inbound`). A header
+ * that sorted the loaded page would repeat the exact lie this module spent two PRs removing —
+ * "…among the rows we happened to fetch" — so a column with no server order gets no control.
+ */
+function SortHeader({
+  label,
+  active,
+  onToggle,
+  title,
+}: {
+  label: string;
+  /** Which direction this column currently drives, or null when it is not the active sort. */
+  active: "asc" | "desc" | null;
+  onToggle: () => void;
+  title: string;
+}) {
+  const Icon = active === "asc" ? ArrowUpIcon : ArrowDownIcon;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title={title}
+      className={cn(
+        "inline-flex items-center gap-1 transition hover:text-[var(--text-2)]",
+        active && "text-[var(--text-2)]",
       )}
-    </div>
+    >
+      {label}
+      <Icon className={cn("h-3 w-3", active ? "opacity-100" : "opacity-30")} />
+    </button>
   );
 }
 
 /**
  * In-cockpit channels & settings hub. Replaces the old jump-out to
- * /app/support?panel=connectors|settings — you stay inside Care. Scope is
- * deliberately just the connected channels + their auto-fetch schedule
- * (ConnectorsView); workflow rules / AI agents / portal-link were dropped as
- * unused per the redesign. Agent-activity logs are hidden here too.
+ * /app/support?panel=connectors|settings — you stay inside Care. Scope is deliberately just the
+ * connected channels + their auto-fetch schedule (ConnectorsView); workflow rules / AI agents /
+ * portal-link were dropped as unused per the redesign.
  */
-function CareSettingsPanel({ client, onClose }: { client: SupportClient; onClose: () => void }) {
+function CareSettingsPanel({ client }: { client: SupportClient }) {
   const updateClient = useUpdateSupportClient(client.id);
   const courseOnly = client.courseRequestOnly ?? false;
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
-      <div className="flex shrink-0 items-center gap-3 border-b border-[var(--border-2)] px-5 py-4">
-        <button onClick={onClose} className="-ml-1 rounded-[6px] p-1 hover:bg-[var(--surface-1)]" title="Back to inbox">
-          <ArrowLeftIcon className="h-4 w-4 text-[var(--text-3)]" />
-        </button>
-        <div className="min-w-0">
-          <div className="font-mono text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]">Channels &amp; settings</div>
-          <h2 className="text-lg font-semibold leading-snug text-[var(--text-1)]">Connected channels</h2>
-        </div>
-        <button
-          onClick={onClose}
-          className="ml-auto rounded-[6px] p-1.5 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
-          title="Close"
-        >
-          <XMarkIcon className="h-4 w-4" />
-        </button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-        <div className="mx-auto max-w-3xl space-y-5">
-          {/* Support-paused / course-requests-only mode */}
-          <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-4">
+    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+      <div className="mx-auto max-w-3xl space-y-4">
+        <section className="widget-card">
+          {/* No close button of its own: the persistent client header owns "back", and an ✕ sitting
+              on the MODE panel reads as "dismiss this panel" rather than "leave settings". */}
+          <div className="widget-header">
+            <span className="widget-header__label">
+              <span className="widget-header__label--number">01</span>{" // MODE"}
+            </span>
+            <span className="widget-header__status">{courseOnly ? "COURSE REQUESTS ONLY" : "FULL TRIAGE"}</span>
+          </div>
+          <div className="widget-body">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-[var(--text-1)]">Support paused — course requests only</p>
@@ -373,13 +278,32 @@ function CareSettingsPanel({ client, onClose }: { client: SupportClient; onClose
               </button>
             </div>
           </div>
-          <ConnectorsView clientId={client.id} clientSlug={client.slug ?? ""} showAgentLogs={false} />
-        </div>
+        </section>
+        <ConnectorsView clientId={client.id} clientSlug={client.slug ?? ""} showAgentLogs={false} />
       </div>
     </div>
   );
 }
 
+/**
+ * The cockpit is an INDEX and a RECORD, not three columns.
+ *
+ * It used to be rail │ 320px list │ detail — every pane permanently on screen, so the list of work
+ * was a sliver, the thread was a sliver, and the nine saved views ate a fifth of the width to show
+ * a filter set you touch a few times a day. That layout is why the queue was unreadable at 226
+ * rows and why nothing was ever cleared.
+ *
+ *   INDEX                                   RECORD
+ *   ┌ client · queue readout · actions ┐    ┌ client · ← conversations ┐
+ *   │ tabs: the saved views            │    ├──────────────┬───────────┤
+ *   │ search · channel · hints         │    │ thread       │ 02 // …   │
+ *   │ ┌ table, full width ───────────┐ │    │ (full width) │ properties│
+ *   │ │ CUSTOMER SUBJECT … WAITING ↑ │ │    │ composer     │ 03 // …   │
+ *   └─┴──────────────────────────────┴─┘    └──────────────┴───────────┘
+ *
+ * One thing at a time, each with the whole width: the standard index/record shape of every CRM and
+ * every issue tracker, and the reason a HubSpot table can carry hundreds of rows legibly.
+ */
 export function ClientCockpit({
   client,
   onBack,
@@ -406,6 +330,8 @@ export function ClientCockpit({
   const [selection, setSelection] = useState<Set<string>>(new Set());
   // Keyboard cursor, independent of which conversation is open.
   const [focusedIndex, setFocusedIndex] = useState(-1);
+  // Per-view sort override. Null means "whatever this view was designed to show first".
+  const [sortOverride, setSortOverride] = useState<SortKey | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   // In-place channel/settings hub — opens inside the cockpit instead of jumping to /app/support.
   const [showSettings, setShowSettings] = useState(false);
@@ -414,27 +340,28 @@ export function ClientCockpit({
   const memberName = useMemo(() => new Map(members.map((m) => [m.id, m.name])), [members]);
 
   const view = SAVED_VIEWS.find((v) => v.id === activeView) ?? SAVED_VIEWS[0];
+  const sort: SortKey = sortOverride ?? (view.params.sort === "oldest_inbound" ? "oldest_inbound" : "activity");
 
-  // The view IS the query. Source and search are folded in as server params too, so a filtered
-  // list is a complete walk of the match set rather than a client-side sieve over one page —
-  // searching or filtering by channel can no longer hide a conversation that simply hadn't
-  // been fetched yet.
+  // The view IS the query. Source, search and sort are folded in as server params too, so a
+  // filtered or re-sorted list is a complete walk of the match set rather than a client-side sieve
+  // over one page — no control on this screen can hide a conversation that simply hadn't been
+  // fetched yet.
   const params = useMemo(
     () => ({
       ...view.params,
+      sort,
       ...(sourceFilter !== "all" ? { source: sourceFilter } : {}),
       ...(deferredSearch.trim() ? { q: deferredSearch.trim() } : {}),
       limit: PAGE_SIZE,
     }),
-    [view, sourceFilter, deferredSearch],
+    [view, sort, sourceFilter, deferredSearch],
   );
 
   const convsQ = useSupportConversationsPaged(client.id, params);
   const countsQ = useSupportConversationCounts(client.id);
 
-  // Only worth showing per row in a view that can contain more than one state. In "Awaiting
-  // reply" or "Replied" the label would be identical on every row — the view's own name,
-  // repeated 226 times.
+  // Only worth a column in a view that can contain more than one state. On "Awaiting reply" or
+  // "Replied" it would be identical on every row — the tab's own name, repeated.
   const showRowState = !view.params.replyState;
 
   const conversations = useMemo(
@@ -457,14 +384,15 @@ export function ClientCockpit({
     [connectionsQ.data],
   );
 
-  // Opening a conversation is what marks it read — the same contract the legacy
-  // dashboard has always had. Guarded on `conv.unread` so re-opening an already-read
-  // thread doesn't fire a pointless write; the mutation is optimistic, so the subject
-  // de-bolds on this click.
+  const mode: "index" | "record" | "settings" = showSettings ? "settings" : selected ? "record" : "index";
+
+  // Opening a conversation is what marks it read — the same contract the legacy dashboard has
+  // always had. Guarded on `conv.unread` so re-opening an already-read thread doesn't fire a
+  // pointless write; the mutation is optimistic, so the row de-bolds on this click.
   //
-  // Also guarded on canManageSupport because the PATCH route asserts it: without the
-  // guard a read-only Care viewer would take a 403 on every open and watch the row
-  // re-bold as the optimistic patch rolled back.
+  // Also guarded on canManageSupport because the PATCH route asserts it: without the guard a
+  // read-only Care viewer would take a 403 on every open and watch the row re-bold as the
+  // optimistic patch rolled back.
   function openConversation(conv: Conversation) {
     setShowSettings(false);
     setSelectedId(conv.id);
@@ -488,14 +416,19 @@ export function ClientCockpit({
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (conversations.length === 0) return;
+
+      // Escape is the way back out of a thread — the only shortcut that belongs to the record.
+      if (e.key === "Escape") {
+        if (selection.size > 0) { e.preventDefault(); clearSelection(); return; }
+        if (mode !== "index") { e.preventDefault(); setSelectedId(null); setShowSettings(false); }
+        return;
+      }
+      // Everything below drives the index's cursor, so it must not fire while a thread is open.
+      if (mode !== "index" || conversations.length === 0) return;
 
       const move = (delta: number) => {
         e.preventDefault();
-        setFocusedIndex((i) => {
-          const next = Math.max(0, Math.min(conversations.length - 1, (i < 0 ? -1 : i) + delta));
-          return next;
-        });
+        setFocusedIndex((i) => Math.max(0, Math.min(conversations.length - 1, (i < 0 ? -1 : i) + delta)));
       };
 
       switch (e.key) {
@@ -531,9 +464,6 @@ export function ClientCockpit({
           }
           return;
         }
-        case "Escape":
-          if (selection.size > 0) { e.preventDefault(); clearSelection(); }
-          return;
       }
     }
     window.addEventListener("keydown", onKey);
@@ -548,8 +478,10 @@ export function ClientCockpit({
     rows?.[focusedIndex]?.scrollIntoView({ block: "nearest" });
   }, [focusedIndex]);
 
-  // A new view (or new results) invalidates the old cursor position.
-  useEffect(() => { setFocusedIndex(-1); }, [activeView, sourceFilter, deferredSearch]);
+  // A new view (or new results) invalidates the old cursor position — and the old sort, which
+  // belongs to the view that was showing when it was chosen.
+  useEffect(() => { setFocusedIndex(-1); }, [activeView, sourceFilter, deferredSearch, sort]);
+  useEffect(() => { setSortOverride(null); }, [activeView]);
 
   function toggleSelect(id: string) {
     setSelection((prev) => {
@@ -565,291 +497,353 @@ export function ClientCockpit({
   function runBatch(data: Parameters<typeof batch.mutate>[0]["data"]) {
     batch.mutate({ conversationIds: [...selection], data }, { onSuccess: clearSelection });
   }
+  function toggleSort(key: SortKey) {
+    setSortOverride(sort === key ? (key === "oldest_inbound" ? "activity" : "oldest_inbound") : key);
+  }
+
+  const allLoadedSelected = conversations.length > 0 && conversations.every((c) => selection.has(c.id));
+  // Column count, so the empty/loading row can span the table without leaving a ragged cell.
+  const columnCount = 4 + (canManageSupport ? 1 : 0) + (showRowState ? 1 : 0) + 1;
 
   return (
-    // w-full + min-w-0: <main> is a row-flex container, so without an explicit fill the
-    // cockpit shrink-wraps to its content and leaves a dead strip on the right (the
-    // detail pane never reaches the viewport edge). Fill the whole main area.
-    <div className="flex h-full min-h-0 w-full min-w-0">
-      {/* LEFT — saved views. Only a rail on wide desktops (xl+); below that it would
-          crush the thread/detail into a sliver, so it collapses into the list-header
-          dropdown instead (the 1024–1279 tablet band was the broken case). */}
-      <aside className="hidden w-52 shrink-0 flex-col border-r border-[var(--border-2)] xl:flex">
-        <div className="flex items-center gap-2 border-b border-[var(--border-2)] px-3 py-3">
-          <button onClick={onBack} className="rounded-[6px] p-1 hover:bg-[var(--surface-1)]" title="All clients">
-            <ArrowLeftIcon className="h-4 w-4 text-[var(--text-3)]" />
-          </button>
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-[var(--text-1)]">{client.name}</div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">Cockpit</div>
+    // w-full + min-w-0: <main> is a row-flex container, so without an explicit fill the cockpit
+    // shrink-wraps to its content and leaves a dead strip on the right.
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
+      {/* ── Client header. Persistent across index / record / settings, so you always know whose
+             inbox this is and always have one way back. The second line is the queue's own state
+             on the index — the figure that used to require an empty right-hand pane to see. ── */}
+      <header className="flex shrink-0 items-center gap-3 border-b border-[var(--border-2)] px-3 py-2.5 sm:px-4">
+        <button
+          type="button"
+          onClick={() => {
+            if (mode === "index") onBack();
+            else { setSelectedId(null); setShowSettings(false); }
+          }}
+          className="shrink-0 rounded-[6px] p-1 transition hover:bg-[var(--surface-1)]"
+          title={mode === "index" ? "All clients" : "Back to conversations"}
+        >
+          <ArrowLeftIcon className="h-4 w-4 text-[var(--text-3)]" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-[15px] font-semibold leading-tight text-[var(--text-1)]" title={client.name}>
+            {client.name}
+          </h2>
+          {/*
+            Wraps rather than truncates. With `truncate` the readout ended "…longest 1d · 1 urg" at
+            390px, so the urgent count — the one figure on the line that is a call to action — was
+            clipped away entirely. A phone spends one extra line on it; that is the right trade.
+          */}
+          <div className="widget-data-label mt-0.5">
+            {mode === "settings" ? (
+              "Channels & settings"
+            ) : mode === "record" ? (
+              "Conversation"
+            ) : countsQ.isLoading ? (
+              "Loading queue…"
+            ) : counts && counts.awaiting > 0 ? (
+              <>
+                <span className="font-semibold text-[var(--warning-500)]">{counts.awaiting} awaiting</span>
+                {counts.oldestAwaitingAt && ` · longest ${formatAge(counts.oldestAwaitingAt)}`}
+                {counts.urgent > 0 && (
+                  <span className="font-semibold text-[var(--danger-500)]">{` · ${counts.urgent} urgent`}</span>
+                )}
+              </>
+            ) : (
+              "All replied"
+            )}
           </div>
         </div>
-        <nav className="flex-1 overflow-y-auto px-2 py-2">
-          {/* One NN sequence per screen, per DESIGN.md: 01 QUEUES (here) → 02 CONVERSATIONS
-              (list) → 03 THREAD / 04 TRIAGE / 05 NOTES / 06 REPLY (detail). "Manage" below is a
-              footer action group, not a widget, so it carries no number — previously it was also
-              numbered 03, which collided with "03 // Thread" on the very same screen. */}
-          <div className="widget-header__label mb-1 px-2">
-            <span className="widget-header__label--number">01</span>{" // QUEUES"}
-          </div>
-          {VIEW_GROUPS.map((group, gi) => (
-            <div key={group.label} className={cn(gi > 0 && "mt-3 border-t border-[var(--border-2)] pt-3")}>
-              {/* Queues (work to pick up) vs Browse (everything else). Nine undifferentiated
-                  rows read as a filter dropdown; two named groups read as a place to start.
-                  The first group's label is suppressed because the pane header already says
-                  QUEUES — printing it twice, one line apart, is noise. The hairline above
-                  "Browse" is what actually communicates the split. */}
-              {gi > 0 && (
-                <div className="app-eyebrow mb-1 px-2 text-[9px]">{group.label}</div>
-              )}
-              {group.ids.map((id) => {
-                const v = SAVED_VIEWS.find((s) => s.id === id);
-                if (!v) return null;
-                const count = viewCounts[v.id] ?? 0;
-                const isActive = activeView === v.id;
-                // The awaiting queue is the only count that is a call to action, so it is the
-                // only one that carries colour. Everything else stays a quiet readout.
-                const isQueue = v.id === DEFAULT_VIEW_ID && count > 0;
-                return (
-                  <button
-                    key={v.id}
-                    onClick={() => setActiveView(v.id)}
-                    className={cn(
-                      "flex w-full items-center justify-between rounded-[6px] px-2 py-1.5 text-[13px] transition",
-                      isActive
-                        ? "bg-[var(--brand-50)] font-medium text-[var(--brand-700)]"
-                        : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
-                    )}
-                  >
-                    <span className="truncate">{v.label}</span>
-                    <span
-                      className={cn(
-                        "shrink-0 font-mono text-[11px]",
-                        isQueue ? "font-semibold text-[var(--warning-500)]" : "text-[var(--text-4)]",
-                      )}
-                    >
-                      {countsQ.isLoading ? "·" : count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
-        <div className="space-y-1.5 border-t border-[var(--border-2)] p-2">
+
+        <div className="flex shrink-0 items-center gap-1.5">
           <button
+            type="button"
             onClick={() => sync.mutate()}
             disabled={sync.isPending}
-            className="flex w-full items-center justify-center gap-2 rounded-[6px] border border-[var(--border-2)] px-2 py-2 text-xs font-medium hover:bg-[var(--surface-1)] disabled:opacity-60"
+            className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-60 sm:px-2.5"
+            title="Sync now"
           >
             <ArrowPathIcon className={cn("h-3.5 w-3.5", sync.isPending && "animate-spin")} />
-            {sync.isPending ? "Syncing…" : "Sync now"}
+            <span className="hidden sm:inline">{sync.isPending ? "Syncing…" : "Sync now"}</span>
           </button>
           {canManageSupport && (
-            <div className="app-eyebrow mb-1 px-2 pt-1">Manage</div>
-          )}
-          {canManageSupport && (
-            <div className="grid grid-cols-1 gap-1">
+            <>
               <button
                 type="button"
                 onClick={() => { setSelectedId(null); setShowSettings(true); }}
                 className={cn(
-                  "flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-xs font-medium transition",
-                  showSettings
-                    ? "bg-[var(--brand-50)] text-[var(--brand-700)]"
-                    : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+                  "rounded-[6px] border p-1.5 transition",
+                  mode === "settings"
+                    ? "border-[var(--brand-200)] bg-[var(--surface-brand)] text-[var(--brand-700)]"
+                    : "border-[var(--border-2)] bg-[var(--surface-0)] text-[var(--text-3)] hover:bg-[var(--surface-1)]",
                 )}
+                title="Channels &amp; settings"
+                aria-label="Channels and settings"
               >
-                <Cog8ToothIcon className={cn("h-4 w-4", showSettings ? "text-[var(--brand-700)]" : "text-[var(--text-4)]")} />
-                Channels &amp; settings
+                <Cog8ToothIcon className="h-4 w-4" />
               </button>
               <a
                 href={`/app/support?client=${client.id}&tab=reports`}
-                className="flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] p-1.5 text-[var(--text-3)] transition hover:bg-[var(--surface-1)]"
+                title="Monthly reports"
+                aria-label="Monthly reports"
               >
-                <DocumentChartBarIcon className="h-4 w-4 text-[var(--text-4)]" />
-                Reports
+                <DocumentChartBarIcon className="h-4 w-4" />
               </a>
+            </>
+          )}
+        </div>
+      </header>
+
+      {mode === "settings" ? (
+        <CareSettingsPanel client={client} />
+      ) : mode === "record" && selected ? (
+        <ConversationDetail
+          key={selected.id}
+          clientId={client.id}
+          conversation={selected}
+          connections={connectionsQ.data?.connections ?? []}
+        />
+      ) : (
+        <>
+          {/* ── The saved views, as a SEGMENTED CONTROL — the platform's own pick-one grammar
+                 (DESIGN.md: mono caps, 6px, brand-soft active; the same control Deck's topbar uses).
+                 Underlined text tabs were the generic web default and read as exactly that: the bar
+                 said nothing about being part of an instrument. Here the group is a hairline-bordered
+                 well on `--surface-1`, the active view is a raised `--surface-0` chip in brand, and
+                 the QUEUES / BROWSE split is a rule inside the well rather than a second row. ── */}
+          <div className="shrink-0 overflow-x-auto border-b border-[var(--border-2)] px-3 py-2 sm:px-4">
+            <nav
+              className="inline-flex items-center gap-0.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5"
+              aria-label="Conversation views"
+            >
+              {VIEW_GROUPS.map((group, gi) => (
+                <Fragment key={group.label}>
+                  {gi > 0 && <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-[var(--border-2)]" />}
+                  {group.ids.map((id) => {
+                    const v = SAVED_VIEWS.find((s) => s.id === id);
+                    if (!v) return null;
+                    const count = viewCounts[v.id] ?? 0;
+                    const isActive = activeView === v.id;
+                    // The awaiting queue is the only count that is a call to action, so it is the
+                    // only one that carries colour. Everything else stays a quiet readout.
+                    const isQueue = v.id === DEFAULT_VIEW_ID && count > 0;
+                    return (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => setActiveView(v.id)}
+                        aria-current={isActive ? "page" : undefined}
+                        className={cn(
+                          "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[6px] px-2.5 py-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.09em] transition",
+                          isActive
+                            ? "bg-[var(--surface-0)] text-[var(--brand-700)] shadow-[var(--shadow-xs)]"
+                            : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+                        )}
+                      >
+                        {v.label}
+                        {/* The count is a 4px badge, not loose text — it stops "Awaiting reply 226"
+                            reading as one string and gives the figure its own weight. */}
+                        <span
+                          className={cn(
+                            "rounded-[4px] px-1 py-px text-[10px] font-semibold tabular-nums",
+                            isQueue
+                              ? "bg-[var(--warning-50)] text-[var(--warning-500)]"
+                              : isActive
+                                ? "bg-[var(--surface-brand)] text-[var(--brand-700)]"
+                                : "bg-[var(--surface-2)] text-[var(--text-4)]",
+                          )}
+                        >
+                          {countsQ.isLoading ? "·" : count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </Fragment>
+              ))}
+            </nav>
+          </div>
+
+          {/* ── Toolbar, or the bulk bar when something is selected. They occupy the same strip
+                 deliberately: acting on a selection replaces filtering it, and a bar that appears
+                 as a fourth stacked row is what pushes the table off a laptop screen. ── */}
+          {selection.size > 0 ? (
+            <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--border-2)] bg-[var(--surface-brand)] px-3 py-2 sm:px-4">
+              <span className="font-mono text-[11px] font-semibold text-[var(--brand-700)]">
+                {selection.size} selected
+              </span>
+              <button
+                type="button"
+                onClick={() => runBatch({ status: "closed" })}
+                className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+              >
+                Close
+              </button>
+              <select
+                onChange={(e) => e.target.value && runBatch({ status: e.target.value })}
+                defaultValue=""
+                aria-label="Set status"
+                className="app-select-compact h-8 w-auto text-xs"
+              >
+                <option value="" disabled>Status…</option>
+                {(["open", "snoozed", "closed", "ignored"] as const).map((s) => (
+                  <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                ))}
+              </select>
+              <select
+                onChange={(e) => e.target.value && runBatch({ assigneeId: e.target.value === "none" ? null : e.target.value })}
+                defaultValue=""
+                aria-label="Assign to"
+                className="app-select-compact h-8 w-auto text-xs"
+              >
+                <option value="" disabled>Assign…</option>
+                <option value="none">Unassign</option>
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="ml-auto text-[11px] text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+              >
+                Clear
+              </button>
+            </div>
+          ) : (
+            <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-2)] px-3 py-2 sm:px-4">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search customer, subject or message…"
+                aria-label="Search conversations"
+                className="app-input-compact min-w-0 max-w-xs flex-1 text-sm"
+              />
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                aria-label="Filter by channel"
+                className="app-select-compact h-8 w-auto text-xs"
+              >
+                <option value="all">All channels</option>
+                {sources.map((s) => (
+                  <option key={s} value={s}>{SOURCE_LABEL[s]}</option>
+                ))}
+              </select>
+              {/* Keyboard triage is the whole point of the redesign, and an invisible shortcut is a
+                  shortcut nobody uses — so it is stated once, quietly, where the eye lands before
+                  the first row. */}
+              {canManageSupport && conversations.length > 0 && (
+                <p className="ml-auto hidden shrink-0 font-mono text-[10px] tracking-[0.4px] text-[var(--text-4)] lg:block">
+                  <Kbd>J</Kbd> <Kbd>K</Kbd> move · <Kbd>↵</Kbd> open · <Kbd>E</Kbd> close · <Kbd>S</Kbd> snooze · <Kbd>X</Kbd> select
+                </p>
+              )}
             </div>
           )}
-        </div>
-      </aside>
 
-      {/* MIDDLE — conversation list. Full-width until xl; a fixed rail beside the detail
-          at xl+. Hidden while a conversation is open below xl (single-pane master-detail),
-          so the detail gets the whole viewport on tablets. */}
-      <section
-        className={cn(
-          "min-h-0 w-full flex-col border-r border-[var(--border-2)] xl:flex xl:w-80 xl:shrink-0",
-          selected || showSettings ? "hidden xl:flex" : "flex",
-        )}
-      >
-        {/* List-header toolbar — the views rail is hidden < xl, so surface its controls here. */}
-        <div className="flex items-center gap-2 border-b border-[var(--border-2)] px-3 py-2 xl:hidden">
-          <button onClick={onBack} className="rounded-[6px] p-1 hover:bg-[var(--surface-1)]" title="All clients">
-            <ArrowLeftIcon className="h-4 w-4 text-[var(--text-3)]" />
-          </button>
-          <span className="truncate text-sm font-semibold text-[var(--text-1)]">{client.name}</span>
-          <select
-            value={activeView}
-            onChange={(e) => setActiveView(e.target.value)}
-            className="app-select-compact ml-auto h-8 w-auto text-xs"
-          >
-            {SAVED_VIEWS.map((v) => (
-              <option key={v.id} value={v.id}>{v.label} ({viewCounts[v.id] ?? 0})</option>
-            ))}
-          </select>
-          <button
-            onClick={() => sync.mutate()}
-            disabled={sync.isPending}
-            className="rounded-[6px] p-1 hover:bg-[var(--surface-1)] disabled:opacity-60"
-            title="Sync now"
-          >
-            <ArrowPathIcon className={cn("h-4 w-4 text-[var(--text-3)]", sync.isPending && "animate-spin")} />
-          </button>
-        </div>
-        <div className="widget-header">
-          <span className="widget-header__label">
-            <span className="widget-header__label--number">02</span>{" // CONVERSATIONS"}
-          </span>
-          <span className="widget-header__status">
-            {conversations.length}
-            {convsQ.hasNextPage ? "+" : ""}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 border-b border-[var(--border-2)] px-3 py-2">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search…"
-            className="app-input-compact min-w-0 flex-1 text-sm"
-          />
-          <select
-            value={sourceFilter}
-            onChange={(e) => setSourceFilter(e.target.value)}
-            className="app-select-compact h-8 w-auto text-xs"
-          >
-            <option value="all">All channels</option>
-            {sources.map((s) => (
-              <option key={s} value={s}>{SOURCE_LABEL[s]}</option>
-            ))}
-          </select>
-        </div>
+          {/* ── The queue. `overflow-auto` on the scroll container, not `overflow-hidden` on a
+                 shell: a table narrower than its content must be reachable by scrolling, which is
+                 the TABLE-SCROLL rule in audit:ui and the commonest way a column vanishes. ── */}
+          <div ref={listRef} className="min-h-0 flex-1 overflow-auto">
+            <table className="app-table app-table--dense">
+              <thead className="sticky top-0 z-10">
+                <tr>
+                  {canManageSupport && (
+                    <th scope="col" className="w-8">
+                      <input
+                        type="checkbox"
+                        checked={allLoadedSelected}
+                        onChange={() =>
+                          setSelection(allLoadedSelected ? new Set() : new Set(conversations.map((c) => c.id)))
+                        }
+                        disabled={conversations.length === 0}
+                        className="app-checkbox"
+                        aria-label="Select all loaded conversations"
+                      />
+                    </th>
+                  )}
+                  {/* Trailing columns are sized to their content so the slack lands in SUBJECT —
+                      without this, auto table layout handed 190px to a column reading "REDDIT". */}
+                  <th scope="col" className="w-[200px] text-left">Customer</th>
+                  <th scope="col" className="text-left">Subject</th>
+                  <th scope="col" className="hidden w-[120px] text-left lg:table-cell">Channel</th>
+                  {showRowState && <th scope="col" className="hidden w-[120px] text-left md:table-cell">State</th>}
+                  <th scope="col" className="w-[86px] text-right">
+                    <SortHeader
+                      label="Waiting"
+                      active={sort === "oldest_inbound" ? "asc" : "desc"}
+                      onToggle={() => toggleSort("oldest_inbound")}
+                      title={
+                        sort === "oldest_inbound"
+                          ? "Longest wait first — click for most recent activity"
+                          : "Most recent activity first — click for longest wait"
+                      }
+                    />
+                  </th>
+                  <th scope="col" className="hidden w-[72px] text-left sm:table-cell">Owner</th>
+                </tr>
+              </thead>
+              <tbody>
+                {convsQ.isLoading && (
+                  <tr>
+                    <td colSpan={columnCount} className="text-center text-sm text-[var(--text-4)]">
+                      Loading conversations…
+                    </td>
+                  </tr>
+                )}
+                {!convsQ.isLoading && conversations.length === 0 && (
+                  <tr>
+                    <td colSpan={columnCount}>
+                      <CareEmpty
+                        headline={
+                          activeView === DEFAULT_VIEW_ID && !deferredSearch.trim()
+                            ? "Nothing is waiting on a reply."
+                            : "Nothing matches this view."
+                        }
+                        body={
+                          activeView === DEFAULT_VIEW_ID && !deferredSearch.trim()
+                            ? "Every customer message has been answered. New mail lands here on the next sync."
+                            : "Try another tab, clear the search, or sync to pull anything new."
+                        }
+                      />
+                    </td>
+                  </tr>
+                )}
+                {conversations.map((c, i) => (
+                  <ConversationTableRow
+                    key={c.id}
+                    conv={c}
+                    focused={i === focusedIndex}
+                    selected={selection.has(c.id)}
+                    selectable={canManageSupport}
+                    showState={showRowState}
+                    onOpen={() => openConversation(c)}
+                    onToggleSelect={() => toggleSelect(c.id)}
+                    assigneeName={c.assigneeId ? memberName.get(c.assigneeId) : undefined}
+                  />
+                ))}
+              </tbody>
+            </table>
 
-        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
-          {convsQ.isLoading && <p className="px-3 py-4 text-sm text-[var(--text-4)]">Loading…</p>}
-          {!convsQ.isLoading && conversations.length === 0 && (
-            <p className="px-3 py-8 text-center text-sm text-[var(--text-4)]">
-              {activeView === DEFAULT_VIEW_ID && !deferredSearch.trim()
-                ? "Nothing awaiting a reply — every customer message has been answered."
-                : "Nothing here. Try another view or Sync now."}
-            </p>
-          )}
-          {conversations.map((c, i) => (
-            <ConversationRow
-              key={c.id}
-              conv={c}
-              active={c.id === selectedId}
-              focused={i === focusedIndex}
-              selected={selection.has(c.id)}
-              selectable={canManageSupport}
-              showState={showRowState}
-              onOpen={() => openConversation(c)}
-              onToggleSelect={() => toggleSelect(c.id)}
-              assigneeName={c.assigneeId ? memberName.get(c.assigneeId) : undefined}
-            />
-          ))}
-          {convsQ.hasNextPage && (
-            <button
-              type="button"
-              onClick={() => void convsQ.fetchNextPage()}
-              disabled={convsQ.isFetchingNextPage}
-              className="w-full border-b border-[var(--border-2)] px-3 py-2.5 text-xs font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
-            >
-              {convsQ.isFetchingNextPage ? "Loading…" : `Load ${PAGE_SIZE} more`}
-            </button>
-          )}
-          {/* Says outright when the list is complete, so an empty-looking queue is never
-              confused with a truncated one — the ambiguity the old fixed 100-row page created. */}
-          {!convsQ.isLoading && !convsQ.hasNextPage && conversations.length > 0 && (
-            <p className="px-3 py-3 text-center font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">
-              End of list · {conversations.length} shown
-            </p>
-          )}
-          {/* Keyboard triage is the whole point of the redesign, and an invisible shortcut is a
-              shortcut nobody uses — so it is stated once, quietly, at the foot of the list. */}
-          {canManageSupport && conversations.length > 0 && (
-            <p className="px-3 pb-3 text-center font-mono text-[10px] tracking-[0.4px] text-[var(--text-4)]">
-              <Kbd>J</Kbd> <Kbd>K</Kbd> move · <Kbd>↵</Kbd> open · <Kbd>E</Kbd> close · <Kbd>S</Kbd> snooze · <Kbd>X</Kbd> select
-            </p>
-          )}
-        </div>
-
-        {/* Bulk action bar */}
-        {selection.size > 0 && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-2 shadow-lg">
-            <span className="font-mono text-[11px] text-[var(--text-3)]">{selection.size} selected</span>
-            <select
-              onChange={(e) => e.target.value && runBatch({ status: e.target.value })}
-              defaultValue=""
-              className="app-select-compact h-8 w-auto text-xs"
-            >
-              <option value="" disabled>Status…</option>
-              {(["open", "snoozed", "closed", "ignored"] as const).map((s) => (
-                <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-              ))}
-            </select>
-            <select
-              onChange={(e) => e.target.value && runBatch({ assigneeId: e.target.value === "none" ? null : e.target.value })}
-              defaultValue=""
-              className="app-select-compact h-8 w-auto text-xs"
-            >
-              <option value="" disabled>Assign…</option>
-              <option value="none">Unassign</option>
-              {members.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
-            <button onClick={clearSelection} className="ml-auto text-[11px] text-[var(--text-4)] hover:text-[var(--text-2)]">
-              Clear
-            </button>
+            {convsQ.hasNextPage && (
+              <button
+                type="button"
+                onClick={() => void convsQ.fetchNextPage()}
+                disabled={convsQ.isFetchingNextPage}
+                className="w-full border-t border-[var(--border-3)] px-3 py-2.5 text-xs font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+              >
+                {convsQ.isFetchingNextPage ? "Loading…" : `Load ${PAGE_SIZE} more`}
+              </button>
+            )}
+            {/* Says outright when the list is complete, so an empty-looking queue is never
+                confused with a truncated one — the ambiguity the old fixed 100-row page created. */}
+            {!convsQ.isLoading && !convsQ.hasNextPage && conversations.length > 0 && (
+              <p className="border-t border-[var(--border-3)] px-3 py-2.5 text-center font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">
+                End of list · {conversations.length} shown
+              </p>
+            )}
           </div>
-        )}
-      </section>
-
-      {/* RIGHT — detail. Full-viewport below xl (only when a conversation or the
-          settings hub is open); the flex-1 pane beside the list at xl+. */}
-      <section className={cn("min-w-0 flex-1", selected || showSettings ? "flex" : "hidden xl:flex")}>
-        {showSettings ? (
-          <CareSettingsPanel client={client} onClose={() => setShowSettings(false)} />
-        ) : selected ? (
-          <ConversationDetail
-            key={selected.id}
-            clientId={client.id}
-            conversation={selected}
-            connections={connectionsQ.data?.connections ?? []}
-            onBack={() => setSelectedId(null)}
-          />
-        ) : (
-          <QueueOverview
-            counts={counts}
-            loading={countsQ.isLoading}
-            // The awaiting view is sorted oldest-first, so the head of the list IS the longest
-            // waits. In any other view this is simply "what's at the top", which is still the
-            // most useful thing to offer.
-            nextUp={conversations.slice(0, 5)}
-            onOpen={openConversation}
-            onStart={() => {
-              // Jump straight to the top of the awaiting queue, which after the oldest-first sort
-              // is the longest-waiting customer — the correct place to start a session.
-              if (activeView !== DEFAULT_VIEW_ID) setActiveView(DEFAULT_VIEW_ID);
-              const first = conversations[0];
-              if (first && activeView === DEFAULT_VIEW_ID) openConversation(first);
-              setFocusedIndex(0);
-            }}
-          />
-        )}
-      </section>
+        </>
+      )}
     </div>
   );
 }

@@ -632,6 +632,30 @@ h2, h3, h4, h5 {
     background: var(--surface-1);
   }
 
+  /*
+     Dense variant, for a table you SCAN rather than read — a triage queue two hundred rows long,
+     where the base 14px/16px cell padding puts nine rows on a laptop screen. Headers switch to the
+     house data-label voice (mono uppercase 10px, per DESIGN.md's table grammar) because at this
+     density a 12px sentence-case header competes with the content beneath it.
+
+     Written as `.app-table.app-table--dense` (0,2,0) so it beats the base `.app-table thead th`
+     (0,1,2) selectors it overrides — a bare `.app-table--dense th` would lose and silently do
+     nothing, which is the specificity trap CLAUDE.md §30 records for Deck's radii.
+  */
+  .app-table.app-table--dense thead th {
+    padding: 7px 12px;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    white-space: nowrap;
+  }
+
+  .app-table.app-table--dense tbody td {
+    padding: 8px 12px;
+  }
+
   .app-dialog-backdrop {
     background: rgba(10, 13, 18, 0.42);
     backdrop-filter: blur(6px);

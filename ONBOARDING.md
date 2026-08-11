@@ -128,6 +128,13 @@ gated screens** to check your own work. Two consequences:
   `npm run audit:clipping <url>` against them. It needs `npm i --no-save playwright-core` plus a
   Chromium; in a Claude Code web session one is already installed, locally you may need
   `npx playwright install chromium`.
+- **`/demo/**` is your way in to a gated screen.** The 16 sales demos render the *real* components
+  on mock data and are public, so `/demo/care`, `/demo/docs`, `/demo/portal` … are drivable. Layout
+  work on an `/app` screen should be verified through its demo before you call it done.
+- **A state behind a click needs its own harness.** `audit:clipping <url>` only sees the page as it
+  first loads, so anything two clicks deep is unaudited. `scripts/audit-clipping.mjs` exports
+  `AUDIT` for exactly this: drive the page with playwright, then
+  `page.evaluate(`(${AUDIT.toString()})()`)` in each state.
 
 Both audits have a `--self-test`. Run it before trusting a clean report:
 

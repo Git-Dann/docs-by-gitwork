@@ -3478,3 +3478,186 @@ urgent — four equally-weighted levels means three of them asking for attention
 SELECT-CHEVRON/SELECT-PAD rules matter here — the properties row is three selects). Rendered
 against the real compiled CSS at 820×600, 0 horizontal overflow. **Not verified against live
 data** — /app/care is auth-gated.
+
+### 42.12 The cockpit is an index and a record, not three columns
+
+§42.7–42.11 were compliance and correctness passes: the connector identity fix, the house palette,
+the numbered panels, the two-tier toolbar. Dan's verdict on the result was that it "looks almost
+identical to what we have… I wanted [something] totally different", and he was right — none of that
+touched the **information architecture**. It was still rail │ 320px list │ detail with tidier chrome.
+
+**What was actually wrong was the layout, not the styling.** Every pane was permanently on screen,
+so at 1440px the nine saved views ate a fifth of the width to show a filter set you touch a few
+times a day, the list of work was a 320px sliver, and the thread was a sliver beside it. That is why
+a 226-row queue was unreadable and why nothing was ever cleared. Offered a choice of reference
+shapes, Dan picked **HubSpot — views as tabs, a sortable table, a bulk toolbar on selection, a
+right-hand properties panel** — and explicitly **"keep DESIGN.md, change the layout only"**, so the
+instrument chrome (mono `NN //` bands, mono data-labels, DM Serif figures) is unchanged throughout.
+
+```
+INDEX                                    RECORD
+┌ client · queue readout · actions ─┐    ┌ client · ← conversations ─────────┐
+│ tabs: the saved views             │    ├ customer · subject · Close Snooze ┤
+│ search · channel · ⌨ hints        │    ├────────────────────┬──────────────┤
+│ ┌ table, the full width ────────┐ │    │ thread             │ 01 // PROPS  │
+│ │ ☐ CUSTOMER SUBJECT … WAITING ↑│ │    │ composer (pinned)  │ 02 // NOTES  │
+└─┴───────────────────────────────┴─┘    └────────────────────┴──────────────┘
+```
+
+One thing at a time, each with the whole width — the index/record shape of every CRM and issue
+tracker, and the reason a HubSpot table carries hundreds of rows legibly.
+
+- **The list is a table.** Cards are three lines of mixed-weight text per row: fine for five, a wall
+  at 226. Columns let the eye scan DOWN one attribute ("who has waited longest?", "what is
+  unowned?"). New **`.app-table app-table--dense`** in `globals.css` — mono-caps headers, 8px/12px
+  cells, per DESIGN.md's table grammar. ⚠️ Written `.app-table.app-table--dense` (0,2,0) because the
+  base `.app-table thead th` is (0,1,2); a bare `.app-table--dense th` loses and does nothing.
+- **The saved views are tabs**, keeping the QUEUES / BROWSE split as a hairline between groups.
+- **Sorting is server-only, on one column.** `listConversations` can produce exactly two orders
+  (`activity`, `oldest_inbound`), so WAITING is the only sortable header. ⚠️ **Do not add a header
+  that sorts the loaded page** — that reintroduces the "…among the rows we happened to fetch" lie
+  §42.6 removed. `SortHeader` exists to make that rule explicit at the call site.
+- **`QueueOverview` is deleted, not moved.** A status card that only appeared when *nothing* was
+  open is the wrong place for the state of the queue. Its headline is now a permanent mono readout
+  in the client header, its four figures are the tab counts, and "Next up" is the table itself
+  (sorted oldest-first). Nothing was lost; it stopped needing a pane.
+- **Properties moved off the top of the thread into a `lg:w-[286px]` sidebar** (`01 // PROPERTIES`,
+  `02 // NOTES`). Below `lg` the sidebar is a view you switch to via a **Details** toggle — one
+  boolean, one copy of the panel. The toggle is `lg:hidden`, not shown-inert, because at `lg+` the
+  panel is already on screen.
+- **Close is a tint, not a slab.** `bg-emerald-600` with white text was hardcoded and never flipped;
+  white on `--success-500` (#3DD68C) fails contrast in dark mode. It is now
+  `border/bg-50/text-500`. Same for every remaining hardcoded amber/emerald/red in these two files —
+  and note the palette has **no `-600` semantic tokens**: `--success-500`, `--warning-500`,
+  `--danger-500` and their `-50` tints are what exists, so a long wait is expressed as *weight*, not
+  as a hand-mixed darker amber.
+
+**Three defects found by rendering it, none of which a code read would have caught.** `/app/care`
+is auth-gated, so the surface was driven headlessly at `/demo/care` — and because the cockpit is two
+clicks deep, `npm run audit:clipping <url>` only ever reaches the client list. The fix is that
+**`scripts/audit-clipping.mjs` exports `AUDIT` as a library**: a throwaway script can drive the page
+into each state and run the real detector over it. Do that for any surface behind an interaction.
+
+1. At 390px the record's action group was one `shrink-0` nowrap row, so **Snooze was cut at the
+   frame edge and the Details toggle — the only route to properties and notes on a phone — was off
+   screen entirely.** It registered as **zero page overflow**, because a flex container clips rather
+   than scrolls. Fixed by stacking below `sm` and letting the group wrap.
+2. The header readout truncated to "…longest 1d · 1 urg", **clipping away the urgent count**, the
+   one figure on the line that is a call to action. It wraps now; a phone spends one more line.
+3. The subject column took its natural width and pushed **WAITING off the right edge at 390px** —
+   reachable by scrolling the table sideways, which nobody does to find the number they came for.
+   Column caps now step with the viewport, and the preview line is dropped below `sm` (106px of a
+   270-character message is not a preview, and a `title` tooltip is no answer on a touch device).
+
+Also fixed while auditing: the **On Your Desk** dock summary was a TRUNCATED finding on every `/app`
+screen (266px of text in 218px, no title, no scroll) — the dock is one 48px strip and cannot grow,
+so the recovery is a `title`.
+
+**Verified:** `npm run verify` green — tsc + lint **0 errors** (31 warnings, all pre-existing),
+**1612 tests**, `audit:ui` **0 findings** with its self-test passing; `npx next build` clean, 98
+static pages, no database. `audit:clipping` **0 findings** on `/demo/care` and **0 across 20
+state × viewport combinations** (index · record · record-details · selection · settings ×
+390 · 768 · 1280×620 · 1440) via the library harness above. **Not verified against live data** —
+`/app/care` is auth-gated and the demo user holds `support` but not `support.manage`, so the
+checkbox column, bulk bar and settings screen were screenshotted under a *temporary* local grant
+that was reverted before commit. **Post-deploy:** open Fellas, confirm the table renders 226 rows
+across the awaiting tab, sort WAITING both ways, select a few rows and bulk-close, open a thread and
+confirm the properties sidebar saves assignee/priority/status.
+
+**Deferred:** the legacy `/app/support` dashboard still owns add-client, Tickets, Reports, health
+scoring, AI search and workflow rules, and `client-cockpit.tsx` still imports `ConnectorsView` out
+of it — so `ConnectorsView` renders its own chrome inside `01 // MODE`'s screen rather than a
+numbered sibling. Extracting it is the first step of retiring the legacy file (§11).
+
+### 42.13 The Care touchpoints outside the module
+
+Three surfaces referred to Care and each said something different about it.
+
+**The HQ tile had the module's own three defects, one layer out.** It reported **open tickets and
+unread messages** — but tickets are dormant in the cockpit, and `unread` was climbing on our own
+replies until §42.2 fixed it, so neither number was actionable and the one that is (*is a customer
+waiting on us?*) was absent. It fired a `useSupportTickets` + `useSupportConversations` pair **per
+row**, the conversation read pulling up to 100 full rows purely to count the unread ones — the same
+N+1 Care home had, replaced by the one `useClientQueueSummaries` roll-up. And every colour was a
+literal (`#0F172A`, `#94A3B8`, `#475569`, `#1D4ED8`, `rgba(0,0,0,0.08)`), so the tile was unreadable
+in dark mode while every token-driven tile beside it was fine. It is now worst-client-first,
+awaiting-led, and all tokens.
+
+⚠️ **`AppOverview`'s tile container is still `bg-white` with a literal border** — so *every*
+dashboard widget sits on a white card in dark mode. Out of scope here, but it is the reason a
+token-correct widget can still look wrong on that screen.
+
+**One icon for Care everywhere.** Lifebuoy in the sidebar, Heart on HQ, a chat bubble on both Portal
+badges. The sidebar is canonical. The chat bubble stays where it genuinely means *a chat channel* —
+Slack links, and Care's own `SourceIcon`.
+
+**`/app/context`** called the module "Care / Support" and pointed at the legacy dashboard route.
+
+⚠️ **Portal's two Care badges are still different by design, not by accident** — a mono `CARE` pill
+on the client detail page, a quiet 3.5px icon in the client card's icon strip (beside the Drive
+favicon, GitHub and the Pulse chip). Each is consistent with its own cluster; converging them means
+either breaking the card's icon strip or dropping the detail page's label. The convergence worth
+doing is to put the client's **awaiting count** on the Portal card, which needs a new field on the
+client DTO — server work, and a separate change.
+
+**Verification technique worth keeping: a component no demo mounts can still be seen.** `CareWidget`
+is rendered only by `AppOverview`, and no `/demo/**` route mounts it (`/demo/dev` renders
+`DevOverview`), so there is no reachable page at all. It was verified by `renderToStaticMarkup` with
+the **query cache pre-seeded** (`qc.setQueryData(["support","queue-summaries"], …)`), wrapped in the
+real compiled stylesheet from `.next/static/css`, and screenshotted in both themes. Effects do not
+run, but tokens, geometry and content are the shipped ones. ⚠️ `tsx` compiles `.tsx` with the classic
+JSX runtime against this repo's `"jsx": "preserve"` tsconfig and fails with *"React is not
+defined"* — pass a throwaway tsconfig setting `"jsx": "react-jsx"`.
+
+### 42.14 The bar is the rest of the platform — Deck, Starters, Docs
+
+§42.12's restructure fixed the information architecture and Dan accepted the table, but the verdict
+on the rest was that the **tab bar felt basic** and the **reply/authoring screen "looks exactly the
+same, feels rubbish and outdated"** against Deck, Starters and Docs. Both were fair, and both were
+the same failure: the new IA was drawn in generic web chrome rather than in Foundry's own.
+
+- **The saved-view tabs are a segmented control**, not underlined text. Underline tabs are the web
+  default and read as exactly that. DESIGN.md already names the platform's pick-one control (Deck's
+  brand switch: *mono caps, 6px, brand-soft*): a hairline-bordered well on `--surface-1`, the active
+  view a raised `--surface-0` chip in brand, counts as 4px badges so "Awaiting reply 226" stops
+  reading as one string. The QUEUES / BROWSE split is a rule inside the well.
+- **The thread is a transcript, not chat bubbles.** Left/right rounded bubbles capped at 85% width
+  were wrong twice: Care holds *email* — a support reply is six paragraphs and a quoted history, so
+  alternating alignment and an 85% cap make long messages harder to read — and bubbles are nobody's
+  language on this platform. Now a mono meta rail (`US` / `CUSTOMER` · author · when) over full-width
+  prose, with direction carried by a 2px left rule and a faint wash.
+- **The composer is an instrument, not a bare form.** `01 // THREAD` and `02 // REPLY` are numbered
+  panels on the canvas like every other module surface (DESIGN.md: never bare cards floating on the
+  canvas), and the reply panel's header states **where the reply will actually go** —
+  `VIA GMAIL · ⌘↵ TO SEND` versus `MANUAL · COPY TO SEND`. On a manual channel that is the difference
+  between a sent reply and a lost draft, and the old naked textarea never said it.
+- The record numbers `01`–`04` across **both columns**, left then right: the sequence is per screen,
+  not per column.
+- **`formatWhen`** was added beside `formatAge`, because `formatAge` returns a bare duration and the
+  header appended "ago" to it — so a reply sent in the last minute read *"answered now ago"*.
+- **The thread opens at the newest message**, aligned to that message's **top** rather than the
+  container's bottom: scrolling to the bottom cut off the one line saying who you are reading.
+
+**`/demo/care` was a shell, and that is why this took three passes.** The interceptor answered
+`{ messages: [] }`, `{ members: [] }`, `{ connections: [] }` and `{ notes: [] }` for every request,
+so the entire record side of the module — transcript, assignee options, send path, notes — could not
+be rendered at all, on the only surface where an auth-gated module *can* be rendered. It now serves
+real threads (inbound + our reply), three members, per-source connections and notes.
+
+**It also ignored the query string entirely**, so all nine view tabs showed all four conversations,
+the counts disagreed with the rows beneath them, and search and the channel filter did nothing.
+`demo-fetch.ts` now passes `URLSearchParams` through and `filterDemoConversations` applies the same
+filters `listConversations` applies in SQL. ⚠️ Match the **wire** format, not the shape of the params
+object: `status` is **comma-joined** and `unassigned` is the string **`"1"`** (see
+`listSupportConversations`). Reading them as repeated params and as `"true"` matched nothing, so the
+awaiting tab rendered its empty state while its badge read 2 — the exact class of demo lie the
+function exists to remove.
+
+⚠️ **`npx next build` clobbers a running `npm run dev`.** The dev server keeps serving HTML that
+references chunks the build deleted, so every page 404s its JS and renders unstyled — which looks
+like a broken route and cost a diversion here. After any `next build`, `rm -rf .next` and restart dev
+before screenshotting.
+
+**Verified:** `npm run verify` green — 0 errors, **1612 tests**, `audit:ui` 0 findings; `npx next
+build` clean. `/demo/care` rendered at 390 · 768 · 1280×620 · 1440 across index · record ·
+record-details · selection · settings — **0 clipping findings across all 20 combinations**.

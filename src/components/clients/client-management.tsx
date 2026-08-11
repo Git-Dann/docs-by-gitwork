@@ -2,7 +2,7 @@
 
 import {
   ArrowRightCircleIcon,
-  ChatBubbleLeftRightIcon,
+  LifebuoyIcon,
   CheckIcon,
   ClipboardDocumentIcon,
   LinkIcon,
@@ -533,7 +533,7 @@ function ClientCard({
               className="opacity-40 hover:opacity-70 transition-opacity"
               onClick={(e) => e.stopPropagation()}
             >
-              <ChatBubbleLeftRightIcon className="h-3.5 w-3.5 text-[var(--text-3)]" />
+              <LifebuoyIcon className="h-3.5 w-3.5 text-[var(--text-3)]" />
             </Link>
           )}
           {client.repoUrls?.length === 1 && (

@@ -1,14 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  ArrowLeftIcon,
   PaperAirplaneIcon,
   ClipboardDocumentIcon,
   SparklesIcon,
   CheckIcon,
   ClockIcon,
-  ChatBubbleLeftEllipsisIcon,
+  Squares2X2Icon,
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import type { Conversation, Connection, ConversationStatus, ConversationPriority } from "@/types/support";
@@ -31,8 +30,7 @@ import {
   PRIORITY_LABEL,
   REPLY_STATE_LABEL,
   REPLY_STATE_DOT,
-  formatAge,
-  initialsOf,
+  formatWhen,
   isLongWait,
 } from "./care-constants";
 import { OpenInChannelButton } from "./open-in-channel-button";
@@ -41,24 +39,26 @@ const STATUSES: ConversationStatus[] = ["new", "open", "snoozed", "closed", "ign
 const PRIORITIES: ConversationPriority[] = ["urgent", "high", "normal", "low"];
 
 /**
- * The detail pane is the WORKSPACE, not a viewer.
+ * The record: a thread with a properties sidebar.
  *
- * It used to give ~288px of the width to a permanent rail of three stacked `<select>`s, three
- * snooze buttons and a notes form — so the actual conversation was squeezed, and the two things
- * an operator does constantly (read it, answer it) competed with settings they change rarely.
- * Every modern support desk — Front, Missive, Intercom, Help Scout — puts the verbs in a toolbar
- * across the top and gives the thread the full width. That is what this is now:
+ * Every property used to live in the header — three `<select>`s and two buttons on one strip above
+ * the conversation, so the top of the screen was a control panel and the thread started a third of
+ * the way down. Properties belong beside the record, not on top of it: it is the shape HubSpot,
+ * Linear and Zendesk all use, and it means the two things you do constantly (read, answer) own the
+ * middle of the screen while the things you set occasionally sit in a column you can ignore.
  *
- *   ┌ identity + state ─────────────────────────── Open in channel ┐
- *   │ Close · Snooze · Assign · Priority · Status · Notes          │  ← toolbar: the verbs
- *   ├──────────────────────────────────────────────────────────────┤
- *   │ thread, full width, scrolling                                │
- *   ├──────────────────────────────────────────────────────────────┤
- *   │ composer, always visible                                     │  ← never behind a click
- *   └──────────────────────────────────────────────────────────────┘
+ *   ┌ customer · subject · state ······· Open in channel · Close · Snooze ┐
+ *   ├───────────────────────────────────────────┬─────────────────────────┤
+ *   │ 01 // THREAD            (scrolls)         │ 03 // PROPERTIES        │
+ *   │                                           │  assignee/priority/…    │
+ *   │ 02 // REPLY (pinned — answering is the job)│ 04 // NOTES             │
+ *   └───────────────────────────────────────────┴─────────────────────────┘
  *
- * Notes move behind a toggle in the toolbar: they matter, but not on every thread, and a
- * permanently-open notes form on a 226-item queue is 226 forms nobody filled in.
+ * One `NN` sequence across the whole record, left column then right — the numbering is per SCREEN,
+ * not per column, so a reader can refer to "04" and mean one thing.
+ *
+ * Below `lg` there is no room for two columns, so the sidebar becomes a toggle ("Details") that
+ * swaps in place of the thread — one boolean, one copy of the panel, no duplicated markup.
  */
 
 function ToolbarButton({
@@ -66,12 +66,15 @@ function ToolbarButton({
   title,
   tone = "default",
   disabled,
+  className,
   children,
 }: {
   onClick: () => void;
   title?: string;
-  tone?: "default" | "primary" | "active";
+  /** `affirm` is the resolving action (Close); `active` is a toggle that is on. */
+  tone?: "default" | "affirm" | "active";
   disabled?: boolean;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -82,10 +85,15 @@ function ToolbarButton({
       disabled={disabled}
       className={cn(
         "flex shrink-0 items-center gap-1.5 rounded-[6px] border px-2.5 py-1.5 text-xs font-medium transition disabled:opacity-40",
-        tone === "primary" && "border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700",
-        tone === "active" && "border-[var(--brand-300,var(--border-1))] bg-[var(--brand-50)] text-[var(--brand-700)]",
+        // A tint + hairline + toned text rather than a solid green slab: the semantic 500s are
+        // tuned for text on a surface, and white-on-`--success-500` fails contrast in dark mode
+        // (#3DD68C), which is exactly how the old hardcoded `bg-emerald-600` went unnoticed.
+        tone === "affirm" &&
+          "border-[var(--success-500)] bg-[var(--success-50)] text-[var(--success-500)] hover:brightness-95",
+        tone === "active" && "border-[var(--brand-200)] bg-[var(--surface-brand)] text-[var(--brand-700)]",
         tone === "default" &&
           "border-[var(--border-2)] bg-[var(--surface-0)] text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+        className,
       )}
     >
       {children}
@@ -93,17 +101,85 @@ function ToolbarButton({
   );
 }
 
-/** A labelled property. The mono caps label is DESIGN.md's data-label voice. */
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * A property row: mono caps label above its control, stacked.
+ *
+ * Stacked rather than inline per DESIGN.md's rail rule — fields are never crammed horizontally, and
+ * a label beside a `<select>` in a 280px column leaves the value under the chevron.
+ */
+function Prop({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="flex items-center gap-1.5">
-      <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">{label}</span>
-      {children}
+    <label className="block">
+      <span className="widget-data-label">{label}</span>
+      <span className="mt-1 block">{children}</span>
     </label>
   );
 }
 
-/** Whose turn it is, stated in the header rather than as a separate banner block. */
+/** A read-only property — a fact about the thread, in the same grammar as the editable ones. */
+function ReadOnlyProp({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <span className="widget-data-label">{label}</span>
+      <div className="mt-0.5 text-[13px] text-[var(--text-2)]">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * One message, as a TRANSCRIPT row rather than a chat bubble.
+ *
+ * The thread used to be left/right rounded bubbles capped at 85% width — the chat-app trope, and
+ * wrong twice over here. Care holds *email*: a support reply is six paragraphs and a quoted history,
+ * not "ok 👍", so alternating alignment and an 85% cap make long messages harder to read, not easier.
+ * And bubbles are nobody's design language on this platform — every other Foundry surface states its
+ * facts as a mono rail over full-width prose.
+ *
+ * So: a mono meta rail (direction · author · when), the body at full width, and inbound vs outbound
+ * carried by a 2px left rule plus a faint wash — legible at a glance without moving the text around.
+ */
+function Message({
+  message,
+  first,
+  fallbackAuthor,
+}: {
+  message: { id: string; direction: string; authorLabel: string; body: string; createdAt: string };
+  first: boolean;
+  fallbackAuthor: string;
+}) {
+  const outbound = message.direction === "outbound";
+  return (
+    <article
+      className={cn(
+        "border-l-2 px-4 py-3",
+        !first && "border-t border-t-[var(--border-3)]",
+        outbound
+          ? "border-l-[var(--brand-600)] bg-[var(--surface-brand-soft)]"
+          : "border-l-transparent bg-[var(--surface-0)]",
+      )}
+    >
+      <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span
+          className={cn(
+            "rounded-[4px] px-1 py-px font-mono text-[9px] font-semibold uppercase tracking-[0.1em]",
+            outbound
+              ? "bg-[var(--surface-brand-strong)] text-[var(--brand-700)]"
+              : "bg-[var(--surface-2)] text-[var(--text-3)]",
+          )}
+        >
+          {outbound ? "Us" : "Customer"}
+        </span>
+        <span className="widget-data-label truncate">{message.authorLabel || fallbackAuthor}</span>
+        <span className="widget-data-label ml-auto shrink-0">{formatWhen(message.createdAt)}</span>
+      </div>
+      <p className="overflow-hidden whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[13px] leading-relaxed text-[var(--text-2)]">
+        {message.body}
+      </p>
+    </article>
+  );
+}
+
+/** Whose turn it is. The single most important fact on the board, so it leads the header. */
 function StateLine({ conversation }: { conversation: Conversation }) {
   const { replyState, lastInboundAt, lastOutboundAt } = conversation;
   const awaiting = replyState === "awaiting_reply";
@@ -114,15 +190,20 @@ function StateLine({ conversation }: { conversation: Conversation }) {
       <span className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", REPLY_STATE_DOT[replyState])} />
       <span
         className={cn(
-          "font-medium",
-          awaiting ? (longWait ? "text-amber-700" : "text-amber-600") : replyState === "replied" ? "text-emerald-600" : "text-[var(--text-4)]",
+          // A long wait is weight, not a second amber — there is one warning token and inventing a
+          // darker one by hand is how a colour stops flipping in dark mode.
+          awaiting ? cn("text-[var(--warning-500)]", longWait ? "font-semibold" : "font-medium") : "font-medium",
+          replyState === "replied" && "text-[var(--success-500)]",
+          replyState === "no_inbound" && "text-[var(--text-4)]",
         )}
       >
         {REPLY_STATE_LABEL[replyState]}
       </span>
-      {awaiting && lastInboundAt && <span className="text-[var(--text-4)]">· waiting {formatAge(lastInboundAt)}</span>}
+      {awaiting && lastInboundAt && (
+        <span className="text-[var(--text-4)]">· waiting {formatWhen(lastInboundAt).replace(" ago", "")}</span>
+      )}
       {replyState === "replied" && lastOutboundAt && (
-        <span className="text-[var(--text-4)]">· answered {formatAge(lastOutboundAt)} ago</span>
+        <span className="text-[var(--text-4)]">· answered {formatWhen(lastOutboundAt)}</span>
       )}
     </span>
   );
@@ -132,13 +213,10 @@ export function ConversationDetail({
   clientId,
   conversation,
   connections,
-  onBack,
 }: {
   clientId: string;
   conversation: Conversation;
   connections: Connection[];
-  /** Mobile-only "back to list" handler (the list pane is hidden < xl when a conv is open). */
-  onBack?: () => void;
 }) {
   const messagesQ = useSupportMessages(clientId, conversation.id);
   const membersQ = useSupportMembers(clientId);
@@ -155,7 +233,9 @@ export function ConversationDetail({
   const [replyText, setReplyText] = useState("");
   const [replyError, setReplyError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [showNotes, setShowNotes] = useState(false);
+  // Narrow-viewport only: swaps the properties column in place of the thread.
+  const [showProps, setShowProps] = useState(false);
+  const threadRef = useRef<HTMLDivElement | null>(null);
 
   const members = membersQ.data?.members ?? [];
   const connection = connections.find((c) => c.source === conversation.source);
@@ -172,6 +252,25 @@ export function ConversationDetail({
   const manualHint = isAppStoreReview
     ? "Reply in App Store Connect"
     : `Send not wired for ${SOURCE_LABEL[conversation.source]} — copy & reply manually`;
+
+  /**
+   * Open at the newest message, which is what every mail client does and what the reader came for.
+   * Keyed on the message count so it also follows a reply you have just sent, and it jumps rather
+   * than animating — a smooth scroll through a thirty-message thread is a second of nothing.
+   *
+   * Aligns the last message's TOP with the panel's, not the container's bottom: scrolling to the
+   * bottom cut the "US · GITWORK SUPPORT · JUST NOW" rail off the top of the newest message, which
+   * is the one line that says who you are reading. Reading starts at the top of a message either
+   * way, and if it overflows the panel you scroll down through it as normal.
+   */
+  const messageCount = messagesQ.data?.messages.length ?? 0;
+  useEffect(() => {
+    const el = threadRef.current;
+    if (!el) return;
+    const last = el.querySelector("article:last-of-type");
+    if (!last) return;
+    el.scrollTop += last.getBoundingClientRect().top - el.getBoundingClientRect().top;
+  }, [messageCount]);
 
   function snoozeFor(hours: number) {
     snooze.mutate({ convId: conversation.id, until: new Date(Date.now() + hours * 3600_000).toISOString() });
@@ -227,52 +326,50 @@ export function ConversationDetail({
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col">
-      {/* ── Identity ── */}
-      <div className="shrink-0 border-b border-[var(--border-2)] px-5 pt-4">
-        <div className="flex items-start gap-2">
-          {onBack && (
-            <button onClick={onBack} className="-ml-1 mt-0.5 rounded-[6px] p-1 hover:bg-[var(--surface-1)] xl:hidden" title="Back to list">
-              <ArrowLeftIcon className="h-4 w-4 text-[var(--text-3)]" />
-            </button>
-          )}
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-[15px] font-semibold leading-snug text-[var(--text-1)]" title={conversation.customerLabel}>
-              {conversation.customerLabel}
-            </h2>
-            <p className="mt-0.5 truncate text-[13px] text-[var(--text-2)]" title={conversation.subject}>
-              {conversation.subject}
-            </p>
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+      {/* ── Identity + the two verbs used on every thread. Everything else moved to the sidebar,
+             which is what gives the thread the top of the screen. ── */}
+      {/*
+        Stacks below `sm` and the action group WRAPS. Both matter: the group used to be one
+        `shrink-0` nowrap row, so at 390px "Snooze" was cut off at the frame edge and the Details
+        toggle — the only route to properties and notes on a phone — was off-screen entirely. It did
+        not register as page overflow, because a flex container clips rather than scrolls, which is
+        the exact "present but unreachable" failure `audit-clipping` exists for.
+      */}
+      <div className="flex shrink-0 flex-col gap-2 border-b border-[var(--border-2)] px-4 py-2.5 sm:flex-row sm:items-center sm:gap-3 sm:px-5">
+        <div className="min-w-0 flex-1">
+          <h3
+            className="truncate text-[15px] font-semibold leading-tight text-[var(--text-1)]"
+            title={conversation.customerLabel}
+          >
+            {conversation.customerLabel}
+          </h3>
+          <p className="truncate text-[13px] text-[var(--text-2)]" title={conversation.subject}>
+            {conversation.subject}
+          </p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px]">
+            <span className="flex items-center gap-1 text-[var(--text-4)]">
+              <SourceIcon source={conversation.source} className="h-3.5 w-3.5" />
+              {SOURCE_LABEL[conversation.source]}
+            </span>
+            <span className="text-[var(--border-1)]">·</span>
+            <StateLine conversation={conversation} />
           </div>
-          <OpenInChannelButton conversation={conversation} connection={connection} />
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
-          <span className="flex items-center gap-1 text-[var(--text-4)]">
-            <SourceIcon source={conversation.source} className="h-3.5 w-3.5" />
-            {SOURCE_LABEL[conversation.source]}
-          </span>
-          <span className="text-[var(--border-1)]">·</span>
-          <StateLine conversation={conversation} />
         </div>
 
-        {/* ── Row 1: ACTIONS — the two verbs used on every single thread ──
-               Split from the properties below because six controls at equal weight in one row
-               is what made this read as busy. Nothing is removed; the things you press on every
-               thread simply look like buttons, and the things you set occasionally look like
-               fields. */}
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0">
+          <OpenInChannelButton conversation={conversation} connection={connection} />
           {isClosed ? (
             <ToolbarButton onClick={() => close.mutate({ convId: conversation.id, reopen: true })}>Reopen</ToolbarButton>
           ) : (
             <>
-              <ToolbarButton tone="primary" onClick={() => close.mutate({ convId: conversation.id })} title="Close (E)">
+              <ToolbarButton tone="affirm" onClick={() => close.mutate({ convId: conversation.id })} title="Close (E)">
                 <CheckIcon className="h-3.5 w-3.5" />
                 Close
               </ToolbarButton>
               {/* One snooze control, not two. A "Snooze" button beside a "Snooze for…" select is
                   the same verb twice — the button acts on the common case (a day, matching the
-                  `s` shortcut) and the select is only for choosing a different one. Split into a
-                  button + caret so the default stays one click. */}
+                  `s` shortcut) and the caret is only for choosing a different one. */}
               <div className="flex shrink-0 items-stretch">
                 <button
                   type="button"
@@ -296,226 +393,291 @@ export function ConversationDetail({
               </div>
             </>
           )}
-
-          <div className="ml-auto flex shrink-0 items-center gap-1.5">
-            <ToolbarButton
-              tone={showNotes ? "active" : "default"}
-              onClick={() => setShowNotes((v) => !v)}
-              title="Internal notes (staff only)"
-            >
-              <ChatBubbleLeftEllipsisIcon className="h-3.5 w-3.5" />
-              Notes{noteCount > 0 ? ` ${noteCount}` : ""}
-            </ToolbarButton>
-          </div>
-        </div>
-
-        {/* ── Row 2: PROPERTIES — every one still here, just no longer shouting ──
-               Rendered as labelled fields in the house mono data-label voice, which reads as a
-               property sheet rather than three more buttons competing with Close. */}
-        <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-[var(--border-2)] pt-2.5 pb-3">
-          <Field label="Assignee">
-            <select
-              aria-label="Assignee"
-              value={conversation.assigneeId ?? ""}
-              onChange={(e) => triage.mutate({ convId: conversation.id, data: { assigneeId: e.target.value || null } })}
-              className="app-select-compact h-[26px] w-auto text-xs"
-            >
-              <option value="">Unassigned</option>
-              {members.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Priority">
-            <select
-              aria-label="Priority"
-              value={conversation.priority}
-              onChange={(e) => triage.mutate({ convId: conversation.id, data: { priority: e.target.value as ConversationPriority } })}
-              className={cn(
-                "app-select-compact h-[26px] w-auto text-xs",
-                // Only urgent earns colour — four equally-weighted levels is three of them
-                // asking for attention they do not need.
-                conversation.priority === "urgent" && "font-semibold text-red-600",
-              )}
-            >
-              {PRIORITIES.map((p) => (
-                <option key={p} value={p}>{PRIORITY_LABEL[p]}</option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Status">
-            <select
-              aria-label="Status"
-              value={conversation.status}
-              onChange={(e) => triage.mutate({ convId: conversation.id, data: { status: e.target.value as ConversationStatus } })}
-              className="app-select-compact h-[26px] w-auto text-xs"
-            >
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-              ))}
-            </select>
-          </Field>
+          {/* The sidebar has nowhere to sit below lg, so there it is a view you switch to. At lg+
+              the panel is always on screen, so the toggle would be a control that does nothing —
+              it is hidden there rather than shown inert. */}
+          <ToolbarButton
+            tone={showProps ? "active" : "default"}
+            onClick={() => setShowProps((v) => !v)}
+            title="Properties and internal notes"
+            className="lg:hidden"
+          >
+            <Squares2X2Icon className="h-3.5 w-3.5" />
+            {showProps ? "Thread" : `Details${noteCount > 0 ? ` ${noteCount}` : ""}`}
+          </ToolbarButton>
         </div>
       </div>
 
-      {/* ── Thread: the full width, which is the point of moving the verbs up ── */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-        {messagesQ.isLoading && <p className="text-sm text-[var(--text-4)]">Loading messages…</p>}
-        {messagesQ.data?.messages.length === 0 && (
-          <p className="text-sm text-[var(--text-4)]">No messages captured on this thread.</p>
-        )}
-        <div className="mx-auto flex max-w-3xl flex-col gap-3">
-          {messagesQ.data?.messages.map((m) => {
-            const outbound = m.direction === "outbound";
-            return (
-              <div key={m.id} className={cn("flex flex-col", outbound ? "items-end" : "items-start")}>
-                <div className="mb-1 flex items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">
-                  {!outbound && (
-                    <span className="rounded-[3px] bg-[var(--surface-1)] px-1 text-[var(--text-3)]">
-                      {initialsOf(m.authorLabel || conversation.customerLabel)}
+      <div className="flex min-h-0 flex-1 bg-[var(--surface-canvas)]">
+        {/* ── Thread + composer, as two panels on the canvas ──
+               They were a bare scroll area and a naked textarea sitting directly on white, which is
+               why this screen read as a form rather than as part of Foundry. Every module surface in
+               the platform wears the widget signature (DESIGN.md: "never bare cards floating on the
+               canvas") — so the transcript and the composer are numbered panels like everything else,
+               and the composer's card IS its frame. ── */}
+        <div
+          className={cn(
+            "min-h-0 min-w-0 flex-1 flex-col gap-3 p-3",
+            showProps ? "hidden lg:flex" : "flex",
+          )}
+        >
+          <section className="widget-card flex min-h-0 flex-1 flex-col">
+            <div className="widget-header">
+              <span className="widget-header__label">
+                <span className="widget-header__label--number">01</span>{" // THREAD"}
+              </span>
+              <span className="widget-header__status">
+                {messagesQ.data ? `${messageCount} MESSAGE${messageCount === 1 ? "" : "S"}` : "—"}
+              </span>
+            </div>
+            <div ref={threadRef} className="min-h-0 flex-1 overflow-y-auto">
+              {messagesQ.isLoading && <p className="widget-body text-sm text-[var(--text-4)]">Loading messages…</p>}
+              {messagesQ.data?.messages.length === 0 && (
+                <p className="widget-body text-sm text-[var(--text-4)]">No messages captured on this thread.</p>
+              )}
+              {messagesQ.data?.messages.map((m, i) => (
+                <Message
+                  key={m.id}
+                  message={m}
+                  first={i === 0}
+                  fallbackAuthor={conversation.customerLabel}
+                />
+              ))}
+            </div>
+          </section>
+
+          {/* Answering is the job, so the composer is always present — never behind a click. */}
+          <section className="widget-card shrink-0">
+            <div className="widget-header">
+              <span className="widget-header__label">
+                <span className="widget-header__label--number">02</span>{" // REPLY"}
+              </span>
+              {/* Says where this will actually go, which the old naked textarea never did — on a
+                  manual channel that is the difference between a sent reply and a lost draft. */}
+              <span className={cn("widget-header__status", !canSend && "text-[var(--warning-500)]")}>
+                {canSend
+                  ? `VIA ${SOURCE_LABEL[conversation.source].toUpperCase()} · ⌘↵ TO SEND`
+                  : isAppStoreReview
+                    ? "MANUAL · APP STORE CONNECT"
+                    : "MANUAL · COPY TO SEND"}
+              </span>
+            </div>
+            <div>
+              {/*
+                No inner border and no radius: the panel is the frame. `app-textarea` would draw a
+                second box inside a box, which is the "form stuck inside a card" look this pass
+                exists to remove — but the baseline textarea padding guard in globals.css only keys
+                off the app-* field classes, so the padding is set explicitly here.
+              */}
+              <textarea
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !overLimit) {
+                    e.preventDefault();
+                    void (canSend ? handleSend() : handleCopyAndLog());
+                  }
+                }}
+                maxLength={replyLimit ?? undefined}
+                placeholder={
+                  canSend
+                    ? `Reply to ${conversation.customerLabel}…`
+                    : "Draft your reply, then copy it to send manually…"
+                }
+                rows={3}
+                aria-label="Reply"
+                className="block w-full resize-y border-0 bg-transparent px-4 py-3 text-[13px] leading-relaxed text-[var(--text-1)] outline-none placeholder:text-[var(--text-4)]"
+              />
+              <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border-3)] px-3 py-2">
+                {canGenerateAi && (
+                  <button
+                    type="button"
+                    onClick={() => void handleAiDraft()}
+                    disabled={generateDraft.isPending}
+                    className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1 text-[11px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
+                    title="Generate an AI draft reply"
+                  >
+                    <SparklesIcon className={cn("h-3.5 w-3.5 text-[var(--brand-600)]", generateDraft.isPending && "animate-spin")} />
+                    {generateDraft.isPending ? "Drafting…" : "AI draft"}
+                  </button>
+                )}
+                {replyError && <p className="min-w-0 flex-1 text-[12px] text-[var(--danger-500)]">{replyError}</p>}
+                <div className="ml-auto flex shrink-0 items-center gap-2">
+                  {replyLimit !== null && (
+                    <span className={cn("font-mono text-[11px] tabular-nums", overLimit ? "text-[var(--danger-500)]" : "text-[var(--text-4)]")}>
+                      {replyText.length}/{replyLimit}
                     </span>
                   )}
-                  <span className="max-w-[16rem] truncate">{m.authorLabel}</span>
-                  <span>· {formatAge(m.createdAt)} ago</span>
-                </div>
-                <div
-                  className={cn(
-                    "max-w-[85%] rounded-[10px] border px-3 py-2",
-                    outbound
-                      ? "border-[var(--brand-200,var(--border-2))] bg-[var(--brand-50)]"
-                      : "border-[var(--border-2)] bg-[var(--surface-0)]",
+                  {canSend ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleSend()}
+                      disabled={!replyText.trim() || sendMessage.isPending || overLimit}
+                      className="flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-700)] px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-[var(--brand-800)] disabled:opacity-40"
+                    >
+                      <PaperAirplaneIcon className="h-3.5 w-3.5" />
+                      {sendMessage.isPending ? "Sending…" : "Send reply"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyAndLog()}
+                      disabled={!replyText.trim() || sendMessage.isPending}
+                      title={`${manualHint}. Copying also records the reply here, so the thread stops showing as awaiting one.`}
+                      className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
+                    >
+                      <ClipboardDocumentIcon className="h-3.5 w-3.5" />
+                      {copied ? "Copied & logged" : sendMessage.isPending ? "Logging…" : "Copy & mark replied"}
+                    </button>
                   )}
-                >
-                  <p className="overflow-hidden whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[13px] leading-relaxed text-[var(--text-2)]">
-                    {m.body}
-                  </p>
                 </div>
               </div>
-            );
-          })}
+            </div>
+          </section>
         </div>
 
-        {/* ── Internal notes, on demand ── */}
-        {showNotes && (
-          <div className="mx-auto mt-6 max-w-3xl border-t border-[var(--border-2)] pt-4">
-            <div className="mb-2 font-mono text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]">
-              Internal notes · staff only
-            </div>
-            <div className="space-y-2">
-              {notesQ.data?.notes.length === 0 && (
-                <p className="text-xs text-[var(--text-4)]">No notes yet. The customer never sees these.</p>
-              )}
-              {notesQ.data?.notes.map((note) => (
-                <div key={note.id} className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-2.5">
-                  <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">
-                    {note.authorId ?? "system"} · {formatAge(note.createdAt)} ago
-                  </div>
-                  <p className="whitespace-pre-wrap text-[13px] text-[var(--text-2)]">{note.body}</p>
-                </div>
-              ))}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!noteDraft.trim()) return;
-                  addNote.mutate(noteDraft.trim(), { onSuccess: () => setNoteDraft("") });
-                }}
-                className="flex items-start gap-2"
-              >
-                <textarea
-                  value={noteDraft}
-                  onChange={(e) => setNoteDraft(e.target.value)}
-                  placeholder="Add an internal note…"
-                  rows={2}
-                  className="app-textarea min-w-0 flex-1 text-[13px]"
-                />
-                <button
-                  type="submit"
-                  disabled={!noteDraft.trim() || addNote.isPending}
-                  className="shrink-0 rounded-[6px] border border-[var(--border-2)] px-3 py-2 text-xs font-medium transition hover:bg-[var(--surface-1)] disabled:opacity-50"
-                >
-                  {addNote.isPending ? "Adding…" : "Add"}
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ── Composer: always present. Answering is the job; it should never be behind a click. ── */}
-      <div className="shrink-0 border-t border-[var(--border-2)] bg-[var(--surface-0)] px-5 py-3">
-        <div className="mx-auto max-w-3xl">
-          <div className="relative">
-            <textarea
-              value={replyText}
-              onChange={(e) => setReplyText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !overLimit) {
-                  e.preventDefault();
-                  void (canSend ? handleSend() : handleCopyAndLog());
-                }
-              }}
-              maxLength={replyLimit ?? undefined}
-              placeholder={
-                canSend
-                  ? `Reply to ${conversation.customerLabel}…  (⌘↵ to send)`
-                  : "Draft your reply, then copy it to send manually…"
-              }
-              rows={3}
-              className="app-textarea w-full text-[13px]"
-            />
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {!canSend && (
-              <span className="rounded-[4px] border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                {isAppStoreReview ? "App Store Connect" : "Manual reply"}
-              </span>
-            )}
-            {canGenerateAi && (
-              <button
-                type="button"
-                onClick={() => void handleAiDraft()}
-                disabled={generateDraft.isPending}
-                className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1.5 text-[11px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
-                title="Generate an AI draft reply"
-              >
-                <SparklesIcon className={cn("h-3.5 w-3.5 text-[var(--brand-600)]", generateDraft.isPending && "animate-spin")} />
-                {generateDraft.isPending ? "Drafting…" : "AI draft"}
-              </button>
-            )}
-            {replyError && <p className="min-w-0 flex-1 text-[12px] text-red-600">{replyError}</p>}
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              {replyLimit !== null && (
-                <span className={cn("font-mono text-[11px]", overLimit ? "text-red-600" : "text-[var(--text-4)]")}>
-                  {replyText.length}/{replyLimit}
+        {/* ── Properties + notes. A column at lg+, a swapped-in view below it. ── */}
+        <aside
+          className={cn(
+            // No left border: both columns are cards on the same canvas, so a rule between them
+            // reads as a seam welding the sidebar to the frame edge rather than as a divider.
+            "min-h-0 w-full shrink-0 overflow-y-auto p-3 pt-0 lg:block lg:w-[286px] lg:pl-0 lg:pt-3",
+            showProps ? "block" : "hidden",
+          )}
+        >
+          <div className="space-y-3">
+            <section className="widget-card">
+              <div className="widget-header">
+                <span className="widget-header__label">
+                  <span className="widget-header__label--number">03</span>{" // PROPERTIES"}
                 </span>
-              )}
-              {canSend ? (
-                <button
-                  type="button"
-                  onClick={() => void handleSend()}
-                  disabled={!replyText.trim() || sendMessage.isPending || overLimit}
-                  className="flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-700)] px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-[var(--brand-800)] disabled:opacity-40"
+              </div>
+              <div className="widget-body space-y-3">
+                <Prop label="Assignee">
+                  <select
+                    aria-label="Assignee"
+                    value={conversation.assigneeId ?? ""}
+                    onChange={(e) => triage.mutate({ convId: conversation.id, data: { assigneeId: e.target.value || null } })}
+                    className="app-select-compact w-full text-xs"
+                  >
+                    <option value="">Unassigned</option>
+                    {members.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                </Prop>
+
+                <Prop label="Priority">
+                  <select
+                    aria-label="Priority"
+                    value={conversation.priority}
+                    onChange={(e) => triage.mutate({ convId: conversation.id, data: { priority: e.target.value as ConversationPriority } })}
+                    className={cn(
+                      "app-select-compact w-full text-xs",
+                      // Only urgent earns colour — four equally-weighted levels is three of them
+                      // asking for attention they do not need.
+                      conversation.priority === "urgent" && "font-semibold text-[var(--danger-500)]",
+                    )}
+                  >
+                    {PRIORITIES.map((p) => (
+                      <option key={p} value={p}>{PRIORITY_LABEL[p]}</option>
+                    ))}
+                  </select>
+                </Prop>
+
+                <Prop label="Status">
+                  <select
+                    aria-label="Status"
+                    value={conversation.status}
+                    onChange={(e) => triage.mutate({ convId: conversation.id, data: { status: e.target.value as ConversationStatus } })}
+                    className="app-select-compact w-full text-xs"
+                  >
+                    {STATUSES.map((s) => (
+                      <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                    ))}
+                  </select>
+                </Prop>
+
+                <div className="grid grid-cols-2 gap-3 border-t border-[var(--border-3)] pt-3">
+                  <ReadOnlyProp label="Channel">{SOURCE_LABEL[conversation.source]}</ReadOnlyProp>
+                  <ReadOnlyProp label="First seen">
+                    <span className="font-mono text-[12px]">{formatWhen(conversation.receivedAt)}</span>
+                  </ReadOnlyProp>
+                  {conversation.lastInboundAt && (
+                    <ReadOnlyProp label="Last in">
+                      <span className="font-mono text-[12px]">{formatWhen(conversation.lastInboundAt)}</span>
+                    </ReadOnlyProp>
+                  )}
+                  {conversation.lastOutboundAt && (
+                    <ReadOnlyProp label="Last out">
+                      <span className="font-mono text-[12px]">{formatWhen(conversation.lastOutboundAt)}</span>
+                    </ReadOnlyProp>
+                  )}
+                </div>
+
+                {tags.length > 0 && (
+                  <div className="border-t border-[var(--border-3)] pt-3">
+                    <span className="widget-data-label">Tags</span>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {tags.map((t) => (
+                        <span
+                          key={t}
+                          className="rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-3)]"
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="widget-card">
+              <div className="widget-header">
+                <span className="widget-header__label">
+                  <span className="widget-header__label--number">04</span>{" // NOTES"}
+                </span>
+                <span className="widget-header__status">STAFF ONLY</span>
+              </div>
+              <div className="widget-body space-y-2">
+                {notesQ.data?.notes.length === 0 && (
+                  <p className="text-xs text-[var(--text-4)]">No notes yet. The customer never sees these.</p>
+                )}
+                {notesQ.data?.notes.map((note) => (
+                  <div key={note.id} className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-2">
+                    <div className="widget-data-label mb-1">
+                      {note.authorId ?? "system"} · {formatWhen(note.createdAt)}
+                    </div>
+                    <p className="whitespace-pre-wrap text-[13px] text-[var(--text-2)]">{note.body}</p>
+                  </div>
+                ))}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!noteDraft.trim()) return;
+                    addNote.mutate(noteDraft.trim(), { onSuccess: () => setNoteDraft("") });
+                  }}
                 >
-                  <PaperAirplaneIcon className="h-3.5 w-3.5" />
-                  {sendMessage.isPending ? "Sending…" : "Send reply"}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => void handleCopyAndLog()}
-                  disabled={!replyText.trim() || sendMessage.isPending}
-                  title={`${manualHint}. Copying also records the reply here, so the thread stops showing as awaiting one.`}
-                  className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
-                >
-                  <ClipboardDocumentIcon className="h-3.5 w-3.5" />
-                  {copied ? "Copied & logged" : sendMessage.isPending ? "Logging…" : "Copy & mark replied"}
-                </button>
-              )}
-            </div>
+                  <textarea
+                    value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                    placeholder="Add an internal note…"
+                    rows={2}
+                    className="app-textarea w-full text-[13px]"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!noteDraft.trim() || addNote.isPending}
+                    className="mt-1.5 w-full rounded-[6px] border border-[var(--border-2)] px-3 py-1.5 text-xs font-medium transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+                  >
+                    {addNote.isPending ? "Adding…" : "Add note"}
+                  </button>
+                </form>
+              </div>
+            </section>
           </div>
-        </div>
+        </aside>
       </div>
     </div>
   );

@@ -296,6 +296,22 @@ exist.** Note ~8 hand-rolled field constants still diverge from it (CLAUDE.md §
 - Focused: border `2px solid {colors.primary}`, outline `3px solid {colors.primary-soft}`.
 - Error: border `2px solid {colors.danger}`, outline `3px solid {colors.danger-soft}`.
 
+### Tables
+
+**`app-table-shell` + `app-table`** — the standard table: 12px sentence-case headers, 14px/16px
+cells, hairline row borders. Correct for a table you *read* — a dozen rows you take in whole.
+
+**`app-table app-table--dense`** — the variant for a table you *scan*: a queue hundreds of rows
+long, where the base padding puts nine rows on a laptop screen. Headers switch to the mono-caps
+data-label voice, cells to 8px/12px. First used by the Care queue (CLAUDE.md §42.12).
+- Written `.app-table.app-table--dense …` (0,2,0) so it beats the base `.app-table thead th`
+  (0,1,2). A bare `.app-table--dense th` loses and silently does nothing — the same specificity
+  trap that left Deck's split-button radii wrong (CLAUDE.md §30).
+- **Either variant must sit in an `overflow-x-auto` ancestor.** Tables scroll, they never reflow —
+  `audit:ui`'s `TABLE-SCROLL` rule enforces it, and `overflow-hidden` is not a scroller.
+- Size the trailing columns (`w-[120px]` etc.) so the slack lands in the one flexible column. Auto
+  table layout otherwise hands 190px to a column reading `REDDIT`.
+
 ### Badges & Status
 
 > ⚠️ **There is no badge class.** `badge-blue` / `badge-green` / `badge-amber` / `badge-red` /

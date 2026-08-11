@@ -54,7 +54,7 @@ export default function ContextPage() {
               ["Code", "/app/codeclear", "Developer hiring pipeline with GitHub analysis + scoring", "Live"],
               ["Portal", "/app/portal", "Client management and profile pages", "Live"],
               ["Pulse", "/app/pulse", "AI project validation — 150+ checks, gap analysis, fix agent; includes an optional Study research tool (multi-agent interviews) at /app/study", "Live"],
-              ["Care / Support", "/app/support", "Client support ops — conversations, tickets, workflow rules", "Live"],
+              ["Care", "/app/care", "Client support ops — one conversation queue per client, answered from the reply state the connectors report. The legacy /app/support dashboard still owns tickets, monthly reports and workflow rules", "Live"],
               ["Deck", "/deck", "Foundry's slide editor — a deck is one self-contained file: edit it, present it, send it. Served as a single static shell (vendor/bento) and opened in its own window from HQ + the Docs toolbar. Follows the platform's light/dark setting. Signed-in members only; holds no workspace data", "Beta"],
               ["Pulse Overview", "/pulse-overview", "Public-facing standalone Pulse product page (not in app nav)", "Live"],
               ["Rate Card", "(settings)", "People rates used in proposal costing", "Live"],
