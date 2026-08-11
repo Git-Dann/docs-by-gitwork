@@ -205,6 +205,20 @@ export interface ConversationViewCounts {
   oldestAwaitingAt: string | null;
 }
 
+/**
+ * Per-client queue figures for the Care home list, rolled up for the whole workspace in one
+ * request. Keyed by client id. `awaiting + replied === open` by construction.
+ */
+export interface ClientQueueSummary {
+  awaiting: number;
+  replied: number;
+  unassigned: number;
+  urgent: number;
+  open: number;
+  /** ISO timestamp of the longest-waiting customer message, or null when nobody is waiting. */
+  oldestAwaitingAt: string | null;
+}
+
 /** An internal, staff-only note on a conversation (never shown to the customer). */
 export interface ConversationNote {
   id: string;

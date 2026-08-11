@@ -12,6 +12,7 @@ import type {
   Conversation,
   ConversationNote,
   ConversationViewCounts,
+  ClientQueueSummary,
   ReplyState,
   Message,
   Ticket,
@@ -892,6 +893,66 @@ export async function getConversationViewCounts(
     all,
     oldestAwaitingAt: oldest?.lastInboundAt?.toISOString() ?? null,
   };
+}
+
+/**
+ * The same figures as getConversationViewCounts, for EVERY client in the workspace, in a fixed
+ * number of queries.
+ *
+ * Care home rendered one `getConversationViewCounts` per client row — 10 indexed counts each, so
+ * ~50 round trips for five clients and growing linearly with the client list. The page felt slow
+ * and its numbers arrived in a ragged cascade, which is a large part of why it didn't feel solid.
+ *
+ * Five `groupBy`s answer it for all clients at once, so the cost no longer depends on how many
+ * clients there are. Deliberately built on the same `replyStateWhere` predicate as the per-client
+ * version — if the two disagreed, the home page and the cockpit would report different numbers for
+ * the same client, which is exactly the class of thing that destroys trust in a dashboard.
+ */
+export async function getClientQueueSummaries(): Promise<Record<string, ClientQueueSummary>> {
+  const workspaceId = await getWorkspaceId();
+  const scope: Prisma.SupportConversationWhereInput = { client: { workspaceId } };
+  const active: Prisma.SupportConversationWhereInput = { ...scope, status: { in: ["NEW", "OPEN"] } };
+  const awaiting: Prisma.SupportConversationWhereInput = {
+    ...active,
+    AND: [replyStateWhere("awaiting_reply")],
+  };
+
+  const [openRows, awaitingRows, unassignedRows, urgentRows, oldestRows] = await Promise.all([
+    prisma.supportConversation.groupBy({ by: ["clientId"], where: active, _count: { _all: true } }),
+    prisma.supportConversation.groupBy({ by: ["clientId"], where: awaiting, _count: { _all: true } }),
+    prisma.supportConversation.groupBy({
+      by: ["clientId"],
+      where: { ...awaiting, assigneeId: null },
+      _count: { _all: true },
+    }),
+    prisma.supportConversation.groupBy({
+      by: ["clientId"],
+      where: { ...active, priority: "URGENT" },
+      _count: { _all: true },
+    }),
+    prisma.supportConversation.groupBy({
+      by: ["clientId"],
+      where: awaiting,
+      _min: { lastInboundAt: true },
+    }),
+  ]);
+
+  const out: Record<string, ClientQueueSummary> = {};
+  const ensure = (clientId: string): ClientQueueSummary =>
+    (out[clientId] ??= { awaiting: 0, replied: 0, unassigned: 0, urgent: 0, open: 0, oldestAwaitingAt: null });
+
+  for (const r of openRows) ensure(r.clientId).open = r._count._all;
+  for (const r of awaitingRows) ensure(r.clientId).awaiting = r._count._all;
+  for (const r of unassignedRows) ensure(r.clientId).unassigned = r._count._all;
+  for (const r of urgentRows) ensure(r.clientId).urgent = r._count._all;
+  for (const r of oldestRows) {
+    ensure(r.clientId).oldestAwaitingAt = r._min.lastInboundAt?.toISOString() ?? null;
+  }
+  // "Replied" is the rest of the active set — derived rather than counted, saving a query and
+  // guaranteeing awaiting + replied === open instead of three numbers that can disagree.
+  for (const s of Object.values(out)) s.replied = Math.max(0, s.open - s.awaiting);
+
+  return out;
 }
 
 export async function updateConversation(

@@ -1162,16 +1162,49 @@ const demoSupportClients = {
 
 const demoConversationsByClient: Record<string, unknown[]> = {
   "sup-northwind": [
-    { id: "cv1", clientId: "sup-northwind", source: "app_reviews", customerLabel: "App Store · ★★☆☆☆", subject: "Search is slow on older phones", preview: "Love the app but search takes ages on my iPhone 11…", receivedAt: atDays(0), unread: true, tags: ["performance"], sentiment: "negative", status: "new", priority: "high", issueType: "Bug", noteCount: 0 },
-    { id: "cv2", clientId: "sup-northwind", source: "gmail", customerLabel: "priya@northwind.co", subject: "Can we add a dark theme?", preview: "A few users have asked about a dark mode…", receivedAt: atDays(0), unread: true, tags: ["feature-request"], sentiment: "neutral", status: "open", priority: "normal", noteCount: 1 },
-    { id: "cv3", clientId: "sup-northwind", source: "discord", customerLabel: "@dev_sam", subject: "Webhook docs unclear", preview: "The retry section doesn't say what the backoff is…", receivedAt: atDays(-1), unread: true, tags: ["docs"], sentiment: "neutral", status: "open", priority: "low", noteCount: 0 },
-    { id: "cv4", clientId: "sup-northwind", source: "gmail", customerLabel: "ops@northwind.co", subject: "Thanks for the quick fix!", preview: "The download bug is gone — appreciate the fast turnaround.", receivedAt: atDays(-2), unread: false, tags: [], sentiment: "positive", status: "closed", priority: "normal", closedAt: atDays(-2), noteCount: 0 },
+    { id: "cv1", clientId: "sup-northwind", source: "app_reviews", customerLabel: "App Store · ★★☆☆☆", subject: "Search is slow on older phones", preview: "Love the app but search takes ages on my iPhone 11…", receivedAt: atDays(0), unread: true, tags: ["performance"], sentiment: "negative", status: "new", priority: "high", issueType: "Bug", noteCount: 0 , lastInboundAt: atDays(0), lastOutboundAt: undefined, lastMessageAt: atDays(0), replyState: "awaiting_reply" },
+    { id: "cv2", clientId: "sup-northwind", source: "gmail", customerLabel: "priya@northwind.co", subject: "Can we add a dark theme?", preview: "A few users have asked about a dark mode…", receivedAt: atDays(0), unread: true, tags: ["feature-request"], sentiment: "neutral", status: "open", priority: "normal", noteCount: 1 , lastInboundAt: atDays(-1), lastOutboundAt: atDays(0), lastMessageAt: atDays(0), replyState: "replied" },
+    { id: "cv3", clientId: "sup-northwind", source: "discord", customerLabel: "@dev_sam", subject: "Webhook docs unclear", preview: "The retry section doesn't say what the backoff is…", receivedAt: atDays(-1), unread: true, tags: ["docs"], sentiment: "neutral", status: "open", priority: "low", noteCount: 0 , lastInboundAt: atDays(-1), lastOutboundAt: undefined, lastMessageAt: atDays(-1), replyState: "awaiting_reply" },
+    { id: "cv4", clientId: "sup-northwind", source: "gmail", customerLabel: "ops@northwind.co", subject: "Thanks for the quick fix!", preview: "The download bug is gone — appreciate the fast turnaround.", receivedAt: atDays(-2), unread: false, tags: [], sentiment: "positive", status: "closed", priority: "normal", closedAt: atDays(-2), noteCount: 0 , lastInboundAt: atDays(-3), lastOutboundAt: atDays(-2), lastMessageAt: atDays(-2), replyState: "replied" },
   ],
   "sup-cadenza": [
-    { id: "cv5", clientId: "sup-cadenza", source: "reddit", customerLabel: "u/cadenza_fan", subject: "Feature idea: shared playlists", preview: "Would be great to share a playlist with friends…", receivedAt: atDays(0), unread: true, tags: ["feature-request"], sentiment: "positive", status: "new", priority: "normal", noteCount: 0 },
-    { id: "cv6", clientId: "sup-cadenza", source: "youtube", customerLabel: "YT comment", subject: "Crash on Android 12", preview: "App crashes when I open settings on my Pixel…", receivedAt: atDays(-1), unread: false, tags: ["bug", "android"], sentiment: "negative", status: "open", priority: "urgent", issueType: "Crash", noteCount: 2 },
+    { id: "cv5", clientId: "sup-cadenza", source: "reddit", customerLabel: "u/cadenza_fan", subject: "Feature idea: shared playlists", preview: "Would be great to share a playlist with friends…", receivedAt: atDays(0), unread: true, tags: ["feature-request"], sentiment: "positive", status: "new", priority: "normal", noteCount: 0 , lastInboundAt: atDays(0), lastOutboundAt: undefined, lastMessageAt: atDays(0), replyState: "awaiting_reply" },
+    { id: "cv6", clientId: "sup-cadenza", source: "youtube", customerLabel: "YT comment", subject: "Crash on Android 12", preview: "App crashes when I open settings on my Pixel…", receivedAt: atDays(-1), unread: false, tags: ["bug", "android"], sentiment: "negative", status: "open", priority: "urgent", issueType: "Crash", noteCount: 2 , lastInboundAt: atDays(-1), lastOutboundAt: undefined, lastMessageAt: atDays(-1), replyState: "awaiting_reply" },
   ],
 };
+
+
+/**
+ * Care queue counts, DERIVED from the conversation fixtures above rather than hand-written.
+ *
+ * Hand-written totals drift the moment a fixture changes, and a demo that contradicts itself is
+ * worse than one with no numbers — it teaches the reader not to trust the figures.
+ */
+type DemoConv = {
+  clientId: string; status: string; priority: string; assigneeId?: string;
+  replyState: string; lastInboundAt?: string;
+};
+function demoQueueCounts(clientId: string) {
+  const rows = (demoConversationsByClient[clientId] ?? []) as DemoConv[];
+  const active = rows.filter((c) => c.status === "new" || c.status === "open");
+  const awaitingRows = active.filter((c) => c.replyState === "awaiting_reply");
+  const oldest = awaitingRows
+    .map((c) => c.lastInboundAt)
+    .filter((d): d is string => !!d)
+    .sort()[0] ?? null;
+  return {
+    awaiting: awaitingRows.length,
+    replied: active.filter((c) => c.replyState === "replied").length,
+    assignedMe: 0,
+    unassigned: awaitingRows.filter((c) => !c.assigneeId).length,
+    urgent: active.filter((c) => c.priority === "urgent").length,
+    open: active.length,
+    snoozed: rows.filter((c) => c.status === "snoozed").length,
+    closed: rows.filter((c) => c.status === "closed" || c.status === "ignored").length,
+    all: rows.length,
+    oldestAwaitingAt: oldest,
+  };
+}
 
 // ─── Backstage (leave calendar only) ─────────────────────────────────────────────
 
@@ -2101,6 +2134,16 @@ export function resolveDemoApi(pathname: string): unknown {
   {
     const conv = pathname.match(/^\/api\/support\/clients\/([^/]+)\/conversations$/);
     if (conv) return { conversations: demoConversationsByClient[conv[1]] ?? [], nextCursor: null };
+  }
+  {
+    const counts = pathname.match(/^\/api\/support\/clients\/([^/]+)\/conversations\/counts$/);
+    if (counts) return { counts: demoQueueCounts(counts[1]) };
+  }
+  // Care home's one-request roll-up for every client.
+  if (pathname === "/api/support/queue-summaries") {
+    const summaries: Record<string, ReturnType<typeof demoQueueCounts>> = {};
+    for (const id of Object.keys(demoConversationsByClient)) summaries[id] = demoQueueCounts(id);
+    return { summaries };
   }
   if (/^\/api\/support\/clients\/[^/]+\/connections$/.test(pathname)) return { connections: [] };
   if (/^\/api\/support\/clients\/[^/]+\/members$/.test(pathname)) return { members: [] };
