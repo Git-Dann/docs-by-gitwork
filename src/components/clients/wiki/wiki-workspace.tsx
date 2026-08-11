@@ -1287,7 +1287,43 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               mode="internal"
               categories={wiki!.intakeCategories}
             />
-          ) : null}
+          ) : (
+            /**
+             * Requests is switched OFF for this client, yet we are standing on the
+             * Requests page — which happens whenever a dev raises a blocker, because
+             * `intakeOn` reveals the section on `intakeEnabled || blockers.length > 0`.
+             *
+             * That combination used to render the blockers and nothing else: no add
+             * form, no explanation, and — the real trap — no way to fix it, because
+             * `addableSections` only offers "Requests" under + ADD NEW while
+             * `!intakeOn`. So the blocker that revealed the section simultaneously
+             * hid the only control that switches it on, leaving the state
+             * unreachable from the wiki UI. The control belongs here, where someone
+             * hunting for the missing form actually is.
+             */
+            <section className="mb-6">
+              <div className="widget-card">
+                <div className="widget-body">
+                  <p className="text-sm font-medium text-[var(--text-2)]">
+                    Requests are switched off for this client
+                  </p>
+                  <p className="mt-1 max-w-[70ch] text-[13px] leading-5 text-[var(--text-4)]">
+                    Any blocker above is still shown to the client, but they can&rsquo;t file
+                    bugs, feedback or feature requests — and neither can you — until Requests
+                    is on. Turning it on also enables this client&rsquo;s API intake token.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={setIntakeEnabled.isPending}
+                    onClick={() => setIntakeEnabled.mutate(true)}
+                    className="mt-3 inline-flex items-center gap-2 rounded-[8px] bg-[var(--brand-600)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60"
+                  >
+                    {setIntakeEnabled.isPending ? "Turning on…" : "Turn on requests"}
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
         </>
       );
     }
