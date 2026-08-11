@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useDeferredValue } from "react";
 import { ArrowPathIcon, ArrowLeftIcon, Cog8ToothIcon, DocumentChartBarIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
-import type { Conversation, SupportClient } from "@/types/support";
+import type { Conversation, ConversationViewCounts, SupportClient } from "@/types/support";
 import {
   useSupportConversationsPaged,
   useSupportConversationCounts,
@@ -37,6 +37,87 @@ import { ConnectorsView } from "@/components/support/support-dashboard";
 // One page. Small on purpose: because the views are server-side filters, 50 rows is 50 rows of
 // the thing you asked for, and "Load more" walks the rest.
 const PAGE_SIZE = 50;
+
+/**
+ * What the right-hand 60% of the screen shows when nothing is open.
+ *
+ * It said "Select a conversation to triage." — an instruction, occupying the largest area on the
+ * page, telling you to do the thing you were obviously about to do. It is the natural home for
+ * the state of the queue: how much is waiting, how long the worst one has waited, and one button
+ * that starts you on it.
+ */
+function QueueOverview({
+  counts,
+  loading,
+  onStart,
+}: {
+  counts?: ConversationViewCounts;
+  loading: boolean;
+  onStart: () => void;
+}) {
+  if (loading || !counts) {
+    return <div className="flex h-full w-full items-center justify-center text-sm text-[var(--text-4)]">Loading queue…</div>;
+  }
+
+  const clear = counts.awaiting === 0;
+  const stats: Array<{ label: string; value: number | string; tone?: string }> = [
+    { label: "Awaiting reply", value: counts.awaiting, tone: counts.awaiting > 0 ? "text-amber-600" : undefined },
+    { label: "Unassigned", value: counts.unassigned },
+    { label: "Urgent", value: counts.urgent, tone: counts.urgent > 0 ? "text-red-600" : undefined },
+    { label: "Replied", value: counts.replied, tone: "text-emerald-600" },
+  ];
+
+  return (
+    <div className="flex h-full w-full items-center justify-center overflow-y-auto p-8">
+      <div className="w-full max-w-md">
+        <div className="font-mono text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]">Queue</div>
+        <h2 className="mt-1 text-[22px] font-semibold leading-snug text-[var(--text-1)]">
+          {clear ? "Everything has been answered." : `${counts.awaiting} waiting on a reply`}
+        </h2>
+        {counts.oldestAwaitingAt && (
+          <p className="mt-1 text-[13px] text-[var(--text-3)]">
+            The longest has been waiting{" "}
+            <span className={cn(isLongWait(counts.oldestAwaitingAt) && "font-semibold text-amber-700")}>
+              {formatAge(counts.oldestAwaitingAt)}
+            </span>
+            .
+          </p>
+        )}
+
+        {/* Stat figures in DM Serif Display + mono unit labels, per DESIGN.md's stat grammar. */}
+        <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-[var(--border-2)] pt-5">
+          {stats.map((s) => (
+            <div key={s.label}>
+              <div
+                className={cn(
+                  "font-[var(--font-display)] text-[32px] leading-none",
+                  s.tone ?? "text-[var(--text-1)]",
+                  s.value === 0 && !s.tone && "text-[var(--text-4)]",
+                )}
+              >
+                {s.value}
+              </div>
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {!clear && (
+          <button
+            type="button"
+            onClick={onStart}
+            className="mt-6 w-full rounded-[6px] bg-[var(--brand-700)] px-4 py-2.5 text-[13px] font-semibold text-white transition hover:bg-[var(--brand-800)]"
+          >
+            Start with the longest wait
+          </button>
+        )}
+        <p className="mt-3 text-center font-mono text-[10px] tracking-[0.4px] text-[var(--text-4)]">
+          <Kbd>J</Kbd> <Kbd>K</Kbd> move · <Kbd>↵</Kbd> open · <Kbd>E</Kbd> close · <Kbd>S</Kbd> snooze
+        </p>
+      </div>
+    </div>
+  );
+}
 
 /** A key cap. 3px radius per DESIGN.md's micro-control scale — full radius is status dots only. */
 function Kbd({ children }: { children: React.ReactNode }) {
@@ -702,9 +783,18 @@ export function ClientCockpit({
             onBack={() => setSelectedId(null)}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-sm text-[var(--text-4)]">
-            Select a conversation to triage.
-          </div>
+          <QueueOverview
+            counts={counts}
+            loading={countsQ.isLoading}
+            onStart={() => {
+              // Jump straight to the top of the awaiting queue, which after the oldest-first sort
+              // is the longest-waiting customer — the correct place to start a session.
+              if (activeView !== DEFAULT_VIEW_ID) setActiveView(DEFAULT_VIEW_ID);
+              const first = conversations[0];
+              if (first && activeView === DEFAULT_VIEW_ID) openConversation(first);
+              setFocusedIndex(0);
+            }}
+          />
         )}
       </section>
     </div>

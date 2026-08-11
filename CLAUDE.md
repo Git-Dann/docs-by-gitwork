@@ -3356,3 +3356,44 @@ build` clean. The list was rendered against the app's real compiled CSS as a **b
 the actual Fellas Loaded rows**. **Not verified in a browser against live data** — /app/care is
 auth-gated. **Post-deploy: hit Sync now on Fellas Loaded**, which is what runs
 `repairForwardedIdentities` over the existing 226 rows; until it does, they keep the old labels.
+
+### 42.9 The rest of the page — detail pane, empty state, Care home
+
+§42.7–8 redesigned the list and fixed the connector; the other ~60% of the screen was untouched.
+Dan's follow-up ("have you redesigned the ENTIRE page") was fair. What changed:
+
+**The detail pane is a workspace, not a viewer.** It gave ~288px of permanent width to a rail of
+three stacked `<select>`s, three snooze buttons and an always-open notes form — so the thread was
+squeezed, and the two things an operator does constantly (read it, answer it) competed for space
+with settings they change rarely. The verbs now sit in a **toolbar across the top** (Close ·
+Snooze · Assign · Priority · Status · Notes), the **thread gets the full width**, and the
+**composer is pinned and always visible**. That is the Front/Missive/Intercom shape, and it is
+the correct one: answering is the job, so it should never be behind a click. Notes moved behind a
+toolbar toggle — they matter, but a permanently-open notes form on a 226-item queue is 226 forms
+nobody filled in.
+
+⚠️ Caught by rendering it: the first cut had a **"Snooze" button beside a "Snooze for…" select** —
+the same verb twice. Now one split control: the button does the common case (a day, matching the
+`s` shortcut), the caret picks a longer one.
+
+**The empty state carries the queue.** The largest area on the page read *"Select a conversation
+to triage."* — an instruction, occupying the most space, telling you to do the thing you were
+obviously about to do. It is now a **queue overview**: how many are waiting, how long the worst
+one has waited, the four figures that matter (stat grammar per DESIGN.md — DM Serif figures, mono
+unit labels), and one button that opens the longest wait. `Start with the longest wait` is the
+only sensible first action on a 226-item board and now it is one click.
+
+**Care home is a ranked list, not a grid of cards.** Cards are all the same size whether a client
+has 0 waiting or 226, so the page could not answer the only question it exists for — *which
+client is being let down right now?* It is now one row per client with the awaiting figure
+leading, a left accent bar when the longest wait is stale, and secondary counts kept quiet. It
+also **stopped fetching up to 100 conversation rows per client purely to tally them** (N clients ×
+100 rows on every visit) — it reads `getConversationViewCounts` instead, which is both cheaper and
+actually complete.
+
+**Verified:** `npm run verify` green — 0 errors, **1555 tests**, `audit:ui` 0 findings (incl.
+SELECT-CHEVRON/SELECT-PAD, which matter here because the toolbar added four selects); `npx next
+build` clean. All three surfaces were rendered against the real compiled CSS at 1180×620 and
+1000×430 with **0 horizontal overflow**. **Not verified against live data** — /app/care is
+auth-gated, so the toolbar, keyboard shortcuts and composer have not been driven in a browser
+session.
