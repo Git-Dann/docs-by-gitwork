@@ -5,7 +5,7 @@
  * Used by the AI Document Generation Engine to parse reference materials.
  */
 
-import { PDFParse } from "pdf-parse";
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
 
 export interface FileIntakeInput {
   filename?: string;
@@ -66,10 +66,8 @@ export async function extractIntakeText(input: FileIntakeInput): Promise<Extract
   // 3. PDF files (using pdf-parse for stream decompression and font decoding)
   else if (lowerName.endsWith(".pdf") || input.mimeType?.includes("pdf")) {
     try {
-      const parser = new PDFParse({ data: buf });
-      const parsed = await parser.getText();
+      const parsed = await pdfParse(buf);
       rawText = parsed.text || "";
-      await parser.destroy();
     } catch (err) {
       console.warn(`[File Intake] pdf-parse failed for ${filename}, attempting raw fallback:`, err);
       // Fallback in case of corrupted or password-protected PDF structures
