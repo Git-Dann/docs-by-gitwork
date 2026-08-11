@@ -126,7 +126,7 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
         // queue unreadable and would send replies back to the app instead of the human.
         const identity = resolveCustomer(
           { fromText: from, subject, body: firstBody },
-          { mailboxAddress: impersonateEmail, mailboxName: config.intakeAddress ?? null },
+          { mailboxAddress: impersonateEmail, mailboxName: config.intakeAddress ?? null, clientName: client.name },
         );
         const customerLabel = identity.label;
 

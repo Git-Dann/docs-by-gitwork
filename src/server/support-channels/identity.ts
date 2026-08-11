@@ -19,12 +19,22 @@
  * every row has the same name on it.
  */
 
-/** Addresses that identify a mailbox rather than a person. */
+/** Addresses and names that identify a mailbox rather than a person. */
 export interface IdentityContext {
   /** The mailbox we are reading (impersonate/intake address). Mail "from" this is a forward. */
   mailboxAddress?: string | null;
-  /** The connector's own label, e.g. "Fellas Loaded" — a display name that is not a customer. */
+  /** A configured display name for the mailbox, when one exists. */
   mailboxName?: string | null;
+  /**
+   * The Care client's own name, e.g. "Fellas Loaded".
+   *
+   * ⚠️ This is the signal that actually works, and leaving it out is why the first fix repaired
+   * nothing. The connector config holds ADDRESSES (`impersonateEmail`, `intakeAddress`) while the
+   * stored label is a DISPLAY NAME, so they never matched; and Gmail stores `authorLabel` with
+   * the `<address>` already stripped, so there is no address left to compare either. A "customer"
+   * whose name is the client's own name is definitionally the app forwarding to itself.
+   */
+  clientName?: string | null;
 }
 
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
@@ -66,10 +76,12 @@ export function resolveCustomer(
   const fromName = displayNameOf(fromText);
 
   const mailbox = (ctx.mailboxAddress ?? "").toLowerCase().trim();
-  const mailboxName = (ctx.mailboxName ?? "").toLowerCase().trim();
+  const selfNames = [ctx.mailboxName, ctx.clientName]
+    .map((n) => (n ?? "").toLowerCase().trim())
+    .filter(Boolean);
 
   const isSelfAddressed = Boolean(mailbox) && fromAddress === mailbox;
-  const isSelfNamed = Boolean(mailboxName) && fromName.toLowerCase() === mailboxName;
+  const isSelfNamed = selfNames.includes(fromName.toLowerCase());
   const isNoReply = NOREPLY_RE.test(fromAddress.split("@")[0] ?? "");
 
   // A real human wrote in directly — trust the From line, which is the common case.

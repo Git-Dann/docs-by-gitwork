@@ -1250,16 +1250,17 @@ export async function repairForwardedIdentities(
     .flatMap((m) => [m.address, m.name])
     .filter((v): v is string => Boolean(v && v.trim()));
 
-  const rows = await prisma.supportConversation.findMany({
-    where: {
-      clientId,
-      source: "GMAIL",
-      OR: [
-        ...(selfLabels.length ? [{ customerLabel: { in: selfLabels } }] : []),
-        // `preview: subject` was written verbatim at creation, so an exact match identifies it.
-        { preview: { equals: prisma.supportConversation.fields.subject } },
-      ],
-    },
+  const client = await prisma.supportClient.findUnique({ where: { id: clientId }, select: { name: true } });
+  const clientName = client?.name ?? null;
+
+  // Candidates are selected plainly and the "does this need repair?" test is done in JS.
+  // ⚠️ The previous version filtered with a Prisma field reference (`preview equals
+  // fields.subject`) comparing a nullable column to a non-nullable one, plus a `customerLabel in
+  // selfLabels` clause where selfLabels are ADDRESSES and the stored label is a DISPLAY NAME —
+  // between them the query matched nothing and repaired nothing. Ordinary code cannot fail
+  // silently in that way.
+  const candidates = await prisma.supportConversation.findMany({
+    where: { clientId, source: "GMAIL" },
     select: {
       id: true,
       subject: true,
@@ -1272,11 +1273,19 @@ export async function repairForwardedIdentities(
         select: { body: true, authorLabel: true },
       },
     },
+    orderBy: { receivedAt: "desc" },
     take,
   });
+  if (candidates.length === 0) return { repaired: 0 };
+
+  const selfSet = new Set([...selfLabels, ...(clientName ? [clientName] : [])].map((s) => s.toLowerCase()));
+  const primary = mailboxes[0] ?? { address: null, name: null };
+
+  const rows = candidates.filter(
+    (r) => selfSet.has(r.customerLabel.trim().toLowerCase()) || (r.preview !== null && r.preview === r.subject),
+  );
   if (rows.length === 0) return { repaired: 0 };
 
-  const primary = mailboxes[0] ?? { address: null, name: null };
   let repaired = 0;
   const CHUNK = 25;
   for (let i = 0; i < rows.length; i += CHUNK) {
@@ -1284,11 +1293,11 @@ export async function repairForwardedIdentities(
       rows.slice(i, i + CHUNK).map((row) => {
         const first = row.messages[0];
         const body = first?.body ?? "";
-        // The stored authorLabel is the original From line; fall back to the current (wrong)
-        // customerLabel so resolveCustomer still has something to reason about.
+        // The stored authorLabel has already had `<address>` stripped by the Gmail adapter, so
+        // clientName is what identifies the forwarder here — not an address comparison.
         const identity = resolveCustomer(
           { fromText: first?.authorLabel ?? row.customerLabel, subject: row.subject, body },
-          { mailboxAddress: primary.address, mailboxName: primary.name },
+          { mailboxAddress: primary.address, mailboxName: primary.name, clientName },
         );
         const preview = derivePreview(body, row.subject);
 

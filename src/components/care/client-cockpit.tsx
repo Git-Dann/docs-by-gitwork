@@ -49,10 +49,15 @@ const PAGE_SIZE = 50;
 function QueueOverview({
   counts,
   loading,
+  nextUp,
+  onOpen,
   onStart,
 }: {
   counts?: ConversationViewCounts;
   loading: boolean;
+  /** The longest-waiting few, so the pane is a place to start work rather than a status card. */
+  nextUp: Conversation[];
+  onOpen: (c: Conversation) => void;
   onStart: () => void;
 }) {
   if (loading || !counts) {
@@ -111,7 +116,39 @@ function QueueOverview({
             Start with the longest wait
           </button>
         )}
-        <p className="mt-3 text-center font-mono text-[10px] tracking-[0.4px] text-[var(--text-4)]">
+
+        {/* Next up — the pane is otherwise a status card floating in a very large empty area.
+            These are the actual longest waits, one click each, so the space does work. */}
+        {nextUp.length > 0 && (
+          <div className="mt-6 border-t border-[var(--border-2)] pt-4">
+            <div className="mb-2 font-mono text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]">Next up</div>
+            <div className="overflow-hidden rounded-[8px] border border-[var(--border-2)]">
+              {nextUp.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => onOpen(c)}
+                  className="flex w-full items-center gap-3 border-b border-[var(--border-2)] px-3 py-2 text-left transition last:border-b-0 hover:bg-[var(--surface-1)]"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-medium text-[var(--text-1)]">{c.customerLabel}</span>
+                    <span className="block truncate text-[12px] text-[var(--text-4)]">{c.preview || c.subject}</span>
+                  </span>
+                  <span
+                    className={cn(
+                      "shrink-0 font-mono text-[11px]",
+                      c.lastInboundAt && isLongWait(c.lastInboundAt) ? "font-semibold text-amber-600" : "text-[var(--text-4)]",
+                    )}
+                  >
+                    {formatAge(lastActivityAt(c))}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <p className="mt-4 text-center font-mono text-[10px] tracking-[0.4px] text-[var(--text-4)]">
           <Kbd>J</Kbd> <Kbd>K</Kbd> move · <Kbd>↵</Kbd> open · <Kbd>E</Kbd> close · <Kbd>S</Kbd> snooze
         </p>
       </div>
@@ -786,6 +823,11 @@ export function ClientCockpit({
           <QueueOverview
             counts={counts}
             loading={countsQ.isLoading}
+            // The awaiting view is sorted oldest-first, so the head of the list IS the longest
+            // waits. In any other view this is simply "what's at the top", which is still the
+            // most useful thing to offer.
+            nextUp={conversations.slice(0, 5)}
+            onOpen={openConversation}
             onStart={() => {
               // Jump straight to the top of the awaiting queue, which after the oldest-first sort
               // is the longest-waiting customer — the correct place to start a session.

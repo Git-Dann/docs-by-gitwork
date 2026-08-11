@@ -145,3 +145,51 @@ describe("emailsIn", () => {
     expect(emailsIn("cant pay for membership")).toEqual([]);
   });
 });
+
+describe("resolveCustomer — the shape actually stored in the database", () => {
+  /**
+   * ⚠️ These are the cases the first fix missed, and they are the reason it repaired nothing in
+   * production while every test above passed.
+   *
+   * Gmail stores `authorLabel` with the `<address>` ALREADY STRIPPED, and the connector config
+   * holds addresses (impersonateEmail / intakeAddress) while the stored customerLabel is a
+   * display name. So at repair time there is no address on either side to compare — the only
+   * usable signal is that the "customer" is the Care client's own name.
+   */
+  it("detects the forwarder from the CLIENT NAME when no address survives", () => {
+    const r = resolveCustomer(
+      // Exactly what the DB holds: a bare display name, no angle brackets, no address.
+      { fromText: "Fellas Loaded", subject: "Support Request - mattyshannan@gmail.com", body: "" },
+      { mailboxAddress: "support@fellasloaded.com", clientName: "Fellas Loaded" },
+    );
+    expect(r.label).toBe("mattyshannan@gmail.com");
+    expect(r.viaForwarder).toBe(true);
+  });
+
+  it("matches the client name case- and whitespace-insensitively", () => {
+    const r = resolveCustomer(
+      { fromText: "  fellas loaded ", subject: "Support Request - joshwedlock1234@gmail.com" },
+      { clientName: "Fellas Loaded" },
+    );
+    expect(r.label).toBe("joshwedlock1234@gmail.com");
+  });
+
+  it("still leaves a real customer alone when only clientName is configured", () => {
+    // The guard that matters: clientName must not become a licence to rewrite every sender.
+    const r = resolveCustomer(
+      { fromText: "Jesse Grever", subject: "Loaded subscription" },
+      { clientName: "Fellas Loaded" },
+    );
+    expect(r.label).toBe("Jesse Grever");
+    expect(r.viaForwarder).toBe(false);
+  });
+
+  it("keeps the forwarder name when the subject holds no customer address", () => {
+    const r = resolveCustomer(
+      { fromText: "Fellas Loaded", subject: "(The Fellas Studios Forwarding confirmation)" },
+      { clientName: "Fellas Loaded" },
+    );
+    expect(r.label).toBe("Fellas Loaded");
+    expect(r.viaForwarder).toBe(true);
+  });
+});

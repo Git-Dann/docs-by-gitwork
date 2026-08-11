@@ -3397,3 +3397,44 @@ build` clean. All three surfaces were rendered against the real compiled CSS at 
 1000×430 with **0 horizontal overflow**. **Not verified against live data** — /app/care is
 auth-gated, so the toolbar, keyboard shortcuts and composer have not been driven in a browser
 session.
+
+### 42.10 The repair matched nothing in production — and why the tests missed it
+
+The fix in §42.8 shipped, the sync ran, and the board was **unchanged**: still "Fellas Loaded" on
+every row, still subject-as-preview. Every unit test passed. Two defects, both from reasoning
+about the data model instead of checking what is actually stored:
+
+1. **The selection matched nothing.** `selfLabels` was built from `impersonateEmail` /
+   `intakeAddress` — **addresses** — while the stored `customerLabel` is a **display name**
+   ("Fellas Loaded"). They can never be equal. The other branch used a Prisma **field reference**
+   (`preview equals fields.subject`) comparing a nullable column to a non-nullable one, which is
+   at best fragile and was silently contributing nothing.
+2. **Even a selected row could not be repaired.** The Gmail adapter stores `authorLabel` with the
+   `<address>` **already stripped**, so at repair time `resolveCustomer` receives a bare name with
+   no address, finds nothing to compare against the mailbox, and returns it untouched.
+
+**The signal that works is the Care client's own name.** A "customer" whose name is the client's
+own name is definitionally the app forwarding to itself, and `SupportClient.name` is available on
+both paths. `IdentityContext.clientName` now carries it; `resolveCustomer` treats it as a
+self-name alongside `mailboxName`.
+
+The repair also stopped using a field reference: it selects plainly (`clientId` + `GMAIL`,
+bounded, newest first) and decides **in JS** whether each row still shows the defect. Ordinary
+code cannot fail silently the way that query did.
+
+⚠️ **The lesson, and it is the same one as §42.8 one layer down.** The tests all passed because
+every fixture was an idealised From line — `"Fellas Loaded" <support@fellasloaded.com>` — with
+the address present. The database holds `Fellas Loaded`, full stop. **Fixtures must be the shape
+the code will actually receive at the call site, not the shape the upstream format allows.** Four
+tests now assert exactly the stored shape, including the guard that `clientName` must not become
+a licence to rewrite a genuine sender.
+
+**Also:** the empty pane was a small status card floating in a very large empty area. It now
+carries a **"Next up"** list — the five longest waits, one click each — so the space does work
+rather than just reporting a number.
+
+**Verified:** `npm run verify` green — 0 errors, **1559 tests**, `audit:ui` 0 findings; `npx next
+build` clean. ⚠️ **Still not verified against live data**, which is precisely how the previous two
+attempts passed review and failed in production. The honest post-deploy check is: hit **Sync now**
+on Fellas Loaded and confirm the rows relabel to customer addresses. If they do not, read
+`repairForwardedIdentities` against a real row rather than adding another unit test.
