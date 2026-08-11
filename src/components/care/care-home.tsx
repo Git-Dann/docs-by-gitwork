@@ -1,98 +1,113 @@
 "use client";
 
-import { ArrowPathIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, ChatBubbleLeftRightIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
-import type { SupportClient } from "@/types/support";
-import { useSupportClients, useSupportConversationCounts, useSyncSupportClient } from "@/hooks/use-support";
+import type { ClientQueueSummary, SupportClient } from "@/types/support";
+import { useSupportClients, useClientQueueSummaries, useSyncSupportClient } from "@/hooks/use-support";
 import { formatAge, isLongWait } from "./care-constants";
+import { CareEmpty, CarePanel, CareStat } from "./care-panel";
 
 /**
- * Care home — one row per client, ordered so the worst-off client is impossible to miss.
+ * Care home — one row per client, worst-off first, answering one question: which client is being
+ * let down right now?
  *
- * It was a grid of equal-weight cards, each with two big numbers and a row of status chips, and
- * it fetched up to 100 conversation rows PER CLIENT just to tally them client-side. Nothing on
- * it answered the only question this page exists for: **which client is being let down right
- * now?** Cards in a grid are all the same size whether a client has 0 waiting or 226.
- *
- * A row list sorted by longest wait answers it in one glance, shows more clients per screen, and
- * costs a handful of indexed COUNTs instead of thousands of rows.
+ * Two things it no longer does. It doesn't render its own `<h1>Care</h1>` — AppShell already puts
+ * that at the top of the page, so the title appeared twice. And it doesn't fetch counts per row:
+ * one workspace-wide roll-up (useClientQueueSummaries) replaces ~10 indexed COUNTs per client, so
+ * the figures arrive together instead of cascading in and the page costs the same with 3 clients or
+ * 30.
  */
-function ClientRow({ client, onOpen }: { client: SupportClient; onOpen: () => void }) {
-  const countsQ = useSupportConversationCounts(client.id);
+function ClientRow({
+  client,
+  summary,
+  loading,
+  onOpen,
+}: {
+  client: SupportClient;
+  summary?: ClientQueueSummary;
+  loading: boolean;
+  onOpen: () => void;
+}) {
   const sync = useSyncSupportClient(client.id);
-  const counts = countsQ.data?.counts;
 
-  const awaiting = counts?.awaiting ?? 0;
-  const oldest = counts?.oldestAwaitingAt ?? null;
+  const awaiting = summary?.awaiting ?? 0;
+  const oldest = summary?.oldestAwaitingAt ?? null;
   const stale = oldest ? isLongWait(oldest) : false;
+  const urgent = summary?.urgent ?? 0;
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); }
-      }}
       className={cn(
-        "group flex cursor-pointer items-center gap-4 border-b border-[var(--border-2)] px-4 py-3 transition hover:bg-[var(--surface-1)]",
-        // The one structural signal: a client with people waiting too long is marked down the
-        // left edge, so triage order is legible without reading a single number.
-        stale ? "border-l-2 border-l-amber-400" : "border-l-2 border-l-transparent",
+        "group flex items-center gap-4 border-b border-[var(--border-3)] transition last:border-b-0 hover:bg-[var(--surface-1)]",
+        // The one structural signal: a client with someone waiting too long is marked down the left
+        // edge, so triage order is legible before you read a single number.
+        stale ? "border-l-2 border-l-[var(--warning-500)]" : "border-l-2 border-l-transparent",
       )}
     >
-      {/* Headline figure — DM Serif per DESIGN.md's stat grammar, muted at zero so a healthy
-          client recedes instead of competing with one that needs attention. */}
-      <div className="w-14 shrink-0 text-right">
-        <div
-          className={cn(
-            "font-[var(--font-display)] text-[28px] leading-none",
-            awaiting > 0 ? "text-amber-600" : "text-[var(--text-4)]",
-          )}
-        >
-          {countsQ.isLoading ? "·" : awaiting}
-        </div>
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[14px] font-semibold text-[var(--text-1)]">{client.name}</div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">
-          <span>{countsQ.isLoading ? "Loading…" : awaiting > 0 ? "Awaiting reply" : "All replied"}</span>
-          {oldest && (
-            <>
-              <span className="text-[var(--border-1)]">·</span>
-              <span className={cn(stale && "font-semibold text-amber-600")}>Longest wait {formatAge(oldest)}</span>
-            </>
-          )}
-          {(counts?.urgent ?? 0) > 0 && (
-            <>
-              <span className="text-[var(--border-1)]">·</span>
-              <span className="font-semibold text-red-600">{counts?.urgent} urgent</span>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Secondary figures stay quiet — they are context, not a call to action. */}
-      <div className="hidden shrink-0 items-center gap-5 sm:flex">
-        {[
-          { label: "Unassigned", value: counts?.unassigned },
-          { label: "Replied", value: counts?.replied },
-          { label: "Open", value: counts?.open },
-        ].map((s) => (
-          <div key={s.label} className="text-right">
-            <div className="font-mono text-[13px] text-[var(--text-2)]">{s.value ?? "—"}</div>
-            <div className="font-mono text-[9px] uppercase tracking-[0.6px] text-[var(--text-4)]">{s.label}</div>
+      {/*
+        The row is a real <button>, not a div with role="button" wrapping another button. Nesting an
+        interactive element inside one is invalid, and the sync icon inside it was unreachable by
+        keyboard. The button covers the row's content; Sync sits outside it as a sibling.
+      */}
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 items-center gap-4 px-4 py-3 text-left"
+      >
+        <div className="w-12 shrink-0 text-right">
+          <div
+            className={cn(
+              "font-[family-name:var(--font-display)] text-[28px] leading-none",
+              awaiting > 0 ? "text-[var(--warning-500)]" : "text-[var(--text-4)]",
+            )}
+          >
+            {loading ? "·" : awaiting}
           </div>
-        ))}
-      </div>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[14px] font-semibold text-[var(--text-1)]">{client.name}</div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 widget-data-label">
+            <span>{loading ? "Loading…" : awaiting > 0 ? "Awaiting reply" : "All replied"}</span>
+            {oldest && (
+              <>
+                <span className="text-[var(--border-1)]">·</span>
+                <span className={cn(stale && "font-semibold text-[var(--warning-500)]")}>
+                  Longest wait {formatAge(oldest)}
+                </span>
+              </>
+            )}
+            {urgent > 0 && (
+              <>
+                <span className="text-[var(--border-1)]">·</span>
+                <span className="font-semibold text-[var(--danger-500)]">{urgent} urgent</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Context, not a call to action — mono and quiet so the headline figure stays the signal. */}
+        <div className="hidden shrink-0 items-center gap-6 sm:flex">
+          {[
+            { label: "Unassigned", value: summary?.unassigned },
+            { label: "Replied", value: summary?.replied },
+            { label: "Open", value: summary?.open },
+          ].map((s) => (
+            <div key={s.label} className="text-right">
+              <div className="font-mono text-[13px] text-[var(--text-2)]">{s.value ?? "—"}</div>
+              <div className="widget-data-label">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </button>
 
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); sync.mutate(); }}
+        onClick={() => sync.mutate()}
         disabled={sync.isPending}
-        title="Sync now"
-        className="shrink-0 rounded-[6px] p-1.5 text-[var(--text-4)] opacity-0 transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] focus:opacity-100 group-hover:opacity-100 disabled:opacity-50"
+        title={`Sync ${client.name} now`}
+        aria-label={`Sync ${client.name} now`}
+        className="mr-3 shrink-0 rounded-[6px] p-1.5 text-[var(--text-4)] opacity-0 transition hover:bg-[var(--surface-2)] hover:text-[var(--text-2)] focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-50"
       >
         <ArrowPathIcon className={cn("h-4 w-4", sync.isPending && "animate-spin")} />
       </button>
@@ -102,32 +117,97 @@ function ClientRow({ client, onOpen }: { client: SupportClient; onOpen: () => vo
 
 export function CareHome({ onSelectClient }: { onSelectClient: (client: SupportClient) => void }) {
   const clientsQ = useSupportClients();
+  const summariesQ = useClientQueueSummaries();
   const clients = clientsQ.data?.clients ?? [];
+  const summaries = summariesQ.data?.summaries ?? {};
+
+  // Worst first. A dashboard that lists clients alphabetically makes you do the triage it exists to
+  // do for you: longest wait wins, then most waiting, then name for a stable order.
+  const ordered = [...clients].sort((a, b) => {
+    const sa = summaries[a.id];
+    const sb = summaries[b.id];
+    const oa = sa?.oldestAwaitingAt ? Date.parse(sa.oldestAwaitingAt) : Infinity;
+    const ob = sb?.oldestAwaitingAt ? Date.parse(sb.oldestAwaitingAt) : Infinity;
+    if (oa !== ob) return oa - ob;
+    if ((sb?.awaiting ?? 0) !== (sa?.awaiting ?? 0)) return (sb?.awaiting ?? 0) - (sa?.awaiting ?? 0);
+    return a.name.localeCompare(b.name);
+  });
+
+  const totals = Object.values(summaries).reduce(
+    (acc, s) => ({
+      awaiting: acc.awaiting + s.awaiting,
+      urgent: acc.urgent + s.urgent,
+      unassigned: acc.unassigned + s.unassigned,
+    }),
+    { awaiting: 0, urgent: 0, unassigned: 0 },
+  );
+  const clientsWaiting = Object.values(summaries).filter((s) => s.awaiting > 0).length;
+  const loading = clientsQ.isLoading || summariesQ.isLoading;
 
   return (
     <div className="mx-auto h-full w-full max-w-5xl overflow-y-auto px-4 py-6 sm:px-6 sm:py-8">
-      <div className="mb-5">
-        <h1 className="text-2xl font-semibold text-[var(--text-1)]">Care</h1>
-        <p className="mt-1 text-[13px] text-[var(--text-3)]">
-          Every client channel in one queue. Pick a client to start clearing it.
-        </p>
-      </div>
+      <div className="space-y-4">
+        {/* Across every client, before you pick one — so "is anything on fire?" is answered on
+            arrival rather than by opening each client in turn. */}
+        <CarePanel
+          number="01"
+          title="Across all clients"
+          right={clients.length > 0 ? `${clientsWaiting}/${clients.length} WAITING` : undefined}
+        >
+          <div className="grid grid-cols-3 gap-4">
+            <CareStat
+              value={loading ? "·" : totals.awaiting}
+              label="Awaiting reply"
+              size="lg"
+              tone={totals.awaiting > 0 ? "attention" : "muted"}
+            />
+            <CareStat
+              value={loading ? "·" : totals.unassigned}
+              label="Unassigned"
+              size="lg"
+              tone={totals.unassigned > 0 ? "default" : "muted"}
+            />
+            <CareStat
+              value={loading ? "·" : totals.urgent}
+              label="Urgent"
+              size="lg"
+              tone={totals.urgent > 0 ? "critical" : "muted"}
+            />
+          </div>
+        </CarePanel>
 
-      <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)]">
-        <div className="flex items-center justify-between border-b border-[var(--border-2)] px-4 py-2.5">
-          <span className="font-mono text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]">01 // Clients</span>
-          <span className="font-mono text-[11px] text-[var(--text-4)]">{clients.length}</span>
-        </div>
+        <CarePanel number="02" title="Clients" right={clients.length ? String(clients.length) : undefined} flush>
+          {loading && <p className="px-4 py-6 text-sm text-[var(--text-4)]">Loading clients…</p>}
 
-        {clientsQ.isLoading && <p className="px-4 py-6 text-sm text-[var(--text-4)]">Loading clients…</p>}
-        {!clientsQ.isLoading && clients.length === 0 && (
-          <p className="px-4 py-6 text-sm text-[var(--text-4)]">
-            No support clients yet. Add one from the legacy dashboard at /app/support.
-          </p>
+          {!loading && clients.length === 0 && (
+            <CareEmpty
+              headline="No clients in Care yet."
+              body="Connect a client's support channels — a mailbox, Discord, app reviews — and their conversations land here."
+            />
+          )}
+
+          {!loading &&
+            ordered.map((c) => (
+              <ClientRow
+                key={c.id}
+                client={c}
+                summary={summaries[c.id]}
+                loading={summariesQ.isLoading}
+                onOpen={() => onSelectClient(c)}
+              />
+            ))}
+        </CarePanel>
+
+        {!loading && clients.length > 0 && totals.awaiting === 0 && (
+          <CarePanel number="03" title="Status">
+            <div className="flex items-center gap-3">
+              <ChatBubbleLeftRightIcon className="h-5 w-5 shrink-0 text-[var(--success-500)]" />
+              <p className="text-[13px] text-[var(--text-2)]">
+                Every customer has been answered. Nothing is waiting on the team.
+              </p>
+            </div>
+          </CarePanel>
         )}
-        {clients.map((c) => (
-          <ClientRow key={c.id} client={c} onOpen={() => onSelectClient(c)} />
-        ))}
       </div>
     </div>
   );

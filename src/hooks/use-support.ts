@@ -21,6 +21,7 @@ import {
   listSupportConnections,
   listSupportConversations,
   getSupportConversationCounts,
+  getClientQueueSummaries,
   listSupportDraftActions,
   listSupportMembers,
   listSupportMessages,
@@ -139,6 +140,20 @@ export function useSupportConversationCounts(clientId: string | null) {
     queryKey: ["support", "conversation-counts", clientId],
     queryFn: () => getSupportConversationCounts(clientId as string),
     enabled: Boolean(clientId),
+    staleTime: 1000 * 15,
+  });
+}
+
+/**
+ * Queue figures for every client in one request — what the Care home list runs on.
+ *
+ * Replaces one useSupportConversationCounts per row (10 indexed COUNTs each), so the page no longer
+ * costs more the more clients there are, and the numbers all land together instead of cascading in.
+ */
+export function useClientQueueSummaries() {
+  return useQuery({
+    queryKey: ["support", "queue-summaries"],
+    queryFn: getClientQueueSummaries,
     staleTime: 1000 * 15,
   });
 }

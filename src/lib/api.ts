@@ -4,6 +4,7 @@ import type {
   Connection,
   Conversation,
   ConversationViewCounts,
+  ClientQueueSummary,
   DraftAction,
   Message,
   SupportClient,
@@ -1859,6 +1860,16 @@ export async function getSupportConversationCounts(
   clientId: string,
 ): Promise<{ counts: ConversationViewCounts }> {
   return apiFetch(`/api/support/clients/${clientId}/conversations/counts`);
+}
+
+/**
+ * Queue figures for every client at once, keyed by client id — one request for the whole Care home
+ * list instead of one per row.
+ */
+export async function getClientQueueSummaries(): Promise<{
+  summaries: Record<string, ClientQueueSummary>;
+}> {
+  return apiFetch("/api/support/queue-summaries");
 }
 
 // ── Conversation triage (monitor + route; never reply in-app) ──
