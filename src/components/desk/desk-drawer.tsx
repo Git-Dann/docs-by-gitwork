@@ -167,6 +167,10 @@ export function DeskDrawer({ sidebarCollapsed = false }: { sidebarCollapsed?: bo
           <span
             className="min-w-0 flex-1 truncate text-right text-[11px] uppercase tracking-[0.6px] text-[var(--text-4)]"
             style={{ fontFamily: "var(--font-mono)" }}
+            // Ellipsed on a phone (266px of text in 218px) with nothing to recover it, which is a
+            // TRUNCATED finding under audit:clipping. The dock cannot grow — it is one 48px strip —
+            // so the recovery is the full string, which is also what the aria-label needs.
+            title={summary}
           >
             {summary}
           </span>
