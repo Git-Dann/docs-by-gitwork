@@ -92,10 +92,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // ── Pre-flight validation: catch bad submitter data before it reaches DocuSeal ──────────
     // DocuSeal silently deduplicates or rejects submissions with placeholder / duplicate emails,
     // leading to only one submitter making it through and the request completing prematurely.
-    for (const s of submittersInput) {
+    for (let i = 0; i < submittersInput.length; i++) {
+      const s = submittersInput[i];
       if (!s.email || s.email.trim() === "") {
         return apiError(
-          `Signer "${s.name}" (${s.role}) has no email address. Add a contact email before pushing to DocuSeal.`,
+          `Signature Block #${i + 1} ("${s.name}" — ${s.role}) has no email address. Click on the block in the document to set a signatory email before sending.`,
           400,
         );
       }
@@ -105,18 +106,19 @@ export async function POST(request: NextRequest, context: RouteContext) {
         s.email.startsWith("{{")
       ) {
         return apiError(
-          `Could not resolve a real email for signer "${s.name}" (${s.role}). The document's client record is missing a contact email. Please update the client record and try again.`,
+          `Signature Block #${i + 1} ("${s.name}" — ${s.role}) is missing a real email address. Please open Block #${i + 1}'s settings panel and enter a valid email.`,
           400,
         );
       }
     }
 
     const emailsSeen = new Set<string>();
-    for (const s of submittersInput) {
+    for (let i = 0; i < submittersInput.length; i++) {
+      const s = submittersInput[i];
       const key = s.email.toLowerCase();
       if (emailsSeen.has(key)) {
         return apiError(
-          `Two signers share the same email address (${s.email}). DocuSeal requires a unique email per submitter. Update the signature blocks and try again.`,
+          `Two signature blocks share the same email address (${s.email}). DocuSeal requires a unique email per submitter. Update the signature blocks and try again.`,
           400,
         );
       }
