@@ -47,6 +47,46 @@ describe("resolveScanWindows", () => {
     expect(sentSince.getTime()).toBeLessThan(lastSynced.getTime());
   });
 
+  describe("automatic catch-up from the oldest unanswered thread", () => {
+    // The Fellas case: syncing hourly, so the incremental window sees ~2 days, but the threads
+    // wrongly marked "awaiting" were last written to weeks ago. Sent must reach them or the queue
+    // stays wrong — with no error to show that anything went unread.
+    const lastSynced = new Date(NOW.getTime() - 1 * 3600 * 1000);
+
+    it("widens Sent back to the oldest unanswered message", () => {
+      const oldest = new Date(NOW.getTime() - 45 * DAY);
+      const { inboxSince, sentSince } = resolveScanWindows({}, lastSynced, NOW, oldest);
+
+      expect(days(NOW, inboxSince)).toBe(2); // inbox stays cheap
+      expect(sentSince).toEqual(oldest);     // Sent reaches the thread that is wrong
+    });
+
+    it("never NARROWS the window when the oldest unanswered thread is recent", () => {
+      // A thread from an hour ago is newer than the 2-day incremental floor. Honouring it literally
+      // would read LESS Sent mail than before and could miss a reply inside the overlap.
+      const recent = new Date(NOW.getTime() - 1 * 3600 * 1000);
+      const { inboxSince, sentSince } = resolveScanWindows({}, lastSynced, NOW, recent);
+      expect(sentSince).toEqual(inboxSince);
+    });
+
+    it("caps the catch-up at 180 days so one ancient thread can't scan years", () => {
+      const ancient = new Date(NOW.getTime() - 900 * DAY);
+      const { sentSince } = resolveScanWindows({}, lastSynced, NOW, ancient);
+      expect(days(NOW, sentSince)).toBe(180);
+    });
+
+    it("null (nothing waiting) leaves the incremental window untouched", () => {
+      const { inboxSince, sentSince } = resolveScanWindows({}, lastSynced, NOW, null);
+      expect(sentSince).toEqual(inboxSince);
+    });
+
+    it("an explicit sentBackfillDays still wins over the automatic window", () => {
+      const oldest = new Date(NOW.getTime() - 45 * DAY);
+      const { sentSince } = resolveScanWindows({ sentBackfillDays: 10 }, lastSynced, NOW, oldest);
+      expect(days(NOW, sentSince)).toBe(10);
+    });
+  });
+
   it("ignores nonsense values rather than scanning from the epoch", () => {
     expect(days(NOW, resolveScanWindows({ lookbackDays: 0 }, null, NOW).inboxSince)).toBe(30);
     expect(days(NOW, resolveScanWindows({ lookbackDays: -5 }, null, NOW).inboxSince)).toBe(30);

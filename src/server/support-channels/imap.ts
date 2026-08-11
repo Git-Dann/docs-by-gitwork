@@ -10,9 +10,13 @@
  * serverless runtime couldn't hold.
  *
  * Read path rides the shared ingest core via `fetchItems` (upsert + dedup + lastSyncedAt live
- * in `runChannelSync`). We deliberately return NO configPatch so the core never rewrites
- * scraperConfig — that keeps the encrypted password encrypted at rest. Incremental fetch is by
- * IMAP `SINCE` (day-granular) with a 2-day overlap; the core dedups messages by Message-ID.
+ * in `runChannelSync`). Incremental fetch is by IMAP `SINCE` (day-granular) with a 2-day overlap;
+ * the core dedups messages by Message-ID.
+ *
+ * This adapter needs no cursor of its own: how far back to read Sent is derived from the data
+ * (see resolveScanWindows + oldestUnansweredInboundAt), not stored. Emitting a `configPatch` is
+ * now safe if a future need arises — the core re-encrypts on write — but not needing one is
+ * better still.
  */
 
 import { ImapFlow } from "imapflow";
@@ -68,6 +72,12 @@ const MAX_MESSAGES_PER_RUN = 300;
  */
 const SENT_MESSAGES_PER_RUN = 150;
 const DEFAULT_LOOKBACK_DAYS = 30;
+/**
+ * Ceiling on the automatic Sent catch-up. Fetch volume is already bounded by
+ * SENT_MESSAGES_PER_RUN; this bounds the IMAP SINCE *search* so a single ancient unanswered thread
+ * can't make every run scan years of mail.
+ */
+const SENT_AUTO_BACKFILL_MAX_DAYS = 180;
 const DAY_MS = 24 * 3600 * 1000;
 
 /**
@@ -80,6 +90,11 @@ export function resolveScanWindows(
   cfg: Pick<ImapConnectionConfig, "lookbackDays" | "sentBackfillDays">,
   lastSyncedAt: Date | null | undefined,
   now: Date = new Date(),
+  /**
+   * Oldest customer message still believed unanswered for this client (see
+   * oldestUnansweredInboundAt). Null when nothing is waiting.
+   */
+  oldestUnansweredAt: Date | null = null,
 ): { inboxSince: Date; sentSince: Date } {
   const lookbackDays = cfg.lookbackDays && cfg.lookbackDays > 0 ? cfg.lookbackDays : DEFAULT_LOOKBACK_DAYS;
   // Incremental with a 2-day overlap (SINCE is day-granular); full lookback on a first sync or
@@ -88,11 +103,28 @@ export function resolveScanWindows(
     ? new Date(lastSyncedAt.getTime() - 2 * DAY_MS)
     : new Date(now.getTime() - lookbackDays * DAY_MS);
 
-  // A deep Sent catch-up must ignore lastSyncedAt entirely — that is the whole point of it.
-  const sentSince =
-    cfg.sentBackfillDays && cfg.sentBackfillDays > 0
-      ? new Date(now.getTime() - cfg.sentBackfillDays * DAY_MS)
-      : inboxSince;
+  // An explicit backfill wins outright — it ignores lastSyncedAt, which is its whole point.
+  if (cfg.sentBackfillDays && cfg.sentBackfillDays > 0) {
+    return { inboxSince, sentSince: new Date(now.getTime() - cfg.sentBackfillDays * DAY_MS) };
+  }
+
+  /**
+   * Otherwise the data decides. Reading Sent exists to answer one question — "were these threads
+   * actually replied to?" — so the window only has to reach the OLDEST thread we still believe is
+   * unanswered. Nothing older can be affected, and nothing newer is enough: a mailbox that syncs
+   * hourly has an incremental window of ~2 days, so replies sent weeks ago stay invisible and the
+   * queue stays wrong. That is how 226 Fellas threads sat "awaiting" while every one had an answer.
+   *
+   * Self-limiting by construction: as threads flip to Replied they leave the set, the window
+   * narrows on its own, and steady state returns to the cheap incremental read. No flag to set and
+   * — more importantly — no flag to remember to clear.
+   */
+  const floor = new Date(now.getTime() - SENT_AUTO_BACKFILL_MAX_DAYS * DAY_MS);
+  const candidate =
+    oldestUnansweredAt && oldestUnansweredAt < inboxSince ? oldestUnansweredAt : inboxSince;
+  // Only ever widen, never narrow, and never past the cap — one ancient unanswered thread must not
+  // turn every run into a two-year IMAP search.
+  const sentSince = candidate < floor ? floor : candidate;
 
   return { inboxSince, sentSince };
 }
@@ -167,7 +199,24 @@ export async function fetchImapItems(ctx: SyncContext): Promise<ChannelFetchResu
   const ownAddress = (cfg.fromAddress ?? cfg.username).toLowerCase();
   const folder = cfg.folder?.trim() || "INBOX";
 
-  const { inboxSince, sentSince } = resolveScanWindows(cfg, ctx.connection.lastSyncedAt);
+  // How far back Sent must reach is a question about the data, not the config: the oldest thread we
+  // still believe is unanswered. Imported dynamically (as sendImapReply does for prisma) to keep
+  // this adapter out of support.ts's import chain at load time. Never fail the sync over it — a
+  // failure here just means the Sent read falls back to the incremental window.
+  let oldestUnansweredAt: Date | null = null;
+  try {
+    const { oldestUnansweredInboundAt } = await import("@/server/support");
+    oldestUnansweredAt = await oldestUnansweredInboundAt(ctx.client.id);
+  } catch {
+    /* fall back to the incremental window */
+  }
+
+  const { inboxSince, sentSince } = resolveScanWindows(
+    cfg,
+    ctx.connection.lastSyncedAt,
+    new Date(),
+    oldestUnansweredAt,
+  );
 
   const client = new ImapFlow({
     host: cfg.imapHost,
@@ -309,8 +358,8 @@ export async function fetchImapItems(ctx: SyncContext): Promise<ChannelFetchResu
   }));
 
   return { items, diagnostics: { fetched, filterReasons: reasons, hints, errors } };
-  // NOTE: no configPatch — keeps the core from rewriting (and thus plaintext-persisting) the
-  // encrypted scraperConfig. Incrementality is handled by lastSyncedAt + Message-ID dedup.
+  // No configPatch needed: incrementality is lastSyncedAt + Message-ID dedup, and the Sent window
+  // is derived from the data rather than a stored cursor.
 }
 
 /** Send a reply over SMTP, threaded onto the original message. */
