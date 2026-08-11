@@ -9,6 +9,7 @@
 
 import type { WikiDocumentKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { bytesForPrisma } from "@/lib/prisma-bytes";
 import { enableDocumentShare } from "@/server/documents";
 
 export interface WikiDocumentDTO {
@@ -159,7 +160,7 @@ export async function createFileDocument(
       wikiId,
       title: input.title.trim() || input.fileName,
       kind: "FILE",
-      fileData: input.data,
+      fileData: bytesForPrisma(input.data),
       fileName: input.fileName,
       fileMime: input.fileMime,
       fileSize: input.data.byteLength,

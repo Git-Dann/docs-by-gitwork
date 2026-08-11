@@ -3,7 +3,18 @@ export type { CheckCategory };
 
 export type PulseScanStatus = "RUNNING" | "COMPLETED" | "FAILED";
 export type PulseScanInputType = "URL" | "GITHUB_REPO" | "FREE_TEXT";
-export type PulseCheckStatus = "PASS" | "WARN" | "FAIL" | "SKIPPED";
+export type PulseCheckStatus =
+  | "PASS"
+  | "WARN"
+  | "FAIL"
+  | "SKIPPED"
+  | "NOT_APPLICABLE"
+  | "INCONCLUSIVE"
+  | "ERROR"
+  | "NOT_TESTED"
+  | "EVIDENCE_REQUIRED";
+export type PulseControlSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
+export type PulseEvidenceStrength = "VERIFIED" | "STRONG" | "HEURISTIC" | "CLAIMED";
 export type PulseUrgency = "CRITICAL" | "HIGH" | "MEDIUM";
 export type PulseEffort = "S" | "M" | "L" | "XL";
 export type PulseBusinessValue = "HIGH" | "MEDIUM" | "LOW";
@@ -78,6 +89,10 @@ export interface PulseScanCheckRecord {
   confidence: CheckConfidence | null;
   confidenceReason: string | null;
   trustBucket: TrustBucket | null;
+  severity: PulseControlSeverity | null;
+  evidenceStrength: PulseEvidenceStrength | null;
+  scoreEligible: boolean;
+  controlId: string | null;
 }
 
 export interface PulseStrength {
@@ -238,6 +253,7 @@ export interface ScoreCategoryBreakdown {
   warn: number;
   fail: number;
   skipped: number;
+  unknown: number;
   earned: number;
   possible: number;
 }
@@ -252,6 +268,13 @@ export interface ScoreBreakdown {
   earnedWeight: number;
   byCategory: ScoreCategoryBreakdown[];
   capsApplied: ScoreCap[];
+  scoreVersion: "pulse-score-v3";
+  policyVersion: "pulse-policy-v3";
+  completeness: number;
+  lowerBound: number;
+  upperBound: number;
+  unknownWeight: number;
+  excludedCount: number;
 }
 
 export interface PulseScanRecord {
@@ -400,6 +423,14 @@ export interface PulseScanCheckInput {
   confidence?: CheckConfidence;
   confidenceReason?: string;
   trustBucket?: TrustBucket;
+  severity?: PulseControlSeverity;
+  evidenceStrength?: PulseEvidenceStrength;
+  /** False for diagnostics, manual evidence and product-growth observations. */
+  scoreEligible?: boolean;
+  /** Diagnostic unknowns can reduce scan completeness without changing health. */
+  completenessEligible?: boolean;
+  /** Shared by controls backed by the same underlying signal. */
+  controlId?: string;
 }
 
 // ── Agent intelligence outputs ────────────────────────────────────────────────

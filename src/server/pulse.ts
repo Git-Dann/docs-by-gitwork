@@ -20,6 +20,7 @@ import { computePricingBandsForWorkspace } from "@/server/pulse-pricing";
 import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison } from "@/server/pulse-ai";
 import { runLiteScan } from "@/server/pulse-lite/run-lite-scan";
 import { runAuthAgent } from "@/server/pulse-agents/auth-agent";
+import type { AuthPageContent } from "@/server/pulse-agents/auth-agent";
 import { runUrlChecks } from "@/server/pulse-scan";
 import { reconcilePulseTasksAfterScan } from "@/server/tasks";
 import {
@@ -49,6 +50,8 @@ import type {
 } from "@/types/pulse";
 import { runVisualAgent } from "@/server/pulse-agents/visual-agent";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
+import { applyCheckPolicy, customPolicyChecks, loadCheckPolicy } from "@/server/check-config";
+import { assertScannableUrl } from "@/server/pulse-lite/url-guard";
 
 export const pulseInclude = {
   client: {
@@ -123,6 +126,10 @@ export function serializePulseScan(record: PulseScanDbRecord): PulseScanRecord {
       confidence: (check.confidence as PulseScanCheckRecord["confidence"]) ?? null,
       confidenceReason: check.confidenceReason ?? null,
       trustBucket: (check.trustBucket as PulseScanCheckRecord["trustBucket"]) ?? null,
+      severity: (check.severity as PulseScanCheckRecord["severity"]) ?? null,
+      evidenceStrength: (check.evidenceStrength as PulseScanCheckRecord["evidenceStrength"]) ?? null,
+      scoreEligible: check.scoreEligible,
+      controlId: check.controlId ?? null,
     })),
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
@@ -996,6 +1003,10 @@ export async function runAnalysis(
           confidence: check.confidence ?? null,
           confidenceReason: check.confidenceReason ?? null,
           trustBucket: check.trustBucket ?? null,
+          severity: check.severity ?? null,
+          evidenceStrength: check.evidenceStrength ?? null,
+          scoreEligible: check.scoreEligible ?? true,
+          controlId: check.controlId ?? null,
         })),
       });
     };
@@ -1008,8 +1019,13 @@ export async function runAnalysis(
     let browserInsights: BrowserAgentInsights | null = null;
     let visualInsights: VisualAgentInsights | null = null;
 
+    const checkPolicy = workspaceId ? await loadCheckPolicy(workspaceId) : undefined;
+
     if (input.inputType === "FREE_TEXT") {
-      allChecks = skipAllChecks("FREE_TEXT", input.platform);
+      allChecks = applyCheckPolicy(
+        [...skipAllChecks("FREE_TEXT", input.platform), ...customPolicyChecks(checkPolicy)],
+        checkPolicy,
+      );
       if (allChecks.length > 0) await persistChecks(allChecks);
     } else {
       const lite = await runLiteScan({
@@ -1018,7 +1034,7 @@ export async function runAnalysis(
         githubRepo: input.inputGithubRepo,
         platform: input.platform,
         includePageSpeed: true,
-        skipUrlGuard: true, // internal team scans (may target platform subdomains)
+        checkPolicy,
         targetMarkets: declaredMarkets.length > 0 ? declaredMarkets : undefined,
         onChecks: persistChecks,
       });
@@ -1087,8 +1103,7 @@ export async function runAnalysis(
         ? Promise.all(
             input.competitorUrls.map(async (url) => {
               try {
-                let resolvedUrl = url.trim();
-                if (!/^https?:\/\//i.test(resolvedUrl)) resolvedUrl = `https://${resolvedUrl}`;
+                const resolvedUrl = (await assertScannableUrl(url)).url;
                 const result = await withTimeout(runUrlChecks(resolvedUrl), 90_000, `competitor scan for ${resolvedUrl}`);
                 const score = calculateHealthScore(result.checks);
                 const pass = result.checks.filter((c) => c.status === "PASS").length;
@@ -1105,7 +1120,7 @@ export async function runAnalysis(
     // Auth scan — if test credentials provided, log in and capture authenticated content.
     // This runs in parallel with competitor work via Promise.all below.
     // Credentials are NEVER stored — only the extracted page content is passed to the AI.
-    let authContent: string | null = null;
+    let authContent: AuthPageContent | null = null;
     if (input.testEmail && input.testPassword && input.inputType === "URL" && input.inputUrl) {
       try {
         const authResult = await withTimeout(
@@ -1114,13 +1129,7 @@ export async function runAnalysis(
           "Auth scan",
         );
         if (authResult) {
-          authContent = [
-            authResult.pageTitle ? `Authenticated page title: "${authResult.pageTitle}"` : null,
-            authResult.h1 ? `Main heading (h1): "${authResult.h1}"` : null,
-            authResult.navItems.length > 0 ? `Navigation: ${authResult.navItems.slice(0, 10).join(" · ")}` : null,
-            authResult.mainText ? `Page content: ${authResult.mainText}` : null,
-            `Authenticated URL: ${authResult.authenticatedUrl}`,
-          ].filter(Boolean).join("\n");
+          authContent = authResult;
         }
       } catch {
         // Auth scan is best-effort — never let it block the main scan
@@ -1254,7 +1263,9 @@ export async function runAnalysis(
         discoveryData: discoveryKit ? (discoveryKit as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         competitorData: competitorData ? (competitorData as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         pricingBands: pricingBands.length > 0 ? (pricingBands as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
-        agentData: { codeInsights, deployInsights, browserInsights, visualInsights, aiError: aiError ?? undefined, ...(authContent ? { authContent } : {}) } as unknown as Prisma.InputJsonValue,
+        // Authenticated page signals are intentionally ephemeral. They are
+        // locally redacted, used for this synthesis call, and never persisted.
+        agentData: { codeInsights, deployInsights, browserInsights, visualInsights, aiError: aiError ?? undefined } as unknown as Prisma.InputJsonValue,
       },
     });
 

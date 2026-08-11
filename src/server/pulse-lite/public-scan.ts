@@ -88,7 +88,6 @@ export async function runPublicLiteScan(liteScanId: string, url: string): Promis
       inputType: "URL",
       url,
       includePageSpeed: false, // public path stays fast + avoids PSI quota pressure
-      skipUrlGuard: true, // already validated at the POST boundary
       onChecks: (batch) => { acc.push(...batch); dirty = true; },
     });
     clearInterval(flusher);

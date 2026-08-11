@@ -1,5 +1,6 @@
 import { CATEGORIES } from "../pulse-checks/categories";
 import type { PulseScanCheckInput, DeployAgentInsights } from "@/types/pulse";
+import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
 
 const VERCEL_API = "https://api.vercel.com";
 const FETCH_TIMEOUT_MS = 8_000;
@@ -64,7 +65,7 @@ async function fetchHeaders(url: string): Promise<Record<string, string>> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    const res = await fetch(url, {
+    const res = await fetchScannableUrl(url, {
       method: "HEAD",
       headers: { "User-Agent": "Gitwork-Pulse/1.0" },
       signal: controller.signal,

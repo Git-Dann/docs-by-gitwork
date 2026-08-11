@@ -34,6 +34,7 @@ import { runVibeCodeHygieneChecks } from "./pulse-checks/vibe-code-hygiene";
 import { runUsPrivacyExtended } from "./pulse-checks/us-privacy-extended";
 import { runVibeSecurityChecks } from "./pulse-checks/vibe-security";
 import { runAiAppSafetyChecks } from "./pulse-checks/ai-app-safety";
+import { collectorCompletenessCheck, collectorExecution } from "./pulse-checks/collector-health";
 
 export type { ExtendedCheckContext };
 
@@ -49,38 +50,41 @@ export async function runExtendedChecks(
   ctx: ExtendedCheckContext,
   onWave?: (checks: PulseScanCheckInput[]) => void,
 ): Promise<PulseScanCheckInput[]> {
-  const runners = [
-    runSecurityExtended,
-    runLegalExtended,
-    runPerformanceExtended,
-    runWcagChecks,
-    runAuthExtended,
-    runRolesPermissionsChecks,
-    runEmailDeliverabilityChecks,
-    runObservabilityExtended,
-    runInfrastructureExtended,
-    runSaasExtended,
-    runPaymentsExtended,
-    runSeoExtended,
-    runTrustBrandExtended,
-    runMissingPagesExtended,
-    runGlobalDistributionExtended,
-    runCodeQualityExtended,
-    runMobileExtended,
-    runBusinessOperationsChecks,
-    runApiQualityChecks,
-    runApiHealthChecks,
-    runApiBehaviourChecks,
-    runAiReadinessChecks,
-    runAiAeoChecks,
-    runVibeCodeHygieneChecks,
-    runUsPrivacyExtended,
-    runVibeSecurityChecks,
-    runAiAppSafetyChecks,
+  const runners: Array<[
+    string,
+    (context: ExtendedCheckContext) => PulseScanCheckInput[] | Promise<PulseScanCheckInput[]>,
+  ]> = [
+    ["security", runSecurityExtended],
+    ["legal", runLegalExtended],
+    ["performance", runPerformanceExtended],
+    ["wcag", runWcagChecks],
+    ["authentication", runAuthExtended],
+    ["roles-permissions", runRolesPermissionsChecks],
+    ["email-deliverability", runEmailDeliverabilityChecks],
+    ["observability", runObservabilityExtended],
+    ["infrastructure", runInfrastructureExtended],
+    ["saas", runSaasExtended],
+    ["payments", runPaymentsExtended],
+    ["seo", runSeoExtended],
+    ["trust-brand", runTrustBrandExtended],
+    ["missing-pages", runMissingPagesExtended],
+    ["global-distribution", runGlobalDistributionExtended],
+    ["code-quality", runCodeQualityExtended],
+    ["mobile", runMobileExtended],
+    ["business-operations", runBusinessOperationsChecks],
+    ["api-quality", runApiQualityChecks],
+    ["api-health", runApiHealthChecks],
+    ["api-behaviour", runApiBehaviourChecks],
+    ["ai-readiness", runAiReadinessChecks],
+    ["ai-aeo", runAiAeoChecks],
+    ["vibe-hygiene", runVibeCodeHygieneChecks],
+    ["us-privacy", runUsPrivacyExtended],
+    ["vibe-security", runVibeSecurityChecks],
+    ["ai-app-safety", runAiAppSafetyChecks],
   ];
 
   const results = await Promise.allSettled(
-    runners.map((run) =>
+    runners.map(([, run]) =>
       Promise.resolve(run(ctx)).then((value) => {
         if (onWave && value.length) onWave(value);
         return value;
@@ -88,5 +92,10 @@ export async function runExtendedChecks(
     ),
   );
 
-  return results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  const checks = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  checks.push(collectorCompletenessCheck(
+    results.map((result, index) => collectorExecution(runners[index][0], result)),
+    "scan_extended_collector_completeness",
+  ));
+  return checks;
 }

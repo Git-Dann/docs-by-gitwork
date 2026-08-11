@@ -10,6 +10,7 @@ import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { bytesForPrisma } from "@/lib/prisma-bytes";
 import { dispatchNotification } from "@/server/notifications";
 import type {
   WikiPageType,
@@ -1687,7 +1688,12 @@ export async function attachWikiIntakeItemImage(
   const transcoded = await transcodeIntakeImage(bytes, mime);
   const row = await prisma.clientWikiIntakeItem.update({
     where: { id: itemId },
-    data: { image: transcoded.bytes, thumb: transcoded.thumb, mime: transcoded.mime, filename },
+    data: {
+      image: bytesForPrisma(transcoded.bytes),
+      thumb: bytesForPrisma(transcoded.thumb),
+      mime: transcoded.mime,
+      filename,
+    },
   });
   return serializeWikiIntakeItem(row);
 }
@@ -1713,7 +1719,12 @@ export async function attachWikiIntakeItemImageByToken(
   const transcoded = await transcodeIntakeImage(bytes, mime);
   const row = await prisma.clientWikiIntakeItem.update({
     where: { id: itemId },
-    data: { image: transcoded.bytes, thumb: transcoded.thumb, mime: transcoded.mime, filename },
+    data: {
+      image: bytesForPrisma(transcoded.bytes),
+      thumb: bytesForPrisma(transcoded.thumb),
+      mime: transcoded.mime,
+      filename,
+    },
   });
   return serializeWikiIntakeItem(row);
 }

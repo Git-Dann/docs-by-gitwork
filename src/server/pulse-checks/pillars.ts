@@ -24,10 +24,9 @@
 //      the "we could not look" → "it is not there" failure this codebase keeps
 //      finding. A dropped pillar is reported as dropped.
 //
-//   3. IT REUSES THE SCORE'S OWN RULES. Same exclusions as
-//      computeScoreBreakdown: SKIPPED is out, a LOW-confidence FAIL/WARN is out,
-//      WARN earns half, weighted categories count double. If the two ever
-//      disagree about a check, that is a bug in this file.
+//   3. IT REUSES SCORE V3 DIRECTLY. Severity, evidence, confidence, correlation,
+//      unknown states and score eligibility are evaluated by computeScoreBreakdown,
+//      so the pillar and headline cannot apply different trust rules.
 //
 // The pillar weights are published in the report and in docs/pulse-pillars.md.
 // They are a JUDGEMENT — an agency shipping client software cares more about a
@@ -36,7 +35,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { PulseScanCheckInput } from "@/types/pulse";
-import { CATEGORIES, ORDERED_CATEGORIES, WEIGHTED_CATEGORIES, type CheckCategory } from "./categories";
+import { CATEGORIES, ORDERED_CATEGORIES, type CheckCategory } from "./categories";
+import { computeScoreBreakdown } from "./score-breakdown";
 
 export type PillarKey = "security" | "access" | "code" | "reliability" | "legal" | "experience";
 
@@ -179,40 +179,23 @@ export interface PillarBreakdown {
 /**
  * Score each pillar over the same checks the health score uses.
  *
- * ⚠️ The exclusion rules here are a deliberate copy of computeScoreBreakdown's,
- * not an approximation of them. If you change one, change both — a pillar total
- * that disagrees with the headline score is worse than no pillar total, because
- * it invites the reader to trust the wrong one.
+ * Each pillar delegates to computeScoreBreakdown. Do not reimplement the formula
+ * here: a pillar total that disagrees with the headline is worse than no rollup.
  */
 export function computePillarBreakdown(checks: PulseScanCheckInput[]): PillarBreakdown {
-  const acc = new Map<PillarKey, { earned: number; possible: number; pass: number; warn: number; fail: number; excluded: number }>();
+  const acc = new Map<PillarKey, { earned: number; possible: number; pass: number; warn: number; fail: number; excluded: number; score: number | null }>();
   for (const p of PILLARS) {
-    acc.set(p.key, { earned: 0, possible: 0, pass: 0, warn: 0, fail: 0, excluded: 0 });
-  }
-
-  for (const check of checks) {
-    const pillar = PILLAR_BY_CATEGORY.get(check.category);
-    // A category with no pillar cannot be scored here. The reconcile test makes
-    // that impossible for a registered category; a historical one just drops out.
-    if (!pillar) continue;
-    const entry = acc.get(pillar.key)!;
-
-    if (check.status === "SKIPPED" || (check.confidence === "LOW" && check.status !== "PASS")) {
-      entry.excluded++;
-      continue;
-    }
-
-    const weight = WEIGHTED_CATEGORIES.has(check.category) ? 2 : 1;
-    entry.possible += weight;
-    if (check.status === "PASS") {
-      entry.pass++;
-      entry.earned += weight;
-    } else if (check.status === "WARN") {
-      entry.warn++;
-      entry.earned += weight * 0.5;
-    } else {
-      entry.fail++;
-    }
+    const pillarChecks = checks.filter((check) => PILLAR_BY_CATEGORY.get(check.category)?.key === p.key);
+    const breakdown = computeScoreBreakdown(pillarChecks);
+    acc.set(p.key, {
+      earned: breakdown.earnedWeight,
+      possible: breakdown.totalWeight,
+      pass: pillarChecks.filter((check) => check.status === "PASS").length,
+      warn: pillarChecks.filter((check) => check.status === "WARN").length,
+      fail: pillarChecks.filter((check) => check.status === "FAIL").length,
+      excluded: pillarChecks.filter((check) => !["PASS", "WARN", "FAIL"].includes(check.status) || check.scoreEligible === false).length,
+      score: breakdown.totalWeight > 0 ? breakdown.finalScore : null,
+    });
   }
 
   // Redistribute the weight of pillars that measured nothing across those that
@@ -231,7 +214,7 @@ export function computePillarBreakdown(checks: PulseScanCheckInput[]): PillarBre
       effectiveWeight: applies && applicableWeight > 0
         ? Math.round((p.weight / applicableWeight) * 1000) / 10
         : 0,
-      score: applies ? Math.round((e.earned / e.possible) * 100) : null,
+      score: e.score,
       pass: e.pass,
       warn: e.warn,
       fail: e.fail,
@@ -246,14 +229,7 @@ export function computePillarBreakdown(checks: PulseScanCheckInput[]): PillarBre
     };
   });
 
-  const overall = applicableWeight === 0
-    ? null
-    : Math.round(
-        applicable.reduce((sum, p) => {
-          const e = acc.get(p.key)!;
-          return sum + (e.earned / e.possible) * 100 * p.weight;
-        }, 0) / applicableWeight,
-      );
+  const overall = applicableWeight === 0 ? null : computeScoreBreakdown(checks).finalScore;
 
   return {
     pillars,

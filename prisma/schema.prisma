@@ -2357,6 +2357,11 @@ enum PulseCheckStatus {
   WARN
   FAIL
   SKIPPED
+  NOT_APPLICABLE
+  INCONCLUSIVE
+  ERROR
+  NOT_TESTED
+  EVIDENCE_REQUIRED
 }
 
 model PulseScan {
@@ -2465,6 +2470,10 @@ model PulseScanCheck {
   confidence       String? // "HIGH" | "MEDIUM" | "LOW"
   confidenceReason String?
   trustBucket      String? // "CONFIRMED" | "LIKELY" | "VERIFIED_WORKING" | "INCONCLUSIVE"
+  severity         String? // "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO"
+  evidenceStrength String? // "VERIFIED" | "STRONG" | "HEURISTIC" | "CLAIMED"
+  scoreEligible    Boolean @default(true)
+  controlId        String?
 
   @@index([scanId, category])
   @@index([scanId, sortOrder])

@@ -1,6 +1,7 @@
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { CheckCategory } from "./categories";
 import type { JurisdictionCode } from "./jurisdictions";
+import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
 
 export type { PulseScanCheckInput };
 
@@ -57,7 +58,7 @@ export async function fetchWithTimeout(url: string, options?: RequestInit): Prom
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    return await fetchScannableUrl(url, { ...options, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }

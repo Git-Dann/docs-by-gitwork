@@ -27,6 +27,8 @@ import { CATEGORIES } from "@/server/pulse-checks/categories";
 import { annotateTrust } from "@/server/pulse-checks/confidence";
 import { detectRepoShape } from "@/server/pulse-checks/native-repo";
 import { buildPlatformCoverageCheck } from "@/server/pulse-checks/platform-coverage";
+import { collectorCompletenessCheck, type CollectorExecution } from "@/server/pulse-checks/collector-health";
+import { applyCheckPolicy, customPolicyChecks, type CheckPolicy } from "@/server/check-config";
 import type { JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
 import type {
   PulseScanCheckInput,
@@ -43,9 +45,8 @@ export interface LiteScanInput {
   /** Include the Google PageSpeed (Lighthouse) wave. Default true. Off for the
    *  public path to stay fast and avoid PSI quota pressure. */
   includePageSpeed?: boolean;
-  /** Skip the SSRF guard (internal callers that have already validated, or that
-   *  intentionally scan platform subdomains). Public callers must leave this off. */
-  skipUrlGuard?: boolean;
+  /** Workspace policy loaded by the authenticated orchestration path. */
+  checkPolicy?: CheckPolicy;
   /** Jurisdiction codes the product serves — drives compliance filtering + scorecard. */
   targetMarkets?: JurisdictionCode[];
   /** Fired with each fresh, de-duplicated, ordered batch of checks as it lands. */
@@ -72,10 +73,20 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
   const collected: PulseScanCheckInput[] = [];
   let order = 0;
   const pending: Promise<void>[] = [];
+  const collectorExecutions: CollectorExecution[] = [];
+
+  const collectorFailed = (name: string, error: unknown) => {
+    collectorExecutions.push({
+      name,
+      outcome: "ERROR",
+      detail: error instanceof Error ? error.message.slice(0, 160) : "collector failed",
+    });
+  };
+  const collectorCompleted = (name: string) => collectorExecutions.push({ name, outcome: "COMPLETED" });
 
   const ingest = (batch: PulseScanCheckInput[]): Promise<void> => {
     const fresh: PulseScanCheckInput[] = [];
-    for (const c of batch) {
+    for (const c of applyCheckPolicy(batch, input.checkPolicy)) {
       if (seen.has(c.checkKey)) continue;
       // Trust layer — stamp confidence + bucket centrally (covers every probe).
       const withOrder = { ...annotateTrust(c), sortOrder: order++ };
@@ -103,19 +114,20 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
   if (input.inputType === "URL") {
     const raw = (input.url ?? "").trim();
     if (!raw) throw new Error("A URL is required.");
-    const safeUrl = input.skipUrlGuard ? raw : (await assertScannableUrl(raw)).url;
+    const safeUrl = (await assertScannableUrl(raw)).url;
 
     // Top-level parallelism: page checks ∥ deploy probes ∥ PageSpeed.
     const deployP = runDeployAgent(safeUrl)
-      .then((r) => { deployInsights = r.insights; pending.push(ingest(r.checks)); })
-      .catch(() => {});
+      .then((r) => { deployInsights = r.insights; collectorCompleted("deploy-agent"); pending.push(ingest(r.checks)); })
+      .catch((error) => { collectorFailed("deploy-agent", error); });
     const browserP = includePageSpeed
       ? runBrowserAgent(safeUrl)
-          .then((r) => { browserInsights = r.insights; pending.push(ingest(r.checks)); })
-          .catch(() => {})
-      : Promise.resolve();
+          .then((r) => { browserInsights = r.insights; collectorCompleted("browser-agent"); pending.push(ingest(r.checks)); })
+          .catch((error) => { collectorFailed("browser-agent", error); })
+      : Promise.resolve(collectorExecutions.push({ name: "browser-agent", outcome: "NOT_APPLICABLE" })).then(() => undefined);
 
     const urlResult = await runUrlChecks(safeUrl, input.platform, onWave, input.targetMarkets);
+    collectorCompleted("url-checks");
     techStack = urlResult.techStack;
     detectedMarkets = urlResult.detectedMarkets;
     // Reconcile: persist anything not already emitted (e.g. unreachable-site branch).
@@ -136,10 +148,10 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     if (!repo) throw new Error("A GitHub repo is required.");
 
     const [ghResult, codeResult, repoShape] = await Promise.all([
-      runGithubChecks(repo).then((r) => { pending.push(ingest(r.checks)); return r; }).catch(() => ({ checks: [], techStack: [] as string[], nativePlatform: null })),
-      runCodeAgent(repo).then((r) => { codeInsights = r.insights; pending.push(ingest(r.checks)); return r; }).catch(() => null),
+      runGithubChecks(repo).then((r) => { collectorCompleted("github-checks"); pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("github-checks", error); return { checks: [], techStack: [] as string[], nativePlatform: null }; }),
+      runCodeAgent(repo).then((r) => { collectorCompleted("code-agent"); codeInsights = r.insights; pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("code-agent", error); return null; }),
       // Shares the memoized snapshot the families already fetched — no extra call.
-      detectRepoShape(repo).catch(() => "none" as const),
+      detectRepoShape(repo).then((shape) => { collectorCompleted("repo-shape"); return shape; }).catch((error) => { collectorFailed("repo-shape", error); return "none" as const; }),
     ]);
     techStack = ghResult.techStack;
     homepageUrl = codeResult?.insights.homepageUrl ?? null;
@@ -180,17 +192,20 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
           `marketing page it links to. Scan that URL separately if you want it graded.`,
       }]));
     } else if (homepageUrl) {
-      const safeHome = input.skipUrlGuard ? homepageUrl : (await assertScannableUrl(homepageUrl).then((r) => r.url).catch(() => null));
+      const safeHome = await assertScannableUrl(homepageUrl)
+        .then((r) => r.url)
+        .catch((error) => { collectorFailed("homepage-url-guard", error); return null; });
       if (safeHome) {
         const deployP = runDeployAgent(safeHome)
-          .then((r) => { deployInsights = r.insights; pending.push(ingest(r.checks)); })
-          .catch(() => {});
+          .then((r) => { deployInsights = r.insights; collectorCompleted("deploy-agent"); pending.push(ingest(r.checks)); })
+          .catch((error) => { collectorFailed("deploy-agent", error); });
         const browserP = includePageSpeed
           ? runBrowserAgent(safeHome)
-              .then((r) => { browserInsights = r.insights; pending.push(ingest(r.checks)); })
-              .catch(() => {})
-          : Promise.resolve();
+              .then((r) => { browserInsights = r.insights; collectorCompleted("browser-agent"); pending.push(ingest(r.checks)); })
+              .catch((error) => { collectorFailed("browser-agent", error); })
+          : Promise.resolve(collectorExecutions.push({ name: "browser-agent", outcome: "NOT_APPLICABLE" })).then(() => undefined);
         const urlResult = await runUrlChecks(safeHome, input.platform, onWave, input.targetMarkets, { githubTechStack: techStack });
+        collectorCompleted("homepage-url-checks");
         if (urlResult.techStack.length > 0) techStack = urlResult.techStack;
         detectedMarkets = urlResult.detectedMarkets;
         pending.push(ingest(urlResult.checks));
@@ -204,6 +219,8 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
   // item as a generic manual task.
   await Promise.all(pending);
   await ingest(resolveEvidenceBackedControls(input.platform, collected));
+  await ingest(customPolicyChecks(input.checkPolicy));
+  await ingest([collectorCompletenessCheck(collectorExecutions)]);
 
   return {
     checks: collected,

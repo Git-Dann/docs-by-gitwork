@@ -1,6 +1,7 @@
 import { CATEGORIES } from "../pulse-checks/categories";
 import { githubGraphQL, hasGithubToken, parseGithubRepo } from "@/lib/github";
 import type { PulseScanCheckInput, CodeAgentInsights } from "@/types/pulse";
+import { collectorCompletenessCheck, collectorExecution } from "@/server/pulse-checks/collector-health";
 import { scanRepoSecrets, type SecretFinding } from "./secret-scanner";
 import {
   runNativeMobileChecks,
@@ -174,7 +175,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
           category: CATEGORIES.CODE_QUALITY,
           checkKey: "repo_intelligence",
           label: "GitHub repo intelligence",
-          status: "SKIPPED" as const,
+          status: "INCONCLUSIVE" as const,
           detail: hasGithubToken()
             ? "Repo intelligence (branch protection, releases, commit velocity, dependency alerts) " +
               "could not be read. The configured GITHUB_TOKEN most likely lacks the permissions these " +
@@ -204,7 +205,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
     checkKey: "dependency_vulnerabilities",
     label: "Known dependency vulnerabilities",
     status: vulnAlerts === null
-      ? "SKIPPED"
+      ? "INCONCLUSIVE"
       : criticalVulns > 0
         ? "FAIL"
         : highVulns > 0
@@ -228,7 +229,8 @@ export async function runCodeAgent(repoInput: string): Promise<{
   // (branchProtectionRules needs administration:read). Nulling one field must not
   // throw and lose the other seven checks.
   const branchRule = repo.branchProtectionRules?.nodes?.[0];
-  const branchProtected = Boolean(branchRule);
+  const branchMetadataAccessible = repo.branchProtectionRules !== null;
+  const branchProtected = branchMetadataAccessible && Boolean(branchRule);
   const requiresReviews = branchRule?.requiresApprovingReviews ?? false;
   const requiresChecks = branchRule?.requiresStatusChecks ?? false;
 
@@ -236,8 +238,10 @@ export async function runCodeAgent(repoInput: string): Promise<{
     category: CATEGORIES.CODE_QUALITY,
     checkKey: "branch_protection",
     label: "Branch protection on default branch",
-    status: !branchProtected ? "FAIL" : !requiresReviews ? "WARN" : "PASS",
-    detail: !branchProtected
+    status: !branchMetadataAccessible ? "INCONCLUSIVE" : !branchProtected ? "FAIL" : !requiresReviews ? "WARN" : "PASS",
+    detail: !branchMetadataAccessible
+      ? "Branch protection metadata is inaccessible with the configured GitHub permissions."
+      : !branchProtected
       ? "No branch protection rules — anyone can push directly to the default branch."
       : !requiresReviews
         ? "Branch protection enabled but does not require PR reviews before merging."
@@ -249,7 +253,15 @@ export async function runCodeAgent(repoInput: string): Promise<{
   const reviewedPrs = prs.filter((pr) => pr.reviews.totalCount > 0).length;
   const prReviewRate = prs.length > 0 ? reviewedPrs / prs.length : null;
 
-  if (prs.length > 0) {
+  if (repo.pullRequests === null) {
+    checks.push({
+      category: CATEGORIES.CODE_QUALITY,
+      checkKey: "pr_review_culture",
+      label: "Pull request review culture",
+      status: "INCONCLUSIVE",
+      detail: "Pull request metadata could not be read with the configured GitHub permissions.",
+    });
+  } else if (prs.length > 0) {
     checks.push({
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "pr_review_culture",
@@ -290,6 +302,14 @@ export async function runCodeAgent(repoInput: string): Promise<{
       status: commitVelocity >= 3 ? "PASS" : commitVelocity >= 1 ? "WARN" : "FAIL",
       detail: `${commitVelocity} commits/week over last 30 days, ${uniqueContributors} contributor${uniqueContributors !== 1 ? "s" : ""}.`,
     });
+  } else if (!repo.isEmpty && repo.defaultBranchRef === null) {
+    checks.push({
+      category: CATEGORIES.CODE_QUALITY,
+      checkKey: "commit_velocity",
+      label: "Active development velocity",
+      status: "INCONCLUSIVE",
+      detail: "Default-branch history could not be read.",
+    });
   }
 
   // ── Releases / versioning ─────────────────────────────────────────────────
@@ -298,8 +318,10 @@ export async function runCodeAgent(repoInput: string): Promise<{
     category: CATEGORIES.CODE_QUALITY,
     checkKey: "has_releases",
     label: "GitHub releases / version tags",
-    status: releaseCount >= 3 ? "PASS" : releaseCount >= 1 ? "WARN" : "FAIL",
-    detail: releaseCount > 0
+    status: repo.releases === null ? "INCONCLUSIVE" : releaseCount >= 3 ? "PASS" : releaseCount >= 1 ? "WARN" : "FAIL",
+    detail: repo.releases === null
+      ? "Release metadata could not be read."
+      : releaseCount > 0
       ? `${releaseCount} release${releaseCount !== 1 ? "s" : ""} published — versioning history documented.`
       : "No releases — users and integrators cannot pin to a stable version.",
   });
@@ -313,11 +335,14 @@ export async function runCodeAgent(repoInput: string): Promise<{
     category: CATEGORIES.CODE_QUALITY,
     checkKey: "issue_close_rate",
     label: "Issue closure rate",
-    status: issueCloseRate === null ? "WARN"
+    status: repo.issues === null || repo.closedIssues === null ? "INCONCLUSIVE"
+      : issueCloseRate === null ? "WARN"
       : issueCloseRate >= 0.7 ? "PASS"
       : issueCloseRate >= 0.4 ? "WARN"
       : "FAIL",
-    detail: issueCloseRate !== null
+    detail: repo.issues === null || repo.closedIssues === null
+      ? "Issue metadata could not be read."
+      : issueCloseRate !== null
       ? `${Math.round(issueCloseRate * 100)}% of issues closed (${closedIssues}/${totalIssues}).`
       : "No issues found — either no bug tracker activity or issues are disabled.",
   });
@@ -463,6 +488,24 @@ async function runRestOnlyFamilies(
   ]) {
     if (result.status === "fulfilled") checks.push(...result.value.checks);
   }
+
+  const familyResults = [
+    ["secret-scan", secretResult],
+    ["native-mobile", nativeResult],
+    ["chrome-extension", extensionResult],
+    ["desktop", desktopResult],
+    ["cli", cliResult],
+    ["web-source", webResult],
+    ["cleanliness", cleanResult],
+    ["ci-workflows", ciResult],
+    ["containers", containerResult],
+    ["service-depth", serviceResult],
+    ["operational-depth", operationalResult],
+  ] as const;
+  checks.push(collectorCompletenessCheck(
+    familyResults.map(([name, result]) => collectorExecution(name, result)),
+    "repo_collector_completeness",
+  ));
 
   return { checks, exposedSecrets };
 }

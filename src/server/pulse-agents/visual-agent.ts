@@ -13,6 +13,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { launchHeadlessBrowser } from "@/server/headless-browser";
 import type { VisualAgentInsights } from "@/types/pulse";
 import { recordAiUsage, usageFromAnthropic } from "@/server/ai-usage";
+import { assertScannableUrl, guardBrowserRequests } from "@/server/pulse-lite/url-guard";
 
 type AiConfig = { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null };
 
@@ -62,7 +63,9 @@ async function captureScreenshot(url: string): Promise<CaptureResult> {
     // best-effort the failure was swallowed (silently no screenshot / no a11y).
     browser = await launchHeadlessBrowser({ defaultViewport: { width: 1280, height: 800 } });
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+    await guardBrowserRequests(page);
+    const safeUrl = (await assertScannableUrl(url)).url;
+    await page.goto(safeUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
     // viewport (above-the-fold) screenshot — the first impression, and keeps the
     // image small for the vision call.
     const buf = await page.screenshot({ type: "png" });

@@ -31,13 +31,16 @@ concurrency:
   group: vps-ops
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   inspect:
     if: inputs.task == 'inspect'
     runs-on: ubuntu-latest
     steps:
       - name: Read VPS scheduling + proxy state (read-only)
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
@@ -118,10 +121,10 @@ jobs:
     if: inputs.task == 'nginx-sync'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Upload the config to a staging path
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
@@ -131,7 +134,7 @@ jobs:
           strip_components: 2
 
       - name: Apply via the root-owned script, or explain exactly what is missing
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
@@ -186,7 +189,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Append the missing agent crons (idempotent; NOT retention)
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
@@ -248,7 +251,7 @@ jobs:
             done
 
       - name: Prove the endpoints respond (does not wait for the schedule)
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}

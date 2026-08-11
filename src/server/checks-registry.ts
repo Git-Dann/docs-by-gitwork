@@ -20,6 +20,10 @@ export interface CheckDefinition {
 }
 
 export const CHECKS_REGISTRY: CheckDefinition[] = [
+  // Scan trust diagnostics — score-neutral, but required for completeness.
+  { key: "scan_collector_completeness", category: CATEGORIES.INFRASTRUCTURE, label: "Collector coverage and failure isolation" },
+  { key: "scan_extended_collector_completeness", category: CATEGORIES.INFRASTRUCTURE, label: "Extended collector coverage" },
+  { key: "repo_collector_completeness", category: CATEGORIES.INFRASTRUCTURE, label: "Repository collector coverage" },
   // -- iOS extended — data protection, WebView, build settings --
   { key: "ios_x_data_protection", category: CATEGORIES.APP_STORE, label: "Files are written with a data-protection class" },
   { key: "ios_x_biometric_fallback", category: CATEGORIES.APP_STORE, label: "Biometric authentication is backed by a device-passcode fallback" },

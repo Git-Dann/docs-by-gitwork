@@ -85,7 +85,7 @@ describe("runCodeAgent — source analysis survives a metadata failure", () => {
     expect(keys).toContain("ios_credential_logging");
     // And the loss of metadata is reported rather than hidden.
     expect(keys).toContain("repo_intelligence");
-    expect(result.checks.find((c) => c.checkKey === "repo_intelligence")?.status).toBe("SKIPPED");
+    expect(result.checks.find((c) => c.checkKey === "repo_intelligence")?.status).toBe("INCONCLUSIVE");
   });
 
   it("still emits operational-depth controls when repository metadata fails", async () => {

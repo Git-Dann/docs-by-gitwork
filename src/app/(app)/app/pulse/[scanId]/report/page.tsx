@@ -78,13 +78,13 @@ export default async function PulseReportPage({
   const passCount = scan.checks.filter((c) => c.status === "PASS").length;
   const warnCount = scan.checks.filter((c) => c.status === "WARN").length;
   const failCount = scan.checks.filter((c) => c.status === "FAIL").length;
-  const skipCount = scan.checks.filter((c) => c.status === "SKIPPED").length;
+  const skipCount = scan.checks.filter((c) => !["PASS", "WARN", "FAIL"].includes(c.status)).length;
 
   const stats = [
     { count: passCount, label: "Passing",  color: "#16a34a", bg: "#f0fdf4" },
     { count: warnCount, label: "Warnings", color: "#d97706", bg: "#fffbeb" },
     { count: failCount, label: "Failed",   color: "#dc2626", bg: "#fef2f2" },
-    ...(skipCount > 0 ? [{ count: skipCount, label: "Skipped", color: "#9ca3af", bg: "#f9fafb" }] : []),
+    ...(skipCount > 0 ? [{ count: skipCount, label: "Unverified", color: "#64748b", bg: "#f8fafc" }] : []),
   ];
 
   return (
@@ -229,7 +229,12 @@ export default async function PulseReportPage({
             <div style={{ marginBottom: 48 }}>
               <div className="rp-widget-h kb">
                 <span className="rp-widget-label">00 // EXECUTIVE OVERVIEW</span>
-                <span className="rp-widget-right">{score}/100 health score</span>
+                <span className="rp-widget-right">
+                  {score}/100 health score
+                  {typeof scan.scoreBreakdown?.completeness === "number"
+                    ? ` · ${scan.scoreBreakdown.completeness}% complete · ${scan.scoreBreakdown.lowerBound}–${scan.scoreBreakdown.upperBound}`
+                    : ""}
+                </span>
               </div>
               <div style={{ border: "1px solid #e2e8f0", borderTop: "none", borderRadius: "0 0 10px 10px", padding: "20px 20px 24px" }}>
                 {analysis.executiveSummary && (

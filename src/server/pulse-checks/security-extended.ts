@@ -1,5 +1,5 @@
 import { CATEGORIES } from "./categories";
-import { type ExtendedCheckContext, type PulseScanCheckInput, headRequest, verifyFileExposure, checkDnsRecord, skip, platformIs, CATCH_ALL_NOTE } from "./_types";
+import { type ExtendedCheckContext, type PulseScanCheckInput, fetchWithTimeout, headRequest, verifyFileExposure, checkDnsRecord, skip, platformIs, CATCH_ALL_NOTE } from "./_types";
 
 const CHECKS: Array<[string, string]> = [
   ["cross_origin_opener_policy", "Cross-Origin-Opener-Policy (COOP)"],
@@ -123,7 +123,7 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
   let gqlIntrospectionOff = true;
   if (graphqlPresent) {
     try {
-      const gqlRes = await fetch(`${httpsUrl}/graphql`, {
+      const gqlRes = await fetchWithTimeout(`${httpsUrl}/graphql`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: "{ __schema { types { name } } }" }),

@@ -66,7 +66,7 @@ function groupChecksByCategory(checks: PulseScanCheckRecord[]) {
 }
 
 function categoryScore(checks: PulseScanCheckRecord[]): number {
-  const applicable = checks.filter((c) => c.status !== "SKIPPED");
+  const applicable = checks.filter((c) => c.status === "PASS" || c.status === "WARN" || c.status === "FAIL");
   if (!applicable.length) return 0;
   // Match calculateHealthScore: a WARN earns half credit (it's "could be better",
   // not a hard failure) so a category of only warnings reads ~50, never 0.
@@ -1319,6 +1319,7 @@ function ScoreExplainer({
   }, [open]);
 
   const capped = breakdown.capsApplied.length > 0;
+  const isV3 = breakdown.scoreVersion === "pulse-score-v3";
   const delta = previousScore !== null ? score - previousScore : null;
 
   // What moved since the last scan, in plain words.
@@ -1347,14 +1348,21 @@ function ScoreExplainer({
           className="z-[9999] rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-3.5 text-left shadow-xl"
         >
           <p className="text-sm font-semibold text-[var(--text-1)]">How this score works</p>
-          <p className="mt-1.5 text-xs leading-5 text-[var(--text-2)]">
-            Every check earns points: a <span className="font-semibold text-emerald-600">pass</span> scores full,
-            a <span className="font-semibold text-amber-600">warning</span> half, a <span className="font-semibold text-red-600">fail</span> nothing.
-            Infrastructure, Security and Legal count double. This project earned{" "}
-            <span className="font-semibold tabular-nums text-[var(--text-1)]">{breakdown.earnedWeight}</span> of{" "}
-            <span className="font-semibold tabular-nums text-[var(--text-1)]">{breakdown.totalWeight}</span> weighted points —{" "}
-            that&rsquo;s <span className="font-semibold tabular-nums text-[var(--text-1)]">{breakdown.rawScore}</span>/100.
-          </p>
+          {isV3 ? (
+            <p className="mt-1.5 text-xs leading-5 text-[var(--text-2)]">
+              Score v3 weights each applicable control by impact, evidence strength and confidence. Correlated controls share weight,
+              and every category has a fixed contribution so adding weak checks cannot dilute a material failure. The result is{" "}
+              <span className="font-semibold tabular-nums text-[var(--text-1)]">{breakdown.rawScore}/100</span> at{" "}
+              <span className="font-semibold tabular-nums text-[var(--text-1)]">{breakdown.completeness}% completeness</span>, with a{" "}
+              {breakdown.lowerBound}–{breakdown.upperBound} uncertainty interval.
+            </p>
+          ) : (
+            <p className="mt-1.5 text-xs leading-5 text-[var(--text-2)]">
+              Legacy scans award full points for a pass, half for a warning and none for a fail. This scan earned{" "}
+              <span className="font-semibold tabular-nums text-[var(--text-1)]">{breakdown.earnedWeight}</span> of{" "}
+              <span className="font-semibold tabular-nums text-[var(--text-1)]">{breakdown.totalWeight}</span> weighted points.
+            </p>
+          )}
 
           {capped && (
             <div className="mt-2 space-y-1 rounded-[6px] bg-red-50 p-2">
@@ -1377,7 +1385,9 @@ function ScoreExplainer({
                       {cat.category}
                       {cat.weight === 2 && <span className="text-[var(--text-4)]"> ·2×</span>}
                     </span>
-                    <span className="shrink-0 tabular-nums text-[var(--text-2)]">{cat.pass}/{total} passed</span>
+                    <span className="shrink-0 tabular-nums text-[var(--text-2)]">
+                      {cat.pass}/{total} passed{cat.unknown ? ` · ${cat.unknown} unknown` : ""}
+                    </span>
                   </div>
                 );
               })}
@@ -3022,12 +3032,16 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             {/* Category list */}
             <div className="space-y-2">
               {entries.map(([category, checks]) => {
-                const applicable = checks.filter((c) => c.status !== "SKIPPED");
+                const applicable = checks.filter((c) => c.status !== "SKIPPED" && c.status !== "NOT_APPLICABLE");
                 if (!applicable.length) return null;
-                const score = categoryScore(checks);
+                const storedCategory = scan.scoreBreakdown?.byCategory.find((item) => item.category === category);
+                const score = storedCategory && storedCategory.possible > 0
+                  ? Math.round((storedCategory.earned / storedCategory.possible) * 100)
+                  : categoryScore(checks);
                 const failed = checks.filter((c) => c.status === "FAIL").length;
                 const warned = checks.filter((c) => c.status === "WARN").length;
                 const passed = checks.filter((c) => c.status === "PASS").length;
+                const unknown = checks.filter((c) => ["ERROR", "INCONCLUSIVE", "NOT_TESTED", "EVIDENCE_REQUIRED"].includes(c.status)).length;
                 const hasIssues = failed > 0 || warned > 0;
                 const isExpanded = expandedCategories.has(category) || checkStatusFilter !== "ALL";
                 const visibleChecks = applicable.filter((c) => checkStatusFilter === "ALL" || c.status === checkStatusFilter);
@@ -3050,7 +3064,10 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                         {warned > 0 && (
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">{warned} warn</span>
                         )}
-                        {!hasIssues && (
+                        {unknown > 0 && (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{unknown} unknown</span>
+                        )}
+                        {!hasIssues && unknown === 0 && (
                           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">{passed} passed</span>
                         )}
                         <span className={cn(

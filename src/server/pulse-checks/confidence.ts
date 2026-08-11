@@ -13,7 +13,11 @@
 //   LOW    — weak single-signal guesses.
 // Unlisted ⇒ MEDIUM (fail-safe: never silently claim HIGH for an untested key).
 
-import type { PulseScanCheckInput } from "@/types/pulse";
+import type {
+  PulseControlSeverity,
+  PulseEvidenceStrength,
+  PulseScanCheckInput,
+} from "@/types/pulse";
 
 export type CheckConfidence = "HIGH" | "MEDIUM" | "LOW";
 export type TrustBucket = "CONFIRMED" | "LIKELY" | "VERIFIED_WORKING" | "INCONCLUSIVE";
@@ -74,6 +78,36 @@ const LOW_CONFIDENCE_KEYS = new Set<string>([
   "text_spacing_supported",
 ]);
 
+const CRITICAL_KEYS = new Set([
+  "ssl_valid", "supabase_rls_enforced", "no_service_role_key_exposed",
+  "no_exposed_env", "no_exposed_git", "outbound_target_ssrf_safe",
+  "auth_content_redaction",
+]);
+
+const NON_TECHNICAL_KEYS = new Set([
+  "github_stars", "press_media", "press_coverage", "product_hunt_badge",
+  "public_roadmap", "social_media_links", "social_proof", "social_proof_numbers",
+  "customer_logo_wall", "named_customer_quotes", "affiliate_program",
+  "affiliate_programme_page", "bnpl_options", "crypto_payments",
+  "investor_backing_listed", "community_forum_slack", "newsletter_signup",
+  "media_kit",
+]);
+
+const CONTROL_ALIASES = new Map<string, string>([
+  ["eu_ai_act_disclosure", "eu_ai_act_disclosure"],
+  ["ai_ai_act_disclosure", "eu_ai_act_disclosure"],
+  ["prefers_high_contrast", "prefers_contrast"],
+  ["high_contrast_css", "prefers_contrast"],
+  ["prefers_reduced_motion", "prefers_reduced_motion"],
+  ["reduced_motion_css", "prefers_reduced_motion"],
+  ["android_x_external_storage", "android_external_storage"],
+  ["android_external_storage", "android_external_storage"],
+  ["android_x_signing_config_committed", "android_signing_credentials_committed"],
+  ["android_signing_credentials_committed", "android_signing_credentials_committed"],
+  ["android_x_webview_file_access", "android_webview_file_access"],
+  ["android_webview_file_access", "android_webview_file_access"],
+]);
+
 /** Confidence for a check, by detection method. */
 export function deriveConfidence(check: PulseScanCheckInput): { confidence: CheckConfidence; reason: string } {
   const key = check.checkKey;
@@ -111,7 +145,8 @@ function readsInconclusive(detail: string | undefined): boolean {
 
 /** Bucket a check into the 4-way trust view. */
 export function deriveTrustBucket(check: PulseScanCheckInput, confidence: CheckConfidence): TrustBucket | null {
-  if (check.status === "SKIPPED") return null;
+  if (["SKIPPED", "NOT_APPLICABLE", "NOT_TESTED"].includes(check.status)) return null;
+  if (["INCONCLUSIVE", "ERROR", "EVIDENCE_REQUIRED"].includes(check.status)) return "INCONCLUSIVE";
   if (readsInconclusive(check.detail)) return "INCONCLUSIVE";
   if (check.status === "PASS") return "VERIFIED_WORKING";
   // FAIL or WARN — graded by how sure we are.
@@ -124,5 +159,26 @@ export function deriveTrustBucket(check: PulseScanCheckInput, confidence: CheckC
 export function annotateTrust(check: PulseScanCheckInput): PulseScanCheckInput {
   const { confidence, reason } = deriveConfidence(check);
   const trustBucket = deriveTrustBucket(check, confidence);
-  return { ...check, confidence, confidenceReason: reason, trustBucket: trustBucket ?? undefined };
+  const severity: PulseControlSeverity = check.severity
+    ?? (CRITICAL_KEYS.has(check.checkKey)
+      ? "CRITICAL"
+      : check.category === "Security" || check.category === "AI Safety"
+        ? "HIGH"
+        : check.status === "WARN"
+          ? "LOW"
+          : "MEDIUM");
+  const evidenceStrength: PulseEvidenceStrength = check.evidenceStrength
+    ?? (confidence === "HIGH" ? "VERIFIED" : confidence === "MEDIUM" ? "HEURISTIC" : "CLAIMED");
+  const scoreEligible = check.scoreEligible
+    ?? (check.category !== "Standards Verification" && !NON_TECHNICAL_KEYS.has(check.checkKey));
+  return {
+    ...check,
+    confidence,
+    confidenceReason: reason,
+    trustBucket: trustBucket ?? undefined,
+    severity,
+    evidenceStrength,
+    scoreEligible,
+    controlId: check.controlId ?? CONTROL_ALIASES.get(check.checkKey) ?? check.checkKey,
+  };
 }

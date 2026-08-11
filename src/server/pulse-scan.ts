@@ -19,8 +19,9 @@ import {
 } from "./pulse-checks/native-mobile";
 import { getRepoSnapshot } from "./pulse-checks/native-repo";
 import { runStandardsVerificationCatalog } from "./pulse-checks/standards-verification";
+import { fetchScannableUrl } from "./pulse-lite/url-guard";
 
-export const SCAN_VERSION = "pulse-v2";
+export const SCAN_VERSION = "pulse-v3";
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -46,7 +47,7 @@ async function fetchWithTimeout(url: string, options?: RequestInit): Promise<Res
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    return await fetchScannableUrl(url, { ...options, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -2479,7 +2480,7 @@ export async function runUrlChecks(
     async function checkPaths(baseUrl: string, paths: string[], timeoutMs = 3000): Promise<number[]> {
       const results = await Promise.allSettled(
         paths.map((p) =>
-          fetch(`${baseUrl}${p}`, {
+          fetchScannableUrl(`${baseUrl}${p}`, {
             method: "HEAD",
             redirect: "follow",
             signal: AbortSignal.timeout(timeoutMs),
@@ -2505,15 +2506,27 @@ export async function runUrlChecks(
       ? " (Host returns 200 for any path — catch-all routing — so path-based probes are inconclusive; nothing actually exposed by status.)"
       : "";
 
+    const absenceStatus = (
+      exposed: boolean,
+      statuses: number[],
+      exposedStatus: "WARN" | "FAIL",
+    ): "PASS" | "WARN" | "FAIL" | "INCONCLUSIVE" => {
+      if (exposed) return exposedStatus;
+      if (catchAll200 || statuses.some((status) => status === 0)) return "INCONCLUSIVE";
+      return "PASS";
+    };
+
     const adminExposed = !catchAll200 && adminStatuses.some((s) => s === 200);
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_admin",
       label: "Admin panel not publicly accessible",
-      status: adminExposed ? "WARN" : "PASS",
+      status: absenceStatus(adminExposed, adminStatuses, "WARN"),
       detail: adminExposed
         ? "An admin path (/admin or /wp-admin) returned HTTP 200 — verify it requires authentication. Exposed admin panels are prime targets for credential stuffing attacks."
-        : "Admin paths not freely accessible." + catchAllNote,
+        : adminStatuses.some((status) => status === 0)
+          ? "One or more admin-path probes failed, so public exposure could not be ruled out."
+          : "Admin paths not freely accessible." + catchAllNote,
     });
 
     const phpInfoExposed = !catchAll200 && phpInfoStatuses.some((s) => s === 200);
@@ -2521,10 +2534,12 @@ export async function runUrlChecks(
       category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_phpinfo",
       label: "PHP info page not exposed",
-      status: phpInfoExposed ? "FAIL" : "PASS",
+      status: absenceStatus(phpInfoExposed, phpInfoStatuses, "FAIL"),
       detail: phpInfoExposed
         ? "phpinfo.php or info.php returned HTTP 200 — this file exposes PHP version, server paths, loaded extensions, and environment variables to attackers."
-        : "No exposed PHP info pages detected." + catchAllNote,
+        : phpInfoStatuses.some((status) => status === 0)
+          ? "One or more PHP-info probes failed, so exposure could not be ruled out."
+          : "No exposed PHP info pages detected." + catchAllNote,
     });
 
     const gitConfigExposed = !catchAll200 && gitConfigStatus === 200;
@@ -2532,10 +2547,12 @@ export async function runUrlChecks(
       category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_git_config",
       label: "Git config not publicly accessible",
-      status: gitConfigExposed ? "FAIL" : "PASS",
+      status: absenceStatus(gitConfigExposed, [gitConfigStatus], "FAIL"),
       detail: gitConfigExposed
         ? "/.git/config is publicly accessible — this reveals repository URLs, credentials, and project structure. Remove or block access immediately."
-        : "Git config not publicly accessible." + catchAllNote,
+        : gitConfigStatus === 0
+          ? "The Git-config probe failed, so exposure could not be ruled out."
+          : "Git config not publicly accessible." + catchAllNote,
     });
 
     const debugExposed = !catchAll200 && debugStatuses.some((s) => s === 200);
@@ -2543,10 +2560,12 @@ export async function runUrlChecks(
       category: CATEGORIES.SECURITY,
       checkKey: "no_debug_endpoints",
       label: "Debug/monitoring endpoints not public",
-      status: debugExposed ? "WARN" : "PASS",
+      status: absenceStatus(debugExposed, debugStatuses, "WARN"),
       detail: debugExposed
         ? "A debug endpoint (/telescope, /__clockwork, /horizon, or /_debug) returned HTTP 200 — these expose internal request logs, jobs, and performance data."
-        : "Debug and monitoring endpoints are not publicly accessible." + catchAllNote,
+        : debugStatuses.some((status) => status === 0)
+          ? "One or more debug-endpoint probes failed, so exposure could not be ruled out."
+          : "Debug and monitoring endpoints are not publicly accessible." + catchAllNote,
     });
 
     const backupExposed = !catchAll200 && backupStatuses.some((s) => s === 200);
@@ -2554,10 +2573,12 @@ export async function runUrlChecks(
       category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_backup",
       label: "Database backup files not exposed",
-      status: backupExposed ? "FAIL" : "PASS",
+      status: absenceStatus(backupExposed, backupStatuses, "FAIL"),
       detail: backupExposed
         ? "A database backup file (backup.sql, dump.sql, .env.bak, or db.sql) is publicly downloadable — this is a critical data breach risk."
-        : "No exposed database backup files detected." + catchAllNote,
+        : backupStatuses.some((status) => status === 0)
+          ? "One or more backup-file probes failed, so exposure could not be ruled out."
+          : "No exposed database backup files detected." + catchAllNote,
     });
 
     // ─── A3: HTTP Protocol & Headers Quality ──────────────────────────────────
