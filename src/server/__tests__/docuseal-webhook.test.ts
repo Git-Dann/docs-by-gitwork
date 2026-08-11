@@ -3,23 +3,33 @@ import { NextRequest } from "next/server";
 import { POST } from "@/app/api/webhooks/docuseal/route";
 import { prisma } from "@/lib/prisma";
 
+const findFirstRequest = vi.fn();
+const updateRequest = vi.fn();
+const findFirstSigner = vi.fn();
+const updateSigner = vi.fn();
+const countSigners = vi.fn();
+const updateManySigners = vi.fn();
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     signatureRequest: {
-      findFirst: vi.fn(),
-      update: vi.fn(),
+      findFirst: (...args: unknown[]) => findFirstRequest(...args),
+      update: (...args: unknown[]) => updateRequest(...args),
     },
     signatureSigner: {
-      findFirst: vi.fn(),
-      update: vi.fn(),
-      count: vi.fn(),
-      updateMany: vi.fn(),
+      findFirst: (...args: unknown[]) => findFirstSigner(...args),
+      update: (...args: unknown[]) => updateSigner(...args),
+      count: (...args: unknown[]) => countSigners(...args),
+      updateMany: (...args: unknown[]) => updateManySigners(...args),
     },
-    $transaction: vi.fn(async (cbOrArray: any) => {
+    $transaction: vi.fn(async (cbOrArray: unknown) => {
       if (typeof cbOrArray === "function") {
         return cbOrArray(prisma);
       }
-      return Promise.all(cbOrArray);
+      if (Array.isArray(cbOrArray)) {
+        return Promise.all(cbOrArray);
+      }
+      return cbOrArray;
     }),
   },
 }));
@@ -42,13 +52,13 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
       },
     };
 
-    (prisma.signatureSigner.findFirst as any).mockResolvedValueOnce({
+    findFirstSigner.mockResolvedValueOnce({
       id: "signer_1",
       requestId: "req_100",
       status: "PENDING",
     });
 
-    (prisma.signatureSigner.count as any).mockResolvedValueOnce(0); // 0 remaining signers
+    countSigners.mockResolvedValueOnce(0); // 0 remaining signers
 
     const req = new NextRequest("http://localhost/api/webhooks/docuseal", {
       method: "POST",
@@ -61,12 +71,12 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
     expect(response.status).toBe(200);
     expect(json).toEqual({ received: true, signerProcessed: true });
 
-    expect(prisma.signatureSigner.update).toHaveBeenCalledWith({
+    expect(updateSigner).toHaveBeenCalledWith({
       where: { id: "signer_1" },
       data: { status: "SIGNED", signedAt: expect.any(Date) },
     });
 
-    expect(prisma.signatureRequest.update).toHaveBeenCalledWith({
+    expect(updateRequest).toHaveBeenCalledWith({
       where: { id: "req_100" },
       data: { status: "COMPLETED", completedAt: expect.any(Date) },
     });
@@ -82,13 +92,13 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
       },
     };
 
-    (prisma.signatureSigner.findFirst as any).mockResolvedValueOnce({
+    findFirstSigner.mockResolvedValueOnce({
       id: "signer_1",
       requestId: "req_100",
       status: "PENDING",
     });
 
-    (prisma.signatureSigner.count as any).mockResolvedValueOnce(1); // 1 remaining signer (e.g. client)
+    countSigners.mockResolvedValueOnce(1); // 1 remaining signer (e.g. client)
 
     const req = new NextRequest("http://localhost/api/webhooks/docuseal", {
       method: "POST",
@@ -101,12 +111,12 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
     expect(response.status).toBe(200);
     expect(json).toEqual({ received: true, signerProcessed: true });
 
-    expect(prisma.signatureSigner.update).toHaveBeenCalledWith({
+    expect(updateSigner).toHaveBeenCalledWith({
       where: { id: "signer_1" },
       data: { status: "SIGNED", signedAt: expect.any(Date) },
     });
 
-    expect(prisma.signatureRequest.update).not.toHaveBeenCalled();
+    expect(updateRequest).not.toHaveBeenCalled();
   });
 
   it("handles submission.completed event by completing request and all signers", async () => {
@@ -122,7 +132,7 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
       },
     };
 
-    (prisma.signatureRequest.findFirst as any).mockResolvedValueOnce({
+    findFirstRequest.mockResolvedValueOnce({
       id: "req_100",
       docusealSubmissionId: "submission_999",
       signers: [{ id: "signer_1" }, { id: "signer_2" }],
@@ -139,12 +149,12 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
     expect(response.status).toBe(200);
     expect(json).toEqual({ received: true, status: "completed" });
 
-    expect(prisma.signatureRequest.update).toHaveBeenCalledWith({
+    expect(updateRequest).toHaveBeenCalledWith({
       where: { id: "req_100" },
       data: { status: "COMPLETED", completedAt: expect.any(Date) },
     });
 
-    expect(prisma.signatureSigner.updateMany).toHaveBeenCalledWith({
+    expect(updateManySigners).toHaveBeenCalledWith({
       where: { requestId: "req_100" },
       data: { status: "SIGNED", signedAt: expect.any(Date) },
     });
@@ -159,7 +169,7 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
       },
     };
 
-    (prisma.signatureSigner.findFirst as any).mockResolvedValueOnce({
+    findFirstSigner.mockResolvedValueOnce({
       id: "signer_2",
       status: "PENDING",
     });
@@ -175,7 +185,7 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
     expect(response.status).toBe(200);
     expect(json).toEqual({ received: true });
 
-    expect(prisma.signatureSigner.update).toHaveBeenCalledWith({
+    expect(updateSigner).toHaveBeenCalledWith({
       where: { id: "signer_2" },
       data: { status: "VIEWED" },
     });
