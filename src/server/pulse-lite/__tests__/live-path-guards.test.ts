@@ -34,6 +34,15 @@ describe("the live scan path carries the guards", () => {
       expect(call, `must pass targetMarkets: ${call}`).toContain("input.targetMarkets");
     }
   });
+
+  it("run-lite-scan discards checkpoint-derived agents and deep controls", () => {
+    const src = read("../run-lite-scan.ts");
+    expect(src).toContain("target_content_accessible");
+    expect(src).toContain("urlTargetBlocked");
+    expect(src).toContain("urlSurfaceIsProduction");
+    expect(src).toMatch(/if \(urlTargetBlocked\)[\s\S]*?NOT_APPLICABLE/);
+    expect(src).toMatch(/if \(!urlTargetBlocked && urlSurfaceIsProduction\)[\s\S]*?resolveEvidenceBackedControls/);
+  });
 });
 
 describe("dead code cannot masquerade as the live path", () => {

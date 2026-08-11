@@ -1,6 +1,7 @@
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { CheckCategory } from "./categories";
 import type { JurisdictionCode } from "./jurisdictions";
+import type { UrlSurfaceKind } from "./platform-applicability";
 import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
 
 export type { PulseScanCheckInput };
@@ -38,6 +39,8 @@ export interface ExtendedCheckContext {
   // Vercel / Next.js catch-all). When set, path-existence probes are inconclusive
   // and must not be reported as exposures. Computed once in runUrlChecks.
   catchAll200: boolean;
+  /** Whether the fetched document is the product, a prototype bundle, or an access interstitial. */
+  surfaceKind?: UrlSurfaceKind;
   // Jurisdiction context (optional — additive). `targetMarkets` are user-declared,
   // `detectedMarkets` are auto-detected from the page, `effectiveMarkets` is the
   // resolved set used for filtering (declared if any, else detected). Modules can

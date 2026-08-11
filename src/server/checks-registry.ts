@@ -411,6 +411,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "playstore_data_safety", category: CATEGORIES.STORE_LISTING, label: "Data Safety section" },
   { key: "playstore_content_rating", category: CATEGORIES.STORE_LISTING, label: "IARC content rating" },
   { key: "ssl_valid", category: CATEGORIES.SEO, label: "HTTPS / SSL certificate" },
+  { key: "target_content_accessible", category: CATEGORIES.INFRASTRUCTURE, label: "Target content is inspectable" },
   { key: "http_redirect", category: CATEGORIES.INFRASTRUCTURE, label: "HTTP → HTTPS redirect" },
   { key: "response_time", category: CATEGORIES.INFRASTRUCTURE, label: "Response time" },
   { key: "status_200", category: CATEGORIES.INFRASTRUCTURE, label: "Returns 200 OK" },

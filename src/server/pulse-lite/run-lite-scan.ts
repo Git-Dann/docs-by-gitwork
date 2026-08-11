@@ -110,6 +110,8 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
   let codeInsights: CodeAgentInsights | null = null;
   let homepageUrl: string | null = null;
   let detectedMarkets: JurisdictionCode[] = [];
+  let urlTargetBlocked = false;
+  let urlSurfaceIsProduction = true;
 
   if (input.inputType === "URL") {
     const raw = (input.url ?? "").trim();
@@ -117,19 +119,19 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     const safeUrl = (await assertScannableUrl(raw)).url;
 
     // Top-level parallelism: page checks ∥ deploy probes ∥ PageSpeed.
-    const deployP = runDeployAgent(safeUrl)
-      .then((r) => { deployInsights = r.insights; collectorCompleted("deploy-agent"); pending.push(ingest(r.checks)); })
-      .catch((error) => { collectorFailed("deploy-agent", error); });
+    const deployP = runDeployAgent(safeUrl);
     const browserP = includePageSpeed
       ? runBrowserAgent(safeUrl)
-          .then((r) => { browserInsights = r.insights; collectorCompleted("browser-agent"); pending.push(ingest(r.checks)); })
-          .catch((error) => { collectorFailed("browser-agent", error); })
-      : Promise.resolve(collectorExecutions.push({ name: "browser-agent", outcome: "NOT_APPLICABLE" })).then(() => undefined);
+      : null;
 
     const urlResult = await runUrlChecks(safeUrl, input.platform, onWave, input.targetMarkets);
     collectorCompleted("url-checks");
     techStack = urlResult.techStack;
     detectedMarkets = urlResult.detectedMarkets;
+    urlSurfaceIsProduction = urlResult.surfaceKind === "DEPLOYED_PRODUCT";
+    urlTargetBlocked = urlResult.checks.some(
+      (check) => check.checkKey === "target_content_accessible" && check.status === "FAIL",
+    );
     // Reconcile: persist anything not already emitted (e.g. unreachable-site branch).
     pending.push(ingest(urlResult.checks));
 
@@ -141,7 +143,37 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     });
     if (coverage) pending.push(ingest([coverage]));
 
-    await Promise.all([deployP, browserP]);
+    const [deployOutcome, browserOutcome] = await Promise.all([
+      Promise.allSettled([deployP]).then(([result]) => result),
+      browserP
+        ? Promise.allSettled([browserP]).then(([result]) => result)
+        : Promise.resolve(null),
+    ]);
+
+    if (urlTargetBlocked) {
+      // PageSpeed and deployment probes may successfully grade the checkpoint
+      // itself. Their data is not about the product, so discard it explicitly.
+      collectorExecutions.push({ name: "deploy-agent", outcome: "NOT_APPLICABLE", detail: "target content blocked by an access interstitial" });
+      collectorExecutions.push({ name: "browser-agent", outcome: "NOT_APPLICABLE", detail: "target content blocked by an access interstitial" });
+    } else {
+      if (deployOutcome.status === "fulfilled") {
+        deployInsights = deployOutcome.value.insights;
+        collectorCompleted("deploy-agent");
+        pending.push(ingest(deployOutcome.value.checks));
+      } else {
+        collectorFailed("deploy-agent", deployOutcome.reason);
+      }
+
+      if (!browserP) {
+        collectorExecutions.push({ name: "browser-agent", outcome: "NOT_APPLICABLE" });
+      } else if (browserOutcome?.status === "fulfilled") {
+        browserInsights = browserOutcome.value.insights;
+        collectorCompleted("browser-agent");
+        pending.push(ingest(browserOutcome.value.checks));
+      } else if (browserOutcome) {
+        collectorFailed("browser-agent", browserOutcome.reason);
+      }
+    }
   } else {
     // GITHUB_REPO — repo + code checks in parallel, then the homepage (if any).
     const repo = (input.githubRepo ?? "").trim();
@@ -218,8 +250,10 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
   // those deterministic observations as real evidence instead of showing every
   // item as a generic manual task.
   await Promise.all(pending);
-  await ingest(resolveEvidenceBackedControls(input.platform, collected));
-  await ingest(customPolicyChecks(input.checkPolicy));
+  if (!urlTargetBlocked && urlSurfaceIsProduction) {
+    await ingest(resolveEvidenceBackedControls(input.platform, collected));
+    await ingest(customPolicyChecks(input.checkPolicy));
+  }
   await ingest([collectorCompletenessCheck(collectorExecutions)]);
 
   return {

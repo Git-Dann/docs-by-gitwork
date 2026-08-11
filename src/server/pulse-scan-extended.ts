@@ -6,6 +6,8 @@
 
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { ExtendedCheckContext } from "./pulse-checks/_types";
+import { CATEGORIES, type CheckCategory } from "./pulse-checks/categories";
+import { getInapplicableCategories } from "./pulse-checks/platform-applicability";
 
 import { runSecurityExtended } from "./pulse-checks/security-extended";
 import { runLegalExtended } from "./pulse-checks/legal-extended";
@@ -52,39 +54,43 @@ export async function runExtendedChecks(
 ): Promise<PulseScanCheckInput[]> {
   const runners: Array<[
     string,
+    CheckCategory,
     (context: ExtendedCheckContext) => PulseScanCheckInput[] | Promise<PulseScanCheckInput[]>,
   ]> = [
-    ["security", runSecurityExtended],
-    ["legal", runLegalExtended],
-    ["performance", runPerformanceExtended],
-    ["wcag", runWcagChecks],
-    ["authentication", runAuthExtended],
-    ["roles-permissions", runRolesPermissionsChecks],
-    ["email-deliverability", runEmailDeliverabilityChecks],
-    ["observability", runObservabilityExtended],
-    ["infrastructure", runInfrastructureExtended],
-    ["saas", runSaasExtended],
-    ["payments", runPaymentsExtended],
-    ["seo", runSeoExtended],
-    ["trust-brand", runTrustBrandExtended],
-    ["missing-pages", runMissingPagesExtended],
-    ["global-distribution", runGlobalDistributionExtended],
-    ["code-quality", runCodeQualityExtended],
-    ["mobile", runMobileExtended],
-    ["business-operations", runBusinessOperationsChecks],
-    ["api-quality", runApiQualityChecks],
-    ["api-health", runApiHealthChecks],
-    ["api-behaviour", runApiBehaviourChecks],
-    ["ai-readiness", runAiReadinessChecks],
-    ["ai-aeo", runAiAeoChecks],
-    ["vibe-hygiene", runVibeCodeHygieneChecks],
-    ["us-privacy", runUsPrivacyExtended],
-    ["vibe-security", runVibeSecurityChecks],
-    ["ai-app-safety", runAiAppSafetyChecks],
+    ["security", CATEGORIES.SECURITY, runSecurityExtended],
+    ["legal", CATEGORIES.LEGAL, runLegalExtended],
+    ["performance", CATEGORIES.PERFORMANCE, runPerformanceExtended],
+    ["wcag", CATEGORIES.ACCESSIBILITY, runWcagChecks],
+    ["authentication", CATEGORIES.AUTHENTICATION, runAuthExtended],
+    ["roles-permissions", CATEGORIES.ROLES, runRolesPermissionsChecks],
+    ["email-deliverability", CATEGORIES.EMAIL, runEmailDeliverabilityChecks],
+    ["observability", CATEGORIES.OBSERVABILITY, runObservabilityExtended],
+    ["infrastructure", CATEGORIES.INFRASTRUCTURE, runInfrastructureExtended],
+    ["saas", CATEGORIES.SAAS, runSaasExtended],
+    ["payments", CATEGORIES.PAYMENTS, runPaymentsExtended],
+    ["seo", CATEGORIES.SEO, runSeoExtended],
+    ["trust-brand", CATEGORIES.TRUST_BRAND, runTrustBrandExtended],
+    ["missing-pages", CATEGORIES.MISSING_PAGES, runMissingPagesExtended],
+    ["global-distribution", CATEGORIES.GLOBAL_DISTRIBUTION, runGlobalDistributionExtended],
+    ["code-quality", CATEGORIES.CODE_QUALITY, runCodeQualityExtended],
+    ["mobile", CATEGORIES.MOBILE, runMobileExtended],
+    ["business-operations", CATEGORIES.BUSINESS_OPS, runBusinessOperationsChecks],
+    ["api-quality", CATEGORIES.API_QUALITY, runApiQualityChecks],
+    ["api-health", CATEGORIES.API_QUALITY, runApiHealthChecks],
+    ["api-behaviour", CATEGORIES.API_QUALITY, runApiBehaviourChecks],
+    ["ai-readiness", CATEGORIES.AI_READINESS, runAiReadinessChecks],
+    ["ai-aeo", CATEGORIES.AEO, runAiAeoChecks],
+    ["vibe-hygiene", CATEGORIES.VIBE_HYGIENE, runVibeCodeHygieneChecks],
+    ["us-privacy", CATEGORIES.LEGAL, runUsPrivacyExtended],
+    ["vibe-security", CATEGORIES.SECURITY, runVibeSecurityChecks],
+    ["ai-app-safety", CATEGORIES.AI_SAFETY, runAiAppSafetyChecks],
   ];
 
+  const excludedCategories = new Set(getInapplicableCategories(ctx.platform, ctx.surfaceKind));
+  const relevantRunners = runners.filter(([, category]) => !excludedCategories.has(category));
+
   const results = await Promise.allSettled(
-    runners.map(([, run]) =>
+    relevantRunners.map(([, , run]) =>
       Promise.resolve(run(ctx)).then((value) => {
         if (onWave && value.length) onWave(value);
         return value;
@@ -94,7 +100,7 @@ export async function runExtendedChecks(
 
   const checks = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
   checks.push(collectorCompletenessCheck(
-    results.map((result, index) => collectorExecution(runners[index][0], result)),
+    results.map((result, index) => collectorExecution(relevantRunners[index][0], result)),
     "scan_extended_collector_completeness",
   ));
   return checks;

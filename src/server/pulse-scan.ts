@@ -20,6 +20,11 @@ import {
 import { getRepoSnapshot } from "./pulse-checks/native-repo";
 import { runStandardsVerificationCatalog } from "./pulse-checks/standards-verification";
 import { fetchScannableUrl } from "./pulse-lite/url-guard";
+import {
+  detectUrlSurfaceKind,
+  getInapplicableCategoryDetails,
+  type UrlSurfaceKind,
+} from "./pulse-checks/platform-applicability";
 
 export const SCAN_VERSION = "pulse-v3";
 
@@ -497,107 +502,18 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
  * and a human-readable reason to embed in the SKIPPED detail message.
  */
 export function getSkippedCategoriesForPlatformForTest(platform: string) {
-  return getSkippedCategoriesForPlatform(platform);
+  return getInapplicableCategoryDetails(platform);
 }
 
-function getSkippedCategoriesForPlatform(platform: string): Array<{ category: string; reason: string }> {
-  const p = platform.toUpperCase();
-
-  if (p === "IOS_APP" || p === "ANDROID_APP") {
-    return [
-      { category: CATEGORIES.SEO, reason: "Not applicable — native mobile apps are not indexed by web search engines." },
-      { category: CATEGORIES.SAAS, reason: "Not applicable — web SaaS UI patterns (billing portals, pricing pages) do not apply to native mobile apps." },
-      { category: CATEGORIES.MISSING_PAGES, reason: "Not applicable — native mobile apps do not have marketing web pages." },
-      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — hreflang, language switchers, and international web routing do not apply to native apps." },
-      { category: CATEGORIES.API_QUALITY, reason: "Not applicable — API quality checks are for API backends and developer platforms, not native mobile apps." },
-    ];
-  }
-
-  // React Native / Flutter ships the same store-distributed app as a native project,
-  // so it gets the SAME exclusions. It previously got only 2 of these 5 (and none of
-  // the 15 per-check platform guards), which meant picking "React Native / Flutter"
-  // in the scan dropdown ran the full web suite against a mobile app and buried the
-  // real findings under web failures. If a codebase genuinely also ships a web
-  // target, scan that URL as its own Web App scan.
-  if (p === "CROSS_PLATFORM_MOBILE") {
-    return [
-      { category: CATEGORIES.SEO, reason: "Not applicable — cross-platform mobile apps are distributed through app stores, not indexed by web search engines." },
-      { category: CATEGORIES.SAAS, reason: "Not applicable — web SaaS UI patterns (billing portals, pricing pages) do not apply to a mobile app bundle." },
-      { category: CATEGORIES.MISSING_PAGES, reason: "Not applicable — a mobile app bundle does not have marketing web pages." },
-      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — hreflang, language switchers, and international web routing do not apply to mobile app bundles." },
-      { category: CATEGORIES.API_QUALITY, reason: "Not applicable — API quality checks are for API backends and developer platforms, not mobile apps." },
-    ];
-  }
-
-  if (p === "API_BACKEND") {
-    return [
-      { category: CATEGORIES.SEO, reason: "Not applicable — APIs are not web pages and are not indexed by search engines." },
-      { category: CATEGORIES.SAAS, reason: "Not applicable — web UI SaaS patterns (billing portals, live chat, pricing pages) do not apply to API backends." },
-      { category: CATEGORIES.MISSING_PAGES, reason: "Not applicable — APIs do not have About/Contact/FAQ pages." },
-      { category: CATEGORIES.TRUST_BRAND, reason: "Not applicable — social proof, testimonials, and press sections are not relevant for API backends." },
-      { category: CATEGORIES.APP_STORE, reason: "Not applicable — this is a backend API, not a mobile app." },
-      { category: CATEGORIES.MOBILE, reason: "Not applicable — APIs are not user-facing web interfaces." },
-      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — web internationalisation (hreflang, language switchers) does not apply to APIs." },
-      { category: CATEGORIES.PAYMENTS, reason: "Lower relevance — API backends typically do not host their own payment UI." },
-      { category: CATEGORIES.ROLES, reason: "Lower relevance — role management UI checks are for web app interfaces, not raw API backends." },
-      { category: CATEGORIES.BUSINESS_OPS, reason: "Not applicable — business operations compliance is managed through web presence, not raw API backends." },
-    ];
-  }
-
-  if (p === "CLI_TOOL") {
-    return [
-      { category: CATEGORIES.SEO, reason: "Not applicable — CLI tools are distributed via package registries, not web search." },
-      { category: CATEGORIES.SAAS, reason: "Not applicable — web SaaS conversion patterns do not apply to command-line tools." },
-      { category: CATEGORIES.MISSING_PAGES, reason: "Not applicable — CLI tools do not have marketing web pages." },
-      { category: CATEGORIES.TRUST_BRAND, reason: "Not applicable — social proof and press coverage sections are not relevant for CLI tools." },
-      { category: CATEGORIES.APP_STORE, reason: "Not applicable — CLI tools are not distributed through app stores." },
-      { category: CATEGORIES.MOBILE, reason: "Not applicable — CLI tools are not web interfaces." },
-      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — web internationalisation does not apply to CLI tools." },
-      { category: CATEGORIES.PAYMENTS, reason: "Not applicable — CLI tools typically use package managers or separate billing systems." },
-      { category: CATEGORIES.ROLES, reason: "Not applicable — roles and permissions UI is not relevant for CLI tools." },
-      { category: CATEGORIES.EMAIL, reason: "Not applicable — CLI tools do not send email directly." },
-      { category: CATEGORIES.BUSINESS_OPS, reason: "Not applicable — business operations compliance is not relevant for CLI tools." },
-      { category: CATEGORIES.API_QUALITY, reason: "Not applicable — API quality checks are for API backends, not CLI tools." },
-    ];
-  }
-
-  if (p === "DESKTOP_APP") {
-    return [
-      { category: CATEGORIES.SEO, reason: "Lower relevance — desktop apps are distributed via installers, not web search." },
-      { category: CATEGORIES.APP_STORE, reason: "Not applicable — iOS/Android app store checks do not apply to desktop applications." },
-      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — web routing internationalisation does not apply to desktop app installers." },
-    ];
-  }
-
-  if (p === "CHROME_EXTENSION") {
-    return [
-      { category: CATEGORIES.APP_STORE, reason: "Not applicable — iOS/Android app store checks do not apply to browser extensions." },
-      { category: CATEGORIES.MOBILE, reason: "Not applicable — browser extensions do not have responsive mobile web layouts." },
-      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — web internationalisation does not apply to browser extensions." },
-      { category: CATEGORIES.SAAS, reason: "Lower relevance — standard web SaaS conversion patterns do not apply to browser extension UX." },
-    ];
-  }
-
-  if (p === "MARKETING_SITE") {
-    return [
-      { category: CATEGORIES.AUTHENTICATION, reason: "Lower relevance — pure marketing sites typically do not have user login flows." },
-      { category: CATEGORIES.PAYMENTS, reason: "Lower relevance — pure marketing sites typically do not have embedded checkout." },
-      { category: CATEGORIES.APP_STORE, reason: "Not applicable — this is a marketing website, not a mobile app listing." },
-      { category: CATEGORIES.ROLES, reason: "Not applicable — roles and permissions checks are not relevant for marketing websites." },
-      { category: CATEGORIES.API_QUALITY, reason: "Not applicable — API quality checks are for API backends and developer platforms." },
-    ];
-  }
-
-  // WEB_APP, SAAS, OTHER, or unrecognised — run all checks
-  return [];
+function getSkippedCategoriesForPlatform(platform: string, surfaceKind: UrlSurfaceKind) {
+  return getInapplicableCategoryDetails(platform, surfaceKind);
 }
-
-/**
- * Apply platform-aware filtering: replace checks in irrelevant categories
- * with SKIPPED status so they don't pollute results or mislead the AI.
- */
-function applyPlatformFilter(checks: PulseScanCheckInput[], platform: string): PulseScanCheckInput[] {
-  const skipped = getSkippedCategoriesForPlatform(platform);
+function applyPlatformFilter(
+  checks: PulseScanCheckInput[],
+  platform: string | undefined,
+  surfaceKind: UrlSurfaceKind,
+): PulseScanCheckInput[] {
+  const skipped = getSkippedCategoriesForPlatform(platform ?? "OTHER", surfaceKind);
   if (skipped.length === 0) return checks;
 
   const skipMap = new Map(skipped.map((s) => [s.category, s.reason]));
@@ -643,10 +559,15 @@ export async function runUrlChecks(
   // orchestrator.ts / run-lite-scan.ts). Lets package.json deps correct a
   // homepage-HTML-only false negative (e.g. Stripe used server-side only).
   contextHints?: { githubTechStack?: string[] },
-): Promise<{ checks: PulseScanCheckInput[]; techStack: string[]; detectedMarkets: JurisdictionCode[] }> {
+): Promise<{
+  checks: PulseScanCheckInput[];
+  techStack: string[];
+  detectedMarkets: JurisdictionCode[];
+  surfaceKind: UrlSurfaceKind;
+}> {
   const urlType = detectUrlType(url);
   if (urlType === "app_store" || urlType === "play_store") {
-    return { ...(await runMobileStoreChecks(url, urlType)), detectedMarkets: [] };
+    return { ...(await runMobileStoreChecks(url, urlType)), detectedMarkets: [], surfaceKind: "DEPLOYED_PRODUCT" };
   }
 
   const checks: PulseScanCheckInput[] = [];
@@ -656,12 +577,13 @@ export async function runUrlChecks(
   // emit wrapper picks up the detected fallback once the page has been read.
   let effectiveMarkets: JurisdictionCode[] = targetMarkets ?? [];
   let detectedMarkets: JurisdictionCode[] = [];
+  let surfaceKind: UrlSurfaceKind = "DEPLOYED_PRODUCT";
   // Optional incremental emitter — fires partial waves so callers (runLiteScan)
   // can persist + stream checks as they land. Applies the same platform +
   // jurisdiction filters the final return uses, so streamed statuses match.
   const emit = onWave
     ? (batch: PulseScanCheckInput[]) =>
-        onWave(applyJurisdictionFilter(platform ? applyPlatformFilter(batch, platform) : batch, effectiveMarkets))
+        onWave(applyJurisdictionFilter(applyPlatformFilter(batch, platform, surfaceKind), effectiveMarkets))
     : undefined;
 
   const httpsUrl = url.startsWith("http://") ? url.replace("http://", "https://") : url;
@@ -669,6 +591,7 @@ export async function runUrlChecks(
   const baseUrl = httpsUrl.replace(/\/$/, "");
 
   const pageResult = await fetchPage(httpsUrl);
+  if (pageResult) surfaceKind = detectUrlSurfaceKind(pageResult.html);
 
   // Infrastructure
   checks.push({
@@ -679,6 +602,30 @@ export async function runUrlChecks(
     detail: pageResult ? "HTTPS connection succeeded." : "HTTPS connection failed or certificate error.",
     evidence: httpsUrl,
   });
+
+  // A bot/security checkpoint is not the product. Stop here rather than grading
+  // hundreds of product controls against Vercel/Cloudflare challenge markup.
+  // This is the URL equivalent of an unreadable private repository: report the
+  // coverage failure explicitly and make no claims about what is behind it.
+  if (pageResult && surfaceKind === "ACCESS_INTERSTITIAL") {
+    checks.push({
+      category: CATEGORIES.INFRASTRUCTURE,
+      checkKey: "target_content_accessible",
+      label: "Target content is inspectable",
+      status: "FAIL",
+      confidence: "HIGH",
+      detail:
+        "The host returned a browser/security checkpoint instead of the product. Pulse stopped before running product checks, because findings from an interstitial would be irrelevant and misleading. Allow the Pulse crawler or scan a source repository, staging URL, or exported build that is directly accessible.",
+      evidence: pageResult.html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() ?? "Access interstitial detected",
+    });
+    const hostname = new URL(pageResult.finalUrl || httpsUrl).hostname.toLowerCase();
+    return {
+      checks: checks.map((check, sortOrder) => ({ ...check, sortOrder })),
+      techStack: detectTechStack(pageResult.headers, "", hostname),
+      detectedMarkets: [],
+      surfaceKind,
+    };
+  }
 
   if (pageResult) {
     let ctx = detectProjectContext(pageResult.html, pageResult.headers);
@@ -2940,6 +2887,7 @@ export async function runUrlChecks(
         ctx,
         htmlLower,
         catchAll200,
+        surfaceKind,
         targetMarkets,
         detectedMarkets,
         effectiveMarkets,
@@ -3440,7 +3388,7 @@ export async function runUrlChecks(
   })();
   const techStack = pageResult ? detectTechStack(pageResult.headers, pageResult.html, spaHostname) : [];
   const rawChecks = checks.map((check, i) => ({ ...check, sortOrder: i }));
-  const platformFiltered = platform ? applyPlatformFilter(rawChecks, platform) : rawChecks;
+  const platformFiltered = applyPlatformFilter(rawChecks, platform, surfaceKind);
   const filteredChecks = applyJurisdictionFilter(platformFiltered, effectiveMarkets);
   const spaAdjusted =
     pageResult &&
@@ -3451,7 +3399,7 @@ export async function runUrlChecks(
     }).isSpa
       ? reclassifySpaChecks(filteredChecks)
       : filteredChecks;
-  return { checks: spaAdjusted, techStack, detectedMarkets };
+  return { checks: spaAdjusted, techStack, detectedMarkets, surfaceKind };
 }
 
 type GitHubContentsEntry = { name: string; type: "file" | "dir" };

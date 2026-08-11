@@ -48,6 +48,16 @@ describe("collector completeness", () => {
 });
 
 describe("Pulse score v3 trust model", () => {
+  it("cannot award a product score when the target content was never inspectable", () => {
+    const breakdown = computeScoreBreakdown([
+      check({ category: "Infrastructure", checkKey: "ssl_valid", status: "PASS", confidence: "HIGH" }),
+      check({ category: "Infrastructure", checkKey: "target_content_accessible", status: "FAIL", confidence: "HIGH" }),
+    ]);
+
+    expect(breakdown.finalScore).toBe(0);
+    expect(breakdown.capsApplied).toContainEqual({ cap: 0, reason: "Target content was not inspectable" });
+  });
+
   it("treats LOW-confidence PASS and FAIL symmetrically", () => {
     const breakdown = computeScoreBreakdown([
       check({ checkKey: "weak_pass", status: "PASS", confidence: "LOW" }),

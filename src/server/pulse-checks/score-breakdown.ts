@@ -155,6 +155,9 @@ export function computeScoreBreakdown(checks: PulseScanCheckInput[]): ScoreBreak
     0,
   );
   const rawScore = categoryPossible === 0 ? 0 : Math.round((categoryEarned / categoryPossible) * 100);
+  const targetContentBlocked = checks.some(
+    (check) => check.checkKey === "target_content_accessible" && check.status === "FAIL",
+  );
 
   const knownAndUnknown = observedPossible + unknownWeight;
   const completeness = knownAndUnknown === 0 ? 0 : rounded((observedPossible / knownAndUnknown) * 100);
@@ -163,16 +166,16 @@ export function computeScoreBreakdown(checks: PulseScanCheckInput[]): ScoreBreak
 
   return {
     rawScore,
-    finalScore: rawScore,
+    finalScore: targetContentBlocked ? 0 : rawScore,
     totalWeight: observedPossible,
     earnedWeight: observedEarned,
     byCategory: [...byCategoryAcc.values()].sort((a, b) => b.possible - a.possible),
-    capsApplied: [],
+    capsApplied: targetContentBlocked ? [{ cap: 0, reason: "Target content was not inspectable" }] : [],
     scoreVersion: SCORE_VERSION,
     policyVersion: POLICY_VERSION,
     completeness,
-    lowerBound: Math.min(lowerBound, rawScore),
-    upperBound: Math.max(upperBound, rawScore),
+    lowerBound: targetContentBlocked ? 0 : Math.min(lowerBound, rawScore),
+    upperBound: targetContentBlocked ? 0 : Math.max(upperBound, rawScore),
     unknownWeight,
     excludedCount,
   };
