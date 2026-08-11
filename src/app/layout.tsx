@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, DM_Serif_Display, JetBrains_Mono, Caveat, Dancing_Script, Great_Vibes, Fraunces, Playfair_Display, Poppins, Montserrat, Space_Grotesk, Manrope, Archivo, Sora } from "next/font/google";
+import { Inter, DM_Serif_Display, JetBrains_Mono, Caveat, Dancing_Script, Great_Vibes, Playfair_Display, Poppins, Montserrat, Space_Grotesk, Manrope, Archivo, Sora } from "next/font/google";
 import { AppProviders } from "@/components/providers/app-providers";
 import "./globals.css";
 
@@ -34,11 +34,9 @@ const caveat = Caveat({ subsets: ["latin"], weight: ["400", "500"], variable: "-
 const dancingScript = Dancing_Script({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-dancing-script", display: "swap", preload: false });
 const greatVibes = Great_Vibes({ subsets: ["latin"], weight: ["400"], variable: "--font-great-vibes", display: "swap", preload: false });
 
-// Studio marketing-brand fonts — used only by the /app/studio social-asset templates
-// (Cream/Purple style preset). Bound to CSS vars; browsers only fetch them once a
-// `font-family: var(--font-fraunces|--font-playfair)` rule actually matches, so they
-// add no weight to the rest of the app.
-const fraunces = Fraunces({ subsets: ["latin"], weight: ["400", "600", "700"], style: ["normal", "italic"], variable: "--font-fraunces", display: "swap", preload: false });
+// Fraunces is self-hosted from @fontsource-variable in globals.css. Keeping it out
+// of next/font/google prevents production builds from depending on fonts.gstatic.com.
+// Playfair remains route-specific and is loaded only when a matching CSS variable is used.
 const playfairDisplay = Playfair_Display({ subsets: ["latin"], weight: ["400", "700"], style: ["normal", "italic"], variable: "--font-playfair", display: "swap", preload: false });
 
 // Extra display/sans families offered as text-layer fonts in Studio's App Screenshots mode.
@@ -98,7 +96,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${dmSerifDisplay.variable} ${jetbrainsMono.variable} ${caveat.variable} ${dancingScript.variable} ${greatVibes.variable} ${fraunces.variable} ${playfairDisplay.variable} ${poppins.variable} ${montserrat.variable} ${spaceGrotesk.variable} ${manrope.variable} ${archivo.variable} ${sora.variable}`}
+      className={`${inter.variable} ${dmSerifDisplay.variable} ${jetbrainsMono.variable} ${caveat.variable} ${dancingScript.variable} ${greatVibes.variable} ${playfairDisplay.variable} ${poppins.variable} ${montserrat.variable} ${spaceGrotesk.variable} ${manrope.variable} ${archivo.variable} ${sora.variable}`}
       suppressHydrationWarning
     >
       <head>
