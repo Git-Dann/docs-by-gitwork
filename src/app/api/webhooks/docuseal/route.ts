@@ -18,8 +18,9 @@ export async function POST(request: NextRequest) {
     ).toLowerCase();
 
     const data = (payload.data && typeof payload.data === "object" ? payload.data : {}) as Record<string, unknown>;
+    const submissionObj = (data.submission && typeof data.submission === "object" ? data.submission : {}) as Record<string, unknown>;
     const submissionId = String(
-      data.id || data.submission_id || data.submission?.id || data.submission?.slug || payload.submission_id || payload.id || "",
+      data.id || data.submission_id || submissionObj.id || submissionObj.slug || payload.submission_id || payload.id || "",
     );
 
     console.log(`[DocuSeal Webhook] Received event_type="${eventType}", submissionId="${submissionId}"`);
