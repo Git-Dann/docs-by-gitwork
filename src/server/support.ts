@@ -665,6 +665,31 @@ function replyStateWhere(state: ReplyState): Prisma.SupportConversationWhereInpu
   }
 }
 
+/**
+ * Oldest customer message still believed unanswered for a client, or null when nothing is waiting.
+ *
+ * Used by the IMAP adapter to decide how far back to read the Sent folder. Reading Sent answers one
+ * question — "were these threads actually replied to?" — so the window need only reach the oldest
+ * thread we still think is unanswered.
+ *
+ * Deliberately built on `replyStateWhere("awaiting_reply")` rather than repeating the predicate:
+ * if the sync window and the queue ever disagreed about what "awaiting" means, the sync would scan
+ * the wrong period and the queue would stay wrong with no visible error.
+ *
+ * Rides @@index([clientId, lastInboundAt]).
+ */
+export async function oldestUnansweredInboundAt(clientId: string): Promise<Date | null> {
+  const row = await prisma.supportConversation.aggregate({
+    where: {
+      clientId,
+      status: { in: ["NEW", "OPEN"] },
+      ...replyStateWhere("awaiting_reply"),
+    },
+    _min: { lastInboundAt: true },
+  });
+  return row._min.lastInboundAt ?? null;
+}
+
 export async function listConversations(
   clientId: string,
   opts: {

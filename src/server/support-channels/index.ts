@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { recordMessageActivity } from "@/server/support";
+import { encryptScraperConfig } from "@/server/support-scraper-config";
 import type { SupportSource as PrismaSupportSource } from "@prisma/client";
 import type { ChannelAdapter, SyncContext, SyncResult, FilterReasons } from "./types";
 import { discordAdapter } from "./discord";
@@ -157,8 +158,18 @@ export async function runChannelSync(ctx: SyncContext): Promise<SyncResult> {
       where: { id: ctx.connection.id },
       data: {
         lastSyncedAt: new Date(),
+        // RE-ENCRYPT on the way back. `ctx.connection.scraperConfig` is the DECRYPTED config (see
+        // toSyncContext), so spreading it into the row as-is persisted every secret in plaintext —
+        // silently undoing encryption at rest for any adapter that emits a configPatch. Discord
+        // does, on every single sync, so its botToken has been written in the clear each run.
+        // encryptScraperConfig is idempotent (it skips values already prefixed `enc:`).
         ...(configPatch
-          ? { scraperConfig: { ...((ctx.connection.scraperConfig as object) ?? {}), ...configPatch } as object }
+          ? {
+              scraperConfig: encryptScraperConfig({
+                ...((ctx.connection.scraperConfig as Record<string, unknown>) ?? {}),
+                ...configPatch,
+              }) as object,
+            }
           : {}),
       },
     });
