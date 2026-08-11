@@ -3608,3 +3608,56 @@ real compiled stylesheet from `.next/static/css`, and screenshotted in both them
 run, but tokens, geometry and content are the shipped ones. ⚠️ `tsx` compiles `.tsx` with the classic
 JSX runtime against this repo's `"jsx": "preserve"` tsconfig and fails with *"React is not
 defined"* — pass a throwaway tsconfig setting `"jsx": "react-jsx"`.
+
+### 42.14 The bar is the rest of the platform — Deck, Starters, Docs
+
+§42.12's restructure fixed the information architecture and Dan accepted the table, but the verdict
+on the rest was that the **tab bar felt basic** and the **reply/authoring screen "looks exactly the
+same, feels rubbish and outdated"** against Deck, Starters and Docs. Both were fair, and both were
+the same failure: the new IA was drawn in generic web chrome rather than in Foundry's own.
+
+- **The saved-view tabs are a segmented control**, not underlined text. Underline tabs are the web
+  default and read as exactly that. DESIGN.md already names the platform's pick-one control (Deck's
+  brand switch: *mono caps, 6px, brand-soft*): a hairline-bordered well on `--surface-1`, the active
+  view a raised `--surface-0` chip in brand, counts as 4px badges so "Awaiting reply 226" stops
+  reading as one string. The QUEUES / BROWSE split is a rule inside the well.
+- **The thread is a transcript, not chat bubbles.** Left/right rounded bubbles capped at 85% width
+  were wrong twice: Care holds *email* — a support reply is six paragraphs and a quoted history, so
+  alternating alignment and an 85% cap make long messages harder to read — and bubbles are nobody's
+  language on this platform. Now a mono meta rail (`US` / `CUSTOMER` · author · when) over full-width
+  prose, with direction carried by a 2px left rule and a faint wash.
+- **The composer is an instrument, not a bare form.** `01 // THREAD` and `02 // REPLY` are numbered
+  panels on the canvas like every other module surface (DESIGN.md: never bare cards floating on the
+  canvas), and the reply panel's header states **where the reply will actually go** —
+  `VIA GMAIL · ⌘↵ TO SEND` versus `MANUAL · COPY TO SEND`. On a manual channel that is the difference
+  between a sent reply and a lost draft, and the old naked textarea never said it.
+- The record numbers `01`–`04` across **both columns**, left then right: the sequence is per screen,
+  not per column.
+- **`formatWhen`** was added beside `formatAge`, because `formatAge` returns a bare duration and the
+  header appended "ago" to it — so a reply sent in the last minute read *"answered now ago"*.
+- **The thread opens at the newest message**, aligned to that message's **top** rather than the
+  container's bottom: scrolling to the bottom cut off the one line saying who you are reading.
+
+**`/demo/care` was a shell, and that is why this took three passes.** The interceptor answered
+`{ messages: [] }`, `{ members: [] }`, `{ connections: [] }` and `{ notes: [] }` for every request,
+so the entire record side of the module — transcript, assignee options, send path, notes — could not
+be rendered at all, on the only surface where an auth-gated module *can* be rendered. It now serves
+real threads (inbound + our reply), three members, per-source connections and notes.
+
+**It also ignored the query string entirely**, so all nine view tabs showed all four conversations,
+the counts disagreed with the rows beneath them, and search and the channel filter did nothing.
+`demo-fetch.ts` now passes `URLSearchParams` through and `filterDemoConversations` applies the same
+filters `listConversations` applies in SQL. ⚠️ Match the **wire** format, not the shape of the params
+object: `status` is **comma-joined** and `unassigned` is the string **`"1"`** (see
+`listSupportConversations`). Reading them as repeated params and as `"true"` matched nothing, so the
+awaiting tab rendered its empty state while its badge read 2 — the exact class of demo lie the
+function exists to remove.
+
+⚠️ **`npx next build` clobbers a running `npm run dev`.** The dev server keeps serving HTML that
+references chunks the build deleted, so every page 404s its JS and renders unstyled — which looks
+like a broken route and cost a diversion here. After any `next build`, `rm -rf .next` and restart dev
+before screenshotting.
+
+**Verified:** `npm run verify` green — 0 errors, **1612 tests**, `audit:ui` 0 findings; `npx next
+build` clean. `/demo/care` rendered at 390 · 768 · 1280×620 · 1440 across index · record ·
+record-details · selection · settings — **0 clipping findings across all 20 combinations**.

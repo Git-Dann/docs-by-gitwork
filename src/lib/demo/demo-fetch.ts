@@ -21,14 +21,21 @@ if (typeof window !== "undefined" && !globalThis.__foundryDemoFetchPatched) {
     else rawUrl = input.url;
 
     let pathname: string;
+    // The query string used to be thrown away here, so every list endpoint answered the same
+    // payload whatever was asked of it — in Care that meant all nine view tabs showed all four
+    // conversations, tab counts that disagreed with the rows beneath them, and a search box that
+    // did nothing. It is passed through now; `resolveDemoApi` may ignore it.
+    let search: URLSearchParams | undefined;
     try {
-      pathname = rawUrl.startsWith("http") ? new URL(rawUrl).pathname : rawUrl.split("?")[0];
+      const u = rawUrl.startsWith("http") ? new URL(rawUrl) : new URL(rawUrl, "http://demo.local");
+      pathname = u.pathname;
+      search = u.searchParams;
     } catch {
       pathname = rawUrl.split("?")[0];
     }
 
     if (pathname.startsWith("/api/")) {
-      const body = resolveDemoApi(pathname);
+      const body = resolveDemoApi(pathname, search);
       return new Response(JSON.stringify(body), {
         status: 200,
         headers: { "Content-Type": "application/json" },

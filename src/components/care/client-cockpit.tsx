@@ -605,53 +605,63 @@ export function ClientCockpit({
         />
       ) : (
         <>
-          {/* ── The saved views, as tabs. Nine rows in a rail read as a filter dropdown and cost a
-                 fifth of the width; across the top they read as the queues they are, and the width
-                 goes to the work. The hairline before "Browse" is the same QUEUES / BROWSE split
-                 the rail carried. ── */}
-          <nav
-            className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-[var(--border-2)] px-2"
-            aria-label="Conversation views"
-          >
-            {VIEW_GROUPS.map((group, gi) => (
-              <Fragment key={group.label}>
-                {gi > 0 && <span aria-hidden className="mx-1.5 h-4 w-px shrink-0 bg-[var(--border-2)]" />}
-                {group.ids.map((id) => {
-                  const v = SAVED_VIEWS.find((s) => s.id === id);
-                  if (!v) return null;
-                  const count = viewCounts[v.id] ?? 0;
-                  const isActive = activeView === v.id;
-                  // The awaiting queue is the only count that is a call to action, so it is the
-                  // only one that carries colour. Everything else stays a quiet readout.
-                  const isQueue = v.id === DEFAULT_VIEW_ID && count > 0;
-                  return (
-                    <button
-                      key={v.id}
-                      type="button"
-                      onClick={() => setActiveView(v.id)}
-                      aria-current={isActive ? "page" : undefined}
-                      className={cn(
-                        "flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 py-2 text-[13px] transition",
-                        isActive
-                          ? "border-[var(--brand-600)] font-medium text-[var(--brand-700)]"
-                          : "border-transparent text-[var(--text-3)] hover:text-[var(--text-1)]",
-                      )}
-                    >
-                      {v.label}
-                      <span
+          {/* ── The saved views, as a SEGMENTED CONTROL — the platform's own pick-one grammar
+                 (DESIGN.md: mono caps, 6px, brand-soft active; the same control Deck's topbar uses).
+                 Underlined text tabs were the generic web default and read as exactly that: the bar
+                 said nothing about being part of an instrument. Here the group is a hairline-bordered
+                 well on `--surface-1`, the active view is a raised `--surface-0` chip in brand, and
+                 the QUEUES / BROWSE split is a rule inside the well rather than a second row. ── */}
+          <div className="shrink-0 overflow-x-auto border-b border-[var(--border-2)] px-3 py-2 sm:px-4">
+            <nav
+              className="inline-flex items-center gap-0.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5"
+              aria-label="Conversation views"
+            >
+              {VIEW_GROUPS.map((group, gi) => (
+                <Fragment key={group.label}>
+                  {gi > 0 && <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-[var(--border-2)]" />}
+                  {group.ids.map((id) => {
+                    const v = SAVED_VIEWS.find((s) => s.id === id);
+                    if (!v) return null;
+                    const count = viewCounts[v.id] ?? 0;
+                    const isActive = activeView === v.id;
+                    // The awaiting queue is the only count that is a call to action, so it is the
+                    // only one that carries colour. Everything else stays a quiet readout.
+                    const isQueue = v.id === DEFAULT_VIEW_ID && count > 0;
+                    return (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => setActiveView(v.id)}
+                        aria-current={isActive ? "page" : undefined}
                         className={cn(
-                          "font-mono text-[11px]",
-                          isQueue ? "font-semibold text-[var(--warning-500)]" : "text-[var(--text-4)]",
+                          "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[6px] px-2.5 py-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.09em] transition",
+                          isActive
+                            ? "bg-[var(--surface-0)] text-[var(--brand-700)] shadow-[var(--shadow-xs)]"
+                            : "text-[var(--text-3)] hover:text-[var(--text-1)]",
                         )}
                       >
-                        {countsQ.isLoading ? "·" : count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </Fragment>
-            ))}
-          </nav>
+                        {v.label}
+                        {/* The count is a 4px badge, not loose text — it stops "Awaiting reply 226"
+                            reading as one string and gives the figure its own weight. */}
+                        <span
+                          className={cn(
+                            "rounded-[4px] px-1 py-px text-[10px] font-semibold tabular-nums",
+                            isQueue
+                              ? "bg-[var(--warning-50)] text-[var(--warning-500)]"
+                              : isActive
+                                ? "bg-[var(--surface-brand)] text-[var(--brand-700)]"
+                                : "bg-[var(--surface-2)] text-[var(--text-4)]",
+                          )}
+                        >
+                          {countsQ.isLoading ? "·" : count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </Fragment>
+              ))}
+            </nav>
+          </div>
 
           {/* ── Toolbar, or the bulk bar when something is selected. They occupy the same strip
                  deliberately: acting on a selection replaces filtering it, and a bar that appears

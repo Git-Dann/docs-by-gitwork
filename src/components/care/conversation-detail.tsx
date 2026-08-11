@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   PaperAirplaneIcon,
   ClipboardDocumentIcon,
@@ -30,8 +30,7 @@ import {
   PRIORITY_LABEL,
   REPLY_STATE_LABEL,
   REPLY_STATE_DOT,
-  formatAge,
-  initialsOf,
+  formatWhen,
   isLongWait,
 } from "./care-constants";
 import { OpenInChannelButton } from "./open-in-channel-button";
@@ -50,13 +49,13 @@ const PRIORITIES: ConversationPriority[] = ["urgent", "high", "normal", "low"];
  *
  *   ┌ customer · subject · state ······· Open in channel · Close · Snooze ┐
  *   ├───────────────────────────────────────────┬─────────────────────────┤
- *   │ the thread              (scrolls)         │ 01 // PROPERTIES        │
+ *   │ 01 // THREAD            (scrolls)         │ 03 // PROPERTIES        │
  *   │                                           │  assignee/priority/…    │
- *   │ composer (pinned — answering is the job)  │ 02 // NOTES             │
+ *   │ 02 // REPLY (pinned — answering is the job)│ 04 // NOTES             │
  *   └───────────────────────────────────────────┴─────────────────────────┘
  *
- * The thread carries no `NN //` band of its own: it is the record, not a widget on it, and a 36px
- * strip above it would cost a message of height to restate the header directly above.
+ * One `NN` sequence across the whole record, left column then right — the numbering is per SCREEN,
+ * not per column, so a reader can refer to "04" and mean one thing.
  *
  * Below `lg` there is no room for two columns, so the sidebar becomes a toggle ("Details") that
  * swaps in place of the thread — one boolean, one copy of the panel, no duplicated markup.
@@ -127,6 +126,59 @@ function ReadOnlyProp({ label, children }: { label: string; children: React.Reac
   );
 }
 
+/**
+ * One message, as a TRANSCRIPT row rather than a chat bubble.
+ *
+ * The thread used to be left/right rounded bubbles capped at 85% width — the chat-app trope, and
+ * wrong twice over here. Care holds *email*: a support reply is six paragraphs and a quoted history,
+ * not "ok 👍", so alternating alignment and an 85% cap make long messages harder to read, not easier.
+ * And bubbles are nobody's design language on this platform — every other Foundry surface states its
+ * facts as a mono rail over full-width prose.
+ *
+ * So: a mono meta rail (direction · author · when), the body at full width, and inbound vs outbound
+ * carried by a 2px left rule plus a faint wash — legible at a glance without moving the text around.
+ */
+function Message({
+  message,
+  first,
+  fallbackAuthor,
+}: {
+  message: { id: string; direction: string; authorLabel: string; body: string; createdAt: string };
+  first: boolean;
+  fallbackAuthor: string;
+}) {
+  const outbound = message.direction === "outbound";
+  return (
+    <article
+      className={cn(
+        "border-l-2 px-4 py-3",
+        !first && "border-t border-t-[var(--border-3)]",
+        outbound
+          ? "border-l-[var(--brand-600)] bg-[var(--surface-brand-soft)]"
+          : "border-l-transparent bg-[var(--surface-0)]",
+      )}
+    >
+      <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span
+          className={cn(
+            "rounded-[4px] px-1 py-px font-mono text-[9px] font-semibold uppercase tracking-[0.1em]",
+            outbound
+              ? "bg-[var(--surface-brand-strong)] text-[var(--brand-700)]"
+              : "bg-[var(--surface-2)] text-[var(--text-3)]",
+          )}
+        >
+          {outbound ? "Us" : "Customer"}
+        </span>
+        <span className="widget-data-label truncate">{message.authorLabel || fallbackAuthor}</span>
+        <span className="widget-data-label ml-auto shrink-0">{formatWhen(message.createdAt)}</span>
+      </div>
+      <p className="overflow-hidden whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[13px] leading-relaxed text-[var(--text-2)]">
+        {message.body}
+      </p>
+    </article>
+  );
+}
+
 /** Whose turn it is. The single most important fact on the board, so it leads the header. */
 function StateLine({ conversation }: { conversation: Conversation }) {
   const { replyState, lastInboundAt, lastOutboundAt } = conversation;
@@ -147,9 +199,11 @@ function StateLine({ conversation }: { conversation: Conversation }) {
       >
         {REPLY_STATE_LABEL[replyState]}
       </span>
-      {awaiting && lastInboundAt && <span className="text-[var(--text-4)]">· waiting {formatAge(lastInboundAt)}</span>}
+      {awaiting && lastInboundAt && (
+        <span className="text-[var(--text-4)]">· waiting {formatWhen(lastInboundAt).replace(" ago", "")}</span>
+      )}
       {replyState === "replied" && lastOutboundAt && (
-        <span className="text-[var(--text-4)]">· answered {formatAge(lastOutboundAt)} ago</span>
+        <span className="text-[var(--text-4)]">· answered {formatWhen(lastOutboundAt)}</span>
       )}
     </span>
   );
@@ -181,6 +235,7 @@ export function ConversationDetail({
   const [copied, setCopied] = useState(false);
   // Narrow-viewport only: swaps the properties column in place of the thread.
   const [showProps, setShowProps] = useState(false);
+  const threadRef = useRef<HTMLDivElement | null>(null);
 
   const members = membersQ.data?.members ?? [];
   const connection = connections.find((c) => c.source === conversation.source);
@@ -197,6 +252,25 @@ export function ConversationDetail({
   const manualHint = isAppStoreReview
     ? "Reply in App Store Connect"
     : `Send not wired for ${SOURCE_LABEL[conversation.source]} — copy & reply manually`;
+
+  /**
+   * Open at the newest message, which is what every mail client does and what the reader came for.
+   * Keyed on the message count so it also follows a reply you have just sent, and it jumps rather
+   * than animating — a smooth scroll through a thirty-message thread is a second of nothing.
+   *
+   * Aligns the last message's TOP with the panel's, not the container's bottom: scrolling to the
+   * bottom cut the "US · GITWORK SUPPORT · JUST NOW" rail off the top of the newest message, which
+   * is the one line that says who you are reading. Reading starts at the top of a message either
+   * way, and if it overflows the panel you scroll down through it as normal.
+   */
+  const messageCount = messagesQ.data?.messages.length ?? 0;
+  useEffect(() => {
+    const el = threadRef.current;
+    if (!el) return;
+    const last = el.querySelector("article:last-of-type");
+    if (!last) return;
+    el.scrollTop += last.getBoundingClientRect().top - el.getBoundingClientRect().top;
+  }, [messageCount]);
 
   function snoozeFor(hours: number) {
     snooze.mutate({ convId: conversation.id, until: new Date(Date.now() + hours * 3600_000).toISOString() });
@@ -334,49 +408,67 @@ export function ConversationDetail({
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1">
-        {/* ── Thread + composer ── */}
-        <div className={cn("min-h-0 min-w-0 flex-1 flex-col", showProps ? "hidden lg:flex" : "flex")}>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
-            {messagesQ.isLoading && <p className="text-sm text-[var(--text-4)]">Loading messages…</p>}
-            {messagesQ.data?.messages.length === 0 && (
-              <p className="text-sm text-[var(--text-4)]">No messages captured on this thread.</p>
-            )}
-            <div className="mx-auto flex max-w-3xl flex-col gap-3">
-              {messagesQ.data?.messages.map((m) => {
-                const outbound = m.direction === "outbound";
-                return (
-                  <div key={m.id} className={cn("flex flex-col", outbound ? "items-end" : "items-start")}>
-                    <div className="mb-1 flex items-center gap-1.5 px-1 widget-data-label">
-                      {!outbound && (
-                        <span className="rounded-[3px] bg-[var(--surface-1)] px-1 text-[var(--text-3)]">
-                          {initialsOf(m.authorLabel || conversation.customerLabel)}
-                        </span>
-                      )}
-                      <span className="max-w-[16rem] truncate">{m.authorLabel}</span>
-                      <span>· {formatAge(m.createdAt)} ago</span>
-                    </div>
-                    <div
-                      className={cn(
-                        "max-w-[85%] rounded-[10px] border px-3 py-2",
-                        outbound
-                          ? "border-[var(--brand-200)] bg-[var(--surface-brand)]"
-                          : "border-[var(--border-2)] bg-[var(--surface-0)]",
-                      )}
-                    >
-                      <p className="overflow-hidden whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[13px] leading-relaxed text-[var(--text-2)]">
-                        {m.body}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
+      <div className="flex min-h-0 flex-1 bg-[var(--surface-canvas)]">
+        {/* ── Thread + composer, as two panels on the canvas ──
+               They were a bare scroll area and a naked textarea sitting directly on white, which is
+               why this screen read as a form rather than as part of Foundry. Every module surface in
+               the platform wears the widget signature (DESIGN.md: "never bare cards floating on the
+               canvas") — so the transcript and the composer are numbered panels like everything else,
+               and the composer's card IS its frame. ── */}
+        <div
+          className={cn(
+            "min-h-0 min-w-0 flex-1 flex-col gap-3 p-3",
+            showProps ? "hidden lg:flex" : "flex",
+          )}
+        >
+          <section className="widget-card flex min-h-0 flex-1 flex-col">
+            <div className="widget-header">
+              <span className="widget-header__label">
+                <span className="widget-header__label--number">01</span>{" // THREAD"}
+              </span>
+              <span className="widget-header__status">
+                {messagesQ.data ? `${messageCount} MESSAGE${messageCount === 1 ? "" : "S"}` : "—"}
+              </span>
             </div>
-          </div>
+            <div ref={threadRef} className="min-h-0 flex-1 overflow-y-auto">
+              {messagesQ.isLoading && <p className="widget-body text-sm text-[var(--text-4)]">Loading messages…</p>}
+              {messagesQ.data?.messages.length === 0 && (
+                <p className="widget-body text-sm text-[var(--text-4)]">No messages captured on this thread.</p>
+              )}
+              {messagesQ.data?.messages.map((m, i) => (
+                <Message
+                  key={m.id}
+                  message={m}
+                  first={i === 0}
+                  fallbackAuthor={conversation.customerLabel}
+                />
+              ))}
+            </div>
+          </section>
 
-          {/* ── Composer: always present. Answering is the job; it is never behind a click. ── */}
-          <div className="shrink-0 border-t border-[var(--border-2)] bg-[var(--surface-0)] px-4 py-3 sm:px-5">
-            <div className="mx-auto max-w-3xl">
+          {/* Answering is the job, so the composer is always present — never behind a click. */}
+          <section className="widget-card shrink-0">
+            <div className="widget-header">
+              <span className="widget-header__label">
+                <span className="widget-header__label--number">02</span>{" // REPLY"}
+              </span>
+              {/* Says where this will actually go, which the old naked textarea never did — on a
+                  manual channel that is the difference between a sent reply and a lost draft. */}
+              <span className={cn("widget-header__status", !canSend && "text-[var(--warning-500)]")}>
+                {canSend
+                  ? `VIA ${SOURCE_LABEL[conversation.source].toUpperCase()} · ⌘↵ TO SEND`
+                  : isAppStoreReview
+                    ? "MANUAL · APP STORE CONNECT"
+                    : "MANUAL · COPY TO SEND"}
+              </span>
+            </div>
+            <div>
+              {/*
+                No inner border and no radius: the panel is the frame. `app-textarea` would draw a
+                second box inside a box, which is the "form stuck inside a card" look this pass
+                exists to remove — but the baseline textarea padding guard in globals.css only keys
+                off the app-* field classes, so the padding is set explicitly here.
+              */}
               <textarea
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
@@ -389,24 +481,20 @@ export function ConversationDetail({
                 maxLength={replyLimit ?? undefined}
                 placeholder={
                   canSend
-                    ? `Reply to ${conversation.customerLabel}…  (⌘↵ to send)`
+                    ? `Reply to ${conversation.customerLabel}…`
                     : "Draft your reply, then copy it to send manually…"
                 }
                 rows={3}
-                className="app-textarea w-full text-[13px]"
+                aria-label="Reply"
+                className="block w-full resize-y border-0 bg-transparent px-4 py-3 text-[13px] leading-relaxed text-[var(--text-1)] outline-none placeholder:text-[var(--text-4)]"
               />
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                {!canSend && (
-                  <span className="rounded-[4px] border border-[var(--border-2)] bg-[var(--warning-50)] px-2 py-0.5 text-[11px] font-semibold text-[var(--warning-500)]">
-                    {isAppStoreReview ? "App Store Connect" : "Manual reply"}
-                  </span>
-                )}
+              <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border-3)] px-3 py-2">
                 {canGenerateAi && (
                   <button
                     type="button"
                     onClick={() => void handleAiDraft()}
                     disabled={generateDraft.isPending}
-                    className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1.5 text-[11px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
+                    className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1 text-[11px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
                     title="Generate an AI draft reply"
                   >
                     <SparklesIcon className={cn("h-3.5 w-3.5 text-[var(--brand-600)]", generateDraft.isPending && "animate-spin")} />
@@ -416,7 +504,7 @@ export function ConversationDetail({
                 {replyError && <p className="min-w-0 flex-1 text-[12px] text-[var(--danger-500)]">{replyError}</p>}
                 <div className="ml-auto flex shrink-0 items-center gap-2">
                   {replyLimit !== null && (
-                    <span className={cn("font-mono text-[11px]", overLimit ? "text-[var(--danger-500)]" : "text-[var(--text-4)]")}>
+                    <span className={cn("font-mono text-[11px] tabular-nums", overLimit ? "text-[var(--danger-500)]" : "text-[var(--text-4)]")}>
                       {replyText.length}/{replyLimit}
                     </span>
                   )}
@@ -445,13 +533,15 @@ export function ConversationDetail({
                 </div>
               </div>
             </div>
-          </div>
+          </section>
         </div>
 
         {/* ── Properties + notes. A column at lg+, a swapped-in view below it. ── */}
         <aside
           className={cn(
-            "min-h-0 w-full shrink-0 overflow-y-auto border-[var(--border-2)] bg-[var(--surface-canvas)] p-3 lg:block lg:w-[286px] lg:border-l",
+            // No left border: both columns are cards on the same canvas, so a rule between them
+            // reads as a seam welding the sidebar to the frame edge rather than as a divider.
+            "min-h-0 w-full shrink-0 overflow-y-auto p-3 pt-0 lg:block lg:w-[286px] lg:pl-0 lg:pt-3",
             showProps ? "block" : "hidden",
           )}
         >
@@ -459,7 +549,7 @@ export function ConversationDetail({
             <section className="widget-card">
               <div className="widget-header">
                 <span className="widget-header__label">
-                  <span className="widget-header__label--number">01</span>{" // PROPERTIES"}
+                  <span className="widget-header__label--number">03</span>{" // PROPERTIES"}
                 </span>
               </div>
               <div className="widget-body space-y-3">
@@ -511,16 +601,16 @@ export function ConversationDetail({
                 <div className="grid grid-cols-2 gap-3 border-t border-[var(--border-3)] pt-3">
                   <ReadOnlyProp label="Channel">{SOURCE_LABEL[conversation.source]}</ReadOnlyProp>
                   <ReadOnlyProp label="First seen">
-                    <span className="font-mono text-[12px]">{formatAge(conversation.receivedAt)} ago</span>
+                    <span className="font-mono text-[12px]">{formatWhen(conversation.receivedAt)}</span>
                   </ReadOnlyProp>
                   {conversation.lastInboundAt && (
                     <ReadOnlyProp label="Last in">
-                      <span className="font-mono text-[12px]">{formatAge(conversation.lastInboundAt)} ago</span>
+                      <span className="font-mono text-[12px]">{formatWhen(conversation.lastInboundAt)}</span>
                     </ReadOnlyProp>
                   )}
                   {conversation.lastOutboundAt && (
                     <ReadOnlyProp label="Last out">
-                      <span className="font-mono text-[12px]">{formatAge(conversation.lastOutboundAt)} ago</span>
+                      <span className="font-mono text-[12px]">{formatWhen(conversation.lastOutboundAt)}</span>
                     </ReadOnlyProp>
                   )}
                 </div>
@@ -546,7 +636,7 @@ export function ConversationDetail({
             <section className="widget-card">
               <div className="widget-header">
                 <span className="widget-header__label">
-                  <span className="widget-header__label--number">02</span>{" // NOTES"}
+                  <span className="widget-header__label--number">04</span>{" // NOTES"}
                 </span>
                 <span className="widget-header__status">STAFF ONLY</span>
               </div>
@@ -557,7 +647,7 @@ export function ConversationDetail({
                 {notesQ.data?.notes.map((note) => (
                   <div key={note.id} className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-2">
                     <div className="widget-data-label mb-1">
-                      {note.authorId ?? "system"} · {formatAge(note.createdAt)} ago
+                      {note.authorId ?? "system"} · {formatWhen(note.createdAt)}
                     </div>
                     <p className="whitespace-pre-wrap text-[13px] text-[var(--text-2)]">{note.body}</p>
                   </div>

@@ -251,7 +251,12 @@ export function isLongWait(iso: string, now: number = Date.now()): boolean {
   return now - new Date(iso).getTime() >= LONG_WAIT_HOURS * 3600_000;
 }
 
-/** Compact "3h", "2d", "just now" age from an ISO timestamp. */
+/**
+ * Compact "3h", "2d", "now" age from an ISO timestamp.
+ *
+ * Note it returns a bare duration, so a caller writing `{formatAge(x)} ago` produces "now ago" for
+ * anything under a minute. Use `formatWhen` when the phrasing has to read as a sentence.
+ */
 export function formatAge(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   if (ms < 60_000) return "now";
@@ -262,4 +267,16 @@ export function formatAge(iso: string): string {
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d`;
   return `${Math.floor(days / 30)}mo`;
+}
+
+/**
+ * The same age, phrased for prose: "just now" / "3h ago" / "2d ago".
+ *
+ * Exists because the detail header said *"answered now ago"* and *"waiting now"* — `formatAge`
+ * returns a bare duration and "now" is not one, so every caller that appended "ago" was one
+ * sub-minute message away from reading wrong.
+ */
+export function formatWhen(iso: string): string {
+  const age = formatAge(iso);
+  return age === "now" ? "just now" : `${age} ago`;
 }
