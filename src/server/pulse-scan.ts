@@ -13,18 +13,23 @@ import { detectAiBuilder } from "./pulse-checks/vibe-code-hygiene";
 import { detectSpaContext, reclassifySpaChecks } from "./pulse-lite/spa-detect";
 import {
   applyNativeApplicability,
-  detectNativePlatform,
   nativeTechStack,
   type NativePlatform,
 } from "./pulse-checks/native-mobile";
-import { getRepoSnapshot } from "./pulse-checks/native-repo";
+import { detectRepoShape, getRepoSnapshot, type SnapshotShape } from "./pulse-checks/native-repo";
 import { runStandardsVerificationCatalog } from "./pulse-checks/standards-verification";
 import { fetchScannableUrl } from "./pulse-lite/url-guard";
 import {
   detectUrlSurfaceKind,
   getInapplicableCategoryDetails,
+  isCategoryApplicable,
+  keepApplicableChecks,
   type UrlSurfaceKind,
 } from "./pulse-checks/platform-applicability";
+import {
+  effectivePlatformForRepoShape,
+  shouldRunDeepUrlChecks,
+} from "./pulse-checks/scan-execution-plan";
 
 export const SCAN_VERSION = "pulse-v3";
 
@@ -498,8 +503,8 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
 }
 
 /**
- * Returns the categories that are irrelevant for the declared platform,
- * and a human-readable reason to embed in the SKIPPED detail message.
+ * Returns the categories that are irrelevant for the declared platform.
+ * Exported for the exhaustive applicability contract tests.
  */
 export function getSkippedCategoriesForPlatformForTest(platform: string) {
   return getInapplicableCategoryDetails(platform);
@@ -516,13 +521,8 @@ function applyPlatformFilter(
   const skipped = getSkippedCategoriesForPlatform(platform ?? "OTHER", surfaceKind);
   if (skipped.length === 0) return checks;
 
-  const skipMap = new Map(skipped.map((s) => [s.category, s.reason]));
-
-  return checks.map((check) => {
-    const reason = skipMap.get(check.category);
-    if (!reason) return check;
-    return { ...check, status: "SKIPPED" as const, detail: reason };
-  });
+  const excluded = new Set(skipped.map((s) => s.category));
+  return checks.filter((check) => !excluded.has(check.category));
 }
 
 /**
@@ -627,6 +627,20 @@ export async function runUrlChecks(
     };
   }
 
+  // A native app, desktop binary, extension or CLI cannot be assessed from its
+  // marketing URL. Keep only reachability evidence; the outer orchestrator adds
+  // a source-required coverage finding and does not start any deep URL agents.
+  if (!shouldRunDeepUrlChecks(platform, "web")) {
+    const hostname = new URL(pageResult?.finalUrl || httpsUrl).hostname.toLowerCase();
+    return {
+      checks: applyPlatformFilter(checks, platform, surfaceKind)
+        .map((check, sortOrder) => ({ ...check, sortOrder })),
+      techStack: pageResult ? detectTechStack(pageResult.headers, "", hostname) : [],
+      detectedMarkets: [],
+      surfaceKind,
+    };
+  }
+
   if (pageResult) {
     let ctx = detectProjectContext(pageResult.html, pageResult.headers);
 
@@ -646,8 +660,12 @@ export async function runUrlChecks(
     // companion GitHub scan's package.json deps (when connected), and a live
     // probe of the Stripe webhook route (skipped on catch-all hosts, where
     // every path 200s and presence can't be determined).
-    const repoPaymentSignal = contextHints?.githubTechStack?.some((t) => t === "Stripe" || t === "Paddle") ?? false;
-    const liveStripeWebhookStatus = !catchAll200 ? await headRequest(`${baseUrl}/api/webhooks/stripe`) : 0;
+    const paymentsApplicable = isCategoryApplicable(platform, CATEGORIES.PAYMENTS, surfaceKind);
+    const repoPaymentSignal = paymentsApplicable &&
+      (contextHints?.githubTechStack?.some((t) => t === "Stripe" || t === "Paddle") ?? false);
+    const liveStripeWebhookStatus = paymentsApplicable && !catchAll200
+      ? await headRequest(`${baseUrl}/api/webhooks/stripe`)
+      : 0;
     const liveStripeSignal = liveStripeWebhookStatus > 0 && liveStripeWebhookStatus < 500;
     const correctedPaymentSignal = repoPaymentSignal || liveStripeSignal;
     if (correctedPaymentSignal && !ctx.isPaymentEnabled) {
@@ -808,7 +826,8 @@ export async function runUrlChecks(
 
     // robots.txt / sitemap.xml are content-verifiable, so they stay correct on
     // catch-all hosts: a real robots.txt is text (not HTML), a sitemap is XML.
-    const robotsFound = await fileServed(
+    const seoApplicable = isCategoryApplicable(platform, CATEGORIES.SEO, surfaceKind);
+    const robotsFound = seoApplicable && await fileServed(
       `${httpsUrl.replace(/\/$/, "")}/robots.txt`,
       (body, ct) => ct.includes("text/plain") || /user-agent:|disallow:|sitemap:/i.test(body),
     );
@@ -821,7 +840,7 @@ export async function runUrlChecks(
       evidence: robotsFound ? "Served valid robots.txt" : "Not found (or catch-all shell)",
     });
 
-    const sitemapFound = await fileServed(
+    const sitemapFound = seoApplicable && await fileServed(
       `${httpsUrl.replace(/\/$/, "")}/sitemap.xml`,
       (body, ct) => ct.includes("xml") || /<\?xml|<urlset|<sitemapindex/i.test(body),
     );
@@ -1076,13 +1095,16 @@ export async function runUrlChecks(
     });
 
     // Missing Pages — batch HEAD requests in parallel
-    const [aboutStatus, contactStatus, faqStatus, statusPageStatus, changelogStatus] = await Promise.all([
-      headRequest(`${baseUrl}/about`),
-      headRequest(`${baseUrl}/contact`),
-      headRequest(`${baseUrl}/faq`),
-      headRequest(`${baseUrl}/status`),
-      headRequest(`${baseUrl}/changelog`),
-    ]);
+    const missingPagesApplicable = isCategoryApplicable(platform, CATEGORIES.MISSING_PAGES, surfaceKind);
+    const [aboutStatus, contactStatus, faqStatus, statusPageStatus, changelogStatus] = missingPagesApplicable
+      ? await Promise.all([
+          headRequest(`${baseUrl}/about`),
+          headRequest(`${baseUrl}/contact`),
+          headRequest(`${baseUrl}/faq`),
+          headRequest(`${baseUrl}/status`),
+          headRequest(`${baseUrl}/changelog`),
+        ])
+      : [0, 0, 0, 0, 0];
 
     checks.push(routePageCheck(
       "Missing Pages", "about_page", "About / Team page",
@@ -1343,10 +1365,13 @@ export async function runUrlChecks(
     // Parallel batch: favicon, PWA manifest
     // Favicon (an image) and manifest.json (JSON) are content-verifiable, so they
     // stay correct on catch-all hosts — a soft-200 HTML shell is not an icon/JSON.
-    const [faviconFound, manifestFound] = await Promise.all([
-      fileServed(`${baseUrl}/favicon.ico`),
-      fileServed(`${baseUrl}/manifest.json`, (body, ct) => ct.includes("json") || /"(name|icons|start_url|display)"/.test(body)),
-    ]);
+    const mobileApplicable = isCategoryApplicable(platform, CATEGORIES.MOBILE, surfaceKind);
+    const [faviconFound, manifestFound] = mobileApplicable
+      ? await Promise.all([
+          fileServed(`${baseUrl}/favicon.ico`),
+          fileServed(`${baseUrl}/manifest.json`, (body, ct) => ct.includes("json") || /"(name|icons|start_url|display)"/.test(body)),
+        ])
+      : [false, false];
 
     const hasFaviconLink = /rel=["'](shortcut icon|icon)["']/i.test(pageResult.html);
     const hasFavicon = hasFaviconLink || faviconFound;
@@ -1395,7 +1420,8 @@ export async function runUrlChecks(
     // AASA + assetlinks.json are JSON, so content-verify (a catch-all HTML shell
     // is not JSON) — keeps deep-link detection correct on Vercel/SPA hosts.
     const isJsonFile = (body: string, ct: string) => ct.includes("json") || /^\s*[[{]/.test(body);
-    const [aasaFound, assetLinksFound] = ctx.isMobileApp ? await Promise.all([
+    const appStoreApplicable = isCategoryApplicable(platform, CATEGORIES.APP_STORE, surfaceKind);
+    const [aasaFound, assetLinksFound] = ctx.isMobileApp && appStoreApplicable ? await Promise.all([
       fileServed(`${baseUrl}/.well-known/apple-app-site-association`, isJsonFile),
       fileServed(`${baseUrl}/.well-known/assetlinks.json`, isJsonFile),
     ]) : [false, false];
@@ -1835,14 +1861,20 @@ export async function runUrlChecks(
         : "No account deletion option visible — GDPR Art. 17 requires users can request erasure of all personal data.",
     });
 
-    const [accessibilityStatus, dpaStatus, cookiePolicyStatus] = await Promise.all([
-      headRequest(`${baseUrl}/accessibility`),
-      headRequest(`${baseUrl}/dpa`),
-      headRequest(`${baseUrl}/cookie-policy`),
-    ]);
-    const accessibilityAltStatus = accessibilityStatus !== 200 ? await headRequest(`${baseUrl}/accessibility-statement`) : 200;
-    const dpaAltStatus = dpaStatus !== 200 ? await headRequest(`${baseUrl}/data-processing-agreement`) : 200;
-    const cookiePolicyAltStatus = cookiePolicyStatus !== 200 ? await headRequest(`${baseUrl}/cookies`) : 200;
+    const legalApplicable = isCategoryApplicable(platform, CATEGORIES.LEGAL, surfaceKind);
+    const [accessibilityStatus, dpaStatus, cookiePolicyStatus] = legalApplicable
+      ? await Promise.all([
+          headRequest(`${baseUrl}/accessibility`),
+          headRequest(`${baseUrl}/dpa`),
+          headRequest(`${baseUrl}/cookie-policy`),
+        ])
+      : [0, 0, 0];
+    const accessibilityAltStatus = legalApplicable && accessibilityStatus !== 200
+      ? await headRequest(`${baseUrl}/accessibility-statement`) : 200;
+    const dpaAltStatus = legalApplicable && dpaStatus !== 200
+      ? await headRequest(`${baseUrl}/data-processing-agreement`) : 200;
+    const cookiePolicyAltStatus = legalApplicable && cookiePolicyStatus !== 200
+      ? await headRequest(`${baseUrl}/cookies`) : 200;
 
     checks.push(routePageCheck(
       "Legal & Compliance", "accessibility_statement", "Accessibility statement",
@@ -1910,20 +1942,22 @@ export async function runUrlChecks(
     });
 
     // ─── Additional Missing Pages (batch) ─────────────────────────────────────
-    const [blogStatus, careersStatus, pressStatus, docsStatus, integrationsStatus, mediaKitStatus] = await Promise.all([
-      headRequest(`${baseUrl}/blog`),
-      headRequest(`${baseUrl}/careers`),
-      headRequest(`${baseUrl}/press`),
-      headRequest(`${baseUrl}/docs`),
-      headRequest(`${baseUrl}/integrations`),
-      headRequest(`${baseUrl}/media-kit`),
-    ]);
-    const blogAltStatus = blogStatus !== 200 ? await headRequest(`${baseUrl}/resources`) : 200;
-    const careersAltStatus = careersStatus !== 200 ? await headRequest(`${baseUrl}/jobs`) : 200;
-    const pressAltStatus = pressStatus !== 200 ? await headRequest(`${baseUrl}/media`) : 200;
-    const docsAltStatus = docsStatus !== 200 ? await headRequest(`${baseUrl}/documentation`) : 200;
-    const integrationsAltStatus = integrationsStatus !== 200 ? await headRequest(`${baseUrl}/partners`) : 200;
-    const brandKitStatus = mediaKitStatus !== 200 ? await headRequest(`${baseUrl}/brand`) : 200;
+    const [blogStatus, careersStatus, pressStatus, docsStatus, integrationsStatus, mediaKitStatus] = missingPagesApplicable
+      ? await Promise.all([
+          headRequest(`${baseUrl}/blog`),
+          headRequest(`${baseUrl}/careers`),
+          headRequest(`${baseUrl}/press`),
+          headRequest(`${baseUrl}/docs`),
+          headRequest(`${baseUrl}/integrations`),
+          headRequest(`${baseUrl}/media-kit`),
+        ])
+      : [0, 0, 0, 0, 0, 0];
+    const blogAltStatus = missingPagesApplicable && blogStatus !== 200 ? await headRequest(`${baseUrl}/resources`) : 200;
+    const careersAltStatus = missingPagesApplicable && careersStatus !== 200 ? await headRequest(`${baseUrl}/jobs`) : 200;
+    const pressAltStatus = missingPagesApplicable && pressStatus !== 200 ? await headRequest(`${baseUrl}/media`) : 200;
+    const docsAltStatus = missingPagesApplicable && docsStatus !== 200 ? await headRequest(`${baseUrl}/documentation`) : 200;
+    const integrationsAltStatus = missingPagesApplicable && integrationsStatus !== 200 ? await headRequest(`${baseUrl}/partners`) : 200;
+    const brandKitStatus = missingPagesApplicable && mediaKitStatus !== 200 ? await headRequest(`${baseUrl}/brand`) : 200;
 
     checks.push(routePageCheck(
       "Missing Pages", "blog_resources", "Blog / resources hub",
@@ -2023,14 +2057,18 @@ export async function runUrlChecks(
         : "No free trial signal — freemium or free trial converts 3–5× better than paid-only for early SaaS.",
     });
 
-    const [apiStatus, affiliateStatus, securityPageStatus] = await Promise.all([
-      headRequest(`${baseUrl}/api`),
-      headRequest(`${baseUrl}/affiliate`),
-      headRequest(`${baseUrl}/security`),
-    ]);
-    const apiAltStatus = apiStatus !== 200 ? await headRequest(`${baseUrl}/api-docs`) : 200;
-    const affiliateAltStatus = affiliateStatus !== 200 ? await headRequest(`${baseUrl}/referral`) : 200;
-    const trustPageStatus = securityPageStatus !== 200 ? await headRequest(`${baseUrl}/trust`) : 200;
+    const saasApplicable = isCategoryApplicable(platform, CATEGORIES.SAAS, surfaceKind);
+    const trustApplicable = isCategoryApplicable(platform, CATEGORIES.TRUST_BRAND, surfaceKind);
+    const [apiStatus, affiliateStatus, securityPageStatus] = saasApplicable || trustApplicable
+      ? await Promise.all([
+          saasApplicable ? headRequest(`${baseUrl}/api`) : Promise.resolve(0),
+          saasApplicable ? headRequest(`${baseUrl}/affiliate`) : Promise.resolve(0),
+          trustApplicable ? headRequest(`${baseUrl}/security`) : Promise.resolve(0),
+        ])
+      : [0, 0, 0];
+    const apiAltStatus = saasApplicable && apiStatus !== 200 ? await headRequest(`${baseUrl}/api-docs`) : 200;
+    const affiliateAltStatus = saasApplicable && affiliateStatus !== 200 ? await headRequest(`${baseUrl}/referral`) : 200;
+    const trustPageStatus = trustApplicable && securityPageStatus !== 200 ? await headRequest(`${baseUrl}/trust`) : 200;
 
     checks.push(routePageCheck(
       "SaaS Readiness", "api_availability", "Public API / developer access",
@@ -2806,12 +2844,13 @@ export async function runUrlChecks(
         : "No API documentation signals found. API docs are essential for technical buyers and integration partners.",
     });
 
-    const [openApiStatuses] = await Promise.all([
-      checkPaths(httpsUrl, ["/openapi.json", "/openapi.yaml", "/swagger.json", "/api-docs"]),
-    ]);
+    const apiQualityApplicable = isCategoryApplicable(platform, CATEGORIES.API_QUALITY, surfaceKind);
+    const openApiStatuses = apiQualityApplicable
+      ? await checkPaths(httpsUrl, ["/openapi.json", "/openapi.yaml", "/swagger.json", "/api-docs"])
+      : [];
     const hasOpenApiEndpoint = openApiStatuses.some((s) => s === 200);
     checks.push({
-      category: CATEGORIES.SAAS,
+      category: CATEGORIES.API_QUALITY,
       checkKey: "openapi_endpoint",
       label: "OpenAPI spec endpoint",
       status: hasOpenApiEndpoint ? "PASS" : "WARN",
@@ -2821,10 +2860,12 @@ export async function runUrlChecks(
     });
 
     const hasGraphqlInHtml = /\bgraphql\b/i.test(pageResult.html);
-    const graphqlPathStatus = await checkPaths(httpsUrl, ["/graphql"]).then((s) => s[0]);
+    const graphqlPathStatus = apiQualityApplicable
+      ? await checkPaths(httpsUrl, ["/graphql"]).then((s) => s[0])
+      : 0;
     const hasGraphql = hasGraphqlInHtml || graphqlPathStatus === 200;
     checks.push({
-      category: CATEGORIES.SAAS,
+      category: CATEGORIES.API_QUALITY,
       checkKey: "graphql_signal",
       label: "GraphQL API",
       status: hasGraphql ? "PASS" : "WARN",
@@ -3405,7 +3446,11 @@ export async function runUrlChecks(
 type GitHubContentsEntry = { name: string; type: "file" | "dir" };
 type GitHubContentsResponse = GitHubContentsEntry[] | { message?: string };
 
-export async function runGithubChecks(repoInput: string): Promise<{
+export async function runGithubChecks(
+  repoInput: string,
+  platform?: string,
+  detectedShape?: SnapshotShape,
+): Promise<{
   checks: PulseScanCheckInput[];
   techStack: string[];
   /** Detected mobile project shape, or null for anything else. Null on every early
@@ -3976,24 +4021,32 @@ export async function runGithubChecks(repoInput: string): Promise<{
     detail: `Repository ${fullName} read successfully (${entries.length} root entries), so the findings below are based on the actual file tree.`,
   });
 
+  const resolvedShape = detectedShape ?? await detectRepoShape(repoInput).catch(() => "none" as const);
   const nativeSnapshot = await getRepoSnapshot(repoInput).catch(() => null);
-  const nativePlatform = nativeSnapshot?.accessible
-    ? detectNativePlatform(nativeSnapshot.paths)
-    : null;
+  const nativePlatform = (["ios", "android", "flutter", "react-native"] as const).includes(
+    resolvedShape as NativePlatform,
+  ) ? resolvedShape as NativePlatform : null;
   techStack.push(...nativeTechStack(nativePlatform, nativeSnapshot?.paths ?? []));
+  const effectivePlatform = effectivePlatformForRepoShape(platform, resolvedShape);
 
   return {
-    checks: applyNativeApplicability(checks, nativePlatform).map((check, i) => ({ ...check, sortOrder: i })),
+    checks: keepApplicableChecks(
+      applyNativeApplicability(checks, nativePlatform),
+      effectivePlatform,
+    ).map((check, i) => ({ ...check, sortOrder: i })),
     techStack: [...new Set(techStack)],
-    // Surfaced so the orchestrator knows not to run the ~400-check WEB suite against
-    // a mobile repo's GitHub "Website" field. That field is a link, not the artefact
-    // under test — grading a native app on it scored a real client app 0/100.
+    // Retained for report metadata and compatibility. The live orchestrator never
+    // expands a repository scan into its optional GitHub Website field.
     nativePlatform,
   };
 }
 
 export function skipAllChecks(inputType: PulseScanInputType, platform?: string): PulseScanCheckInput[] {
   if (inputType !== "FREE_TEXT") return [];
+  // A description contains no executable artefact. Synthesising hundreds of
+  // URL/repository rows as SKIPPED is noise, consumes storage and implies work
+  // Pulse did not perform. Description scans are intentionally AI analysis only.
+  return [];
 
   const skippedChecks: Array<[CheckCategory, string, string]> = [
     ["Infrastructure", "ssl_valid", "HTTPS / SSL certificate"],

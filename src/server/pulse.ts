@@ -12,7 +12,7 @@ import {
   getDefaultAssetPayload,
   DEFAULT_WORKSPACE_SLUG,
 } from "@/server/proposals";
-import { calculateHealthScore, SCAN_VERSION, skipAllChecks } from "@/server/pulse-scan";
+import { calculateHealthScore, SCAN_VERSION } from "@/server/pulse-scan";
 import { resolveTargetMarkets, isJurisdictionCode, type JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
 import { computeComplianceScorecard } from "@/server/pulse-checks/compliance-scorecard";
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
@@ -50,7 +50,7 @@ import type {
 } from "@/types/pulse";
 import { runVisualAgent } from "@/server/pulse-agents/visual-agent";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
-import { applyCheckPolicy, customPolicyChecks, loadCheckPolicy } from "@/server/check-config";
+import { loadCheckPolicy } from "@/server/check-config";
 import { assertScannableUrl } from "@/server/pulse-lite/url-guard";
 
 export const pulseInclude = {
@@ -1022,11 +1022,10 @@ export async function runAnalysis(
     const checkPolicy = workspaceId ? await loadCheckPolicy(workspaceId) : undefined;
 
     if (input.inputType === "FREE_TEXT") {
-      allChecks = applyCheckPolicy(
-        [...skipAllChecks("FREE_TEXT", input.platform), ...customPolicyChecks(checkPolicy)],
-        checkPolicy,
-      );
-      if (allChecks.length > 0) await persistChecks(allChecks);
+      // There is no executable artefact behind a description. Keep this path to
+      // AI synthesis only; URL, repository and custom evidence checks would all
+      // claim verification that cannot have occurred.
+      allChecks = [];
     } else {
       const lite = await runLiteScan({
         inputType: input.inputType,

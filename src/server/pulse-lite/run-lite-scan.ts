@@ -23,10 +23,14 @@ import { resolveEvidenceBackedControls } from "@/server/pulse-checks/standards-v
 import { runCodeAgent } from "@/server/pulse-agents/code-agent";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { assertScannableUrl } from "./url-guard";
-import { CATEGORIES } from "@/server/pulse-checks/categories";
 import { annotateTrust } from "@/server/pulse-checks/confidence";
 import { detectRepoShape } from "@/server/pulse-checks/native-repo";
 import { buildPlatformCoverageCheck } from "@/server/pulse-checks/platform-coverage";
+import {
+  buildUrlCollectorPlan,
+  detectUrlTargetKind,
+  effectivePlatformForRepoShape,
+} from "@/server/pulse-checks/scan-execution-plan";
 import { collectorCompletenessCheck, type CollectorExecution } from "@/server/pulse-checks/collector-health";
 import { applyCheckPolicy, customPolicyChecks, type CheckPolicy } from "@/server/check-config";
 import type { JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
@@ -112,18 +116,17 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
   let detectedMarkets: JurisdictionCode[] = [];
   let urlTargetBlocked = false;
   let urlSurfaceIsProduction = true;
+  let shouldResolveStandards = input.inputType === "GITHUB_REPO";
+  let executionPlatform = input.platform;
 
   if (input.inputType === "URL") {
     const raw = (input.url ?? "").trim();
     if (!raw) throw new Error("A URL is required.");
     const safeUrl = (await assertScannableUrl(raw)).url;
 
-    // Top-level parallelism: page checks ∥ deploy probes ∥ PageSpeed.
-    const deployP = runDeployAgent(safeUrl);
-    const browserP = includePageSpeed
-      ? runBrowserAgent(safeUrl)
-      : null;
-
+    // Classify the actual document first. Starting deploy/PageSpeed in parallel
+    // used quota and time on App Store pages, source-only platforms, prototypes,
+    // and Vercel/Cloudflare checkpoints whose results were later discarded.
     const urlResult = await runUrlChecks(safeUrl, input.platform, onWave, input.targetMarkets);
     collectorCompleted("url-checks");
     techStack = urlResult.techStack;
@@ -132,6 +135,15 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     urlTargetBlocked = urlResult.checks.some(
       (check) => check.checkKey === "target_content_accessible" && check.status === "FAIL",
     );
+    const targetKind = detectUrlTargetKind(safeUrl);
+    if (targetKind === "app_store") executionPlatform = "IOS_APP";
+    if (targetKind === "play_store") executionPlatform = "ANDROID_APP";
+    const collectorPlan = buildUrlCollectorPlan(
+      input.platform,
+      urlResult.surfaceKind,
+      targetKind,
+    );
+    shouldResolveStandards = collectorPlan.standards;
     // Reconcile: persist anything not already emitted (e.g. unreachable-site branch).
     pending.push(ingest(urlResult.checks));
 
@@ -144,18 +156,15 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     if (coverage) pending.push(ingest([coverage]));
 
     const [deployOutcome, browserOutcome] = await Promise.all([
-      Promise.allSettled([deployP]).then(([result]) => result),
-      browserP
-        ? Promise.allSettled([browserP]).then(([result]) => result)
+      collectorPlan.deploy
+        ? Promise.allSettled([runDeployAgent(safeUrl)]).then(([result]) => result)
+        : Promise.resolve(null),
+      collectorPlan.browser && includePageSpeed
+        ? Promise.allSettled([runBrowserAgent(safeUrl)]).then(([result]) => result)
         : Promise.resolve(null),
     ]);
 
-    if (urlTargetBlocked) {
-      // PageSpeed and deployment probes may successfully grade the checkpoint
-      // itself. Their data is not about the product, so discard it explicitly.
-      collectorExecutions.push({ name: "deploy-agent", outcome: "NOT_APPLICABLE", detail: "target content blocked by an access interstitial" });
-      collectorExecutions.push({ name: "browser-agent", outcome: "NOT_APPLICABLE", detail: "target content blocked by an access interstitial" });
-    } else {
+    if (deployOutcome) {
       if (deployOutcome.status === "fulfilled") {
         deployInsights = deployOutcome.value.insights;
         collectorCompleted("deploy-agent");
@@ -163,27 +172,34 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
       } else {
         collectorFailed("deploy-agent", deployOutcome.reason);
       }
+    } else {
+      collectorExecutions.push({ name: "deploy-agent", outcome: "NOT_APPLICABLE" });
+    }
 
-      if (!browserP) {
-        collectorExecutions.push({ name: "browser-agent", outcome: "NOT_APPLICABLE" });
-      } else if (browserOutcome?.status === "fulfilled") {
+    if (browserOutcome) {
+      if (browserOutcome.status === "fulfilled") {
         browserInsights = browserOutcome.value.insights;
         collectorCompleted("browser-agent");
         pending.push(ingest(browserOutcome.value.checks));
-      } else if (browserOutcome) {
+      } else {
         collectorFailed("browser-agent", browserOutcome.reason);
       }
+    } else {
+      collectorExecutions.push({ name: "browser-agent", outcome: "NOT_APPLICABLE" });
     }
   } else {
-    // GITHUB_REPO — repo + code checks in parallel, then the homepage (if any).
+    // GITHUB_REPO — detect the artefact, then run only its source families.
     const repo = (input.githubRepo ?? "").trim();
     if (!repo) throw new Error("A GitHub repo is required.");
 
-    const [ghResult, codeResult, repoShape] = await Promise.all([
-      runGithubChecks(repo).then((r) => { collectorCompleted("github-checks"); pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("github-checks", error); return { checks: [], techStack: [] as string[], nativePlatform: null }; }),
-      runCodeAgent(repo).then((r) => { collectorCompleted("code-agent"); codeInsights = r.insights; pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("code-agent", error); return null; }),
-      // Shares the memoized snapshot the families already fetched — no extra call.
-      detectRepoShape(repo).then((shape) => { collectorCompleted("repo-shape"); return shape; }).catch((error) => { collectorFailed("repo-shape", error); return "none" as const; }),
+    // Shares one memoized snapshot with both collectors — no repeated tree fetch.
+    const repoShape = await detectRepoShape(repo)
+      .then((shape) => { collectorCompleted("repo-shape"); return shape; })
+      .catch((error) => { collectorFailed("repo-shape", error); return "none" as const; });
+    executionPlatform = effectivePlatformForRepoShape(input.platform, repoShape);
+    const [ghResult, codeResult] = await Promise.all([
+      runGithubChecks(repo, input.platform, repoShape).then((r) => { collectorCompleted("github-checks"); pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("github-checks", error); return { checks: [], techStack: [] as string[], nativePlatform: null }; }),
+      runCodeAgent(repo, input.platform, repoShape).then((r) => { collectorCompleted("code-agent"); codeInsights = r.insights; pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("code-agent", error); return null; }),
     ]);
     techStack = ghResult.techStack;
     homepageUrl = codeResult?.insights.homepageUrl ?? null;
@@ -199,59 +215,17 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     });
     if (coverage) pending.push(ingest([coverage]));
 
-    // A MOBILE repo is not graded on its GitHub "Website" link.
-    //
-    // homepageUrl was always null until July 2026 because runCodeAgent bailed on any
-    // GraphQL failure, so this branch never ran. Once that was fixed (#463) a native
-    // iOS repo whose Website field points at a marketing page had the full ~400-check
-    // web suite run against it and failed nearly all of it — 0/100 off 439 checks.
-    // The repo's own source is the subject of the scan; the link is not.
-    //
-    // ⚠️ The same guard exists in pulse-agents/orchestrator.ts, which is DEAD CODE —
-    // runOrchestratedScan has no callers. THIS is the live path. Check for callers
-    // before assuming a change to that file affects a scan.
-    const isMobileRepo = ghResult.nativePlatform != null;
-
-    if (homepageUrl && isMobileRepo) {
-      pending.push(ingest([{
-        category: CATEGORIES.CODE_QUALITY,
-        checkKey: "mobile_repo_web_suite_skipped",
-        label: "Web checks skipped (mobile repo)",
-        status: "SKIPPED",
-        detail:
-          `Detected a ${ghResult.nativePlatform} project, so the website suite was not run against the repository's ` +
-          `linked homepage (${homepageUrl}). A mobile app is graded on its source and store readiness, not on the ` +
-          `marketing page it links to. Scan that URL separately if you want it graded.`,
-      }]));
-    } else if (homepageUrl) {
-      const safeHome = await assertScannableUrl(homepageUrl)
-        .then((r) => r.url)
-        .catch((error) => { collectorFailed("homepage-url-guard", error); return null; });
-      if (safeHome) {
-        const deployP = runDeployAgent(safeHome)
-          .then((r) => { deployInsights = r.insights; collectorCompleted("deploy-agent"); pending.push(ingest(r.checks)); })
-          .catch((error) => { collectorFailed("deploy-agent", error); });
-        const browserP = includePageSpeed
-          ? runBrowserAgent(safeHome)
-              .then((r) => { browserInsights = r.insights; collectorCompleted("browser-agent"); pending.push(ingest(r.checks)); })
-              .catch((error) => { collectorFailed("browser-agent", error); })
-          : Promise.resolve(collectorExecutions.push({ name: "browser-agent", outcome: "NOT_APPLICABLE" })).then(() => undefined);
-        const urlResult = await runUrlChecks(safeHome, input.platform, onWave, input.targetMarkets, { githubTechStack: techStack });
-        collectorCompleted("homepage-url-checks");
-        if (urlResult.techStack.length > 0) techStack = urlResult.techStack;
-        detectedMarkets = urlResult.detectedMarkets;
-        pending.push(ingest(urlResult.checks));
-        await Promise.all([deployP, browserP]);
-      }
-    }
+    // The optional GitHub homepage remains useful metadata for the report, but it
+    // is not the selected artefact and is never scanned implicitly. Users can run
+    // a separate URL scan when they want that surface assessed.
   }
 
   // First flush every live source/probe wave. The deep catalogue can then use
   // those deterministic observations as real evidence instead of showing every
   // item as a generic manual task.
   await Promise.all(pending);
-  if (!urlTargetBlocked && urlSurfaceIsProduction) {
-    await ingest(resolveEvidenceBackedControls(input.platform, collected));
+  if (!urlTargetBlocked && urlSurfaceIsProduction && shouldResolveStandards) {
+    await ingest(resolveEvidenceBackedControls(executionPlatform, collected));
     await ingest(customPolicyChecks(input.checkPolicy));
   }
   await ingest([collectorCompletenessCheck(collectorExecutions)]);

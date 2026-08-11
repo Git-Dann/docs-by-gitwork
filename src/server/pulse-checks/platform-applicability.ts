@@ -279,6 +279,24 @@ export function getInapplicableCategories(
   );
 }
 
+export function isCategoryApplicable(
+  platform: string | undefined,
+  category: CheckCategory,
+  surfaceKind: UrlSurfaceKind = "DEPLOYED_PRODUCT",
+): boolean {
+  return !getInapplicableCategories(platform, surfaceKind).includes(category);
+}
+
+/** Remove non-applicable rows entirely when composing an artefact-specific scan. */
+export function keepApplicableChecks<T extends { category: CheckCategory }>(
+  checks: T[],
+  platform: string | undefined,
+  surfaceKind: UrlSurfaceKind = "DEPLOYED_PRODUCT",
+): T[] {
+  const excluded = new Set(getInapplicableCategories(platform, surfaceKind));
+  return checks.filter((check) => !excluded.has(check.category));
+}
+
 export function getInapplicableCategoryDetails(
   platform: string | undefined,
   surfaceKind: UrlSurfaceKind = "DEPLOYED_PRODUCT",
