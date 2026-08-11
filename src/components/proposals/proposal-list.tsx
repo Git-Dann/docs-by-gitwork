@@ -365,12 +365,22 @@ export function ProposalList() {
           method: "POST",
           body: formData,
         });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || "AI document creation failed");
+
+        let json: { error?: string; documentId?: string } = {};
+        const isJson = res.headers.get("content-type")?.includes("application/json");
+        if (isJson) {
+          json = (await res.json()) as { error?: string; documentId?: string };
+        }
+
+        if (!res.ok) {
+          throw new Error(json.error || `AI document creation failed (${res.status} ${res.statusText})`);
+        }
 
         closeCreate();
         await queryClient.invalidateQueries({ queryKey: ["proposals"] });
-        router.push(`/app/docs/${json.documentId}`);
+        if (json.documentId) {
+          router.push(`/app/docs/${json.documentId}`);
+        }
       } catch (err) {
         alert((err as Error).message);
       } finally {
