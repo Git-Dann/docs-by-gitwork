@@ -3438,3 +3438,43 @@ build` clean. ⚠️ **Still not verified against live data**, which is precisel
 attempts passed review and failed in production. The honest post-deploy check is: hit **Sync now**
 on Fellas Loaded and confirm the rows relabel to customer addresses. If they do not, read
 `repairForwardedIdentities` against a real row rather than adding another unit test.
+
+### 42.11 Simplicity through hierarchy, not removal
+
+Dan asked whether Care now follows the standard for this kind of app, whether Gmail was a better
+model, and where connectors belong — with the real point being *"I just need it to be simple
+enough to use and so far we have overcomplicated the actual functionality."* Offered a hard cut
+of the state model, he chose **layout only, keep all features**. So the constraint is: make it
+feel simple without removing anything.
+
+**On the question itself, for the record:**
+- **The layout already is the standard.** Views rail │ list │ reading pane is Gmail, Front,
+  Missive, Intercom and Help Scout alike. Switching to "more Gmail-like" would change little,
+  because Gmail *is* this layout with a different label system. Front is the right structural
+  reference (multi-client, multi-channel, assignment); Gmail is the right bar for simplicity.
+- **The complexity is the concept count, not the layout.** A Care conversation carries seven
+  overlapping axes — status (5 values), priority (4), sentiment (3), reply state (3), unread,
+  assignee, tags/issueType — across 9 saved views. Gmail runs on two axes and one verb (archive);
+  Front on three. That gap, not the CSS, is what makes it feel heavy, and it is recorded here as
+  a known, deliberately-accepted trade rather than an oversight.
+- **Connectors belong where they are** — bottom of the rail under `03 // MANAGE`. They are setup,
+  not daily work; Gmail does not put "add account" in the sidebar. Moving them above the queue
+  would put configuration in the path of triage.
+
+**What changed under the layout-only constraint: the detail toolbar became two tiers.** It had
+six controls in one row — Close, Snooze, Assignee, Priority, Status, Notes — four of them
+dropdowns at identical visual weight, which is what read as busy. Now:
+
+- **Row 1, actions:** `Close` · `Snooze` (split button) on the left, `Notes` pushed right. These
+  are the verbs pressed on essentially every thread.
+- **Row 2, properties:** `Assignee` · `Priority` · `Status` as labelled fields (mono caps label +
+  compact select, DESIGN.md's data-label voice), behind a hairline. They read as a property sheet
+  rather than three more buttons competing with Close.
+
+Every control is still present and still one click. Only priority carries colour, and only when
+urgent — four equally-weighted levels means three of them asking for attention they do not need.
+
+**Verified:** `npm run verify` green — 0 errors, **1574 tests**, `audit:ui` 0 findings (the
+SELECT-CHEVRON/SELECT-PAD rules matter here — the properties row is three selects). Rendered
+against the real compiled CSS at 820×600, 0 horizontal overflow. **Not verified against live
+data** — /app/care is auth-gated.

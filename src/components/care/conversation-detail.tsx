@@ -93,6 +93,16 @@ function ToolbarButton({
   );
 }
 
+/** A labelled property. The mono caps label is DESIGN.md's data-label voice. */
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex items-center gap-1.5">
+      <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">{label}</span>
+      {children}
+    </label>
+  );
+}
+
 /** Whose turn it is, stated in the header rather than as a separate banner block. */
 function StateLine({ conversation }: { conversation: Conversation }) {
   const { replyState, lastInboundAt, lastOutboundAt } = conversation;
@@ -245,8 +255,12 @@ export function ConversationDetail({
           <StateLine conversation={conversation} />
         </div>
 
-        {/* ── Toolbar: the verbs, where a support tool puts them ── */}
-        <div className="-mx-1 mt-3 flex flex-wrap items-center gap-1.5 overflow-x-auto px-1 pb-3">
+        {/* ── Row 1: ACTIONS — the two verbs used on every single thread ──
+               Split from the properties below because six controls at equal weight in one row
+               is what made this read as busy. Nothing is removed; the things you press on every
+               thread simply look like buttons, and the things you set occasionally look like
+               fields. */}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
           {isClosed ? (
             <ToolbarButton onClick={() => close.mutate({ convId: conversation.id, reopen: true })}>Reopen</ToolbarButton>
           ) : (
@@ -283,51 +297,66 @@ export function ConversationDetail({
             </>
           )}
 
-          <select
-            aria-label="Assignee"
-            value={conversation.assigneeId ?? ""}
-            onChange={(e) => triage.mutate({ convId: conversation.id, data: { assigneeId: e.target.value || null } })}
-            className="app-select-compact h-[30px] w-auto text-xs"
-          >
-            <option value="">Unassigned</option>
-            {members.map((m) => (
-              <option key={m.id} value={m.id}>{m.name}</option>
-            ))}
-          </select>
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            <ToolbarButton
+              tone={showNotes ? "active" : "default"}
+              onClick={() => setShowNotes((v) => !v)}
+              title="Internal notes (staff only)"
+            >
+              <ChatBubbleLeftEllipsisIcon className="h-3.5 w-3.5" />
+              Notes{noteCount > 0 ? ` ${noteCount}` : ""}
+            </ToolbarButton>
+          </div>
+        </div>
 
-          <select
-            aria-label="Priority"
-            value={conversation.priority}
-            onChange={(e) => triage.mutate({ convId: conversation.id, data: { priority: e.target.value as ConversationPriority } })}
-            className={cn(
-              "app-select-compact h-[30px] w-auto text-xs",
-              conversation.priority === "urgent" && "font-semibold text-red-600",
-            )}
-          >
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>{PRIORITY_LABEL[p]}</option>
-            ))}
-          </select>
+        {/* ── Row 2: PROPERTIES — every one still here, just no longer shouting ──
+               Rendered as labelled fields in the house mono data-label voice, which reads as a
+               property sheet rather than three more buttons competing with Close. */}
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-[var(--border-2)] pt-2.5 pb-3">
+          <Field label="Assignee">
+            <select
+              aria-label="Assignee"
+              value={conversation.assigneeId ?? ""}
+              onChange={(e) => triage.mutate({ convId: conversation.id, data: { assigneeId: e.target.value || null } })}
+              className="app-select-compact h-[26px] w-auto text-xs"
+            >
+              <option value="">Unassigned</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </Field>
 
-          <select
-            aria-label="Status"
-            value={conversation.status}
-            onChange={(e) => triage.mutate({ convId: conversation.id, data: { status: e.target.value as ConversationStatus } })}
-            className="app-select-compact h-[30px] w-auto text-xs"
-          >
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-            ))}
-          </select>
+          <Field label="Priority">
+            <select
+              aria-label="Priority"
+              value={conversation.priority}
+              onChange={(e) => triage.mutate({ convId: conversation.id, data: { priority: e.target.value as ConversationPriority } })}
+              className={cn(
+                "app-select-compact h-[26px] w-auto text-xs",
+                // Only urgent earns colour — four equally-weighted levels is three of them
+                // asking for attention they do not need.
+                conversation.priority === "urgent" && "font-semibold text-red-600",
+              )}
+            >
+              {PRIORITIES.map((p) => (
+                <option key={p} value={p}>{PRIORITY_LABEL[p]}</option>
+              ))}
+            </select>
+          </Field>
 
-          <ToolbarButton
-            tone={showNotes ? "active" : "default"}
-            onClick={() => setShowNotes((v) => !v)}
-            title="Internal notes (staff only)"
-          >
-            <ChatBubbleLeftEllipsisIcon className="h-3.5 w-3.5" />
-            Notes{noteCount > 0 ? ` ${noteCount}` : ""}
-          </ToolbarButton>
+          <Field label="Status">
+            <select
+              aria-label="Status"
+              value={conversation.status}
+              onChange={(e) => triage.mutate({ convId: conversation.id, data: { status: e.target.value as ConversationStatus } })}
+              className="app-select-compact h-[26px] w-auto text-xs"
+            >
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+              ))}
+            </select>
+          </Field>
         </div>
       </div>
 
