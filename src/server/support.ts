@@ -30,7 +30,6 @@ import { canSeeAllClients, ForbiddenError } from "@/server/auth/effective-user";
 import { assignedClientIds } from "@/server/tasks";
 import { deriveReplyState, foldMessageActivity } from "@/server/support-reply-state";
 import { resolveCustomer, derivePreview } from "@/server/support-channels/identity";
-import { encrypt, decrypt } from "@/lib/encryption";
 import type {
   SupportClientStatus,
   SupportSource as PrismaSupportSource,
@@ -219,47 +218,17 @@ export function serializeSupportClient(row: {
 
 // ─── Scraper config encryption helpers ───────────────────────────────────────
 
-const SENSITIVE_SCRAPER_KEYS = ["botToken", "serviceAccountJson", "apiToken", "webhookToken", "password"];
+// Moved to the dependency-light `support-scraper-config` so the decrypt step can be
+// unit-tested without loading this module's NextAuth/Prisma import chain — the gap that
+// let the sync cron skip decryption unnoticed. Re-exported here so call sites that import
+// them from `@/server/support` keep working.
+import {
+  SENSITIVE_SCRAPER_KEYS,
+  encryptScraperConfig,
+  decryptScraperConfig,
+} from "@/server/support-scraper-config";
 
-/**
- * Encrypts sensitive values in a scraperConfig object using AES-256-GCM.
- * No-ops when ENCRYPTION_KEY is not set, so existing deployments are unaffected
- * until the key is provisioned.
- */
-export function encryptScraperConfig(
-  config: Record<string, unknown>,
-): Record<string, unknown> {
-  if (!process.env.ENCRYPTION_KEY) return config;
-  return Object.fromEntries(
-    Object.entries(config).map(([k, v]) =>
-      SENSITIVE_SCRAPER_KEYS.includes(k) && typeof v === "string" && v && !v.startsWith("enc:")
-        ? [k, `enc:${encrypt(v)}`]
-        : [k, v],
-    ),
-  );
-}
-
-/**
- * Decrypts `enc:…` values in a scraperConfig object. Plain-text values (legacy or
- * unset ENCRYPTION_KEY) are returned as-is.
- */
-export function decryptScraperConfig(
-  config: Record<string, unknown> | null | undefined,
-): Record<string, unknown> | null {
-  if (!config) return null;
-  return Object.fromEntries(
-    Object.entries(config).map(([k, v]) => {
-      if (typeof v === "string" && v.startsWith("enc:")) {
-        try {
-          return [k, decrypt(v.slice(4))];
-        } catch {
-          return [k, ""];  // decryption failure → empty (won't expose ciphertext)
-        }
-      }
-      return [k, v];
-    }),
-  );
-}
+export { SENSITIVE_SCRAPER_KEYS, encryptScraperConfig, decryptScraperConfig };
 
 export function serializeConnection(row: {
   id: string;

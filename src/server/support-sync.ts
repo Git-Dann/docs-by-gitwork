@@ -2,7 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { after } from "next/server";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { runChannelSync } from "@/server/support-channels";
-import { backfillConversationActivity, repairForwardedIdentities, decryptScraperConfig, evaluateWorkflowRules } from "@/server/support";
+import { backfillConversationActivity, repairForwardedIdentities, evaluateWorkflowRules } from "@/server/support";
+import { toSyncContext } from "@/server/support-scraper-config";
 import { enrichConversations } from "@/server/care-agents/enrich";
 import { runCourseFeedbackImport } from "@/server/wiki-course-feedback";
 import type { SyncContext, SyncResult, FilterReasons } from "@/server/support-channels/types";
@@ -27,6 +28,10 @@ const WORKSPACE_AI_SELECT = {
 } as const;
 
 // ─── Context builder (used by the per-connection sync route) ──────────────────
+
+// `toSyncContext` lives in the dependency-light support-scraper-config module so it can be
+// unit-tested; re-exported here because this is where callers expect sync plumbing to live.
+export { toSyncContext };
 
 export async function buildSyncContext(connId: string): Promise<SyncContext> {
   const workspace = await prisma.workspace.findFirst({
@@ -57,14 +62,7 @@ export async function buildSyncContext(connId: string): Promise<SyncContext> {
     },
   });
 
-  return {
-    connection: {
-      ...conn,
-      scraperConfig: decryptScraperConfig(conn.scraperConfig as Record<string, unknown> | null),
-    },
-    client: conn.client,
-    workspace,
-  };
+  return toSyncContext(conn, workspace);
 }
 
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
@@ -132,15 +130,7 @@ export async function syncClientConnections(
 
   const results = await Promise.allSettled(
     connections.map(async (conn) => {
-      const ctx: SyncContext = {
-        connection: {
-          ...conn,
-          scraperConfig: decryptScraperConfig(conn.scraperConfig as Record<string, unknown> | null),
-        },
-        client: conn.client,
-        workspace,
-      };
-      const result = await syncConnection(ctx);
+      const result = await syncConnection(toSyncContext(conn, workspace));
       return { source: conn.source, connId: conn.id, result };
     }),
   );
