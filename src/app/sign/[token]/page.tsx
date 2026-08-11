@@ -157,6 +157,7 @@ export default async function SignPage({ params }: PageProps) {
             src={embedSrc}
             email={signer.email}
             name={signer.name}
+            token={token}
           />
         </div>
       ) : (
