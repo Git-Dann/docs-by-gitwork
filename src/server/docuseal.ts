@@ -53,7 +53,15 @@ export function getDocuSealConfig() {
   }
 
   const defaultTemplateId = process.env.DOCUSEAL_TEMPLATE_ID?.trim() || "";
-  return { apiKey, baseUrl, defaultTemplateId };
+  const webhookUrl =
+    process.env.DOCUSEAL_WEBHOOK_URL?.trim() ||
+    (process.env.NEXT_PUBLIC_APP_URL
+      ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "")}/api/webhooks/docuseal`
+      : process.env.APP_URL
+      ? `${process.env.APP_URL.replace(/\/+$/, "")}/api/webhooks/docuseal`
+      : undefined);
+
+  return { apiKey, baseUrl, defaultTemplateId, webhookUrl };
 }
 
 /**
@@ -64,7 +72,7 @@ export function getDocuSealConfig() {
 export async function createDocuSealSubmission(
   input: CreateDocuSealSubmissionInput,
 ): Promise<DocuSealSubmissionResult> {
-  const { apiKey, baseUrl, defaultTemplateId } = getDocuSealConfig();
+  const { apiKey, baseUrl, defaultTemplateId, webhookUrl } = getDocuSealConfig();
 
   const formattedSubmitters = input.submitters.map((s) => {
     const defaultVarName = s.role === "gitwork" ? "gitwork_signature" : "client_signature";
@@ -247,10 +255,14 @@ export async function createDocuSealSubmission(
   }
 
   // Create submission using template_id
-  const subPayload = {
+  const subPayload: Record<string, unknown> = {
     template_id: Number(targetTemplateId) || targetTemplateId,
     submitters: formattedSubmitters,
   };
+
+  if (webhookUrl) {
+    subPayload.webhook_url = webhookUrl;
+  }
 
   const res = await fetch(`${baseUrl}/submissions`, {
     method: "POST",

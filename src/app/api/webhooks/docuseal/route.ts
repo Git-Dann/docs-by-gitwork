@@ -33,9 +33,20 @@ async function verifySignature(request: NextRequest, rawBody: string): Promise<b
     console.error("[DocuSeal Webhook] Missing X-Docuseal-Signature header.");
     return false;
   }
-  const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
+
+  const cleanHeader = signatureHeader.replace(/^sha256=/i, "").trim();
+  const computedHex = createHmac("sha256", secret).update(rawBody).digest("hex");
+  const computedBase64 = createHmac("sha256", secret).update(rawBody).digest("base64");
+
   try {
-    return timingSafeEqual(Buffer.from(signatureHeader), Buffer.from(expected));
+    if (cleanHeader.length === computedHex.length && timingSafeEqual(Buffer.from(cleanHeader), Buffer.from(computedHex))) {
+      return true;
+    }
+    if (cleanHeader.length === computedBase64.length && timingSafeEqual(Buffer.from(cleanHeader), Buffer.from(computedBase64))) {
+      return true;
+    }
+    console.error("[DocuSeal Webhook] Signature mismatch. Received:", cleanHeader);
+    return false;
   } catch {
     return false;
   }
