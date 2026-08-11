@@ -54,16 +54,26 @@ export async function POST(request: NextRequest) {
       briefText = json.brief || undefined;
     }
 
-    // Extract text from intake input
-    const intakeResult = extractIntakeText({
+    // Extract text from intake input (PDF/DOCX/TXT/MD)
+    const intakeResult = await extractIntakeText({
       filename,
       mimeType,
       buffer: fileBuffer,
       textBrief: briefText,
     });
 
-    if (!intakeResult.extractedText && !briefText) {
+    const cleanText = intakeResult.extractedText.trim();
+
+    if (!cleanText) {
       return apiError("Please provide a text brief or upload a reference document.", 400);
+    }
+
+    // If a file was uploaded but extracted text is empty or too short (e.g. scanned image PDF)
+    if (fileBuffer && fileBuffer.length > 0 && cleanText.length < 30) {
+      return apiError(
+        `Could not extract readable text from "${filename}". Please ensure the PDF contains selectable text or paste a text brief below.`,
+        400,
+      );
     }
 
     // Load workspace with AI provider fields

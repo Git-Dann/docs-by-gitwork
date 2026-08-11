@@ -119,6 +119,10 @@ ${inputClientName ? `Provided Client Name: ${inputClientName}` : ""}
 Uploaded Reference Material:
 ${extractedText.slice(0, 18_000)}`;
 
+  console.log(
+    `[AI Generator] Starting generation for documentType="${documentType}" using provider="${aiConfig.provider}" model="${aiConfig.model}" extractedTextLength=${extractedText.length}`,
+  );
+
   let extractedData: ExtractedDocMetadata | null = null;
   try {
     const rawAiResponse = await completeText({
@@ -129,8 +133,13 @@ ${extractedText.slice(0, 18_000)}`;
       maxTokens: 4000,
     });
     extractedData = parseJsonObject<ExtractedDocMetadata>(rawAiResponse);
+    if (extractedData) {
+      console.log(`[AI Generator] Successfully parsed AI structured response. Title="${extractedData.title}" client="${extractedData.clientName}" sectionsCount=${Object.keys(extractedData.sectionData ?? {}).length}`);
+    } else {
+      console.warn("[AI Generator] AI completed response but JSON parsing returned null. Fallback blueprints will be used.");
+    }
   } catch (err) {
-    console.warn("AI extraction warning, falling back to default template blueprints:", err);
+    console.warn("[AI Generator] AI extraction warning, falling back to default template blueprints:", err);
   }
 
   const resolvedClientName = inputClientName?.trim() || extractedData?.clientName?.trim() || "Client Organisation";
