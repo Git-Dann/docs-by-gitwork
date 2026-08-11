@@ -585,14 +585,23 @@ export function ClientCockpit({
           </div>
         </div>
         <nav className="flex-1 overflow-y-auto px-2 py-2">
-          <div className="mb-1 px-2 font-mono text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]">01 // Views</div>
+          {/* One NN sequence per screen, per DESIGN.md: 01 QUEUES (here) → 02 CONVERSATIONS
+              (list) → 03 THREAD / 04 TRIAGE / 05 NOTES / 06 REPLY (detail). "Manage" below is a
+              footer action group, not a widget, so it carries no number — previously it was also
+              numbered 03, which collided with "03 // Thread" on the very same screen. */}
+          <div className="widget-header__label mb-1 px-2">
+            <span className="widget-header__label--number">01</span>{" // QUEUES"}
+          </div>
           {VIEW_GROUPS.map((group, gi) => (
             <div key={group.label} className={cn(gi > 0 && "mt-3 border-t border-[var(--border-2)] pt-3")}>
               {/* Queues (work to pick up) vs Browse (everything else). Nine undifferentiated
-                  rows read as a filter dropdown; two named groups read as a place to start. */}
-              <div className="mb-1 px-2 font-mono text-[9px] uppercase tracking-[1.2px] text-[var(--text-4)]">
-                {group.label}
-              </div>
+                  rows read as a filter dropdown; two named groups read as a place to start.
+                  The first group's label is suppressed because the pane header already says
+                  QUEUES — printing it twice, one line apart, is noise. The hairline above
+                  "Browse" is what actually communicates the split. */}
+              {gi > 0 && (
+                <div className="app-eyebrow mb-1 px-2 text-[9px]">{group.label}</div>
+              )}
               {group.ids.map((id) => {
                 const v = SAVED_VIEWS.find((s) => s.id === id);
                 if (!v) return null;
@@ -616,7 +625,7 @@ export function ClientCockpit({
                     <span
                       className={cn(
                         "shrink-0 font-mono text-[11px]",
-                        isQueue ? "font-semibold text-amber-600" : "text-[var(--text-4)]",
+                        isQueue ? "font-semibold text-[var(--warning-500)]" : "text-[var(--text-4)]",
                       )}
                     >
                       {countsQ.isLoading ? "·" : count}
@@ -637,7 +646,7 @@ export function ClientCockpit({
             {sync.isPending ? "Syncing…" : "Sync now"}
           </button>
           {canManageSupport && (
-            <div className="mb-1 px-2 pt-1 font-mono text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]">03 // Manage</div>
+            <div className="app-eyebrow mb-1 px-2 pt-1">Manage</div>
           )}
           {canManageSupport && (
             <div className="grid grid-cols-1 gap-1">
@@ -699,9 +708,11 @@ export function ClientCockpit({
             <ArrowPathIcon className={cn("h-4 w-4 text-[var(--text-3)]", sync.isPending && "animate-spin")} />
           </button>
         </div>
-        <div className="flex items-center justify-between border-b border-[var(--border-2)] px-3 py-2">
-          <span className="font-mono text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]">02 // Conversations</span>
-          <span className="font-mono text-[11px] text-[var(--text-4)]">
+        <div className="widget-header">
+          <span className="widget-header__label">
+            <span className="widget-header__label--number">02</span>{" // CONVERSATIONS"}
+          </span>
+          <span className="widget-header__status">
             {conversations.length}
             {convsQ.hasNextPage ? "+" : ""}
           </span>
@@ -711,7 +722,7 @@ export function ClientCockpit({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search…"
-            className="min-w-0 flex-1 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1 text-sm"
+            className="app-input-compact min-w-0 flex-1 text-sm"
           />
           <select
             value={sourceFilter}

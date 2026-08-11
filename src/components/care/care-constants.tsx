@@ -66,7 +66,7 @@ export const STATUS_LABEL: Record<ConversationStatus, string> = {
 export const STATUS_TONE: Record<ConversationStatus, string> = {
   new: "bg-[var(--brand-50)] text-[var(--brand-700)] border border-[var(--brand-200)]",
   open: "bg-amber-50 text-amber-700 border border-amber-200",
-  snoozed: "bg-purple-50 text-purple-700 border border-purple-200",
+  snoozed: "bg-[var(--surface-2)] text-[var(--text-3)] border border-[var(--border-2)]",
   closed: "bg-emerald-50 text-emerald-700 border border-emerald-200",
   ignored: "bg-[var(--surface-1)] text-[var(--text-4)] border border-[var(--border-2)]",
 };
@@ -83,7 +83,7 @@ export const PRIORITY_TONE: Record<ConversationPriority, string> = {
   high: "bg-amber-50 text-amber-700 border border-amber-200",
   // normal vs low were both flat grey and read as identical — give normal a slate tint + border
   // so the four priorities land as a visible scale.
-  normal: "bg-slate-50 text-slate-600 border border-slate-200",
+  normal: "bg-[var(--surface-1)] text-[var(--text-3)] border border-[var(--border-2)]",
   low: "bg-[var(--surface-1)] text-[var(--text-4)] border border-[var(--border-2)]",
 };
 
@@ -215,7 +215,7 @@ export const VIEW_GROUPS: Array<{ label: string; ids: string[] }> = [
  * both was the double-chip problem. Everything else reads its reply state.
  */
 export function rowState(c: Conversation): { label: string; tone: string; since?: string } {
-  if (c.status === "snoozed") return { label: "Snoozed", tone: "text-purple-600" };
+  if (c.status === "snoozed") return { label: "Snoozed", tone: "text-[var(--text-3)]" };
   if (c.status === "closed") return { label: "Closed", tone: "text-[var(--text-4)]" };
   if (c.status === "ignored") return { label: "Ignored", tone: "text-[var(--text-4)]" };
   return {
