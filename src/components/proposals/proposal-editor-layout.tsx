@@ -621,7 +621,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
         baselineRef.current = JSON.stringify(nextDraft);
         setSaveState("saved");
         setLastSavedAt(new Date().toISOString());
-      } catch {
+      } catch (err) {
+        console.error("[Document Editor] Save failed:", err);
         setSaveState("error");
       }
     },

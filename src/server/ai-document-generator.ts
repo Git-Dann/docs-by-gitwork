@@ -24,6 +24,8 @@ export interface GenerateDocumentInput {
 export interface ExtractedDocMetadata {
   title: string;
   clientName: string;
+  projectName?: string;
+  founderName?: string;
   clientEmail?: string;
   clientAddress?: string;
   gitworkSignatoryName?: string;
@@ -85,8 +87,10 @@ Extract and generate structured JSON strictly matching this interface:
 {
   "title": "Document Title",
   "clientName": "Client Organisation Name",
+  "projectName": "Project Working Name or Subject Matter",
+  "founderName": "Key Founder / Client Representative Name",
   "clientEmail": "client.contact@example.com",
-  "clientAddress": "Client Registered Address",
+  "clientAddress": "Client Registered Address or Location",
   "gitworkSignatoryName": "${actor?.name || "Gitwork Director"}",
   "gitworkSignatoryEmail": "${actor?.email || "legal@gitwork.tech"}",
   "gitworkSignatoryRole": "Director",
@@ -144,11 +148,23 @@ ${extractedText.slice(0, 18_000)}`;
 
   const resolvedClientName = inputClientName?.trim() || extractedData?.clientName?.trim() || "Client Organisation";
   const docTitle = customTitle?.trim() || extractedData?.title?.trim() || `${documentType} — ${resolvedClientName}`;
+  const projectName = extractedData?.projectName?.trim() || extractedData?.title?.trim() || "the Project";
+  const founderName = extractedData?.founderName?.trim() || extractedData?.clientSignatoryName?.trim() || "Authorised Signatory";
+  const clientAddress = extractedData?.clientAddress?.trim() || "Registered Address";
 
   const replacements: Record<string, string> = {
     "{{client_name}}": resolvedClientName,
+    "Client Organisation": resolvedClientName,
     "Client organisation": resolvedClientName,
+    "client organisation": resolvedClientName,
     "[client_name]": resolvedClientName,
+    "[project working name]": projectName,
+    "[project_working_name]": projectName,
+    "[individual name]": founderName,
+    "[individual_name]": founderName,
+    "[company number]": "Pending Incorporation",
+    "[registered office address]": clientAddress,
+    "[address for correspondence]": clientAddress,
     "[REVIEW] Authorised client signatory": extractedData?.clientSignatoryName || "Authorised Client Signatory",
     "[REVIEW] signatory email": extractedData?.clientSignatoryEmail || "signatory@client.com",
     "[REVIEW] Authorised Gitwork signatory": actor?.name || extractedData?.gitworkSignatoryName || "Director of Operations",
@@ -158,9 +174,14 @@ ${extractedText.slice(0, 18_000)}`;
   const sectionsPayload = baseBlueprints.map((blueprint, index) => {
     let sectionData = JSON.parse(JSON.stringify(blueprint.data));
 
-    // Merge AI generated sectionData if present for this section key
-    if (extractedData?.sectionData?.[blueprint.key]) {
-      const aiSec = extractedData.sectionData[blueprint.key];
+    // Merge AI generated sectionData if present for this section key, title slug, or exact title
+    const titleSlug = blueprint.title.toLowerCase().replace(/[^a-z0-9_]/g, "_");
+    const aiSec =
+      extractedData?.sectionData?.[blueprint.key] ||
+      extractedData?.sectionData?.[titleSlug] ||
+      extractedData?.sectionData?.[blueprint.title];
+
+    if (aiSec && typeof aiSec === "object") {
       sectionData = {
         ...sectionData,
         ...aiSec,
