@@ -4,7 +4,7 @@ import { assertCron } from "@/server/auth/cron";
 import { loggerFor } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
-import { syncConnection } from "@/server/support-sync";
+import { syncConnection, toSyncContext } from "@/server/support-sync";
 import { enrichConversations } from "@/server/care-agents/enrich";
 import { evaluateWorkflowRules } from "@/server/support";
 import { runCourseFeedbackImport } from "@/server/wiki-course-feedback";
@@ -69,12 +69,11 @@ export async function GET(request: NextRequest) {
 
     const results = await Promise.allSettled(
       connections.map(async (conn) => {
-        const ctx = {
-          connection: conn,
-          client: conn.client,
-          workspace,
-        };
-        const result = await syncConnection(ctx);
+        // toSyncContext decrypts scraperConfig. Building the context inline here (as this
+        // route used to) handed adapters `enc:…` secrets, so every IMAP/Discord/app-reviews/
+        // analytics connector failed auth and lastSyncedAt never advanced — automated sync
+        // was silently dead while manual "Sync now" worked.
+        const result = await syncConnection(toSyncContext(conn, workspace));
         return { connId: conn.id, source: conn.source, clientId: conn.client.id, result };
       }),
     );
