@@ -29,6 +29,7 @@ import type { EffectiveUser } from "@/server/auth/effective-user";
 import { canSeeAllClients, ForbiddenError } from "@/server/auth/effective-user";
 import { assignedClientIds } from "@/server/tasks";
 import { deriveReplyState, foldMessageActivity } from "@/server/support-reply-state";
+import { resolveCustomer, derivePreview } from "@/server/support-channels/identity";
 import { encrypt, decrypt } from "@/lib/encryption";
 import type {
   SupportClientStatus,
@@ -1212,6 +1213,99 @@ export async function recordMessageActivity(
     where: { id: convId },
     data: { ...stamps, ...(sawInbound ? { unread: true } : {}) },
   });
+}
+
+/**
+ * Repair conversations whose customer label is the FORWARDER and whose preview is a copy of the
+ * subject — the two defects that made a 226-row queue read as the same person writing the same
+ * thing 226 times.
+ *
+ * Runs over stored messages, so it needs no Gmail round trip. Self-terminating without a schema
+ * change: it only selects rows that still exhibit the defect (label equal to the mailbox's own
+ * name/address, or preview equal to subject), so a repaired client matches nothing on the next
+ * pass. Bounded per run for the same reason as the activity backfill.
+ */
+export async function repairForwardedIdentities(
+  clientId: string,
+  opts: { batch?: number } = {},
+): Promise<{ repaired: number }> {
+  const take = Math.min(opts.batch ?? 400, 500);
+
+  const connections = await prisma.accountConnection.findMany({
+    where: { clientId, source: "GMAIL" },
+    select: { id: true, scraperConfig: true },
+  });
+  if (connections.length === 0) return { repaired: 0 };
+
+  // Every address/name this client's mailboxes speak as — anything labelled with one of these
+  // is a forward, not a customer.
+  const mailboxes = connections.map((c) => {
+    const cfg = (decryptScraperConfig(c.scraperConfig as Record<string, unknown> | null) ?? {}) as {
+      impersonateEmail?: string;
+      intakeAddress?: string;
+    };
+    return { address: cfg.impersonateEmail ?? null, name: cfg.intakeAddress ?? null };
+  });
+  const selfLabels = mailboxes
+    .flatMap((m) => [m.address, m.name])
+    .filter((v): v is string => Boolean(v && v.trim()));
+
+  const rows = await prisma.supportConversation.findMany({
+    where: {
+      clientId,
+      source: "GMAIL",
+      OR: [
+        ...(selfLabels.length ? [{ customerLabel: { in: selfLabels } }] : []),
+        // `preview: subject` was written verbatim at creation, so an exact match identifies it.
+        { preview: { equals: prisma.supportConversation.fields.subject } },
+      ],
+    },
+    select: {
+      id: true,
+      subject: true,
+      customerLabel: true,
+      preview: true,
+      messages: {
+        where: { direction: "inbound" },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+        select: { body: true, authorLabel: true },
+      },
+    },
+    take,
+  });
+  if (rows.length === 0) return { repaired: 0 };
+
+  const primary = mailboxes[0] ?? { address: null, name: null };
+  let repaired = 0;
+  const CHUNK = 25;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    await Promise.all(
+      rows.slice(i, i + CHUNK).map((row) => {
+        const first = row.messages[0];
+        const body = first?.body ?? "";
+        // The stored authorLabel is the original From line; fall back to the current (wrong)
+        // customerLabel so resolveCustomer still has something to reason about.
+        const identity = resolveCustomer(
+          { fromText: first?.authorLabel ?? row.customerLabel, subject: row.subject, body },
+          { mailboxAddress: primary.address, mailboxName: primary.name },
+        );
+        const preview = derivePreview(body, row.subject);
+
+        const data: Prisma.SupportConversationUpdateInput = {};
+        if (identity.label && identity.label !== row.customerLabel) data.customerLabel = identity.label;
+        // Only clear a preview that is literally the subject; never blank a good one.
+        if (preview) data.preview = preview;
+        else if (row.preview && row.preview === row.subject) data.preview = null;
+
+        if (Object.keys(data).length === 0) return Promise.resolve(null);
+        repaired++;
+        return prisma.supportConversation.update({ where: { id: row.id }, data });
+      }),
+    );
+  }
+
+  return { repaired };
 }
 
 /**

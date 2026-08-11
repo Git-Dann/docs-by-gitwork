@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { recordMessageActivity } from "@/server/support";
 import type { ChannelAdapter, SyncResult, SyncContext, FilterReasons } from "./types";
 import { normalizeKeywords, lookbackSeconds, extractGmailBodyText } from "./shared";
+import { resolveCustomer, derivePreview } from "./identity";
 
 /**
  * Gmail uses the `run()` escape hatch: it owns its domain-wide-delegation auth and
@@ -106,7 +107,28 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
         const from = hdrs.find((h) => h.name === "From")?.value ?? "unknown";
         const dateStr = hdrs.find((h) => h.name === "Date")?.value;
         const receivedAt = dateStr ? new Date(dateStr) : new Date();
-        const customerLabel = from.replace(/<[^>]+>/g, "").trim() || from;
+
+        // Read the first message's body up front: it is needed BOTH to identify the customer on
+        // a forwarded contact-form email and to build a preview that isn't just the subject.
+        // Fetched once here and reused by the per-message loop below.
+        let firstBody = "";
+        if (firstMsg.id) {
+          try {
+            const r = await gmail.users.messages.get({ userId: "me", id: firstMsg.id, format: "full" });
+            firstBody = extractGmailBodyText(r.data);
+          } catch {
+            /* body is an optimisation for labelling; a failure must not drop the thread */
+          }
+        }
+
+        // ⚠️ `from` is the FORWARDER on a contact-form inbox, not the customer. Taking it at face
+        // value labelled 226 consecutive Fellas Loaded rows "Fellas Loaded", which makes the
+        // queue unreadable and would send replies back to the app instead of the human.
+        const identity = resolveCustomer(
+          { fromText: from, subject, body: firstBody },
+          { mailboxAddress: impersonateEmail, mailboxName: config.intakeAddress ?? null },
+        );
+        const customerLabel = identity.label;
 
         let conv = await prisma.supportConversation.findFirst({
           where: {
@@ -130,7 +152,11 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
               externalId: item.threadId,
               customerLabel,
               subject,
-              preview: subject,
+              // The real message text, NOT the subject. `preview: subject` meant every row in
+              // the list rendered the same string twice — subject on one line, "preview" on the
+              // next — so nothing could be triaged without opening it. null when the body adds
+              // nothing, and the UI renders no second line rather than repeating itself.
+              preview: derivePreview(firstBody, subject),
               receivedAt,
               // Raised by recordMessageActivity below IFF an inbound message lands — a thread
               // we started ourselves has nothing unread about it.

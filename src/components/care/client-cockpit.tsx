@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useDeferredValue } from "react";
+import { useEffect, useMemo, useRef, useState, useDeferredValue } from "react";
 import { ArrowPathIcon, ArrowLeftIcon, Cog8ToothIcon, DocumentChartBarIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import type { Conversation, SupportClient } from "@/types/support";
@@ -12,6 +12,8 @@ import {
   useSyncSupportClient,
   useBatchTriageConversations,
   useMarkConversationRead,
+  useCloseConversation,
+  useSnoozeConversation,
   useUpdateSupportClient,
 } from "@/hooks/use-support";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -36,19 +38,39 @@ import { ConnectorsView } from "@/components/support/support-dashboard";
 // the thing you asked for, and "Load more" walks the rest.
 const PAGE_SIZE = 50;
 
+/** A key cap. 3px radius per DESIGN.md's micro-control scale — full radius is status dots only. */
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="rounded-[3px] border border-[var(--border-2)] bg-[var(--surface-1)] px-1 font-mono text-[10px] text-[var(--text-3)]">
+      {children}
+    </kbd>
+  );
+}
+
 function ConversationRow({
   conv,
   active,
+  focused,
   selected,
   selectable,
+  showState,
   onOpen,
   onToggleSelect,
   assigneeName,
 }: {
   conv: Conversation;
   active: boolean;
+  /** Keyboard cursor. Distinct from `active` (opened) so j/k can move without loading a thread. */
+  focused: boolean;
   selected: boolean;
   selectable: boolean;
+  /**
+   * False when the current view already filters to this state — in "Awaiting reply" every row is
+   * awaiting, so stamping NEEDS REPLY on all 226 of them is 226 repetitions of the view's own
+   * name. A signal that is constant within a view carries no information there; suppressing it
+   * is what lets the eye reach the content.
+   */
+  showState: boolean;
   onOpen: () => void;
   onToggleSelect: () => void;
   assigneeName?: string;
@@ -61,12 +83,17 @@ function ConversationRow({
 
   return (
     <div
+      data-conv-row
       className={cn(
-        "group relative cursor-pointer border-b border-[var(--border-2)] py-2.5 pr-3 transition",
-        // One accent bar per row carries "this needs answering" down the whole column, readable
-        // without parsing a single word. It is the only structural colour in the list.
-        awaiting ? "border-l-2 border-l-amber-400 pl-[10px]" : "border-l-2 border-l-transparent pl-[10px]",
-        active ? "bg-[var(--brand-50)]" : "hover:bg-[var(--surface-1)]",
+        "group relative cursor-pointer border-b border-[var(--border-2)] py-2 pr-3 transition",
+        // The accent bar marks unanswered work in MIXED views. In a view that is already filtered
+        // to awaiting it would paint every row amber, which is wallpaper rather than a signal.
+        showState && awaiting ? "border-l-2 border-l-amber-400 pl-[10px]" : "border-l-2 border-l-transparent pl-[10px]",
+        active
+          ? "bg-[var(--brand-50)]"
+          : focused
+            ? "bg-[var(--surface-1)] ring-1 ring-inset ring-[var(--brand-200,var(--border-1))]"
+            : "hover:bg-[var(--surface-1)]",
       )}
       onClick={onOpen}
     >
@@ -127,36 +154,41 @@ function ConversationRow({
         {conv.subject}
       </div>
 
-      {/* ── Line 3: state, then the gist, then who owns it ──
-             State sits FIRST at a fixed x-position so the colour forms a scannable column down
-             the list, rather than floating at a ragged right edge. It carries no duration: for
-             an awaiting thread the last activity IS the customer's message and for a replied one
-             it is our reply, so the time on line 1 is already that number — printing it twice
-             ("6d … NEEDS REPLY 6D") was pure duplication. */}
-      <div className="mt-0.5 flex items-baseline gap-2 pl-[22px]">
-        <span
-          // Fixed width so the labels form an aligned column; `truncate` so a longer label added
-          // later clips instead of shoving the preview out of alignment on that one row.
-          // 80px fits the longest ("NEEDS REPLY" ≈ 73px at 10px mono + 0.6px tracking).
-          className={cn("w-[80px] shrink-0 truncate font-mono text-[10px] font-semibold uppercase tracking-[0.6px]", state.tone)}
-          title={state.since ? `${state.label} — ${new Date(state.since).toLocaleString()}` : state.label}
-        >
-          {state.label}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-4)]">
-          {conv.preview || "No preview"}
-        </span>
-        {assigneeName && (
-          <span
-            // Its own muted tone and a gap keep it from reading as part of the state readout —
-            // "HB NEEDS REPLY" ran together as one string when they sat adjacent.
-            className="shrink-0 rounded-[3px] bg-[var(--surface-1)] px-1 font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-3)]"
-            title={`Assigned to ${assigneeName}`}
-          >
-            {initialsOf(assigneeName)}
-          </span>
-        )}
-      </div>
+      {/* ── Line 3: only rendered when it has something to say ──
+             The Gmail connector used to write `preview: subject`, so this line repeated the line
+             above it on every row. It is now the real message body, and null when the body adds
+             nothing — in which case the row collapses to two lines and more of the queue fits on
+             screen, which matters far more at 226 rows than at 6. */}
+      {(conv.preview || showState || assigneeName) && (
+        <div className="mt-0.5 flex items-baseline gap-2 pl-[22px]">
+          {showState && (
+            <span
+              // Fixed width so the labels form an aligned column; `truncate` so a longer label
+              // added later clips instead of shoving the preview out of alignment on that row.
+              className={cn(
+                "w-[80px] shrink-0 truncate font-mono text-[10px] font-semibold uppercase tracking-[0.6px]",
+                state.tone,
+              )}
+              title={state.since ? `${state.label} — ${new Date(state.since).toLocaleString()}` : state.label}
+            >
+              {state.label}
+            </span>
+          )}
+          {conv.preview && (
+            <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--text-4)]">{conv.preview}</span>
+          )}
+          {assigneeName && (
+            <span
+              // Its own muted tone and a gap keep it from reading as part of the state readout —
+              // "HB NEEDS REPLY" ran together as one string when they sat adjacent.
+              className="ml-auto shrink-0 rounded-[3px] bg-[var(--surface-1)] px-1 font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-3)]"
+              title={`Assigned to ${assigneeName}`}
+            >
+              {initialsOf(assigneeName)}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -244,6 +276,8 @@ export function ClientCockpit({
   const sync = useSyncSupportClient(client.id);
   const batch = useBatchTriageConversations(client.id);
   const markRead = useMarkConversationRead(client.id);
+  const close = useCloseConversation(client.id);
+  const snooze = useSnoozeConversation(client.id);
   const { canManageSupport } = usePermissions();
 
   const [activeView, setActiveView] = useState(DEFAULT_VIEW_ID);
@@ -252,6 +286,9 @@ export function ClientCockpit({
   const deferredSearch = useDeferredValue(search);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selection, setSelection] = useState<Set<string>>(new Set());
+  // Keyboard cursor, independent of which conversation is open.
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const listRef = useRef<HTMLDivElement | null>(null);
   // In-place channel/settings hub — opens inside the cockpit instead of jumping to /app/support.
   const [showSettings, setShowSettings] = useState(false);
 
@@ -276,6 +313,11 @@ export function ClientCockpit({
 
   const convsQ = useSupportConversationsPaged(client.id, params);
   const countsQ = useSupportConversationCounts(client.id);
+
+  // Only worth showing per row in a view that can contain more than one state. In "Awaiting
+  // reply" or "Replied" the label would be identical on every row — the view's own name,
+  // repeated 226 times.
+  const showRowState = !view.params.replyState;
 
   const conversations = useMemo(
     () => convsQ.data?.pages.flatMap((p) => p.conversations) ?? [],
@@ -310,6 +352,86 @@ export function ClientCockpit({
     setSelectedId(conv.id);
     if (conv.unread && canManageSupport) markRead.mutate(conv.id);
   }
+
+  /**
+   * Keyboard triage. This is the difference between a queue you read and a queue you clear.
+   *
+   * The live board is 226 unanswered threads, 1 replied, 0 closed — nobody has ever burned it
+   * down, and with a mouse-only UI nobody will: every item costs a click to open, a scroll to
+   * the action, a click to act, and a click back. Front, Superhuman, Missive and Linear are all
+   * keyboard-first for exactly this reason, and it is the single biggest workflow gap here.
+   *
+   * j/k or ↓/↑ move · Enter opens · e closes · s snoozes a day · x selects · Esc clears.
+   */
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      // Never hijack typing — the search box, the reply composer and the notes field all live
+      // on this screen, and a bare "e" must stay a letter while any of them has focus.
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (conversations.length === 0) return;
+
+      const move = (delta: number) => {
+        e.preventDefault();
+        setFocusedIndex((i) => {
+          const next = Math.max(0, Math.min(conversations.length - 1, (i < 0 ? -1 : i) + delta));
+          return next;
+        });
+      };
+
+      switch (e.key) {
+        case "j": case "ArrowDown": return move(1);
+        case "k": case "ArrowUp": return move(-1);
+        case "Enter": {
+          const conv = conversations[focusedIndex];
+          if (conv) { e.preventDefault(); openConversation(conv); }
+          return;
+        }
+        case "x": {
+          const conv = conversations[focusedIndex];
+          if (conv && canManageSupport) { e.preventDefault(); toggleSelect(conv.id); }
+          return;
+        }
+        case "e": {
+          const conv = conversations[focusedIndex];
+          if (conv && canManageSupport) {
+            e.preventDefault();
+            close.mutate({ convId: conv.id });
+            // Hold position rather than following the row out of the view it just left, so a
+            // run of closes walks down the queue instead of bouncing back to the top.
+            setFocusedIndex((i) => Math.min(i, conversations.length - 2));
+          }
+          return;
+        }
+        case "s": {
+          const conv = conversations[focusedIndex];
+          if (conv && canManageSupport) {
+            e.preventDefault();
+            snooze.mutate({ convId: conv.id, until: new Date(Date.now() + 24 * 3600_000).toISOString() });
+            setFocusedIndex((i) => Math.min(i, conversations.length - 2));
+          }
+          return;
+        }
+        case "Escape":
+          if (selection.size > 0) { e.preventDefault(); clearSelection(); }
+          return;
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  // Keep the keyboard cursor on screen. `block: "nearest"` so moving one row nudges the list
+  // rather than recentring it, which is disorienting when you are scanning.
+  useEffect(() => {
+    if (focusedIndex < 0) return;
+    const rows = listRef.current?.querySelectorAll("[data-conv-row]");
+    rows?.[focusedIndex]?.scrollIntoView({ block: "nearest" });
+  }, [focusedIndex]);
+
+  // A new view (or new results) invalidates the old cursor position.
+  useEffect(() => { setFocusedIndex(-1); }, [activeView, sourceFilter, deferredSearch]);
 
   function toggleSelect(id: string) {
     setSelection((prev) => {
@@ -485,7 +607,7 @@ export function ClientCockpit({
           </select>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
           {convsQ.isLoading && <p className="px-3 py-4 text-sm text-[var(--text-4)]">Loading…</p>}
           {!convsQ.isLoading && conversations.length === 0 && (
             <p className="px-3 py-8 text-center text-sm text-[var(--text-4)]">
@@ -494,13 +616,15 @@ export function ClientCockpit({
                 : "Nothing here. Try another view or Sync now."}
             </p>
           )}
-          {conversations.map((c) => (
+          {conversations.map((c, i) => (
             <ConversationRow
               key={c.id}
               conv={c}
               active={c.id === selectedId}
+              focused={i === focusedIndex}
               selected={selection.has(c.id)}
               selectable={canManageSupport}
+              showState={showRowState}
               onOpen={() => openConversation(c)}
               onToggleSelect={() => toggleSelect(c.id)}
               assigneeName={c.assigneeId ? memberName.get(c.assigneeId) : undefined}
@@ -521,6 +645,13 @@ export function ClientCockpit({
           {!convsQ.isLoading && !convsQ.hasNextPage && conversations.length > 0 && (
             <p className="px-3 py-3 text-center font-mono text-[10px] uppercase tracking-[0.6px] text-[var(--text-4)]">
               End of list · {conversations.length} shown
+            </p>
+          )}
+          {/* Keyboard triage is the whole point of the redesign, and an invisible shortcut is a
+              shortcut nobody uses — so it is stated once, quietly, at the foot of the list. */}
+          {canManageSupport && conversations.length > 0 && (
+            <p className="px-3 pb-3 text-center font-mono text-[10px] tracking-[0.4px] text-[var(--text-4)]">
+              <Kbd>J</Kbd> <Kbd>K</Kbd> move · <Kbd>↵</Kbd> open · <Kbd>E</Kbd> close · <Kbd>S</Kbd> snooze · <Kbd>X</Kbd> select
             </p>
           )}
         </div>

@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { after } from "next/server";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { runChannelSync } from "@/server/support-channels";
-import { backfillConversationActivity, decryptScraperConfig, evaluateWorkflowRules } from "@/server/support";
+import { backfillConversationActivity, repairForwardedIdentities, decryptScraperConfig, evaluateWorkflowRules } from "@/server/support";
 import { enrichConversations } from "@/server/care-agents/enrich";
 import { runCourseFeedbackImport } from "@/server/wiki-course-feedback";
 import type { SyncContext, SyncResult, FilterReasons } from "@/server/support-channels/types";
@@ -163,6 +163,9 @@ export async function syncClientConnections(
   // drained this costs one indexed lookup per sync — which is why reply tracking needs no
   // migration step and no one-shot route to become correct on existing history.
   try {
+    // Re-label conversations that carry the forwarding mailbox as their "customer" and whose
+    // preview is a copy of their subject. Self-terminating: repaired rows stop matching.
+    await repairForwardedIdentities(clientId);
     await backfillConversationActivity(clientId);
   } catch (err) {
     // A backfill failure must never mask or fail a sync that ingested real mail.

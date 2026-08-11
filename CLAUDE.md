@@ -3298,3 +3298,61 @@ Horizontal overflow measured **0** at both widths via `documentElement.clientWid
 playbook — `innerWidth` lies). ⚠️ The first overflow reading of 227px was **my harness**, not the
 component: I had written `flex-1` where the real section has `w-full`, so it shrink-wrapped to
 content. Mirror the component's actual classes or the harness tests itself.
+
+### 42.8 The redesign that mattered was in the connector, not the CSS
+
+Dan's verdict on §42.7 was blunt and correct: *"it literally looks 90% the same … if you
+understand the logic, the connectors, the premise of the product, you would know this is not the
+world class way of handling customer support tickets."* The screenshot that came with it shows
+why, and none of it is styling:
+
+- **226 awaiting · 1 replied · 0 closed · 0 snoozed.** Nobody has ever burned this queue down.
+- **"Fellas Loaded" is the sender on 12 of 15 visible rows.** It is a contact-form forwarder: the
+  From line is the app emailing itself, and the customer is in the subject.
+- **Subject and preview are the identical string on every row**, so the list is two copies of one
+  line and nothing can be triaged without opening it.
+- **Every row reads `NEEDS REPLY` in amber**, because the view is "Awaiting reply".
+
+⚠️ **The root cause of the first two is one line each in `gmail.ts`**: `preview: subject` (never
+updated afterwards, because the Gmail `run()` path only ever writes `connectionId` on an existing
+conversation), and `customerLabel = from` display name. **I validated the row design against an
+invented fixture — "Sarah Mitchell", "Priya Anand" — where every sender differs and every preview
+is distinct. On that data the design was fine. On the real inbox it was unreadable.** This is
+§34.3's lesson ("validate against the real thing; unit tests pass while the output is wrong")
+applied to UI, and it should be the default: **screenshot a real client's data, not a fixture.**
+
+**`support-channels/identity.ts`** (pure, 18 tests against real rows from that inbox):
+- `resolveCustomer()` only overrides the From line when the mail is demonstrably the mailbox
+  talking to itself (address match, display-name match, or a no-reply sender), then takes the
+  first address in the subject, then the body. ⚠️ The dangerous failure mode is the reverse of
+  the bug — replacing a genuine sender with an address that happens to appear in their subject —
+  so "Björn Khermik" and "Sanmatin Matin" have tests asserting they are left alone, and the
+  mailbox's own address is never selected back out of the subject or body.
+- `derivePreview()` strips quoted history and signatures, unwraps `Message:` form labels, and
+  **returns null rather than echoing the subject** — the UI then renders no third line at all,
+  so the row collapses to two and more of the queue fits on screen.
+  ⚠️ `--` on its own line is the RFC 3676 signature delimiter; matching only long dash rules let
+  signatures into every preview. A test caught it.
+- **`repairForwardedIdentities()`** fixes the 226 rows already stored, from their own message
+  bodies (no Gmail round trip). Self-terminating with no schema change: it selects only rows that
+  still show the defect (label equals a mailbox address/name, or `preview` equals `subject`), so
+  a repaired client matches nothing next pass. Runs on the ordinary sync path.
+
+**UI changes that follow from the data:**
+- **The row state is hidden when the view already filters to it.** In "Awaiting reply" all 226
+  rows are awaiting, so the label and the amber bar were the view's own name repeated 226 times.
+  A signal that is constant within a view carries no information there. Shown only in mixed
+  views (All open, All, Urgent…).
+- **Keyboard triage — `j`/`k` move, `↵` open, `e` close, `s` snooze, `x` select, `Esc` clear.**
+  This is the actual product gap: a mouse-only UI cannot clear 226 items, which is why the board
+  reads 1 replied / 0 closed. Front, Superhuman, Missive and Linear are all keyboard-first for
+  this reason. The handler ignores events from inputs/textareas/contentEditable so `e` stays a
+  letter while the composer, search or notes field has focus, and after a close/snooze the cursor
+  holds position so a run of closes walks down the queue instead of jumping back to the top. The
+  shortcuts are printed once at the foot of the list — an invisible shortcut is unused.
+
+**Verified:** `npm run verify` green — 0 errors, **1555 tests**, `audit:ui` 0 findings; `npx next
+build` clean. The list was rendered against the app's real compiled CSS as a **before/after using
+the actual Fellas Loaded rows**. **Not verified in a browser against live data** — /app/care is
+auth-gated. **Post-deploy: hit Sync now on Fellas Loaded**, which is what runs
+`repairForwardedIdentities` over the existing 226 rows; until it does, they keep the old labels.
