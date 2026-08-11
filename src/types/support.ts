@@ -133,6 +133,12 @@ export interface Connection {
     fromName?: string;
     fromAddress?: string;
     folder?: string;
+    /** Override the Sent mailbox name; unset = auto-discovered by its \Sent special-use flag. */
+    sentFolder?: string;
+    /** False stops Care reading Sent, so replies made outside Care become invisible again. */
+    readSentFolder?: boolean;
+    /** Manual one-off deep Sent catch-up (days). Normally unnecessary — the window follows the data. */
+    sentBackfillDays?: number;
     // Per-connector auto-fetch cadence (minutes; 0 = manual). Read by the sync cron.
     syncIntervalMinutes?: number;
     // Legacy / generic
