@@ -89,6 +89,40 @@ export async function POST(request: NextRequest, context: RouteContext) {
       };
     });
 
+    // ── Pre-flight validation: catch bad submitter data before it reaches DocuSeal ──────────
+    // DocuSeal silently deduplicates or rejects submissions with placeholder / duplicate emails,
+    // leading to only one submitter making it through and the request completing prematurely.
+    for (const s of submittersInput) {
+      if (!s.email || s.email.trim() === "") {
+        return apiError(
+          `Signer "${s.name}" (${s.role}) has no email address. Add a contact email before pushing to DocuSeal.`,
+          400,
+        );
+      }
+      if (
+        s.email.includes("example.com") ||
+        s.email.endsWith("@client.com") ||
+        s.email.startsWith("{{")
+      ) {
+        return apiError(
+          `Could not resolve a real email for signer "${s.name}" (${s.role}). The document's client record is missing a contact email. Please update the client record and try again.`,
+          400,
+        );
+      }
+    }
+
+    const emailsSeen = new Set<string>();
+    for (const s of submittersInput) {
+      const key = s.email.toLowerCase();
+      if (emailsSeen.has(key)) {
+        return apiError(
+          `Two signers share the same email address (${s.email}). DocuSeal requires a unique email per submitter. Update the signature blocks and try again.`,
+          400,
+        );
+      }
+      emailsSeen.add(key);
+    }
+
     // Build HTML representation of the document with DocuSeal signature tags
     const sectionHtmls = sections
       .filter((sec) => sec.key !== "signatures")
@@ -194,6 +228,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
     } catch (pdfErr) {
       console.warn("Headless PDF generation warning, using HTML fallback:", pdfErr);
     }
+
+    // Log the final submitters list before calling DocuSeal for production diagnosability
+    console.log(
+      `[DocuSeal Submit] documentId="${id}" submitters=${JSON.stringify(
+        submittersInput.map((s) => ({ name: s.name, email: s.email, role: s.role, variableName: s.variableName })),
+      )}`,
+    );
 
     // Call DocuSeal API (or local mock fallback if API key is blank)
     const dsResult = await createDocuSealSubmission({

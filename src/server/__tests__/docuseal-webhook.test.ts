@@ -34,12 +34,21 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+function makeRequest(payload: unknown) {
+  return new NextRequest("http://localhost/api/webhooks/docuseal", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 describe("DocuSeal Webhook Endpoint (POST)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("handles form.completed event by updating signer status to SIGNED and completing request if no signers remain", async () => {
+  // ── form.completed: last signer → COMPLETED ─────────────────────────────────────────────
+
+  it("handles form.completed event: marks signer SIGNED and request COMPLETED when no signers remain", async () => {
     const payload = {
       event_type: "form.completed",
       timestamp: "2026-08-11T12:00:00Z",
@@ -57,16 +66,12 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
       requestId: "req_100",
       status: "PENDING",
       name: "Muhammad Usman",
+      signedAt: null,
     });
 
-    countSigners.mockResolvedValueOnce(0); // 0 remaining signers
+    countSigners.mockResolvedValueOnce(0); // 0 remaining (the "not: signer.id" count)
 
-    const req = new NextRequest("http://localhost/api/webhooks/docuseal", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-
-    const response = await POST(req);
+    const response = await POST(makeRequest(payload));
     const json = await response.json();
 
     expect(response.status).toBe(200);
@@ -88,7 +93,9 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
     });
   });
 
-  it("handles form.completed event when another signer is still pending without marking request COMPLETED", async () => {
+  // ── form.completed: first of two signers — request stays SENT ───────────────────────────
+
+  it("handles form.completed event: marks signer SIGNED but does NOT complete request when another signer is still pending", async () => {
     const payload = {
       event_type: "form.completed",
       data: {
@@ -103,16 +110,12 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
       requestId: "req_100",
       status: "PENDING",
       name: "Muhammad Usman",
+      signedAt: null,
     });
 
-    countSigners.mockResolvedValueOnce(1); // 1 remaining signer (e.g. client)
+    countSigners.mockResolvedValueOnce(1); // 1 remaining (e.g. client)
 
-    const req = new NextRequest("http://localhost/api/webhooks/docuseal", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-
-    const response = await POST(req);
+    const response = await POST(makeRequest(payload));
     const json = await response.json();
 
     expect(response.status).toBe(200);
@@ -128,10 +131,45 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
       },
     });
 
+    // Request must NOT be marked COMPLETED yet
     expect(updateRequest).not.toHaveBeenCalled();
   });
 
-  it("handles submission.completed event by completing request and all signers", async () => {
+  // ── form.completed: idempotency — already-SIGNED signer is skipped ───────────────────────
+
+  it("is idempotent: skips update when signer is already SIGNED", async () => {
+    const payload = {
+      event_type: "form.completed",
+      data: {
+        id: "sub_123",
+        slug: "slug_gitwork",
+        status: "completed",
+      },
+    };
+
+    findFirstSigner.mockResolvedValueOnce({
+      id: "signer_1",
+      requestId: "req_100",
+      status: "SIGNED", // ← already signed
+      name: "Muhammad Usman",
+      signedAt: new Date("2026-08-10T10:00:00Z"),
+    });
+
+    const response = await POST(makeRequest(payload));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual({ received: true, signerProcessed: true });
+
+    // No DB mutations should happen
+    expect(updateSigner).not.toHaveBeenCalled();
+    expect(updateRequest).not.toHaveBeenCalled();
+    expect(countSigners).not.toHaveBeenCalled();
+  });
+
+  // ── submission.completed: bulk COMPLETED ────────────────────────────────────────────────
+
+  it("handles submission.completed event: completes request and all signers in bulk", async () => {
     const payload = {
       event_type: "submission.completed",
       data: {
@@ -147,15 +185,11 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
     findFirstRequest.mockResolvedValueOnce({
       id: "req_100",
       docusealSubmissionId: "submission_999",
+      status: "SENT",
       signers: [{ id: "signer_1" }, { id: "signer_2" }],
     });
 
-    const req = new NextRequest("http://localhost/api/webhooks/docuseal", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-
-    const response = await POST(req);
+    const response = await POST(makeRequest(payload));
     const json = await response.json();
 
     expect(response.status).toBe(200);
@@ -172,7 +206,34 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
     });
   });
 
-  it("handles form.viewed event by marking PENDING signer as VIEWED", async () => {
+  // ── submission.completed: idempotency ───────────────────────────────────────────────────
+
+  it("submission.completed is idempotent: skips bulk update when request is already COMPLETED", async () => {
+    const payload = {
+      event_type: "submission.completed",
+      data: { id: "submission_999", status: "completed" },
+    };
+
+    findFirstRequest.mockResolvedValueOnce({
+      id: "req_100",
+      docusealSubmissionId: "submission_999",
+      status: "COMPLETED", // ← already done
+      signers: [],
+    });
+
+    const response = await POST(makeRequest(payload));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual({ received: true, status: "completed" });
+
+    expect(updateRequest).not.toHaveBeenCalled();
+    expect(updateManySigners).not.toHaveBeenCalled();
+  });
+
+  // ── form.viewed: primary lookup → PENDING→VIEWED ────────────────────────────────────────
+
+  it("handles form.viewed event: marks PENDING signer as VIEWED via primary ID/slug lookup", async () => {
     const payload = {
       event_type: "form.viewed",
       data: {
@@ -183,15 +244,11 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
 
     findFirstSigner.mockResolvedValueOnce({
       id: "signer_2",
+      name: "Client Contact",
       status: "PENDING",
     });
 
-    const req = new NextRequest("http://localhost/api/webhooks/docuseal", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-
-    const response = await POST(req);
+    const response = await POST(makeRequest(payload));
     const json = await response.json();
 
     expect(response.status).toBe(200);
@@ -201,5 +258,85 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
       where: { id: "signer_2" },
       data: { status: "VIEWED" },
     });
+  });
+
+  // ── form.viewed: fallback lookup by role/email ────────────────────────────────────────────
+
+  it("handles form.viewed: falls back to submission-scoped role/email lookup when ID/slug lookup misses", async () => {
+    const payload = {
+      event_type: "form.viewed",
+      data: {
+        // No submitter id/slug — simulates a payload where DocuSeal omits them.
+        // data.id here is the submission ID (not a submitter ID), so primary lookup yields null.
+        id: "submission_999",   // ← submission-level id, not a submitterId
+        email: "client@acme.com",
+        role: "client",
+      },
+    };
+
+    // Primary lookup by docusealSubmitterId / docusealSlug — won't match a submission-level ID
+    findFirstSigner.mockResolvedValueOnce(null);
+    // Fallback lookup scoped to submission by role/email — finds the signer
+    findFirstSigner.mockResolvedValueOnce({
+      id: "signer_2",
+      name: "Client Contact",
+      status: "PENDING",
+    });
+
+    const response = await POST(makeRequest(payload));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual({ received: true });
+
+    expect(updateSigner).toHaveBeenCalledWith({
+      where: { id: "signer_2" },
+      data: { status: "VIEWED" },
+    });
+  });
+
+  // ── form.viewed: no-op when signer already SIGNED ────────────────────────────────────────
+
+  it("handles form.viewed: does not overwrite status when signer is already SIGNED", async () => {
+    const payload = {
+      event_type: "form.viewed",
+      data: { id: "sub_124", slug: "slug_client" },
+    };
+
+    // Primary lookup finds the signer immediately — status is already SIGNED
+    findFirstSigner.mockResolvedValueOnce({
+      id: "signer_2",
+      name: "Client Contact",
+      status: "SIGNED",
+    });
+
+    const response = await POST(makeRequest(payload));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual({ received: true });
+
+    // Handler must log a skip and NOT update the signer
+    expect(updateSigner).not.toHaveBeenCalled();
+  });
+
+  // ── Unknown event type ──────────────────────────────────────────────────────────────────
+
+  it("returns 200 without any DB calls for an unknown event type", async () => {
+    const payload = {
+      event_type: "submission.expired",
+      data: { id: "submission_999" },
+    };
+
+    const response = await POST(makeRequest(payload));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toMatchObject({ received: true });
+
+    expect(findFirstSigner).not.toHaveBeenCalled();
+    expect(findFirstRequest).not.toHaveBeenCalled();
+    expect(updateSigner).not.toHaveBeenCalled();
+    expect(updateRequest).not.toHaveBeenCalled();
   });
 });

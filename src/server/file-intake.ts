@@ -5,6 +5,8 @@
  * Used by the AI Document Generation Engine to parse reference materials.
  */
 
+import { PDFParse } from "pdf-parse";
+
 export interface FileIntakeInput {
   filename?: string;
   mimeType?: string;
@@ -21,7 +23,7 @@ export interface ExtractedIntakeText {
 /**
  * Extracts readable plain text from a Buffer (PDF, DOCX, TXT, MD) or text brief string.
  */
-export function extractIntakeText(input: FileIntakeInput): ExtractedIntakeText {
+export async function extractIntakeText(input: FileIntakeInput): Promise<ExtractedIntakeText> {
   const filename = input.filename?.trim() || "reference-brief.txt";
   const briefText = input.textBrief?.trim() || "";
   const lowerName = filename.toLowerCase();
@@ -61,29 +63,17 @@ export function extractIntakeText(input: FileIntakeInput): ExtractedIntakeText {
       rawText = words ? words.join("\n") : clean;
     }
   }
-  // 3. PDF files
+  // 3. PDF files (using pdf-parse for stream decompression and font decoding)
   else if (lowerName.endsWith(".pdf") || input.mimeType?.includes("pdf")) {
-    const str = buf.toString("latin1"); // Preserve PDF binary bytes
-
-    // Extract text inside PDF BT ... ET (Begin Text ... End Text) blocks
-    const btBlocks = str.match(/BT[\s\S]*?ET/g);
-    if (btBlocks && btBlocks.length > 0) {
-      const extractedParts: string[] = [];
-      for (const block of btBlocks) {
-        // Extract string literals in (text) Tj or [(text)] TJ
-        const textMatches = block.match(/\((.*?)\)\s*Tj|\[(.*?)\]\s*TJ/g);
-        if (textMatches) {
-          for (const tm of textMatches) {
-            const inner = tm.replace(/\\\(/g, "(").replace(/\\\)/g, ")").replace(/^[\(\[]|[\)\]]\s*T[jJ]$/g, "");
-            extractedParts.push(inner);
-          }
-        }
-      }
-      rawText = extractedParts.join(" ");
-    }
-
-    // Fallback if BT ET blocks were encoded or missed
-    if (!rawText || rawText.trim().length < 20) {
+    try {
+      const parser = new PDFParse({ data: buf });
+      const parsed = await parser.getText();
+      rawText = parsed.text || "";
+      await parser.destroy();
+    } catch (err) {
+      console.warn(`[File Intake] pdf-parse failed for ${filename}, attempting raw fallback:`, err);
+      // Fallback in case of corrupted or password-protected PDF structures
+      const str = buf.toString("latin1");
       const cleanStr = str.replace(/[\x00-\x1F\x7F-\xFF]/g, " ").replace(/\s+/g, " ");
       const matches = cleanStr.match(/[A-Za-z0-9\s.,;:'"!?()\-–—@#&]{4,}/g);
       rawText = matches ? matches.join("\n") : cleanStr;
@@ -107,3 +97,4 @@ export function extractIntakeText(input: FileIntakeInput): ExtractedIntakeText {
     charCount: trimmed.length,
   };
 }
+
