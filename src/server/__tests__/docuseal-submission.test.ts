@@ -218,7 +218,7 @@ describe("DocuSeal submission route — pre-flight validation", () => {
 
     expect(response.status).toBe(400);
     expect(typeof json.error).toBe("string");
-    expect(json.error).toMatch(/client record is missing a contact email/i);
+    expect(json.error).toMatch(/missing a real email address|has no email address/i);
 
     // DocuSeal must NOT have been called
     expect(createDocuSealSubmission).not.toHaveBeenCalled();
@@ -259,7 +259,7 @@ describe("DocuSeal submission route — pre-flight validation", () => {
     const json = await response.json();
 
     expect(response.status).toBe(400);
-    expect(json.error).toMatch(/client record is missing a contact email/i);
+    expect(json.error).toMatch(/missing a real email address|has no email address/i);
     expect(createDocuSealSubmission).not.toHaveBeenCalled();
   });
 
@@ -298,7 +298,7 @@ describe("DocuSeal submission route — pre-flight validation", () => {
     const json = await response.json();
 
     expect(response.status).toBe(400);
-    expect(json.error).toMatch(/two signers share the same email/i);
+    expect(json.error).toMatch(/two signature blocks share the same email/i);
     expect(createDocuSealSubmission).not.toHaveBeenCalled();
   });
 
