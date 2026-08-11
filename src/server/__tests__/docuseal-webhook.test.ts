@@ -56,6 +56,7 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
       id: "signer_1",
       requestId: "req_100",
       status: "PENDING",
+      name: "Muhammad Usman",
     });
 
     countSigners.mockResolvedValueOnce(0); // 0 remaining signers
@@ -73,7 +74,12 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
 
     expect(updateSigner).toHaveBeenCalledWith({
       where: { id: "signer_1" },
-      data: { status: "SIGNED", signedAt: expect.any(Date) },
+      data: {
+        status: "SIGNED",
+        signedAt: expect.any(Date),
+        docusealSubmitterId: "sub_123",
+        docusealSlug: "slug_gitwork",
+      },
     });
 
     expect(updateRequest).toHaveBeenCalledWith({
@@ -96,6 +102,7 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
       id: "signer_1",
       requestId: "req_100",
       status: "PENDING",
+      name: "Muhammad Usman",
     });
 
     countSigners.mockResolvedValueOnce(1); // 1 remaining signer (e.g. client)
@@ -113,7 +120,12 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
 
     expect(updateSigner).toHaveBeenCalledWith({
       where: { id: "signer_1" },
-      data: { status: "SIGNED", signedAt: expect.any(Date) },
+      data: {
+        status: "SIGNED",
+        signedAt: expect.any(Date),
+        docusealSubmitterId: "sub_123",
+        docusealSlug: "slug_gitwork",
+      },
     });
 
     expect(updateRequest).not.toHaveBeenCalled();

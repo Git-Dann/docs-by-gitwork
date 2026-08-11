@@ -242,11 +242,28 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // Update each signer with returned DocuSeal slug, embed_src, and submitter ID
     const updatedSigners = await Promise.all(
       activeRequest.signers.map(async (signer, index) => {
-        const dsSub = dsResult.submitters[index] ?? dsResult.submitters.find((s) => s.role === submittersInput[index]?.role);
+        // Match this DB signer to the corresponding submittersInput entry
+        const inputIdx = submittersInput.findIndex(
+          (inp, idx) =>
+            (signer.signatureBlockId && rawBlocks[idx]?.id === signer.signatureBlockId) ||
+            (inp.email.toLowerCase() === signer.email.toLowerCase() && inp.role.startsWith(signer.signerType?.toLowerCase() || ""))
+        );
+        const targetInput = inputIdx >= 0 ? submittersInput[inputIdx] : submittersInput[index];
+
+        // Match to DocuSeal's returned submitter by role and email
+        const dsSub =
+          (targetInput
+            ? dsResult.submitters.find(
+                (s) => s.role === targetInput.role && s.email.toLowerCase() === targetInput.email.toLowerCase(),
+              ) ?? dsResult.submitters.find((s) => s.role === targetInput.role)
+            : undefined) ??
+          dsResult.submitters.find((s) => s.email.toLowerCase() === signer.email.toLowerCase()) ??
+          dsResult.submitters[index];
+
         const nextSlug = dsSub?.slug ?? `ds_${signer.id}`;
         const nextEmbed = dsSub?.embed_src ?? `https://api.docuseal.com/s/${nextSlug}`;
-        const nextRole = submittersInput[index]?.role ?? "client";
-        const nextVar = submittersInput[index]?.variableName ?? "client_signature";
+        const nextRole = targetInput?.role ?? dsSub?.role ?? "client";
+        const nextVar = targetInput?.variableName ?? "client_signature";
 
         return prisma.signatureSigner.update({
           where: { id: signer.id },

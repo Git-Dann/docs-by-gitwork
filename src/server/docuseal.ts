@@ -83,6 +83,15 @@ export async function createDocuSealSubmission(
     };
   });
 
+  // Ensure gitwork submitters are placed first so DocuSeal sequential ordering has Gitwork sign first
+  formattedSubmitters.sort((a, b) => {
+    const aIsGitwork = a.role.startsWith("gitwork");
+    const bIsGitwork = b.role.startsWith("gitwork");
+    if (aIsGitwork && !bIsGitwork) return -1;
+    if (!aIsGitwork && bIsGitwork) return 1;
+    return 0;
+  });
+
   // Offline / fallback mode if no external API key is set
   if (!apiKey) {
     const mockSubmissionId = `mock_ds_${Date.now()}`;

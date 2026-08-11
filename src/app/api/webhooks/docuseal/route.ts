@@ -68,7 +68,9 @@ export async function POST(request: NextRequest) {
       const submitterSlug = String(data.slug || "");
       const submitterEmail = typeof data.email === "string" ? data.email.trim().toLowerCase() : "";
 
-      // Find signer by submitterId, slug, or matching email on submission request
+      const submitterRole = typeof data.role === "string" ? data.role.trim().toLowerCase() : "";
+
+      // Find signer by submitterId, slug, or matching role/email on submission request
       let signer = await prisma.signatureSigner.findFirst({
         where: {
           OR: [
@@ -78,16 +80,19 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      if (!signer && submissionId && submitterEmail) {
+      if (!signer && submissionId) {
         signer = await prisma.signatureSigner.findFirst({
           where: {
-            email: submitterEmail,
             request: {
               OR: [
                 { docusealSubmissionId: submissionId },
                 { id: submissionId },
               ],
             },
+            OR: [
+              ...(submitterRole ? [{ signerType: submitterRole }] : []),
+              ...(submitterEmail ? [{ email: submitterEmail }] : []),
+            ],
           },
         });
       }
@@ -96,12 +101,15 @@ export async function POST(request: NextRequest) {
         const now = new Date();
 
         await prisma.$transaction(async (tx) => {
-          if (signer.status !== "SIGNED") {
-            await tx.signatureSigner.update({
-              where: { id: signer.id },
-              data: { status: "SIGNED", signedAt: now },
-            });
-          }
+          await tx.signatureSigner.update({
+            where: { id: signer.id },
+            data: {
+              status: "SIGNED",
+              signedAt: signer.signedAt ?? now,
+              ...(submitterId ? { docusealSubmitterId: submitterId } : {}),
+              ...(submitterSlug ? { docusealSlug: submitterSlug } : {}),
+            },
+          });
 
           const remaining = await tx.signatureSigner.count({
             where: {
@@ -117,7 +125,7 @@ export async function POST(request: NextRequest) {
             });
             console.log(`[DocuSeal Webhook] All signers completed. Marked SignatureRequest ${signer.requestId} COMPLETED.`);
           } else {
-            console.log(`[DocuSeal Webhook] Marked Signer ${signer.id} SIGNED. Remaining signers: ${remaining}`);
+            console.log(`[DocuSeal Webhook] Marked Signer ${signer.id} (${signer.name}) SIGNED. Remaining signers: ${remaining}`);
           }
         });
       }
