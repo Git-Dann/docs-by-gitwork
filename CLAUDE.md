@@ -3568,3 +3568,43 @@ confirm the properties sidebar saves assignee/priority/status.
 scoring, AI search and workflow rules, and `client-cockpit.tsx` still imports `ConnectorsView` out
 of it — so `ConnectorsView` renders its own chrome inside `01 // MODE`'s screen rather than a
 numbered sibling. Extracting it is the first step of retiring the legacy file (§11).
+
+### 42.13 The Care touchpoints outside the module
+
+Three surfaces referred to Care and each said something different about it.
+
+**The HQ tile had the module's own three defects, one layer out.** It reported **open tickets and
+unread messages** — but tickets are dormant in the cockpit, and `unread` was climbing on our own
+replies until §42.2 fixed it, so neither number was actionable and the one that is (*is a customer
+waiting on us?*) was absent. It fired a `useSupportTickets` + `useSupportConversations` pair **per
+row**, the conversation read pulling up to 100 full rows purely to count the unread ones — the same
+N+1 Care home had, replaced by the one `useClientQueueSummaries` roll-up. And every colour was a
+literal (`#0F172A`, `#94A3B8`, `#475569`, `#1D4ED8`, `rgba(0,0,0,0.08)`), so the tile was unreadable
+in dark mode while every token-driven tile beside it was fine. It is now worst-client-first,
+awaiting-led, and all tokens.
+
+⚠️ **`AppOverview`'s tile container is still `bg-white` with a literal border** — so *every*
+dashboard widget sits on a white card in dark mode. Out of scope here, but it is the reason a
+token-correct widget can still look wrong on that screen.
+
+**One icon for Care everywhere.** Lifebuoy in the sidebar, Heart on HQ, a chat bubble on both Portal
+badges. The sidebar is canonical. The chat bubble stays where it genuinely means *a chat channel* —
+Slack links, and Care's own `SourceIcon`.
+
+**`/app/context`** called the module "Care / Support" and pointed at the legacy dashboard route.
+
+⚠️ **Portal's two Care badges are still different by design, not by accident** — a mono `CARE` pill
+on the client detail page, a quiet 3.5px icon in the client card's icon strip (beside the Drive
+favicon, GitHub and the Pulse chip). Each is consistent with its own cluster; converging them means
+either breaking the card's icon strip or dropping the detail page's label. The convergence worth
+doing is to put the client's **awaiting count** on the Portal card, which needs a new field on the
+client DTO — server work, and a separate change.
+
+**Verification technique worth keeping: a component no demo mounts can still be seen.** `CareWidget`
+is rendered only by `AppOverview`, and no `/demo/**` route mounts it (`/demo/dev` renders
+`DevOverview`), so there is no reachable page at all. It was verified by `renderToStaticMarkup` with
+the **query cache pre-seeded** (`qc.setQueryData(["support","queue-summaries"], …)`), wrapped in the
+real compiled stylesheet from `.next/static/css`, and screenshotted in both themes. Effects do not
+run, but tokens, geometry and content are the shipped ones. ⚠️ `tsx` compiles `.tsx` with the classic
+JSX runtime against this repo's `"jsx": "preserve"` tsconfig and fails with *"React is not
+defined"* — pass a throwaway tsconfig setting `"jsx": "react-jsx"`.
