@@ -43,9 +43,59 @@ export interface ImapConnectionConfig {
   sentFolder?: string;
   /** Set false to stop reading Sent (replies made outside Care then stay invisible to Care). */
   readSentFolder?: boolean;
+  /** How far back the FIRST sync reaches (days). Default 30. Also used by "Re-sync history". */
+  lookbackDays?: number;
+  /**
+   * One-off deep catch-up for the Sent folder, in days.
+   *
+   * Steady state, Sent rides the same incremental window as the inbox — cheap, and enough to
+   * catch a reply typed minutes ago. But that window is `lastSyncedAt − 2 days`, so on a mailbox
+   * that has been syncing all along it reaches back exactly two days — while the replies that
+   * left threads wrongly marked "awaiting" may be weeks or months old. Reading Sent then finds
+   * nothing and the queue stays wrong, which looks identical to the feature not working.
+   *
+   * Set this once (e.g. 90) to reconcile that history, then clear it. Cost is bounded either
+   * way: the scan keeps only the newest SENT_MESSAGES_PER_RUN uids, and anything already stored
+   * is dropped by Message-ID dedup.
+   */
+  sentBackfillDays?: number;
 }
 
 const MAX_MESSAGES_PER_RUN = 300;
+/**
+ * Sent is capped lower than the inbox. It is a reconciliation read, not the source of new
+ * conversations, and each message still costs a full BODY.PEEK[] fetch + MIME parse.
+ */
+const SENT_MESSAGES_PER_RUN = 150;
+const DEFAULT_LOOKBACK_DAYS = 30;
+const DAY_MS = 24 * 3600 * 1000;
+
+/**
+ * The IMAP `SINCE` floor for each mailbox.
+ *
+ * Pure so the windows can be reasoned about in tests — getting this wrong is silent: the sync
+ * succeeds, reports no errors, and simply never sees the mail it was supposed to reconcile.
+ */
+export function resolveScanWindows(
+  cfg: Pick<ImapConnectionConfig, "lookbackDays" | "sentBackfillDays">,
+  lastSyncedAt: Date | null | undefined,
+  now: Date = new Date(),
+): { inboxSince: Date; sentSince: Date } {
+  const lookbackDays = cfg.lookbackDays && cfg.lookbackDays > 0 ? cfg.lookbackDays : DEFAULT_LOOKBACK_DAYS;
+  // Incremental with a 2-day overlap (SINCE is day-granular); full lookback on a first sync or
+  // after "Re-sync history", which nulls lastSyncedAt.
+  const inboxSince = lastSyncedAt
+    ? new Date(lastSyncedAt.getTime() - 2 * DAY_MS)
+    : new Date(now.getTime() - lookbackDays * DAY_MS);
+
+  // A deep Sent catch-up must ignore lastSyncedAt entirely — that is the whole point of it.
+  const sentSince =
+    cfg.sentBackfillDays && cfg.sentBackfillDays > 0
+      ? new Date(now.getTime() - cfg.sentBackfillDays * DAY_MS)
+      : inboxSince;
+
+  return { inboxSince, sentSince };
+}
 
 /**
  * Locate the Sent mailbox.
@@ -117,10 +167,7 @@ export async function fetchImapItems(ctx: SyncContext): Promise<ChannelFetchResu
   const ownAddress = (cfg.fromAddress ?? cfg.username).toLowerCase();
   const folder = cfg.folder?.trim() || "INBOX";
 
-  // Incremental: SINCE is day-granular, so subtract 2 days and let the core dedup by Message-ID.
-  const since = ctx.connection.lastSyncedAt
-    ? new Date(ctx.connection.lastSyncedAt.getTime() - 2 * 24 * 3600 * 1000)
-    : new Date(Date.now() - 30 * 24 * 3600 * 1000);
+  const { inboxSince, sentSince } = resolveScanWindows(cfg, ctx.connection.lastSyncedAt);
 
   const client = new ImapFlow({
     host: cfg.imapHost,
@@ -143,11 +190,13 @@ export async function fetchImapItems(ctx: SyncContext): Promise<ChannelFetchResu
    * is a false positive in the one direction this work exists to eliminate.
    */
   async function scanMailbox(mailbox: string, forceOutbound: boolean): Promise<void> {
+    const since = forceOutbound ? sentSince : inboxSince;
+    const cap = forceOutbound ? SENT_MESSAGES_PER_RUN : MAX_MESSAGES_PER_RUN;
     const lock = await client.getMailboxLock(mailbox);
     try {
       const uids = (await client.search({ since }, { uid: true })) || [];
       // Newest N only, so a huge mailbox can't blow the run; older mail backfills over runs.
-      const slice = uids.slice(-MAX_MESSAGES_PER_RUN);
+      const slice = uids.slice(-cap);
       if (slice.length === 0) return;
 
       // `source: true` uses BODY.PEEK[] — reading never sets the \Seen flag (leaves the
