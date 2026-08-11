@@ -262,7 +262,14 @@ export function PortalLoginForm({ next }: { next: string | null }) {
                   />
                 </div>
 
-                {error && <p className="mt-3.5 text-[13px] text-rose-600">{error}</p>}
+                {error && (
+                  // Fixed hex, not `text-rose-600`: the dark remap turns that into #fb7185,
+                  // a light pink that sits at ~2.6:1 on this cream card — and a sign-in
+                  // error is the one message on the page that has to be readable.
+                  <p className="mt-3.5 text-[13px]" style={{ color: "#be123c" }}>
+                    {error}
+                  </p>
+                )}
 
                 <button
                   type="submit"

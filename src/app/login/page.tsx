@@ -19,6 +19,11 @@ const MUTED = "#57534E";
 const FAINT = "#8A8577";
 const BORDER = "rgba(0,0,0,0.10)";
 const PAGE_BG = "#EDE8E1";
+// Panel white as a fixed hex, NOT the `bg-white` utility: `[data-theme="dark"]
+// .bg-white` remaps to --surface-0, which turned this page's button and cards
+// near-black while the ink stayed dark. This page is theme-locked, so it must
+// not use any utility the dark remap rewrites.
+const PANEL = "#FFFFFF";
 
 const FEATURES = [
   { number: "01", name: "Pulse", description: "500+ automated project checks — AI gap analysis and fix-agent PRs in minutes." },
@@ -32,8 +37,8 @@ function GoogleButton() {
     <button
       type="submit"
       disabled={pending}
-      className="flex w-full items-center justify-center gap-3 rounded-full bg-white px-4 py-3 text-[15px] font-semibold transition hover:opacity-90 disabled:opacity-50"
-      style={{ border: `1px solid ${BORDER}`, color: INK }}
+      className="flex w-full items-center justify-center gap-3 rounded-full px-4 py-3 text-[15px] font-semibold transition hover:opacity-90 disabled:opacity-50"
+      style={{ background: PANEL, border: `1px solid ${BORDER}`, color: INK }}
     >
       <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
         <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4" />
@@ -65,8 +70,8 @@ function PlatformPanel() {
         {FEATURES.map((f) => (
           <li
             key={f.number}
-            className="flex items-start gap-3 rounded-[12px] bg-white px-4 py-3"
-            style={{ border: `1px solid ${BORDER}` }}
+            className="flex items-start gap-3 rounded-[12px] px-4 py-3"
+            style={{ background: PANEL, border: `1px solid ${BORDER}` }}
           >
             <span className="shrink-0 text-[12px] font-semibold" style={{ color: PURPLE }}>
               {f.number}
