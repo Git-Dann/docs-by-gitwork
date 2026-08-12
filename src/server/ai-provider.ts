@@ -43,7 +43,7 @@ export interface ResolvedAiConfig {
  * fallback models when a workspace hasn't pinned its own.
  */
 export const DEFAULT_MODELS: Record<AiProvider, string> = {
-  ANTHROPIC: "claude-3-5-sonnet-20241022",
+  ANTHROPIC: "claude-sonnet-4-6",
   OPENAI: "gpt-4o",
   GROQ: "openai/gpt-oss-120b",
   GEMINI: "gemini-2.0-flash",
@@ -52,12 +52,12 @@ export const DEFAULT_MODELS: Record<AiProvider, string> = {
 
 /** Resolve the active provider, API key, model and (OpenAI-compatible) base URL. */
 export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
-  const provider = (ws.aiProvider || (process.env.GROQ_API_KEY ? "GROQ" : "ANTHROPIC")) as AiProvider;
+  const provider = (ws.aiProvider || "ANTHROPIC") as AiProvider;
 
-  if (provider === "GROQ" || process.env.GROQ_API_KEY) {
+  if (provider === "GROQ") {
     return {
       provider: "GROQ",
-      apiKey: process.env.GROQ_API_KEY ?? ws.openaiApiKey ?? null,
+      apiKey: ws.openaiApiKey ?? process.env.GROQ_API_KEY ?? null,
       model: ws.openaiModel ?? DEFAULT_MODELS.GROQ,
       baseUrl: "https://api.groq.com/openai/v1",
     };
@@ -86,10 +86,12 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
       baseUrl: ws.localLlmUrl ?? "http://localhost:11434/v1",
     };
   }
+
+  // Default: ANTHROPIC (Claude 3.5 Sonnet / Claude Sonnet) using workspace.anthropicApiKey
   return {
     provider: "ANTHROPIC",
-    apiKey: process.env.ANTHROPIC_API_KEY ?? ws.anthropicApiKey ?? null,
-    model: ws.anthropicModel && !ws.anthropicModel.includes("-5") ? ws.anthropicModel : DEFAULT_MODELS.ANTHROPIC,
+    apiKey: ws.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY ?? null,
+    model: ws.anthropicModel || DEFAULT_MODELS.ANTHROPIC,
     baseUrl: null,
   };
 }
