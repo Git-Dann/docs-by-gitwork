@@ -165,19 +165,25 @@ export interface SavedView {
   id: string;
   label: string;
   params: ConversationListParams;
-  counts: keyof Omit<ConversationViewCounts, "oldestAwaitingAt">;
+  /** Which field on ConversationViewCounts badges this view. Only the numeric ones qualify. */
+  counts: keyof Omit<ConversationViewCounts, "oldestAwaitingAt" | "sources">;
 }
 
 const ACTIVE = ["new", "open"];
 
 export const SAVED_VIEWS: SavedView[] = [
-  // The default, and the only queue that answers "has this been dealt with?". Sorted
-  // longest-waiting first — a triage board that buries the oldest unanswered message under
-  // today's noise is how things fall through.
+  // The default, and the only queue that answers "has this been dealt with?".
+  //
+  // ⚠️ Opens NEWEST first, not longest-waiting first. That was the original call and it was wrong
+  // on real data: a client whose whole backlog is two months old shows a wall of identical `2mo`
+  // rows, and the mail that arrived this morning — the only thing anyone can still respond to
+  // usefully — is at the bottom of it. The longest wait is still stated, in the client header's
+  // `LONGEST 2mo` readout, and the WAITING column header flips the order in one click. So the
+  // readout tells you the worst wait while the list shows you what is new.
   {
     id: "awaiting-reply",
     label: "Awaiting reply",
-    params: { status: ACTIVE, replyState: "awaiting_reply", sort: "oldest_inbound" },
+    params: { status: ACTIVE, replyState: "awaiting_reply" },
     counts: "awaiting",
   },
   { id: "replied", label: "Replied", params: { status: ACTIVE, replyState: "replied" }, counts: "replied" },
@@ -186,8 +192,9 @@ export const SAVED_VIEWS: SavedView[] = [
     id: "unassigned",
     label: "Unassigned",
     // Unassigned means unowned WORK: a thread nobody owns but that has already been answered is
-    // not sitting on anyone's desk, so it does not belong in this queue.
-    params: { status: ACTIVE, replyState: "awaiting_reply", unassigned: true, sort: "oldest_inbound" },
+    // not sitting on anyone's desk, so it does not belong in this queue. Newest first for the same
+    // reason as the awaiting queue above.
+    params: { status: ACTIVE, replyState: "awaiting_reply", unassigned: true },
     counts: "unassigned",
   },
   { id: "urgent", label: "Urgent", params: { status: ACTIVE, priority: "urgent" }, counts: "urgent" },

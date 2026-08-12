@@ -30,7 +30,7 @@ import type { EffectiveUser } from "@/server/auth/effective-user";
 import { canSeeAllClients, ForbiddenError } from "@/server/auth/effective-user";
 import { assignedClientIds } from "@/server/tasks";
 import { deriveReplyState, foldMessageActivity } from "@/server/support-reply-state";
-import { resolveCustomer, derivePreview } from "@/server/support-channels/identity";
+import { resolveCustomer, derivePreview, isSelfLabel } from "@/server/support-channels/identity";
 import type {
   SupportClientStatus,
   SupportSource as PrismaSupportSource,
@@ -200,6 +200,7 @@ export function serializeSupportClient(row: {
   reportDueDay: number | null;
   workspaceClientId?: string | null;
   courseRequestOnly?: boolean | null;
+  workspaceClient?: { slug: string } | null;
   _count?: { conversations?: number };
 }): SupportClient {
   return {
@@ -212,6 +213,10 @@ export function serializeSupportClient(row: {
     reportingRecipient: row.reportingRecipient ?? undefined,
     reportDueDay: row.reportDueDay ?? undefined,
     workspaceClientId: row.workspaceClientId ?? undefined,
+    // The PORTAL client's slug, which is what the per-client wiki features key on. Care's own slug
+    // is a different string for the same client ("big-wedge-golf" vs "wedge"), so gating on
+    // `slug` above would silently never match.
+    workspaceClientSlug: row.workspaceClient?.slug ?? undefined,
     courseRequestOnly: row.courseRequestOnly ?? false,
     unreadCount: row._count?.conversations ?? 0,
   };
@@ -492,6 +497,7 @@ export async function listSupportClients(user?: EffectiveUser): Promise<SupportC
     orderBy: { name: "asc" },
     include: {
       _count: { select: { conversations: { where: { unread: true } } } },
+      workspaceClient: { select: { slug: true } },
     },
   });
   return rows.map(serializeSupportClient);
@@ -860,6 +866,7 @@ export async function getConversationViewCounts(
     closed,
     all,
     oldest,
+    sourceGroups,
   ] = await Promise.all([
     prisma.supportConversation.count({ where: awaiting }),
     prisma.supportConversation.count({ where: { ...active, AND: [replyStateWhere("replied")] } }),
@@ -879,6 +886,19 @@ export async function getConversationViewCounts(
       orderBy: { lastInboundAt: { sort: "asc", nulls: "last" } },
       select: { lastInboundAt: true },
     }),
+    // Which channels this client's conversations ACTUALLY came from.
+    //
+    // ⚠️ The cockpit used to build its channel filter from the client's live CONNECTIONS, so a
+    // source whose connector has since been removed or replaced — Fellas' Gmail connector, swapped
+    // for IMAP — vanished from the dropdown while its conversations stayed in the table. Those
+    // rows were visible and unfilterable. Conversations outlive connectors; the filter has to be
+    // built from the data, and it rides here because this endpoint is already one round trip of
+    // groupBys for the tab badges.
+    prisma.supportConversation.groupBy({
+      by: ["source"],
+      where: { clientId },
+      _count: { _all: true },
+    }),
   ]);
 
   return {
@@ -892,6 +912,9 @@ export async function getConversationViewCounts(
     closed,
     all,
     oldestAwaitingAt: oldest?.lastInboundAt?.toISOString() ?? null,
+    sources: sourceGroups
+      .map((g) => ({ source: mapSource(g.source), count: g._count._all }))
+      .sort((a, b) => b.count - a.count),
   };
 }
 
@@ -1270,52 +1293,64 @@ export async function recordMessageActivity(
   });
 }
 
+/** Every source whose conversations can arrive via a mailbox, and so via a forwarder. */
+const MAIL_SOURCES: PrismaSupportSource[] = ["GMAIL", "IMAP"];
+
 /**
  * Repair conversations whose customer label is the FORWARDER and whose preview is a copy of the
  * subject — the two defects that made a 226-row queue read as the same person writing the same
  * thing 226 times.
  *
- * Runs over stored messages, so it needs no Gmail round trip. Self-terminating without a schema
- * change: it only selects rows that still exhibit the defect (label equal to the mailbox's own
- * name/address, or preview equal to subject), so a repaired client matches nothing on the next
- * pass. Bounded per run for the same reason as the activity backfill.
+ * Runs over stored messages, so it needs no mailbox round trip. Self-terminating without a schema
+ * change: it only selects rows that still exhibit the defect, so a repaired client matches nothing
+ * on the next pass. Bounded per run for the same reason as the activity backfill.
+ *
+ * ⚠️ **Three things used to stop this repairing anything, and all three are the same mistake:
+ * scoping the repair to the connector that happened to write the rows.**
+ *
+ *  1. It required a `GMAIL` *connection* and returned early without one. A client whose Gmail
+ *     connector has since been replaced by IMAP therefore had its whole Gmail history frozen
+ *     broken — the connector is gone, the conversations are not.
+ *  2. It only considered `source: "GMAIL"` *rows*, while the same forwarder writes through the
+ *     IMAP connector today, so the live rows were out of scope as well.
+ *  3. Its defect test compared the WHOLE stored label to the client name, which only matches
+ *     Gmail's stripped form and never IMAP's `"Name" <addr>` form (see `parseAddressLabel`).
+ *
+ * The mailbox config is now a *signal*, not a gate: the client's own name identifies a forwarder on
+ * its own, and it is always available.
  */
 export async function repairForwardedIdentities(
   clientId: string,
   opts: { batch?: number } = {},
-): Promise<{ repaired: number }> {
+): Promise<{ repaired: number; remaining: number }> {
   const take = Math.min(opts.batch ?? 400, 500);
 
   const connections = await prisma.accountConnection.findMany({
-    where: { clientId, source: "GMAIL" },
+    where: { clientId, source: { in: MAIL_SOURCES } },
     select: { id: true, scraperConfig: true },
   });
-  if (connections.length === 0) return { repaired: 0 };
 
   // Every address/name this client's mailboxes speak as — anything labelled with one of these
-  // is a forward, not a customer.
+  // is a forward, not a customer. Absent config is fine; clientName carries the test.
   const mailboxes = connections.map((c) => {
     const cfg = (decryptScraperConfig(c.scraperConfig as Record<string, unknown> | null) ?? {}) as {
       impersonateEmail?: string;
       intakeAddress?: string;
+      email?: string;
     };
-    return { address: cfg.impersonateEmail ?? null, name: cfg.intakeAddress ?? null };
+    return { address: cfg.impersonateEmail ?? cfg.email ?? null, name: cfg.intakeAddress ?? null };
   });
-  const selfLabels = mailboxes
-    .flatMap((m) => [m.address, m.name])
-    .filter((v): v is string => Boolean(v && v.trim()));
 
   const client = await prisma.supportClient.findUnique({ where: { id: clientId }, select: { name: true } });
   const clientName = client?.name ?? null;
 
   // Candidates are selected plainly and the "does this need repair?" test is done in JS.
-  // ⚠️ The previous version filtered with a Prisma field reference (`preview equals
-  // fields.subject`) comparing a nullable column to a non-nullable one, plus a `customerLabel in
-  // selfLabels` clause where selfLabels are ADDRESSES and the stored label is a DISPLAY NAME —
-  // between them the query matched nothing and repaired nothing. Ordinary code cannot fail
-  // silently in that way.
+  // ⚠️ The first version filtered with a Prisma field reference (`preview equals fields.subject`)
+  // comparing a nullable column to a non-nullable one, plus a `customerLabel in selfLabels` clause
+  // where selfLabels are ADDRESSES and the stored label is a DISPLAY NAME — between them the query
+  // matched nothing and repaired nothing. Ordinary code cannot fail silently in that way.
   const candidates = await prisma.supportConversation.findMany({
-    where: { clientId, source: "GMAIL" },
+    where: { clientId, source: { in: MAIL_SOURCES } },
     select: {
       id: true,
       subject: true,
@@ -1331,15 +1366,20 @@ export async function repairForwardedIdentities(
     orderBy: { receivedAt: "desc" },
     take,
   });
-  if (candidates.length === 0) return { repaired: 0 };
+  if (candidates.length === 0) return { repaired: 0, remaining: 0 };
 
-  const selfSet = new Set([...selfLabels, ...(clientName ? [clientName] : [])].map((s) => s.toLowerCase()));
   const primary = mailboxes[0] ?? { address: null, name: null };
+  const identityCtx = { mailboxAddress: primary.address, mailboxName: primary.name, clientName };
 
+  // `isSelfLabel` parses the label first, so it matches BOTH stored forms — Gmail's stripped
+  // `Fellas Loaded` and IMAP's `"Fellas Loaded" <noreply@fellasloaded.com>`. The previous whole-
+  // string comparison only ever matched the first, which is why the live IMAP rows never repaired.
   const rows = candidates.filter(
-    (r) => selfSet.has(r.customerLabel.trim().toLowerCase()) || (r.preview !== null && r.preview === r.subject),
+    (r) =>
+      isSelfLabel(r.customerLabel, identityCtx) ||
+      (r.preview !== null && r.preview === r.subject),
   );
-  if (rows.length === 0) return { repaired: 0 };
+  if (rows.length === 0) return { repaired: 0, remaining: 0 };
 
   let repaired = 0;
   const CHUNK = 25;
@@ -1348,11 +1388,11 @@ export async function repairForwardedIdentities(
       rows.slice(i, i + CHUNK).map((row) => {
         const first = row.messages[0];
         const body = first?.body ?? "";
-        // The stored authorLabel has already had `<address>` stripped by the Gmail adapter, so
-        // clientName is what identifies the forwarder here — not an address comparison.
+        // Gmail's adapter strips `<address>` before storing while IMAP keeps it, so the resolver
+        // is handed whichever form exists and does the parsing itself.
         const identity = resolveCustomer(
           { fromText: first?.authorLabel ?? row.customerLabel, subject: row.subject, body },
-          { mailboxAddress: primary.address, mailboxName: primary.name, clientName },
+          identityCtx,
         );
         const preview = derivePreview(body, row.subject);
 
@@ -1369,7 +1409,13 @@ export async function repairForwardedIdentities(
     );
   }
 
-  return { repaired };
+  // `remaining` distinguishes "nothing to do" from "more to come" — a bounded repair that reports
+  // only a count leaves an operator unable to tell a drained client from a partially-drained one.
+  const remaining = candidates.length === take ? await prisma.supportConversation.count({
+    where: { clientId, source: { in: MAIL_SOURCES } },
+  }) - take : 0;
+
+  return { repaired, remaining: Math.max(0, remaining) };
 }
 
 /**

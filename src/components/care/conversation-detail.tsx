@@ -260,13 +260,15 @@ export function ConversationDetail({
    *
    * Aligns the last message's TOP with the panel's, not the container's bottom: scrolling to the
    * bottom cut the "US · GITWORK SUPPORT · JUST NOW" rail off the top of the newest message, which
-   * is the one line that says who you are reading. Reading starts at the top of a message either
-   * way, and if it overflows the panel you scroll down through it as normal.
+   * is the one line that says who you are reading.
+   *
+   * Only runs when the thread actually OVERFLOWS. Below that the list is bottom-aligned already,
+   * so scrolling would fight the layout for no gain.
    */
   const messageCount = messagesQ.data?.messages.length ?? 0;
   useEffect(() => {
     const el = threadRef.current;
-    if (!el) return;
+    if (!el || el.scrollHeight <= el.clientHeight) return;
     const last = el.querySelector("article:last-of-type");
     if (!last) return;
     el.scrollTop += last.getBoundingClientRect().top - el.getBoundingClientRect().top;
@@ -421,6 +423,13 @@ export function ConversationDetail({
             showProps ? "hidden lg:flex" : "flex",
           )}
         >
+          {/*
+            When a short window cannot fit both, the THREAD yields and the reply keeps its size.
+            That order is deliberate: the thread scrolls internally, so a squeezed one is awkward
+            but complete, whereas a squeezed reply is the one thing you opened the record to do.
+            Two alternatives were measured and both push the reply off the bottom of the screen —
+            a floor on the thread (`min-h-[112px]`), and letting the record scroll as a unit.
+          */}
           <section className="widget-card flex min-h-0 flex-1 flex-col">
             <div className="widget-header">
               <span className="widget-header__label">
@@ -430,19 +439,35 @@ export function ConversationDetail({
                 {messagesQ.data ? `${messageCount} MESSAGE${messageCount === 1 ? "" : "S"}` : "—"}
               </span>
             </div>
-            <div ref={threadRef} className="min-h-0 flex-1 overflow-y-auto">
+            {/*
+              The messages are BOTTOM-aligned in the panel (`mt-auto` on the list inside a flex
+              column), so a short conversation ends immediately above the reply box.
+              The panel fills the available height, which on a tall window is ~1100px — and the
+              messages used to sit at the TOP of it, putting a thousand pixels between what you had
+              just read and where you answer it. Every mail and chat client bottom-aligns a short
+              thread for this reason: the slack belongs above the conversation, where it reads as
+              the top of a thread, not below it as a gap you have to cross.
+
+              ⚠️ Two tidier-looking alternatives were measured and are both wrong. `flex-initial`
+              (hug the content) collapses the panel to **2px** at a short viewport, because the
+              reply panel beside it is `shrink-0` and wins. `flex-1 max-h-fit` does the same:
+              `fit-content` measures the scroller, which is collapsible, not the messages in it.
+            */}
+            <div ref={threadRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
               {messagesQ.isLoading && <p className="widget-body text-sm text-[var(--text-4)]">Loading messages…</p>}
               {messagesQ.data?.messages.length === 0 && (
                 <p className="widget-body text-sm text-[var(--text-4)]">No messages captured on this thread.</p>
               )}
-              {messagesQ.data?.messages.map((m, i) => (
-                <Message
-                  key={m.id}
-                  message={m}
-                  first={i === 0}
-                  fallbackAuthor={conversation.customerLabel}
-                />
-              ))}
+              <div className="mt-auto">
+                {messagesQ.data?.messages.map((m, i) => (
+                  <Message
+                    key={m.id}
+                    message={m}
+                    first={i === 0}
+                    fallbackAuthor={conversation.customerLabel}
+                  />
+                ))}
+              </div>
             </div>
           </section>
 
@@ -486,7 +511,10 @@ export function ConversationDetail({
                 }
                 rows={3}
                 aria-label="Reply"
-                className="block w-full resize-y border-0 bg-transparent px-4 py-3 text-[13px] leading-relaxed text-[var(--text-1)] outline-none placeholder:text-[var(--text-4)]"
+                // Enough to read as somewhere to write rather than a strip at the foot of the page,
+                // but not so tall that the reply panel starves the thread on a short window — at
+                // 112px it left the thread 2px. `resize-y` still lets it grow on demand.
+                className="block min-h-[76px] w-full resize-y border-0 bg-transparent px-4 py-3 text-[13px] leading-relaxed text-[var(--text-1)] outline-none placeholder:text-[var(--text-4)]"
               />
               <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border-3)] px-3 py-2">
                 {canGenerateAi && (
