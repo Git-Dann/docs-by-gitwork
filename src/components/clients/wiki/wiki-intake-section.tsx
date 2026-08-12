@@ -24,6 +24,8 @@ import {
   useUpdateWikiIntakeItem,
   useUploadWikiIntakeItemImage,
   useUploadPublicWikiIntakeItemImage,
+  useUpdatePublicWikiIntakeItem,
+  useDeletePublicWikiIntakeItem,
 } from "@/hooks/use-wiki";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -44,6 +46,12 @@ const STATUS_LABEL: Record<string, string> = {
  *  wiki bundle — the reconcile test below keeps the two in step. */
 type DevLabel = "BACKEND" | "FRONTEND" | "UI_UX" | "RESEARCH" | "DESIGN";
 const DEV_LABELS: DevLabel[] = ["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN"];
+/**
+ * Statuses a client may still edit or withdraw themselves. Mirrors
+ * CLIENT_MUTABLE_STATUSES in src/server/wiki.ts — the server is the gate, this
+ * only decides whether to offer the button.
+ */
+const CLIENT_EDITABLE = ["NEW", "TRIAGED"];
 const DEV_LABEL_LABEL: Record<DevLabel, string> = {
   BACKEND: "Backend",
   FRONTEND: "Frontend",
@@ -60,7 +68,6 @@ export function WikiIntakeSection({
   items,
   mode,
   categories = DEFAULT_INTAKE_CATEGORIES,
-  submitterName = null,
 }: {
   slug: string;
   token?: string;
@@ -68,13 +75,6 @@ export function WikiIntakeSection({
   mode: "internal" | "public";
   /** The client's own categories — defaults to the built-in four. */
   categories?: IntakeCategory[];
-  /**
-   * Who is filing this, when we already know — the signed-in client wiki user, or
-   * the Gitwork user internally. Given, the "Requested by" box is replaced by a
-   * line stating the attribution: asking someone to type their own name is both
-   * friction and unverifiable, and the server stamps this value anyway.
-   */
-  submitterName?: string | null;
 }) {
   const isInternal = mode === "internal";
   const createInternal = useCreateWikiIntakeItem(slug);
@@ -84,19 +84,28 @@ export function WikiIntakeSection({
   const promoteItem = usePromoteWikiIntakeItem(slug);
   const uploadImageInternal = useUploadWikiIntakeItemImage(slug);
   const uploadImagePublic = useUploadPublicWikiIntakeItemImage(token ?? "");
+  const updatePublic = useUpdatePublicWikiIntakeItem(token ?? "");
+  const deletePublic = useDeletePublicWikiIntakeItem(token ?? "");
 
   const [localItems, setLocalItems] = useState(items);
   const [categoryId, setCategoryId] = useState<string>(categories[0]?.id ?? "FEEDBACK");
   const [priority, setPriority] = useState<Priority>("MEDIUM");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [requestedBy, setRequestedBy] = useState("");
   const [label, setLabel] = useState<DevLabel | "">("");
   const [image, setImage] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewingImageId, setViewingImageId] = useState<string | null>(null);
   /** Which row's delete is armed — see the two-step delete in the actions below. */
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  /** Which of their own requests the client is editing, and the draft values. */
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<{ title: string; description: string; priority: Priority }>(
+    { title: "", description: "", priority: "MEDIUM" },
+  );
+  /** Keyed by item id: a failed Withdraw happens with no edit panel open, so a
+   *  bare string would have nowhere to render and the failure would be silent. */
+  const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
   const [activeTab, setActiveTab] = useState<string>("ALL");
   const [page, setPage] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -141,7 +150,6 @@ export function WikiIntakeSection({
       priority,
       title: title.trim(),
       description: description.trim() || null,
-      requestedBy: requestedBy.trim() || null,
       label: label || null,
     };
     if (!payload.title) {
@@ -162,7 +170,6 @@ export function WikiIntakeSection({
       }
       setTitle("");
       setDescription("");
-      setRequestedBy("");
       setPriority("MEDIUM");
       setCategoryId(categories[0]?.id ?? "FEEDBACK");
       setLabel("");
@@ -213,6 +220,13 @@ export function WikiIntakeSection({
             rows={4}
             className="app-input resize-y py-2.5 leading-relaxed"
           />
+          {/* Priority + label pair up: two short pickers, one row.
+              There is deliberately no "Requested by" field. Every route into this
+              form is authenticated — a client user signed into their wiki, or a
+              Gitwork user internally — so the submitter is stamped server-side
+              from that identity (see resolveRequestedBy). Asking someone to type
+              their own name collected something we already knew and could not
+              trust anyway. */}
           <div className="grid gap-3 sm:grid-cols-2">
             <select
               value={priority}
@@ -223,35 +237,22 @@ export function WikiIntakeSection({
               <option value="MEDIUM">Medium priority</option>
               <option value="HIGH">High priority</option>
             </select>
-            {submitterName ? (
-              <p className="flex items-center px-1 text-[13px] text-[var(--text-4)]">
-                Filing as <span className="ml-1 font-medium text-[var(--text-2)]">{submitterName}</span>
-              </p>
-            ) : (
-              <input
-                value={requestedBy}
-                onChange={(e) => setRequestedBy(e.target.value)}
-                placeholder="Requested by (optional)"
-                className="app-input"
-              />
-            )}
+            {/* Dev label — the same taxonomy the task board uses, so a promoted
+                request arrives already categorised for whoever picks it up. */}
+            <select
+              value={label}
+              onChange={(e) => setLabel(e.target.value as DevLabel | "")}
+              aria-label="Label"
+              className="app-select"
+            >
+              <option value="">No label (optional)</option>
+              {DEV_LABELS.map((value) => (
+                <option key={value} value={value}>
+                  {DEV_LABEL_LABEL[value]}
+                </option>
+              ))}
+            </select>
           </div>
-
-          {/* Dev label — the same taxonomy the task board uses, so a promoted
-              request arrives already categorised for whoever picks it up. */}
-          <select
-            value={label}
-            onChange={(e) => setLabel(e.target.value as DevLabel | "")}
-            aria-label="Label"
-            className="app-select"
-          >
-            <option value="">No label (optional)</option>
-            {DEV_LABELS.map((value) => (
-              <option key={value} value={value}>
-                {DEV_LABEL_LABEL[value]}
-              </option>
-            ))}
-          </select>
 
           {/* Screenshot — optional, attached after the item is created. */}
           <div>
@@ -442,6 +443,72 @@ export function WikiIntakeSection({
                       {new Date(item.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
                     </p>
                   </div>
+                  {/* The client's own controls: fix or withdraw a request they raised.
+                      Only while it is still theirs to change — once PROMOTED a dev
+                      owns the task it became, and CLOSED is a record. The server
+                      enforces this; hiding the buttons just avoids offering an
+                      action that would be refused. */}
+                  {!isInternal && CLIENT_EDITABLE.includes(item.status) && (
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRowError(null);
+                          setEditingId(item.id);
+                          setEditDraft({
+                            title: item.title,
+                            description: item.description ?? "",
+                            priority: item.priority as Priority,
+                          });
+                        }}
+                        className="rounded-[7px] border border-[var(--border-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+                      >
+                        Edit
+                      </button>
+                      {/* Two-step, same as internally: a single-click delete sitting
+                          next to Edit is one slip from losing what they wrote. */}
+                      {confirmDeleteId === item.id ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-[7px] border border-rose-300 bg-rose-50 px-2 py-1.5">
+                          <span className="text-[12px] font-medium text-rose-700">Withdraw it?</span>
+                          <button
+                            type="button"
+                            disabled={deletePublic.isPending}
+                            onClick={async () => {
+                              try {
+                                await deletePublic.mutateAsync(item.id);
+                                setLocalItems((prev) => prev.filter((i) => i.id !== item.id));
+                              } catch (err) {
+                                setRowError({
+                                  id: item.id,
+                                  message:
+                                    err instanceof Error ? err.message : "Could not withdraw that.",
+                                });
+                              }
+                              setConfirmDeleteId(null);
+                            }}
+                            className="rounded-[6px] bg-rose-600 px-2 py-0.5 text-[12px] font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+                          >
+                            Withdraw
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="px-1 text-[12px] text-[var(--text-4)] transition hover:text-[var(--text-1)]"
+                          >
+                            Cancel
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(item.id)}
+                          className="rounded-[7px] border border-[var(--border-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-4)] transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
+                        >
+                          Withdraw
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {isInternal && (
                     <div className="flex shrink-0 flex-wrap gap-2">
                       {item.status !== "PROMOTED" ? (
@@ -522,6 +589,82 @@ export function WikiIntakeSection({
                     </div>
                   )}
                 </div>
+
+                {/* Inline edit — the client fixing what they wrote. Only the fields
+                    they filled in: status, promotion and the dev label are ours. */}
+                {editingId === item.id && (
+                  <div className="mt-3 space-y-2.5 border-t border-[var(--border-2)] pt-3">
+                    <input
+                      value={editDraft.title}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, title: e.target.value }))}
+                      placeholder="Short title"
+                      className="app-input"
+                    />
+                    <textarea
+                      value={editDraft.description}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, description: e.target.value }))}
+                      rows={3}
+                      placeholder="What happened, what should change, or any helpful context…"
+                      className="app-input resize-y py-2.5 leading-relaxed"
+                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={editDraft.priority}
+                        onChange={(e) =>
+                          setEditDraft((d) => ({ ...d, priority: e.target.value as Priority }))
+                        }
+                        className="app-select-compact"
+                      >
+                        <option value="LOW">Low priority</option>
+                        <option value="MEDIUM">Medium priority</option>
+                        <option value="HIGH">High priority</option>
+                      </select>
+                      <button
+                        type="button"
+                        disabled={updatePublic.isPending || !editDraft.title.trim()}
+                        onClick={async () => {
+                          setRowError(null);
+                          try {
+                            const saved = await updatePublic.mutateAsync({
+                              id: item.id,
+                              patch: {
+                                title: editDraft.title.trim(),
+                                description: editDraft.description.trim() || null,
+                                priority: editDraft.priority,
+                              },
+                            });
+                            setLocalItems((prev) => prev.map((i) => (i.id === saved.id ? saved : i)));
+                            setEditingId(null);
+                          } catch (err) {
+                            setRowError({
+                              id: item.id,
+                              message:
+                                err instanceof Error ? err.message : "Could not save that change.",
+                            });
+                          }
+                        }}
+                        className="rounded-[7px] bg-[var(--brand-600)] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60"
+                      >
+                        {updatePublic.isPending ? "Saving…" : "Save changes"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingId(null);
+                          setRowError(null);
+                        }}
+                        className="px-1 text-[12px] text-[var(--text-4)] transition hover:text-[var(--text-1)]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Whatever went wrong on this row — save OR withdraw. */}
+                {rowError?.id === item.id && (
+                  <p className="mt-2 text-[12px] text-rose-600">{rowError.message}</p>
+                )}
               </article>
             ))
           )}

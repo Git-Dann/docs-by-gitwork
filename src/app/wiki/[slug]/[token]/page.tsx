@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { resolvePublicWiki } from "@/server/wiki";
-import { resolveWikiAccessUser, wikiAccessCookieName } from "@/server/wiki-access";
+import { verifyWikiAccessCookie, wikiAccessCookieName } from "@/server/wiki-access";
 import { auth } from "@/auth";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -78,21 +78,14 @@ export default async function PublicWikiPage({
   // which authenticates by email and routes back here (?next).
   const session = await auth();
   const isStaff = Boolean(session?.user?.id);
-  // Resolve WHO the client user is, not merely that the cookie is valid — the
-  // Requests form attributes to them instead of asking them to type their name.
-  // Same check as before: resolveWikiAccessUser returns null exactly when the old
-  // boolean was false, so the gate below is unchanged.
-  let clientUserName: string | null = null;
   if (!isStaff) {
     const cookieStore = await cookies();
     const cookieValue = cookieStore.get(wikiAccessCookieName(wiki.id))?.value;
-    const clientUser = await resolveWikiAccessUser(wiki.id, cookieValue);
-    if (!clientUser) {
+    const unlocked = await verifyWikiAccessCookie(wiki.id, cookieValue);
+    if (!unlocked) {
       redirect(`/portal/login?next=${encodeURIComponent(`/wiki/${slug}/${token}`)}`);
     }
-    clientUserName = clientUser.displayName;
   }
-  const submitterName = clientUserName ?? session?.user?.name ?? session?.user?.email ?? null;
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--surface-0)]">
@@ -116,7 +109,6 @@ export default async function PublicWikiPage({
           onlySection={onlySection}
           initialSection={section ?? null}
           token={token}
-          submitterName={submitterName}
         />
       </main>
 

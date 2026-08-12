@@ -59,6 +59,8 @@ import {
   createWikiIntakeItem,
   setWikiIntakeCategoriesApi,
   createPublicWikiIntakeItem,
+  updatePublicWikiIntakeItem,
+  deletePublicWikiIntakeItem,
   updateWikiIntakeItemApi,
   deleteWikiIntakeItemApi,
   promoteWikiIntakeItemApi,
@@ -370,6 +372,19 @@ export function useSetWikiIntakeCategories(slug: string) {
       categories: { id?: string; label: string; mapsTo: "BUG" | "FEEDBACK" | "TASK" | "DESIGN" }[],
     ) => setWikiIntakeCategoriesApi(slug, categories),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useUpdatePublicWikiIntakeItem(token: string) {
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updatePublicWikiIntakeItem>[2] }) =>
+      updatePublicWikiIntakeItem(token, id, patch),
+  });
+}
+
+export function useDeletePublicWikiIntakeItem(token: string) {
+  return useMutation({
+    mutationFn: (id: string) => deletePublicWikiIntakeItem(token, id),
   });
 }
 
