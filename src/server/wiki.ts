@@ -1425,6 +1425,112 @@ export async function setWikiIntakeEnabled(clientId: string, enabled: boolean): 
  * the two it was. "Invalid wiki token" for a switched-off Requests section is
  * what turned a one-toggle fix into a support message about a broken link.
  */
+/**
+ * What a client may still change on a request they raised, and what stops them.
+ *
+ * Editable while NEW or TRIAGED — we may have read it, but nothing downstream
+ * exists yet, so a typo fix or an added detail costs nobody anything.
+ *
+ * Locked once PROMOTED or CLOSED, deliberately:
+ *  · PROMOTED means a task exists and a dev owns it. Letting the client rewrite
+ *    the text under them, or delete the request a task was created from, is how
+ *    a board ends up describing work nobody agreed to.
+ *  · CLOSED is a record of something already dealt with.
+ * In both cases the answer is to raise a new request or ask us, not to edit
+ * history — and the route says so rather than returning a bare 404.
+ */
+const CLIENT_MUTABLE_STATUSES: WikiIntakeItemStatus[] = ["NEW", "TRIAGED"];
+
+export type ClientIntakeMutation =
+  | { ok: true; item: WikiIntakeItemRecord }
+  | { ok: false; reason: "not_found" | "locked" };
+
+/** Shared resolution + guard for both client-side mutations. */
+async function findClientMutableItem(
+  token: string,
+  itemId: string,
+): Promise<
+  | { ok: true; wikiId: string; categories: IntakeCategory[]; item: { id: string; type: WikiIntakeItemType } }
+  | { ok: false; reason: "not_found" | "locked" }
+> {
+  const wikiId = await resolveWikiIdByPublicToken(token);
+  if (!wikiId) return { ok: false, reason: "not_found" };
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { id: wikiId },
+    select: { intakeEnabled: true, intakeCategories: true },
+  });
+  if (!wiki?.intakeEnabled) return { ok: false, reason: "not_found" };
+  // Scoped to this wiki, so a token can never reach another client's item.
+  const item = await prisma.clientWikiIntakeItem.findFirst({
+    where: { id: itemId, wikiId },
+    select: { id: true, status: true, type: true },
+  });
+  if (!item) return { ok: false, reason: "not_found" };
+  if (!CLIENT_MUTABLE_STATUSES.includes(item.status)) return { ok: false, reason: "locked" };
+  return {
+    ok: true,
+    wikiId,
+    categories: resolveIntakeCategories(wiki.intakeCategories),
+    item: { id: item.id, type: item.type },
+  };
+}
+
+/**
+ * A client editing their own request from their wiki. Only the fields they filled
+ * in — status, promotion and the dev label stay ours.
+ *
+ * No webhook: this IS the client's change, and echoing it back to the system that
+ * may have sent it would loop. Same reasoning as the API's own PATCH.
+ */
+export async function updateWikiIntakeItemByShareToken(
+  token: string,
+  itemId: string,
+  patch: {
+    title?: string;
+    description?: string | null;
+    priority?: TaskPriority;
+    categoryId?: string | null;
+  },
+): Promise<ClientIntakeMutation> {
+  const found = await findClientMutableItem(token, itemId);
+  if (!found.ok) return found;
+
+  const resolved =
+    patch.categoryId !== undefined
+      ? typeForCategory(found.categories, patch.categoryId, found.item.type)
+      : null;
+
+  const row = await prisma.clientWikiIntakeItem.update({
+    where: { id: found.item.id },
+    data: {
+      ...(patch.title !== undefined ? { title: patch.title.trim() } : {}),
+      ...(patch.description !== undefined
+        ? { description: patch.description?.trim() || null }
+        : {}),
+      ...(patch.priority ? { priority: patch.priority } : {}),
+      ...(resolved
+        ? {
+            type: resolved.type,
+            categoryId: resolved.categoryId,
+            categoryLabel: resolved.categoryLabel,
+          }
+        : {}),
+    },
+  });
+  return { ok: true, item: serializeWikiIntakeItem(row) };
+}
+
+/** A client withdrawing their own request. Same guard as editing. */
+export async function deleteWikiIntakeItemByShareToken(
+  token: string,
+  itemId: string,
+): Promise<ClientIntakeMutation> {
+  const found = await findClientMutableItem(token, itemId);
+  if (!found.ok) return found;
+  const row = await prisma.clientWikiIntakeItem.delete({ where: { id: found.item.id } });
+  return { ok: true, item: serializeWikiIntakeItem(row) };
+}
+
 export async function publicWikiIntakeState(
   token: string,
 ): Promise<"ok" | "unknown" | "intake_disabled"> {

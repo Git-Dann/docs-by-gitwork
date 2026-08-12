@@ -60,6 +60,42 @@ function addressOf(fromText: string): string {
 }
 
 /**
+ * Split a stored label into its parts, whichever form it is in.
+ *
+ * ⚠️ **The database holds both forms and only one used to be handled.** Gmail's adapter strips the
+ * address before storing, so its rows read `Fellas Loaded`; IMAP stores the RFC form, so its rows
+ * read `"Fellas Loaded" <noreply@fellasloaded.com>`. Any test that compares a whole stored label to
+ * a client name therefore matches Gmail rows and silently misses every IMAP one — which is exactly
+ * why the repair kept reporting success while the live board stayed wrong.
+ */
+export function parseAddressLabel(text: string | null | undefined): { name: string; address: string } {
+  const raw = (text ?? "").trim();
+  if (!raw) return { name: "", address: "" };
+  return { name: displayNameOf(raw), address: addressOf(raw) };
+}
+
+/**
+ * Does this stored label identify the MAILBOX rather than a person?
+ *
+ * Shared by the connector (at ingest) and the repair (over history) so the two cannot drift — the
+ * repair having its own, stricter test is how 226 rows stayed broken through three fixes.
+ */
+export function isSelfLabel(label: string | null | undefined, ctx: IdentityContext = {}): boolean {
+  const { name, address } = parseAddressLabel(label);
+  if (!name && !address) return false;
+
+  const selfNames = [ctx.mailboxName, ctx.clientName]
+    .map((n) => (n ?? "").toLowerCase().trim())
+    .filter(Boolean);
+  const mailbox = (ctx.mailboxAddress ?? "").toLowerCase().trim();
+
+  if (selfNames.includes(name.toLowerCase())) return true;
+  if (mailbox && address === mailbox) return true;
+  // A no-reply sender is never a person to thread a conversation to, whichever mailbox it came via.
+  return Boolean(address) && NOREPLY_RE.test(address.split("@")[0] ?? "");
+}
+
+/**
  * Resolve the customer this conversation is really with.
  *
  * Order matters. We only override the From line when it is demonstrably the mailbox talking to

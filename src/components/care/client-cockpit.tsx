@@ -38,6 +38,7 @@ import {
   rowState,
   waitingSince,
 } from "./care-constants";
+import { hasCourseRequests } from "@/lib/wiki-sections";
 import { CareEmpty } from "./care-panel";
 import { ConversationDetail } from "./conversation-detail";
 import { ConnectorsView } from "@/components/support/support-dashboard";
@@ -235,9 +236,21 @@ function SortHeader({
 function CareSettingsPanel({ client }: { client: SupportClient }) {
   const updateClient = useUpdateSupportClient(client.id);
   const courseOnly = client.courseRequestOnly ?? false;
+  /*
+   * The course-requests mode is Wedge's golf-course pipeline, not a Care feature. Everything behind
+   * the toggle is client-specific — Big Wedge's own course API, a `"New Feedback"` subject line, a
+   * Course Requests wiki section that only Wedge has (`src/lib/wiki-sections.ts`). Offering it on
+   * every client's settings screen offered a control that could not do anything, in language
+   * ("course requests") that means nothing to anyone else.
+   *
+   * Shown when the client HAS the pipeline, or when the flag is already on — so a client that
+   * somehow has it set can always turn it off rather than being stuck with a hidden switch.
+   */
+  const showCourseMode = hasCourseRequests(client.workspaceClientSlug) || courseOnly;
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
       <div className="mx-auto max-w-3xl space-y-4">
+        {showCourseMode && (
         <section className="widget-card">
           {/* No close button of its own: the persistent client header owns "back", and an ✕ sitting
               on the MODE panel reads as "dismiss this panel" rather than "leave settings". */}
@@ -279,6 +292,7 @@ function CareSettingsPanel({ client }: { client: SupportClient }) {
             </div>
           </div>
         </section>
+        )}
         <ConnectorsView clientId={client.id} clientSlug={client.slug ?? ""} showAgentLogs={false} />
       </div>
     </div>
@@ -379,10 +393,23 @@ export function ClientCockpit({
   }, [counts]);
 
   const selected = selectedId ? conversations.find((c) => c.id === selectedId) ?? null : null;
-  const sources = useMemo(
-    () => Array.from(new Set(connectionsQ.data?.connections.map((c) => c.source) ?? [])),
-    [connectionsQ.data],
-  );
+
+  /*
+   * Channels offered by the filter = the union of what is CONNECTED and what is actually IN the
+   * data. Built from connections alone it hid a whole channel: Fellas' Gmail connector was
+   * replaced by the IMAP ("Email") one, so `Gmail` left the dropdown while hundreds of Gmail
+   * conversations stayed in the table — visible, and impossible to filter to. Conversations
+   * outlive connectors.
+   *
+   * The data half comes from the counts endpoint (a server-side groupBy), not from the loaded
+   * rows: a union over `conversations` would only ever describe the current page, which is the
+   * "…among the rows we happened to fetch" lie this module already removed once.
+   */
+  const sources = useMemo(() => {
+    const connected = connectionsQ.data?.connections.map((c) => c.source) ?? [];
+    const present = counts?.sources.map((s) => s.source) ?? [];
+    return Array.from(new Set([...connected, ...present]));
+  }, [connectionsQ.data, counts]);
 
   const mode: "index" | "record" | "settings" = showSettings ? "settings" : selected ? "record" : "index";
 

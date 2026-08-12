@@ -3662,6 +3662,132 @@ before screenshotting.
 build` clean. `/demo/care` rendered at 390 · 768 · 1280×620 · 1440 across index · record ·
 record-details · selection · settings — **0 clipping findings across all 20 combinations**.
 
+### 42.15 Five defects found by using it on real data
+
+Dan reviewed #580 live on production. Two of the five were cosmetic; one was a scoping mistake; and
+**two were the same class of bug this module has now produced four times — a feature with several
+entry points, fixed on one of them.**
+
+#### The one that mattered: post-sync housekeeping ran on ONE of three sync paths
+
+`repairForwardedIdentities` and `backfillConversationActivity` were called from exactly one place,
+`syncSupportClient`. The other two entry points called `syncConnection` directly and ran neither:
+
+| Path | Ran the repair? |
+|---|---|
+| Client-level **Sync now** (cockpit header) | ✅ |
+| Per-connection **Refresh / Re-sync history** (Channels panel) | ❌ |
+| Nightly cron | ❌ |
+
+So the two paths an operator actually reaches for to fix a broken board were the two that could not
+fix it — "I re-synced history and it still looks off" was **correct**, and the nightly cron had been
+silently skipping the repair every night. Meanwhile the `courseRequestOnly` branch was copy-pasted
+into all three, each with a comment claiming it matched the others. That duplication is the disease;
+the missing repair is the symptom.
+
+One `runPostSyncHousekeeping({ clientId, workspace, newConversationIds })` now owns backfill →
+repair → (course-request import | enrich + rules), and all three call it and nothing else. It
+**returns** what it did (`relabelled` / `relabelRemaining` / `stamped`) rather than being silent —
+"nothing happened" and "there was nothing to do" being indistinguishable is most of why this took
+three attempts to find. ⚠️ The cron calls it **once per client**, not per connection.
+
+#### The repair could not see the rows it exists to fix — three ways at once
+
+Even on the one path that called it, it could not have worked:
+
+1. It required a `GMAIL` **connection** and returned early without one. Fellas' Gmail connector was
+   replaced by IMAP, so the whole Gmail history was frozen broken — the connector is gone, the
+   conversations are not.
+2. It only considered `source: "GMAIL"` **rows**, while the same forwarder now writes through the
+   IMAP connector, so the live rows were out of scope too.
+3. Its defect test compared the **whole** stored label to the client name. Gmail's adapter strips
+   the address (`Fellas Loaded`); IMAP keeps it (`"Fellas Loaded" <noreply@fellasloaded.com>`), so
+   the test matched the first and silently missed the second.
+
+⚠️ **The fixtures have now been wrong in both directions.** §42.10 corrected them to Gmail's shape
+and in doing so cemented the assumption that it was the only shape. `isSelfLabel` parses the label
+first and both forms are asserted, along with the guard that matters more than either — a genuine
+sender is never rewritten. The mailbox config is a *signal* now, not a gate: `clientName` alone
+identifies a forwarder and is always available.
+
+#### The channel filter was built from connections, not from the data
+
+The dropdown offered Reddit / Discord / Analytics API / Email while the table plainly showed **GMAIL**
+rows — visible and impossible to filter to, because the Gmail connector had been replaced.
+`getConversationViewCounts` now returns `sources` from a `groupBy(['source'])` (one more groupBy on
+an endpoint already doing several) and the dropdown renders the **union** of connected and
+present-in-data sources. ⚠️ Not a union over the loaded rows: that is capped at the page and would
+restore the "…among the rows we happened to fetch" lie removed in §42.6.
+
+#### The course-requests mode is Wedge-only machinery that was on every client
+
+`01 // MODE` offered "Support paused — course requests only" to every Care client. Everything behind
+it is Wedge's golf-course pipeline — `wiki-course-feedback.ts` says so in its own docstring, keyed on
+a `"New Feedback"` subject, with `resolveSupportClient` name-matching *Wedge ↔ "Big Wedge"*, beside
+`wiki-bigwedge-import.ts` and `bigwedge-course-api.ts`. The wiki already gated it correctly, so the
+list moved to **`src/lib/wiki-sections.ts`** (framework-free, so Care can import it without pulling
+a component tree in) and Care reuses it. Shown when the client has the pipeline **or** the flag is
+already on, so it can always be turned off.
+
+⚠️ Gate on the **Portal** client slug, not Care's: the same client is `wedge` in Portal and
+"Big Wedge Golf" in Care, so `SupportClient.slug` would never have matched. `workspaceClientSlug` was
+added to the DTO for exactly this.
+
+#### The awaiting queue opened oldest-first, burying today's mail
+
+Sorting longest-waiting-first was the original call and it is wrong on real data: a client whose
+whole backlog is two months old shows a wall of identical `2mo` rows with this morning's mail at the
+bottom. Both queues now open newest-first; the WAITING header still flips it, and the header readout
+still states `LONGEST 2mo`. The readout tells you the worst wait; the list shows you what is new.
+
+#### The record's proportions on a tall window
+
+**Not** a broken height chain — `/app/care` passes `mainClassName="flex min-h-0 flex-1
+overflow-hidden p-0"` and the shell is `h-[100dvh] overflow-hidden`, so the page cannot scroll
+(measured: `pageScrolls=false` at 2000×1770). The thread panel is `flex-1`, so on a 1770px window it
+was ~1100px for a one-message thread with the reply pinned a thousand pixels below what you had just
+read. The messages are **bottom-aligned** now (`mt-auto`), so the conversation ends 13px above the
+reply at every size.
+
+⚠️ **Four layouts were measured; three are wrong and look right in code.** `flex-initial` (hug the
+content) collapses the thread to **2px** on a short window, because the reply panel beside it is
+`shrink-0` and wins. `flex-1 max-h-fit` does the same — `fit-content` measures the scroller, which
+is collapsible, not the messages inside it. A `min-h` floor on the thread, and letting the record
+scroll as a unit, both push the **reply off the bottom of the screen**. When a short window cannot
+fit both, the thread yields and the reply keeps its size: a squeezed thread scrolls, a squeezed
+reply is the one thing you opened the record to do.
+
+#### `/demo/care` now reproduces the defect it is used to verify
+
+Northwind has **no `gmail` connection** while two of its conversations are gmail — the real Fellas
+shape. Built from connections alone the dropdown loses "Gmail" while gmail rows stay in the table;
+built from the union it does not. A demo that cannot express the bug cannot verify the fix.
+
+**Verified:** `npm run verify` green — 0 errors, **1643 tests** (24 new), `audit:ui` 0 findings;
+`npx next build` clean; `audit:clipping` 0 findings across 20 state × viewport combinations.
+The new guards were **proved to discriminate** by breaking five things on purpose — and the first
+attempt at two of them did **not** discriminate: the RFC-form fixture passed via the no-reply branch
+rather than the name parsing, and a bare `toContain("runPostSyncHousekeeping")` was satisfied by the
+import line while the call was renamed. Both were tightened until reverting the fix fails the test.
+
+**Post-deploy, on real data:** press **Re-sync history** on Fellas' Email connector — the path that
+previously did nothing — and confirm the customer column relabels; confirm the channel dropdown now
+offers **Gmail** and that picking it returns the historical rows; confirm the Awaiting tab opens with
+today's mail on top; confirm the course-requests panel is gone from Fellas and still present on
+Wedge.
+
+⚠️ **`/demo/care` under-reports available height by ~80px against the real app, so short-viewport
+measurements taken there are pessimistic.** `AppShell`'s title band is `h-20` (80px) since §40.2;
+`demo-shell.tsx` still carries the old 44px title on a `pb-5 pt-7` band (~130px) plus the demo
+banner. §40.2 flagged that mirror as deliberately left alone — worth remembering before treating a
+height measured on a demo page as the number the app will produce.
+
+**Known limit:** on a genuinely short window (~620px and below) the title band plus the record
+header leave too little for both panels, so the thread is squeezed — to a few pixels on the demo,
+to ~120px in the app. The reply stays put by design. Reclaiming the title band on the record screen
+is the real fix and needs `hideContentHeader` to become runtime state rather than a page prop
+(`/app/docs/[id]` and the Pulse report already pass it statically).
+
 ## 43. Recent Changes (August 2026) — Launchpad (what we need FROM the client)
 
 A new section of every client's wiki that collects everything Gitwork needs **from** a

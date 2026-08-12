@@ -1318,7 +1318,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               items={wiki!.intakeItems}
               mode="internal"
               categories={wiki!.intakeCategories}
-              submitterName={account.data?.name ?? account.data?.email ?? null}
             />
           ) : (
             /**

@@ -3525,6 +3525,34 @@ export async function createWikiIntakeItem(
   });
 }
 
+/** A client editing a request they raised — auth is their wiki share token. */
+export async function updatePublicWikiIntakeItem(
+  token: string,
+  id: string,
+  patch: {
+    title?: string;
+    description?: string | null;
+    priority?: "LOW" | "MEDIUM" | "HIGH";
+    categoryId?: string | null;
+  },
+): Promise<WikiIntakeItemRecord> {
+  return apiFetch<WikiIntakeItemRecord>(
+    `/api/wiki/${token}/intake-items/${encodeURIComponent(id)}`,
+    { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) },
+  );
+}
+
+/** A client withdrawing a request they raised. */
+export async function deletePublicWikiIntakeItem(
+  token: string,
+  id: string,
+): Promise<{ deleted: boolean; id: string }> {
+  return apiFetch<{ deleted: boolean; id: string }>(
+    `/api/wiki/${token}/intake-items/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+}
+
 export async function createPublicWikiIntakeItem(
   token: string,
   input: WikiIntakeItemPayload,

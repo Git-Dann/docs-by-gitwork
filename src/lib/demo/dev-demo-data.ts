@@ -1327,9 +1327,17 @@ const demoSupportMembers = [
   { id: "sup-m3", name: "Alex Rivera", email: "alex@example.com" },
 ];
 
-/** One connection per source the fixtures use, so `canSend` and "Open in channel" both resolve. */
+/**
+ * One connection per source the fixtures use, so `canSend` and "Open in channel" both resolve.
+ *
+ * ⚠️ Deliberately NOT one per source: there is no `gmail` connection, while `cv2` and `cv4` are
+ * gmail conversations. That is the real Fellas shape — a Gmail connector replaced by IMAP, its
+ * conversations left behind — and it is what the channel filter has to survive. Built from
+ * connections alone the dropdown loses "Gmail" while gmail rows stay in the table, visible and
+ * unfilterable; built from the union it does not.
+ */
 const demoSupportConnections = [
-  { id: "sup-cn1", clientId: "sup-northwind", source: "gmail", status: "connected", label: "support@northwind.co", scraperConfig: {}, lastSyncedAt: atDays(0) },
+  { id: "sup-cn1", clientId: "sup-northwind", source: "imap", status: "connected", label: "support@northwind.co", scraperConfig: {}, lastSyncedAt: atDays(0) },
   { id: "sup-cn2", clientId: "sup-northwind", source: "discord", status: "connected", label: "Northwind community", scraperConfig: {}, lastSyncedAt: atDays(0) },
   { id: "sup-cn3", clientId: "sup-northwind", source: "app_reviews", status: "connected", label: "App Store · Northwind", scraperConfig: {}, lastSyncedAt: atDays(0) },
 ];
@@ -1462,6 +1470,16 @@ function demoQueueCounts(clientId: string) {
     closed: rows.filter((c) => c.status === "closed" || c.status === "ignored").length,
     all: rows.length,
     oldestAwaitingAt: oldest,
+    // Which channels the conversations actually came from — what the cockpit's channel filter is
+    // built from, alongside the live connections.
+    sources: Object.entries(
+      rows.reduce<Record<string, number>>((acc, c) => {
+        acc[c.source] = (acc[c.source] ?? 0) + 1;
+        return acc;
+      }, {}),
+    )
+      .map(([source, count]) => ({ source, count }))
+      .sort((a, b) => b.count - a.count),
   };
 }
 

@@ -75,7 +75,6 @@ export function WikiPublicView({
   onlySection,
   initialSection,
   token,
-  submitterName = null,
 }: {
   wiki: WikiDTO;
   /** When set, render only this one section (per-page share) — no sidebar nav. */
@@ -84,8 +83,6 @@ export function WikiPublicView({
   initialSection?: string | null;
   /** The share token from the URL — used to authenticate mutations on the public view. */
   token: string;
-  /** The signed-in client user, for request attribution (see WikiIntakeSection). */
-  submitterName?: string | null;
 }) {
   // The public portal only surfaces sections that have real content. Empty doc
   // pages and the privately-managed Design System are hidden so the client never
@@ -208,7 +205,6 @@ export function WikiPublicView({
               items={wiki.intakeItems}
               mode="public"
               categories={wiki.intakeCategories}
-              submitterName={submitterName}
             />
           ) : null}
         </>

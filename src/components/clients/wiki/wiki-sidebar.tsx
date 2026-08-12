@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { COURSE_REQUESTS_SLUGS, GOLF_DATA_SLUGS } from "@/lib/wiki-sections";
 import {
   BoltIcon,
   BookOpenIcon,
@@ -46,11 +47,10 @@ export type WikiSection =
   | "golf-data"
   | "settings";
 
-/** Course Requests is currently a Wedge-only section. */
-export const COURSE_REQUESTS_SLUGS = ["wedge"];
-
-/** The Golf Data Console is currently a Wedge-only section. */
-export const GOLF_DATA_SLUGS = ["wedge"];
+// The per-client section lists moved to `src/lib/wiki-sections.ts` so Care can import them without
+// pulling a React component module in behind them. Re-exported here so existing importers are
+// unchanged.
+export { COURSE_REQUESTS_SLUGS, GOLF_DATA_SLUGS };
 
 export const OPTIONAL_DOC_SECTIONS: Array<{
   section: WikiSection;
