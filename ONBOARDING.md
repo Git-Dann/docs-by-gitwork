@@ -109,12 +109,16 @@ Report what `verify` actually printed. Never call something verified that you di
    both and non-admins get redirected to `/app` — a unit test will tell you. This replaced the old
    default, which was to let *any* signed-in member reach an unlisted page; that's how three pages
    ended up ungated.
-7. **In Docs, the renderer is the limit — not the editor.** Text fields store Markdown, and
-   `renderLines` (`src/lib/markdown.tsx`) draws a deliberately small subset: bold, italic, code,
-   links, and bulleted / numbered / nested lists. Anything else prints **verbatim on the client's
-   document**. So the editor's schema (`src/lib/sections/markdown-doc.ts`) is clamped to match, and
-   widening it — adding a heading extension, say — ships a literal `## Scope of work` to a client.
-   Teach the renderer first, in the same change. `markdown-doc.test.ts` is the tripwire.
+7. **The renderer is the limit — not the editor — and there are TWO of them.** Text fields store
+   Markdown, and anything the renderer can't draw prints **verbatim on the client's document**.
+   `renderLines` (`src/lib/markdown.tsx`) draws bold, italic, code, links and bulleted / numbered /
+   nested lists — **no headings**. The block-level `<Markdown>` component in the same file *does*
+   draw `#`/`##`/`###`, provided a heading is alone in its block. So check which one your surface
+   uses before writing Markdown into it: Docs fields use `renderLines`, which is why the editor's
+   schema (`src/lib/sections/markdown-doc.ts`) is clamped to match and why adding a heading
+   extension would ship a literal `## Scope of work` to a client; Launchpad's legal drafts use
+   `<Markdown>` and can head their clauses. Teach the renderer first, in the same change.
+   `markdown-doc.test.ts` is the tripwire.
 
 ## 5. Verifying honestly
 

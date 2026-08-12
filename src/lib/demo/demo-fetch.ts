@@ -35,7 +35,13 @@ if (typeof window !== "undefined" && !globalThis.__foundryDemoFetchPatched) {
     }
 
     if (pathname.startsWith("/api/")) {
-      const body = resolveDemoApi(pathname, search);
+      // `init` is passed through so demo MUTATIONS can be applied rather than
+      // silently answered with the unchanged fixture — a demo where every write
+      // appears to succeed and changes nothing verifies the CSS and nothing else.
+      const body = resolveDemoApi(pathname, search, {
+        method: init?.method,
+        body: init?.body,
+      });
       return new Response(JSON.stringify(body), {
         status: 200,
         headers: { "Content-Type": "application/json" },

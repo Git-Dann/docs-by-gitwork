@@ -19,7 +19,8 @@ npm run verify
 > added without its self-test fixture, `npm run verify` passed locally, and CI failed on the
 > separate self-test step. Local green must mean CI green, or the gate is theatre.
 
-That runs, in order: `prisma generate` → `tsc --noEmit` → `eslint` → `vitest` → `audit:ui`.
+That runs, in order: `prisma generate` → `tsc --noEmit` → `eslint` → `vitest` →
+`audit:dependencies` → `audit:ui --self-test` → `audit:ui`.
 It needs no database, no secrets and no running server, so it works on a fresh clone
 (`npm install` first).
 

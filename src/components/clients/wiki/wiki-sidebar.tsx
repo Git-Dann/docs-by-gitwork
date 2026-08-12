@@ -20,6 +20,7 @@ import {
   DocumentTextIcon,
   FlagIcon,
   PlusIcon,
+  RocketLaunchIcon,
   ServerStackIcon,
   Squares2X2Icon,
   TrashIcon,
@@ -32,6 +33,7 @@ export type WikiSection =
   | "monitors"
   | "documents"
   | "intake"
+  | "launchpad"
   | "code-handover"
   | "design-system"
   | "ia"
@@ -151,6 +153,7 @@ export function WikiSidebar({
       "monitors",
       "documents",
       "intake",
+      "launchpad",
       "code-handover",
       "design-system",
       "ia",
@@ -247,6 +250,7 @@ export function WikiSidebar({
         {navItem("monitors", "Monitors", <BoltIcon />)}
         {navItem("documents", "Documents", <DocumentDuplicateIcon />)}
         {navItem("intake", "Requests", <FlagIcon />)}
+        {navItem("launchpad", "Launchpad", <RocketLaunchIcon />)}
         {navItem("code-handover", "Code Handover", <CpuChipIcon />)}
         {navItem("design-system", "Design System", <CubeTransparentIcon />)}
         {navItem("ia", "Info Architecture", <BookOpenIcon />)}
