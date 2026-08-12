@@ -17,6 +17,7 @@ import {
   MinusCircleIcon,
 } from "@heroicons/react/24/outline";
 import { FieldRenderer, Field, TextInput } from "@/components/onboarding/field-renderer";
+import { LAUNCHPAD_LINK_ERROR, safeLaunchpadLink } from "@/lib/launchpad/field-types";
 import type { OnboardingAnswerValue, OnboardingFieldDef } from "@/types/onboarding";
 import type {
   LaunchpadAnswers,
@@ -130,6 +131,7 @@ function ChecklistItem({
   const status = state?.status ?? "NEEDED";
   const ownedByClient = state?.ownedByClient ?? field.ownedByClient ?? null;
   const [link, setLink] = useState(state?.link ?? "");
+  const [linkError, setLinkError] = useState<string | null>(null);
   const [note, setNote] = useState(state?.note ?? "");
   const [showNote, setShowNote] = useState(Boolean(state?.note));
 
@@ -137,6 +139,7 @@ function ChecklistItem({
   // never mid-typing — the local value is what the person is looking at.
   useEffect(() => {
     setLink(state?.link ?? "");
+    setLinkError(null);
   }, [state?.link]);
   useEffect(() => {
     setNote(state?.note ?? "");
@@ -207,14 +210,27 @@ function ChecklistItem({
             placeholder="Paste a link (optional)"
             value={link}
             disabled={readOnly}
-            onChange={(e) => setLink(e.target.value)}
+            aria-invalid={linkError ? true : undefined}
+            onChange={(e) => {
+              setLink(e.target.value);
+              if (linkError) setLinkError(null);
+            }}
             onBlur={() => {
-              if ((state?.link ?? "") !== link) onPatch({ link });
+              if ((state?.link ?? "") === link) return;
+              // Tell them WHY rather than letting the server drop it and the value
+              // silently revert — which is what a "we ignore what we can't parse"
+              // write path looks like from the client's side.
+              if (link.trim() !== "" && !safeLaunchpadLink(link)) {
+                setLinkError(LAUNCHPAD_LINK_ERROR);
+                return;
+              }
+              setLinkError(null);
+              onPatch({ link });
             }}
           />
-          {state?.link ? (
+          {safeLaunchpadLink(state?.link) ? (
             <a
-              href={state.link}
+              href={safeLaunchpadLink(state?.link) as string}
               target="_blank"
               rel="noreferrer noopener"
               className="app-button app-button-secondary app-button-sm shrink-0"
@@ -224,6 +240,12 @@ function ChecklistItem({
             </a>
           ) : null}
         </div>
+
+        {linkError ? (
+          <p className="text-xs text-[var(--danger-500)]" role="alert">
+            {linkError}
+          </p>
+        ) : null}
 
         {showNote || note ? (
           <textarea
@@ -271,9 +293,13 @@ function LinkField({
   readOnly: boolean;
 }) {
   const [local, setLocal] = useState(value);
-  useEffect(() => setLocal(value), [value]);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setLocal(value);
+    setError(null);
+  }, [value]);
   return (
-    <Field label={field.label} hint={field.helper ?? field.hint} required={field.required}>
+    <Field label={field.label} hint={error ?? field.helper ?? field.hint} required={field.required}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="min-w-0 flex-1">
           {/* Committed on BLUR, not per keystroke: a URL is only meaningful once it
@@ -288,13 +314,19 @@ function LinkField({
             readOnly={readOnly}
             placeholder={field.placeholder ?? "https://…"}
             onBlur={() => {
-              if (local !== value) onChange(local);
+              if (local === value) return;
+              if (local.trim() !== "" && !safeLaunchpadLink(local)) {
+                setError(LAUNCHPAD_LINK_ERROR);
+                return;
+              }
+              setError(null);
+              onChange(local);
             }}
           />
         </div>
-        {value ? (
+        {safeLaunchpadLink(value) ? (
           <a
-            href={value}
+            href={safeLaunchpadLink(value) as string}
             target="_blank"
             rel="noreferrer noopener"
             className="app-button app-button-secondary app-button-sm shrink-0"

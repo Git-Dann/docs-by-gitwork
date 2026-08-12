@@ -143,8 +143,6 @@ export function isLegalDoc(
   return field.type === "legal_doc" && Boolean(field.docKey);
 }
 
-const URL_RE = /^https?:\/\/[^\s]+$/i;
-
 /**
  * Validate + normalise one incoming flat answer.
  *
@@ -169,12 +167,9 @@ export function validateLaunchpadAnswer(
 
   if (def.type === "link") {
     if (raw == null || String(raw).trim() === "") return { ok: true, value: null };
-    const value = String(raw).trim().slice(0, 2048);
-    // http(s) only. The link is rendered as an anchor and is never fetched
-    // server-side, so this blocks `javascript:` and friends rather than SSRF.
-    if (!URL_RE.test(value)) {
-      return { ok: false, value: null, error: `${def.label}: must be an http(s) link.` };
-    }
+    // One rule, shared with the checklist item's link — see `safeLaunchpadLink`.
+    const value = safeLaunchpadLink(raw);
+    if (!value) return { ok: false, value: null, error: `${def.label}: ${LAUNCHPAD_LINK_ERROR}` };
     return { ok: true, value };
   }
 
@@ -183,3 +178,36 @@ export function validateLaunchpadAnswer(
 }
 
 export type { AnswerValidation };
+
+/**
+ * The ONE link rule, shared by the `link` field type and the checklist item's link.
+ *
+ * ⚠️ These two drifted apart on the first cut: `validateLaunchpadAnswer` checked
+ * http(s) for a `link` field, while the item patch schema was a bare
+ * `z.string().max(2048)` — so an item link accepted anything, including
+ * `javascript:…`, and the item link is rendered as an `<a href>`. `rel="noreferrer
+ * noopener"` does nothing about that. Same class of drift as the duplicated model
+ * literals in §31: two copies of a rule, one of them wrong.
+ *
+ * Returns the cleaned URL, or null if it is not a safe http(s) link.
+ */
+export function safeLaunchpadLink(raw: unknown): string | null {
+  if (raw == null) return null;
+  const value = String(raw).trim();
+  if (value === "") return null;
+  if (value.length > 2048) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+  // Protocol allow-list, not a blocklist — `javascript:`, `data:`, `vbscript:` and
+  // `file:` are all reachable from a paste, and enumerating them is how one gets missed.
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  return value;
+}
+
+/** Why a link was rejected, for the inline message the client actually sees. */
+export const LAUNCHPAD_LINK_ERROR =
+  "That doesn't look like a link — it needs to start with https://";

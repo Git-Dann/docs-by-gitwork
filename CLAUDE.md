@@ -3825,7 +3825,49 @@ PR body** — the short version is that a client's kit is created by switching t
 on, so the first thing to confirm is that Add New → Launchpad lands on a populated page
 rather than an empty one.
 
+### 43.4 Review round — a link-validation hole, and the two-column pass
+
+**⚠️ The item link had no URL validation at all, and it renders as an `<a href>`.**
+`launchpadItemPatchSchema.link` was a bare `z.string().trim().max(2048)`, so
+`javascript:alert(1)` was reachable from a paste — while `validateLaunchpadAnswer`
+DID check http(s) for the `link` *field* type. Two copies of one rule with one of them
+wrong: the same class of drift as the duplicated model literals in §31.
+`rel="noreferrer noopener"` does nothing about a `javascript:` href.
+
+Fixed with **one** rule, `safeLaunchpadLink()` in `field-types.ts`, used by the field
+validator, the Zod item schema, and defensively at render on both anchors (so a legacy
+row can't paint a bad href either). It is a **protocol allow-list, not a blocklist** —
+`javascript:`, `data:`, `vbscript:` and `file:` are all reachable and enumerating them is
+how one gets missed. A test asserts all four are rejected, and breaking the allow-list
+back into a `javascript:`-only check fails it.
+
+**The client is now TOLD why**, inline. `saveLaunchpadAnswers` skips an invalid answer
+(`if (!ok) continue`), which from the client's side looks like their value silently
+reverting — so both link inputs validate on blur and render the message rather than
+firing a write that will be dropped.
+
+**Layout: two columns where the content earns it.** The first cut stacked everything
+full-width, which at 1440px put a three-way status picker ~900px from the label it
+belonged to. Now: the progress readout and the module toggles sit side by side from `xl`,
+and requirement cards are **two-up from `xl`** with `items-start` so a long helper doesn't
+stretch its neighbour. **`xl`, not `lg`** — a requirement card carries a label, a helper,
+the status picker and a link field on one row, and below ~1280 the picker wraps under the
+label, which reads worse than a single column. Roughly halves the page.
+
+**Pagination was considered and deliberately NOT added.** A Launchpad is a *form*, not a
+queue: paginating it would lose the client's place and break the one read the page exists
+for — what is still outstanding *in total*. The length problem is a density problem, which
+is what the two-column pass addresses (~45 requirements with every module on becomes ~23
+rows). The one genuinely unbounded surface, a legal doc's body, is already capped at
+`max-h-[420px]` with its own scroller.
+
 **Deferred (fast-follows, not oversights):** real file uploads (links only in v1, gated on
 the parked blob-storage migration); Foreman/Dispatch wiring of the completeness signal;
 "promote a legal doc into a real Docs `Document`"; any AI drafting of the legal text; and
-a full-kit PDF export mirroring `onboarding-pdf.ts`.
+a full-kit PDF export mirroring `onboarding-pdf.ts`; and **custom per-client documents**
+— today a `legal_doc` can only point at one of the three in-code generators, so a
+client-specific document (liability insurance, a bespoke data-retention policy) has no
+home. The obvious shape is a `custom_doc` type carrying its own markdown body + question
+list in the template JSON, authored in Settings → Launchpad with no code change. Note that
+half of that ask is already possible: a document the client *provides* (an insurance
+certificate) is a `checklist_item` with a link, not a generated doc.

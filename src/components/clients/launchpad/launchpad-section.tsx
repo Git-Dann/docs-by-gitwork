@@ -310,17 +310,26 @@ export function LaunchpadSection({
 
   return (
     <div className="space-y-3">
-      <ProgressPanel launchpad={launchpad} />
+      {/* Two short cards side by side from xl. Below that they stack — the module
+          toggles wrap to three rows on a narrow column and would squeeze the
+          progress readout's stat figures. */}
+      <div
+        className={
+          isInternal ? "grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" : ""
+        }
+      >
+        <ProgressPanel launchpad={launchpad} />
 
-      {isInternal ? (
-        <ModuleToggles
-          launchpad={launchpad}
-          busy={busy}
-          onToggle={(next) => {
-            setModules.mutateAsync(next).catch(report);
-          }}
-        />
-      ) : null}
+        {isInternal ? (
+          <ModuleToggles
+            launchpad={launchpad}
+            busy={busy}
+            onToggle={(next) => {
+              setModules.mutateAsync(next).catch(report);
+            }}
+          />
+        ) : null}
+      </div>
 
       {modules.map((module, moduleIndex) => {
         const number = (isInternal ? 3 : 2) + moduleIndex;
@@ -388,8 +397,13 @@ export function LaunchpadSection({
                 </div>
               ) : null}
 
+              {/* Two-up from xl. Not lg: a requirement card carries a label, a helper
+                  line, the three-way status picker AND a link field on one row, and
+                  below ~1280 the picker wraps under the label, which reads worse than
+                  a single column. `items-start` so a card with a long helper does not
+                  stretch its neighbour to match. */}
               {checklist.length > 0 ? (
-                <div className="space-y-2">
+                <div className="grid items-start gap-2 xl:grid-cols-2">
                   {checklist.map((field) => (
                     <LaunchpadFieldRenderer
                       key={field.id}

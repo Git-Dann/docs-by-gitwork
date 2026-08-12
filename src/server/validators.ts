@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LAUNCHPAD_LINK_ERROR, safeLaunchpadLink } from "@/lib/launchpad/field-types";
 import { normalizeGithubRepo } from "@/lib/github";
 
 export const documentStatusSchema = z.enum([
@@ -1933,7 +1934,21 @@ export const launchpadModulesSchema = z.object({
 export const launchpadItemPatchSchema = z
   .object({
     status: z.enum(["NEEDED", "PROVIDED", "NA"]).optional(),
-    link: z.string().trim().max(2048).nullable().optional(),
+    /**
+     * ⚠️ http(s) only, via the SAME rule the `link` field type uses. This was a bare
+     * `z.string().max(2048)`, so an item link accepted `javascript:…` — and it is
+     * rendered as an `<a href>`. "" is allowed through because that is how a cleared
+     * input arrives, and the status machine reads it as "evidence withdrawn".
+     */
+    link: z
+      .string()
+      .trim()
+      .max(2048)
+      .nullable()
+      .optional()
+      .refine((v) => v == null || v === "" || safeLaunchpadLink(v) !== null, {
+        message: LAUNCHPAD_LINK_ERROR,
+      }),
     note: z.string().trim().max(4000).nullable().optional(),
     ownedByClient: z.boolean().nullable().optional(),
   })

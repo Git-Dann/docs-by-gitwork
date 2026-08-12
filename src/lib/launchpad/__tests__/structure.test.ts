@@ -17,6 +17,7 @@ import {
   visibleFields,
   type ItemStateValues,
 } from "../structure";
+import { safeLaunchpadLink, validateLaunchpadAnswer } from "../field-types";
 import type {
   LaunchpadItemState,
   LaunchpadModule,
@@ -366,5 +367,52 @@ describe("outstandingSummary", () => {
     expect(outstandingSummary({ ...base, outstanding: ["a", "b", "c", "d", "e"] })).toBe(
       "a, b, c +2 more",
     );
+  });
+});
+
+// ─── Link safety ──────────────────────────────────────────────────────────────
+
+describe("safeLaunchpadLink", () => {
+  it("accepts ordinary http(s) links", () => {
+    expect(safeLaunchpadLink("https://drive.google.com/x")).toBe("https://drive.google.com/x");
+    expect(safeLaunchpadLink("http://example.com")).toBe("http://example.com");
+    expect(safeLaunchpadLink("  https://x.com/a  ")).toBe("https://x.com/a");
+  });
+
+  it("rejects every non-http(s) scheme — this renders as an <a href>", () => {
+    // The item link had NO validation at all on the first cut, so each of these was
+    // reachable from a paste. Allow-list, not blocklist.
+    for (const bad of [
+      "javascript:alert(1)",
+      "JavaScript:alert(1)",
+      "data:text/html;base64,PHNjcmlwdD4=",
+      "vbscript:msgbox(1)",
+      "file:///etc/passwd",
+    ]) {
+      expect(safeLaunchpadLink(bad), bad).toBeNull();
+    }
+  });
+
+  it("rejects a bare hostname — the commonest thing a client actually types", () => {
+    expect(safeLaunchpadLink("acme.com")).toBeNull();
+    expect(safeLaunchpadLink("www.acme.com/brand")).toBeNull();
+  });
+
+  it("rejects blank, null and over-long values", () => {
+    expect(safeLaunchpadLink("")).toBeNull();
+    expect(safeLaunchpadLink("   ")).toBeNull();
+    expect(safeLaunchpadLink(null)).toBeNull();
+    expect(safeLaunchpadLink(undefined)).toBeNull();
+    expect(safeLaunchpadLink(`https://x.com/${"a".repeat(2100)}`)).toBeNull();
+  });
+
+  it("is the SAME rule the link field type validates with", () => {
+    // Two copies of this rule is exactly how the item path ended up accepting
+    // `javascript:` while the field path did not.
+    const def = { id: "l", type: "link" as const, label: "Link" };
+    expect(validateLaunchpadAnswer(def, "javascript:alert(1)").ok).toBe(false);
+    expect(validateLaunchpadAnswer(def, "https://x.com/a").value).toBe("https://x.com/a");
+    // Blank is allowed through on both paths — it is how a field is cleared.
+    expect(validateLaunchpadAnswer(def, "").ok).toBe(true);
   });
 });
