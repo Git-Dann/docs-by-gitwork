@@ -19,6 +19,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { syncSignerPayloadToDocumentSection } from "@/server/signatures";
 
 // ─── Optional webhook signature verification ────────────────────────────────────────────────
 
@@ -60,7 +61,10 @@ async function findSignerByDocuSealIds(submitterId: string, submitterSlug: strin
   if (submitterId) conditions.push({ docusealSubmitterId: submitterId });
   if (submitterSlug) conditions.push({ docusealSlug: submitterSlug });
   if (!conditions.length) return null;
-  return prisma.signatureSigner.findFirst({ where: { OR: conditions } });
+  return prisma.signatureSigner.findFirst({
+    where: { OR: conditions },
+    include: { request: true },
+  });
 }
 
 /** Fallback lookup: scoped to a known submission, matched by DocuSeal role or email. */
@@ -80,6 +84,7 @@ async function findSignerBySubmissionContext(
       },
       OR: roleOrEmail,
     },
+    include: { request: true },
   });
 }
 
@@ -209,6 +214,14 @@ export async function POST(request: NextRequest) {
             ...(submitterSlug ? { docusealSlug: submitterSlug } : {}),
           },
         });
+
+        // Sync signature state directly to document's signatures section block
+        await syncSignerPayloadToDocumentSection(
+          tx,
+          signer.request.documentId,
+          { blockId: signer.signatureBlockId, role: signer.signerType, email: signer.email },
+          { payload: "DOCUSEAL_SIGNED", signedName: signer.name, signedAt: signer.signedAt ?? now },
+        );
 
         // Count remaining unsigned signers — exclude the one we just updated
         const remaining = await tx.signatureSigner.count({

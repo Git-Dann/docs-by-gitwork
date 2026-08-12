@@ -314,6 +314,14 @@ export async function submitSignature(input: SubmitSignatureInput, context: Requ
       },
     });
 
+    // Synchronize signature payload and date directly to the document's signatures section block in PostgreSQL
+    await syncSignerPayloadToDocumentSection(
+      tx,
+      signer.request.documentId,
+      { blockId: signer.signatureBlockId, role: signer.signerType, email: signer.email },
+      { payload: input.payload, signedName: input.signedName, signedAt: now },
+    );
+
     await tx.signatureEvent.create({
       data: {
         requestId: signer.requestId,
@@ -351,6 +359,65 @@ export async function submitSignature(input: SubmitSignatureInput, context: Requ
       include: { signers: true, events: { orderBy: { createdAt: "asc" } } },
     });
   });
+}
+
+/**
+ * Synchronizes captured signature details (signaturePayload, signedName, signatureDate)
+ * directly into the target block inside DocumentSection.data.blocks in PostgreSQL.
+ */
+export async function syncSignerPayloadToDocumentSection(
+  tx: Prisma.TransactionClient | typeof prisma,
+  documentId: string,
+  blockIdOrRoleOrEmail: { blockId?: string | null; role?: string | null; email?: string | null },
+  signatureData: {
+    payload?: string | null;
+    signedName?: string | null;
+    signedAt?: Date | null;
+  },
+) {
+  const section = await tx.documentSection.findFirst({
+    where: { documentId, key: "signatures" },
+  });
+  if (!section) return;
+
+  const data = section.data as { blocks?: SignatureBlockItem[] } | null;
+  if (!data || !Array.isArray(data.blocks)) return;
+
+  const formattedDate = (signatureData.signedAt ?? new Date()).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  let updatedAny = false;
+  const updatedBlocks = data.blocks.map((b) => {
+    const matchByBlockId = blockIdOrRoleOrEmail.blockId && b.id === blockIdOrRoleOrEmail.blockId;
+    const matchByEmail =
+      blockIdOrRoleOrEmail.email &&
+      b.signatoryEmail?.trim().toLowerCase() === blockIdOrRoleOrEmail.email.trim().toLowerCase();
+    const matchByRole =
+      blockIdOrRoleOrEmail.role &&
+      b.type?.trim().toLowerCase() === blockIdOrRoleOrEmail.role.trim().toLowerCase();
+
+    if (matchByBlockId || matchByEmail || matchByRole) {
+      updatedAny = true;
+      return {
+        ...b,
+        signaturePayload: signatureData.payload ?? b.signaturePayload ?? "DOCUSEAL_SIGNED",
+        signedName: signatureData.signedName ?? b.signedName ?? b.signatoryName,
+        signatureDate: formattedDate,
+        signed: true,
+      };
+    }
+    return b;
+  });
+
+  if (updatedAny) {
+    await tx.documentSection.update({
+      where: { id: section.id },
+      data: { data: { ...data, blocks: updatedBlocks } as unknown as Prisma.InputJsonValue },
+    });
+  }
 }
 
 /** Record a decline. Flips both the signer and the request to DECLINED. */
