@@ -80,13 +80,24 @@ export async function generateDocumentFromIntake(input: GenerateDocumentInput) {
   const systemPrompt = `You are an expert commercial and legal document processing AI for Gitwork.
 Your task is to analyze reference documents or briefs and generate fully populated, tailored section contents for a ${documentType} template.
 
-Here are the section components in the ${documentType} template:
-${JSON.stringify(blueprintSummaries, null, 2)}
+Here are the section components in the ${documentType} template (with index numbers and titles):
+${JSON.stringify(
+  blueprintSummaries.map((b, idx) => ({
+    index: idx,
+    sectionKey: `section_${idx}`,
+    key: b.key,
+    title: b.title,
+    titleSlug: b.title.toLowerCase().replace(/[^a-z0-9_]/g, "_"),
+    description: b.description,
+  })),
+  null,
+  2,
+)}
 
 Extract and generate structured JSON strictly matching this interface:
 {
   "title": "Document Title",
-  "clientName": "Client Organisation Name",
+  "clientName": "Exact Client Organisation Name",
   "projectName": "Project Working Name or Subject Matter",
   "founderName": "Key Founder / Client Representative Name",
   "clientEmail": "client.contact@example.com",
@@ -97,24 +108,27 @@ Extract and generate structured JSON strictly matching this interface:
   "clientSignatoryName": "Authorised Client Signatory",
   "clientSignatoryEmail": "signer@client.com",
   "clientSignatoryRole": "CEO / Director / VP",
-  "summaryText": "Executive summary of the agreement or project scope",
+  "summaryText": "Detailed 2-3 sentence executive summary of the project scope, background, technology, and objectives from the reference document",
   "clauses": [
     { "title": "Clause Title", "body": "Clause detailed text..." }
   ],
   "sectionData": {
-    "key_name": {
-      "title": "Tailored Section Title",
-      "description": "Tailored Section Overview",
-      "content": "Tailored body text or markdown paragraph based on the uploaded document...",
-      "body": "Tailored body paragraph text..."
+    "section_0": {
+      "title": "Tailored Title",
+      "content": "Tailored full body text or markdown text incorporating specific facts, methodology, requirements, and deliverables from the uploaded reference material..."
+    },
+    "purpose": {
+      "content": "Tailored purpose text incorporating the specific project scope and client background..."
     }
   }
 }
 
 Important Instructions:
-1. For every section key in the template (e.g. cover, introduction, objectives, scope, cost_breakdown, terms, cta, clauses), generate customized content inside sectionData under that exact key.
-2. Incorporate specific facts, scope points, dates, deliverables, and requirements found in the reference material.
-3. Return JSON only. No markdown fences outside the JSON object.`;
+1. Extract the exact client/company name for clientName (e.g. "Still We Grow" or "Still We Grow Ltd").
+2. Extract the exact project name or subject matter for projectName (e.g. "SWG Brain – AI Powered Advisory Platform").
+3. For sectionData, key entries using section indices ("section_0", "section_1", "section_2"...) or title slugs ("purpose", "the_project", "what_counts_as_confidential_information"...).
+4. For every text/prose section, provide customized, detailed content inside "content" incorporating specific facts, scope points, methodology, dates, and technical requirements found in the reference material.
+5. Return JSON only. No markdown fences outside the JSON object.`;
 
   const userPrompt = `Document Type: ${documentType}
 ${customTitle ? `Requested Title: ${customTitle}` : ""}
@@ -138,7 +152,11 @@ ${extractedText.slice(0, 18_000)}`;
     });
     extractedData = parseJsonObject<ExtractedDocMetadata>(rawAiResponse);
     if (extractedData) {
-      console.log(`[AI Generator] Successfully parsed AI structured response. Title="${extractedData.title}" client="${extractedData.clientName}" sectionsCount=${Object.keys(extractedData.sectionData ?? {}).length}`);
+      console.log(
+        `[AI Generator] Successfully parsed AI response. Title="${extractedData.title}" client="${extractedData.clientName}" project="${extractedData.projectName}" sectionsCount=${
+          Object.keys(extractedData.sectionData ?? {}).length
+        }`,
+      );
     } else {
       console.warn("[AI Generator] AI completed response but JSON parsing returned null. Fallback blueprints will be used.");
     }
@@ -154,6 +172,7 @@ ${extractedText.slice(0, 18_000)}`;
 
   const replacements: Record<string, string> = {
     "{{client_name}}": resolvedClientName,
+    "{{date}}": new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }),
     "Client Organisation": resolvedClientName,
     "Client organisation": resolvedClientName,
     "client organisation": resolvedClientName,
@@ -174,18 +193,67 @@ ${extractedText.slice(0, 18_000)}`;
   const sectionsPayload = baseBlueprints.map((blueprint, index) => {
     let sectionData = JSON.parse(JSON.stringify(blueprint.data));
 
-    // Merge AI generated sectionData if present for this section key, title slug, or exact title
+    // Flexible multi-strategy matching for sectionData from AI
     const titleSlug = blueprint.title.toLowerCase().replace(/[^a-z0-9_]/g, "_");
-    const aiSec =
-      extractedData?.sectionData?.[blueprint.key] ||
-      extractedData?.sectionData?.[titleSlug] ||
-      extractedData?.sectionData?.[blueprint.title];
+    const titleLower = blueprint.title.toLowerCase();
+    const secIndexKey = `section_${index}`;
 
-    if (aiSec && typeof aiSec === "object") {
-      sectionData = {
-        ...sectionData,
-        ...aiSec,
-      };
+    const aiSec =
+      extractedData?.sectionData?.[secIndexKey] ||
+      extractedData?.sectionData?.[titleSlug] ||
+      extractedData?.sectionData?.[titleLower] ||
+      extractedData?.sectionData?.[blueprint.title] ||
+      (baseBlueprints.filter((b) => b.key === blueprint.key).length === 1 ? extractedData?.sectionData?.[blueprint.key] : undefined);
+
+    if (aiSec) {
+      if (typeof aiSec === "string") {
+        sectionData.content = aiSec;
+      } else if (typeof aiSec === "object" && aiSec !== null) {
+        const customContent = (aiSec.content as string) || (aiSec.body as string) || (aiSec.text as string);
+        if (customContent && typeof customContent === "string" && customContent.trim()) {
+          sectionData.content = customContent.trim();
+        }
+        if (aiSec.title && typeof aiSec.title === "string") {
+          sectionData.title = aiSec.title;
+        }
+        // Merge remaining metadata keys if sectionData is a primitive record
+        for (const [k, v] of Object.entries(aiSec)) {
+          if (k !== "content" && k !== "body" && k !== "text") {
+            sectionData[k] = v;
+          }
+        }
+      }
+    }
+
+    // Special customization for NDA Purpose & Project sections to incorporate extracted scope
+    if (documentType === "NDA") {
+      if (blueprint.title.toLowerCase() === "purpose") {
+        const customPurposeText = typeof aiSec === "object" && aiSec?.content ? (aiSec.content as string) : undefined;
+        if (customPurposeText && customPurposeText.length > 50) {
+          sectionData.content = customPurposeText;
+        } else if (extractedData?.summaryText) {
+          sectionData.content = [
+            `The parties intend to discuss and evaluate possible software design, development, and delivery work across two workstreams (together the "Purpose"):`,
+            `  work relating to the existing platform, systems, and operations of ${resolvedClientName}; and`,
+            `  ${projectName}, being a new platform and business that is not yet incorporated.`,
+            ``,
+            `The Purpose includes evaluating, auditing, scoping, technical review, proposal, design, or pilot work for ${projectName} (${extractedData.summaryText}).`,
+            `Confidential Information may only be used for the Purpose. It may not be used for any other commercial or personal advantage.`,
+          ].join("\n");
+        }
+      }
+
+      if (blueprint.title.toLowerCase() === "the project") {
+        if (projectName && projectName !== "the Project") {
+          const projectIntro = `The "Project" means the proposed platform, product, and business currently referred to by the working name ${projectName}. It includes the name itself, the concept, the product and feature design, the mechanics, the commercial model, the branding, the target market, and any prototype, wireframe, prompt, or code relating to it.`;
+          const currentContent = typeof sectionData.content === "string" ? sectionData.content : "";
+          const lines = currentContent.split("\n");
+          if (lines.length > 0) {
+            lines[0] = projectIntro;
+            sectionData.content = lines.join("\n");
+          }
+        }
+      }
     }
 
     // Perform recursive placeholder replacement across the whole section JSON
@@ -196,37 +264,37 @@ ${extractedText.slice(0, 18_000)}`;
       sectionData.title = docTitle;
       sectionData.clientName = resolvedClientName;
       if (extractedData?.summaryText) {
-        sectionData.subtitle = extractedData.summaryText.slice(0, 140);
+        sectionData.subtitle = extractedData.summaryText.slice(0, 200);
       }
     }
 
-    // Fill parties section
+    // Fill parties section — preserving structure for UI & DocuSeal compatibility
     if (blueprint.key === "parties" && typeof sectionData === "object" && sectionData) {
-      if (Array.isArray(sectionData.blocks)) {
-        sectionData.blocks = sectionData.blocks.map((block: Record<string, unknown>) => {
-          if (block.type === "client" || block.partyName?.toString().toLowerCase().includes("client")) {
+      if (Array.isArray(sectionData.parties)) {
+        sectionData.parties = sectionData.parties.map((party: Record<string, unknown>, pIndex: number) => {
+          if (pIndex === 0) return party; // Keep Gitwork as Party A
+          if (pIndex === 1) {
             return {
-              ...block,
-              partyName: resolvedClientName,
-              signatoryName: extractedData?.clientSignatoryName || block.signatoryName || "Authorised Signatory",
-              signatoryEmail: extractedData?.clientSignatoryEmail || block.signatoryEmail || "signer@client.com",
-              signatoryRole: extractedData?.clientSignatoryRole || block.signatoryRole || "Director",
+              ...party,
+              name: resolvedClientName,
+              organization: party.organization ? (replacePlaceholdersInJson(party.organization, replacements) as string) : party.organization,
+              email: party.email ? (replacePlaceholdersInJson(party.email, replacements) as string) : party.email,
             };
           }
-          if (block.type === "gitwork" || block.partyName?.toString().toLowerCase().includes("gitwork")) {
+          if (pIndex === 2) {
             return {
-              ...block,
-              signatoryName: actor?.name || extractedData?.gitworkSignatoryName || block.signatoryName || "Director",
-              signatoryEmail: actor?.email || extractedData?.gitworkSignatoryEmail || block.signatoryEmail || "legal@gitwork.tech",
-              signatoryRole: extractedData?.gitworkSignatoryRole || block.signatoryRole || "Director",
+              ...party,
+              name: founderName !== "Authorised Signatory" ? founderName : party.name,
+              organization: party.organization ? (replacePlaceholdersInJson(party.organization, replacements) as string) : party.organization,
+              email: party.email ? (replacePlaceholdersInJson(party.email, replacements) as string) : party.email,
             };
           }
-          return block;
+          return party;
         });
       }
     }
 
-    // Fill signatures section
+    // Fill signatures section — preserving structure for UI & DocuSeal compatibility
     if (blueprint.key === "signatures" && typeof sectionData === "object" && sectionData) {
       if (Array.isArray(sectionData.blocks)) {
         sectionData.blocks = sectionData.blocks.map((block: Record<string, unknown>, bIndex: number) => {
@@ -237,34 +305,26 @@ ${extractedText.slice(0, 18_000)}`;
             variableName: block.variableName || (isGitwork ? "gitwork_signature" : `client_signature${bIndex > 1 ? `_${bIndex}` : ""}`),
             partyName: isGitwork ? "Gitwork Group Ltd" : resolvedClientName,
             signatoryName: isGitwork
-              ? actor?.name || extractedData?.gitworkSignatoryName || block.signatoryName || "Director"
-              : extractedData?.clientSignatoryName || block.signatoryName || "Authorised Signatory",
+              ? actor?.name || extractedData?.gitworkSignatoryName || block.signatoryName || ""
+              : extractedData?.clientSignatoryName || block.signatoryName || "",
             signatoryEmail: isGitwork
-              ? actor?.email || extractedData?.gitworkSignatoryEmail || block.signatoryEmail || "legal@gitwork.tech"
-              : extractedData?.clientSignatoryEmail || block.signatoryEmail || "signer@client.com",
+              ? actor?.email || extractedData?.gitworkSignatoryEmail || block.signatoryEmail || ""
+              : extractedData?.clientSignatoryEmail || block.signatoryEmail || "",
             signatoryRole: isGitwork
               ? extractedData?.gitworkSignatoryRole || block.signatoryRole || "Director"
               : extractedData?.clientSignatoryRole || block.signatoryRole || "Director",
+            details: Array.isArray(block.details)
+              ? block.details.map((d: unknown) => (typeof d === "string" ? (replacePlaceholdersInJson(d, replacements) as string) : d))
+              : block.details,
           };
         });
       }
     }
 
-    // Inject AI extracted clauses into clause / legal sections
-    if (blueprint.key.includes("clause") || blueprint.key.includes("scope") || blueprint.key === "prose") {
-      if (extractedData?.clauses?.length && typeof sectionData === "object" && sectionData) {
-        sectionData.clauses = extractedData.clauses.map((c, cIdx) => ({
-          number: `${cIdx + 1}`,
-          title: c.title,
-          body: c.body,
-        }));
-      }
-    }
-
     return {
       key: blueprint.key,
-      title: (extractedData?.sectionData?.[blueprint.key]?.title as string) || blueprint.title,
-      description: (extractedData?.sectionData?.[blueprint.key]?.description as string) || blueprint.description,
+      title: (extractedData?.sectionData?.[secIndexKey]?.title as string) || blueprint.title,
+      description: blueprint.description,
       sortOrder: (index + 1) * 10,
       data: sectionData,
     };
