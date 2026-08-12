@@ -41,7 +41,7 @@ ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
 #
 # Builder stage only — the runtime container doesn't need it, and a stray large
 # heap there would just reserve memory the app never uses.
-ENV NODE_OPTIONS=--max-old-space-size=6144
+ENV NODE_OPTIONS=--max-old-space-size=8192
 
 RUN npm run build
 

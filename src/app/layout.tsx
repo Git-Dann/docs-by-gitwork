@@ -30,9 +30,9 @@ const jetbrainsMono = JetBrains_Mono({
 // injects a <link rel="preload"> for every family on EVERY route, eagerly fetching
 // ~11 unused woff2 files (render-blocking weight). With it, the @font-face still ships
 // so the browser fetches the file lazily the moment a `font-family` rule matches.
-const caveat = Caveat({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-caveat", display: "swap", preload: false });
-const dancingScript = Dancing_Script({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-dancing-script", display: "swap", preload: false });
-const greatVibes = Great_Vibes({ subsets: ["latin"], weight: ["400"], variable: "--font-great-vibes", display: "swap", preload: false });
+const caveat = Caveat({ subsets: ["latin"], weight: ["400", "700"], variable: "--font-caveat", display: "swap", preload: false, fallback: ["cursive"] });
+const dancingScript = Dancing_Script({ subsets: ["latin"], weight: ["400", "700"], variable: "--font-dancing-script", display: "swap", preload: false, fallback: ["cursive"] });
+const greatVibes = Great_Vibes({ subsets: ["latin"], weight: ["400"], variable: "--font-great-vibes", display: "swap", preload: false, fallback: ["cursive"] });
 
 // Studio marketing-brand fonts — used only by the /app/studio social-asset templates
 // (Cream/Purple style preset). Bound to CSS vars; browsers only fetch them once a
