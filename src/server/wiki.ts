@@ -1212,14 +1212,76 @@ function wikiItemPrefix(type: "BUG" | "FEEDBACK" | "TASK" | "DESIGN"): string {
  * resolves to one ClientWiki, so items stay inside that client's Wiki intake
  * page until an Admin/Super Admin promotes them into Portal Tasks.
  */
+/**
+ * Resolve the wiki behind a token that arrived on a PUBLIC WIKI URL
+ * (`/wiki/[slug]/[token]`), i.e. the client's own share link.
+ *
+ * ⚠️ This exists because the client-facing Requests form was authenticating
+ * against the WRONG CREDENTIAL, and had been since it shipped in d1012e3d. The
+ * form posts the token from the wiki URL — a `shareToken`, or a per-section
+ * token out of `pageShareTokens` — but every intake helper resolved the wiki by
+ * `courseIngestToken`, which is the separate secret for the inbound API and is
+ * usually null. The lookup could therefore never match, so every request a
+ * client tried to file came back "Invalid wiki token": the credential blamed,
+ * when the credential was fine and the code was asking the wrong question.
+ * Requests filed internally were unaffected, which is why it stayed hidden.
+ *
+ * Order mirrors `resolvePublicWiki`: whole-wiki share first, then a per-section
+ * token. `courseIngestToken` is tried last purely so anything that happened to
+ * work against this route before keeps working.
+ */
+async function resolveWikiIdByPublicToken(token: string): Promise<string | null> {
+  const t = token?.trim();
+  if (!t) return null;
+  const whole = await prisma.clientWiki.findFirst({
+    where: { shareToken: t, shareEnabled: true },
+    select: { id: true },
+  });
+  if (whole) return whole.id;
+  const bySection = await prisma.clientWiki.findFirst({
+    where: { pageShareTokens: { has: t } },
+    select: { id: true },
+  });
+  if (bySection) return bySection.id;
+  const byIngest = await prisma.clientWiki.findUnique({
+    where: { courseIngestToken: t },
+    select: { id: true },
+  });
+  return byIngest?.id ?? null;
+}
+
+/**
+ * The inbound API path. Deliberately resolves ONLY `courseIngestToken`: the
+ * integrator credential and the client's share link must not be
+ * interchangeable, or a shared wiki URL would also authorise the full API
+ * (list, patch, delete).
+ */
 export async function ingestWikiItemsByToken(
   token: string,
   items: WikiItemIngestItem[],
   opts: { dryRun?: boolean } = {},
 ): Promise<WikiItemIngestResult | null> {
   if (!token) return null;
-  const wiki = await prisma.clientWiki.findUnique({
+  const found = await prisma.clientWiki.findUnique({
     where: { courseIngestToken: token },
+    select: { id: true },
+  });
+  if (!found) return null;
+  return ingestWikiItemsIntoWiki(found.id, items, opts);
+}
+
+/**
+ * Shared body for both intake paths — the API's ingest token and the client's
+ * own wiki share link. Takes a resolved wiki id so the CREDENTIAL question is
+ * answered by the caller and this function only does the work.
+ */
+async function ingestWikiItemsIntoWiki(
+  wikiId: string,
+  items: WikiItemIngestItem[],
+  opts: { dryRun?: boolean } = {},
+): Promise<WikiItemIngestResult | null> {
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { id: wikiId },
     select: {
       id: true,
       intakeEnabled: true,
@@ -1329,11 +1391,38 @@ export async function setWikiIntakeEnabled(clientId: string, enabled: boolean): 
   void wiki;
 }
 
+/**
+ * A client filing one request from the Requests form on their own wiki. The
+ * token here comes off the public wiki URL, so it is resolved as a SHARE token
+ * (see resolveWikiIdByPublicToken) — not as the API's ingest secret, which is
+ * the mismatch that made this fail with "Invalid wiki token" for every client.
+ */
+/**
+ * Why a client's request submission was rejected, so the route can say which of
+ * the two it was. "Invalid wiki token" for a switched-off Requests section is
+ * what turned a one-toggle fix into a support message about a broken link.
+ */
+export async function publicWikiIntakeState(
+  token: string,
+): Promise<"ok" | "unknown" | "intake_disabled"> {
+  const wikiId = await resolveWikiIdByPublicToken(token);
+  if (!wikiId) return "unknown";
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { id: wikiId },
+    select: { intakeEnabled: true },
+  });
+  return wiki?.intakeEnabled ? "ok" : "intake_disabled";
+}
+
 export async function addWikiIntakeItemByToken(
   token: string,
   item: WikiItemIngestItem,
 ): Promise<WikiIntakeItemRecord | null> {
-  const result = await ingestWikiItemsByToken(token, [{ ...item, requestedBy: item.requestedBy ?? "Client wiki" }]);
+  const wikiId = await resolveWikiIdByPublicToken(token);
+  if (!wikiId) return null;
+  const result = await ingestWikiItemsIntoWiki(wikiId, [
+    { ...item, requestedBy: item.requestedBy ?? "Client wiki" },
+  ]);
   return result?.created[0] ?? null;
 }
 
@@ -1706,8 +1795,13 @@ export async function attachWikiIntakeItemImageByToken(
   mime: string,
   filename: string | null,
 ): Promise<WikiIntakeItemRecord | null> {
+  // Same public route as the create above, so the same share-token resolution:
+  // this was looking up courseIngestToken, so attaching a screenshot to a
+  // request could never work from a client's wiki either.
+  const wikiId = await resolveWikiIdByPublicToken(token);
+  if (!wikiId) return null;
   const wiki = await prisma.clientWiki.findUnique({
-    where: { courseIngestToken: token },
+    where: { id: wikiId },
     select: { id: true, intakeEnabled: true },
   });
   if (!wiki || !wiki.intakeEnabled) return null;
@@ -1750,8 +1844,11 @@ export async function getWikiIntakeItemImageBytesByToken(
   itemId: string,
   variant: "full" | "thumb" = "full",
 ): Promise<{ bytes: Buffer; mime: string } | null> {
-  const wiki = await prisma.clientWiki.findUnique({ where: { courseIngestToken: token }, select: { id: true } });
-  if (!wiki) return null;
+  // Share-token resolution, as above — otherwise an image attached to a client
+  // request renders as a broken thumbnail on their own wiki.
+  const wikiId = await resolveWikiIdByPublicToken(token);
+  if (!wikiId) return null;
+  const wiki = { id: wikiId };
   const row = await prisma.clientWikiIntakeItem.findFirst({
     where: { id: itemId, wikiId: wiki.id },
     select: { image: true, thumb: true, mime: true },

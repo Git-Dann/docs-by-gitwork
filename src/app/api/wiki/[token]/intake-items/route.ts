@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { addWikiIntakeItemByToken } from "@/server/wiki";
+import { addWikiIntakeItemByToken, publicWikiIntakeState } from "@/server/wiki";
 
 const bodySchema = z.object({
   type: z.enum(["BUG", "FEEDBACK", "TASK", "DESIGN"]).default("FEEDBACK"),
@@ -19,7 +19,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   try {
     const { token } = await params;
     const item = await addWikiIntakeItemByToken(token, bodySchema.parse(await req.json()));
-    if (!item) return apiError("Invalid wiki token", 404);
+    if (!item) {
+      // Two very different causes, and reporting the credential for both is how a
+      // switched-off Requests section reached the client as "invalid wiki token".
+      const state = await publicWikiIntakeState(token);
+      if (state === "intake_disabled") {
+        return apiError(
+          "Requests are switched off for this client, so this form can't accept submissions yet. Nothing is wrong with your link.",
+          409,
+        );
+      }
+      return apiError("Invalid wiki token", 404);
+    }
     return apiOk(item, { status: 201 });
   } catch (err) {
     return fromError(err);
