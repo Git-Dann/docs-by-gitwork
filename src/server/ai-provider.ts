@@ -233,18 +233,39 @@ function classifyAiError(err: unknown): string {
   return "unknown";
 }
 
-/** Best-effort extraction of a JSON object from a model response (handles ```json fences). */
+/** Best-effort extraction of a JSON object from a model response (handles ```json fences & truncated JSON). */
 export function parseJsonObject<T>(raw: string): T | null {
   if (!raw) return null;
   let text = raw.trim();
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence) text = fence[1].trim();
   const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1 || end < start) return null;
+  if (start === -1) return null;
+
+  let jsonCandidate = text.slice(start);
+  const end = jsonCandidate.lastIndexOf("}");
+  if (end !== -1) {
+    jsonCandidate = jsonCandidate.slice(0, end + 1);
+  }
+
   try {
-    return JSON.parse(text.slice(start, end + 1)) as T;
+    return JSON.parse(jsonCandidate) as T;
   } catch {
-    return null;
+    // Attempt best-effort JSON repair for truncated outputs
+    try {
+      let repaired = jsonCandidate;
+      const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
+      if (quoteCount % 2 !== 0) repaired += '"';
+
+      const openBrackets = Math.max(0, (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length);
+      const openBraces = Math.max(0, (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length);
+
+      for (let i = 0; i < openBrackets; i++) repaired += "]";
+      for (let i = 0; i < openBraces; i++) repaired += "}";
+
+      return JSON.parse(repaired) as T;
+    } catch {
+      return null;
+    }
   }
 }
