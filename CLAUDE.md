@@ -3776,6 +3776,14 @@ offers **Gmail** and that picking it returns the historical rows; confirm the Aw
 today's mail on top; confirm the course-requests panel is gone from Fellas and still present on
 Wedge.
 
-**Known limit:** on a window under ~700px tall the page header (170px) plus the record header leave
-too little for both panels, so the thread is squeezed to a few pixels. Reclaiming the page-header
-band on the record screen is the fix and needs `hideContentHeader` to become runtime state.
+⚠️ **`/demo/care` under-reports available height by ~80px against the real app, so short-viewport
+measurements taken there are pessimistic.** `AppShell`'s title band is `h-20` (80px) since §40.2;
+`demo-shell.tsx` still carries the old 44px title on a `pb-5 pt-7` band (~130px) plus the demo
+banner. §40.2 flagged that mirror as deliberately left alone — worth remembering before treating a
+height measured on a demo page as the number the app will produce.
+
+**Known limit:** on a genuinely short window (~620px and below) the title band plus the record
+header leave too little for both panels, so the thread is squeezed — to a few pixels on the demo,
+to ~120px in the app. The reply stays put by design. Reclaiming the title band on the record screen
+is the real fix and needs `hideContentHeader` to become runtime state rather than a page prop
+(`/app/docs/[id]` and the Pulse report already pass it statically).
