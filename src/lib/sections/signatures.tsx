@@ -63,8 +63,19 @@ function SigningField({
     <div>
       <MonoLabel size={9.5}>{label}</MonoLabel>
       <div
-        className="mt-1 flex items-end overflow-hidden"
-        style={{ minHeight: 38, borderBottom: "1px solid var(--text-1)" }}
+        className="mt-1 flex items-end"
+        style={{
+          minHeight: 38,
+          borderBottom: "1px solid var(--text-1)",
+          // IMPORTANT: overflow must be visible when rendering DocuSeal text tags.
+          // Puppeteer generates PDFs that honour overflow:hidden, which physically
+          // clips text from the PDF text layer. A clipped tag (e.g. "…type=sign" 
+          // instead of "…type=signature}}") is invalid and DocuSeal ignores it.
+          // For signed/filled states we keep hidden to contain image or text values.
+          overflow: !isImagePayload && !signed && !payload && !filled && docusealTag
+            ? "visible"
+            : "hidden",
+        }}
       >
         {isImagePayload ? (
           /* eslint-disable-next-line @next/next/no-img-element */
@@ -86,7 +97,12 @@ function SigningField({
         ) : filled ? (
           <span className="pb-1 text-[13px] leading-tight text-[var(--text-1)]">{filled}</span>
         ) : docusealTag ? (
-          <span className="pb-1 text-[11px] font-mono text-[var(--text-4)] opacity-80 select-none">
+          // Font size 8px + white-space:nowrap → entire tag renders on one line.
+          // Must be one unbroken text run in the PDF text layer for DocuSeal to detect.
+          <span
+            className="pb-1 font-mono select-none"
+            style={{ fontSize: 8, color: "var(--text-4)", opacity: 0.7, whiteSpace: "nowrap" }}
+          >
             {docusealTag}
           </span>
         ) : null}
