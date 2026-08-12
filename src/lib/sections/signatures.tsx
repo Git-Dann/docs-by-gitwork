@@ -101,9 +101,12 @@ function SignatureCard({ block, index = 0 }: { block: SignatureBlockItem; index?
 
   const isGitwork = block.type === "gitwork" || (index === 0 && block.type !== "client");
   const roleName = (block.type?.trim().toLowerCase() || (isGitwork ? "gitwork" : "client")).replace(/[^a-z0-9_]/g, "_");
-  const fieldId = block.id || (isGitwork ? "gitwork_signature" : `client_signature_${index + 1}`);
-  const docusealSigTag = `{{sig_${fieldId};type=signature;role=${roleName};width=220;height=40}}`;
-  const docusealDateTag = `{{date_${fieldId};type=date;role=${roleName};width=150;height=25}}`;
+  const varSuffix = index > 0 && !isGitwork ? `_${index + 1}` : "";
+  const sigVarName = isGitwork ? "gitwork_signature" : `client_signature${varSuffix}`;
+  const dateVarName = isGitwork ? "gitwork_date" : `client_date${varSuffix}`;
+
+  const docusealSigTag = `{{${roleName}:signature:${sigVarName}}}`;
+  const docusealDateTag = `{{${roleName}:date:${dateVarName}}}`;
 
   return (
     <div
