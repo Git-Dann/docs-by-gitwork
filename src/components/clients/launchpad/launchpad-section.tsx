@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useMemo, useState } from "react";
-import { RocketLaunchIcon } from "@heroicons/react/24/outline";
+import { ChevronRightIcon, RocketLaunchIcon } from "@heroicons/react/24/outline";
 import { useToast } from "@/components/ui/toast";
 import {
   enabledModulesOf,
@@ -59,28 +59,43 @@ function ProgressPanel({ launchpad }: { launchpad: LaunchpadDTO }) {
         </span>
       </div>
       <div className="p-4 sm:p-5">
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
-          {/* Stat grammar per DESIGN.md: DM Serif figure over a mono caps label. */}
-          <div>
-            <p
-              className="text-[40px] leading-none text-[var(--text-1)]"
-              style={{ fontFamily: "var(--font-display), Georgia, serif" }}
-            >
-              {completeness.percent}
-              <span className="text-[24px] text-[var(--text-4)]">%</span>
-            </p>
-            <p className="widget-data-label mt-1">Complete</p>
-          </div>
-          <div>
-            <p
-              className="text-[40px] leading-none text-[var(--text-1)]"
-              style={{ fontFamily: "var(--font-display), Georgia, serif" }}
-            >
-              {completeness.needed}
-            </p>
-            <p className="widget-data-label mt-1">Still needed</p>
-          </div>
+        {/**
+         * Leads with the INSTRUCTION, not the statistic.
+         *
+         * This was two 40px figures side by side ("0%" and "3"), which told a client
+         * the score without telling them the task — and "0%" as the first thing on the
+         * page reads as failure rather than as a starting point. The figure is still
+         * here, as the count inside the sentence and as the bar; it just isn't the
+         * headline any more.
+         */}
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <p
+            className="text-[28px] leading-tight text-[var(--text-1)]"
+            style={{ fontFamily: "var(--font-display), Georgia, serif" }}
+          >
+            {done ? (
+              "Everything's in."
+            ) : completeness.total === 0 ? (
+              "Nothing needed yet."
+            ) : (
+              <>
+                {completeness.needed} thing{completeness.needed === 1 ? "" : "s"} still to
+                send us
+              </>
+            )}
+          </p>
+          <span className="widget-data-label text-[var(--text-4)]">
+            {completeness.provided + completeness.na} of {completeness.total} done
+          </span>
         </div>
+
+        {summary ? (
+          <p className="mt-2 text-sm leading-relaxed text-[var(--text-2)]">{summary}</p>
+        ) : done ? (
+          <p className="mt-2 text-sm leading-relaxed text-[var(--text-3)]">
+            Thanks — nothing here is holding the build up.
+          </p>
+        ) : null}
 
         <div className="mt-4 widget-progress" aria-hidden="true">
           <div
@@ -88,20 +103,94 @@ function ProgressPanel({ launchpad }: { launchpad: LaunchpadDTO }) {
             style={{ width: `${completeness.percent}%` }}
           />
         </div>
-
-        <p className="mt-3 text-sm leading-relaxed text-[var(--text-3)]">
-          {done ? (
-            <>Everything we asked for is in. Nothing is holding the build up.</>
-          ) : summary ? (
-            <>
-              <span className="font-semibold text-[var(--text-2)]">Outstanding:</span> {summary}
-            </>
-          ) : (
-            <>Nothing has been asked for yet.</>
-          )}
-        </p>
       </div>
     </section>
+  );
+}
+
+// ─── Detail fields (collapsed) ────────────────────────────────────────────────
+
+/**
+ * The plain inputs of a module — company details, contacts, a credential channel —
+ * behind a disclosure.
+ *
+ * These are NOT counted in completeness (only `checklist_item`s are), so ten of them
+ * with always-on helper text was most of the page's height while contributing nothing
+ * to the figure the header reports. Collapsed by default; the summary carries the
+ * signal so nothing is actually hidden — "4 still blank" in warning tone is what tells
+ * a client to open it.
+ */
+function DetailFields({
+  fields,
+  answers,
+  setAnswer,
+  patchItem,
+  busy,
+  audience,
+}: {
+  fields: LaunchpadFieldDef[];
+  answers: LaunchpadDTO["answers"];
+  setAnswer: (id: string, value: OnboardingAnswerValue) => void;
+  patchItem: (itemId: string, patch: LaunchpadItemPatch) => void;
+  busy: boolean;
+  audience: "client" | "team";
+}) {
+  const answerable = fields.filter((f) => f.type !== "static");
+  const filled = answerable.filter((f) => {
+    const v = answers[f.id];
+    return typeof v === "string" ? v.trim() !== "" : v != null && v !== false;
+  }).length;
+  const blank = answerable.length - filled;
+  // Open on first render when there is something to do, so a client with blanks isn't
+  // asked to go hunting — but closed once it is done, which is the common case after
+  // prefill.
+  const [open, setOpen] = useState(blank > 0 && blank === answerable.length);
+
+  return (
+    <div className="rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-1)]">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+      >
+        <ChevronRightIcon
+          className={`h-3.5 w-3.5 shrink-0 text-[var(--text-4)] transition-transform ${open ? "rotate-90" : ""}`}
+        />
+        <span className="min-w-0 flex-1 text-sm font-medium text-[var(--text-2)]">
+          Your details
+        </span>
+        <span
+          className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide ${
+            blank > 0 ? "text-[var(--warning-500)]" : "text-[var(--text-4)]"
+          }`}
+          style={{ fontFamily: MONO }}
+        >
+          {blank > 0 ? `${blank} still blank` : `all ${answerable.length} filled in`}
+        </span>
+      </button>
+
+      {open ? (
+        <div className="grid grid-cols-1 gap-4 border-t border-[var(--border-1)] p-3 sm:grid-cols-2">
+          {fields.map((field) => (
+            <div
+              key={field.id}
+              className={field.config?.width === "half" ? "" : "sm:col-span-2"}
+            >
+              <LaunchpadFieldRenderer
+                field={field}
+                answers={answers}
+                itemState={undefined}
+                setAnswer={setAnswer}
+                patchItem={patchItem}
+                readOnly={busy}
+                audience={audience}
+              />
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -376,32 +465,22 @@ export function LaunchpadSection({
                 <p className="text-xs leading-relaxed text-[var(--text-3)]">{module.blurb}</p>
               ) : null}
 
-              {inputs.length > 0 ? (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {inputs.map((field: LaunchpadFieldDef) => (
-                    <div
-                      key={field.id}
-                      className={field.config?.width === "half" ? "" : "sm:col-span-2"}
-                    >
-                      <LaunchpadFieldRenderer
-                        field={field}
-                        answers={launchpad.answers}
-                        itemState={undefined}
-                        setAnswer={setAnswer}
-                        patchItem={patchItem}
-                        readOnly={busy}
-                        audience={isInternal ? "team" : "client"}
-                      />
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-
-              {/* Two-up from xl. Not lg: a requirement card carries a label, a helper
-                  line, the three-way status picker AND a link field on one row, and
-                  below ~1280 the picker wraps under the label, which reads worse than
-                  a single column. `items-start` so a card with a long helper does not
-                  stretch its neighbour to match. */}
+              {/**
+               * ⚠️ REQUIREMENTS FIRST, details second — this order is the whole point
+               * of the page and it shipped the wrong way round.
+               *
+               * Foundations carries 3 tracked requirements and 10 plain inputs, and the
+               * inputs came first — so a client landed on ten form fields that do NOT
+               * move the completeness figure, with the 3 things the header is actually
+               * counting buried in ninth position. The number and the content disagreed
+               * about what the page was for, which is why it read as heavy and unclear
+               * rather than merely long.
+               *
+               * Two-up from xl. Not lg: a requirement card carries a label, a helper,
+               * the three-way status picker AND a link field on one row, and below
+               * ~1280 the picker wraps under the label. `items-start` so a card with a
+               * long helper doesn't stretch its neighbour.
+               */}
               {checklist.length > 0 ? (
                 <div className="grid items-start gap-2 xl:grid-cols-2">
                   {checklist.map((field) => (
@@ -417,6 +496,20 @@ export function LaunchpadSection({
                     />
                   ))}
                 </div>
+              ) : null}
+
+              {/* The plain inputs, behind a disclosure. Collapsed by default with a
+                  filled-count summary, so the height they cost is opt-in but the signal
+                  ("4 still blank") is not hidden. */}
+              {inputs.length > 0 ? (
+                <DetailFields
+                  fields={inputs}
+                  answers={launchpad.answers}
+                  setAnswer={setAnswer}
+                  patchItem={patchItem}
+                  busy={busy}
+                  audience={isInternal ? "team" : "client"}
+                />
               ) : null}
             </div>
           </section>

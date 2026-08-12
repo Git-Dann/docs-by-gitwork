@@ -3987,6 +3987,41 @@ is what the two-column pass addresses (~45 requirements with every module on bec
 rows). The one genuinely unbounded surface, a legal doc's body, is already capped at
 `max-h-[420px]` with its own scroller.
 
+### 43.5 Simplicity through hierarchy: requirements first, details collapsed
+
+Dan's read of the live page: *"this page looks super heavy, difficult to see and/or
+understand what the client needs to do."* Correct, and the cause was ordering, not
+styling.
+
+⚠️ **Foundations rendered its 10 plain inputs BEFORE its 3 tracked requirements**, so a
+client landed on ten form fields that do not move the completeness figure, with the three
+things the header is actually counting buried in ninth position. The number and the
+content disagreed about what the page was for. Three changes:
+
+- **Requirements first, details second**, within every module. `checklist_item`s are what
+  `computeCompleteness` measures, so they lead.
+- **The plain inputs sit behind a `DetailFields` disclosure**, collapsed by default with a
+  filled-count summary ("3 still blank", warning tone). Nothing is hidden — the summary
+  carries the signal — but the ~20 lines of always-on helper text they cost is now opt-in.
+  It opens on first render only when EVERY field is blank, so a prefilled kit stays shut
+  and a cold one doesn't make the client go hunting.
+- **The progress panel leads with the instruction, not the statistic.** It was two 40px
+  figures ("0%" and "3") side by side, which reports a score without naming the task — and
+  `0%` as the first thing on the page reads as failure rather than as a start. Now
+  *"7 things still to send us"* with the named list beneath; the figure survives as the
+  `N of M done` readout and the bar.
+
+Measured after: the first requirement moved from ninth position to **368px** from the top.
+
+⚠️ **Known gap, and it is the next change: there is no way to add or edit a requirement
+for ONE client.** Settings → Launchpad edits the master template, and snapshot-on-assign
+means those edits deliberately never reach an already-assigned kit — so a bespoke ask
+(a client's liability-insurance certificate, a specific retention policy) has no home
+today. The only route is edit-the-template → re-assign, which does keep the client's
+answers and statuses but is nowhere labelled as "apply template changes". Dan's call
+(Aug 2026) is that per-client authoring writes into **that client's own snapshot**, not
+the master, so one client's bespoke requirement can never leak onto everyone else's kit.
+
 **Deferred (fast-follows, not oversights):** real file uploads (links only in v1, gated on
 the parked blob-storage migration); Foreman/Dispatch wiring of the completeness signal;
 "promote a legal doc into a real Docs `Document`"; any AI drafting of the legal text; and
