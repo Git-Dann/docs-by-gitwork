@@ -81,6 +81,7 @@ export async function createDocuSealSubmission(
       name: s.name.trim(),
       email: s.email.trim().toLowerCase(),
       role: s.role.trim().toLowerCase(),
+      send_email: false,
       fields: s.fields ?? [
         {
           name: varName,
@@ -250,10 +251,11 @@ export async function createDocuSealSubmission(
     throw new Error("DocuSeal Template Error: Unable to obtain valid template ID from DocuSeal API.");
   }
 
-  // Create submission using template_id
+  // Create submission using template_id with send_email: false
   const subPayload: Record<string, unknown> = {
     template_id: Number(targetTemplateId) || targetTemplateId,
     submitters: formattedSubmitters,
+    send_email: false,
   };
 
   if (webhookUrl) {

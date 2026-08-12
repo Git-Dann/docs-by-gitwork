@@ -92,21 +92,16 @@ export default async function SignPage({ params }: PageProps) {
     );
   }
 
-  // ── Sequential Signing Check (Gitwork signs 1st, Client signs 2nd) ─────────────
-  const isGitworkSigner = signer.signerType === "gitwork" || signer.role?.toLowerCase().includes("gitwork");
-  if (!isGitworkSigner) {
-    const gitworkSigner = request.signers.find(
-      (s) => s.signerType === "gitwork" || s.role?.toLowerCase().includes("gitwork"),
+  // ── Strict single-use link check ──────────────────────────────────────────────────
+  // If the link has already been opened in a prior session (firstViewedAt is set)
+  // and the signer has not completed signing, block access for security.
+  if (signer.firstViewedAt) {
+    return (
+      <NoticePage
+        title="This single-use link has already been accessed"
+        body="For security reasons, this signing link can only be opened once. If you closed your browser before signing, please ask your Gitwork contact for a fresh link."
+      />
     );
-    if (gitworkSigner && gitworkSigner.status !== "SIGNED") {
-      return (
-        <NoticePage
-          title="Awaiting Gitwork Signature"
-          body="Gitwork Group Ltd must sign this document first. Once Gitwork completes their signature, your signing session will automatically activate and you will be notified to sign."
-          tone="neutral"
-        />
-      );
-    }
   }
 
   // ── Active signing flow ─────────────────────────────────────────────────────────────

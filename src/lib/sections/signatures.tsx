@@ -57,7 +57,12 @@ function SigningField({
   docusealTag?: string;
 }) {
   const filled = value?.trim();
-  const isImagePayload = payload?.startsWith("data:image/");
+  const isImagePayload =
+    payload?.startsWith("data:image/") ||
+    payload?.startsWith("http://") ||
+    payload?.startsWith("https://");
+
+  const isSignature = label.toUpperCase() === "SIGNATURE";
 
   return (
     <div>
@@ -77,7 +82,7 @@ function SigningField({
             : "hidden",
         }}
       >
-        {isImagePayload ? (
+        {isSignature && isImagePayload ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
             src={payload}
@@ -85,17 +90,12 @@ function SigningField({
             className="max-h-12 object-contain pb-0.5"
             style={{ maxHeight: "44px" }}
           />
-        ) : signed || payload ? (
-          <div className="flex flex-wrap items-center gap-2 pb-1">
-            <span className="font-serif italic text-[15px] font-semibold text-[var(--brand-900)]">
-              {signedName || value || "Digitally Signed"}
-            </span>
-            <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-emerald-700 border border-emerald-200">
-              ✓ Verified Signature
-            </span>
-          </div>
+        ) : isSignature && (signed || payload) ? (
+          <span className="pb-1 font-serif italic text-[17px] font-semibold text-[var(--brand-900)]">
+            {signedName || filled || "Digitally Signed"}
+          </span>
         ) : filled ? (
-          <span className="pb-1 text-[13px] leading-tight text-[var(--text-1)]">{filled}</span>
+          <span className="pb-1 text-[13px] font-medium text-[var(--text-1)]">{filled}</span>
         ) : docusealTag ? (
           // Font size 8px + white-space:nowrap → entire tag renders on one line.
           // Must be one unbroken text run in the PDF text layer for DocuSeal to detect.
