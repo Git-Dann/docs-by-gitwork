@@ -14,6 +14,7 @@ import { enableDocumentShare } from "@/server/documents";
 import { launchHeadlessBrowser } from "@/server/headless-browser";
 import { createSignatureRequest } from "@/server/signatures";
 import { assertCan, canShareDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { getDocusealBlocksMeta } from "@/lib/docuseal-block-meta";
 import type { SignatureBlockItem } from "@/types/proposal";
 
 export const maxDuration = 60;
@@ -51,17 +52,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return apiError("Document must have at least one signature block to send via DocuSeal.", 400);
     }
 
-    // Format submitters for DocuSeal with guaranteed unique roles and real email addresses
-    const roleCounts: Record<string, number> = {};
-    const submittersInput = rawBlocks.map((block, index) => {
-      const isGitwork = block.type === "gitwork" || (index === 0 && block.type !== "client");
-      const baseType = (block.type?.trim().toLowerCase() || (isGitwork ? "gitwork" : "client")).replace(/[^a-z0-9_]/g, "_");
-      roleCounts[baseType] = (roleCounts[baseType] || 0) + 1;
+    // Derive the exact same role + field names the PDF renderer uses so the
+    // DocuSeal text tags match the submitter fields 1-to-1.
+    const blocksMeta = getDocusealBlocksMeta(rawBlocks);
 
-      // Unique role per submitter (DocuSeal invariant: role must be unique in submitters)
-      const role = roleCounts[baseType] === 1 ? baseType : `${baseType}_${roleCounts[baseType]}`;
-      const defaultVar = baseType === "gitwork" ? "gitwork_signature" : `client_signature${roleCounts[baseType] > 1 ? `_${roleCounts[baseType]}` : ""}`;
-      const variableName = (block.variableName?.trim() || defaultVar).toLowerCase().replace(/[^a-z0-9_]/g, "_");
+    const submittersInput = rawBlocks.map((block, index) => {
+      const meta = blocksMeta[index];
+      const isGitwork = block.type === "gitwork" || (index === 0 && block.type !== "client");
 
       // Smart name resolution
       let name = block.signatoryName?.trim() || block.partyName?.trim();
@@ -84,8 +81,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return {
         name,
         email,
-        role,
-        variableName,
+        role: meta.role,
+        variableName: meta.sigVarName,
       };
     });
 

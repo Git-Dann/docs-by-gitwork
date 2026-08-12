@@ -5,6 +5,8 @@ import { SignaturesEditor } from "@/components/proposals/legal-editors";
 import { asTrimmedText } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
 import { renderInline } from "@/lib/markdown";
+import { getDocusealBlocksMeta } from "@/lib/docuseal-block-meta";
+import type { DocusealBlockMeta } from "@/lib/docuseal-block-meta";
 import type { ReactNode } from "react";
 import type { SignatureBlockItem, SignaturesSectionData } from "@/types/proposal";
 
@@ -93,20 +95,24 @@ function SigningField({
   );
 }
 
-function SignatureCard({ block, index = 0 }: { block: SignatureBlockItem; index?: number }) {
+/**
+ * `meta` is computed once for ALL blocks by the parent `Preview` via
+ * `getDocusealBlocksMeta`, guaranteeing the tags printed in the PDF are
+ * identical to what `route.ts` registers with the DocuSeal API.
+ */
+function SignatureCard({
+  block,
+  meta,
+}: {
+  block: SignatureBlockItem;
+  meta: DocusealBlockMeta;
+}) {
   const personal = block.personal === true;
   // Blank lines are kept in the data so the editor's one-line-per-detail textarea stays typable;
   // they're dropped here so they never print as gaps.
   const details = (block.details ?? []).filter((line) => asTrimmedText(line));
 
-  const isGitwork = block.type === "gitwork" || (index === 0 && block.type !== "client");
-  const roleName = (block.type?.trim().toLowerCase() || (isGitwork ? "gitwork" : "client")).replace(/[^a-z0-9_]/g, "_");
-  const varSuffix = index > 0 && !isGitwork ? `_${index + 1}` : "";
-  const sigVarName = isGitwork ? "gitwork_signature" : `client_signature${varSuffix}`;
-  const dateVarName = isGitwork ? "gitwork_date" : `client_date${varSuffix}`;
-
-  const docusealSigTag = `{{${roleName}:signature:${sigVarName}}}`;
-  const docusealDateTag = `{{${roleName}:date:${dateVarName}}}`;
+  const { sigTag: docusealSigTag, dateTag: docusealDateTag } = meta;
 
   return (
     <div
@@ -176,6 +182,11 @@ export const signaturesSection = defineSection<SignaturesSectionData>({
     // Adapts to the signatory count: 1–3 sit on one row, 4–5 wrap. Never more than 3 across.
     const columns = Math.min(Math.max(blocks.length, 1), MAX_COLUMNS);
     const note = data.note?.trim();
+
+    // Compute DocuSeal metadata for ALL blocks in one pass so every card
+    // gets the exact role + field names that route.ts will send to the API.
+    const blocksMeta = getDocusealBlocksMeta(blocks);
+
     return (
       <div className="space-y-5">
         <div>
@@ -195,7 +206,7 @@ export const signaturesSection = defineSection<SignaturesSectionData>({
             style={{ gridTemplateColumns: `repeat(${columns}, minmax(0,1fr))` }}
           >
             {blocks.map((block, index) => (
-              <SignatureCard key={block.id} block={block} index={index} />
+              <SignatureCard key={block.id} block={block} meta={blocksMeta[index]} />
             ))}
           </div>
         ) : null}
