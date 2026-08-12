@@ -169,6 +169,7 @@ ${extractedText.slice(0, 18_000)}`;
   const projectName = extractedData?.projectName?.trim() || extractedData?.title?.trim() || "the Project";
   const founderName = extractedData?.founderName?.trim() || extractedData?.clientSignatoryName?.trim() || "Authorised Signatory";
   const clientAddress = extractedData?.clientAddress?.trim() || "Registered Address";
+  const summaryText = extractedData?.summaryText?.trim() || "";
 
   const replacements: Record<string, string> = {
     "{{client_name}}": resolvedClientName,
@@ -259,34 +260,43 @@ ${extractedText.slice(0, 18_000)}`;
     // Perform recursive placeholder replacement across the whole section JSON
     sectionData = replacePlaceholdersInJson(sectionData, replacements);
 
-    // Fill cover section
+    // ── Cover section ─────────────────────────────────────────────────────────────────────────
     if (blueprint.key === "cover" && typeof sectionData === "object" && sectionData) {
       sectionData.title = docTitle;
       sectionData.clientName = resolvedClientName;
-      if (extractedData?.summaryText) {
-        sectionData.subtitle = extractedData.summaryText.slice(0, 200);
+      if (summaryText) {
+        sectionData.subtitle = summaryText.slice(0, 200);
       }
     }
 
-    // Fill parties section — preserving structure for UI & DocuSeal compatibility
+
+    // ── Parties section — preserving structure for UI & DocuSeal compatibility ─────────────────
     if (blueprint.key === "parties" && typeof sectionData === "object" && sectionData) {
       if (Array.isArray(sectionData.parties)) {
         sectionData.parties = sectionData.parties.map((party: Record<string, unknown>, pIndex: number) => {
-          if (pIndex === 0) return party; // Keep Gitwork as Party A
+          if (pIndex === 0) return party; // Keep Gitwork as Party A — never touched
           if (pIndex === 1) {
             return {
               ...party,
               name: resolvedClientName,
-              organization: party.organization ? (replacePlaceholdersInJson(party.organization, replacements) as string) : party.organization,
-              email: party.email ? (replacePlaceholdersInJson(party.email, replacements) as string) : party.email,
+              organization: party.organization
+                ? (replacePlaceholdersInJson(party.organization, replacements) as string)
+                : party.organization,
+              email: party.email
+                ? (replacePlaceholdersInJson(party.email, replacements) as string)
+                : party.email,
             };
           }
           if (pIndex === 2) {
             return {
               ...party,
               name: founderName !== "Authorised Signatory" ? founderName : party.name,
-              organization: party.organization ? (replacePlaceholdersInJson(party.organization, replacements) as string) : party.organization,
-              email: party.email ? (replacePlaceholdersInJson(party.email, replacements) as string) : party.email,
+              organization: party.organization
+                ? (replacePlaceholdersInJson(party.organization, replacements) as string)
+                : party.organization,
+              email: party.email
+                ? (replacePlaceholdersInJson(party.email, replacements) as string)
+                : party.email,
             };
           }
           return party;
@@ -294,7 +304,7 @@ ${extractedText.slice(0, 18_000)}`;
       }
     }
 
-    // Fill signatures section — preserving structure for UI & DocuSeal compatibility
+    // ── Signatures section — preserving structure for UI & DocuSeal compatibility ─────────────
     if (blueprint.key === "signatures" && typeof sectionData === "object" && sectionData) {
       if (Array.isArray(sectionData.blocks)) {
         sectionData.blocks = sectionData.blocks.map((block: Record<string, unknown>, bIndex: number) => {
@@ -302,6 +312,7 @@ ${extractedText.slice(0, 18_000)}`;
           return {
             ...block,
             type: isGitwork ? "gitwork" : "client",
+            // Preserve existing variableName — DocuSeal relies on these for field mapping
             variableName: block.variableName || (isGitwork ? "gitwork_signature" : `client_signature${bIndex > 1 ? `_${bIndex}` : ""}`),
             partyName: isGitwork ? "Gitwork Group Ltd" : resolvedClientName,
             signatoryName: isGitwork
@@ -314,7 +325,9 @@ ${extractedText.slice(0, 18_000)}`;
               ? extractedData?.gitworkSignatoryRole || block.signatoryRole || "Director"
               : extractedData?.clientSignatoryRole || block.signatoryRole || "Director",
             details: Array.isArray(block.details)
-              ? block.details.map((d: unknown) => (typeof d === "string" ? (replacePlaceholdersInJson(d, replacements) as string) : d))
+              ? block.details.map((d: unknown) =>
+                  typeof d === "string" ? (replacePlaceholdersInJson(d, replacements) as string) : d,
+                )
               : block.details,
           };
         });
@@ -323,7 +336,7 @@ ${extractedText.slice(0, 18_000)}`;
 
     return {
       key: blueprint.key,
-      title: (extractedData?.sectionData?.[secIndexKey]?.title as string) || blueprint.title,
+      title: blueprint.title,
       description: blueprint.description,
       sortOrder: (index + 1) * 10,
       data: sectionData,
