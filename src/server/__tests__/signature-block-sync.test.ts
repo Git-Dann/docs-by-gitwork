@@ -32,7 +32,7 @@ describe("syncSignerPayloadToDocumentSection", () => {
       },
     ];
 
-    let updatedData: any = null;
+    let updatedData: Record<string, unknown> | null = null;
 
     const mockTx = {
       documentSection: {
@@ -42,9 +42,9 @@ describe("syncSignerPayloadToDocumentSection", () => {
           key: "signatures",
           data: { blocks: initialBlocks },
         }),
-        update: vi.fn().mockImplementation(({ data }: any) => {
-          updatedData = data;
-          return Promise.resolve({ id: "sec_signatures_123", ...data });
+        update: vi.fn().mockImplementation(({ data }: { data: unknown }) => {
+          updatedData = data as Record<string, unknown>;
+          return Promise.resolve({ id: "sec_signatures_123", ...updatedData });
         }),
       },
     } as unknown as Prisma.TransactionClient;
@@ -68,7 +68,8 @@ describe("syncSignerPayloadToDocumentSection", () => {
     expect(mockTx.documentSection.update).toHaveBeenCalled();
     expect(updatedData).not.toBeNull();
 
-    const blocks = updatedData.data.blocks;
+    const dataObj = (updatedData as unknown as { data: { blocks: Array<Record<string, unknown>> } }).data;
+    const blocks = dataObj.blocks;
     expect(blocks[0].signed).toBe(true);
     expect(blocks[0].signaturePayload).toBe("data:image/png;base64,mockPngBytes");
     expect(blocks[0].signedName).toBe("Muhammad Usman");
@@ -91,7 +92,7 @@ describe("syncSignerPayloadToDocumentSection", () => {
       },
     ];
 
-    let updatedData: any = null;
+    let updatedData: Record<string, unknown> | null = null;
 
     const mockTx = {
       documentSection: {
@@ -101,9 +102,9 @@ describe("syncSignerPayloadToDocumentSection", () => {
           key: "signatures",
           data: { blocks: initialBlocks },
         }),
-        update: vi.fn().mockImplementation(({ data }: any) => {
-          updatedData = data;
-          return Promise.resolve({ id: "sec_signatures_456", ...data });
+        update: vi.fn().mockImplementation(({ data }: { data: unknown }) => {
+          updatedData = data as Record<string, unknown>;
+          return Promise.resolve({ id: "sec_signatures_456", ...updatedData });
         }),
       },
     } as unknown as Prisma.TransactionClient;
@@ -120,7 +121,8 @@ describe("syncSignerPayloadToDocumentSection", () => {
     );
 
     expect(updatedData).not.toBeNull();
-    const blocks = updatedData.data.blocks;
+    const dataObj2 = (updatedData as unknown as { data: { blocks: Array<Record<string, unknown>> } }).data;
+    const blocks = dataObj2.blocks;
     expect(blocks[0].signed).toBe(true);
     expect(blocks[0].signaturePayload).toBe("DOCUSEAL_SIGNED");
     expect(blocks[0].signedName).toBe("Jane Doe");
