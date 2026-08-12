@@ -142,7 +142,7 @@ export async function createDocuSealSubmission(
       })),
     );
 
-    // PDF template creation
+    // PDF template creation — omit explicit fields so DocuSeal parses {{role:type:name}} text tags
     let pdfRes = await fetch(`${baseUrl}/templates/pdf`, {
       method: "POST",
       headers: {
@@ -155,10 +155,8 @@ export async function createDocuSealSubmission(
           {
             name: `${input.title.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`,
             file: base64File,
-            fields: templateFields,
           },
         ],
-        fields: templateFields,
       }),
     });
 
@@ -175,10 +173,8 @@ export async function createDocuSealSubmission(
             {
               name: `${input.title.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`,
               file: base64File,
-              fields: templateFields,
             },
           ],
-          fields: templateFields,
         }),
       });
     }
