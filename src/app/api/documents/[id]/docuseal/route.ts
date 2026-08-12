@@ -171,9 +171,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         <div style="margin-bottom: 30px; display: inline-block; width: 45%; vertical-align: top; margin-right: 4%;">
           <p style="font-weight: bold; font-size: 14px; margin-bottom: 4px; color: #0f172a;">${s.name}</p>
           <p style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Role: ${s.role.toUpperCase()} (${s.email})</p>
-          <div style="border: 1px dashed #cbd5e1; padding: 16px; min-height: 80px; background: #f8fafc; border-radius: 6px;">
-            <p style="font-size: 11px; color: #94a3b8; margin-bottom: 8px; font-family: monospace;">SIGNATURE FIELD:</p>
-            <p style="font-size: 14px; color: #0284c7;">{{${s.role}:signature:${s.variableName}}}</p>
+          <div style="border-bottom: 2px solid #0f172a; padding: 12px 0; min-height: 48px;">
+            <span style="font-size: 12px; color: #475569;">{{${s.role}:signature:${s.variableName}}}</span>
           </div>
         </div>
       `,

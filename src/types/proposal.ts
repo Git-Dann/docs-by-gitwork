@@ -406,6 +406,12 @@ export interface SignatureBlockItem {
   signatoryEmail: string;
   /** Filled at signing time (Sprint 4 e-sig); kept blank in v3. */
   signatureDate: string;
+  /** Captured signature data URL (PNG), typed string, or DocuSeal reference. */
+  signaturePayload?: string;
+  /** Exact name recorded when consent was signed. */
+  signedName?: string;
+  /** True when this block has been signed. */
+  signed?: boolean;
   /** Optional detail lines printed under the party name (company number, registered office, …).
    *  One entry per rendered line; blank entries are dropped at render. */
   details?: string[];

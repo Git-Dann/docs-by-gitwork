@@ -37,19 +37,49 @@ function MonoLabel({
 
 /**
  * One ruled signing field: a mono caps label over a hairline the signatory writes on (wet ink) or
- * that carries the captured value just above it. ~34px of clear height keeps the rule signable at
- * print size and stops two fields reading as one.
+ * that carries the captured signature payload / value just above it.
  */
-function SigningField({ label, value }: { label: string; value?: string }) {
+function SigningField({
+  label,
+  value,
+  payload,
+  signed,
+  signedName,
+}: {
+  label: string;
+  value?: string;
+  payload?: string;
+  signed?: boolean;
+  signedName?: string;
+}) {
   const filled = value?.trim();
+  const isImagePayload = payload?.startsWith("data:image/");
+
   return (
     <div>
       <MonoLabel size={9.5}>{label}</MonoLabel>
       <div
-        className="mt-1 flex items-end"
-        style={{ minHeight: 34, borderBottom: "1px solid var(--text-1)" }}
+        className="mt-1 flex items-end overflow-hidden"
+        style={{ minHeight: 38, borderBottom: "1px solid var(--text-1)" }}
       >
-        {filled ? (
+        {isImagePayload ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={payload}
+            alt="Signature"
+            className="max-h-12 object-contain pb-0.5"
+            style={{ maxHeight: "44px" }}
+          />
+        ) : signed || payload ? (
+          <div className="flex flex-wrap items-center gap-2 pb-1">
+            <span className="font-serif italic text-[15px] font-semibold text-[var(--brand-900)]">
+              {signedName || value || "Digitally Signed"}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-emerald-700 border border-emerald-200">
+              ✓ Verified Signature
+            </span>
+          </div>
+        ) : filled ? (
           <span className="pb-1 text-[13px] leading-tight text-[var(--text-1)]">{filled}</span>
         ) : null}
       </div>
@@ -62,9 +92,6 @@ function SignatureCard({ block }: { block: SignatureBlockItem }) {
   // Blank lines are kept in the data so the editor's one-line-per-detail textarea stays typable;
   // they're dropped here so they never print as gaps.
   const details = (block.details ?? []).filter((line) => asTrimmedText(line));
-  const roleStr = (block.type?.trim().toLowerCase() || "client").replace(/[^a-z0-9_]/g, "_");
-  const varStr = (block.variableName?.trim().toLowerCase() || `${roleStr}_signature`).replace(/[^a-z0-9_]/g, "_");
-  const sigLabel = `Signature ({{${roleStr}:signature:${varStr}}})`;
   return (
     <div
       className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-white"
@@ -91,7 +118,12 @@ function SignatureCard({ block }: { block: SignatureBlockItem }) {
         </div>
       ) : null}
       <div className="mt-6 space-y-4">
-        <SigningField label={sigLabel} />
+        <SigningField
+          label="SIGNATURE"
+          payload={block.signaturePayload}
+          signed={block.signed}
+          signedName={block.signedName}
+        />
         <SigningField label="Name" value={block.signatoryName} />
         {/* A personal signatory is witnessed rather than holding a position in a company. */}
         {personal ? (

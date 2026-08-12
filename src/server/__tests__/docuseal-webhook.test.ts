@@ -22,6 +22,10 @@ vi.mock("@/lib/prisma", () => ({
       count: (...args: unknown[]) => countSigners(...args),
       updateMany: (...args: unknown[]) => updateManySigners(...args),
     },
+    documentSection: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      update: vi.fn(),
+    },
     $transaction: vi.fn(async (cbOrArray: unknown) => {
       if (typeof cbOrArray === "function") {
         return cbOrArray(prisma);
@@ -34,10 +38,19 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+import { createHmac } from "crypto";
+
 function makeRequest(payload: unknown) {
+  const body = JSON.stringify(payload);
+  const secret = process.env.DOCUSEAL_WEBHOOK_SECRET?.trim();
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (secret) {
+    headers["x-docuseal-signature"] = createHmac("sha256", secret).update(body).digest("hex");
+  }
   return new NextRequest("http://localhost/api/webhooks/docuseal", {
     method: "POST",
-    body: JSON.stringify(payload),
+    headers,
+    body,
   });
 }
 
@@ -67,6 +80,7 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
       status: "PENDING",
       name: "Muhammad Usman",
       signedAt: null,
+      request: { documentId: "doc_100" },
     });
 
     countSigners.mockResolvedValueOnce(0); // 0 remaining (the "not: signer.id" count)
@@ -111,6 +125,7 @@ describe("DocuSeal Webhook Endpoint (POST)", () => {
       status: "PENDING",
       name: "Muhammad Usman",
       signedAt: null,
+      request: { documentId: "doc_100" },
     });
 
     countSigners.mockResolvedValueOnce(1); // 1 remaining (e.g. client)
