@@ -63,12 +63,12 @@ export function getDocusealBlocksMeta(
     // Unique role per submitter
     const role = count === 1 ? baseType : `${baseType}_${count}`;
 
-    // Default variable names — suffix only when there are multiple of the same type
+    // Default variable names — compact so tags stay short and single-line in PDF text layer
     const defaultSigVar = isGitwork
-      ? "gitwork_signature"
+      ? "gitwork_sig"
       : count > 1
-      ? `client_signature_${count}`
-      : "client_signature";
+      ? `client_sig_${count}`
+      : "client_sig";
 
     const defaultDateVar = isGitwork
       ? "gitwork_date"
@@ -76,13 +76,16 @@ export function getDocusealBlocksMeta(
       ? `client_date_${count}`
       : "client_date";
 
-    // Honour an explicit variableName stored on the block (power users can override)
-    const sigVarName = (block.variableName?.trim() || defaultSigVar)
+    // Honour an explicit variableName stored on the block, compacting long "signature" tokens
+    const rawVar = (block.variableName?.trim() || defaultSigVar)
       .toLowerCase()
-      .replace(/[^a-z0-9_]/g, "_");
+      .replace(/[^a-z0-9_]/g, "_")
+      .replace(/_signature/g, "_sig");
 
-    // Derive the date field name from the sig field name for consistency
-    const dateVarName = sigVarName.replace("signature", "date");
+    const sigVarName = rawVar;
+    const dateVarName = sigVarName.includes("_sig")
+      ? sigVarName.replace("_sig", "_date")
+      : sigVarName.replace("signature", "date");
 
     // DocuSeal official PDF text-tag format (semicolon-separated attributes):
     // {{Field Name;role=RoleName;type=signature}}

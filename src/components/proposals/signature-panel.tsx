@@ -175,7 +175,7 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
               Request prepared with {active.signers.length} signer{active.signers.length === 1 ? "" : "s"}. Send it
               when you&rsquo;re ready &mdash; that&rsquo;s what mints the public signing links.
             </p>
-            <SignerList signers={active.signers} onCopyLink={copyLink} copiedToken={copiedToken} requestSent={false} />
+            <SignerList signers={active.signers} onCopyLink={copyLink} copiedToken={copiedToken} requestSent={false} onRefresh={() => void requestsQuery.refetch()} />
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -204,7 +204,7 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
         {active && active.status === "SENT" ? (
           <div className="space-y-4">
             <SignedSoFar signers={active.signers} />
-            <SignerList signers={active.signers} onCopyLink={copyLink} copiedToken={copiedToken} requestSent={true} />
+            <SignerList signers={active.signers} onCopyLink={copyLink} copiedToken={copiedToken} requestSent={true} onRefresh={() => void requestsQuery.refetch()} />
             <Button
               type="button"
               variant="danger"
@@ -229,7 +229,7 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
                 appendix with full audit trail.
               </p>
             </div>
-            <SignerList signers={active.signers} onCopyLink={copyLink} copiedToken={copiedToken} requestSent={true} />
+            <SignerList signers={active.signers} onCopyLink={copyLink} copiedToken={copiedToken} requestSent={true} onRefresh={() => void requestsQuery.refetch()} />
           </div>
         ) : null}
 
@@ -286,11 +286,13 @@ function SignerList({
   onCopyLink,
   copiedToken,
   requestSent,
+  onRefresh,
 }: {
   signers: SignatureSignerRecord[];
   onCopyLink: (token: string) => void;
   copiedToken: string | null;
   requestSent: boolean;
+  onRefresh?: () => void;
 }) {
   return (
     <ul className="space-y-2">
@@ -325,8 +327,8 @@ function SignerList({
                 </p>
               ) : null}
               {s.firstViewedAt && !s.signedAt ? (
-                <p className="mt-0.5 text-[11px] text-[var(--text-4)]">
-                  First viewed {new Date(s.firstViewedAt).toLocaleString()}
+                <p className="mt-0.5 text-[11px] text-[var(--danger-500)] font-medium">
+                  Accessed {new Date(s.firstViewedAt).toLocaleTimeString()} (Single-use link spent — click Resend link)
                 </p>
               ) : null}
             </div>
@@ -343,13 +345,15 @@ function SignerList({
                     type="button"
                     onClick={async () => {
                       let activeToken = s.accessToken;
-                      // If the link was previously opened, refresh it first so the mailed link is guaranteed active
                       if (s.firstViewedAt) {
                         try {
                           const res = await fetch(`/api/sign/${s.accessToken}/regenerate`, { method: "POST" });
                           if (res.ok) {
                             const data = await res.json();
-                            if (data.newToken) activeToken = data.newToken;
+                            if (data.newToken) {
+                              activeToken = data.newToken;
+                              onRefresh?.();
+                            }
                           }
                         } catch {
                           // Fall back to current token
@@ -357,15 +361,27 @@ function SignerList({
                       }
                       const origin = typeof window !== "undefined" ? window.location.origin : "";
                       const signingUrl = `${origin}/sign/${activeToken}`;
-                      const subject = encodeURIComponent(`Signature Request: Document for ${s.name}`);
-                      const body = encodeURIComponent(
-                        `Hello ${s.name},\n\n` +
-                        `Please review and sign the document using the secure link below:\n\n` +
-                        `${signingUrl}\n\n` +
-                        `Note: This is a secure, single-use signing link.\n\n` +
-                        `Best regards,\nGitwork Team`
-                      );
-                      const mailtoUrl = `mailto:${encodeURIComponent(s.email)}?subject=${subject}&body=${body}`;
+                      const firstName = s.name.split(" ")[0] || s.name;
+                      const isExpired = Boolean(s.firstViewedAt);
+                      const docTitle = "Document";
+
+                      const subject = isExpired
+                        ? encodeURIComponent(`${docTitle} has expired`)
+                        : encodeURIComponent(`${docTitle} for signature, from Gitwork`);
+
+                      const bodyText = isExpired
+                        ? `Hi ${firstName},\n\n` +
+                          `Nothing lost. I can re issue ${docTitle} in a minute.\n\n` +
+                          `Want it sent again as it stands, or has something changed on your side that we should update first?\n\n` +
+                          `Review and sign:\n${signingUrl}\n\n` +
+                          `Gitwork`
+                        : `Hi ${firstName},\n\n` +
+                          `Everything we agreed is in here. Two minutes on any device, no account needed.\n\n` +
+                          `Review and sign:\n${signingUrl}\n\n` +
+                          `You get a signed PDF copy the moment everyone has signed.\n\n` +
+                          `Gitwork`;
+
+                      const mailtoUrl = `mailto:${encodeURIComponent(s.email)}?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
                       if (typeof window !== "undefined") {
                         window.location.href = mailtoUrl;
                       }
@@ -381,15 +397,42 @@ function SignerList({
                   </button>
                   <button
                     type="button"
-                    onClick={() => onCopyLink(s.accessToken)}
+                    onClick={async () => {
+                      if (s.firstViewedAt) {
+                        try {
+                          const res = await fetch(`/api/sign/${s.accessToken}/regenerate`, { method: "POST" });
+                          if (res.ok) {
+                            const data = await res.json();
+                            if (data.newToken) {
+                              onCopyLink(data.newToken);
+                              onRefresh?.();
+                              return;
+                            }
+                          }
+                        } catch {
+                          // Fall back to standard copy
+                        }
+                      }
+                      onCopyLink(s.accessToken);
+                    }}
                     className={cn(
-                      "inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 text-xs font-medium text-[var(--text-2)] transition",
-                      "hover:bg-[var(--surface-1)]",
+                      "inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 text-xs font-medium transition",
+                      s.firstViewedAt
+                        ? "border-[var(--brand-600)] bg-[var(--brand-50)] text-[var(--brand-700)] hover:bg-[var(--brand-100)]"
+                        : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
                     )}
-                    title="Copy this signer's link"
+                    title={s.firstViewedAt ? "Generate a fresh active link and copy to clipboard" : "Copy this signer's link"}
                   >
-                    <ClipboardDocumentIcon className="h-3.5 w-3.5" />
-                    {copiedToken === s.accessToken ? "Copied" : "Copy link"}
+                    {s.firstViewedAt ? (
+                      <ArrowPathIcon className="h-3.5 w-3.5" />
+                    ) : (
+                      <ClipboardDocumentIcon className="h-3.5 w-3.5" />
+                    )}
+                    {copiedToken === s.accessToken
+                      ? "Copied"
+                      : s.firstViewedAt
+                      ? "Resend link"
+                      : "Copy link"}
                   </button>
                   <a
                     href={`/sign/${s.accessToken}`}
