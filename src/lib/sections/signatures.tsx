@@ -10,8 +10,8 @@ import type { DocusealBlockMeta } from "@/lib/docuseal-block-meta";
 import type { ReactNode } from "react";
 import type { SignatureBlockItem, SignaturesSectionData } from "@/types/proposal";
 
-/** Max cards per row. 4–5 signatories wrap to a second row rather than squashing to slivers. */
-const MAX_COLUMNS = 3;
+/** Max cards per row. Max 2 columns guarantees cards have ~360px width so DocuSeal tags fit on one line. */
+const MAX_COLUMNS = 2;
 
 /** Mono uppercase label, the doc's own eyebrow grammar. Accent when it heads a card. */
 function MonoLabel({

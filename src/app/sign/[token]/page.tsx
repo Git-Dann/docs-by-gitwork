@@ -98,8 +98,8 @@ export default async function SignPage({ params }: PageProps) {
   if (signer.firstViewedAt) {
     return (
       <NoticePage
-        title="This single-use link has already been accessed"
-        body="For security reasons, this signing link can only be opened once. If you closed your browser before signing, please ask your Gitwork contact for a fresh link."
+        title="The signing link has expired"
+        body="Nothing lost. I can re issue the document in a minute. Please ask your Gitwork contact for a fresh link."
       />
     );
   }
