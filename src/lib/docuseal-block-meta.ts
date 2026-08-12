@@ -11,7 +11,12 @@
  * where a field name mismatch causes DocuSeal to render an unanchored text
  * box instead of a locked signature pad.
  *
- * Algorithm mirrors `route.ts` role-count logic exactly:
+ * DocuSeal official text tag format (semicolon-separated attributes):
+ *   {{Field Name;role=Signer1;type=signature}}
+ *   {{Field Name;role=Signer1;type=date}}
+ * Source: https://www.docuseal.com/guides/use-embedded-text-field-tags-in-the-pdf-to-create-a-fillable-form
+ *
+ * Role/field naming convention:
  *   – First gitwork block  → role "gitwork",    field "gitwork_signature"
  *   – First client block   → role "client",     field "client_signature"
  *   – Second client block  → role "client_2",   field "client_signature_2"
@@ -79,9 +84,11 @@ export function getDocusealBlocksMeta(
     // Derive the date field name from the sig field name for consistency
     const dateVarName = sigVarName.replace("signature", "date");
 
-    // DocuSeal standard text-tag format: {{role:type:field_name}}
-    const sigTag = `{{${role}:signature:${sigVarName}}}`;
-    const dateTag = `{{${role}:date:${dateVarName}}}`;
+    // DocuSeal official PDF text-tag format (semicolon-separated attributes):
+    // {{Field Name;role=RoleName;type=signature}}
+    // Source: https://www.docuseal.com/guides/use-embedded-text-field-tags-in-the-pdf-to-create-a-fillable-form
+    const sigTag = `{{${sigVarName};role=${role};type=signature}}`;
+    const dateTag = `{{${dateVarName};role=${role};type=date}}`;
 
     return { role, sigVarName, dateVarName, sigTag, dateTag };
   });
