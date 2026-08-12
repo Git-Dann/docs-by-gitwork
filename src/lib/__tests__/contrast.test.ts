@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   AA_LARGE,
+  extractColorStops,
+  readableInkOnGradient,
   AA_NORMAL,
   contrastRatio,
   ensureContrast,
@@ -150,5 +152,67 @@ describe("ensureContrast", () => {
 
   it("falls back to a readable ink for an unparseable colour", () => {
     expect(ensureContrast("not-a-colour", "#FFFFFF")).toBe(INK_DARK);
+  });
+});
+
+describe("gradient bands", () => {
+  /** The reported case: a pale cream/peach brand gradient. */
+  const PALE = "linear-gradient(135deg, #FDF6E9 0%, #F7E3C8 100%)";
+  /** A conventional dark brand gradient. */
+  const DARK = "linear-gradient(135deg, #0F172A 0%, #1F2937 100%)";
+
+  it("reads hex stops out of a gradient", () => {
+    expect(extractColorStops(PALE)).toEqual(["#FDF6E9", "#F7E3C8"]);
+  });
+
+  it("reads rgb()/rgba() stops and ignores alpha", () => {
+    expect(extractColorStops("linear-gradient(90deg, rgb(15, 23, 42), rgba(255,255,255,0.5))")).toEqual([
+      "#0F172A",
+      "#FFFFFF",
+    ]);
+  });
+
+  it("skips stops it cannot parse", () => {
+    expect(extractColorStops("linear-gradient(90deg, var(--brand), rebeccapurple)")).toEqual([]);
+  });
+
+  it("picks dark ink on a pale gradient — the invisible-hero case", () => {
+    // This is the bug: the ink used to come from the brand PRIMARY (a mid gold →
+    // white) while this band was what actually got painted.
+    expect(readableInkOnGradient(PALE)).toBe(INK_DARK);
+    for (const stop of extractColorStops(PALE)) {
+      expect(contrastRatio(stop, INK_DARK)).toBeGreaterThanOrEqual(AA_LARGE);
+    }
+  });
+
+  it("still picks white on a dark gradient", () => {
+    expect(readableInkOnGradient(DARK)).toBe(INK_LIGHT);
+  });
+
+  it("judges by the WORST stop, not by the first one", () => {
+    /**
+     * A band running dark → white. Looking only at the first stop says "white
+     * text" (it reads on the navy) and then white lands on white at the far end.
+     *
+     * The first version of this test used a gradient where both rules happened to
+     * agree, so it passed even when the implementation was weakened to read only
+     * stops[0] — it was proving nothing. This case makes the two rules disagree.
+     */
+    const band = "linear-gradient(90deg, #0F172A 0%, #FFFFFF 100%)";
+    const stops = extractColorStops(band);
+    const firstStopAnswer = readableInk(stops[0]); // what the weak rule would say
+    const actual = readableInkOnGradient(band);
+
+    expect(firstStopAnswer).toBe(INK_LIGHT);
+    expect(actual).not.toBe(firstStopAnswer);
+
+    // And the answer it does give maximises the minimum contrast along the band.
+    const worst = (ink: string) => Math.min(...stops.map((st) => contrastRatio(st, ink)));
+    expect(worst(actual)).toBeGreaterThan(worst(firstStopAnswer));
+  });
+
+  it("falls back to the given background when nothing parses", () => {
+    expect(readableInkOnGradient("var(--brand-gradient)", "#0F172A")).toBe(INK_LIGHT);
+    expect(readableInkOnGradient(null, "#FFFFFF")).toBe(INK_DARK);
   });
 });

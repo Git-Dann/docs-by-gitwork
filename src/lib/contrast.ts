@@ -125,3 +125,52 @@ export function rgba(hex: string, alpha: number): string {
   if (!rgb) return hex;
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
 }
+
+/**
+ * Pull the colour stops out of a CSS gradient (or any CSS colour expression).
+ *
+ * Handles `#rgb`/`#rrggbb` and `rgb()`/`rgba()`. Alpha is ignored — a stop's own
+ * colour is the best available approximation of what will be painted, and a
+ * rough answer here is far better than measuring a colour that isn't on screen
+ * at all. Anything it cannot read (named colours, `var()`, `color-mix()`) is
+ * skipped, and callers fall back to a known background.
+ */
+export function extractColorStops(css: string | null | undefined): string[] {
+  if (!css) return [];
+  const out: string[] = [];
+  for (const m of css.matchAll(/#[0-9a-f]{3,8}\b/gi)) {
+    // #rrggbbaa → drop the alpha pair; #rgb / #rrggbb pass through.
+    const hex = m[0].length >= 9 ? m[0].slice(0, 7) : m[0].length === 5 ? m[0].slice(0, 4) : m[0];
+    if (parseHex(hex)) out.push(hex);
+  }
+  for (const m of css.matchAll(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/gi)) {
+    const [r, g, b] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    if ([r, g, b].every((v) => v >= 0 && v <= 255)) {
+      out.push(`#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`.toUpperCase());
+    }
+  }
+  return out;
+}
+
+/**
+ * The ink to use on a GRADIENT band.
+ *
+ * ⚠️ Exists because a brand hero derived its text colour from the brand's PRIMARY
+ * while painting the brand's own gradient behind it. For a client whose gradient
+ * is pale (a cream, a soft peach) but whose primary is a mid tone, that produced
+ * white text on a near-white band — invisible, and no amount of fixing the
+ * ink-choice threshold helps, because the colour being measured was never on
+ * screen.
+ *
+ * Chooses the ink with the best WORST-CASE contrast across every stop: the text
+ * has to stay readable along the whole band, not just at the end it started from.
+ */
+export function readableInkOnGradient(
+  css: string | null | undefined,
+  fallbackBg = "#FFFFFF",
+): string {
+  const stops = extractColorStops(css);
+  if (stops.length === 0) return readableInk(fallbackBg);
+  const worst = (ink: string) => Math.min(...stops.map((stop) => contrastRatio(stop, ink)));
+  return worst(INK_DARK) >= worst(INK_LIGHT) ? INK_DARK : INK_LIGHT;
+}
