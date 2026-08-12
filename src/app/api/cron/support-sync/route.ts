@@ -1,13 +1,10 @@
-import { NextRequest, after } from "next/server";
+import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { assertCron } from "@/server/auth/cron";
 import { loggerFor } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
-import { syncConnection, toSyncContext } from "@/server/support-sync";
-import { enrichConversations } from "@/server/care-agents/enrich";
-import { evaluateWorkflowRules } from "@/server/support";
-import { runCourseFeedbackImport } from "@/server/wiki-course-feedback";
+import { syncConnection, toSyncContext, runPostSyncHousekeeping } from "@/server/support-sync";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -96,43 +93,33 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // ALL course-requests-only clients (support paused), regardless of whether they got
-    // new mail this cycle — the import dedupes, so it drains any backlog and is a cheap
-    // no-op once caught up. Their conversations are never triaged/enriched or rule-routed.
-    const courseOnlyClients = await prisma.supportClient.findMany({
-      where: { workspaceId: workspace.id, courseRequestOnly: true, workspaceClientId: { not: null } },
-      select: { id: true, workspaceClientId: true },
-    });
-    const courseOnlyIds = new Set(courseOnlyClients.map((c) => c.id));
-
-    // Enrich + evaluate workflow rules for newly-ingested conversations belonging to
-    // NON-course-only clients — after the response, non-gating, never blocks sync.
-    if (allNewConversationIds.length > 0 || courseOnlyClients.length > 0) {
-      after(async () => {
-        const triageConvIds = newConvByClient
-          .filter(({ clientId }) => !courseOnlyIds.has(clientId))
-          .map(({ convId }) => convId);
-
-        if (triageConvIds.length > 0) {
-          await enrichConversations({ workspace }, triageConvIds, { max: 50 }).catch((err) =>
-            log.error("conversation enrichment failed", err),
-          );
-        }
-        await Promise.allSettled(
-          newConvByClient
-            .filter(({ clientId }) => !courseOnlyIds.has(clientId))
-            .map(({ clientId, convId }) => evaluateWorkflowRules(clientId, convId)),
-        );
-
-        // Drain course requests for every course-requests-only client.
-        await Promise.allSettled(
-          courseOnlyClients.map((c) =>
-            runCourseFeedbackImport(c.workspaceClientId as string, { onlyCourseRequests: true }).catch((err) =>
-              log.error("course-feedback auto-import failed", err),
-            ),
-          ),
-        );
-      });
+    // ⚠️ This route used to hand-roll the course-request drain and the enrich/rules fan-out — and
+    // ran NEITHER the forwarded-identity repair nor the activity backfill, so the nightly sync
+    // silently skipped both every night. One shared helper covers every entry point now.
+    //
+    // Called once per CLIENT, not once per connection: a client with three connectors would
+    // otherwise pay for the repair three times per run.
+    const touchedClientIds = [...new Set(newConvByClient.map((n) => n.clientId).concat(
+      connections.map((c) => c.client.id),
+    ))];
+    const newByClient = new Map<string, string[]>();
+    for (const { clientId, convId } of newConvByClient) {
+      newByClient.set(clientId, [...(newByClient.get(clientId) ?? []), convId]);
+    }
+    const housekeeping = await Promise.allSettled(
+      touchedClientIds.map((clientId) =>
+        runPostSyncHousekeeping({
+          clientId,
+          workspace,
+          newConversationIds: newByClient.get(clientId) ?? [],
+        }),
+      ),
+    );
+    for (const [i, res] of housekeeping.entries()) {
+      if (res.status === "rejected") log.error("post-sync housekeeping failed", res.reason);
+      else if (res.value.relabelled > 0 || res.value.stamped > 0 || res.value.relabelRemaining > 0) {
+        log.info("post-sync housekeeping", { clientId: touchedClientIds[i], ...res.value });
+      }
     }
 
     return apiOk({

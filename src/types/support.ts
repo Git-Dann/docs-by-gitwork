@@ -37,6 +37,11 @@ export interface SupportClient {
   reportingRecipient?: string;
   reportDueDay?: number;
   workspaceClientId?: string;
+  /**
+   * The linked PORTAL client's slug — what the per-client wiki features key on
+   * (`src/lib/wiki-sections.ts`). Distinct from `slug` above, which is Care's own.
+   */
+  workspaceClientSlug?: string;
   /** Support paused: ingest quietly, skip triage/rules, auto-import course requests. */
   courseRequestOnly?: boolean;
   unreadCount?: number;
@@ -203,6 +208,12 @@ export interface ConversationViewCounts {
   all: number;
   /** ISO timestamp of the longest-waiting customer message, or null when nobody is waiting. */
   oldestAwaitingAt: string | null;
+  /**
+   * Channels this client's conversations actually came from, busiest first — NOT its live
+   * connections. A connector can be removed or replaced (Gmail → IMAP) while its conversations
+   * remain, and a filter built from connections cannot reach them.
+   */
+  sources: Array<{ source: SupportSource; count: number }>;
 }
 
 /**

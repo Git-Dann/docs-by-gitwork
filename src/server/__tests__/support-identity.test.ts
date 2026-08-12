@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { resolveCustomer, derivePreview, emailsIn } from "@/server/support-channels/identity";
+import {
+  resolveCustomer,
+  derivePreview,
+  emailsIn,
+  isSelfLabel,
+  parseAddressLabel,
+} from "@/server/support-channels/identity";
 
 // Fixtures are REAL rows from the Fellas Loaded inbox (the 226-row queue where every row was
 // labelled "Fellas Loaded"). Designing against invented sample data is what let that ship.
@@ -190,6 +196,105 @@ describe("resolveCustomer — the shape actually stored in the database", () => 
       { clientName: "Fellas Loaded" },
     );
     expect(r.label).toBe("Fellas Loaded");
+    expect(r.viaForwarder).toBe(true);
+  });
+});
+
+describe("isSelfLabel — the repair's selection test", () => {
+  /**
+   * ⚠️ This is the block the repair kept failing on, and the fixtures have now been wrong in BOTH
+   * directions. §42.10 corrected them to Gmail's stored shape (a bare display name, address
+   * stripped) — and in doing so cemented the assumption that that is the only shape. It is not:
+   * the IMAP adapter stores the full RFC form, so the same forwarder is
+   * `"Fellas Loaded" <noreply@fellasloaded.com>` on the Email connector and `Fellas Loaded` on the
+   * Gmail one. A whole-string comparison against the client name matches the second and silently
+   * misses the first, which is why the live board stayed broken through three fixes.
+   *
+   * Both shapes are asserted here, and so is the guard that matters more than either.
+   */
+  const CLIENT = { clientName: "Fellas Loaded", mailboxAddress: "support@fellasloaded.com" };
+
+  it("matches Gmail's stored shape — a bare display name", () => {
+    expect(isSelfLabel("Fellas Loaded", CLIENT)).toBe(true);
+  });
+
+  it("matches IMAP's stored shape — the quoted RFC form with an address", () => {
+    expect(isSelfLabel('"Fellas Loaded" <noreply@fellasloaded.com>', CLIENT)).toBe(true);
+  });
+
+  it("matches the RFC form on the NAME alone, with nothing else to fall back on", () => {
+    /*
+     * ⚠️ Load-bearing, and the fixture above does NOT cover it. Reverting `isSelfLabel` to the old
+     * whole-string comparison left every other assertion here green, because
+     * `noreply@fellasloaded.com` is caught by the no-reply branch and `support@…` by the mailbox
+     * branch — so the name parsing, the actual fix, was never the thing being tested.
+     *
+     * This address is neither a no-reply nor the configured mailbox, and no mailbox is configured,
+     * so the ONLY route to `true` is parsing the display name out of the RFC form.
+     */
+    expect(isSelfLabel('"Fellas Loaded" <hello@fellasloaded.com>', { clientName: "Fellas Loaded" })).toBe(true);
+  });
+
+  it("matches the mailbox's own address whatever name it wears", () => {
+    expect(isSelfLabel('"Anything At All" <support@fellasloaded.com>', CLIENT)).toBe(true);
+  });
+
+  it("matches a no-reply sender even with no client context", () => {
+    expect(isSelfLabel("no-reply@stripe.com", {})).toBe(true);
+    expect(isSelfLabel('"Do Not Reply" <donotreply@apple.com>', {})).toBe(true);
+  });
+
+  it("leaves a genuine customer alone — in either stored shape", () => {
+    // The failure mode that is WORSE than the bug: rewriting a real person's row.
+    expect(isSelfLabel("Björn Khermik", CLIENT)).toBe(false);
+    expect(isSelfLabel('"Björn Khermik" <bjorn@example.com>', CLIENT)).toBe(false);
+    expect(isSelfLabel("Jesse Grever", CLIENT)).toBe(false);
+    expect(isSelfLabel('"Shea Lavery" <shea@example.com>', CLIENT)).toBe(false);
+  });
+
+  it("is false for an empty label rather than throwing", () => {
+    expect(isSelfLabel("", CLIENT)).toBe(false);
+    expect(isSelfLabel(null, CLIENT)).toBe(false);
+    expect(isSelfLabel(undefined, CLIENT)).toBe(false);
+  });
+});
+
+describe("parseAddressLabel", () => {
+  it("splits the RFC form", () => {
+    expect(parseAddressLabel('"Fellas Loaded" <noreply@fellasloaded.com>')).toEqual({
+      name: "Fellas Loaded",
+      address: "noreply@fellasloaded.com",
+    });
+  });
+
+  it("returns a bare name as the name, with no address", () => {
+    expect(parseAddressLabel("Fellas Loaded")).toEqual({ name: "Fellas Loaded", address: "" });
+  });
+
+  it("treats a bare address as both", () => {
+    expect(parseAddressLabel("matty@gmail.com")).toEqual({
+      name: "matty@gmail.com",
+      address: "matty@gmail.com",
+    });
+  });
+
+  it("is empty for empty input", () => {
+    expect(parseAddressLabel("")).toEqual({ name: "", address: "" });
+  });
+});
+
+describe("resolveCustomer — the IMAP stored shape", () => {
+  it("pulls the customer out of the subject for an RFC-form forwarder", () => {
+    // The exact live row: Email connector, forwarder in the From, real customer in the subject.
+    const r = resolveCustomer(
+      {
+        fromText: '"Fellas Loaded" <noreply@fellasloaded.com>',
+        subject: "Support Request - monkeymoo03@icloud.com",
+        body: "Hi, I canceled my subscription over a year ago and just realized i have been getting charged every month still.",
+      },
+      { clientName: "Fellas Loaded" },
+    );
+    expect(r.label).toBe("monkeymoo03@icloud.com");
     expect(r.viaForwarder).toBe(true);
   });
 });
