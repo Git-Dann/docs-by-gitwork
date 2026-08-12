@@ -148,7 +148,7 @@ ${extractedText.slice(0, 18_000)}`;
       system: systemPrompt,
       user: userPrompt,
       tier: "standard",
-      maxTokens: 4000,
+      maxTokens: 8192,
     });
     extractedData = parseJsonObject<ExtractedDocMetadata>(rawAiResponse);
     if (extractedData) {
