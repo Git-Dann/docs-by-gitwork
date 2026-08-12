@@ -467,6 +467,21 @@ export async function declineSignature(
     });
   });
 }
+/**
+ * Regenerates a single-use accessToken for a signer and resets their view state.
+ * Use when a client closed their session before signing and needs a fresh link.
+ */
+export async function regenerateSignerToken(signerId: string) {
+  const newToken = mintSignerToken();
+  return prisma.signatureSigner.update({
+    where: { id: signerId },
+    data: {
+      accessToken: newToken,
+      firstViewedAt: null,
+      status: SignatureSignerStatus.PENDING,
+    },
+  });
+}
 
 // ── Query helpers ──────────────────────────────────────────────────────────
 

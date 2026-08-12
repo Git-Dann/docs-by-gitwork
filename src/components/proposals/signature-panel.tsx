@@ -17,7 +17,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowPathIcon, ClipboardDocumentIcon, PaperAirplaneIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, ClipboardDocumentIcon, EnvelopeIcon, PaperAirplaneIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import {
@@ -339,6 +339,46 @@ function SignerList({
               </span>
               {requestSent && s.status !== "SIGNED" && s.status !== "DECLINED" ? (
                 <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      let activeToken = s.accessToken;
+                      // If the link was previously opened, refresh it first so the mailed link is guaranteed active
+                      if (s.firstViewedAt) {
+                        try {
+                          const res = await fetch(`/api/sign/${s.accessToken}/regenerate`, { method: "POST" });
+                          if (res.ok) {
+                            const data = await res.json();
+                            if (data.newToken) activeToken = data.newToken;
+                          }
+                        } catch {
+                          // Fall back to current token
+                        }
+                      }
+                      const origin = typeof window !== "undefined" ? window.location.origin : "";
+                      const signingUrl = `${origin}/sign/${activeToken}`;
+                      const subject = encodeURIComponent(`Signature Request: Document for ${s.name}`);
+                      const body = encodeURIComponent(
+                        `Hello ${s.name},\n\n` +
+                        `Please review and sign the document using the secure link below:\n\n` +
+                        `${signingUrl}\n\n` +
+                        `Note: This is a secure, single-use signing link.\n\n` +
+                        `Best regards,\nGitwork Team`
+                      );
+                      const mailtoUrl = `mailto:${encodeURIComponent(s.email)}?subject=${subject}&body=${body}`;
+                      if (typeof window !== "undefined") {
+                        window.location.href = mailtoUrl;
+                      }
+                    }}
+                    className={cn(
+                      "inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 text-xs font-medium text-[var(--text-2)] transition",
+                      "hover:bg-[var(--surface-1)]",
+                    )}
+                    title="Open your email app pre-filled with recipient, subject, and signing link"
+                  >
+                    <EnvelopeIcon className="h-3.5 w-3.5 text-[var(--brand-600)]" />
+                    Email link
+                  </button>
                   <button
                     type="button"
                     onClick={() => onCopyLink(s.accessToken)}

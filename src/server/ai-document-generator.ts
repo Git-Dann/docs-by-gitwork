@@ -82,17 +82,17 @@ Your task is to analyze reference documents or briefs and generate fully populat
 
 Here are the section components in the ${documentType} template (with index numbers and titles):
 ${JSON.stringify(
-  blueprintSummaries.map((b, idx) => ({
-    index: idx,
-    sectionKey: `section_${idx}`,
-    key: b.key,
-    title: b.title,
-    titleSlug: b.title.toLowerCase().replace(/[^a-z0-9_]/g, "_"),
-    description: b.description,
-  })),
-  null,
-  2,
-)}
+    blueprintSummaries.map((b, idx) => ({
+      index: idx,
+      sectionKey: `section_${idx}`,
+      key: b.key,
+      title: b.title,
+      titleSlug: b.title.toLowerCase().replace(/[^a-z0-9_]/g, "_"),
+      description: b.description,
+    })),
+    null,
+    2,
+  )}
 
 Extract and generate structured JSON strictly matching this interface:
 {
@@ -153,8 +153,7 @@ ${extractedText.slice(0, 18_000)}`;
     extractedData = parseJsonObject<ExtractedDocMetadata>(rawAiResponse);
     if (extractedData) {
       console.log(
-        `[AI Generator] Successfully parsed AI response. Title="${extractedData.title}" client="${extractedData.clientName}" project="${extractedData.projectName}" sectionsCount=${
-          Object.keys(extractedData.sectionData ?? {}).length
+        `[AI Generator] Successfully parsed AI response. Title="${extractedData.title}" client="${extractedData.clientName}" project="${extractedData.projectName}" sectionsCount=${Object.keys(extractedData.sectionData ?? {}).length
         }`,
       );
     } else {
@@ -326,8 +325,8 @@ ${extractedText.slice(0, 18_000)}`;
               : extractedData?.clientSignatoryRole || block.signatoryRole || "Director",
             details: Array.isArray(block.details)
               ? block.details.map((d: unknown) =>
-                  typeof d === "string" ? (replacePlaceholdersInJson(d, replacements) as string) : d,
-                )
+                typeof d === "string" ? (replacePlaceholdersInJson(d, replacements) as string) : d,
+              )
               : block.details,
           };
         });

@@ -92,6 +92,18 @@ export default async function SignPage({ params }: PageProps) {
     );
   }
 
+  // ── Strict single-use link check ──────────────────────────────────────────────────
+  // If the link has already been opened in a prior session (firstViewedAt is set)
+  // and the signer has not completed signing, block access for security.
+  if (signer.firstViewedAt) {
+    return (
+      <NoticePage
+        title="This single-use link has already been accessed"
+        body="For security reasons, this signing link can only be opened once. If you closed your browser before signing, please ask your Gitwork contact for a fresh link."
+      />
+    );
+  }
+
   // ── Active signing flow ─────────────────────────────────────────────────────────────
   const embedSrc = signer.docusealEmbedSrc;
   const iframeSrc = embedSrc
