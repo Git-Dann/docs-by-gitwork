@@ -92,6 +92,9 @@ function SignatureCard({ block }: { block: SignatureBlockItem }) {
   // Blank lines are kept in the data so the editor's one-line-per-detail textarea stays typable;
   // they're dropped here so they never print as gaps.
   const details = (block.details ?? []).filter((line) => asTrimmedText(line));
+  const roleStr = (block.type?.trim().toLowerCase() || "client").replace(/[^a-z0-9_]/g, "_");
+  const varStr = (block.variableName?.trim().toLowerCase() || `${roleStr}_signature`).replace(/[^a-z0-9_]/g, "_");
+  const sigLabel = `Signature ({{${roleStr}:signature:${varStr}}})`;
   return (
     <div
       className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-white"
