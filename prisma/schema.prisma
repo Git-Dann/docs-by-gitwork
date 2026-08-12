@@ -414,6 +414,7 @@ model Workspace {
   clients                     WorkspaceClient[]
   clientOnboardings           ClientOnboarding[]
   onboardingForms             OnboardingForm[]
+  launchpadTemplates          LaunchpadTemplate[]
   rateCardPeople              RateCardPerson[]
   proofDocuments              ProofDocument[]
   candidates                  Candidate[]
@@ -1362,6 +1363,12 @@ model ClientWiki {
   /// Whether the Code Handover section is enabled — versioned source per hardware
   /// module (e.g. Receiver / Sender firmware) handed to the client to flash.
   codeHandoverEnabled Boolean                @default(false)
+  /// Whether the Launchpad section is enabled — the tracked list of everything we
+  /// need FROM the client to start and ship, plus the fillable boilerplate legal
+  /// docs. Flag-driven exactly like `intakeEnabled`: default false so a fresh wiki
+  /// starts minimal, and the client-facing write routes reject until it's on.
+  launchpadEnabled    Boolean                @default(false)
+  launchpad           ClientLaunchpad?
   pages               ClientWikiPage[]
   changelog           ClientChangelogEntry[]
   courseRequests      ClientCourseRequest[]
@@ -1899,6 +1906,119 @@ model OnboardingForm {
   onboardings ClientOnboarding[]
 
   @@index([workspaceId, isArchived, updatedAt])
+}
+
+// ─── Launchpad ────────────────────────────────────────────────────────────────
+// Everything Gitwork needs FROM a client to start and ship: a tracked
+// requirements checklist grouped into modules, plus fillable boilerplate legal
+// docs. A SIBLING of the onboarding engine (same master-template + snapshot-on-
+// assign shape) rather than an extension of it, because two things diverge too
+// far from onboarding's flat id→value answer map to share it: per-item checklist
+// status (LaunchpadItem) and per-doc approval state (LaunchpadDoc).
+
+/// The editable master template. Mirrors `OnboardingForm`, but the JSON column is
+/// named `structure` (not `steps`) because a Launchpad is modules, not a wizard.
+model LaunchpadTemplate {
+  id          String            @id @default(cuid())
+  workspaceId String?
+  workspace   Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  name        String
+  slug        String            @unique
+  description String?
+  /// LaunchpadStructure: { modules: LaunchpadModule[] }. Validated in app code, not Prisma.
+  structure   Json
+  isDefault   Boolean           @default(false)
+  isArchived  Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  launchpads  ClientLaunchpad[]
+
+  @@index([workspaceId, isArchived, updatedAt])
+}
+
+/// One client's assigned Launchpad, hanging off their wiki (the surface it renders
+/// in). `structureSnapshot` is frozen at assign so later template edits never
+/// disturb a live kit — the same reasoning as `ClientOnboarding.formSnapshot` and
+/// `Document`'s template copy. `templateId` is SetNull so deleting a template can
+/// never destroy an assigned kit.
+model ClientLaunchpad {
+  id                String             @id @default(cuid())
+  wikiId            String             @unique
+  wiki              ClientWiki         @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  templateId        String?
+  template          LaunchpadTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  /// The frozen LaunchpadStructure this kit renders from.
+  structureSnapshot Json
+  /// Module ids switched on for this client (e.g. ["foundations","ios"]).
+  enabledModules    String[]           @default([])
+  /// Custom (non-checklist, non-doc) field answers, keyed by field id.
+  answers           Json?
+  items             LaunchpadItem[]
+  docs              LaunchpadDoc[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([templateId])
+}
+
+/// One requirement's live state. `itemId` is the field id from the snapshot, so a
+/// row is only meaningful alongside the kit that froze it.
+model LaunchpadItem {
+  id            String              @id @default(cuid())
+  kitId         String
+  kit           ClientLaunchpad     @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  /// The snapshot field id this row tracks.
+  itemId        String
+  status        LaunchpadItemStatus @default(NEEDED)
+  /// A pasted Drive/Figma/etc URL. LINKS ONLY — never fetched server-side (SSRF),
+  /// same posture as ClientWikiIntakeItem.attachmentUrls.
+  link          String?
+  note          String?             @db.Text
+  /// Who owns the account/asset. Null = inherit the template's default (which is
+  /// client-owned for every account item). Explicit false = Gitwork holds it.
+  ownedByClient Boolean?
+  /// Display name of whoever last moved it — a client wiki user or a Gitwork user.
+  updatedBy     String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@unique([kitId, itemId])
+  @@index([kitId, status])
+}
+
+/// A fillable boilerplate legal doc. Deliberately NOT a `Document` record: these
+/// are Launchpad artifacts rendered deterministically from `answers`, so the
+/// DocumentType enum and its exhaustive maps stay untouched.
+model LaunchpadDoc {
+  id              String             @id @default(cuid())
+  kitId           String
+  kit             ClientLaunchpad    @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  /// "cookie" | "terms" | "privacy" — the generator key.
+  docKey          String
+  /// The client's typed answers, merged into the template at render time.
+  answers         Json?
+  /// Set on the FIRST edit, which is what makes TEMPLATE → EDITED a real
+  /// transition rather than a diff against a moving template.
+  bodyOverride    String?            @db.Text
+  status          LaunchpadDocStatus @default(TEMPLATE)
+  approvedAt      DateTime?
+  approvedByEmail String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@unique([kitId, docKey])
+}
+
+enum LaunchpadItemStatus {
+  NEEDED
+  PROVIDED
+  NA
+}
+
+enum LaunchpadDocStatus {
+  TEMPLATE
+  EDITED
+  APPROVED
 }
 
 /// Encrypted bank details for an active client. Same schema as the onboarding

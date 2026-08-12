@@ -1821,3 +1821,136 @@ export const countermarkRevokeSchema = z.object({
 export const pulseScanRenameSchema = z.object({
   projectName: z.string().trim().min(1).max(200),
 });
+
+// ─── Launchpad ────────────────────────────────────────────────────────────────
+// Everything Gitwork needs FROM a client to start and ship. Mirrors the onboarding
+// form schemas above; the structure column is `structure` (modules), not `steps`.
+
+const launchpadFieldTypeSchema = z.enum([
+  // Shared with onboarding.
+  "short_text",
+  "long_text",
+  "email",
+  "phone",
+  "url",
+  "number",
+  "select",
+  "multiselect",
+  "checkbox",
+  "static",
+  // Launchpad's own. `bank_details` is deliberately absent — Launchpad points a
+  // client at their payment provider and must never become a second place bank
+  // details are collected.
+  "link",
+  "checklist_item",
+  "legal_doc",
+]);
+
+const launchpadFieldSchema = z.object({
+  id: z.string().trim().min(1).max(64),
+  type: launchpadFieldTypeSchema,
+  label: z.string().max(200),
+  helper: z.string().max(1000).optional(),
+  hint: z.string().max(500).optional(),
+  placeholder: z.string().max(200).optional(),
+  required: z.boolean().optional(),
+  options: z
+    .array(z.object({ id: z.string().trim().min(1).max(64), label: z.string().max(200) }))
+    .max(40)
+    .optional(),
+  config: z
+    .object({
+      width: z.enum(["full", "half"]).optional(),
+      default: z.string().max(200).optional(),
+      maxLength: z.number().int().positive().max(20000).optional(),
+      rows: z.number().int().positive().max(40).optional(),
+      transform: z.enum(["upper", "alnum_upper"]).optional(),
+      body: z.string().max(4000).optional(),
+    })
+    .optional(),
+  showIf: z
+    .object({
+      fieldId: z.string().trim().min(1).max(64),
+      equals: z.union([z.string(), z.number(), z.boolean()]),
+    })
+    .optional(),
+  ownedByClient: z.boolean().optional(),
+  docKey: z.enum(["cookie", "terms", "privacy"]).optional(),
+  /** Validated against the PREFILL_SOURCES allow-list at resolve time, not here —
+   *  an unknown key prefills nothing rather than reading an arbitrary column. */
+  prefillKey: z.string().trim().max(64).optional(),
+});
+
+const launchpadModuleSchema = z.object({
+  id: z.string().trim().min(1).max(64),
+  title: z.string().max(200),
+  blurb: z.string().max(2000).optional(),
+  alwaysOn: z.boolean().optional(),
+  fields: z.array(launchpadFieldSchema).max(80),
+});
+
+export const launchpadStructureSchema = z.object({
+  modules: z.array(launchpadModuleSchema).max(20),
+});
+
+export const launchpadTemplateCreateSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(500).optional(),
+  cloneFromId: z.string().trim().min(1).max(64).optional(),
+  structure: launchpadStructureSchema.optional(),
+});
+
+export const launchpadTemplateUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    description: z.string().trim().max(500).nullable().optional(),
+    structure: launchpadStructureSchema.optional(),
+    isDefault: z.boolean().optional(),
+    isArchived: z.boolean().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: "Nothing to update." });
+
+/** Enable/disable the wiki section, and assign or re-assign a template. */
+export const launchpadEnableSchema = z.object({ enabled: z.boolean() });
+
+export const launchpadAssignSchema = z.object({
+  templateId: z.string().trim().min(1).max(64).optional(),
+  enabledModules: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
+});
+
+export const launchpadModulesSchema = z.object({
+  enabledModules: z.array(z.string().trim().min(1).max(64)).max(20),
+});
+
+/**
+ * One requirement's patch. Every field optional — the status machine
+ * (`applyItemPatch`) infers a status change from a link arriving or being cleared,
+ * so a caller sending only `link` is the normal case, not a partial write.
+ *
+ * `link` is `nullable` AND accepts "" so a client can clear it; the empty string is
+ * what a cleared input actually sends.
+ */
+export const launchpadItemPatchSchema = z
+  .object({
+    status: z.enum(["NEEDED", "PROVIDED", "NA"]).optional(),
+    link: z.string().trim().max(2048).nullable().optional(),
+    note: z.string().trim().max(4000).nullable().optional(),
+    ownedByClient: z.boolean().nullable().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: "Nothing to update." });
+
+export const launchpadAnswersSchema = z.object({
+  answers: z.record(z.string().trim().min(1).max(64), z.unknown()),
+});
+
+export const launchpadDocPatchSchema = z
+  .object({
+    answers: z.record(z.string().trim().min(1).max(64), z.unknown()).optional(),
+    /** Empty string reverts to the generated draft (clears the override). */
+    body: z.string().max(200_000).nullable().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: "Nothing to update." });
+
+export const launchpadDocApproveSchema = z.object({
+  approved: z.boolean(),
+});

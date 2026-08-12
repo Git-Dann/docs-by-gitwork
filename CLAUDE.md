@@ -1765,7 +1765,7 @@ tags exist. Do not invent a fourth.
 | Tag | Means | Current members |
 |---|---|---|
 | `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance** |
-| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
 Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
@@ -3661,3 +3661,171 @@ before screenshotting.
 **Verified:** `npm run verify` green — 0 errors, **1612 tests**, `audit:ui` 0 findings; `npx next
 build` clean. `/demo/care` rendered at 390 · 768 · 1280×620 · 1440 across index · record ·
 record-details · selection · settings — **0 clipping findings across all 20 combinations**.
+
+## 43. Recent Changes (August 2026) — Launchpad (what we need FROM the client)
+
+A new section of every client's wiki that collects everything Gitwork needs **from** a
+client to start and ship, so developers stop waiting on missing accounts, assets and
+legal copy. Two jobs on one page: a **tracked requirements checklist** grouped into
+modules (Foundations / Website / Payments / iOS / Android / Compliance), and **fillable
+boilerplate legal docs** (cookie policy, T&Cs, privacy policy) rendered
+deterministically — no AI.
+
+**It is a SIBLING of the onboarding engine, not an extension of it.** The shared pieces
+are genuinely reused — `FIELD_TYPE_REGISTRY`, `validateAnswer`, `isFieldVisible`, and
+`FieldRenderer` itself, which `LaunchpadFieldRenderer` delegates to for every field type
+Launchpad didn't invent. What diverges is the answer model: per-item checklist status
+(`LaunchpadItem`) and per-doc approval state (`LaunchpadDoc`) have no meaningful value in
+onboarding's flat id→value map, so `LaunchpadFieldType = OnboardingFieldType | "link" |
+"checklist_item" | "legal_doc"` extends the union rather than editing it. Putting the two
+table-backed types into `OnboardingFieldType` would have given `validateAnswer` two
+branches that cannot validate anything and `FieldRenderer` props it never uses.
+
+⚠️ **The name.** "Launch Kit" was the original brief; it collides with the existing
+`launch-kit` **Starter** (`starters-catalog.ts` — the code-scaffolding kit, also
+referenced by name in the archetype-mapper prompt). Renamed to **Launchpad** before any
+code was written; `Launchpad` is now in the §32 `{{Feat}}` registry.
+
+- **Snapshot-on-assign**, the same rule as `ClientOnboarding.formSnapshot`: the structure
+  is frozen onto `ClientLaunchpad.structureSnapshot` when a template is assigned, so
+  editing the master template in Settings never disturbs a kit a client is working
+  through. Re-assigning replaces the snapshot and module selection but **keeps the item
+  and doc rows** — a client who has already provided their app icons shouldn't re-provide
+  them because we switched templates. Rows outside the new structure stop being read
+  rather than being deleted, so switching back restores them.
+- **Prefill is only-if-present, and it is allow-listed.** `prefillKey` names a key in
+  `PREFILL_SOURCES` (`src/lib/launchpad/prefill.ts`), **never a column**: template JSON is
+  operator-editable, so a key resolving straight to a column name would make a Settings
+  edit a way to read anything on the client record — encrypted bank details included — and
+  surface it on a page a client user can open. The client record beats an onboarding row
+  (it's the live one); a client who never went through onboarding just gets fewer
+  prefilled fields, never an error.
+- **Legal docs are Launchpad artifacts, NOT `Document` records** — the `DocumentType` enum
+  and its exhaustive maps are untouched. Three separate markdown templates rather than one
+  parameterised source (they diverge too much), UK-oriented: the privacy policy is
+  structured to the UK GDPR Art. 13/14 transparency list, the cookie policy leads on
+  **PECR** (consent *before* a non-essential cookie is set — the point most templates
+  miss), and the T&Cs state the Consumer Contracts Regs 14-day right and cap only what
+  UCTA/CRA 2015 actually let you cap.
+- ⚠️ **The red TEMPLATE banner is returned as its own field, never spliced into `body`.**
+  The client can edit the body — that's the point, they hand a filled draft to their
+  lawyer — so a banner living inside the markdown would be one backspace away from a
+  document reading as finished legal advice. `renderLegalDoc` returns
+  `{ title, banner, body, missing }` and a test asserts the banner text appears in **no**
+  doc body, in any answer state.
+- **Approval is a lightweight status, not e-sign.** Approving snapshots the rendered body
+  into `bodyOverride` so "approved" refers to a fixed text; editing an APPROVED doc drops
+  it back to EDITED, because keeping the badge over changed wording is the one genuinely
+  misleading thing this feature could do. The UI says "not an e-signature" in the byline.
+- **Assets are LINKS ONLY.** A pasted URL is stored and rendered as an anchor, never
+  fetched server-side (SSRF) — the same posture as `ClientWikiIntakeItem.attachmentUrls`.
+- **Auth mirrors the wiki's two paths.** Internal by client slug, `assertCan(…,
+  canManageClients)`. Client-facing by share token using the **hardened** posture
+  (`resolvePublicWiki` → `verifyWikiAccessCookie` → belongs check → per-IP rate limit),
+  because a Launchpad write records a commercial fact a developer will act on. Reads are
+  token-only, so a link recipient can see what is being asked of them but cannot answer
+  it. `/api/wiki` was already in `PUBLIC_API_PATHS` — no middleware change.
+
+### 43.1 The wiki section wiring is TWELVE lists, not eight
+
+The section allow-lists are the standing trap here, and the count in the original plan
+was wrong twice over. **Four are exhaustive `Record<WikiSection, …>` maps, so `tsc` finds
+them for you** — and it did, naming two nobody had listed: `SECTION_META` in
+`wiki-dashboard.tsx` and `SECTION_ICON` in `wiki-mobile-nav.tsx` (plus the demo
+`WikiDTO`, which is a third self-enforcing one).
+
+The other eight are plain string arrays and object literals with **no exhaustiveness
+checking at all**, which is what
+`components/clients/wiki/__tests__/launchpad-section-wiring.test.ts` now covers: the
+`WikiSection` union, the nav row, `SHAREABLE_SECTIONS`, `SHARE_SECTION_LABELS`, the
+public page's `SECTION_LABELS`, `ALL_WIKI_SECTIONS` (miss it and a refresh on
+`#launchpad` silently bounces to the dashboard), `SECTION_WIDGET_LABELS`, and the public
+view's `availableSections` + render dispatch. **Adding a section? Add it to that test's
+list too** — it is source-text assertions on purpose, because most of these live in
+`"use client"` components whose imports drag a React tree into a node test for no benefit.
+
+Two behavioural rules the test also pins: the operator must be able to reach the section
+from **+ ADD NEW** and get past the `confirmDeletePage` guard (which early-returns for any
+section it doesn't name, so a missing entry makes the delete button silently do nothing —
+the §40.1 unreachable-state defect), and the public view requires **enabled AND
+assigned** before listing the section, so an enabled-but-unassigned kit never lands a
+client on a blank page that reads as a broken link.
+
+### 43.2 Internal signal — and why it caps at amber
+
+`deriveClientHealth` takes a `launchpadOutstanding` input, wired at both call sites
+(`clients.ts`, `analytics/portal-analytics.ts`).
+
+⚠️ **It can never go red, however many items are outstanding, and that is deliberate.**
+Everything else in that function is a fault on *our* side (work late, code failing
+checks); this is work we are waiting on the **client** for. Letting it go red would put a
+client who simply hasn't sent their app icons in the same bucket as one whose delivery is
+genuinely failing, and the board would stop meaning anything. A test asserts amber at 1,
+5, 20 and 500 outstanding.
+
+⚠️ **`null` and `0` are different facts.** No Launchpad means we never asked; 0
+outstanding means they've given us everything. Reporting the first as the second is §35's
+mistake — "we could not look" becoming "it isn't there" — so the input is nullable and the
+absent case contributes no signal.
+
+**The HQ widget renders only when a client actually has a Launchpad**, and the decision
+lives in `app-overview.tsx`'s `GRID` (`requires: "launchpad"`), **not** in the widget.
+`BentoBand` wraps every grid entry in an unconditional bordered `<div>`, so a widget
+returning `null` would leave a 220px empty white card on the dashboard. The filter reads
+`useClientList()`, the same query key `ClientsWidget` already uses, so it is a cache hit
+rather than a second request.
+
+### 43.3 Three defects found by looking, not by testing
+
+All three passed `tsc`, `lint`, `audit:ui` and the unit suite.
+
+1. **`****` on an unanswered cookie policy.** `**{{trading_name}}**` with no answers
+   rendered a literal `****`: the token is optional, its `fallbackId` (`company_name`) was
+   also blank, so it resolved to `""` and orphaned its own emphasis markers — and the
+   empty-line rule couldn't save the line because it *also* carries a required token that
+   is correctly left visible. Fixed by having a fallback chain that terminates in a
+   required-and-blank field **inherit that treatment** (token stays visible). The guard is
+   now a test over every doc × three answer states (empty / partial / full) asserting
+   balanced `**` per line — and it had to be three states, because the bug appears in only
+   one of them. A fixture testing just the fully-answered case cannot tell the bug from the
+   fix (§42.10).
+2. **"YOUR ACCOUNT — IN YOUR NAME" rendered to Gitwork staff.** The section is one
+   component for both audiences on purpose (so they can never disagree about what is
+   outstanding, the defect §42.4 had to fix in Care) — but the *copy* still has to know
+   who is reading. `audience: "client" | "team"` switches the ownership line to
+   "Client-owned" / "Gitwork-owned" internally. Facts and controls are identical; only
+   wording moves.
+3. **The demo served an empty shell**, which is what caught #1. `/demo/wiki` writes now
+   run through the **real** `applyItemPatch` / `computeCompleteness` / `renderLegalDoc`
+   (`resolveDemoLaunchpad` in `dev-demo-data.ts`, with `init` threaded through
+   `demo-fetch.ts`), and the fixture is built from `getDefaultLaunchpadStructure()` rather
+   than invented rows. A demo where every write succeeds and changes nothing verifies the
+   CSS and nothing else — §42.8's lesson, applied before shipping rather than after.
+
+**Verification technique worth keeping.** `/app` is auth-gated with no staging, so the
+section was driven headlessly at **`/demo/wiki`**, clicking into the Launchpad and running
+`AUDIT` (exported from `scripts/audit-clipping.mjs`) per state — `npm run audit:clipping
+<url>` only ever sees a page as it first loads, and this section is two clicks deep. Clean
+at **390 · 768 · 1280×620 · 1440** across checklist and legal-doc states: 0 findings, 0
+console errors, 0 horizontal overflow. The status machine was driven end-to-end and the
+header moved **7/14 → 8/14**, which exercises the route, the transition rules and the
+completeness recompute rather than just the layout.
+
+**Verified:** `npm run verify` green — tsc + lint **0 errors** (31 warnings, all
+pre-existing), **1776 tests** across 133 files, `audit:dependencies` clean, `audit:ui`
+**0 findings** with its self-test passing; `npx next build` clean, 98 static pages, all 11
+Launchpad routes registered. The new tests were **proved to discriminate** by breaking ten
+things on purpose (the auto-advance rule, explicit-status precedence, the banner's
+separation from the body, section gates, the amber cap, a dropped allow-list entry, a
+missing helper, required-blank substitution, account ownership, and the fallback fix) —
+each failing only the tests named for it.
+
+**Not verified:** nothing ran against a real database. **Post-deploy checklist is in the
+PR body** — the short version is that a client's kit is created by switching the section
+on, so the first thing to confirm is that Add New → Launchpad lands on a populated page
+rather than an empty one.
+
+**Deferred (fast-follows, not oversights):** real file uploads (links only in v1, gated on
+the parked blob-storage migration); Foreman/Dispatch wiring of the completeness signal;
+"promote a legal doc into a real Docs `Document`"; any AI drafting of the legal text; and
+a full-kit PDF export mirroring `onboarding-pdf.ts`.

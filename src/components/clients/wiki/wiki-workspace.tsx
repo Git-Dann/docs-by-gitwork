@@ -33,6 +33,7 @@ import { ChangelogEntryForm } from "./changelog-entry-form";
 import { CourseRequestsSection } from "./course-requests-section";
 import { GolfDataConsoleView } from "./golf-data-console";
 import { WikiIntakeSection } from "./wiki-intake-section";
+import { LaunchpadSection } from "@/components/clients/launchpad/launchpad-section";
 import { WikiBlockersSection } from "./wiki-blockers-section";
 import { WikiCodeSection } from "./wiki-code-section";
 import { CourseRequestForm, type CourseRequestPayload } from "./course-request-form";
@@ -69,6 +70,7 @@ import {
   useSetWikiIntakeEnabled,
   useSetWikiCodeEnabled,
 } from "@/hooks/use-wiki";
+import { useSetLaunchpadEnabled } from "@/hooks/use-launchpad";
 import { useAccount } from "@/hooks/use-account";
 import type { BigWedgeSyncResult } from "@/lib/api";
 import type { ChangelogEntryPayload, ChangelogEditInitial } from "./changelog-entry-form";
@@ -108,6 +110,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   monitors: "Monitors",
   documents: "Documents",
   intake: "Requests",
+  launchpad: "Launchpad",
   "code-handover": "Code Handover",
   "design-system": "Design System",
   ia: "Information Architecture",
@@ -123,6 +126,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
 
 const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
   timeline: "TIMELINE",
+  launchpad: "LAUNCHPAD",
   ia: "IA GUIDE",
   "dev-guide": "DEVELOPER GUIDE",
   "api-docs": "API DOCS",
@@ -818,7 +822,7 @@ const ALL_PLATFORM_OPTIONS = [
 
 /** Every valid section id — used to validate a section restored from the URL hash. */
 const ALL_WIKI_SECTIONS: WikiSection[] = [
-  "dashboard", "timeline", "monitors", "documents", "intake", "code-handover",
+  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "code-handover",
   "design-system", "ia", "dev-guide", "api-docs", "architecture", "runbook",
   "data-model", "changelog", "course-requests", "golf-data", "settings",
 ];
@@ -899,6 +903,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const setMonitorsEnabled = useSetWikiMonitorsEnabled(slug);
   const setDocumentsEnabled = useSetWikiDocumentsEnabled(slug);
   const setIntakeEnabled = useSetWikiIntakeEnabled(slug);
+  const setLaunchpadEnabled = useSetLaunchpadEnabled(slug);
   // Attribution for requests logged internally — see WikiIntakeSection.
   const account = useAccount();
   const setCodeEnabled = useSetWikiCodeEnabled(slug);
@@ -941,6 +946,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   // Requests section shows when intake is enabled OR there are dev-raised blockers to surface.
   const intakeOn = wiki.intakeEnabled || wiki.blockers.length > 0;
   const codeOn = wiki.codeHandover.enabled;
+  const launchpadOn = Boolean(wiki.launchpad?.enabled);
   // A fresh wiki shows only Dashboard + Timeline (both permanent, non-deletable).
   // Every other section appears once it has real content OR is explicitly enabled,
   // and is otherwise offered under "+ Add New".
@@ -952,6 +958,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(monitorsOn ? (["monitors"] as const) : []),
     ...(documentsOn ? (["documents"] as const) : []),
     ...(intakeOn ? (["intake"] as const) : []),
+    ...(launchpadOn ? (["launchpad"] as const) : []),
     ...(codeOn ? (["code-handover"] as const) : []),
     ...(designSystemOn ? (["design-system"] as const) : []),
     ...OPTIONAL_DOC_SECTIONS.filter(
@@ -970,6 +977,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(monitorsOn ? [] : [{ section: "monitors" as WikiSection, label: "Monitors" }]),
     ...(documentsOn ? [] : [{ section: "documents" as WikiSection, label: "Documents" }]),
     ...(intakeOn ? [] : [{ section: "intake" as WikiSection, label: "Requests" }]),
+    ...(launchpadOn ? [] : [{ section: "launchpad" as WikiSection, label: "Launchpad" }]),
     ...(codeOn ? [] : [{ section: "code-handover" as WikiSection, label: "Code Handover" }]),
     ...(designSystemOn ? [] : [{ section: "design-system" as WikiSection, label: "Design System" }]),
     ...(changelogOn ? [] : [{ section: "changelog" as WikiSection, label: "Changelog" }]),
@@ -1012,6 +1020,15 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection("intake");
       return;
     }
+    if (section === "launchpad") {
+      // Enabling also assigns the default template + prefills, server-side — see the
+      // PATCH route. Otherwise the operator lands on an empty page and has to know
+      // to press a second button, which is how §40.1's "enabled but rejects
+      // everything" defect happened.
+      await setLaunchpadEnabled.mutateAsync(true);
+      setActiveSection("launchpad");
+      return;
+    }
     if (section === "code-handover") {
       await setCodeEnabled.mutateAsync(true);
       setActiveSection("code-handover");
@@ -1052,6 +1069,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection(availableSections.find((s) => s !== "intake") ?? "dashboard");
       return;
     }
+    if (section === "launchpad") {
+      await setLaunchpadEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "launchpad") ?? "dashboard");
+      return;
+    }
     if (section === "code-handover") {
       await setCodeEnabled.mutateAsync(false);
       setActiveSection(availableSections.find((s) => s !== "code-handover") ?? "dashboard");
@@ -1071,13 +1093,16 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       section !== "monitors" &&
       section !== "documents" &&
       section !== "intake" &&
+      section !== "launchpad" &&
       section !== "code-handover"
     )
       return;
     const extra =
       section === "intake"
         ? " Clients and the intake API can no longer add items until you re-add it."
-        : "";
+        : section === "launchpad"
+          ? " The client can no longer update it. Their answers and statuses are kept, so re-adding it restores everything."
+          : "";
     const ok = window.confirm(
       `Delete ${SECTION_TITLES[section]} from this wiki?${extra} You can add it back later from Add New.`,
     );
@@ -1278,6 +1303,10 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     // ── Client intake — bugs/feedback/requests stay in Wiki until promoted by Admin+.
     if (activeSection === "code-handover") {
       return <WikiCodeSection slug={slug} section={wiki!.codeHandover} mode="internal" />;
+    }
+    if (activeSection === "launchpad") {
+      if (!wiki!.launchpad) return null;
+      return <LaunchpadSection launchpad={wiki!.launchpad} slug={slug} mode="internal" />;
     }
     if (activeSection === "intake") {
       return (

@@ -33,6 +33,7 @@ import {
   computeClientPulseHealth,
   deriveClientHealth,
 } from "@/server/client-metrics";
+import { computeLaunchpadSummaries } from "@/server/launchpad";
 import { recordAuditEntry } from "@/server/audit-log";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 
@@ -704,7 +705,15 @@ export async function listDerivedClients(filters?: {
   const manualIds = manualClientMeta.map((c) => c.id);
 
   // Parallel enrichment queries — single round-trip.
-  const [careRecords, platformRepos, devCounts, pulseHealth, overdueCounts, financials] = await Promise.all([
+  const [
+    careRecords,
+    platformRepos,
+    devCounts,
+    pulseHealth,
+    overdueCounts,
+    financials,
+    launchpads,
+  ] = await Promise.all([
     // Which portal clients have a linked Care client (FK on SupportClient).
     prisma.supportClient.findMany({
       where: { workspaceClientId: { not: null } },
@@ -726,6 +735,9 @@ export async function listDerivedClients(filters?: {
     includeFinancials
       ? computeClientFinancials(workspace.id, manualClientMeta)
       : Promise.resolve(null),
+    // Launchpad completeness per client — what we're waiting on THEM for. Batched,
+    // and only covers clients with the section on and a kit assigned.
+    computeLaunchpadSummaries(workspace.id, manualIds),
   ]);
 
   const careIds = new Set(
@@ -815,9 +827,19 @@ export async function listDerivedClients(filters?: {
         retainerDaysUsed: includeFinancials ? (retainerByClient.get(client.id)?.retainerDaysUsed ?? null) : null,
         pulseHealthScore: pulse?.healthScore ?? null,
         pulseScanId: pulse?.scanId ?? null,
+        launchpad: launchpads.get(client.id)
+          ? {
+              percent: launchpads.get(client.id)!.percent,
+              needed: launchpads.get(client.id)!.needed,
+              outstanding: launchpads.get(client.id)!.outstanding,
+            }
+          : null,
         health: deriveClientHealth({
           pulseHealthScore: pulse?.healthScore ?? null,
           overdueTasks: overdueCounts.get(client.id) ?? 0,
+          // Undefined (not 0) when there is no kit — "we never asked" is not the same
+          // fact as "they have given us everything".
+          launchpadOutstanding: launchpads.get(client.id)?.needed ?? null,
         }),
         ...(engagementByClient.get(client.id) ?? {}),
         ...(leadInfoByClient.get(client.id) ?? {}),

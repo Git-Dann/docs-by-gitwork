@@ -17,6 +17,11 @@ import {
   getQuickOnboardingForm,
   getEnterpriseOnboardingForm,
 } from "@/lib/onboarding/default-form";
+import {
+  DEFAULT_LAUNCHPAD_TEMPLATE_NAME,
+  DEFAULT_LAUNCHPAD_TEMPLATE_SLUG,
+  getDefaultLaunchpadStructure,
+} from "@/lib/launchpad/default-template";
 import { prisma } from "@/lib/prisma";
 import { buildDefaultConfigRow } from "@/server/devsignal/config";
 import { seedChallenges } from "@/server/devsignal/challenge-store";
@@ -407,6 +412,24 @@ async function _ensureBaseRecords() {
       description: "Thorough form with procurement, security & compliance, and stakeholder capture.",
       steps: getEnterpriseOnboardingForm() as unknown as Prisma.InputJsonValue,
       isDefault: false,
+    },
+  });
+
+  // The default Launchpad template — the tracked requirements + legal drafts we ask
+  // a client for. Same discipline as the onboarding forms above: `update: {}` so
+  // operator edits in Settings → Launchpad survive a re-boot, and the empty update
+  // only guarantees the row exists.
+  await prisma.launchpadTemplate.upsert({
+    where: { slug: DEFAULT_LAUNCHPAD_TEMPLATE_SLUG },
+    update: {},
+    create: {
+      workspaceId: workspace.id,
+      slug: DEFAULT_LAUNCHPAD_TEMPLATE_SLUG,
+      name: DEFAULT_LAUNCHPAD_TEMPLATE_NAME,
+      description:
+        "Everything we need from a client to start and ship — foundations, website, payments, iOS, Android and compliance.",
+      structure: getDefaultLaunchpadStructure() as unknown as Prisma.InputJsonValue,
+      isDefault: true,
     },
   });
 

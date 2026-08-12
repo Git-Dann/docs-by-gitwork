@@ -25,6 +25,10 @@ import type { ClientDetailRecord } from "@/types/client";
 import type { WikiDTO } from "@/server/wiki";
 import { GITWORK } from "@/lib/gitwork";
 import { DEFAULT_INTAKE_CATEGORIES } from "@/lib/wiki-intake-categories";
+import { getDefaultLaunchpadStructure } from "@/lib/launchpad/default-template";
+import { applyItemPatch, computeCompleteness } from "@/lib/launchpad/structure";
+import { renderLegalDoc } from "@/lib/launchpad/legal/render";
+import type { LaunchpadDTO, LaunchpadItemState } from "@/types/launchpad";
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
 
@@ -447,6 +451,148 @@ function monitorHistory(baseLatency: number, blips: number[] = []): WikiMonitorH
 
 const WIKI_CLIENT = CLIENTS[0]; // Northwind Studio
 
+// ─── Demo Launchpad ───────────────────────────────────────────────────────────
+// Built from the REAL default structure rather than an invented fixture, so
+// /demo/portal exercises the actual modules, helpers and legal generators. §42.8's
+// lesson: a design validated against made-up data is a design validated against
+// nothing — the Care row redesign passed on invented senders and was unreadable on
+// the real inbox.
+
+const DEMO_LAUNCHPAD_MODULES = ["website", "ios"];
+
+function demoLaunchpadItem(
+  itemId: string,
+  status: LaunchpadItemState["status"],
+  extra: Partial<LaunchpadItemState> = {},
+): LaunchpadItemState {
+  return {
+    itemId,
+    status,
+    link: null,
+    note: null,
+    ownedByClient: null,
+    updatedBy: "Priya Shah",
+    updatedAt: atDays(-3),
+    ...extra,
+  };
+}
+
+/** A part-way-through kit — the state a real client is in for most of a project. */
+const DEMO_LAUNCHPAD_ITEMS: LaunchpadItemState[] = [
+  demoLaunchpadItem("brand_assets", "PROVIDED", {
+    link: "https://drive.google.com/drive/folders/northwind-brand",
+  }),
+  demoLaunchpadItem("existing_accounts_access", "PROVIDED"),
+  demoLaunchpadItem("tone_and_content", "NEEDED", {
+    note: "Copy deck is with their marketing agency — chased 11 Aug.",
+  }),
+  demoLaunchpadItem("domain_and_dns", "PROVIDED", { ownedByClient: true }),
+  demoLaunchpadItem("hosting_registrar_access", "PROVIDED", { ownedByClient: true }),
+  demoLaunchpadItem("analytics_account", "NEEDED", { ownedByClient: true }),
+  demoLaunchpadItem("website_content", "NEEDED"),
+  demoLaunchpadItem("cms_credentials", "NA", { note: "New build — no CMS to migrate from." }),
+  demoLaunchpadItem("apple_developer_account", "NEEDED", {
+    ownedByClient: true,
+    note: "D-U-N-S application submitted 8 Aug, Apple quote ~2 weeks.",
+  }),
+  demoLaunchpadItem("ios_app_icon", "NEEDED"),
+  demoLaunchpadItem("ios_screenshots", "NEEDED"),
+  demoLaunchpadItem("ios_privacy_answers", "NEEDED"),
+  demoLaunchpadItem("ios_age_rating", "PROVIDED"),
+  demoLaunchpadItem("ios_iap_setup", "NA", { note: "Free app, no in-app purchases." }),
+];
+
+const DEMO_LAUNCHPAD_ANSWERS = {
+  legal_entity_name: "Northwind Studio Ltd",
+  company_number: "09876543",
+  registered_address: "42 Deansgate, Manchester, M3 2AY",
+  primary_contact: "Priya Shah",
+  primary_contact_email: "priya@northwindstudio.co.uk",
+  credential_channel: "1Password shared vault",
+  brand_assets_link: "https://www.figma.com/file/northwind-brand-kit",
+  ios_app_name: "Northwind",
+  ios_subtitle: "Stories worth your evening",
+  payment_provider: "stripe",
+  accessibility_target: "aa",
+  cookie_consent_approach: "banner_consent",
+};
+
+const DEMO_PRIVACY_ANSWERS = {
+  company_name: "Northwind Studio Ltd",
+  trading_name: "Northwind",
+  registered_address: "42 Deansgate, Manchester, M3 2AY",
+  website_url: "https://northwindstudio.co.uk",
+  contact_email: "privacy@northwindstudio.co.uk",
+  company_number: "09876543",
+  effective_date: "1 September 2026",
+  data_collected: "Name\nEmail address\nViewing history\nIP address",
+  purposes: "To provide your account and watchlist\nTo recommend titles\nTo send service emails",
+  processors: "Fasthosts (hosting)\nStripe (payments)\nResend (email)",
+  retention_period: "For as long as you have an account, then 6 years for tax records",
+  international_transfers: "yes",
+  uses_cookies: true,
+  children: false,
+};
+
+const demoLaunchpadStructure = getDefaultLaunchpadStructure();
+
+/** One doc in each state, so the demo shows all three badges + the red banner. */
+const demoLaunchpad: LaunchpadDTO = {
+  enabled: true,
+  assigned: true,
+  templateId: "lp-tmpl-demo",
+  templateName: "Gitwork Launchpad",
+  structure: demoLaunchpadStructure,
+  enabledModules: DEMO_LAUNCHPAD_MODULES,
+  answers: DEMO_LAUNCHPAD_ANSWERS,
+  items: DEMO_LAUNCHPAD_ITEMS,
+  docs: [
+    {
+      docKey: "cookie",
+      title: "Cookie policy",
+      answers: {},
+      body: renderLegalDoc("cookie", {}).body,
+      edited: false,
+      status: "TEMPLATE",
+      approvedAt: null,
+      approvedByEmail: null,
+      updatedAt: atDays(-6),
+    },
+    {
+      docKey: "terms",
+      title: "Terms & conditions",
+      answers: { company_name: "Northwind Studio Ltd", sells_products: true },
+      body: renderLegalDoc("terms", {
+        company_name: "Northwind Studio Ltd",
+        sells_products: true,
+      }).body,
+      edited: true,
+      status: "EDITED",
+      approvedAt: null,
+      approvedByEmail: null,
+      updatedAt: atDays(-2),
+    },
+    {
+      docKey: "privacy",
+      title: "Privacy policy",
+      answers: DEMO_PRIVACY_ANSWERS,
+      body: renderLegalDoc("privacy", DEMO_PRIVACY_ANSWERS).body,
+      edited: false,
+      status: "APPROVED",
+      approvedAt: atDays(-1),
+      approvedByEmail: "priya@northwindstudio.co.uk",
+      updatedAt: atDays(-1),
+    },
+  ],
+  completeness: computeCompleteness(
+    demoLaunchpadStructure,
+    DEMO_LAUNCHPAD_MODULES,
+    DEMO_LAUNCHPAD_ITEMS,
+    DEMO_LAUNCHPAD_ANSWERS,
+  ),
+  updatedAt: atDays(-1),
+};
+
 const demoWiki: WikiDTO = {
   id: "wiki-northwind",
   clientId: WIKI_CLIENT.id,
@@ -591,6 +737,7 @@ const demoWiki: WikiDTO = {
     ],
   },
   users: [],
+  launchpad: demoLaunchpad,
   intakeEnabled: true,
   intakeCategories: DEFAULT_INTAKE_CATEGORIES,
   intakeCategoriesAreDefault: true,
@@ -2174,7 +2321,120 @@ const demoPulsePortfolio = [
  * Map an `/api/...` pathname (query stripped) to its demo payload. Returns an
  * empty object for anything unmapped so no fetcher errors or hangs during the demo.
  */
-export function resolveDemoApi(pathname: string, search?: URLSearchParams): unknown {
+/**
+ * Demo Launchpad writes, applied through the REAL `applyItemPatch` / `computeCompleteness`
+ * so the demo exercises the actual status machine rather than a mock of it. That is
+ * the whole value of driving `/demo/portal` to verify a gated screen — a fake that
+ * always returns success verifies the CSS and nothing else.
+ *
+ * State is module-level and resets on reload, which is correct for a demo.
+ */
+let demoLaunchpadState: LaunchpadDTO | null = null;
+
+function demoLaunchpadNow(): LaunchpadDTO {
+  demoLaunchpadState ??= demoLaunchpad;
+  return demoLaunchpadState;
+}
+
+function recomputeDemoLaunchpad(next: LaunchpadDTO): LaunchpadDTO {
+  const updated: LaunchpadDTO = {
+    ...next,
+    completeness: computeCompleteness(
+      next.structure,
+      next.enabledModules,
+      next.items,
+      next.answers,
+    ),
+  };
+  demoLaunchpadState = updated;
+  return updated;
+}
+
+/** Handle one demo Launchpad request. Returns undefined when the path isn't ours. */
+function resolveDemoLaunchpad(
+  pathname: string,
+  init?: { method?: string; body?: unknown },
+): unknown {
+  const match = /\/launchpad(?:\/(items|docs)\/([^/]+))?(?:\/(modules|answers))?$/.exec(pathname);
+  if (!match) return undefined;
+  const current = demoLaunchpadNow();
+  const [, kind, id] = match;
+  const body =
+    typeof init?.body === "string"
+      ? (JSON.parse(init.body) as Record<string, unknown>)
+      : {};
+
+  if (kind === "items" && id) {
+    const itemId = decodeURIComponent(id);
+    const existing = current.items.find((i) => i.itemId === itemId);
+    const nextValues = applyItemPatch(
+      {
+        status: existing?.status ?? "NEEDED",
+        link: existing?.link ?? null,
+        note: existing?.note ?? null,
+        ownedByClient: existing?.ownedByClient ?? null,
+      },
+      body as Parameters<typeof applyItemPatch>[1],
+    );
+    const nextItem: LaunchpadItemState = {
+      itemId,
+      ...nextValues,
+      updatedBy: "Priya Shah",
+      updatedAt: atDays(0),
+    };
+    const items = existing
+      ? current.items.map((i) => (i.itemId === itemId ? nextItem : i))
+      : [...current.items, nextItem];
+    return { launchpad: recomputeDemoLaunchpad({ ...current, items }) };
+  }
+
+  if (kind === "docs" && id) {
+    const docs = current.docs.map((d) => {
+      if (d.docKey !== id) return d;
+      if (typeof body.approved === "boolean") {
+        return {
+          ...d,
+          status: body.approved ? ("APPROVED" as const) : d.edited ? ("EDITED" as const) : ("TEMPLATE" as const),
+          approvedAt: body.approved ? atDays(0) : null,
+          approvedByEmail: body.approved ? "priya@northwindstudio.co.uk" : null,
+        };
+      }
+      const answers = { ...d.answers, ...((body.answers as object) ?? {}) };
+      const bodyText = typeof body.body === "string" ? body.body : null;
+      const rendered = renderLegalDoc(d.docKey, answers);
+      return {
+        ...d,
+        answers,
+        body: bodyText ? bodyText : rendered.body,
+        edited: Boolean(bodyText),
+        status: bodyText ? ("EDITED" as const) : ("TEMPLATE" as const),
+        approvedAt: null,
+        approvedByEmail: null,
+      };
+    });
+    return { launchpad: recomputeDemoLaunchpad({ ...current, docs }) };
+  }
+
+  if (pathname.endsWith("/modules")) {
+    const enabledModules = Array.isArray(body.enabledModules)
+      ? (body.enabledModules as string[])
+      : current.enabledModules;
+    return { launchpad: recomputeDemoLaunchpad({ ...current, enabledModules }) };
+  }
+
+  if (pathname.endsWith("/answers")) {
+    const answers = { ...current.answers, ...((body.answers as object) ?? {}) };
+    return { launchpad: recomputeDemoLaunchpad({ ...current, answers }) };
+  }
+
+  return { launchpad: current };
+}
+
+export function resolveDemoApi(
+  pathname: string,
+  search?: URLSearchParams,
+  init?: { method?: string; body?: unknown },
+): unknown {
   switch (pathname) {
     case "/api/account":
       return demoAccount;
@@ -2197,9 +2457,14 @@ export function resolveDemoApi(pathname: string, search?: URLSearchParams): unkn
     case "/api/auth/session":
       return demoSession;
   }
+  // Launchpad — reads and writes, applied through the real status machine.
+  if (pathname.includes("/launchpad")) {
+    const result = resolveDemoLaunchpad(pathname, init);
+    if (result !== undefined) return result;
+  }
   // Client wiki — GET /api/clients/{slug}/wiki (exact; sub-paths are mutations → benign).
   if (/^\/api\/clients\/[^/]+\/wiki$/.test(pathname)) {
-    return demoWiki;
+    return { ...demoWiki, launchpad: demoLaunchpadNow() };
   }
   // Client portal detail sub-reads (before the generic /api/clients/{slug} case).
   if (/^\/api\/clients\/[^/]+\/slack-activity$/.test(pathname)) {

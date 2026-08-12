@@ -35,6 +35,8 @@ import { assertWithinIntakeQuota } from "./wiki-intake-limit";
 import { deliverIntakeWebhook } from "./wiki-intake-webhook";
 import { loadWikiDocuments, type WikiDocumentsSection } from "./wiki-documents";
 import { loadWikiCodeHandover, type WikiCodeHandoverSection } from "./wiki-code";
+import { getLaunchpadByWikiId } from "./launchpad";
+import type { LaunchpadDTO } from "@/types/launchpad";
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -213,6 +215,13 @@ export interface WikiDTO {
   headerLinks: WikiHeaderLinks | null;
   /** Documents section — whether it's enabled + the doc list (links/files/Foundry). */
   documents: WikiDocumentsSection;
+  /**
+   * Launchpad — the tracked list of everything we need FROM the client to start and
+   * ship, plus the fillable legal drafts. Null when the wiki has no row for it at
+   * all; otherwise carries its own `enabled` + `assigned` flags, because "switched
+   * off" and "on but not set up yet" need different copy on the page.
+   */
+  launchpad: LaunchpadDTO | null;
   /**
    * Client login accounts for the public link (email + name; password never
    * exposed). Populated only for the internal editor — the public payload omits
@@ -535,6 +544,7 @@ async function buildDTO(
   shareToken: string | null;
   shareEnabled: boolean;
   intakeEnabled?: boolean;
+  launchpadEnabled?: boolean;
   intakeCategories?: unknown;
   platforms: unknown;
   pageShares?: unknown;
@@ -595,9 +605,20 @@ async function buildDTO(
   },
   opts?: { includeUsers?: boolean },
 ): Promise<WikiDTO> {
-  // These 9 section loaders are independent — run them together instead of one
+  // These 10 section loaders are independent — run them together instead of one
   // round-trip after another (this ran on every wiki page load with zero caching).
-  const [blockers, timeline, designSystem, monitors, codeHandover, team, productTeam, headerLinks, documents] =
+  const [
+    blockers,
+    timeline,
+    designSystem,
+    monitors,
+    codeHandover,
+    team,
+    productTeam,
+    headerLinks,
+    documents,
+    launchpad,
+  ] =
     await Promise.all([
       loadWikiBlockers(wiki.clientId),
       loadWikiTimeline(wiki.clientId),
@@ -608,6 +629,7 @@ async function buildDTO(
       loadWikiProductTeam(wiki.clientId),
       loadWikiHeaderLinks(wiki.clientId),
       loadWikiDocuments(wiki.clientId),
+      getLaunchpadByWikiId(wiki.id),
     ]);
   return {
     id: wiki.id,
@@ -664,6 +686,7 @@ async function buildDTO(
     productTeam,
     headerLinks,
     documents,
+    launchpad,
     users: opts?.includeUsers
       ? (wiki.wikiUsers ?? [])
           .slice()
@@ -2021,6 +2044,11 @@ const SHAREABLE_SECTIONS = [
   "timeline",
   "monitors",
   "documents",
+  // Shareable so a client can be sent JUST their Launchpad — often to a finance or
+  // legal contact who has no business seeing the rest of the wiki. Reads are
+  // token-only; writes still require the wiki-access cookie (see launchpad-access.ts),
+  // so a link recipient can see what is being asked of them but cannot answer it.
+  "launchpad",
   "code-handover",
   "design-system",
   "ia",

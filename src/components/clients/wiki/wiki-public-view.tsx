@@ -9,6 +9,7 @@ import { ApiDocsReference, normalizeApiDocsContent } from "./api-docs-page-edito
 import { ChangelogSection } from "./changelog-section";
 import { CourseRequestsSection } from "./course-requests-section";
 import { WikiIntakeSection } from "./wiki-intake-section";
+import { LaunchpadSection } from "@/components/clients/launchpad/launchpad-section";
 import { WikiBlockersSection } from "./wiki-blockers-section";
 import { WikiCodeSection } from "./wiki-code-section";
 import { WikiTimelineSection } from "./wiki-timeline-section";
@@ -52,6 +53,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   monitors: "Monitors",
   documents: "Documents",
   intake: "Requests",
+  launchpad: "Launchpad",
   "code-handover": "Code Handover",
   "design-system": "Design System",
   ia: "Information Architecture",
@@ -110,6 +112,10 @@ export function WikiPublicView({
       : []),
     // Requests shows when intake is on OR there are dev-raised blockers to action.
     ...(wiki.intakeEnabled || wiki.blockers.length > 0 ? (["intake"] as const) : []),
+    // Launchpad shows once it is switched on AND a template is assigned — an
+    // enabled-but-unassigned kit would land the client on an empty page, which
+    // reads as a broken link rather than as work we have not set up yet.
+    ...(wiki.launchpad?.enabled && wiki.launchpad.assigned ? (["launchpad"] as const) : []),
     ...(wiki.codeHandover.enabled && wiki.codeHandover.modules.length > 0
       ? (["code-handover"] as const)
       : []),
@@ -206,6 +212,18 @@ export function WikiPublicView({
             />
           ) : null}
         </>
+      );
+    }
+
+    if (activeSection === "launchpad") {
+      if (!wiki.launchpad) return null;
+      return (
+        <LaunchpadSection
+          launchpad={wiki.launchpad}
+          slug={wiki.clientSlug}
+          token={token}
+          mode="public"
+        />
       );
     }
 

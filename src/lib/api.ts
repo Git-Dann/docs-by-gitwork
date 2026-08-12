@@ -4296,3 +4296,218 @@ export function saveCostingConfig(payload: SavedCostingConfig) {
     body: JSON.stringify(payload),
   });
 }
+
+// ─── Launchpad ────────────────────────────────────────────────────────────────
+// Two families, mirroring the wiki intake split: by client SLUG for the internal
+// team (session + canManageClients), and by wiki share TOKEN for the client
+// themselves (wiki-access cookie). Both return the whole LaunchpadDTO on a write, so
+// completeness and the item list re-render from one authoritative payload rather
+// than from a locally-patched guess.
+
+import type {
+  LaunchpadDTO,
+  LaunchpadItemStatus,
+  LaunchpadTemplateRecord,
+  LaunchpadTemplateSummary,
+} from "@/types/launchpad";
+
+export type { LaunchpadDTO, LaunchpadTemplateRecord, LaunchpadTemplateSummary };
+
+export interface LaunchpadItemPatch {
+  status?: LaunchpadItemStatus;
+  link?: string | null;
+  note?: string | null;
+  ownedByClient?: boolean | null;
+}
+
+export interface LaunchpadDocPatch {
+  answers?: Record<string, unknown>;
+  body?: string | null;
+}
+
+const jsonHeaders = { "Content-Type": "application/json" };
+
+// ── Internal (by client slug) ────────────────────────────────────────────────
+
+export async function getClientLaunchpadApi(slug: string): Promise<{ launchpad: LaunchpadDTO | null }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad`);
+}
+
+export async function setLaunchpadEnabledApi(
+  slug: string,
+  enabled: boolean,
+): Promise<{ enabled: boolean; launchpad: LaunchpadDTO | null }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function assignLaunchpadApi(
+  slug: string,
+  input: { templateId?: string; enabledModules?: string[] },
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  });
+}
+
+export async function setLaunchpadModulesApi(
+  slug: string,
+  enabledModules: string[],
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad/modules`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify({ enabledModules }),
+  });
+}
+
+export async function updateLaunchpadItemApi(
+  slug: string,
+  itemId: string,
+  patch: LaunchpadItemPatch,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad/items/${encodeURIComponent(itemId)}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function saveLaunchpadAnswersApi(
+  slug: string,
+  answers: Record<string, unknown>,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad/answers`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify({ answers }),
+  });
+}
+
+export async function updateLaunchpadDocApi(
+  slug: string,
+  docKey: string,
+  patch: LaunchpadDocPatch,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad/docs/${docKey}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function approveLaunchpadDocApi(
+  slug: string,
+  docKey: string,
+  approved: boolean,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad/docs/${docKey}`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ approved }),
+  });
+}
+
+// ── Client-facing (by wiki share token) ──────────────────────────────────────
+
+export async function updatePublicLaunchpadItemApi(
+  token: string,
+  itemId: string,
+  patch: LaunchpadItemPatch,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/wiki/${token}/launchpad/items/${encodeURIComponent(itemId)}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function savePublicLaunchpadAnswersApi(
+  token: string,
+  answers: Record<string, unknown>,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/wiki/${token}/launchpad`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify({ answers }),
+  });
+}
+
+export async function updatePublicLaunchpadDocApi(
+  token: string,
+  docKey: string,
+  patch: LaunchpadDocPatch,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/wiki/${token}/launchpad/docs/${docKey}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function approvePublicLaunchpadDocApi(
+  token: string,
+  docKey: string,
+  approved: boolean,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/wiki/${token}/launchpad/docs/${docKey}`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ approved }),
+  });
+}
+
+// ── Templates (Settings → Launchpad) ─────────────────────────────────────────
+
+export async function listLaunchpadTemplatesApi(
+  includeArchived = false,
+): Promise<{ templates: LaunchpadTemplateSummary[] }> {
+  const qs = includeArchived ? "?includeArchived=true" : "";
+  return apiFetch(`/api/launchpad-templates${qs}`);
+}
+
+export async function getLaunchpadTemplateApi(
+  id: string,
+): Promise<{ template: LaunchpadTemplateRecord }> {
+  return apiFetch(`/api/launchpad-templates/${id}`);
+}
+
+export async function createLaunchpadTemplateApi(input: {
+  name: string;
+  description?: string;
+  cloneFromId?: string;
+}): Promise<{ template: LaunchpadTemplateRecord }> {
+  return apiFetch("/api/launchpad-templates", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateLaunchpadTemplateApi(
+  id: string,
+  input: Record<string, unknown>,
+): Promise<{ template: LaunchpadTemplateRecord }> {
+  return apiFetch(`/api/launchpad-templates/${id}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  });
+}
+
+export async function duplicateLaunchpadTemplateApi(
+  id: string,
+): Promise<{ template: LaunchpadTemplateRecord }> {
+  return apiFetch(`/api/launchpad-templates/${id}/duplicate`, { method: "POST" });
+}
+
+export async function deleteLaunchpadTemplateApi(
+  id: string,
+): Promise<{ deleted: boolean; archived?: boolean }> {
+  return apiFetch(`/api/launchpad-templates/${id}`, { method: "DELETE" });
+}
