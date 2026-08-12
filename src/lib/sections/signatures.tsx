@@ -45,12 +45,14 @@ function SigningField({
   payload,
   signed,
   signedName,
+  docusealTag,
 }: {
   label: string;
   value?: string;
   payload?: string;
   signed?: boolean;
   signedName?: string;
+  docusealTag?: string;
 }) {
   const filled = value?.trim();
   const isImagePayload = payload?.startsWith("data:image/");
@@ -81,20 +83,28 @@ function SigningField({
           </div>
         ) : filled ? (
           <span className="pb-1 text-[13px] leading-tight text-[var(--text-1)]">{filled}</span>
+        ) : docusealTag ? (
+          <span className="pb-1 text-[11px] font-mono text-[var(--text-4)] opacity-80 select-none">
+            {docusealTag}
+          </span>
         ) : null}
       </div>
     </div>
   );
 }
 
-function SignatureCard({ block }: { block: SignatureBlockItem }) {
+function SignatureCard({ block, index = 0 }: { block: SignatureBlockItem; index?: number }) {
   const personal = block.personal === true;
   // Blank lines are kept in the data so the editor's one-line-per-detail textarea stays typable;
   // they're dropped here so they never print as gaps.
   const details = (block.details ?? []).filter((line) => asTrimmedText(line));
-  const roleStr = (block.type?.trim().toLowerCase() || "client").replace(/[^a-z0-9_]/g, "_");
-  const varStr = (block.variableName?.trim().toLowerCase() || `${roleStr}_signature`).replace(/[^a-z0-9_]/g, "_");
-  const sigLabel = `Signature ({{${roleStr}:signature:${varStr}}})`;
+
+  const isGitwork = block.type === "gitwork" || (index === 0 && block.type !== "client");
+  const roleName = (block.type?.trim().toLowerCase() || (isGitwork ? "gitwork" : "client")).replace(/[^a-z0-9_]/g, "_");
+  const fieldId = block.id || (isGitwork ? "gitwork_signature" : `client_signature_${index + 1}`);
+  const docusealSigTag = `{{sig_${fieldId};type=signature;role=${roleName};width=220;height=40}}`;
+  const docusealDateTag = `{{date_${fieldId};type=date;role=${roleName};width=150;height=25}}`;
+
   return (
     <div
       className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-white"
@@ -113,8 +123,8 @@ function SignatureCard({ block }: { block: SignatureBlockItem }) {
       </p>
       {details.length ? (
         <div className="mt-2 space-y-0.5">
-          {details.map((line, index) => (
-            <p key={index} className="text-[13px] leading-[1.35] text-[var(--text-3)]">
+          {details.map((line, idx) => (
+            <p key={idx} className="text-[13px] leading-[1.35] text-[var(--text-3)]">
               {line}
             </p>
           ))}
@@ -126,6 +136,7 @@ function SignatureCard({ block }: { block: SignatureBlockItem }) {
           payload={block.signaturePayload}
           signed={block.signed}
           signedName={block.signedName}
+          docusealTag={docusealSigTag}
         />
         <SigningField label="Name" value={block.signatoryName} />
         {/* A personal signatory is witnessed rather than holding a position in a company. */}
@@ -134,7 +145,12 @@ function SignatureCard({ block }: { block: SignatureBlockItem }) {
         ) : (
           <SigningField label="Position" value={block.signatoryRole} />
         )}
-        <SigningField label="Date" value={block.signatureDate} />
+        <SigningField
+          label="Date"
+          value={block.signatureDate}
+          signed={block.signed}
+          docusealTag={docusealDateTag}
+        />
       </div>
     </div>
   );
@@ -175,8 +191,8 @@ export const signaturesSection = defineSection<SignaturesSectionData>({
             className="grid gap-4"
             style={{ gridTemplateColumns: `repeat(${columns}, minmax(0,1fr))` }}
           >
-            {blocks.map((block) => (
-              <SignatureCard key={block.id} block={block} />
+            {blocks.map((block, index) => (
+              <SignatureCard key={block.id} block={block} index={index} />
             ))}
           </div>
         ) : null}
