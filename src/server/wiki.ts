@@ -1230,7 +1230,7 @@ function wikiItemPrefix(type: "BUG" | "FEEDBACK" | "TASK" | "DESIGN"): string {
  * token. `courseIngestToken` is tried last purely so anything that happened to
  * work against this route before keeps working.
  */
-async function resolveWikiIdByPublicToken(token: string): Promise<string | null> {
+export async function resolveWikiIdByPublicToken(token: string): Promise<string | null> {
   const t = token?.trim();
   if (!t) return null;
   const whole = await prisma.clientWiki.findFirst({

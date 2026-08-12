@@ -60,6 +60,7 @@ export function WikiIntakeSection({
   items,
   mode,
   categories = DEFAULT_INTAKE_CATEGORIES,
+  submitterName = null,
 }: {
   slug: string;
   token?: string;
@@ -67,6 +68,13 @@ export function WikiIntakeSection({
   mode: "internal" | "public";
   /** The client's own categories — defaults to the built-in four. */
   categories?: IntakeCategory[];
+  /**
+   * Who is filing this, when we already know — the signed-in client wiki user, or
+   * the Gitwork user internally. Given, the "Requested by" box is replaced by a
+   * line stating the attribution: asking someone to type their own name is both
+   * friction and unverifiable, and the server stamps this value anyway.
+   */
+  submitterName?: string | null;
 }) {
   const isInternal = mode === "internal";
   const createInternal = useCreateWikiIntakeItem(slug);
@@ -215,12 +223,18 @@ export function WikiIntakeSection({
               <option value="MEDIUM">Medium priority</option>
               <option value="HIGH">High priority</option>
             </select>
-            <input
-              value={requestedBy}
-              onChange={(e) => setRequestedBy(e.target.value)}
-              placeholder="Requested by (optional)"
-              className="app-input"
-            />
+            {submitterName ? (
+              <p className="flex items-center px-1 text-[13px] text-[var(--text-4)]">
+                Filing as <span className="ml-1 font-medium text-[var(--text-2)]">{submitterName}</span>
+              </p>
+            ) : (
+              <input
+                value={requestedBy}
+                onChange={(e) => setRequestedBy(e.target.value)}
+                placeholder="Requested by (optional)"
+                className="app-input"
+              />
+            )}
           </div>
 
           {/* Dev label — the same taxonomy the task board uses, so a promoted

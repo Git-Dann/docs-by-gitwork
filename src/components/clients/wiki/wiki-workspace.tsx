@@ -69,6 +69,7 @@ import {
   useSetWikiIntakeEnabled,
   useSetWikiCodeEnabled,
 } from "@/hooks/use-wiki";
+import { useAccount } from "@/hooks/use-account";
 import type { BigWedgeSyncResult } from "@/lib/api";
 import type { ChangelogEntryPayload, ChangelogEditInitial } from "./changelog-entry-form";
 import type { CourseRequestRecord } from "@/lib/api";
@@ -898,6 +899,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const setMonitorsEnabled = useSetWikiMonitorsEnabled(slug);
   const setDocumentsEnabled = useSetWikiDocumentsEnabled(slug);
   const setIntakeEnabled = useSetWikiIntakeEnabled(slug);
+  // Attribution for requests logged internally — see WikiIntakeSection.
+  const account = useAccount();
   const setCodeEnabled = useSetWikiCodeEnabled(slug);
   const addEntry = useAddChangelogEntry(slug);
   const deleteEntry = useDeleteChangelogEntry(slug);
@@ -1286,6 +1289,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               items={wiki!.intakeItems}
               mode="internal"
               categories={wiki!.intakeCategories}
+              submitterName={account.data?.name ?? account.data?.email ?? null}
             />
           ) : (
             /**

@@ -1,7 +1,14 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { addWikiIntakeItemByToken, publicWikiIntakeState } from "@/server/wiki";
+import {
+  addWikiIntakeItemByToken,
+  publicWikiIntakeState,
+  resolveWikiIdByPublicToken,
+} from "@/server/wiki";
+import { resolveWikiAccessUser, wikiAccessCookieName } from "@/server/wiki-access";
+import { auth } from "@/auth";
+import { resolveRequestedBy } from "@/server/wiki-intake-attribution";
 
 const bodySchema = z.object({
   type: z.enum(["BUG", "FEEDBACK", "TASK", "DESIGN"]).default("FEEDBACK"),
@@ -18,7 +25,34 @@ const bodySchema = z.object({
 export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   try {
     const { token } = await params;
-    const item = await addWikiIntakeItemByToken(token, bodySchema.parse(await req.json()));
+    const body = bodySchema.parse(await req.json());
+
+    /**
+     * Attribute the request to whoever is actually signed in, rather than to
+     * whatever the form typed. Two kinds of visitor reach this route:
+     *   · a client user logged into their wiki (ClientWikiUser, cookie-bound)
+     *   · Gitwork staff, who bypass the client login via their Foundry session
+     *
+     * Resolved SERVER-SIDE and allowed to override `requestedBy`, because the
+     * body is caller-controlled: a "Requested by" a visitor types is a claim,
+     * not an identity, and attributing one client's request to another person
+     * is worse than leaving it blank. The typed value is only used when we
+     * genuinely don't know who this is — an unauthenticated share link.
+     */
+    const wikiId = await resolveWikiIdByPublicToken(token);
+    const clientUser = wikiId
+      ? await resolveWikiAccessUser(wikiId, req.cookies.get(wikiAccessCookieName(wikiId))?.value)
+      : null;
+    const staff = clientUser ? null : await auth();
+
+    const item = await addWikiIntakeItemByToken(token, {
+      ...body,
+      requestedBy: resolveRequestedBy({
+        clientUserName: clientUser?.displayName,
+        staffName: staff?.user?.name ?? staff?.user?.email,
+        typedName: body.requestedBy,
+      }),
+    });
     if (!item) {
       // Two very different causes, and reporting the credential for both is how a
       // switched-off Requests section reached the client as "invalid wiki token".

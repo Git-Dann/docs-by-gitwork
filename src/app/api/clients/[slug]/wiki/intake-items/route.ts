@@ -4,6 +4,8 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { addWikiIntakeItem, setWikiIntakeEnabled } from "@/server/wiki";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { resolveRequestedBy } from "@/server/wiki-intake-attribution";
 
 const bodySchema = z.object({
   type: z.enum(["BUG", "FEEDBACK", "TASK", "DESIGN"]).default("FEEDBACK"),
@@ -33,7 +35,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     const { slug } = await params;
     const clientId = await resolveClientId(slug);
     if (!clientId) return apiError("Client not found", 404);
-    return apiOk(await addWikiIntakeItem(clientId, bodySchema.parse(await req.json())), { status: 201 });
+    const body = bodySchema.parse(await req.json());
+    // Internal path: attribute to the signed-in Gitwork user, so a request logged
+    // on a client's behalf says who logged it without anyone typing their own name.
+    // Falls back to whatever was sent for an API_KEY-only caller (no per-user identity).
+    const user = await getEffectiveUserOrNull(req);
+    return apiOk(
+      await addWikiIntakeItem(clientId, {
+        ...body,
+        requestedBy: resolveRequestedBy({
+          staffName: user?.name ?? user?.email,
+          typedName: body.requestedBy,
+        }),
+      }),
+      { status: 201 },
+    );
   } catch (err) {
     return fromError(err);
   }
