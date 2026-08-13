@@ -8,6 +8,7 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { originFrom } from "@/lib/request-origin";
 import { createDocuSealSubmission } from "@/server/docuseal";
 import { enableDocumentShare } from "@/server/documents";
@@ -286,7 +287,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: "SENT",
         sentAt: new Date(),
         docusealSubmissionId: String(dsResult.id),
-        documentSnapshot: documentSnapshot as any,
+        documentSnapshot: documentSnapshot as unknown as Prisma.InputJsonValue,
       },
     });
 
