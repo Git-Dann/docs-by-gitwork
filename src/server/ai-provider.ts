@@ -52,7 +52,7 @@ export const DEFAULT_MODELS: Record<AiProvider, string> = {
 
 /** Resolve the active provider, API key, model and (OpenAI-compatible) base URL. */
 export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
-  const provider = (ws.aiProvider || "ANTHROPIC") as AiProvider;
+  const provider = (ws.aiProvider || (process.env.GROQ_API_KEY ? "GROQ" : "ANTHROPIC")) as AiProvider;
 
   if (provider === "GROQ") {
     return {
