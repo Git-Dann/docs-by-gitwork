@@ -4,7 +4,9 @@ import {
   collectorCoverage,
   collectorCompletenessCheck,
   sourceCollectorsUnavailable,
+  urlCollectorsUnavailable,
   SOURCE_ONLY_COLLECTORS,
+  URL_ONLY_COLLECTORS,
   type CollectorExecution,
 } from "../collector-health";
 
@@ -56,6 +58,28 @@ describe("a URL-only scan records the source collectors it could not run", () =>
       source.indexOf("// GITHUB_REPO"),
     );
     expect(urlBranch).toContain("sourceCollectorsUnavailable");
+  });
+});
+
+describe("a repo scan records the live-site collectors it could not run", () => {
+  // The mirror. Fixing only the URL direction left a repo scan reporting
+  // "3 of 3 collectors completed" while headers, TLS, rendered content and
+  // deployment signals were never measured — the same defect, other way round.
+  it("marks the URL-only collectors unavailable, with the reason", () => {
+    const executions = urlCollectorsUnavailable("No deployed URL was scanned.");
+    expect(executions.map((execution) => execution.name)).toEqual([...URL_ONLY_COLLECTORS]);
+    for (const execution of executions) expect(execution.outcome).toBe("NOT_APPLICABLE");
+  });
+
+  it("does not overlap with the source-only set — a collector belongs to one side", () => {
+    const overlap = URL_ONLY_COLLECTORS.filter((name) => (SOURCE_ONLY_COLLECTORS as readonly string[]).includes(name));
+    expect(overlap).toEqual([]);
+  });
+
+  it("is wired into the live repo path", () => {
+    const source = readFileSync("src/server/pulse-lite/run-lite-scan.ts", "utf8");
+    const repoBranch = source.slice(source.indexOf("// GITHUB_REPO"));
+    expect(repoBranch).toContain("urlCollectorsUnavailable");
   });
 });
 

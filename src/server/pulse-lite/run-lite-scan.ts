@@ -31,7 +31,7 @@ import {
   detectUrlTargetKind,
   effectivePlatformForRepoShape,
 } from "@/server/pulse-checks/scan-execution-plan";
-import { collectorCompletenessCheck, collectorOutcome, sourceCollectorsUnavailable, type CollectorExecution } from "@/server/pulse-checks/collector-health";
+import { collectorCompletenessCheck, collectorOutcome, sourceCollectorsUnavailable, urlCollectorsUnavailable, type CollectorExecution } from "@/server/pulse-checks/collector-health";
 import { applyCheckPolicy, customPolicyChecks, type CheckPolicy } from "@/server/check-config";
 import type { JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
 import type {
@@ -229,6 +229,15 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
       detectedShape: repoShape,
     });
     if (coverage) pending.push(ingest([coverage]));
+
+    // The mirror of the URL branch: a repo scan never reaches the live site, so
+    // headers, TLS, rendered content and deployment signals are unmeasured. Left
+    // unrecorded, coverage would report "3 of 3 collectors completed" and read as
+    // a whole-product assessment — the same defect as the URL side, in the other
+    // direction, and I fixed only one of them the first time.
+    collectorExecutions.push(...urlCollectorsUnavailable(
+      "No deployed URL was scanned, so the live-site families (headers, TLS, rendered content, deployment) did not run. Re-scan with a URL to include them.",
+    ));
 
     // The optional GitHub homepage remains useful metadata for the report, but it
     // is not the selected artefact and is never scanned implicitly. Users can run

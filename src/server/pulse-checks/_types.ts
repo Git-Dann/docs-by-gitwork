@@ -149,14 +149,35 @@ export async function resolveDnsRecord(name: string, type: string): Promise<DnsR
 }
 
 /**
- * Records only. Kept because most callers legitimately treat "absent" and
- * "unreachable" the same way — but any check whose PASS depends on an EMPTY
- * answer must use `resolveDnsRecord` instead, or a resolver outage manufactures
- * that PASS.
+ * Records only, collapsing "no such record" into "could not ask".
+ *
+ * ⚠️ No check module calls this any more — every one of them concluded something
+ * from an EMPTY answer, which is exactly the case it gets wrong. It is kept only
+ * as the honest name for the collapsing behaviour, so that a future caller has to
+ * choose it deliberately. If you are reaching for it, the question to answer
+ * first is: does my verdict change when the lookup fails? If yes, use
+ * `resolveDnsRecord`.
  */
 export async function checkDnsRecord(name: string, type: string): Promise<string[]> {
   const resolution = await resolveDnsRecord(name, type);
   return resolution.ok ? resolution.records : [];
+}
+
+/**
+ * Resolve several records as one question.
+ *
+ * Most DNS-backed checks ask "is there a record like this anywhere across these
+ * names" — four DKIM selectors, three sending subdomains — and conclude from an
+ * EMPTY combined answer. That conclusion is only sound if every lookup actually
+ * completed, so one failure makes the whole answer unavailable rather than empty.
+ */
+export async function resolveAllDnsRecords(
+  lookups: Array<[name: string, type: string]>,
+): Promise<{ ok: true; records: string[] } | { ok: false; reason: string }> {
+  const results = await Promise.all(lookups.map(([name, type]) => resolveDnsRecord(name, type)));
+  const failure = results.find((result) => !result.ok);
+  if (failure && !failure.ok) return { ok: false, reason: failure.reason };
+  return { ok: true, records: results.flatMap((result) => (result.ok ? result.records : [])) };
 }
 
 /**

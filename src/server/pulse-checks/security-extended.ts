@@ -1,5 +1,5 @@
 import { CATEGORIES } from "./categories";
-import { type ExtendedCheckContext, type PulseScanCheckInput, fetchWithTimeout, headRequest, verifyFileExposure, checkDnsRecord, resolveDnsRecord, probeInconclusive, skip, platformIs, CATCH_ALL_NOTE } from "./_types";
+import { type ExtendedCheckContext, type PulseScanCheckInput, fetchWithTimeout, headRequest, verifyFileExposure, resolveDnsRecord, probeInconclusive, skip, platformIs, CATCH_ALL_NOTE } from "./_types";
 
 const CHECKS: Array<[string, string]> = [
   ["cross_origin_opener_policy", "Cross-Origin-Opener-Policy (COOP)"],
@@ -65,15 +65,27 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
   const hasRateLimit = !!h["x-ratelimit-limit"] || !!h["x-ratelimit-remaining"] || !!h["retry-after"] || !!h["ratelimit-limit"];
   checks.push({ category: CATEGORIES.SECURITY, checkKey: "rate_limiting_headers", label: "Rate-limiting headers present", status: hasRateLimit ? "PASS" : "WARN", detail: hasRateLimit ? "Rate limiting headers detected — API endpoint protection in place." : "No rate-limiting headers — consider adding X-RateLimit-* headers to API responses to signal throttling behaviour." });
 
-  // CAA DNS record
-  const caaRecords = await checkDnsRecord(hostname, "CAA");
-  const hasCaa = caaRecords.length > 0;
-  checks.push({ category: CATEGORIES.SECURITY, checkKey: "caa_dns_record", label: "CAA DNS record (cert authority restriction)", status: hasCaa ? "PASS" : "WARN", detail: hasCaa ? `CAA record found — only authorised CAs can issue certificates for this domain.` : "No CAA record — any certificate authority can issue SSL certificates for your domain. Add a CAA record to restrict issuance to your CA." });
+  // CAA DNS record. Both this and DNSSEC below conclude from an EMPTY answer, so
+  // a failed lookup must not reach them — it would report a record the domain may
+  // well have as missing.
+  const caa = await resolveDnsRecord(hostname, "CAA");
+  if (!caa.ok) {
+    checks.push(probeInconclusive(CATEGORIES.SECURITY, "caa_dns_record", "CAA DNS record (cert authority restriction)",
+      `The CAA lookup for ${hostname} did not complete (${caa.reason}).`));
+  } else {
+    const hasCaa = caa.records.length > 0;
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "caa_dns_record", label: "CAA DNS record (cert authority restriction)", status: hasCaa ? "PASS" : "WARN", detail: hasCaa ? `CAA record found — only authorised CAs can issue certificates for this domain.` : "No CAA record — any certificate authority can issue SSL certificates for your domain. Add a CAA record to restrict issuance to your CA." });
+  }
 
   // DNSSEC
-  const dsRecords = await checkDnsRecord(hostname, "DS");
-  const hasDnssec = dsRecords.length > 0;
-  checks.push({ category: CATEGORIES.SECURITY, checkKey: "dnssec_enabled", label: "DNSSEC enabled on domain", status: hasDnssec ? "PASS" : "WARN", detail: hasDnssec ? "DNSSEC DS record found — DNS responses are cryptographically signed." : "No DNSSEC detected — DNS responses are unauthenticated and vulnerable to cache poisoning attacks." });
+  const ds = await resolveDnsRecord(hostname, "DS");
+  if (!ds.ok) {
+    checks.push(probeInconclusive(CATEGORIES.SECURITY, "dnssec_enabled", "DNSSEC enabled on domain",
+      `The DS lookup for ${hostname} did not complete (${ds.reason}).`));
+  } else {
+    const hasDnssec = ds.records.length > 0;
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "dnssec_enabled", label: "DNSSEC enabled on domain", status: hasDnssec ? "PASS" : "WARN", detail: hasDnssec ? "DNSSEC DS record found — DNS responses are cryptographically signed." : "No DNSSEC detected — DNS responses are unauthenticated and vulnerable to cache poisoning attacks." });
+  }
 
   // Certificate expiry (check for Strict-Transport-Security max-age or server header)
   const stsHeader = h["strict-transport-security"] ?? "";

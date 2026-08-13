@@ -6,9 +6,10 @@ vi.mock("@/server/pulse-lite/url-guard", () => ({
   fetchScannableUrl: (url: string, init?: RequestInit) => fetch(url, init),
 }));
 
-import { resolveDnsRecord, checkDnsRecord, probeInconclusive, type ExtendedCheckContext } from "../_types";
+import { resolveDnsRecord, resolveAllDnsRecords, checkDnsRecord, probeInconclusive, type ExtendedCheckContext } from "../_types";
 import { runSecurityExtended } from "../security-extended";
 import { runInfrastructureExtended } from "../infrastructure-extended";
+import { runEmailDeliverabilityChecks } from "../email-deliverability";
 import { runAiAeoChecks } from "../ai-aeo";
 import { computeScoreBreakdown } from "../score-breakdown";
 import { CATEGORIES } from "../categories";
@@ -200,6 +201,76 @@ describe("robots.txt — unreachable is not 'nothing blocks AI crawlers'", () =>
     }));
     const checks = await runAiAeoChecks(context());
     expect(statusOf(checks, "aeo_ai_crawlers_allowed")).toBe("WARN");
+  });
+});
+
+describe("resolveAllDnsRecords fails the whole answer if any lookup fails", () => {
+  // A combined "is there a record like this across these names" question is only
+  // sound as an EMPTY answer if every lookup completed.
+  it("merges records when all succeed", async () => {
+    vi.stubGlobal("fetch", dnsResponder({ "a.test:MX": ["10 mx.a"], "b.test:MX": ["20 mx.b"] }));
+    const result = await resolveAllDnsRecords([["a.test", "MX"], ["b.test", "MX"]]);
+    expect(result).toEqual({ ok: true, records: ["10 mx.a", "20 mx.b"] });
+  });
+
+  it("reports failure rather than a partial merge", async () => {
+    vi.stubGlobal("fetch", dnsResponder({}, "throw"));
+    expect((await resolveAllDnsRecords([["a.test", "MX"], ["b.test", "MX"]])).ok).toBe(false);
+  });
+});
+
+describe("email deliverability — a resolver blip is not a broken mail setup", () => {
+  // 12 checks in this family conclude from an absent record. A DNS outage
+  // previously reported every one of them as a finding: no SPF, no DKIM, no MX.
+  const EMAIL_DNS_KEYS = [
+    "dkim_record_present", "bimi_record_present", "mta_sts_policy", "tls_rpt_record",
+    "spf_hardfail", "dmarc_quarantine_reject", "email_mx_present", "spf_single_record",
+    "dmarc_aggregate_reporting", "dmarc_full_coverage", "tls_rpt_destination",
+    "transactional_subdomain",
+  ];
+
+  it("reports every DNS-derived check as inconclusive when DNS is unreachable", async () => {
+    vi.stubGlobal("fetch", dnsResponder({}, "throw"));
+    const checks = await runEmailDeliverabilityChecks(context());
+    for (const key of EMAIL_DNS_KEYS) {
+      expect(statusOf(checks, key), key).toBe("INCONCLUSIVE");
+    }
+  });
+
+  it("still WARNs on a genuinely absent record when the lookup succeeded", async () => {
+    vi.stubGlobal("fetch", dnsResponder({}));
+    const checks = await runEmailDeliverabilityChecks(context());
+    for (const key of EMAIL_DNS_KEYS) {
+      expect(statusOf(checks, key), key).toBe("WARN");
+    }
+  });
+
+  it("still PASSes on real records", async () => {
+    vi.stubGlobal("fetch", dnsResponder({
+      "example.test:TXT": ['"v=spf1 -all"'],
+      "example.test:MX": ["10 mx.example.test"],
+      "_dmarc.example.test:TXT": ['"v=DMARC1; p=reject; pct=100; rua=mailto:d@example.test"'],
+    }));
+    const checks = await runEmailDeliverabilityChecks(context());
+    expect(statusOf(checks, "spf_hardfail")).toBe("PASS");
+    expect(statusOf(checks, "email_mx_present")).toBe("PASS");
+    expect(statusOf(checks, "dmarc_quarantine_reject")).toBe("PASS");
+  });
+});
+
+describe("CAA and DNSSEC — the same rule as their siblings", () => {
+  it("does not claim a missing CAA or DS record when the lookup failed", async () => {
+    vi.stubGlobal("fetch", dnsResponder({}, "throw"));
+    const checks = await runSecurityExtended(context());
+    expect(statusOf(checks, "caa_dns_record")).toBe("INCONCLUSIVE");
+    expect(statusOf(checks, "dnssec_enabled")).toBe("INCONCLUSIVE");
+  });
+
+  it("still WARNs when the lookup succeeded and the records are genuinely absent", async () => {
+    vi.stubGlobal("fetch", dnsResponder({}));
+    const checks = await runSecurityExtended(context());
+    expect(statusOf(checks, "caa_dns_record")).toBe("WARN");
+    expect(statusOf(checks, "dnssec_enabled")).toBe("WARN");
   });
 });
 
