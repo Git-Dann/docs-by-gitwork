@@ -238,9 +238,6 @@ export async function findSignerByToken(token: string) {
   // Reject tokens for requests that haven't been sent yet or are no longer valid for signing.
   const status = signer.request.status;
   if (status !== "SENT") return { signer, gate: status as Exclude<SignatureRequestStatus, "SENT"> };
-  if (signer.request.expiresAt && signer.request.expiresAt < new Date()) {
-    return { signer, gate: "EXPIRED" as const };
-  }
 
   return { signer, gate: null };
 }

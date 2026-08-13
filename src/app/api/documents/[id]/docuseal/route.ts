@@ -306,8 +306,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         const dsSub =
           (targetInput
             ? dsResult.submitters.find(
-                (s) => s.role === targetInput.role && s.email.toLowerCase() === targetInput.email.toLowerCase(),
-              ) ?? dsResult.submitters.find((s) => s.role === targetInput.role)
+              (s) => s.role === targetInput.role && s.email.toLowerCase() === targetInput.email.toLowerCase(),
+            ) ?? dsResult.submitters.find((s) => s.role === targetInput.role)
             : undefined) ??
           dsResult.submitters.find((s) => s.email.toLowerCase() === signer.email.toLowerCase()) ??
           dsResult.submitters[index];

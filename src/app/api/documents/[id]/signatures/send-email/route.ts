@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { renderSignatureRequestEmailHtml } from "@/server/email-templates";
@@ -58,21 +59,19 @@ export async function POST(
     const documentTitle = doc.title?.trim() || doc.documentType || "Document";
     const senderName = "Muhammad Usman"; // Gitwork sender
 
+    // Always send the standard signature request email using the existing token.
+    // Links are not single-use — the signer can open and re-open as needed.
     const signingUrl = `${origin}/sign/${signer.accessToken}`;
-    const subject = `${documentTitle} for signature, from Gitwork`;
-    const expiresAtFormatted = signer.request.expiresAt
-      ? new Date(signer.request.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
-      : "30 days from send";
 
+    const subject = `${documentTitle} for signature, from Gitwork`;
     const htmlContent = renderSignatureRequestEmailHtml({
       documentTitle,
       clientFirstName,
       signingUrl,
       senderName,
-      expiresAtFormatted,
     });
 
-    // 3. Dispatch via Gmail SMTP
+    // 3. Send Email via Gmail SMTP Transporter
     await sendSmtpEmail({
       to: signer.email,
       subject,
@@ -80,8 +79,8 @@ export async function POST(
     });
 
     return apiOk({
-      sent: true,
-      email: signer.email,
+      success: true,
+      message: `Email successfully delivered to ${signer.email}`,
       signingUrl,
     });
   } catch (err) {
