@@ -38,8 +38,30 @@ import {
   installSnippet,
 } from "@/lib/badge/catalog";
 import { cn } from "@/lib/format";
+import { PILLARS } from "@/server/pulse-checks/pillars";
 
 const SAMPLE_SCORE = 92;
+
+/**
+ * The preview's bars.
+ *
+ * Derived from `PILLARS` rather than typed out, so the preview shows the labels
+ * and the ORDER a real badge will show — the same top-N-by-published-weight the
+ * route serves. The four hardcoded labels here before were domains that the live
+ * badge never rendered under those names, which is part of why this studio could
+ * not have caught the badge's own scoring bug: a preview that invents its data
+ * verifies the design and nothing else.
+ *
+ * The VALUES are still illustrative — a real scan is what produces real ones, and
+ * picking a scan below renders exactly that.
+ */
+const SAMPLE_BARS = [...PILLARS]
+  .sort((a, b) => b.weight - a.weight)
+  .slice(0, 4)
+  .map((pillar, index) => ({
+    label: pillar.label.toUpperCase(),
+    value: [0.94, 0.81, 0.9, 0.72][index] ?? 0.8,
+  }));
 
 type Ground = "light" | "dark";
 
@@ -151,12 +173,7 @@ export function BadgeStudio({
             theme: ground,
             motion,
             project: "example.com",
-            bars: [
-              { label: "SECURITY", value: 0.94 },
-              { label: "PERFORMANCE", value: 0.81 },
-              { label: "SEO & PRESENCE", value: 0.9 },
-              { label: "CODE QUALITY", value: 0.72 },
-            ],
+            bars: SAMPLE_BARS,
           }).svg,
         )
       : import("@/lib/badge/countermark-badge").then((m) =>

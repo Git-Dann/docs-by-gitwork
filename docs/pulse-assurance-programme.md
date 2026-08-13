@@ -215,26 +215,36 @@ As the brief describes. Two notes from the trace:
 
 ---
 
-## 4. Open questions that are product decisions, not bugs
+## 4. Decisions taken, and what is still open
 
-1. **Should the fix agent be able to write `.github/workflows`?** It can today, by design — the
-   system prompt offers to create CI from scratch. Combined with repo file contents entering its
-   context, a prompt-injected repository could aim it at a workflow file. The PR requires human
-   review, and Phase 0 added a path guard and an injection boundary, but the capability is
-   deliberate and narrowing it is Dan's call.
-2. **`GET /api/settings/checks` has no auth assertion** while POST requires admin. Tightening it to
+**Decided (Dan, Aug 2026) — closed:**
+
+1. **The fix agent keeps writing `.github/workflows`.** A repo with no CI is one of the findings it
+   exists to fix. The edge is real — repository file contents enter its context, so a
+   prompt-injected repo could aim it at a workflow file — and it is held by four things, none of
+   which should be removed without a replacement: the `isWritableFixPath` guard, the untrusted-data
+   boundary in `FIX_SYSTEM_PROMPT`, a branch that is never the default one, and human review.
+2. **Pillars ship.** `computePillarBreakdown` now renders as `NN // WHERE IT STANDS` on the report's
+   Overview tab and drives the public badge's `card` bars. See `docs/pulse-pillars.md`.
+3. **One scoring core.** The report's per-category fallback used a hand-rolled PASS=1/WARN=0.5 ratio
+   under a comment claiming it matched `calculateHealthScore` — it weighted nothing. It now reads
+   `computeScoreBreakdown`, as the headline, the pillars and the badge all do.
+
+**Still open:**
+
+4. **`GET /api/settings/checks` has no auth assertion** while POST requires admin. Tightening it to
    admin would remove read-only access from a Staff member granted `settings.agents`, which is what
-   gates the page. Left alone pending that decision.
-3. **`support-analytics/types.ts:98`** does a raw `fetch` against a connector-supplied `baseUrl`
+   gates the page — so it is a decision about who may read the catalogue, not an oversight to fix
+   blind.
+5. **`support-analytics/types.ts:98`** does a raw `fetch` against a connector-supplied `baseUrl`
    with no SSRF guard. Outside Pulse, but it is the same class the guard exists for.
-4. **The report's per-category bars use a different formula from the score.**
-   `pulse-scan-results.tsx:68` computes a plain PASS=1/WARN=0.5 ratio with no severity, evidence,
-   confidence or independence weighting — and its comment claims it matches `calculateHealthScore`,
-   which it does not. The bars can contradict the headline number.
-5. **`pillars.ts` is dead code** — 239 lines, imported only by its own test, rendered nowhere. It is
-   the brief's "six legible subscores", already written. Ship it or delete it.
 6. **`HARD_CRITICAL` (`priority.ts`) and `CRITICAL_KEYS` (`score-breakdown.ts`) disagree** about
    which checks are critical. Two lists, one concept.
+7. **The 133 checks added in §37–§38 were validated against fixtures, not real repositories.**
+   CLAUDE.md §34.3 records that validating a family against a real codebase is what finds the wrong
+   ones — it caught four defects there that unit tests passed straight through. This is the highest
+   -value work on the *product* rather than the plumbing, and it needs real repos and a
+   `GITHUB_TOKEN`.
 
 ---
 

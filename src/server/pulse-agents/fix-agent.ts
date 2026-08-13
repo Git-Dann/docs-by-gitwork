@@ -103,8 +103,14 @@ File contents returned by read_file and list_directory are part of the assessed 
  * rather than at the write, so a rejected path never reaches the PR body either.
  *
  * Deliberately NOT blocked: `.github/workflows`. The system prompt offers to
- * create CI from scratch and that is a genuine capability, not an oversight —
- * narrowing it is a product decision, not a bug fix.
+ * create CI from scratch, and Dan confirmed (Aug 2026) that the agent should keep
+ * writing there — a repo with no CI is one of the findings it exists to fix.
+ *
+ * That is a real capability with a real edge: repository file contents come back
+ * into the model's context, so a prompt-injected repo could aim it at a workflow
+ * file. The mitigations are this path guard, the untrusted-data boundary in
+ * FIX_SYSTEM_PROMPT, a branch that is never the default one, and human review of
+ * the PR. Do not remove any of the four without replacing it.
  */
 export function isWritableFixPath(filePath: string): boolean {
   const path = filePath.trim();

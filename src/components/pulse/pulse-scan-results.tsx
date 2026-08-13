@@ -33,13 +33,15 @@ import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAg
 import { computeGrades } from "@/server/pulse-checks/grades";
 import { rankFindings } from "@/server/pulse-checks/priority";
 import { policyDisposition } from "@/server/pulse-checks/policy-disposition";
+import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
+import { computePillarBreakdown } from "@/server/pulse-checks/pillars";
 import { useBatchCreateTasks, useTasks } from "@/hooks/use-tasks";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useStarterList } from "@/hooks/use-starters";
 import { recommendStartersForScan } from "@/lib/starters-recommend";
 import type { FixAgentResult } from "@/lib/api";
 import { cn, formatRelative } from "@/lib/format";
-import type { PulseScanRecord, PulseScanCheckRecord, ProductionBlocker, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights, CodeAgentInsights, DeployAgentInsights, ScoreBreakdown, PulseScanDiff } from "@/types/pulse";
+import type { PulseScanRecord, PulseScanCheckRecord, PulseScanCheckInput, ProductionBlocker, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights, CodeAgentInsights, DeployAgentInsights, ScoreBreakdown, PulseScanDiff } from "@/types/pulse";
 import { AI_MATURITY_LABELS } from "@/types/pulse";
 import {
   PulseCheckStatusIcon,
@@ -66,17 +68,99 @@ function groupChecksByCategory(checks: PulseScanCheckRecord[]) {
   return map;
 }
 
+/**
+ * A category's score, from the same core the headline uses.
+ *
+ * This is the FALLBACK path — a scan carrying a stored `scoreBreakdown` reads
+ * that instead. It used to be a hand-rolled PASS=1 / WARN=0.5 ratio under a
+ * comment claiming it matched `calculateHealthScore`. It did not: the real
+ * formula weights every check by severity, evidence strength and confidence, and
+ * damps checks that share a `controlId` so several views of one signal count
+ * once. So a legacy scan's bars could disagree with its own headline number, and
+ * with the same bars on a newer scan.
+ *
+ * Reading `byCategory` rather than `finalScore` is deliberate: it is exactly the
+ * arithmetic the stored path does (`earned / possible`), and it avoids
+ * `finalScore`'s scan-level caps, which would zero a single category for a
+ * reason that has nothing to do with that category.
+ */
 function categoryScore(checks: PulseScanCheckRecord[]): number {
-  const applicable = checks.filter((c) => c.status === "PASS" || c.status === "WARN" || c.status === "FAIL");
-  if (!applicable.length) return 0;
-  // Match calculateHealthScore: a WARN earns half credit (it's "could be better",
-  // not a hard failure) so a category of only warnings reads ~50, never 0.
-  let earned = 0;
-  for (const c of applicable) {
-    if (c.status === "PASS") earned += 1;
-    else if (c.status === "WARN") earned += 0.5;
-  }
-  return Math.round((earned / applicable.length) * 100);
+  const [row] = computeScoreBreakdown(checks as unknown as PulseScanCheckInput[]).byCategory;
+  return row && row.possible > 0 ? Math.round((row.earned / row.possible) * 100) : 0;
+}
+
+/**
+ * The six pillars, above the 26-category wall.
+ *
+ * 1,645 checks across 26 categories is a more accurate measurement than any
+ * six-bucket rollup and a much worse conversation: a client sees one number and
+ * then a list, with no answer to "which part of this is the problem?". This is
+ * the answer, and it is a PRESENTATION rollup — `computePillarBreakdown`
+ * delegates every check to the same `computeScoreBreakdown` the headline uses, so
+ * the two cannot apply different trust rules.
+ *
+ * Derived at render, never stored: it describes the checks on this page, so a
+ * snapshot would be correct exactly once. (Opposite call from Countermark, which
+ * freezes because it records what was true at a moment.)
+ */
+function PillarStrip({ checks, num }: { checks: PulseScanCheckRecord[]; num: string }) {
+  const { pillars, dropped } = computePillarBreakdown(checks as unknown as PulseScanCheckInput[]);
+  const scored = pillars.filter((pillar) => pillar.score !== null);
+  if (scored.length === 0) return null;
+
+  return (
+    <div className="widget-card">
+      <div className="widget-header">
+        <span className="widget-header-label">{`${num} // WHERE IT STANDS`}</span>
+        <span className="widget-header-right">
+          {dropped.length > 0 ? `${scored.length} of ${pillars.length} apply` : "published weights"}
+        </span>
+      </div>
+      <div className="widget-body">
+        <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+          {scored.map((pillar) => (
+            <div key={pillar.key}>
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="widget-data-label truncate" title={pillar.question}>{pillar.label}</p>
+                {/* The weight it ACTUALLY carried, after dropped pillars were
+                    redistributed — not the published one, which would be a
+                    different number from the one that produced this score. */}
+                <span className="shrink-0 font-mono text-[10px] text-[var(--text-4)]">{pillar.effectiveWeight}%</span>
+              </div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="font-serif text-2xl font-bold leading-none tabular-nums text-[var(--text-1)]">{pillar.score}</span>
+                <span className="font-mono text-[10px] text-[var(--text-4)]">
+                  {pillar.pass}/{pillar.pass + pillar.warn + pillar.fail}
+                  {pillar.excluded > 0 ? ` · ${pillar.excluded} unscored` : ""}
+                </span>
+              </div>
+              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-[var(--surface-2)]">
+                <div
+                  className={cn(
+                    "h-full rounded-full",
+                    (pillar.score ?? 0) >= 75 ? "bg-emerald-500"
+                      : (pillar.score ?? 0) >= 50 ? "bg-amber-500"
+                        : "bg-red-500",
+                  )}
+                  style={{ width: `${pillar.score}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* A dropped pillar is NAMED. Scoring one on nothing, or scoring it zero,
+            is the "we could not look" → "it is not there" failure this codebase
+            keeps finding. */}
+        {dropped.length > 0 && (
+          <p className="mt-4 border-t border-[var(--border-2)] pt-3 text-xs text-[var(--text-3)]">
+            <span className="widget-data-label">Not assessed</span>{" "}
+            {pillars.filter((pillar) => pillar.score === null).map((pillar) => pillar.label).join(" · ")}
+            {" — nothing applicable to this project type ran, so their points were shared across the pillars that did apply rather than counting against the score."}
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // Best-effort tech stack: prefer the deterministically-detected stack; when none
@@ -2157,6 +2241,12 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       {/* ═══ OVERVIEW TAB — BENTO DASHBOARD ═══════════════════════════════ */}
       {activeTab === "overview" && (
         <div className="space-y-4">
+
+          {/* Directly under the headline score, because that is where the reader
+              asks "which part of this is the problem?" — the question the whole
+              rollup exists to answer. On the Checks tab it would sit above the
+              wall it is meant to save you reading. */}
+          <PillarStrip checks={scan.checks} num={sectionNo()} />
 
           {/* COMPLIANCE BY MARKET — per-jurisdiction posture; deep-links to the Compliance tab */}
           {scorecard.length > 0 && (
