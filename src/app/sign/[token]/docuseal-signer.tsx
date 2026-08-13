@@ -1,6 +1,11 @@
 "use client";
 
-import { DocusealForm } from "@docuseal/react";
+import dynamic from "next/dynamic";
+
+const DocusealForm = dynamic(
+  () => import("@docuseal/react").then((mod) => mod.DocusealForm),
+  { ssr: false }
+);
 
 interface DocuSealSignerProps {
   src: string;
