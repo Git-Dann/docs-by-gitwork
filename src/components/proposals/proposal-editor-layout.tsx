@@ -1605,6 +1605,12 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
 
                     {/* Actions */}
                     <div className="mt-5 space-y-2 border-t border-[var(--border-2)] pt-4">
+                      {isDocModifiedSinceActivation ? (
+                        <div className="rounded-[8px] border border-amber-500/30 bg-amber-50/50 p-2.5 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+                          <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-300">Document Modified</p>
+                          <p className="mt-0.5 text-[11px] leading-4">Content has changed since signature activation. Re-activate signature below to send the updated document.</p>
+                        </div>
+                      ) : null}
                       {isDocusealActivated ? (
                         <Button
                           type="button"

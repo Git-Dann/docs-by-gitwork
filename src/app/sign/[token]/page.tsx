@@ -92,18 +92,6 @@ export default async function SignPage({ params }: PageProps) {
     );
   }
 
-  // ── Strict single-use link check ──────────────────────────────────────────────────
-  // If the link has already been opened in a prior session (firstViewedAt is set)
-  // and the signer has not completed signing, block access for security.
-  if (signer.firstViewedAt) {
-    return (
-      <NoticePage
-        title="The signing link has expired"
-        body="Nothing lost. I can re issue the document in a minute. Please ask your Gitwork contact for a fresh link."
-      />
-    );
-  }
-
   // ── Active signing flow ─────────────────────────────────────────────────────────────
   const embedSrc = signer.docusealEmbedSrc;
   const iframeSrc = embedSrc
