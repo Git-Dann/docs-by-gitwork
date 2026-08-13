@@ -546,14 +546,31 @@ Core domains:
 - **`PulseScanCheckInput.category` is the typed union `CheckCategory`** — a check that emits a
   raw/typo'd category is a **compile error**. Always tag checks with `CATEGORIES.<X>`, never a
   string literal. This applies in `pulse-checks/*`, `pulse-agents/*`, and `pulse-scan.ts`.
-- **To ADD A CHECK:** emit it with `category: CATEGORIES.<X>` **and** add its `{ key, category,
-  label }` row to `src/server/checks-registry.ts`. That's the catalogue the Settings → Checks
-  panel + per-workspace `PulseCheckConfig` overrides + framework counts are built from.
+- **To ADD A CHECK:** emit it with `category: CATEGORIES.<X>`, add its `{ key, category,
+  label }` row to `src/server/checks-registry.ts`, then run **`npm run pulse:catalogue`** to record
+  the new key. The registry is the catalogue the Settings → Checks panel + per-workspace
+  `PulseCheckConfig` overrides + framework counts are built from.
 - **To ADD A CATEGORY:** add one entry to `CATEGORIES` + one row to `CATEGORY_META` (pick a
   domain + weight + blurb). Nothing else needs editing.
-- **Enforced by `src/server/pulse-checks/__tests__/categories.reconcile.test.ts`** (`npm test`):
-  every emitted `checkKey` must be in the registry, every category must have metadata + one
-  domain, no duplicate keys. If it fails, the catalogue drifted — fix the source, not the test.
+- ⚠️ **To REMOVE A CHECK: you don't — you retire it.** A `checkKey` is a **public identifier**,
+  not an internal name: it keys every historical `PulseScanCheck` row *and* every
+  `PulseCheckConfig` row a workspace has set (`@@unique([workspaceId, checkKey])`). Deleting or
+  renaming one orphans a customer's own enable/label/severity decisions and makes the matching
+  rows in their stored scans unreadable — silently, because nothing recomputes an old scan. Add a
+  `RETIRED_CHECKS` entry in **`src/server/pulse-checks/catalogue-compat.ts`** naming the successor
+  and the relationship (`SUPERSEDED_BY` · `MERGED_INTO` · `SPLIT_INTO` · `ALIAS_OF` ·
+  `WITHDRAWN`), *then* run `npm run pulse:catalogue`. The key stays readable; only its
+  implementation goes.
+- **Enforced by two tests** (`npm test`), which cover opposite directions and neither is
+  sufficient alone:
+  - `pulse-checks/__tests__/categories.reconcile.test.ts` — every **emitted** `checkKey` is in the
+    registry, every category has metadata + exactly one domain, no duplicate keys.
+  - `pulse-checks/__tests__/catalogue-compat.test.ts` — every **registered** key is backed by an
+    implementation (so the Settings panel can't advertise a control that never runs), every key in
+    `catalogue-baseline.json` is still registered or explicitly retired, and every retirement names
+    a live successor. Baseline out of date? `npm run pulse:catalogue`.
+
+  If either fails, the catalogue drifted — fix the source, not the test.
 - Runtime stats are already automatic: all scan-results UI derives pass/warn/fail, category
   cards, score and priority live from the persisted `scan.checks` — nothing to wire per check.
 
