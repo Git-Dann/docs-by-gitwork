@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { renderSignatureRequestEmailHtml, renderLinkExpiredEmailHtml } from "@/server/email-templates";
+import { renderSignatureRequestEmailHtml } from "@/server/email-templates";
 import { sendSmtpEmail } from "@/server/smtp";
-import { regenerateSignerToken } from "@/server/signatures";
 import { z } from "zod";
 
 const sendEmailSchema = z.object({
   signerId: z.string().min(1, "signerId is required"),
-  isResend: z.boolean().optional(),
 });
 
 export const dynamic = "force-dynamic";
@@ -61,45 +59,21 @@ export async function POST(
     const documentTitle = doc.title?.trim() || doc.documentType || "Document";
     const senderName = "Muhammad Usman"; // Gitwork sender
 
-    let activeToken = signer.accessToken;
-    const isResend = Boolean(body.isResend || signer.firstViewedAt);
+    const signingUrl = `${origin}/sign/${signer.accessToken}`;
+    const subject = `${documentTitle} for signature, from Gitwork`;
+    const expiresAtFormatted = signer.request.expiresAt
+      ? new Date(signer.request.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+      : "30 days from send";
 
-    // 3. If link was previously viewed/spent or explicitly requested as resend, regenerate fresh token
-    if (isResend) {
-      const refreshedSigner = await regenerateSignerToken(signer.id);
-      activeToken = refreshedSigner.accessToken;
-    }
+    const htmlContent = renderSignatureRequestEmailHtml({
+      documentTitle,
+      clientFirstName,
+      signingUrl,
+      senderName,
+      expiresAtFormatted,
+    });
 
-    const signingUrl = `${origin}/sign/${activeToken}`;
-
-    // 4. Render exact HTML template and subject
-    let subject: string;
-    let htmlContent: string;
-
-    if (isResend) {
-      subject = `${documentTitle} has expired`;
-      htmlContent = renderLinkExpiredEmailHtml({
-        documentTitle,
-        clientFirstName,
-        reissueUrl: signingUrl,
-        senderName,
-      });
-    } else {
-      subject = `${documentTitle} for signature, from Gitwork`;
-      const expiresAtFormatted = signer.request.expiresAt
-        ? new Date(signer.request.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
-        : "30 days from send";
-
-      htmlContent = renderSignatureRequestEmailHtml({
-        documentTitle,
-        clientFirstName,
-        signingUrl,
-        senderName,
-        expiresAtFormatted,
-      });
-    }
-
-    // 5. Send Email via Gmail SMTP Transporter
+    // 3. Dispatch via Gmail SMTP
     await sendSmtpEmail({
       to: signer.email,
       subject,
@@ -107,10 +81,9 @@ export async function POST(
     });
 
     return apiOk({
-      success: true,
-      message: `Email successfully delivered to ${signer.email}`,
+      sent: true,
+      email: signer.email,
       signingUrl,
-      isResend,
     });
   } catch (err) {
     console.error("[Send Email API Error]", err);
