@@ -59,7 +59,8 @@ import { SpeakerNotesField } from "@/components/proposals/speaker-notes-field";
 import { useDocumentRelations } from "@/hooks/use-document-relations";
 import { ProposalProofPanel } from "@/components/proposals/proposal-proof-panel";
 import { SignaturePanel } from "@/components/proposals/signature-panel";
-import { usePushDocuSeal } from "@/hooks/use-signatures";
+import { findActiveRequest, usePushDocuSeal, useSignatureRequests } from "@/hooks/use-signatures";
+import { useToast } from "@/components/ui/toast";
 import { EnvelopeIcon, PaperAirplaneIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { SECTION_REGISTRY } from "@/lib/sections/registry";
 import { resolveInsertIndex } from "@/lib/proposal-insert-position";
@@ -228,6 +229,16 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { data, isPending, error } = useProposal(proposalId);
+  const { error: toastError, success: toastSuccess } = useToast();
+  const requestsQuery = useSignatureRequests(proposalId);
+  const activeSignatureReq = findActiveRequest(requestsQuery.data);
+  const isDocusealActivated = Boolean(
+    activeSignatureReq?.docusealSubmissionId ||
+      (activeSignatureReq &&
+        activeSignatureReq.status !== "REVOKED" &&
+        activeSignatureReq.status !== "DECLINED" &&
+        activeSignatureReq.status !== "EXPIRED"),
+  );
   const updateMutation = useUpdateProposal(proposalId);
   const docusealMutation = usePushDocuSeal(proposalId);
   const snippetsQuery = useSnippets();
@@ -1567,25 +1578,41 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
 
                     {/* Actions */}
                     <div className="mt-5 space-y-2 border-t border-[var(--border-2)] pt-4">
-                      <Button
-                        type="button"
-                        variant="primary"
-                        size="sm"
-                        className="w-full justify-center"
-                        onClick={async () => {
-                          try {
-                            await docusealMutation.mutateAsync();
-                            setApprovalOpen(false);
-                            setActiveTab("overview");
-                          } catch (err) {
-                            console.error(err);
-                          }
-                        }}
-                        loading={docusealMutation.isPending}
-                        leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
-                      >
-                        Push to DocuSeal
-                      </Button>
+                      {isDocusealActivated ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="w-full justify-center opacity-85 cursor-not-allowed bg-emerald-50 text-emerald-700 border-emerald-200"
+                          disabled
+                          leadingIcon={<CheckCircleIcon className="h-4 w-4 text-emerald-600" />}
+                        >
+                          DocuSeal Activated
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="primary"
+                          size="sm"
+                          className="w-full justify-center"
+                          onClick={async () => {
+                            try {
+                              await docusealMutation.mutateAsync();
+                              toastSuccess("DocuSeal submission activated successfully!");
+                              setApprovalOpen(false);
+                              setActiveTab("overview");
+                            } catch (err) {
+                              const errMsg = err instanceof Error ? err.message : "DocuSeal push failed.";
+                              toastError(`DocuSeal Error: ${errMsg}`);
+                              alert(`DocuSeal Push Failed:\n\n${errMsg}`);
+                            }
+                          }}
+                          loading={docusealMutation.isPending}
+                          leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
+                        >
+                          Push to DocuSeal
+                        </Button>
+                      )}
                       <div className="flex items-center gap-2">
                         <Button
                           type="button"

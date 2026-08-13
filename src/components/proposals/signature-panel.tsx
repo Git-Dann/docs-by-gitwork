@@ -17,8 +17,9 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowPathIcon, ClipboardDocumentIcon, EnvelopeIcon, PaperAirplaneIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, CheckCircleIcon, ClipboardDocumentIcon, EnvelopeIcon, PaperAirplaneIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/format";
 import {
   findActiveRequest,
@@ -47,6 +48,7 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
   const createMutation = useCreateSignatureRequest(documentId);
   const sendMutation = useSendSignatureRequest(documentId);
   const revokeMutation = useRevokeSignatureRequest(documentId);
+  const { error: toastError, success: toastSuccess } = useToast();
   const [message, setMessage] = useState("");
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -71,9 +73,13 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
     setError(null);
     try {
       await docusealMutation.mutateAsync();
+      toastSuccess("DocuSeal submission activated successfully!");
       setMessage("");
     } catch (err) {
-      setError((err as Error).message);
+      const errMsg = err instanceof Error ? err.message : "DocuSeal push failed.";
+      setError(errMsg);
+      toastError(`DocuSeal Error: ${errMsg}`);
+      alert(`DocuSeal Push Failed:\n\n${errMsg}`);
     }
   }
 
