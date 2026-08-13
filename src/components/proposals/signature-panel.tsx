@@ -181,7 +181,7 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
               Request prepared with {active.signers.length} signer{active.signers.length === 1 ? "" : "s"}. Send it
               when you&rsquo;re ready &mdash; that&rsquo;s what mints the public signing links.
             </p>
-            <SignerList signers={active.signers} onCopyLink={copyLink} copiedToken={copiedToken} requestSent={false} onRefresh={() => void requestsQuery.refetch()} />
+            <SignerList documentId={documentId} signers={active.signers} onCopyLink={copyLink} copiedToken={copiedToken} requestSent={false} onRefresh={() => void requestsQuery.refetch()} />
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -210,7 +210,7 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
         {active && active.status === "SENT" ? (
           <div className="space-y-4">
             <SignedSoFar signers={active.signers} />
-            <SignerList signers={active.signers} onCopyLink={copyLink} copiedToken={copiedToken} requestSent={true} onRefresh={() => void requestsQuery.refetch()} />
+            <SignerList documentId={documentId} signers={active.signers} onCopyLink={copyLink} copiedToken={copiedToken} requestSent={true} onRefresh={() => void requestsQuery.refetch()} />
             <Button
               type="button"
               variant="danger"
@@ -235,7 +235,7 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
                 appendix with full audit trail.
               </p>
             </div>
-            <SignerList signers={active.signers} onCopyLink={copyLink} copiedToken={copiedToken} requestSent={true} onRefresh={() => void requestsQuery.refetch()} />
+            <SignerList documentId={documentId} signers={active.signers} onCopyLink={copyLink} copiedToken={copiedToken} requestSent={true} onRefresh={() => void requestsQuery.refetch()} />
           </div>
         ) : null}
 
@@ -288,22 +288,51 @@ function SignedSoFar({ signers }: { signers: SignatureSignerRecord[] }) {
 }
 
 function SignerList({
+  documentId,
   signers,
   onCopyLink,
   copiedToken,
   requestSent,
   onRefresh,
 }: {
+  documentId: string;
   signers: SignatureSignerRecord[];
   onCopyLink: (token: string) => void;
   copiedToken: string | null;
   requestSent: boolean;
   onRefresh?: () => void;
 }) {
+  const { success: toastSuccess, error: toastError } = useToast();
+  const [sendingEmailId, setSendingEmailId] = useState<string | null>(null);
+
+  async function handleSendSmtpEmail(signer: SignatureSignerRecord) {
+    setSendingEmailId(signer.id);
+    try {
+      const res = await fetch(`/api/documents/${documentId}/signatures/send-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signerId: signer.id, isResend: Boolean(signer.firstViewedAt) }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to send email");
+      }
+      toastSuccess(`HTML Email sent to ${signer.email}`);
+      onRefresh?.();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to send email";
+      toastError(msg);
+      alert(`SMTP Email Failed:\n\n${msg}`);
+    } finally {
+      setSendingEmailId(null);
+    }
+  }
+
   return (
     <ul className="space-y-2">
       {signers.map((s) => {
         const tone = SIGNER_STATUS_STYLE[s.status];
+        const isSending = sendingEmailId === s.id;
         return (
           <li
             key={s.id}
@@ -349,57 +378,16 @@ function SignerList({
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={async () => {
-                      let activeToken = s.accessToken;
-                      if (s.firstViewedAt) {
-                        try {
-                          const res = await fetch(`/api/sign/${s.accessToken}/regenerate`, { method: "POST" });
-                          if (res.ok) {
-                            const data = await res.json();
-                            if (data.newToken) {
-                              activeToken = data.newToken;
-                              onRefresh?.();
-                            }
-                          }
-                        } catch {
-                          // Fall back to current token
-                        }
-                      }
-                      const origin = typeof window !== "undefined" ? window.location.origin : "";
-                      const signingUrl = `${origin}/sign/${activeToken}`;
-                      const firstName = s.name.split(" ")[0] || s.name;
-                      const isExpired = Boolean(s.firstViewedAt);
-                      const docTitle = "Document";
-
-                      const subject = isExpired
-                        ? encodeURIComponent(`${docTitle} has expired`)
-                        : encodeURIComponent(`${docTitle} for signature, from Gitwork`);
-
-                      const bodyText = isExpired
-                        ? `Hi ${firstName},\n\n` +
-                          `Nothing lost. I can re issue ${docTitle} in a minute.\n\n` +
-                          `Want it sent again as it stands, or has something changed on your side that we should update first?\n\n` +
-                          `Review and sign:\n${signingUrl}\n\n` +
-                          `Gitwork`
-                        : `Hi ${firstName},\n\n` +
-                          `Everything we agreed is in here. Two minutes on any device, no account needed.\n\n` +
-                          `Review and sign:\n${signingUrl}\n\n` +
-                          `You get a signed PDF copy the moment everyone has signed.\n\n` +
-                          `Gitwork`;
-
-                      const mailtoUrl = `mailto:${encodeURIComponent(s.email)}?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
-                      if (typeof window !== "undefined") {
-                        window.location.href = mailtoUrl;
-                      }
-                    }}
+                    disabled={isSending}
+                    onClick={() => handleSendSmtpEmail(s)}
                     className={cn(
-                      "inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 text-xs font-medium text-[var(--text-2)] transition",
-                      "hover:bg-[var(--surface-1)]",
+                      "inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-[var(--brand-600)] bg-[var(--brand-50)] px-3 text-xs font-medium text-[var(--brand-700)] transition hover:bg-[var(--brand-100)]",
+                      isSending && "opacity-60 cursor-wait",
                     )}
-                    title="Open your email app pre-filled with recipient, subject, and signing link"
+                    title="Automatically send formatted HTML template email via Gmail SMTP"
                   >
                     <EnvelopeIcon className="h-3.5 w-3.5 text-[var(--brand-600)]" />
-                    Email link
+                    {isSending ? "Sending…" : "Email link"}
                   </button>
                   <button
                     type="button"
@@ -437,8 +425,8 @@ function SignerList({
                     {copiedToken === s.accessToken
                       ? "Copied"
                       : s.firstViewedAt
-                      ? "Resend link"
-                      : "Copy link"}
+                        ? "Resend link"
+                        : "Copy link"}
                   </button>
                   <a
                     href={`/sign/${s.accessToken}`}
