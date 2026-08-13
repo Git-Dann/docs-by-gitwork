@@ -236,7 +236,7 @@ function checkDocumentModified(current: ProposalDocument | null, snapshot: unkno
     const snapSigKey = JSON.stringify({
       title: snapObj.title,
       clientName: snapObj.clientName,
-      sections: (snapObj.sections ?? []).map((s: any) => ({ key: s.key, title: s.title, data: s.data })),
+      sections: (snapObj.sections ?? []).map((s: { key?: string; title?: string; data?: unknown }) => ({ key: s.key, title: s.title, data: s.data })),
     });
     return currentSigKey !== snapSigKey;
   } catch {

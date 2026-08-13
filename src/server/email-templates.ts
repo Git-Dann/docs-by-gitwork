@@ -154,7 +154,7 @@ export function renderSignedCompletionEmailHtml(params: SignedCompletionEmailPar
   const {
     documentTitle,
     clientFirstName,
-    senderName = "Muhammad Usman",
+    senderName = "Harry Brown",
     logoUrl = DEFAULT_LOGO_URL,
   } = params;
 
