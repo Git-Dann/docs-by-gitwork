@@ -371,8 +371,11 @@ function CheckDrawer({
             <label className="mb-1.5 block text-sm font-semibold text-[var(--text-2)]">
               Severity override
             </label>
+            {/* "Always warn" / "Always fail" implied a passing check could be forced
+                to fail. It cannot: the override only re-grades a result the detector
+                already returned as WARN or FAIL. A PASS is never touched. */}
             <p className="mb-2 text-xs text-[var(--text-3)]">
-              Treat this check&apos;s issues as warnings or failures regardless of the built-in logic.
+              Re-grades an issue this check already found. It never turns a passing result into an issue.
             </p>
             <select
               value={severityOverride}
@@ -380,8 +383,8 @@ function CheckDrawer({
               className="app-select w-full text-sm"
             >
               <option value="">Use built-in default</option>
-              <option value="WARN">Always warn (⚠)</option>
-              <option value="FAIL">Always fail (✗)</option>
+              <option value="WARN">Report its issues as warnings (⚠)</option>
+              <option value="FAIL">Report its issues as failures (✗)</option>
             </select>
           </div>
 
@@ -389,7 +392,13 @@ function CheckDrawer({
           <div className="flex items-center justify-between rounded-xl border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
             <div>
               <p className="text-sm font-semibold text-[var(--text-1)]">Enable check</p>
-              <p className="text-xs text-[var(--text-3)]">Disabled checks are skipped entirely during scans.</p>
+              {/* This said "skipped entirely during scans", which was not what the code
+                  did: the detector still runs and its verdict is replaced at ingest.
+                  Someone disabling a check to save scan time or API quota was being
+                  told something untrue about their own bill. */}
+              <p className="text-xs text-[var(--text-3)]">
+                A disabled check still runs, but its result is recorded as Not tested and left out of the score.
+              </p>
             </div>
             <button
               type="button"
