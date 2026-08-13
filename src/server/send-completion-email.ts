@@ -65,7 +65,7 @@ export async function sendCompletionEmailsToAllSigners(requestId: string, origin
 
     // 2. Dispatch completion email with attached PDF to every signer
     const subject = `Signed, ${documentTitle}`;
-    const senderName = "Muhammad Usman";
+    const senderName = "Harry Brown";
 
     for (const signer of req.signers) {
       if (!signer.email || signer.email.includes("@client.com")) continue;
@@ -79,12 +79,12 @@ export async function sendCompletionEmailsToAllSigners(requestId: string, origin
 
       const attachments = pdfBuffer
         ? [
-            {
-              filename: `${documentTitle.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`,
-              content: pdfBuffer,
-              contentType: "application/pdf",
-            },
-          ]
+          {
+            filename: `${documentTitle.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`,
+            content: pdfBuffer,
+            contentType: "application/pdf",
+          },
+        ]
         : [];
 
       await sendSmtpEmail({

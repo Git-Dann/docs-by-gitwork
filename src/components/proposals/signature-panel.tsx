@@ -17,7 +17,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowPathIcon, CheckCircleIcon, ClipboardDocumentIcon, EnvelopeIcon, PaperAirplaneIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, ClipboardDocumentIcon, EnvelopeIcon, PaperAirplaneIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/format";
@@ -57,7 +57,7 @@ function checkDocumentModified(current: ProposalDocument | null, snapshot: unkno
     const snapSigKey = JSON.stringify({
       title: snapObj.title,
       clientName: snapObj.clientName,
-      sections: (snapObj.sections ?? []).map((s: any) => ({ key: s.key, title: s.title, data: s.data })),
+      sections: (snapObj.sections ?? []).map((s: { key?: string; title?: string; data?: unknown }) => ({ key: s.key, title: s.title, data: s.data })),
     });
     return currentSigKey !== snapSigKey;
   } catch {
