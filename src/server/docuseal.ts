@@ -307,3 +307,48 @@ export async function createDocuSealSubmission(
     }),
   };
 }
+
+/**
+ * Downloads the official signed PDF document from DocuSeal API for a completed submission.
+ */
+export async function downloadDocuSealSignedPdf(
+  submissionId: string | number,
+): Promise<Buffer | null> {
+  const { apiKey, baseUrl } = getDocuSealConfig();
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetch(`${baseUrl}/submissions/${submissionId}`, {
+      headers: {
+        "X-Auth-Token": apiKey,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      console.warn(`[DocuSeal PDF Fetch] Failed to fetch submission ${submissionId}. Status: ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json();
+    const doc = Array.isArray(data.documents) ? data.documents[0] : data.document;
+    const pdfUrl = doc?.url || doc?.download_url;
+
+    if (!pdfUrl) {
+      console.warn(`[DocuSeal PDF Fetch] No document URL found for submission ${submissionId}.`);
+      return null;
+    }
+
+    const pdfRes = await fetch(pdfUrl);
+    if (!pdfRes.ok) {
+      console.warn(`[DocuSeal PDF Fetch] Failed to download PDF binary from ${pdfUrl}. Status: ${pdfRes.status}`);
+      return null;
+    }
+
+    const arrayBuffer = await pdfRes.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } catch (err) {
+    console.error(`[DocuSeal PDF Fetch Error] Error downloading signed PDF for submission ${submissionId}:`, err);
+    return null;
+  }
+}

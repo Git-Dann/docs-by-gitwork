@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { renderSignedCompletionEmailHtml } from "@/server/email-templates";
 import { sendSmtpEmail } from "@/server/smtp";
+import { downloadDocuSealSignedPdf } from "@/server/docuseal";
 import { launchHeadlessBrowser } from "@/server/headless-browser";
 
 /**
@@ -34,9 +35,14 @@ export async function sendCompletionEmailsToAllSigners(requestId: string, origin
     const documentTitle = req.document.title?.trim() || req.document.documentType || "Signed Document";
     const appOrigin = origin || process.env.NEXT_PUBLIC_APP_URL || "https://staging.foundry.gitwork.tech";
 
-    // 1. Generate signed PDF buffer if shareToken exists
+    // 1. Fetch official signed PDF buffer (DocuSeal signed PDF if DocuSeal submission, otherwise Headless PDF)
     let pdfBuffer: Buffer | null = null;
-    if (req.document.shareToken && req.document.isShared) {
+    if (req.docusealSubmissionId) {
+      console.log(`[Completion Email] Attempting to fetch official DocuSeal signed PDF for submission ${req.docusealSubmissionId}...`);
+      pdfBuffer = await downloadDocuSealSignedPdf(req.docusealSubmissionId);
+    }
+
+    if (!pdfBuffer && req.document.shareToken && req.document.isShared) {
       try {
         const browser = await launchHeadlessBrowser();
         const page = await browser.newPage();
