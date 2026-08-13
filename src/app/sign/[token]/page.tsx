@@ -20,8 +20,8 @@ import { ProposalPreview } from "@/components/proposals/proposal-preview";
 import type { ProposalDocument } from "@/types/proposal";
 import { SignatureCapturePanel } from "./signature-capture-panel";
 import { SignerViewBeacon } from "./signer-view-beacon";
-import dynamic from "next/dynamic";
-const DocuSealSigner = dynamic(() => import("./docuseal-signer").then((mod) => mod.DocuSealSigner), {
+import nextDynamic from "next/dynamic";
+const DocuSealSigner = nextDynamic(() => import("./docuseal-signer").then((mod) => mod.DocuSealSigner), {
   ssr: false,
 });
 
