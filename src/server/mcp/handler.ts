@@ -1660,6 +1660,8 @@ const TOOLS: ToolDef[] = [
           severity: c.severity ?? undefined,
           evidenceStrength: c.evidenceStrength ?? undefined,
           controlId: c.controlId ?? undefined,
+          detectorStatus: c.detectorStatus ?? undefined,
+          detectorDetail: c.detectorDetail ?? undefined,
         })),
         targetMarkets: scan.targetMarkets ?? undefined,
         detectedMarkets: (scan.detectedMarkets ?? undefined) as undefined | import("@/server/pulse-checks/jurisdictions").JurisdictionCode[],

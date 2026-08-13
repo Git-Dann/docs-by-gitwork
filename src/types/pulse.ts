@@ -92,7 +92,10 @@ export interface PulseScanCheckRecord {
   severity: PulseControlSeverity | null;
   evidenceStrength: PulseEvidenceStrength | null;
   scoreEligible: boolean;
+  completenessEligible: boolean;
   controlId: string | null;
+  detectorStatus: PulseCheckStatus | null;
+  detectorDetail: string | null;
 }
 
 export interface PulseStrength {
@@ -431,6 +434,13 @@ export interface PulseScanCheckInput {
   completenessEligible?: boolean;
   /** Shared by controls backed by the same underlying signal. */
   controlId?: string;
+  /**
+   * What the detector concluded before workspace policy was applied. Set only when
+   * policy changed the verdict, so `null`/absent means `status` is the detector's
+   * own. Never write this from a check module — `applyCheckPolicy` owns it.
+   */
+  detectorStatus?: PulseCheckStatus;
+  detectorDetail?: string;
 }
 
 // ── Agent intelligence outputs ────────────────────────────────────────────────

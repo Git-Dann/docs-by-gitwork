@@ -32,6 +32,7 @@ import { Modal } from "@/components/ui/modal";
 import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal, usePulseBenchmarks, usePulseScanHistory, usePulseScanDiff, useEmailPulseAudit, useRenamePulseScan } from "@/hooks/use-pulse";
 import { computeGrades } from "@/server/pulse-checks/grades";
 import { rankFindings } from "@/server/pulse-checks/priority";
+import { policyDisposition } from "@/server/pulse-checks/policy-disposition";
 import { useBatchCreateTasks, useTasks } from "@/hooks/use-tasks";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useStarterList } from "@/hooks/use-starters";
@@ -3110,6 +3111,21 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                               </div>
                               {check.detail && (
                                 <p className="mt-0.5 text-xs text-[var(--text-3)]">{check.detail}</p>
+                              )}
+                              {/* What the scanner found, when workspace policy changed it.
+                                  Two separate facts — the detector's finding and the
+                                  workspace's decision about it — and the row used to show
+                                  only the second, so a disabled check read as if nothing
+                                  had been found. */}
+                              {check.detectorStatus && check.detectorStatus !== check.status && (
+                                <p className="mt-0.5 text-xs text-[var(--text-4)]">
+                                  <span className="widget-data-label">
+                                    {policyDisposition(check) === "DISABLED" ? "Workspace disabled" : "Workspace re-graded"}
+                                  </span>
+                                  {" · scanner found "}
+                                  <span className="font-semibold text-[var(--text-3)]">{check.detectorStatus}</span>
+                                  {check.detectorDetail ? ` — ${check.detectorDetail}` : ""}
+                                </p>
                               )}
                               {check.evidence && (
                                 <p className="mt-0.5 font-mono text-[10px] leading-4 text-[var(--text-4)]">{check.evidence}</p>

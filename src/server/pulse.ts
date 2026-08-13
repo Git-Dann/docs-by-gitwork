@@ -129,7 +129,10 @@ export function serializePulseScan(record: PulseScanDbRecord): PulseScanRecord {
       severity: (check.severity as PulseScanCheckRecord["severity"]) ?? null,
       evidenceStrength: (check.evidenceStrength as PulseScanCheckRecord["evidenceStrength"]) ?? null,
       scoreEligible: check.scoreEligible,
+      completenessEligible: check.completenessEligible,
       controlId: check.controlId ?? null,
+      detectorStatus: (check.detectorStatus as PulseScanCheckRecord["detectorStatus"]) ?? null,
+      detectorDetail: check.detectorDetail ?? null,
     })),
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
@@ -1006,7 +1009,12 @@ export async function runAnalysis(
           severity: check.severity ?? null,
           evidenceStrength: check.evidenceStrength ?? null,
           scoreEligible: check.scoreEligible ?? true,
+          // Was dropped here, so completeness recomputed from stored rows
+          // disagreed with the value this very scan recorded.
+          completenessEligible: check.completenessEligible ?? false,
           controlId: check.controlId ?? null,
+          detectorStatus: check.detectorStatus ?? null,
+          detectorDetail: check.detectorDetail ?? null,
         })),
       });
     };

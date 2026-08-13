@@ -2594,6 +2594,22 @@ model PulseScanCheck {
   evidenceStrength String? // "VERIFIED" | "STRONG" | "HEURISTIC" | "CLAIMED"
   scoreEligible    Boolean @default(true)
   controlId        String?
+  // Counts toward assurance completeness while contributing nothing to the health
+  // score — a diagnostic saying "this family is unknown, not passing". It existed
+  // on PulseScanCheckInput with no column here, so it was dropped on write and
+  // completeness recomputed from stored rows disagreed with the value the scan
+  // recorded. `false` matches how every historical row already behaves on read.
+  completenessEligible Boolean @default(false)
+  // What the DETECTOR concluded, before workspace policy was applied. Null means
+  // policy changed nothing and `status`/`detail` are the detector's own words.
+  //
+  // applyCheckPolicy rewrites status and detail in place, so without these a
+  // stored scan could not be replayed against a different policy, and nobody could
+  // ask "what did the scanner actually find" about a disabled or re-graded check.
+  // The policy DISPOSITION is derived from the pair, not stored — see
+  // policyDisposition() in src/server/pulse-checks/policy-disposition.ts.
+  detectorStatus   PulseCheckStatus?
+  detectorDetail   String?
 
   @@index([scanId, category])
   @@index([scanId, sortOrder])

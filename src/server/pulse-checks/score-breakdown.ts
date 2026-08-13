@@ -10,6 +10,33 @@ import { WEIGHTED_CATEGORIES } from "./categories";
 const SCORE_VERSION = "pulse-score-v3" as const;
 const POLICY_VERSION = "pulse-policy-v3" as const;
 
+/**
+ * Every `PulseScanCheck` field this module reads.
+ *
+ * Any caller that recomputes a score from a NARROWED database select must include
+ * all of them. Omitting one does not fail — each falls back to a default — so the
+ * result is a plausible number that quietly disagrees with the stored one. The
+ * public Pulse badge shipped exactly that: it selected category, status and
+ * confidence under a comment asserting those were all the maths touched, while
+ * severity, evidenceStrength, scoreEligible, completenessEligible and controlId
+ * were silently defaulted, so its domain bars could contradict the report they
+ * link to.
+ *
+ * `score-input-contract.test.ts` fails if this list drifts from the fields the
+ * code actually reads, and if a known recomputing caller stops selecting one.
+ */
+export const SCORE_INPUT_FIELDS = [
+  "category",
+  "checkKey",
+  "completenessEligible",
+  "confidence",
+  "controlId",
+  "evidenceStrength",
+  "scoreEligible",
+  "severity",
+  "status",
+] as const;
+
 const SEVERITY_WEIGHT: Record<PulseControlSeverity, number> = {
   CRITICAL: 8,
   HIGH: 5,

@@ -54,16 +54,30 @@ const loadBadgeScan = (token: string) =>
         select: {
           projectName: true,
           healthScore: true,
-          checks: { select: { checkKey: true, category: true, status: true, confidence: true } },
+          // EVERY field the score maths reads. The previous select was
+          // category/status/confidence with a comment claiming that was all
+          // `computeScoreBreakdown` touches — it is not. It also reads `severity`
+          // and `evidenceStrength` (the per-control weight), `scoreEligible` (the
+          // eligibility gate), `completenessEligible`, and `controlId` (the
+          // independence damper that stops several views of one signal counting
+          // several times). Absent, each silently fell back to a default, so the
+          // badge's domain bars could disagree with the report they link to.
+          //
+          // Still narrow: the prose fields (detail, evidence, remediation) are the
+          // bulk of a check row and none of them reach the maths.
+          checks: {
+            select: {
+              checkKey: true, category: true, status: true, confidence: true,
+              severity: true, evidenceStrength: true, scoreEligible: true,
+              completenessEligible: true, controlId: true,
+            },
+          },
         },
       });
       if (!scan) return null;
       return {
         projectName: scan.projectName,
         healthScore: scan.healthScore,
-        // Narrowed to what the score maths reads. `computeScoreBreakdown` only
-        // touches category/status/confidence, so the badge never pulls the full
-        // check payload (evidence, remediation prose) into the cache entry.
         checks: scan.checks as unknown as PulseScanCheckInput[],
       };
     },
