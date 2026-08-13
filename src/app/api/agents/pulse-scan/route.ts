@@ -13,12 +13,20 @@ export const maxDuration = 60;
 const bodySchema = z.object({
   url: z.string().url(),
   targetMarkets: z.array(z.string().trim().min(1).max(16)).max(30).optional(),
+  // Unrecognised ids fall back to the default policy rather than erroring — but
+  // the verdict always names the policy it actually used, so a typo shows up as
+  // the wrong bar in the output instead of a silently different one.
+  gatePolicyId: z.string().trim().min(1).max(64).optional(),
 });
 
 export async function POST(request: NextRequest) {
   try {
     const body = bodySchema.parse(await request.json());
-    const verdict = await runAgentScan({ url: body.url, targetMarkets: body.targetMarkets });
+    const verdict = await runAgentScan({
+      url: body.url,
+      targetMarkets: body.targetMarkets,
+      gatePolicyId: body.gatePolicyId,
+    });
     return apiOk({ verdict });
   } catch (error) {
     return fromError(error);

@@ -1665,6 +1665,12 @@ const TOOLS: ToolDef[] = [
         })),
         targetMarkets: scan.targetMarkets ?? undefined,
         detectedMarkets: (scan.detectedMarkets ?? undefined) as undefined | import("@/server/pulse-checks/jurisdictions").JurisdictionCode[],
+        // Re-derived from the stored checks rather than read off the stored
+        // gate, so a scan run before the gate existed still gets a decision and
+        // an old scan can never carry a decision its own checks no longer
+        // support. The collectors come from the stored breakdown because they
+        // are the one input that cannot be recovered from the checks alone.
+        collectors: scan.scoreBreakdown?.collectors,
       });
       return textResult(verdict, verdict.summary);
     },

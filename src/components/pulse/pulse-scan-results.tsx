@@ -34,6 +34,7 @@ import { computeGrades } from "@/server/pulse-checks/grades";
 import { rankFindings } from "@/server/pulse-checks/priority";
 import { policyDisposition } from "@/server/pulse-checks/policy-disposition";
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
+import { evaluateReleaseGate } from "@/server/pulse-checks/release-decision";
 import { computePillarBreakdown } from "@/server/pulse-checks/pillars";
 import { useBatchCreateTasks, useTasks } from "@/hooks/use-tasks";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -41,7 +42,7 @@ import { useStarterList } from "@/hooks/use-starters";
 import { recommendStartersForScan } from "@/lib/starters-recommend";
 import type { FixAgentResult } from "@/lib/api";
 import { cn, formatRelative } from "@/lib/format";
-import type { PulseScanRecord, PulseScanCheckRecord, PulseScanCheckInput, ProductionBlocker, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights, CodeAgentInsights, DeployAgentInsights, ScoreBreakdown, PulseScanDiff } from "@/types/pulse";
+import type { PulseScanRecord, PulseScanCheckRecord, PulseScanCheckInput, ProductionBlocker, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights, CodeAgentInsights, DeployAgentInsights, ScoreBreakdown, PulseScanDiff, GateEvaluationRecord, ReleaseDecisionState } from "@/types/pulse";
 import { AI_MATURITY_LABELS } from "@/types/pulse";
 import {
   PulseCheckStatusIcon,
@@ -103,6 +104,95 @@ function categoryScore(checks: PulseScanCheckRecord[]): number {
  * snapshot would be correct exactly once. (Opposite call from Countermark, which
  * freezes because it records what was true at a moment.)
  */
+/** Plain words for each decision — the label a non-engineer reads first. */
+const GATE_LABEL: Record<ReleaseDecisionState, string> = {
+  READY: "Ready to ship",
+  CONDITIONAL: "Ship with reservations",
+  BLOCKED: "Blocked",
+  INCONCLUSIVE: "Not enough evidence",
+};
+
+/**
+ * The release decision, at the top of the report.
+ *
+ * A score says how a product is doing; this says whether it can ship and what is
+ * stopping it. It leads because that is the question the reader actually arrived
+ * with — §39 of the assurance brief puts the decision above the number for
+ * exactly that reason.
+ *
+ * INCONCLUSIVE is styled as its own state, not as a soft failure: "we could not
+ * establish this" and "this is broken" are different facts with different fixes,
+ * and collapsing them is the mistake the whole gate exists to avoid.
+ */
+function ReleaseGateBanner({ gate }: { gate: GateEvaluationRecord }) {
+  // Semantic tokens, not Tailwind's own reds and ambers — the palette has no
+  // -600 step and the literals do not flip in dark mode, which is the defect
+  // §42.12 had to go back and fix across Care.
+  //
+  // INCONCLUSIVE is deliberately NEUTRAL rather than a warning colour. It is not
+  // a finding about the product; colouring it like one invites a reader to treat
+  // "we could not see enough" as "something is wrong here", and the two need
+  // different actions from different people.
+  // Semantic tokens, not Tailwind's own reds and ambers — the palette has no
+  // -600 step and the literals do not flip in dark mode, which is the defect
+  // §42.12 had to go back and fix across Care.
+  //
+  // Colour lives in the accent rule, the dot and the decision word; the reasons
+  // stay in ordinary text tokens. This banner renders on EVERY scan, and a
+  // saturated panel that is always on screen becomes wallpaper — the same
+  // lesson §42.7 had to learn when Care's reply banner filled a card on healthy
+  // threads too. Only BLOCKED is allowed to fill, because it is the one state
+  // that must interrupt.
+  //
+  // INCONCLUSIVE is deliberately NEUTRAL rather than a warning colour. It is not
+  // a finding about the product; colouring it like one invites a reader to treat
+  // "we could not see enough" as "something is wrong here", and the two need
+  // different actions from different people.
+  const tone =
+    gate.decision === "BLOCKED"
+      ? { rule: "border-l-[var(--danger-500)]", bg: "bg-[var(--danger-50)]", text: "text-[var(--danger-700)]", dot: "bg-[var(--danger-500)]" }
+      : gate.decision === "INCONCLUSIVE"
+        ? { rule: "border-l-[var(--text-4)]", bg: "bg-[var(--surface-0)]", text: "text-[var(--text-2)]", dot: "bg-[var(--text-4)]" }
+        : gate.decision === "CONDITIONAL"
+          ? { rule: "border-l-[var(--warning-500)]", bg: "bg-[var(--surface-0)]", text: "text-[var(--warning-500)]", dot: "bg-[var(--warning-500)]" }
+          : { rule: "border-l-[var(--success-500)]", bg: "bg-[var(--surface-0)]", text: "text-[var(--success-500)]", dot: "bg-[var(--success-500)]" };
+
+  const reasons = gate.decision === "BLOCKED" ? gate.blocking
+    : gate.decision === "INCONCLUSIVE" ? gate.unverified
+      : gate.decision === "CONDITIONAL" ? gate.conditional
+        : [];
+
+  return (
+    <div className={cn("rounded-[10px] border border-[var(--border-1)] border-l-[3px] p-4", tone.rule, tone.bg)}>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className={cn("inline-block h-2 w-2 shrink-0 rounded-full", tone.dot)} />
+        <span className={cn("text-sm font-semibold", tone.text)}>{GATE_LABEL[gate.decision]}</span>
+        <span className="widget-data-label text-[var(--text-4)]">
+          {gate.policy.label} · health {gate.metrics.health} · coverage {gate.metrics.coverage}%
+        </span>
+      </div>
+      {reasons.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {reasons.map((reason) => (
+            <li key={reason.code} className="text-xs leading-5 text-[var(--text-2)]">{reason.summary}</li>
+          ))}
+        </ul>
+      )}
+      {/* Always visible, whatever the decision — a READY that quietly omits what
+          it could not check is the overstatement this report is built to avoid. */}
+      {gate.decision !== "INCONCLUSIVE" && gate.unverified.length > 0 && (
+        <p className="mt-2 border-t border-current/10 pt-2 text-xs leading-5 text-[var(--text-3)]">
+          {gate.unverified.map((reason) => reason.summary).join(" ")}
+        </p>
+      )}
+      <p className="mt-2 text-[10px] text-[var(--text-4)]">
+        Decided from the checks and coverage on this scan under policy{" "}
+        <span className="font-mono">{gate.policy.id}@{gate.policy.version}</span>. No AI output is used.
+      </p>
+    </div>
+  );
+}
+
 function PillarStrip({ checks, num }: { checks: PulseScanCheckRecord[]; num: string }) {
   const { pillars, dropped } = computePillarBreakdown(checks as unknown as PulseScanCheckInput[]);
   const scored = pillars.filter((pillar) => pillar.score !== null);
@@ -1853,6 +1943,20 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   let __sectionNo = 0;
   const sectionNo = () => String(++__sectionNo).padStart(2, "0");
 
+  // Prefer the decision stored with the scan — it is the one that knew which
+  // collectors ran, which cannot be recovered from the checks. Failing that,
+  // derive it from the same pure engine, so a scan run before the gate existed
+  // still gets a decision rather than a blank space where one should be. What
+  // is never done is inventing a permissive default: a scan with no checks at
+  // all yields no banner rather than a quiet pass.
+  const gate: GateEvaluationRecord | undefined = scan.scoreBreakdown?.gate
+    ?? (scan.checks.length > 0
+      ? evaluateReleaseGate(
+        scan.checks as unknown as PulseScanCheckInput[],
+        scan.scoreBreakdown ?? computeScoreBreakdown(scan.checks as unknown as PulseScanCheckInput[]),
+      )
+      : undefined);
+
   // ── Hero — Gitwork navy DocumentCover, reused in its compact "screen" variant (the same
   // component/props shape that renders the printable report's navy cover). Replaces the old
   // header row's plain ScoreRing + the Overview tab's standalone "01 // PROJECT HEALTH" widget,
@@ -1869,15 +1973,21 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         : llm.projectClassification.type,
     });
   }
-  if (scan.healthScore !== null) {
+  // Readiness comes from the deterministic release gate when the scan has one.
+  //
+  // It used to be a fourth ad-hoc formula — `healthScore >= 80 && criticalBlockers
+  // === 0` — where `criticalBlockers` counted entries in `llm.productionBlockers`,
+  // i.e. MODEL OUTPUT. A release verdict derived from generated prose is a guess
+  // in a confident voice, and it could disagree with the deterministic checks on
+  // the same page. Scans predating the gate keep the old wording, since there is
+  // no decision to show and inventing one would be worse.
+  if (gate) {
+    heroMeta.push({ label: "Release", value: GATE_LABEL[gate.decision] });
+  } else if (scan.healthScore !== null) {
     const criticalBlockers = (llm?.productionBlockers ?? []).filter((b) => b.urgency === "CRITICAL").length;
     const ready = scan.healthScore >= 80 && criticalBlockers === 0;
     const nearly = !ready && scan.healthScore >= 55 && criticalBlockers <= 2;
-    // Just the verdict word here — the blocker/failing-check count it's gated on is
-    // already the headline of the "01 // PRODUCTION BLOCKERS" card below, so stating
-    // it twice on one screen read as redundant.
-    const verdict = ready ? "Launch-ready" : nearly ? "Nearly there" : "Not launch-ready";
-    heroMeta.push({ label: "Readiness", value: verdict });
+    heroMeta.push({ label: "Readiness", value: ready ? "Launch-ready" : nearly ? "Nearly there" : "Not launch-ready" });
   }
   if (scan.previousHealthScore !== null && scan.healthScore !== null && scan.healthScore !== scan.previousHealthScore) {
     const delta = scan.healthScore - scan.previousHealthScore;
@@ -2164,6 +2274,11 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           onDiscoverySuccess={() => setActiveTab("discovery")}
         />
       )}
+
+      {/* The decision, above the tabs, so it is read before any of the detail
+          that supports it — and on every tab, not just the one it happens to
+          live on. */}
+      {gate && <ReleaseGateBanner gate={gate} />}
 
       {/* Tabs */}
       <div className="border-b border-[var(--border-2)]">

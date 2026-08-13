@@ -168,16 +168,38 @@ still reads as a complete assessment.
 - Diff it against the persisted rows; emit the difference as `NOT_TESTED`, which already lowers
   completeness correctly.
 
-### Phase 4 — Pulse Gate as a decision, not a threshold
+### Phase 4 — Pulse Gate as a decision, not a threshold — **SHIPPED**
 
-`scripts/pulse-gate.mjs` already exits non-zero on a CONFIRMED issue or a low score. Turn that into
-a versioned, explainable decision — `READY` / `CONDITIONAL` / `BLOCKED` / `INCONCLUSIVE` — with the
-policy stored on the scan. **`INCONCLUSIVE` is the load-bearing state**: it is what stops a scan
-with 42% coverage and no findings reading as a pass. The precedent for keeping "could not
-establish" distinct from "is broken" is Provenance's `INCOMPLETE` grade (`CLAUDE.md` §38) — follow it.
+`src/server/pulse-checks/release-decision.ts`. A versioned, explainable decision —
+`READY` / `CONDITIONAL` / `BLOCKED` / `INCONCLUSIVE` — computed deterministically from the checks
+and stored on the scan's `scoreBreakdown.gate`. Rendered above the report tabs, returned on the
+agent verdict, and what `scripts/pulse-gate.mjs` now exits on. Operator guide: `docs/pulse-ci.md`.
 
-Policy packs are a natural fit for the existing `Workspace.*Config` JSON pattern (`curatorConfig`,
-`foremanConfig`, `dispatchConfig`).
+**`INCONCLUSIVE` is the load-bearing state** — it is what stops a scan with 42% coverage and no
+findings reading as a pass. Same precedent as Provenance's `INCOMPLETE` (`CLAUDE.md` §38): "could
+not establish" and "is broken" are different facts with different fixes.
+
+Four rules worth not undoing:
+
+- **Precedence is `BLOCKED > INCONCLUSIVE > CONDITIONAL > READY`.** A confirmed blocker outranks
+  thin coverage because it is knowledge rather than the absence of it. Saying "inconclusive" over
+  a proven exposed `.env` would bury the one thing the scan is certain of.
+- **Only `status === "FAIL" && trustBucket === "CONFIRMED"` may block.** Blocking a release on a
+  heuristic is how a gate gets switched off and stays off.
+- **Low health is `CONDITIONAL`, never `BLOCKED`.** A low score is debt spread over many controls,
+  not a thing anyone can point at and fix before shipping. Blocking belongs to named failures.
+- **A scan that did not finish can never be `READY` or `CONDITIONAL`** (`withScanIncomplete`) — but
+  it keeps a `BLOCKED` it already earned. The failure this prevents is the quiet one: a scan
+  errors, returns what it managed to collect, finds nothing wrong in it, and reports a pass.
+
+The blocking list is deliberately short (six universal controls plus the policy's own). A blocking
+list that grows to include everything important stops meaning "cannot ship" and starts meaning
+"should fix", at which point the decision carries no information.
+
+**Still open:** the three policies are in code, not per-workspace. Making them editable fits the
+existing `Workspace.*Config` JSON pattern (`curatorConfig`, `foremanConfig`, `dispatchConfig`), and
+`gatePolicyById` is the seam — but a customer-editable blocking list needs a UI that makes the
+consequence of removing a control obvious, which is a design question, not a coding one.
 
 ### Phase 5 — finding lifecycle
 

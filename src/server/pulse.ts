@@ -17,6 +17,7 @@ import { resolveTargetMarkets, isJurisdictionCode, type JurisdictionCode } from 
 import { computeComplianceScorecard } from "@/server/pulse-checks/compliance-scorecard";
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import { collectorCoverage, type CollectorExecution } from "@/server/pulse-checks/collector-health";
+import { evaluateReleaseGate, DEFAULT_GATE_POLICY } from "@/server/pulse-checks/release-decision";
 import { computePricingBandsForWorkspace } from "@/server/pulse-pricing";
 import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison } from "@/server/pulse-ai";
 import { runLiteScan } from "@/server/pulse-lite/run-lite-scan";
@@ -1067,6 +1068,12 @@ export async function runAnalysis(
       ...computeScoreBreakdown(allChecks),
       ...(collectorExecutions.length > 0 ? { collectors: collectorCoverage(collectorExecutions) } : {}),
     };
+    // The release decision. Deterministic and computed from the checks and the
+    // coverage above — no model output reaches it. Stored WITH its policy version,
+    // so a scan read months later says which rules produced its answer rather than
+    // being silently re-judged by whatever the policy has since become.
+    const gate = evaluateReleaseGate(allChecks, scoreBreakdown, DEFAULT_GATE_POLICY);
+    scoreBreakdown.gate = gate;
 
     // Compute AI Maturity Score (0–4) from AI Readiness check pass rate.
     // Only set when AI Readiness checks actually ran (not all SKIPPED).

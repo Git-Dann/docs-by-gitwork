@@ -291,6 +291,29 @@ export interface ScoreBreakdown {
     failedNames: string[];
     unavailable: { name: string; reason: string }[];
   };
+  /**
+   * The release decision — READY / CONDITIONAL / BLOCKED / INCONCLUSIVE — under a
+   * named, versioned policy. Optional: scans predating the gate have none, and a
+   * missing value must read as "no decision was taken", never as READY.
+   */
+  gate?: GateEvaluationRecord;
+}
+
+export type ReleaseDecisionState = "READY" | "CONDITIONAL" | "BLOCKED" | "INCONCLUSIVE";
+
+export interface GateReasonRecord {
+  code: string;
+  summary: string;
+  checkKeys: string[];
+}
+
+export interface GateEvaluationRecord {
+  decision: ReleaseDecisionState;
+  policy: { id: string; version: string; label: string };
+  blocking: GateReasonRecord[];
+  conditional: GateReasonRecord[];
+  unverified: GateReasonRecord[];
+  metrics: { health: number; coverage: number };
 }
 
 export interface PulseScanRecord {
