@@ -117,4 +117,15 @@ describe("the new columns survive the round trip", () => {
     expect(report).toContain("policyDisposition");
     expect(report).toContain("check.detectorStatus");
   });
+
+  // These columns only exist in production if the deploy's migration runs. The
+  // VPS script has no `set -e` and its step succeeds on the LAST command, so an
+  // unguarded `db push` failure fell through to the restart and shipped code
+  // reading columns the database did not have — under a green deploy.
+  it("does not restart the app when the migration fails", () => {
+    const deploy = readFileSync(".github/workflows/deploy.yml", "utf8");
+    const migrate = deploy.slice(deploy.indexOf("docker compose pull app"), deploy.indexOf("docker image prune"));
+    expect(migrate, "the db push must gate the restart").toMatch(/if !\s*docker compose run[\s\S]*db push/);
+    expect(migrate.indexOf("exit 1")).toBeLessThan(migrate.indexOf("--force-recreate app"));
+  });
 });
