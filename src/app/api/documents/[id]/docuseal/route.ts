@@ -268,13 +268,25 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
-    // Update SignatureRequest with docusealSubmissionId
+    // Build frozen document snapshot for modification tracking
+    const documentSnapshot = {
+      title: doc.title,
+      clientName: doc.clientName,
+      sections: doc.sections.map((s) => ({
+        key: s.key,
+        title: (s as unknown as { title?: string }).title,
+        data: s.data,
+      })),
+    };
+
+    // Update SignatureRequest with docusealSubmissionId and documentSnapshot
     await prisma.signatureRequest.update({
       where: { id: activeRequest.id },
       data: {
         status: "SENT",
         sentAt: new Date(),
         docusealSubmissionId: String(dsResult.id),
+        documentSnapshot: documentSnapshot as any,
       },
     });
 
