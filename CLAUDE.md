@@ -917,12 +917,14 @@ checks (`runUrlChecks`/`runGithubChecks`/`runExtendedChecks`/`runDeployAgent`/`r
 were already AI-free; the AI (`pulse-ai.ts`) only ever ran on top. This work makes that split
 explicit and reuses it three ways.
 
-- **Shared core** — `runLiteScan({ inputType, url|githubRepo, includePageSpeed, skipUrlGuard, onChecks })`
+- **Shared core** — `runLiteScan({ inputType, url|githubRepo, includePageSpeed, checkPolicy, onChecks })`
   returns `{ checks, techStack, healthScore, browser/deploy/codeInsights, homepageUrl }`, de-duped by
   `checkKey` + stably ordered. It emits **incremental waves** via `onChecks` — implemented by an
   optional `onWave` threaded into `runUrlChecks` (emits core checks before extended) and
   `runExtendedChecks` (emits each of the 19 category modules as it resolves). No AI imports in
   `pulse-lite/*` — keep it that way.
+  ⚠️ **`skipUrlGuard` no longer exists** — it was removed in `2f6782a` (Aug 2026) along with both
+  of its call sites, so the guard is unconditional. Don't re-add a bypass parameter.
 - **SSRF guard** (`pulse-lite/url-guard.ts`) — `assertScannableUrl()`: http/https only, no creds,
   `dns.lookup` + reject private/reserved/loopback/link-local/metadata ranges. **Mandatory on the
   public path**; applied defensively elsewhere. **Rate limit** (`pulse-lite/rate-limit.ts`) —
