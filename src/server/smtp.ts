@@ -1,4 +1,6 @@
 import nodemailer from "nodemailer";
+import fs from "fs";
+import path from "path";
 
 /**
  * Server SMTP Transport for Gitwork Emails (Gmail SMTP).
@@ -27,9 +29,11 @@ export function getSmtpTransporter() {
 }
 
 export interface EmailAttachment {
-  filename: string;
-  content: Buffer | string;
+  filename?: string;
+  content?: Buffer | string;
   contentType?: string;
+  path?: string;
+  cid?: string;
 }
 
 export interface SendEmailOptions {
@@ -44,12 +48,29 @@ export async function sendSmtpEmail(options: SendEmailOptions) {
   const transporter = getSmtpTransporter();
   const defaultFrom = process.env.SMTP_FROM || `"Gitwork" <${process.env.SMTP_USER || "muhammad.usman@gitwork.co.uk"}>`;
 
+  const attachments: EmailAttachment[] = [...(options.attachments || [])];
+
+  // Auto-attach Gitwork logo CID inline attachment if referenced in HTML
+  if (options.html.includes("cid:gitwork-logo")) {
+    const gitworkMark = path.join(process.cwd(), "public", "gitwork-mark.png");
+    const foundryMark = path.join(process.cwd(), "public", "foundry-mark.png");
+    const logoPath = fs.existsSync(gitworkMark) ? gitworkMark : foundryMark;
+
+    if (fs.existsSync(logoPath)) {
+      attachments.push({
+        filename: "gitwork-mark.png",
+        path: logoPath,
+        cid: "gitwork-logo",
+      });
+    }
+  }
+
   const info = await transporter.sendMail({
     from: options.from || defaultFrom,
     to: options.to,
     subject: options.subject,
     html: options.html,
-    attachments: options.attachments,
+    attachments,
   });
 
   console.log(`[SMTP] Email sent to ${options.to}. MessageId=${info.messageId}`);
