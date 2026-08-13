@@ -108,11 +108,14 @@ export default function PulseOverviewPage() {
             title="Gitwork Pulse — live site health check"
             style={{ width: "100%", maxWidth: 720, margin: "0 auto", border: "1px solid #e2e8f0", borderRadius: 16, minHeight: 540, background: "white", display: "block", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}
           />
-          {/* Auto-resize the demo iframe to its content height. */}
+          {/* Auto-resize the demo iframe to its content height. Same-origin self-embed
+              (src="/embed/pulse" resolves to this page's own origin), so both the
+              message origin and its source window are checked against this specific
+              iframe before trusting the payload. */}
           <script
             dangerouslySetInnerHTML={{
               __html:
-                "(function(){var f=document.getElementById('pulse-embed-demo');window.addEventListener('message',function(e){var d=e.data||{};if(d.type==='pulse-embed-height'&&typeof d.height==='number'&&f){f.style.height=d.height+'px';}});})();",
+                "(function(){var f=document.getElementById('pulse-embed-demo');window.addEventListener('message',function(e){if(!f||e.origin!==window.location.origin||e.source!==f.contentWindow)return;var d=e.data||{};if(d.type==='pulse-embed-height'&&typeof d.height==='number'){f.style.height=d.height+'px';}});})();",
             }}
           />
 

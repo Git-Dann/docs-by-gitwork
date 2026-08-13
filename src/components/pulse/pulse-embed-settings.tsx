@@ -46,6 +46,7 @@ export function PulseEmbedSettings() {
   const [siteKeyDraft, setSiteKeyDraft] = useState("");
   const [secretKeyDraft, setSecretKeyDraft] = useState("");
   const seededDrafts = useRef(false);
+  const [checkKeysError, setCheckKeysError] = useState<string | null>(null);
 
   const checkKeys = useMemo(() => new Set(data?.checkKeys ?? DEFAULT_EMBED_CHECK_KEYS), [data?.checkKeys]);
 
@@ -80,13 +81,18 @@ export function PulseEmbedSettings() {
     setSecretKeyDraft(""); // never redisplay it, even the value just typed
   }
 
-  // Auto-resize the preview iframe to its content height (same protocol embed.js uses).
+  // Auto-resize the preview iframe to its content height (same protocol embed.js
+  // uses) — same-origin self-embed (src="/embed/pulse"), so both the message
+  // origin and its source window are checked against this specific iframe before
+  // trusting the payload.
   useEffect(() => {
     function onMessage(e: MessageEvent) {
+      if (e.origin !== window.location.origin || !previewRootRef.current) return;
+      const iframe = previewRootRef.current.querySelector("iframe");
+      if (!iframe || e.source !== iframe.contentWindow) return;
       const d = e.data as { type?: string; height?: number };
-      if (d?.type === "pulse-embed-height" && typeof d.height === "number" && previewRootRef.current) {
-        const iframe = previewRootRef.current.querySelector("iframe");
-        if (iframe) iframe.style.height = `${d.height}px`;
+      if (d?.type === "pulse-embed-height" && typeof d.height === "number") {
+        iframe.style.height = `${d.height}px`;
       }
     }
     window.addEventListener("message", onMessage);
@@ -116,23 +122,38 @@ export function PulseEmbedSettings() {
     });
   }
 
+  // Saving checkKeys can be rejected server-side (at least one check must stay
+  // selected) — surface that instead of letting the checkbox silently "fail to
+  // uncheck" with no explanation.
+  function saveCheckKeys(next: Set<string>) {
+    setCheckKeysError(null);
+    save(
+      { checkKeys: [...next] },
+      {
+        onError: (err) => {
+          setCheckKeysError(err instanceof Error ? err.message : "Couldn't save — please try again.");
+        },
+      },
+    );
+  }
+
   function toggleCheck(key: string) {
     const next = new Set(checkKeys);
     if (next.has(key)) next.delete(key);
     else next.add(key);
-    save({ checkKeys: [...next] });
+    saveCheckKeys(next);
   }
 
   function selectAll(checks: typeof CHECKS_REGISTRY) {
     const next = new Set(checkKeys);
     for (const c of checks) next.add(c.key);
-    save({ checkKeys: [...next] });
+    saveCheckKeys(next);
   }
 
   function clearAll(checks: typeof CHECKS_REGISTRY) {
     const next = new Set(checkKeys);
     for (const c of checks) next.delete(c.key);
-    save({ checkKeys: [...next] });
+    saveCheckKeys(next);
   }
 
   if (isLoading || !data) {
@@ -218,6 +239,10 @@ export function PulseEmbedSettings() {
               className="app-input w-full pl-8 text-sm"
             />
           </div>
+
+          {checkKeysError && (
+            <p role="alert" className="mb-3 text-xs text-red-600">{checkKeysError}</p>
+          )}
 
           <div className="max-h-[32rem] overflow-y-auto rounded-[6px] border border-[var(--border-2)]">
             {[...grouped.entries()].map(([category, checks]) => {

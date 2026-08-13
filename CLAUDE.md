@@ -928,11 +928,23 @@ explicit and reuses it three ways.
   (tag `pulse-report-<token>`, 5-min TTL); the share/unshare route `revalidateTag`s rotated/removed
   tokens so old links stop resolving. Added `robots: noindex`.
 - **Public embed widget** — standalone `/embed/pulse` (client widget, **score free, email-gates the
-  detail**), iframe-able anywhere (`frame-ancestors *` for `/embed/*` in `next.config.ts`),
-  postMessage auto-resize, snippet at `public/embed/pulse/embed.js`. Public no-auth endpoints
-  `POST/GET /api/public/pulse/scan[/id]` + `/unlock` (added `/api/public/pulse` to
-  `PUBLIC_API_PATHS`; CORS `*` already applies). `runPublicLiteScan` (`pulse-lite/public-scan.ts`)
-  runs with `includePageSpeed:false` and a single throttled JSON flusher (no write races).
+  detail**), postMessage auto-resize, snippet at `public/embed/pulse/embed.js`. Public no-auth
+  endpoints under `/api/public/pulse/` (added to `PUBLIC_API_PATHS`; CORS `*` already applies).
+  `runPublicLiteScan` (`pulse-lite/public-scan.ts`) runs with `includePageSpeed:false` and a single
+  throttled JSON flusher (no write races).
+  ⚠️ **Hardened since this entry was written — the two lines above describing framing and routes
+  are stale.** Framing is `frame-ancestors 'self' https://gitwork.co.uk https://www.gitwork.co.uk;`
+  (not `*`) — deliberately restricted to Gitwork's own domains, set on `/embed/:path*` in
+  `next.config.ts`. There is **no separate `/unlock` route** — email capture is folded into
+  `POST /api/public/pulse/scan` itself (email is required up front to start a scan at all); the
+  public surface is `POST /api/public/pulse/scan`, `GET /api/public/pulse/scan/[id]` (polling), and
+  `GET /api/public/pulse/config` (Turnstile site key + booking URL). The scan-start route also
+  gates on, in order: the `pulseEmbedEnabled` kill-switch, a honeypot field, Cloudflare Turnstile
+  (`pulse-lite/turnstile.ts` — fails open if no secret key is configured anywhere), a one-lifetime-
+  scan-per-email check, the shared SSRF guard (`pulse-lite/url-guard.ts`), then a Postgres-backed
+  rate limiter (`pulse-lite/rate-limit.ts`: 8/hr + 30/day per IP, 12/hr per target host). The
+  workspace's curated `pulseEmbedCheckKeys` (`pulse-embed-config.ts`) filter both the score/stat
+  strip and the findings list shown — a visitor never sees more than the configured ~10 checks.
 - **Foundry funnel** — captured email → `PulseLead` (notifies admins via `src/server/email.ts`).
   `leads-admin.ts` (`importLeadToFoundry`) one-click turns a lead into a full workspace `PulseScan`
   (→ proposal via `generateProposalFromScan`); surfaced by `PulseLeadsPanel` on `/app/pulse`.

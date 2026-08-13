@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Script from "next/script";
+import { DEFAULT_BOOKING_URL } from "@/server/pulse-embed-config";
 
 // ── Types (mirror PublicScanView from /api/public/pulse/scan/[id]) ─────────────
 type Check = {
@@ -41,10 +42,10 @@ declare global {
 const ACCENT = "#6B52FF"; // Gitwork purple
 const NAVY_GRADIENT = "linear-gradient(160deg, #17172a 0%, #0C0C18 100%)";
 const SERIF = "var(--font-fraunces), 'Fraunces', Georgia, serif";
-// Fallback only — used for the brief window before /api/public/pulse/config resolves.
-// Mirrors DEFAULT_BOOKING_URL in src/server/pulse-embed-config.ts (can't import a
-// server module from this client component).
-const FALLBACK_BOOKING_URL = "https://calendar.google.com/calendar/appointments/schedules/AcZssZ3uLzvxU1kbocUtjtGtYTTLqKuGCCjnvHAM1dLRJsbMhvYjOdaamfywtrHEHQxqEQTZ_YbNLGEf?gv=true";
+// Max consecutive polling failures (network error / non-2xx / 404) before giving up
+// and surfacing an error instead of polling forever. At the 2500ms backoff delay,
+// 40 attempts is ~100s — generous for a transient blip, but finite.
+const MAX_POLL_FAILURES = 40;
 
 function scoreColor(score: number | null): string {
   if (score == null) return "#9ca3af";
@@ -146,9 +147,21 @@ export default function EmbedPulsePage() {
   const [source, setSource] = useState<"gitwork.co.uk" | "foundry-demo">("foundry-demo");
   const [remoteConfig, setRemoteConfig] = useState<{ turnstileSiteKey: string | null; bookingUrl: string } | null>(null);
   const turnstileSiteKey = remoteConfig?.turnstileSiteKey ?? null;
-  const bookingUrl = remoteConfig?.bookingUrl ?? FALLBACK_BOOKING_URL;
+  const bookingUrl = remoteConfig?.bookingUrl ?? DEFAULT_BOOKING_URL;
 
   const rootRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const emailUsedRef = useRef<HTMLDivElement>(null);
+
+  // Move focus to newly-appeared error/notice content — otherwise a keyboard or
+  // screen-reader user's focus stays on the submit button with no cue that new
+  // content appeared below it.
+  useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
+  useEffect(() => {
+    if (emailAlreadyUsed) emailUsedRef.current?.focus();
+  }, [emailAlreadyUsed]);
 
   // Which site referred this embed — attributes leads to a placement in the Foundry
   // leads dashboard. Same-origin (e.g. /pulse-overview's self-embed) or no referrer
@@ -165,7 +178,7 @@ export default function EmbedPulsePage() {
   useEffect(() => {
     fetch("/api/public/pulse/config")
       .then((r) => r.json())
-      .then((d) => setRemoteConfig({ turnstileSiteKey: d.turnstileSiteKey ?? null, bookingUrl: d.bookingUrl ?? FALLBACK_BOOKING_URL }))
+      .then((d) => setRemoteConfig({ turnstileSiteKey: d.turnstileSiteKey ?? null, bookingUrl: d.bookingUrl ?? DEFAULT_BOOKING_URL }))
       .catch(() => {});
   }, []);
 
@@ -194,37 +207,83 @@ export default function EmbedPulsePage() {
     }
   }, [turnstileReady, turnstileSiteKey]);
 
-  // Poll while a scan is running.
+  // Poll while a scan is running. A 404 (scan row missing/expired) can never
+  // resolve by retrying, so it stops immediately; any other failure (network
+  // blip, transient 5xx, unparseable body) retries with a hard cap so a
+  // persistently broken backend surfaces an error instead of spinning forever.
   useEffect(() => {
     if (!scanId) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
+    let failures = 0;
+
+    // Stop polling AND clear scanId — otherwise `running` (derived from
+    // scanId !== null) stays true forever, leaving the button stuck on
+    // "Scanning…" underneath the error that's now showing.
+    const giveUp = (message: string) => {
+      setError(message);
+      setScanId(null);
+    };
 
     const poll = async () => {
+      let res: Response;
       try {
-        const res = await fetch(`/api/public/pulse/scan/${scanId}`, { cache: "no-store" });
-        const data = (await res.json()) as View;
-        if (!active) return;
-        if (res.ok) {
-          setView(data);
-          if (data.status === "RUNNING") timer = setTimeout(poll, 1500);
-        } else {
-          timer = setTimeout(poll, 2500);
-        }
+        res = await fetch(`/api/public/pulse/scan/${scanId}`, { cache: "no-store" });
       } catch {
-        if (active) timer = setTimeout(poll, 2500);
+        if (!active) return;
+        failures += 1;
+        if (failures >= MAX_POLL_FAILURES) {
+          giveUp("We lost the connection while checking your scan. Please try again.");
+          return;
+        }
+        timer = setTimeout(poll, 2500);
+        return;
+      }
+      if (!active) return;
+      if (res.status === 404) {
+        giveUp("We couldn't find that scan — it may have expired. Please try again.");
+        return;
+      }
+      if (res.ok) {
+        let data: View;
+        try {
+          data = (await res.json()) as View;
+        } catch {
+          failures += 1;
+          if (failures >= MAX_POLL_FAILURES) {
+            giveUp("Something went wrong reading your scan results. Please try again.");
+            return;
+          }
+          timer = setTimeout(poll, 2500);
+          return;
+        }
+        failures = 0;
+        setView(data);
+        if (data.status === "RUNNING") timer = setTimeout(poll, 1500);
+      } else {
+        failures += 1;
+        if (failures >= MAX_POLL_FAILURES) {
+          giveUp("This is taking longer than it should. Please try again.");
+          return;
+        }
+        timer = setTimeout(poll, 2500);
       }
     };
     poll();
     return () => { active = false; clearTimeout(timer); };
   }, [scanId]);
 
-  // Animate score count-up when it first arrives.
+  // Animate score count-up when it first arrives — skipped for
+  // prefers-reduced-motion (this is a manual rAF loop, not a CSS
+  // transition/animation, so the global reduced-motion stylesheet rule can't
+  // reach it; jump straight to the final value instead).
   useEffect(() => {
     if (view?.healthScore == null) { setDisplayScore(null); return; }
     const target = view.healthScore;
     if (displayScore === target) return;
-    if (displayScore === null) {
+    const reduceMotion = typeof window !== "undefined"
+      && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (displayScore === null && !reduceMotion) {
       let current = 0;
       const step = Math.ceil(target / 30);
       const tick = () => {
@@ -239,10 +298,22 @@ export default function EmbedPulsePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view?.healthScore]);
 
+  const running = view?.status === "RUNNING" || (scanId !== null && !view);
+  const done = view?.status === "COMPLETED";
+  const failedScan = view?.status === "FAILED";
+
+  // Don't let a click through before Turnstile has actually produced a token —
+  // submitting without one always fails server-side ("Verification failed"),
+  // which reads as a broken form rather than "still checking you're human".
+  const awaitingVerification = Boolean(turnstileSiteKey) && !scanToken;
+
   // Email is required up front — one combined submission starts the scan and
   // captures the lead in the same call (see POST /api/public/pulse/scan).
   const startScan = useCallback(async () => {
-    if (!url.trim() || !email.trim() || starting) return;
+    // Mirrors the button's own disabled condition (running/starting/empty fields/
+    // awaiting Turnstile) so the Enter key can't fire a submit the button itself
+    // would have blocked — previously Enter skipped the Turnstile-readiness check.
+    if (!url.trim() || !email.trim() || starting || running || awaitingVerification) return;
     setStarting(true);
     setError(null);
     setEmailAlreadyUsed(false);
@@ -254,27 +325,26 @@ export default function EmbedPulsePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url.trim(), email: email.trim(), honeypot, turnstileToken: scanToken, source }),
       });
-      const data = await res.json();
+      let data: { id?: string; error?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        // Non-JSON body (e.g. a gateway timeout/error page) — don't let a raw
+        // parse error reach the visitor.
+        throw new Error("Couldn't start the scan. Please try again.");
+      }
       if (!res.ok) {
         if (res.status === 409) { setEmailAlreadyUsed(true); return; }
         throw new Error(data?.error ?? "Couldn't start the scan.");
       }
+      if (!data.id) throw new Error("Couldn't start the scan. Please try again.");
       setScanId(data.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
       setStarting(false);
     }
-  }, [url, email, starting, honeypot, scanToken, source]);
-
-  const running = view?.status === "RUNNING" || (scanId !== null && !view);
-  const done = view?.status === "COMPLETED";
-  const failedScan = view?.status === "FAILED";
-
-  // Don't let a click through before Turnstile has actually produced a token —
-  // submitting without one always fails server-side ("Verification failed"),
-  // which reads as a broken form rather than "still checking you're human".
-  const awaitingVerification = Boolean(turnstileSiteKey) && !scanToken;
+  }, [url, email, starting, running, awaitingVerification, honeypot, scanToken, source]);
 
   // Findings are visible as soon as they're discovered — email was already
   // required to start the scan, so there's no separate "unlock" gate anymore.
@@ -284,6 +354,24 @@ export default function EmbedPulsePage() {
 
   const formDisabled = running || starting;
   const submitDisabled = formDisabled || !url.trim() || !email.trim() || awaitingVerification;
+
+  // A single, always-mounted screen-reader announcement for the meaningful state
+  // transitions (not the per-tick "N checks done" count, which would be noisy at
+  // ~1.5s intervals — see the running branch below). Visually hidden; sighted
+  // users already see the equivalent state in the button label / results area.
+  const statusAnnouncement = error
+    ? error
+    : emailAlreadyUsed
+      ? "You've already used your free scan with this email."
+      : failedScan
+        ? (view?.errorMessage ?? "We couldn't complete the scan for that URL.")
+        : done
+          ? `Scan complete. Health score ${view?.healthScore ?? "unavailable"} out of 100.`
+          : starting
+            ? "Starting your scan…"
+            : running
+              ? "Scanning your site…"
+              : "";
 
   return (
     <div
@@ -325,6 +413,8 @@ export default function EmbedPulsePage() {
           type="url"
           inputMode="url"
           placeholder="yourwebsite.com"
+          aria-label="Website URL"
+          aria-describedby={error ? "pulse-embed-error" : undefined}
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") startScan(); }}
@@ -341,6 +431,8 @@ export default function EmbedPulsePage() {
           type="email"
           inputMode="email"
           placeholder="you@company.com"
+          aria-label="Email address"
+          aria-describedby={error ? "pulse-embed-error" : undefined}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") startScan(); }}
@@ -376,13 +468,36 @@ export default function EmbedPulsePage() {
         We&apos;ll email you the full results too — no spam, just your report.
       </p>
 
+      {/* Visually-hidden live region — announces the meaningful state
+          transitions (start/complete/fail/already-used/error) without
+          spamming the per-tick "N checks done" running count. */}
+      <p
+        role="status"
+        aria-live="polite"
+        style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0 }}
+      >
+        {statusAnnouncement}
+      </p>
+
       {error && (
-        <p style={{ marginTop: 12, fontSize: 13, color: "#dc2626" }}>{error}</p>
+        <p
+          id="pulse-embed-error"
+          ref={errorRef}
+          tabIndex={-1}
+          role="alert"
+          style={{ marginTop: 12, fontSize: 13, color: "#dc2626", outline: "none" }}
+        >
+          {error}
+        </p>
       )}
 
       {/* Already claimed their free scan with this email */}
       {emailAlreadyUsed && (
-        <div style={{ marginTop: 22, border: "1px solid #eceef2", borderRadius: 12, padding: 18, background: "#f9fafb" }}>
+        <div
+          ref={emailUsedRef}
+          tabIndex={-1}
+          style={{ marginTop: 22, border: "1px solid #eceef2", borderRadius: 12, padding: 18, background: "#f9fafb", outline: "none" }}
+        >
           <p style={{ fontSize: 15, fontWeight: 700, margin: "0 0 4px" }}>
             You&apos;ve already used your free scan.
           </p>
@@ -404,7 +519,7 @@ export default function EmbedPulsePage() {
       {(running || done || failedScan) && view && (
         <div style={{ marginTop: 24 }}>
           {failedScan ? (
-            <p style={{ fontSize: 14, color: "#dc2626" }}>
+            <p role="alert" style={{ fontSize: 14, color: "#dc2626" }}>
               {view.errorMessage ?? "We couldn't complete the scan for that URL."}
             </p>
           ) : (
