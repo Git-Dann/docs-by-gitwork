@@ -1,7 +1,14 @@
 /**
- * Renders the real Gantt with a QA category and asserts the QA row is a slim
- * violet track that does NOT disturb the delivery bars — the thing Dan asked for
- * ("it does not impact the normal task bar").
+ * A category named QA is treated exactly like any other category.
+ *
+ * QA was briefly special-cased into a 5px violet strip with its own slim row.
+ * Dan's call (Aug 2026) was that it should look and behave like Mobile, Frontend
+ * or Backend — same bar, same chevron, same expandable task list — in the
+ * internal Gantt and in the client wiki alike.
+ *
+ * This locks that in, because the special case is an easy thing to re-add and
+ * the cost is quiet: QA stops being clickable, its tasks become unreachable, and
+ * the client sees a phase of real work rendered as a hairline.
  *
  * @vitest-environment jsdom
  */
@@ -16,77 +23,59 @@ const counts = (o: Partial<Record<TaskStatus, number>>): Record<TaskStatus, numb
 });
 const mk = (id: string, name: string, progress: number, n: number): GanttBlock => ({
   id, name, startDate: "2026-04-01", endDate: "2026-08-12", progress,
-  tasks: Array.from({ length: n }, (_, i) => ({ title: `t${i}`, done: false })),
+  tasks: Array.from({ length: n }, (_, i) => ({ title: `${name} task ${i}`, done: false })),
   statusCounts: counts({ DONE: Math.round((progress / 100) * n) }),
 });
 
-const DELIVERY = [mk("m", "Mobile", 88, 90), mk("f", "Frontend", 83, 18), mk("b", "Backend", 90, 52)];
-const QA = { ...mk("q", "QA", 40, 10), startDate: "2026-06-01", endDate: "2026-08-20" };
+const DELIVERY = [mk("m", "Mobile", 88, 90), mk("f", "Frontend", 88, 17), mk("b", "Backend", 90, 52)];
+const QA = mk("q", "QA", 0, 1);
 
-function render(blocks: GanttBlock[]) {
-  return renderToStaticMarkup(
+const render = (blocks: GanttBlock[]) =>
+  renderToStaticMarkup(
     React.createElement(GanttChart, { blocks, milestones: [], initialScale: "quarter" }),
   );
-}
 
-describe("QA track in the Gantt", () => {
-  it("renders the QA category as a violet strip", () => {
+/** A full-height delivery bar. */
+const BAR = /group absolute top-2 h-7/g;
+/** The row-level expand chevron. */
+const CHEVRON = /aria-label="(Expand|Collapse) section"/g;
+
+describe("QA renders as a normal category", () => {
+  it("gets a full-height bar like every other category", () => {
     const html = render([...DELIVERY, QA]);
-    expect(html).toContain("bg-violet-600"); // the fill
-    expect(html).toContain("bg-violet-200"); // the track
+    expect((html.match(BAR) ?? []).length).toBe(4);
   });
 
-  it("does not draw QA as a full-height delivery bar", () => {
-    const withQa = render([...DELIVERY, QA]);
-    const without = render(DELIVERY);
-    // A delivery bar is `top-2 h-7`; adding QA must not add another of those.
-    const barCount = (s: string) => (s.match(/group absolute top-2 h-7/g) ?? []).length;
-    expect(barCount(withQa)).toBe(barCount(without));
-    expect(barCount(without)).toBe(3);
+  it("gets its own chevron, so its tasks can be opened", () => {
+    const html = render([...DELIVERY, QA]);
+    expect((html.match(CHEVRON) ?? []).length).toBe(4);
   });
 
-  it("leaves the delivery bars byte-identical", () => {
-    // The strongest form of "it does not impact the normal task bar".
-    const withQa = render([...DELIVERY, QA]);
-    const without = render(DELIVERY);
-    const bars = (s: string) => s.match(/group absolute top-2 h-7[^]*?(?=<\/div>)/g)?.length ?? 0;
-    expect(bars(withQa)).toBe(bars(without));
-    // And every delivery name still present.
-    for (const b of DELIVERY) expect(withQa).toContain(b.name);
-  });
-
-  it("still shows QA when it is the only category", () => {
-    const html = render([QA]);
-    expect(html).toContain("bg-violet-600");
-  });
-
-  it("widens the chart so a QA span running past delivery is not clipped", () => {
+  it("shows the same name + progress readout as the others", () => {
     /**
-     * MEASURED, not inferred. The first version of this test asserted the word
-     * "Sept" appeared in the markup — which is true whether or not QA is in the
-     * date domain, because the domain pads two months past the last delivery
-     * date. It passed against a build with QA deliberately excluded, so it was
-     * proving nothing.
-     *
-     * This reads the strip's own geometry back out and checks it fits inside the
-     * chart column, which is the property that actually matters.
+     * Task TITLES are deliberately not asserted here: rows start collapsed, so
+     * they only enter the markup once the chevron is clicked. The first version
+     * of this test expected them in the static render and failed — the component
+     * was right and the expectation was wrong. The chevron test above is what
+     * covers reachability.
      */
-    const farQa = { ...QA, startDate: "2026-06-01", endDate: "2026-12-20" };
-    const html = render([...DELIVERY, farQa]);
+    const html = render([...DELIVERY, QA]);
+    expect(html).toContain("QA");
+    expect(html).toContain("0% · 1 task");
+    // Singular, like any other one-task category — not "1 tasks".
+    expect(html).not.toContain("1 tasks");
+  });
 
-    // The chart column carries the full timeline width…
-    const widths = [...html.matchAll(/width:\s*([\d.]+)px/g)].map((m) => Number(m[1]));
-    const timelineWidth = Math.max(...widths);
+  it("carries no slim-strip special case", () => {
+    const html = render([...DELIVERY, QA]);
+    expect(html).not.toContain("bg-violet-200");
+    expect(html).not.toContain("bg-violet-600");
+  });
 
-    // …and the violet strip carries its own left/width.
-    const strip = html.match(
-      /bg-violet-200"[^>]*style="left:\s*([\d.]+)px;\s*width:\s*([\d.]+)px/,
-    );
-    expect(strip, "could not find the QA strip's geometry").toBeTruthy();
-    const left = Number(strip![1]);
-    const width = Number(strip![2]);
-
-    expect(width).toBeGreaterThan(0);
-    expect(left + width).toBeLessThanOrEqual(timelineWidth + 1);
+  it("is indistinguishable from a differently-named category", () => {
+    // The strongest form: renaming QA changes only the label, not the structure.
+    const asQa = render([...DELIVERY, QA]);
+    const renamed = render([...DELIVERY, { ...QA, name: "Regression" }]);
+    expect(asQa.replaceAll("QA", "Regression")).toBe(renamed);
   });
 });
