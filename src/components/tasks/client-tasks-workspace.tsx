@@ -37,8 +37,8 @@ import {
   useTimelineShare,
   useSetTimelineShare,
 } from "@/hooks/use-tasks";
-import { TASK_STATUSES } from "@/types/tasks";
-import type { FeatureBlockDTO, MilestoneDTO, TaskDTO, TaskStatus } from "@/types/tasks";
+import { buildTaskStatusCounts } from "@/types/tasks";
+import type { FeatureBlockDTO, MilestoneDTO, TaskDTO } from "@/types/tasks";
 import { getClientMeeting, type ScribeMeeting } from "@/lib/api";
 import { TaskBoard } from "@/components/tasks/task-board";
 import { TaskList } from "@/components/tasks/task-list";
@@ -177,11 +177,12 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           const startDate = b.startDate ?? (dues.length ? dues[0] : null);
           const endDate = b.endDate ?? (dues.length ? dues[dues.length - 1] : null);
           if (!startDate || !endDate) return null;
-          const statusCounts = TASK_STATUSES.reduce(
-            (acc, s) => ({ ...acc, [s]: 0 }),
-            {} as Record<TaskStatus, number>,
-          );
-          for (const t of blockTasks) statusCounts[t.status] += 1;
+          // Shared helper, not a local loop: it also coalesces the retired UI_DONE
+          // status into In Review. This was the one of the three Gantt feeders that
+          // hand-rolled the count, so a legacy UI_DONE row would have incremented a
+          // key that no longer exists — NaN into the segment widths, and the whole
+          // bar renders blank rather than slightly wrong.
+          const statusCounts = buildTaskStatusCounts(blockTasks);
           // DONE is capped in the fetch (last 90 days by default), so trust the
           // block's authoritative all-time doneCount for the Gantt's Done segment
           // rather than the windowed live count. Non-DONE is never capped.

@@ -38,6 +38,21 @@ const DUE_COL_W = 96;
 const NARROW_BREAKPOINT = 560;
 /** Row height (min). */
 const ROW_MIN_H = 52;
+/**
+ * The QA category gets its own slim track under the delivery bars.
+ *
+ * QA is a category (a FeatureBlock) like Mobile or Frontend, so a QA task is
+ * never *inside* another phase — it sits in its own row. Rendering it as a
+ * full-height bar made testing look like a delivery phase competing with the
+ * others; as a thin strip it reads as what it is: a parallel activity with its
+ * own timeline and its own progress, and it leaves the normal bars untouched.
+ *
+ * Keyed off the CATEGORY, deliberately — not off the assignee. Syed is the QA
+ * tester but is not always assigned, so an assignee test would silently miss
+ * QA work whenever someone else picked it up.
+ */
+const QA_ROW_H = 26;
+const QA_BAR_H = 5;
 /** Heights of the two header rows. */
 const HEADER_ROW_1 = 22; // quarter bands
 const HEADER_ROW_2 = 22; // month labels
@@ -59,6 +74,18 @@ const BAR_TONE: Record<string, { bar: string; fill: string; text: string }> = {
   rose:    { bar: "bg-rose-100",    fill: "bg-rose-500",    text: "text-rose-900" },
   slate:   { bar: "bg-slate-200",   fill: "bg-slate-500",   text: "text-slate-900" },
 };
+/**
+ * Is this category the QA track?
+ *
+ * Matched on the name as a whole word, so "QA", "qa", "QA / Testing" and
+ * "Manual QA" all qualify while "Quality" or a task called "QAuery" do not.
+ * There is no `isQa` flag on FeatureBlock, and adding one would mean a migration
+ * plus a UI to set it for something a name already tells us unambiguously.
+ */
+export function isQaCategory(name: string | null | undefined): boolean {
+  return /(^|[^a-z])qa([^a-z]|$)/i.test((name ?? "").trim());
+}
+
 function tone(color?: string | null) {
   return BAR_TONE[color ?? "blue"] ?? BAR_TONE.blue;
 }
@@ -72,7 +99,11 @@ const STATUS_FILL: Record<TaskStatus, string> = {
   TODO: "bg-transparent",
   DOING: "bg-amber-500",
   IN_REVIEW: "bg-blue-500",
-  UI_DONE: "bg-teal-500",
+  // UI_DONE is retired (the column was removed in Aug 2026). `buildTaskStatusCounts`
+  // coalesces any legacy row into IN_REVIEW, so it can never reach the fill — but
+  // the key must stay to satisfy the Record, and a legacy row must never render as
+  // an unfilled gap, so it maps to the same blue.
+  UI_DONE: "bg-blue-500",
   DONE: "bg-emerald-500",
 };
 // Left → right within the filled portion (most complete first).
@@ -292,6 +323,12 @@ export function GanttChart({
       ),
     [blocks],
   );
+
+  /** Rendered as normal bars. */
+  const orderedMain = useMemo(() => ordered.filter((b) => !isQaCategory(b.name)), [ordered]);
+  /** Rendered as slim tracks beneath them. Usually exactly one. */
+  const qaTracks = useMemo(() => ordered.filter((b) => isQaCategory(b.name)), [ordered]);
+
   const allOpen = blocks.length > 0 && open.size >= blocks.length;
 
   return (
@@ -459,7 +496,7 @@ export function GanttChart({
 
             {/* ── Block rows + today line ─────────────────────────────────────── */}
             <div className="relative">
-              {ordered.map((b) => {
+              {orderedMain.map((b) => {
                 const start = new Date(b.startDate);
                 const end = new Date(b.endDate);
                 const left = Math.max(daysBetween(model.domainStart, start) * pxPerDay, 0);
@@ -653,6 +690,63 @@ export function GanttChart({
                             </span>
                           ) : null}
                         </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* ── QA track(s) — slim strip under the delivery bars ──────────────
+                  Own row, own progress, no effect on the bars above. See QA_ROW_H
+                  for why QA is drawn differently from a delivery phase. */}
+              {qaTracks.map((b) => {
+                const start = new Date(b.startDate);
+                const end = new Date(b.endDate);
+                const left = Math.max(daysBetween(model.domainStart, start) * pxPerDay, 0);
+                const width = Math.max((daysBetween(start, end) + 1) * pxPerDay, 6);
+                const counts = b.statusCounts;
+                const detail = counts ? statusBreakdown(counts) : `${b.progress}% done`;
+                return (
+                  <div
+                    key={b.id}
+                    className="flex border-t border-[rgba(0,0,0,0.05)]"
+                    style={{ minHeight: QA_ROW_H }}
+                  >
+                    {/* Rail — matches the delivery rows so the two align */}
+                    <div
+                      className="sticky left-0 z-30 flex shrink-0 items-center gap-2 border-r border-[rgba(0,0,0,0.08)] bg-white px-3"
+                      style={{ width: RAIL_W }}
+                    >
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500" />
+                      <button
+                        type="button"
+                        onClick={onBlockClick ? () => onBlockClick(b.id) : undefined}
+                        title={b.name}
+                        className={cn(
+                          "min-w-0 truncate text-left text-[11px] font-medium text-[var(--text-2)]",
+                          onBlockClick && "hover:text-[var(--brand-700)]",
+                        )}
+                      >
+                        {b.name}
+                      </button>
+                      <span
+                        className="shrink-0 text-[10px] text-[var(--text-4)]"
+                        style={{ fontFamily: "var(--font-mono)" }}
+                      >
+                        {b.progress}% · {b.tasks.length} task{b.tasks.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    {/* Chart column */}
+                    <div className="relative" style={{ width: model.timelineWidth }}>
+                      <div
+                        className="group/qa absolute rounded-full bg-violet-200"
+                        style={{ left, width, height: QA_BAR_H, top: (QA_ROW_H - QA_BAR_H) / 2 }}
+                        title={`${b.name} · ${fmtShort(b.startDate)} – ${fmtShort(b.endDate)} · ${detail}`}
+                      >
+                        <div
+                          className="h-full rounded-full bg-violet-600"
+                          style={{ width: `${Math.min(Math.max(b.progress, 0), 100)}%` }}
+                        />
                       </div>
                     </div>
                   </div>
