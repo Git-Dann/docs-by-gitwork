@@ -495,6 +495,7 @@ export async function listSignatureRequestsForDocument(documentId: string) {
     where: { documentId },
     orderBy: { createdAt: "desc" },
     include: {
+      document: { select: { updatedAt: true } },
       signers: true,
       events: { orderBy: { createdAt: "asc" } },
     },

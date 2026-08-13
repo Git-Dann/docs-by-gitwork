@@ -67,6 +67,9 @@ export interface SignatureRequestRecord {
   updatedAt: string;
   signers: SignatureSignerRecord[];
   events?: SignatureEventRecord[];
+  document?: {
+    updatedAt: string;
+  };
 }
 
 const requestKey = (documentId: string) => ["signature-requests", documentId] as const;
@@ -81,7 +84,7 @@ export function useSignatureRequests(documentId: string | undefined) {
       );
       return res.requests;
     },
-    staleTime: 10_000,
+    staleTime: 3_000,
   });
 }
 

@@ -57,6 +57,10 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
   const docusealMutation = usePushDocuSeal(documentId);
   const isWorking = createMutation.isPending || sendMutation.isPending || revokeMutation.isPending || docusealMutation.isPending;
 
+  const docUpdatedAt = active?.document?.updatedAt ? new Date(active.document.updatedAt).getTime() : 0;
+  const requestSentAt = active?.sentAt ? new Date(active.sentAt).getTime() : active?.createdAt ? new Date(active.createdAt).getTime() : 0;
+  const isDocModified = docUpdatedAt > 0 && requestSentAt > 0 && docUpdatedAt > requestSentAt + 2000;
+
   async function handleSendNow() {
     setError(null);
     try {
@@ -116,7 +120,15 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
       <div className="widget-header">
         <span className="widget-header-label">SIGNATURE</span>
         <span className="widget-header-right">
-          {active?.docusealSubmissionId ? "DOCUSEAL" : active ? active.status : "READY"}
+          {isDocModified ? (
+            <span className="font-semibold text-amber-500">NEEDS RE-ACTIVATION</span>
+          ) : active?.docusealSubmissionId ? (
+            "DOCUSEAL"
+          ) : active ? (
+            active.status
+          ) : (
+            "READY"
+          )}
         </span>
       </div>
 
@@ -209,8 +221,21 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
 
         {active && active.status === "SENT" ? (
           <div className="space-y-4">
+            {isDocModified ? (
+              <div className="space-y-1.5 rounded-[10px] border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-200">
+                <div className="flex items-center gap-2 font-semibold text-amber-400">
+                  <ArrowPathIcon className="h-4 w-4 shrink-0" />
+                  <span>Document updated — Re-activation required</span>
+                </div>
+                <p className="text-[12px] leading-relaxed opacity-90">
+                  The document was modified since DocuSeal was activated. Click <strong className="font-semibold text-amber-300">Review &amp; Send</strong> at the top right of the editor and click <strong className="font-semibold text-amber-300">Re-activate DocuSeal</strong> to update signers with the latest content.
+                </p>
+              </div>
+            ) : null}
+
             <SignedSoFar signers={active.signers} />
             <SignerList documentId={documentId} signers={active.signers} onCopyLink={copyLink} copiedToken={copiedToken} requestSent={true} onRefresh={() => void requestsQuery.refetch()} />
+
             <Button
               type="button"
               variant="danger"
