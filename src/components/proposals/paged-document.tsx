@@ -368,7 +368,7 @@ export function PagedDocument({
                 >
                   {wordmark || docTypeLabel}
                 </span>
-                <span className="shrink-0">{headerRight}</span>
+                <span className="shrink-0 whitespace-nowrap">{headerRight}</span>
               </header>
               <div className="doc-a4-page__body space-y-8">{body}</div>
               <footer className="doc-a4-page__footer">

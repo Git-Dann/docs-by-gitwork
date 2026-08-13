@@ -590,7 +590,7 @@ export function DocumentCover({
               Gitwork<span style={{ color: accent }}>.</span>
             </span>
             {classification && classification.length ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, textAlign: "right" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, textAlign: "right", alignItems: "flex-end" }}>
                 {classification.map((row, i) => (
                   <span
                     key={i}
@@ -601,6 +601,7 @@ export function DocumentCover({
                       letterSpacing: "0.16em",
                       textTransform: "uppercase",
                       color: muted,
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {row}
@@ -1853,9 +1854,10 @@ export function DocumentVersionChip({
             fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
             fontSize: 10,
             fontWeight: 600,
-            letterSpacing: "0.1em",
+            letterSpacing: "0.12em",
             textTransform: "uppercase",
             color: isDark ? "#6B52FF" : "#C4B5FD",
+            whiteSpace: "nowrap",
           }}
         >
           {documentNumber}
