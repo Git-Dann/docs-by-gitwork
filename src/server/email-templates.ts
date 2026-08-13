@@ -5,6 +5,8 @@
  * 2. renderLinkExpiredEmailHtml: Notification/re-issue email sent when a link expires.
  */
 
+import { GITWORK } from "@/lib/gitwork";
+
 export interface SignatureRequestEmailParams {
   documentTitle: string;
   clientFirstName: string;
@@ -77,7 +79,7 @@ export function renderSignatureRequestEmailHtml(params: SignatureRequestEmailPar
 </td></tr>
 <tr><td style="padding:0 36px 34px 36px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #EAE5DC;">
-<tbody><tr><td style="padding:20px 0 0 0;font-family:'JetBrains Mono', Menlo, Consolas, 'Courier New', monospace;font-size:10px;line-height:1.9;letter-spacing:0.4px;color:#6B6B6B;">Gitwork Group Ltd · Company no. 15756347 · VAT no. 468314867<br>3rd Floor, Anchorage One, Anchorage Quay, Salford Quays, Manchester M50 3YJ<br><a href="https://gitwork.co.uk" style="color:#6B6B6B;text-decoration:none;">gitwork.co.uk</a></td></tr>
+<tbody><tr><td style="padding:20px 0 0 0;font-family:'JetBrains Mono', Menlo, Consolas, 'Courier New', monospace;font-size:10px;line-height:1.9;letter-spacing:0.4px;color:#6B6B6B;">Gitwork Group Ltd · Company no. ${GITWORK.companyNumber} · VAT no. ${GITWORK.vatNumber}<br>3rd Floor, Anchorage One, Anchorage Quay, Salford Quays, Manchester M50 3YJ<br><a href="https://gitwork.co.uk" style="color:#6B6B6B;text-decoration:none;">gitwork.co.uk</a></td></tr>
 </tbody></table></td></tr>
 </tbody></table>
 </td></tr></tbody></table>
@@ -133,7 +135,7 @@ export function renderLinkExpiredEmailHtml(params: LinkExpiredEmailParams): stri
 </td></tr>
 <tr><td style="padding:0 36px 34px 36px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #EAE5DC;">
-<tbody><tr><td style="padding:20px 0 0 0;font-family:'JetBrains Mono', Menlo, Consolas, 'Courier New', monospace;font-size:10px;line-height:1.9;letter-spacing:0.4px;color:#6B6B6B;">Gitwork Group Ltd · Company no. 15756347 · VAT no. 468314867<br>3rd Floor, Anchorage One, Anchorage Quay, Salford Quays, Manchester M50 3YJ<br><a href="https://gitwork.co.uk" style="color:#6B6B6B;text-decoration:none;">gitwork.co.uk</a></td></tr>
+<tbody><tr><td style="padding:20px 0 0 0;font-family:'JetBrains Mono', Menlo, Consolas, 'Courier New', monospace;font-size:10px;line-height:1.9;letter-spacing:0.4px;color:#6B6B6B;">Gitwork Group Ltd · Company no. ${GITWORK.companyNumber} · VAT no. ${GITWORK.vatNumber}<br>3rd Floor, Anchorage One, Anchorage Quay, Salford Quays, Manchester M50 3YJ<br><a href="https://gitwork.co.uk" style="color:#6B6B6B;text-decoration:none;">gitwork.co.uk</a></td></tr>
 </tbody></table></td></tr>
 </tbody></table>
 </td></tr></tbody></table>
@@ -196,7 +198,7 @@ export function renderSignedCompletionEmailHtml(params: SignedCompletionEmailPar
 </td></tr>
 <tr><td style="padding:0 36px 34px 36px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #EAE5DC;">
-<tbody><tr><td style="padding:20px 0 0 0;font-family:'JetBrains Mono', Menlo, Consolas, 'Courier New', monospace;font-size:10px;line-height:1.9;letter-spacing:0.4px;color:#6B6B6B;">Gitwork Group Ltd · Company no. 15756347 · VAT no. 468314867<br>3rd Floor, Anchorage One, Anchorage Quay, Salford Quays, Manchester M50 3YJ<br><a href="https://gitwork.co.uk" style="color:#6B6B6B;text-decoration:none;">gitwork.co.uk</a></td></tr>
+<tbody><tr><td style="padding:20px 0 0 0;font-family:'JetBrains Mono', Menlo, Consolas, 'Courier New', monospace;font-size:10px;line-height:1.9;letter-spacing:0.4px;color:#6B6B6B;">Gitwork Group Ltd · Company no. ${GITWORK.companyNumber} · VAT no. ${GITWORK.vatNumber}<br>3rd Floor, Anchorage One, Anchorage Quay, Salford Quays, Manchester M50 3YJ<br><a href="https://gitwork.co.uk" style="color:#6B6B6B;text-decoration:none;">gitwork.co.uk</a></td></tr>
 </tbody></table></td></tr>
 </tbody></table>
 </td></tr></tbody></table>
