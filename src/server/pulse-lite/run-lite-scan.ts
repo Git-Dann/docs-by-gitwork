@@ -31,7 +31,7 @@ import {
   detectUrlTargetKind,
   effectivePlatformForRepoShape,
 } from "@/server/pulse-checks/scan-execution-plan";
-import { collectorCompletenessCheck, collectorOutcome, type CollectorExecution } from "@/server/pulse-checks/collector-health";
+import { collectorCompletenessCheck, collectorOutcome, sourceCollectorsUnavailable, type CollectorExecution } from "@/server/pulse-checks/collector-health";
 import { applyCheckPolicy, customPolicyChecks, type CheckPolicy } from "@/server/check-config";
 import type { JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
 import type {
@@ -67,6 +67,12 @@ export interface LiteScanResult {
   homepageUrl: string | null;
   /** Jurisdiction codes auto-detected from the page (audit + legacy fallback). */
   detectedMarkets: JurisdictionCode[];
+  /**
+   * What ran, what failed and what was unavailable. Returned so the scan can
+   * state its own coverage rather than leaving it inside one check row's
+   * evidence JSON, where nothing but a reader of raw rows would ever find it.
+   */
+  collectorExecutions: CollectorExecution[];
 }
 
 export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult> {
@@ -188,6 +194,14 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     } else {
       collectorExecutions.push({ name: "browser-agent", outcome: "NOT_APPLICABLE" });
     }
+
+    // The source collectors are not merely absent from a URL scan — they are
+    // UNAVAILABLE, and for a reason the customer can act on. Recording nothing
+    // made the coverage check read "every collector completed" while half of
+    // Pulse had not run.
+    collectorExecutions.push(...sourceCollectorsUnavailable(
+      "No repository was connected, so the source-analysis families did not run. Re-scan with a GitHub repo to include them.",
+    ));
   } else {
     // GITHUB_REPO — detect the artefact, then run only its source families.
     const repo = (input.githubRepo ?? "").trim();
@@ -240,5 +254,6 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     codeInsights,
     homepageUrl,
     detectedMarkets,
+    collectorExecutions,
   };
 }

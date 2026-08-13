@@ -1459,6 +1459,27 @@ function ScoreExplainer({
             </div>
           )}
 
+          {/* What DIDN'T run. `completeness` is a percentage with no account of
+              itself unless the collectors behind it are named — and a collector
+              that could not run for a reason the customer controls is the most
+              actionable thing on this panel. */}
+          {breakdown.collectors && (breakdown.collectors.failed > 0 || breakdown.collectors.unavailable.length > 0) && (
+            <div className="mt-2.5 border-t border-[var(--border-2)] pt-2">
+              <p className="widget-data-label mb-1.5">What Pulse could not check</p>
+              {breakdown.collectors.failed > 0 && (
+                <p className="text-[11px] leading-4 text-amber-700">
+                  {breakdown.collectors.failed} collector{breakdown.collectors.failed === 1 ? "" : "s"} failed
+                  ({breakdown.collectors.failedNames.join(", ")}). Those families are unknown, not passing.
+                </p>
+              )}
+              {/* The three source collectors share one reason — state it once,
+                  not once per collector. */}
+              {[...new Set(breakdown.collectors.unavailable.map((item) => item.reason))].map((reason) => (
+                <p key={reason} className="text-[11px] leading-4 text-[var(--text-3)]">{reason}</p>
+              ))}
+            </div>
+          )}
+
           <div className="mt-2.5 border-t border-[var(--border-2)] pt-2">
             <p className="widget-data-label mb-1.5">Where the points came from</p>
             <div className="space-y-1">

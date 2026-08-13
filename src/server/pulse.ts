@@ -16,6 +16,7 @@ import { calculateHealthScore, SCAN_VERSION } from "@/server/pulse-scan";
 import { resolveTargetMarkets, isJurisdictionCode, type JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
 import { computeComplianceScorecard } from "@/server/pulse-checks/compliance-scorecard";
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
+import { collectorCoverage, type CollectorExecution } from "@/server/pulse-checks/collector-health";
 import { computePricingBandsForWorkspace } from "@/server/pulse-pricing";
 import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison } from "@/server/pulse-ai";
 import { runLiteScan } from "@/server/pulse-lite/run-lite-scan";
@@ -1026,6 +1027,7 @@ export async function runAnalysis(
     let deployInsights: DeployAgentInsights | null = null;
     let browserInsights: BrowserAgentInsights | null = null;
     let visualInsights: VisualAgentInsights | null = null;
+    let collectorExecutions: CollectorExecution[] = [];
 
     const checkPolicy = workspaceId ? await loadCheckPolicy(workspaceId) : undefined;
 
@@ -1051,6 +1053,7 @@ export async function runAnalysis(
       deployInsights = lite.deployInsights;
       browserInsights = lite.browserInsights;
       detectedMarkets = lite.detectedMarkets;
+      collectorExecutions = lite.collectorExecutions;
     }
 
     const healthScore = calculateHealthScore(allChecks);
@@ -1058,7 +1061,12 @@ export async function runAnalysis(
     // auto-detected. Scorecard + score breakdown are deterministic (no AI).
     const effectiveMarkets = resolveTargetMarkets(declaredMarkets, detectedMarkets).effective;
     const complianceScorecard = computeComplianceScorecard(allChecks, effectiveMarkets);
-    const scoreBreakdown = computeScoreBreakdown(allChecks);
+    // Coverage explains completeness, so it travels with it rather than dying
+    // inside the collector-completeness check's evidence JSON.
+    const scoreBreakdown = {
+      ...computeScoreBreakdown(allChecks),
+      ...(collectorExecutions.length > 0 ? { collectors: collectorCoverage(collectorExecutions) } : {}),
+    };
 
     // Compute AI Maturity Score (0–4) from AI Readiness check pass rate.
     // Only set when AI Readiness checks actually ran (not all SKIPPED).

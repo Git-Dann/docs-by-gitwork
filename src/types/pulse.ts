@@ -278,6 +278,19 @@ export interface ScoreBreakdown {
   upperBound: number;
   unknownWeight: number;
   excludedCount: number;
+  /**
+   * Which collectors ran, failed, or could not run — the EXPLANATION of
+   * `completeness`, which is otherwise a percentage with no account of itself.
+   * Optional: scans recorded before this existed have none, and a missing value
+   * must read as "not recorded", never as "everything ran".
+   */
+  collectors?: {
+    completed: number;
+    failed: number;
+    notApplicable: number;
+    failedNames: string[];
+    unavailable: { name: string; reason: string }[];
+  };
 }
 
 export interface PulseScanRecord {
