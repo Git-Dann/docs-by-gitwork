@@ -16,13 +16,11 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
-import { ArrowPathIcon, ClipboardDocumentIcon, EnvelopeIcon, PaperAirplaneIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { useState } from "react";
+import { ArrowPathIcon, CheckCircleIcon, ClipboardDocumentIcon, EnvelopeIcon, PaperAirplaneIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/format";
-import { useProposal } from "@/hooks/use-proposals";
-import type { ProposalDocument } from "@/types/proposal";
 import {
   findActiveRequest,
   useCreateSignatureRequest,
@@ -45,29 +43,8 @@ const SIGNER_STATUS_STYLE: Record<SignerStatus, { label: string; bg: string; col
   DECLINED: { label: "DECLINED", bg: "var(--danger-50)", color: "var(--danger-500)" },
 };
 
-function checkDocumentModified(current: ProposalDocument | null, snapshot: unknown): boolean {
-  if (!current || !snapshot || typeof snapshot !== "object") return false;
-  try {
-    const snapObj = snapshot as Partial<ProposalDocument>;
-    const currentSigKey = JSON.stringify({
-      title: current.title,
-      clientName: current.clientName,
-      sections: (current.sections ?? []).map((s) => ({ key: s.key, title: s.title, data: s.data })),
-    });
-    const snapSigKey = JSON.stringify({
-      title: snapObj.title,
-      clientName: snapObj.clientName,
-      sections: (snapObj.sections ?? []).map((s: { key?: string; title?: string; data?: unknown }) => ({ key: s.key, title: s.title, data: s.data })),
-    });
-    return currentSigKey !== snapSigKey;
-  } catch {
-    return false;
-  }
-}
-
 export function SignaturePanel({ documentId }: SignaturePanelProps) {
   const requestsQuery = useSignatureRequests(documentId);
-  const { data: proposalRes } = useProposal(documentId);
   const createMutation = useCreateSignatureRequest(documentId);
   const sendMutation = useSendSignatureRequest(documentId);
   const revokeMutation = useRevokeSignatureRequest(documentId);
@@ -79,12 +56,6 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
   const active = findActiveRequest(requestsQuery.data);
   const docusealMutation = usePushDocuSeal(documentId);
   const isWorking = createMutation.isPending || sendMutation.isPending || revokeMutation.isPending || docusealMutation.isPending;
-
-  const isDocModified = useMemo(() => {
-    if (!active || !active.documentSnapshot) return false;
-    const currentDoc = proposalRes?.proposal ?? null;
-    return checkDocumentModified(currentDoc, active.documentSnapshot);
-  }, [proposalRes, active]);
 
   async function handleSendNow() {
     setError(null);
@@ -145,7 +116,7 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
       <div className="widget-header">
         <span className="widget-header-label">SIGNATURE</span>
         <span className="widget-header-right">
-          {isDocModified ? "MODIFIED" : active?.docusealSubmissionId ? "DOCUSEAL" : active ? active.status : "READY"}
+          {active?.docusealSubmissionId ? "DOCUSEAL" : active ? active.status : "READY"}
         </span>
       </div>
 
@@ -156,38 +127,6 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
 
         {error ? (
           <p className="text-sm font-medium text-[var(--danger-500)]">{error}</p>
-        ) : null}
-
-        {isDocModified ? (
-          <div className="space-y-4 rounded-[10px] border border-amber-500/30 bg-amber-50/50 p-4 text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
-            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em]">
-              DOCUMENT MODIFIED SINCE ACTIVATION
-            </p>
-            <p className="text-sm leading-6">
-              The document content has changed. Existing signature links are locked/non-interactive. Re-activate signature below to send the updated document to DocuSeal, or revert changes to restore the active process.
-            </p>
-            <div className="flex flex-wrap gap-2 pt-1">
-              <Button
-                type="button"
-                variant="primary"
-                size="md"
-                onClick={handlePushDocuSeal}
-                loading={docusealMutation.isPending}
-                leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
-              >
-                Activate Signature
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="md"
-                onClick={handleSendNow}
-                loading={isWorking}
-              >
-                Native E-Sign
-              </Button>
-            </div>
-          </div>
         ) : null}
 
         {!active ? (
@@ -237,12 +176,12 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
         ) : null}
 
         {active && active.status === "DRAFT" ? (
-          <div className={cn("space-y-4", isDocModified && "opacity-50 pointer-events-none")}>
+          <div className="space-y-4">
             <p className="text-sm leading-6 text-[var(--text-2)]">
               Request prepared with {active.signers.length} signer{active.signers.length === 1 ? "" : "s"}. Send it
               when you&rsquo;re ready &mdash; that&rsquo;s what mints the public signing links.
             </p>
-            <SignerList documentId={documentId} signers={active.signers} onCopyLink={copyLink} copiedToken={copiedToken} requestSent={false} onRefresh={() => void requestsQuery.refetch()} disabled={isDocModified} />
+            <SignerList documentId={documentId} signers={active.signers} onCopyLink={copyLink} copiedToken={copiedToken} requestSent={false} onRefresh={() => void requestsQuery.refetch()} />
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -269,9 +208,9 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
         ) : null}
 
         {active && active.status === "SENT" ? (
-          <div className={cn("space-y-4", isDocModified && "opacity-50 pointer-events-none")}>
+          <div className="space-y-4">
             <SignedSoFar signers={active.signers} />
-            <SignerList documentId={documentId} signers={active.signers} onCopyLink={copyLink} copiedToken={copiedToken} requestSent={true} onRefresh={() => void requestsQuery.refetch()} disabled={isDocModified} />
+            <SignerList documentId={documentId} signers={active.signers} onCopyLink={copyLink} copiedToken={copiedToken} requestSent={true} onRefresh={() => void requestsQuery.refetch()} />
             <Button
               type="button"
               variant="danger"
@@ -355,7 +294,6 @@ function SignerList({
   copiedToken,
   requestSent,
   onRefresh,
-  disabled,
 }: {
   documentId: string;
   signers: SignatureSignerRecord[];
@@ -363,7 +301,6 @@ function SignerList({
   copiedToken: string | null;
   requestSent: boolean;
   onRefresh?: () => void;
-  disabled?: boolean;
 }) {
   const { success: toastSuccess, error: toastError } = useToast();
   const [sendingEmailId, setSendingEmailId] = useState<string | null>(null);
@@ -374,7 +311,7 @@ function SignerList({
       const res = await fetch(`/api/documents/${documentId}/signatures/send-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ signerId: signer.id, isResend: Boolean(signer.firstViewedAt) }),
+        body: JSON.stringify({ signerId: signer.id }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -424,6 +361,11 @@ function SignerList({
                   Signed {new Date(s.signedAt).toLocaleString()}
                 </p>
               ) : null}
+              {s.firstViewedAt && !s.signedAt ? (
+                <p className="mt-0.5 text-[11px] text-[var(--text-4)]">
+                  Last accessed {new Date(s.firstViewedAt).toLocaleString()}
+                </p>
+              ) : null}
             </div>
             <div className="flex items-center gap-2">
               <span
@@ -451,7 +393,7 @@ function SignerList({
                     type="button"
                     onClick={() => onCopyLink(s.accessToken)}
                     className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-                    title="Copy this signer's link"
+                    title="Copy this signer's signing link"
                   >
                     <ClipboardDocumentIcon className="h-3.5 w-3.5" />
                     {copiedToken === s.accessToken ? "Copied" : "Copy link"}

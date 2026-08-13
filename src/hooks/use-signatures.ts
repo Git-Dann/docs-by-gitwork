@@ -63,7 +63,6 @@ export interface SignatureRequestRecord {
   sentAt: string | null;
   completedAt: string | null;
   docusealSubmissionId?: string | null;
-  documentSnapshot?: unknown;
   createdAt: string;
   updatedAt: string;
   signers: SignatureSignerRecord[];

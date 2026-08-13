@@ -8,7 +8,6 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@prisma/client";
 import { originFrom } from "@/lib/request-origin";
 import { createDocuSealSubmission } from "@/server/docuseal";
 import { enableDocumentShare } from "@/server/documents";
@@ -269,25 +268,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
-    // Build frozen document snapshot for modification tracking
-    const documentSnapshot = {
-      title: doc.title,
-      clientName: doc.clientName,
-      sections: doc.sections.map((s) => ({
-        key: s.key,
-        title: (s as unknown as { title?: string }).title,
-        data: s.data,
-      })),
-    };
-
-    // Update SignatureRequest with docusealSubmissionId and documentSnapshot
+    // Update SignatureRequest with docusealSubmissionId
     await prisma.signatureRequest.update({
       where: { id: activeRequest.id },
       data: {
         status: "SENT",
         sentAt: new Date(),
         docusealSubmissionId: String(dsResult.id),
-        documentSnapshot: documentSnapshot as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -306,8 +293,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         const dsSub =
           (targetInput
             ? dsResult.submitters.find(
-                (s) => s.role === targetInput.role && s.email.toLowerCase() === targetInput.email.toLowerCase(),
-              ) ?? dsResult.submitters.find((s) => s.role === targetInput.role)
+              (s) => s.role === targetInput.role && s.email.toLowerCase() === targetInput.email.toLowerCase(),
+            ) ?? dsResult.submitters.find((s) => s.role === targetInput.role)
             : undefined) ??
           dsResult.submitters.find((s) => s.email.toLowerCase() === signer.email.toLowerCase()) ??
           dsResult.submitters[index];

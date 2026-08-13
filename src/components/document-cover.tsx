@@ -174,8 +174,8 @@ export interface DocumentCoverProps {
 }
 
 const TONE_PALETTE: Record<NonNullable<DocumentCoverCallout["tone"]>, { border: string; text: string }> = {
-  blue:    { border: "#1D4ED8", text: "#1D4ED8" },
-  amber:   { border: "#D97706", text: "#92400E" },
+  blue: { border: "#1D4ED8", text: "#1D4ED8" },
+  amber: { border: "#D97706", text: "#92400E" },
   neutral: { border: "#475569", text: "#475569" },
 };
 
@@ -590,7 +590,7 @@ export function DocumentCover({
               Gitwork<span style={{ color: accent }}>.</span>
             </span>
             {classification && classification.length ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, textAlign: "right", alignItems: "flex-end" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, textAlign: "right" }}>
                 {classification.map((row, i) => (
                   <span
                     key={i}
@@ -601,7 +601,6 @@ export function DocumentCover({
                       letterSpacing: "0.16em",
                       textTransform: "uppercase",
                       color: muted,
-                      whiteSpace: "nowrap",
                     }}
                   >
                     {row}
@@ -1062,7 +1061,7 @@ export function DocumentCover({
             <span aria-hidden />
           )}
           {classification && classification.length ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, textAlign: "right", alignItems: "flex-end" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, textAlign: "right" }}>
               {classification.map((row, i) => (
                 <span
                   key={i}
@@ -1073,7 +1072,6 @@ export function DocumentCover({
                     letterSpacing: "0.14em",
                     textTransform: "uppercase",
                     color: muted,
-                    whiteSpace: "nowrap",
                   }}
                 >
                   {row}
@@ -1261,47 +1259,47 @@ export function DocumentCover({
         {/* Footer — company strip (left) + dated/contact (right). Suppressed entirely when there's
             no letterhead (a de-branded / white-label cover), so no lonely hairline is left behind. */}
         {(companyFooter?.left?.length ?? 0) > 0 ||
-        (companyFooter?.right?.length ?? 0) > 0 ||
-        (!companyFooter && dated) ? (
-        <div style={{ marginTop: "auto", paddingTop: 28 }}>
-          <div aria-hidden="true" style={{ height: 1, background: line, marginBottom: 14 }} />
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 24, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-              {(companyFooter?.left ?? []).map((row, i) => (
-                <span
-                  key={i}
-                  style={{
-                    fontFamily: mono,
-                    fontSize: 9.5,
-                    fontWeight: 600,
-                    letterSpacing: "0.1em",
-                    textTransform: "uppercase",
-                    color: muted,
-                  }}
-                >
-                  {row}
-                </span>
-              ))}
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, textAlign: "right" }}>
-              {(companyFooter?.right ?? [dated]).map((row, i) => (
-                <span
-                  key={i}
-                  style={{
-                    fontFamily: mono,
-                    fontSize: 9.5,
-                    fontWeight: 600,
-                    letterSpacing: "0.1em",
-                    textTransform: "uppercase",
-                    color: muted,
-                  }}
-                >
-                  {row}
-                </span>
-              ))}
+          (companyFooter?.right?.length ?? 0) > 0 ||
+          (!companyFooter && dated) ? (
+          <div style={{ marginTop: "auto", paddingTop: 28 }}>
+            <div aria-hidden="true" style={{ height: 1, background: line, marginBottom: 14 }} />
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 24, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                {(companyFooter?.left ?? []).map((row, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      fontFamily: mono,
+                      fontSize: 9.5,
+                      fontWeight: 600,
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      color: muted,
+                    }}
+                  >
+                    {row}
+                  </span>
+                ))}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3, textAlign: "right" }}>
+                {(companyFooter?.right ?? [dated]).map((row, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      fontFamily: mono,
+                      fontSize: 9.5,
+                      fontWeight: 600,
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      color: muted,
+                    }}
+                  >
+                    {row}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
         ) : null}
       </section>
     );
@@ -1855,10 +1853,9 @@ export function DocumentVersionChip({
             fontFamily: "var(--font-mono), 'JetBrains Mono', monospace",
             fontSize: 10,
             fontWeight: 600,
-            letterSpacing: "0.12em",
+            letterSpacing: "0.1em",
             textTransform: "uppercase",
             color: isDark ? "#6B52FF" : "#C4B5FD",
-            whiteSpace: "nowrap",
           }}
         >
           {documentNumber}
@@ -1871,6 +1868,7 @@ export function DocumentVersionChip({
           fontWeight: 400,
           letterSpacing: "-0.02em",
           lineHeight: 1,
+          whiteSpace: "nowrap",
           color: isDark ? "#0F172A" : "white",
         }}
       >

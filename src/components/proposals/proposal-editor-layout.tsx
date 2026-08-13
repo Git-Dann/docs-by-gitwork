@@ -30,6 +30,7 @@ import {
   ClipboardDocumentIcon,
   Cog6ToothIcon,
   DocumentTextIcon,
+  ExclamationTriangleIcon,
   EyeIcon,
   EyeSlashIcon,
   LinkIcon,
@@ -81,6 +82,22 @@ import { approvalTrackApplies } from "@/lib/templates";
 import { createTemplateFromDocument } from "@/lib/api";
 import { DEFAULT_DOC_THEME } from "@/types/proposal";
 import type { DocumentType, ProposalDocument, ProposalSection, SectionKey } from "@/types/proposal";
+
+// ── DocuSeal stale detection ─────────────────────────────────────────────────
+// Produces a stable fingerprint of a document's section content — the same
+// data that gets rendered into the DocuSeal PDF. Excludes timestamps and
+// metadata fields that don't affect what the signer actually sees.
+function computeSectionsHash(sections: ProposalSection[]): string {
+  const normalized = [...sections]
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    .map(({ key, title, data, isVisible }) => ({ key, title, data, isVisible }));
+  return JSON.stringify(normalized);
+}
+
+// localStorage key scoped to the document so different docs don't clobber each other.
+function docusealBaselineKey(proposalId: string) {
+  return `docuseal-baseline:${proposalId}`;
+}
 
 type EditorTab = "overview" | "builder";
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -224,26 +241,6 @@ const approvalOptions = [
   },
 ] as const;
 
-function checkDocumentModified(current: ProposalDocument | null, snapshot: unknown): boolean {
-  if (!current || !snapshot || typeof snapshot !== "object") return false;
-  try {
-    const snapObj = snapshot as Partial<ProposalDocument>;
-    const currentSigKey = JSON.stringify({
-      title: current.title,
-      clientName: current.clientName,
-      sections: (current.sections ?? []).map((s) => ({ key: s.key, title: s.title, data: s.data })),
-    });
-    const snapSigKey = JSON.stringify({
-      title: snapObj.title,
-      clientName: snapObj.clientName,
-      sections: (snapObj.sections ?? []).map((s: { key?: string; title?: string; data?: unknown }) => ({ key: s.key, title: s.title, data: s.data })),
-    });
-    return currentSigKey !== snapSigKey;
-  } catch {
-    return false;
-  }
-}
-
 export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -252,27 +249,20 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const { error: toastError, success: toastSuccess } = useToast();
   const requestsQuery = useSignatureRequests(proposalId);
   const activeSignatureReq = findActiveRequest(requestsQuery.data);
-  const [localDraft, setLocalDraft] = useState<ProposalDocument | null>(null);
-  const draftDoc = localDraft ?? data?.proposal ?? null;
-
-  const isDocModifiedSinceActivation = useMemo(() => {
-    if (!activeSignatureReq || !activeSignatureReq.documentSnapshot) return false;
-    return checkDocumentModified(draftDoc, activeSignatureReq.documentSnapshot);
-  }, [draftDoc, activeSignatureReq]);
-
-  const hasActiveReq = Boolean(
-    activeSignatureReq &&
+  const isDocusealActivated = Boolean(
+    activeSignatureReq?.docusealSubmissionId ||
+    (activeSignatureReq &&
       activeSignatureReq.status !== "REVOKED" &&
       activeSignatureReq.status !== "DECLINED" &&
-      activeSignatureReq.status !== "EXPIRED",
+      activeSignatureReq.status !== "EXPIRED"),
   );
-
-  const isDocusealActivated = hasActiveReq && !isDocModifiedSinceActivation;
   const updateMutation = useUpdateProposal(proposalId);
   const docusealMutation = usePushDocuSeal(proposalId);
   const snippetsQuery = useSnippets();
   const deleteSnippet = useDeleteSnippet();
   const urlTab = parseEditorTab(searchParams.get("tab"));
+
+  const [localDraft, setLocalDraft] = useState<ProposalDocument | null>(null);
   const [activeTab, setActiveTab] = useState<EditorTab>(urlTab);
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("saved");
@@ -291,6 +281,19 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [titleDraft, setTitleDraft] = useState("");
   const [editingClient, setEditingClient] = useState(false);
   const [clientDraft, setClientDraft] = useState("");
+
+  // ── DocuSeal stale detection ─────────────────────────────────────────────────
+  // `docusealBaseline` is the sections fingerprint captured at activation time.
+  // null  = DocuSeal has never been activated on this device/browser for this doc.
+  // string = a JSON fingerprint; compared against `computeSectionsHash(draft.sections)`
+  //          on every render to derive `isDocusealStale`.
+  const [docusealBaseline, setDocusealBaseline] = useState<string | null>(null);
+
+  // Hydrate from localStorage once on mount (survives page reloads).
+  useEffect(() => {
+    const stored = localStorage.getItem(docusealBaselineKey(proposalId));
+    if (stored) setDocusealBaseline(stored);
+  }, [proposalId]);
 
   async function handleSaveAsTemplate() {
     if (!draft) return;
@@ -355,6 +358,18 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   }, [urlTab]);
 
   const draft = localDraft ?? data?.proposal ?? null;
+
+  // ── DocuSeal stale flag ──────────────────────────────────────────────────────
+  // Recomputed on every render from the live draft. If the sections content has
+  // changed since activation, `isDocusealStale` flips true and the Review & Send
+  // popover shows the amber warning instead of the green "DocuSeal Activated" button.
+  // Automatically clears when the user undoes changes back to the activation state.
+  const currentSectionsHash = draft?.sections ? computeSectionsHash(draft.sections) : null;
+  const isDocusealStale =
+    isDocusealActivated &&
+    docusealBaseline !== null &&
+    currentSectionsHash !== null &&
+    currentSectionsHash !== docusealBaseline;
 
   function beginTitleEdit() {
     if (!draft) return;
@@ -1605,13 +1620,51 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
 
                     {/* Actions */}
                     <div className="mt-5 space-y-2 border-t border-[var(--border-2)] pt-4">
-                      {isDocModifiedSinceActivation ? (
-                        <div className="rounded-[8px] border border-amber-500/30 bg-amber-50/50 p-2.5 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
-                          <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-300">Document Modified</p>
-                          <p className="mt-0.5 text-[11px] leading-4">Content has changed since signature activation. Re-activate signature below to send the updated document.</p>
+                      {/* ── DocuSeal 3-state button ─────────────────────────────────────────
+                          STALE  : document changed after activation — show amber warning + re-activate
+                          ACTIVE : activated + content unchanged — green disabled indicator
+                          READY  : not yet activated — primary CTA
+                      */}
+                      {isDocusealStale ? (
+                        <div className="space-y-2">
+                          {/* Warning banner */}
+                          <div className="flex items-start gap-2 rounded-[8px] border border-amber-200 bg-amber-50 px-3 py-2.5">
+                            <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                            <p className="text-[12px] leading-5 text-amber-800">
+                              <span className="font-semibold">Document changed</span> since DocuSeal was activated.
+                              Re-activate to send the updated version to signers.
+                            </p>
+                          </div>
+                          {/* Re-activate button */}
+                          <Button
+                            type="button"
+                            variant="primary"
+                            size="sm"
+                            className="w-full justify-center"
+                            onClick={async () => {
+                              try {
+                                await docusealMutation.mutateAsync();
+                                // Record the new baseline now that DocuSeal has the updated doc.
+                                if (currentSectionsHash) {
+                                  localStorage.setItem(docusealBaselineKey(proposalId), currentSectionsHash);
+                                  setDocusealBaseline(currentSectionsHash);
+                                }
+                                toastSuccess("DocuSeal re-activated with the latest document.");
+                                setApprovalOpen(false);
+                                setActiveTab("overview");
+                              } catch (err) {
+                                const errMsg = err instanceof Error ? err.message : "DocuSeal push failed.";
+                                toastError(`DocuSeal Error: ${errMsg}`);
+                                alert(`DocuSeal Push Failed:\n\n${errMsg}`);
+                              }
+                            }}
+                            loading={docusealMutation.isPending}
+                            leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
+                          >
+                            Re-activate DocuSeal
+                          </Button>
                         </div>
-                      ) : null}
-                      {isDocusealActivated ? (
+                      ) : isDocusealActivated ? (
                         <Button
                           type="button"
                           variant="secondary"
@@ -1631,6 +1684,11 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                           onClick={async () => {
                             try {
                               await docusealMutation.mutateAsync();
+                              // Capture the sections fingerprint as the new baseline.
+                              if (currentSectionsHash) {
+                                localStorage.setItem(docusealBaselineKey(proposalId), currentSectionsHash);
+                                setDocusealBaseline(currentSectionsHash);
+                              }
                               toastSuccess("DocuSeal submission activated successfully!");
                               setApprovalOpen(false);
                               setActiveTab("overview");
