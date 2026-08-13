@@ -30,6 +30,7 @@ import {
   SignatureSignerStatus,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { sendCompletionEmailsToAllSigners } from "@/server/send-completion-email";
 import type { PartyItem, SignatureBlockItem } from "@/types/proposal";
 
 // ── Token helpers ──────────────────────────────────────────────────────────
@@ -354,10 +355,16 @@ export async function submitSignature(input: SubmitSignatureInput, context: Requ
       });
     }
 
-    return tx.signatureRequest.findUniqueOrThrow({
+    const updatedRequest = await tx.signatureRequest.findUniqueOrThrow({
       where: { id: signer.requestId },
       include: { signers: true, events: { orderBy: { createdAt: "asc" } } },
     });
+
+    if (everyoneSigned) {
+      void sendCompletionEmailsToAllSigners(signer.requestId);
+    }
+
+    return updatedRequest;
   });
 }
 

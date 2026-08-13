@@ -26,11 +26,18 @@ export function getSmtpTransporter() {
   });
 }
 
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer | string;
+  contentType?: string;
+}
+
 export interface SendEmailOptions {
   to: string;
   subject: string;
   html: string;
   from?: string;
+  attachments?: EmailAttachment[];
 }
 
 export async function sendSmtpEmail(options: SendEmailOptions) {
@@ -42,6 +49,7 @@ export async function sendSmtpEmail(options: SendEmailOptions) {
     to: options.to,
     subject: options.subject,
     html: options.html,
+    attachments: options.attachments,
   });
 
   console.log(`[SMTP] Email sent to ${options.to}. MessageId=${info.messageId}`);

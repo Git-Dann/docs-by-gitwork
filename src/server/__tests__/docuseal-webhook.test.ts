@@ -10,10 +10,15 @@ const updateSigner = vi.fn();
 const countSigners = vi.fn();
 const updateManySigners = vi.fn();
 
+vi.mock("@/server/send-completion-email", () => ({
+  sendCompletionEmailsToAllSigners: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     signatureRequest: {
       findFirst: (...args: unknown[]) => findFirstRequest(...args),
+      findUnique: (...args: unknown[]) => findFirstRequest(...args),
       update: (...args: unknown[]) => updateRequest(...args),
     },
     signatureSigner: {

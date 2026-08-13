@@ -20,6 +20,7 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { syncSignerPayloadToDocumentSection } from "@/server/signatures";
+import { sendCompletionEmailsToAllSigners } from "@/server/send-completion-email";
 
 // ─── Optional webhook signature verification ────────────────────────────────────────────────
 
@@ -159,6 +160,7 @@ export async function POST(request: NextRequest) {
             console.log(
               `[DocuSeal Webhook] submission.completed: SignatureRequest ${activeRequest.id} + all signers → COMPLETED.`,
             );
+            void sendCompletionEmailsToAllSigners(activeRequest.id);
           }
         } else {
           console.warn(
@@ -240,6 +242,7 @@ export async function POST(request: NextRequest) {
           console.log(
             `[DocuSeal Webhook] ${eventType}: All signers done. SignatureRequest ${signer.requestId} → COMPLETED.`,
           );
+          void sendCompletionEmailsToAllSigners(signer.requestId);
         } else {
           console.log(
             `[DocuSeal Webhook] ${eventType}: Signer ${signer.id} (${signer.name}) → SIGNED. ${remaining} signer(s) still pending.`,
