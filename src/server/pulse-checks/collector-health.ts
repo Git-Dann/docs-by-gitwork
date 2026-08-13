@@ -18,6 +18,34 @@ export function collectorExecution(name: string, result: PromiseSettledResult<un
     : { name, outcome: "ERROR", detail: safeDetail(result.reason) };
 }
 
+/** A collector that reports its own failure rather than throwing it. */
+export interface SelfReportingCollector {
+  collectorError?: string;
+}
+
+/**
+ * A settled promise is not proof a collector worked.
+ *
+ * The scan's agents catch their own network failures and resolve with an empty
+ * result, so `status === "fulfilled"` was true for a PageSpeed run that timed out,
+ * a quota rejection, and a HEAD probe that never connected. Recording those as
+ * COMPLETED made the completeness check assert that a failed collector had
+ * succeeded — the one thing it exists to prevent. A collector that sets
+ * `collectorError` is an ERROR however cleanly its promise resolved.
+ */
+export function collectorOutcome(
+  name: string,
+  result: PromiseSettledResult<SelfReportingCollector>,
+): CollectorExecution {
+  if (result.status !== "fulfilled") {
+    return { name, outcome: "ERROR", detail: safeDetail(result.reason) };
+  }
+  const reported = result.value?.collectorError;
+  return reported
+    ? { name, outcome: "ERROR", detail: reported.slice(0, 160) }
+    : { name, outcome: "COMPLETED" };
+}
+
 /** A diagnostic control: it changes completeness, never the product health score. */
 export function collectorCompletenessCheck(
   executions: CollectorExecution[],

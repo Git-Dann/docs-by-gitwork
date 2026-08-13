@@ -1,5 +1,5 @@
 import { CATEGORIES } from "./categories";
-import { type ExtendedCheckContext, type PulseScanCheckInput, checkDnsRecord } from "./_types";
+import { type ExtendedCheckContext, type PulseScanCheckInput, resolveDnsRecord, probeInconclusive } from "./_types";
 
 export async function runInfrastructureExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { htmlLower, hostname } = ctx;
@@ -7,13 +7,16 @@ export async function runInfrastructureExtended(ctx: ExtendedCheckContext): Prom
   const h = ctx.pageResult.headers;
   const checks: PulseScanCheckInput[] = [];
 
-  // IPv6 (AAAA record)
-  let hasIpv6 = false;
-  try {
-    const aaaa = await checkDnsRecord(hostname, "AAAA");
-    hasIpv6 = aaaa.length > 0;
-  } catch { /* ignore */ }
-  checks.push({ category: CATEGORIES.INFRASTRUCTURE, checkKey: "ipv6_dns_record", label: "IPv6 (AAAA) DNS record present", status: hasIpv6 ? "PASS" : "WARN", detail: hasIpv6 ? "IPv6 AAAA record found — dual-stack deployment in place." : "No AAAA record — add IPv6 support to future-proof infrastructure and support ISPs moving to IPv6-only networks." });
+  // IPv6 (AAAA record). A failed lookup is not an absent record — reporting one as
+  // the other is a finding invented from an outage.
+  const aaaa = await resolveDnsRecord(hostname, "AAAA");
+  if (!aaaa.ok) {
+    checks.push(probeInconclusive(CATEGORIES.INFRASTRUCTURE, "ipv6_dns_record", "IPv6 (AAAA) DNS record present",
+      `The AAAA lookup for ${hostname} did not complete (${aaaa.reason}).`));
+  } else {
+    const hasIpv6 = aaaa.records.length > 0;
+    checks.push({ category: CATEGORIES.INFRASTRUCTURE, checkKey: "ipv6_dns_record", label: "IPv6 (AAAA) DNS record present", status: hasIpv6 ? "PASS" : "WARN", detail: hasIpv6 ? "IPv6 AAAA record found — dual-stack deployment in place." : "No AAAA record — add IPv6 support to future-proof infrastructure and support ISPs moving to IPv6-only networks." });
+  }
 
   // Multi-region
   const hasMultiRegion = /multi.region|multiple.*region|global.*deployment|eu.west|us.east|ap.southeast|edge.*network|cdn.*region/i.test(html);
@@ -58,14 +61,18 @@ export async function runInfrastructureExtended(ctx: ExtendedCheckContext): Prom
   // DNS TTL healthy
   checks.push({ category: CATEGORIES.INFRASTRUCTURE, checkKey: "dns_ttl_healthy", label: "DNS TTL configured for stability", status: "PASS", detail: "Set DNS TTL to 300–3600 seconds for production records. TTLs under 60s cause excess DNS lookups; TTLs over 86400s slow incident response." });
 
-  // Backup domain
-  let hasBackupDomain = false;
-  try {
-    const cnameRecords = await checkDnsRecord(`www.${hostname}`, "CNAME");
-    const aRecords = await checkDnsRecord(`www.${hostname}`, "A");
-    hasBackupDomain = cnameRecords.length > 0 || aRecords.length > 0;
-  } catch { /* ignore */ }
-  checks.push({ category: CATEGORIES.INFRASTRUCTURE, checkKey: "backup_domain_configured", label: "www subdomain / backup domain configured", status: hasBackupDomain ? "PASS" : "WARN", detail: hasBackupDomain ? "www subdomain configured — both apex and www routes are resolvable." : "No www subdomain detected — configure www to avoid broken links and ensure both apex and www resolve correctly." });
+  // Backup domain. Both lookups must succeed before "no www subdomain" can be
+  // asserted — one resolver failure otherwise reads as a missing record.
+  const wwwCname = await resolveDnsRecord(`www.${hostname}`, "CNAME");
+  const wwwA = await resolveDnsRecord(`www.${hostname}`, "A");
+  const wwwFailure = !wwwCname.ok ? wwwCname.reason : !wwwA.ok ? wwwA.reason : null;
+  if (wwwFailure) {
+    checks.push(probeInconclusive(CATEGORIES.INFRASTRUCTURE, "backup_domain_configured", "www subdomain / backup domain configured",
+      `The www.${hostname} lookup did not complete (${wwwFailure}).`));
+  } else {
+    const hasBackupDomain = (wwwCname.ok && wwwCname.records.length > 0) || (wwwA.ok && wwwA.records.length > 0);
+    checks.push({ category: CATEGORIES.INFRASTRUCTURE, checkKey: "backup_domain_configured", label: "www subdomain / backup domain configured", status: hasBackupDomain ? "PASS" : "WARN", detail: hasBackupDomain ? "www subdomain configured — both apex and www routes are resolvable." : "No www subdomain detected — configure www to avoid broken links and ensure both apex and www resolve correctly." });
+  }
 
   // Object storage
   const hasObjectStorage = /s3\.amazonaws|storage\.googleapis|cloudinary|imagekit|bunnycdn|r2\.cloudflarestorage|object.*storage/i.test(html);

@@ -2,6 +2,7 @@ import { CATEGORIES, type CheckCategory } from "./pulse-checks/categories";
 import { safeGithubRequest, parseGithubRepo, hasGithubToken } from "@/lib/github";
 import type { PulseScanCheckInput, PulseScanInputType } from "@/types/pulse";
 import { runExtendedChecks } from "./pulse-scan-extended";
+import { collectorCompletenessCheck } from "./pulse-checks/collector-health";
 import {
   type JurisdictionCode,
   CHECK_JURISDICTIONS,
@@ -2934,8 +2935,20 @@ export async function runUrlChecks(
         effectiveMarkets,
       }, emit);
       checks.push(...extended);
-    } catch {
-      // Extended checks are non-critical — swallow errors so core scan still succeeds
+    } catch (error) {
+      // The scan still succeeds without the extended families — but it must not
+      // LOOK like a complete one. runExtendedChecks emits its own completeness
+      // check from inside itself, so a throw here loses that row too: ~300 checks
+      // and the only record that they were expected both disappear, while
+      // url-checks still reports COMPLETED. Emit the row the collector could not.
+      checks.push(collectorCompletenessCheck(
+        [{
+          name: "extended-checks",
+          outcome: "ERROR",
+          detail: error instanceof Error ? error.message.slice(0, 160) : "collector failed",
+        }],
+        "scan_extended_collector_completeness",
+      ));
     }
 
   } else {

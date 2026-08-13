@@ -31,7 +31,7 @@ import {
   detectUrlTargetKind,
   effectivePlatformForRepoShape,
 } from "@/server/pulse-checks/scan-execution-plan";
-import { collectorCompletenessCheck, type CollectorExecution } from "@/server/pulse-checks/collector-health";
+import { collectorCompletenessCheck, collectorOutcome, type CollectorExecution } from "@/server/pulse-checks/collector-health";
 import { applyCheckPolicy, customPolicyChecks, type CheckPolicy } from "@/server/check-config";
 import type { JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
 import type {
@@ -164,25 +164,26 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
         : Promise.resolve(null),
     ]);
 
+    // `collectorOutcome` (not the bare settled status) decides COMPLETED vs ERROR —
+    // both agents catch their own network failures and resolve with an empty result,
+    // so a fulfilled promise is not proof either of them collected anything.
+    // Whatever checks they did produce are still ingested; a partial result is
+    // evidence, it just is not a complete one.
     if (deployOutcome) {
+      collectorExecutions.push(collectorOutcome("deploy-agent", deployOutcome));
       if (deployOutcome.status === "fulfilled") {
         deployInsights = deployOutcome.value.insights;
-        collectorCompleted("deploy-agent");
         pending.push(ingest(deployOutcome.value.checks));
-      } else {
-        collectorFailed("deploy-agent", deployOutcome.reason);
       }
     } else {
       collectorExecutions.push({ name: "deploy-agent", outcome: "NOT_APPLICABLE" });
     }
 
     if (browserOutcome) {
+      collectorExecutions.push(collectorOutcome("browser-agent", browserOutcome));
       if (browserOutcome.status === "fulfilled") {
         browserInsights = browserOutcome.value.insights;
-        collectorCompleted("browser-agent");
         pending.push(ingest(browserOutcome.value.checks));
-      } else {
-        collectorFailed("browser-agent", browserOutcome.reason);
       }
     } else {
       collectorExecutions.push({ name: "browser-agent", outcome: "NOT_APPLICABLE" });

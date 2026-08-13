@@ -124,18 +124,62 @@ export async function verifyFileExposure(
   }
 }
 
-export async function checkDnsRecord(name: string, type: string): Promise<string[]> {
+/**
+ * A DNS lookup that distinguishes "this name has no such record" from "we could
+ * not ask". Those are different facts and they must not share a return value —
+ * collapsing them is what lets a resolver timeout be reported as a clean result.
+ */
+export type DnsResolution =
+  | { ok: true; records: string[] }
+  | { ok: false; reason: string };
+
+export async function resolveDnsRecord(name: string, type: string): Promise<DnsResolution> {
   try {
     const res = await fetchWithTimeout(
       `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${encodeURIComponent(type)}`,
       { headers: { Accept: "application/dns-json" } },
     );
-    if (!res.ok) return [];
+    // A non-200 from the resolver is a failed lookup, not an empty answer.
+    if (!res.ok) return { ok: false, reason: `DNS resolver returned HTTP ${res.status}` };
     const json = await res.json() as { Answer?: { data: string }[] };
-    return (json.Answer ?? []).map((a) => a.data);
-  } catch {
-    return [];
+    return { ok: true, records: (json.Answer ?? []).map((a) => a.data) };
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : "DNS lookup failed" };
   }
+}
+
+/**
+ * Records only. Kept because most callers legitimately treat "absent" and
+ * "unreachable" the same way — but any check whose PASS depends on an EMPTY
+ * answer must use `resolveDnsRecord` instead, or a resolver outage manufactures
+ * that PASS.
+ */
+export async function checkDnsRecord(name: string, type: string): Promise<string[]> {
+  const resolution = await resolveDnsRecord(name, type);
+  return resolution.ok ? resolution.records : [];
+}
+
+/**
+ * The verdict for a probe that could not be completed. INCONCLUSIVE is excluded
+ * from both sides of the health score and counts against assurance completeness,
+ * so an unreachable target lowers what Pulse claims to know rather than silently
+ * scoring as if the check had run.
+ */
+export function probeInconclusive(
+  category: CheckCategory,
+  checkKey: string,
+  label: string,
+  reason: string,
+): PulseScanCheckInput {
+  return {
+    category,
+    checkKey,
+    label,
+    status: "INCONCLUSIVE",
+    detail: `Pulse could not complete this probe, so neither a pass nor a failure can be claimed. ${reason}`,
+    confidence: "LOW",
+    confidenceReason: "The probe did not complete — no evidence was collected.",
+  };
 }
 
 export function skip(
