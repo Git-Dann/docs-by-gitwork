@@ -1061,7 +1061,7 @@ export function DocumentCover({
             <span aria-hidden />
           )}
           {classification && classification.length ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, textAlign: "right" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, textAlign: "right", alignItems: "flex-end" }}>
               {classification.map((row, i) => (
                 <span
                   key={i}
@@ -1072,6 +1072,7 @@ export function DocumentCover({
                     letterSpacing: "0.14em",
                     textTransform: "uppercase",
                     color: muted,
+                    whiteSpace: "nowrap",
                   }}
                 >
                   {row}
