@@ -30,6 +30,7 @@ import { applyItemPatch, computeCompleteness } from "@/lib/launchpad/structure";
 import { renderLegalDoc } from "@/lib/launchpad/legal/render";
 import type { LaunchpadDTO, LaunchpadItemState } from "@/types/launchpad";
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
+import type { PulseScanDiff } from "@/types/pulse";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
 
 // ─── Demo identity ────────────────────────────────────────────────────────────
@@ -2317,6 +2318,53 @@ const demoPulseScanList = [
   { id: "scan-northwind", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co", inputGithubRepo: null, status: "COMPLETED", healthScore: 86, generatedProposalId: null, createdAt: atDays(-5), updatedAt: atDays(-5) },
 ];
 
+/**
+ * What changed since the previous scan of the same target.
+ *
+ * Deliberately includes the `unverified` bucket, because that is the half of
+ * the story most tools do not tell: two findings from last time that this scan
+ * cannot confirm or clear. A demo that only ever shows fixes teaches the reader
+ * that a shrinking issue list means progress — which is exactly the reading
+ * `scan-diff.ts` exists to stop.
+ */
+const demoScanDiff: PulseScanDiff = {
+  previousScanId: "scan-northwind-prev",
+  previousCompletedAt: "2026-07-30T09:14:00.000Z",
+  scoreChange: 6,
+  fixed: [
+    { checkKey: "security_headers_csp", label: "Content-Security-Policy present", category: "Security", status: "PASS", prevStatus: "FAIL" },
+    { checkKey: "https_redirect", label: "HTTP redirects to HTTPS", category: "Security", status: "PASS", prevStatus: "WARN" },
+  ],
+  regressed: [
+    { checkKey: "sitemap_present", label: "sitemap.xml reachable", category: "SEO", status: "FAIL", prevStatus: "PASS" },
+  ],
+  newIssues: [
+    { checkKey: "cookie_consent_prior", label: "Consent taken before non-essential cookies", category: "Legal & Compliance", status: "WARN" },
+  ],
+  unverified: [
+    {
+      checkKey: "supabase_rls_enforced",
+      label: "Row-level security enforced",
+      category: "Security",
+      status: null,
+      prevStatus: "FAIL",
+      reason: "CHECK_ABSENT",
+      detail:
+        "This control did not run in the current scan, so the finding from last time is neither confirmed nor cleared. It is still outstanding until something proves otherwise.",
+    },
+    {
+      checkKey: "has_tests",
+      label: "Automated tests present",
+      category: "Code Quality",
+      status: "NOT_TESTED",
+      prevStatus: "WARN",
+      reason: "CHECK_DISABLED",
+      detail:
+        "This control is switched off in workspace settings, so the finding from last time was not re-tested. Turning a check off does not resolve what it found.",
+    },
+  ],
+};
+
 const demoPulseStats = {
   totalScans: 3,
   completedScans: 3,
@@ -2571,7 +2619,7 @@ export function resolveDemoApi(
   if (pathname === "/api/pulse/leads") return { leads: [] };
   if (pathname === "/api/pulse/monitors") return { monitors: [] };
   if (/^\/api\/pulse\/scans\/[^/]+\/history$/.test(pathname)) return { history: [] };
-  if (/^\/api\/pulse\/scans\/[^/]+\/diff$/.test(pathname)) return { diff: null };
+  if (/^\/api\/pulse\/scans\/[^/]+\/diff$/.test(pathname)) return { diff: demoScanDiff };
   if (/^\/api\/pulse\/scans\/[^/]+\/benchmarks$/.test(pathname)) return { benchmarks: null };
   {
     const ps = pathname.match(/^\/api\/pulse\/scans\/([^/]+)$/);

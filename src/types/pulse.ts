@@ -439,13 +439,37 @@ export interface ScanDiffItem {
   status: PulseCheckStatus;
   prevStatus?: PulseCheckStatus;
 }
+
+/**
+ * A finding this scan can no longer speak to. `status` is nullable here and
+ * nowhere else, because the commonest case is a control that produced no row at
+ * all — and a made-up status would be exactly the fiction this bucket exists to
+ * prevent. Shapes match `pulse-checks/scan-diff.ts`, which computes them.
+ */
+export interface UnverifiedDiffItem {
+  checkKey: string;
+  label: string;
+  category: string;
+  status: PulseCheckStatus | null;
+  prevStatus: PulseCheckStatus;
+  reason: "CHECK_ABSENT" | "PROBE_INCONCLUSIVE" | "CHECK_DISABLED" | "NOT_APPLICABLE_NOW" | "PASS_NOT_PROVEN";
+  detail: string;
+}
+
 export interface PulseScanDiff {
   previousScanId: string;
   previousCompletedAt: string | null;
   scoreChange: number; // current - previous health score
-  fixed: ScanDiffItem[];     // was FAIL/WARN, now PASS
+  fixed: ScanDiffItem[];     // was an issue, now passing WITH PROOF
   regressed: ScanDiffItem[]; // was PASS, now FAIL/WARN
   newIssues: ScanDiffItem[]; // FAIL/WARN checkKey not present last time
+  /**
+   * Was an issue, and this scan cannot say whether it still is — the control
+   * did not run, was switched off, stopped applying, or passed on evidence too
+   * weak to count. NOT a fix. Left out of a diff, these findings simply vanish,
+   * which is how "we stopped looking" reads as "we sorted it".
+   */
+  unverified: UnverifiedDiffItem[];
 }
 
 export interface PulseScanCheckInput {

@@ -1503,6 +1503,10 @@ function ScoreExplainer({
     if (diff.fixed.length) changeParts.push(`${diff.fixed.length} fixed`);
     if (diff.regressed.length) changeParts.push(`${diff.regressed.length} regressed`);
     if (diff.newIssues.length) changeParts.push(`${diff.newIssues.length} new ${diff.newIssues.length === 1 ? "issue" : "issues"}`);
+    // Stated alongside the fixes, never omitted while a fix count is shown —
+    // "4 fixed" beside a silent 7 that stopped being checkable is the reading
+    // this whole bucket exists to prevent.
+    if (diff.unverified.length) changeParts.push(`${diff.unverified.length} no longer verifiable`);
   }
 
   return (
@@ -2417,19 +2421,19 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           )}
 
           {/* CHANGES SINCE LAST SCAN — diff vs the previous scan of this target */}
-          {scanDiff && (scanDiff.fixed.length + scanDiff.regressed.length + scanDiff.newIssues.length > 0) && (
+          {scanDiff && (scanDiff.fixed.length + scanDiff.regressed.length + scanDiff.newIssues.length + scanDiff.unverified.length > 0) && (
             <div className="widget-card">
               <div className="widget-header">
                 <span className="widget-header-label">CHANGES SINCE LAST SCAN</span>
-                <span className={cn("widget-header-right tabular-nums", scanDiff.scoreChange > 0 ? "text-emerald-600" : scanDiff.scoreChange < 0 ? "text-red-600" : "text-[var(--text-4)]")}>
+                <span className={cn("widget-header-right tabular-nums", scanDiff.scoreChange > 0 ? "text-[var(--success-500)]" : scanDiff.scoreChange < 0 ? "text-[var(--danger-500)]" : "text-[var(--text-4)]")}>
                   {scanDiff.scoreChange > 0 ? "+" : ""}{scanDiff.scoreChange} pts
                 </span>
               </div>
               <div className="widget-body space-y-3">
                 {[
-                  { items: scanDiff.regressed, label: "Regressed", tone: "text-red-600", sign: "▼" },
-                  { items: scanDiff.newIssues, label: "New issues", tone: "text-amber-600", sign: "+" },
-                  { items: scanDiff.fixed, label: "Fixed", tone: "text-emerald-600", sign: "✓" },
+                  { items: scanDiff.regressed, label: "Regressed", tone: "text-[var(--danger-500)]", sign: "▼" },
+                  { items: scanDiff.newIssues, label: "New issues", tone: "text-[var(--warning-500)]", sign: "+" },
+                  { items: scanDiff.fixed, label: "Fixed", tone: "text-[var(--success-500)]", sign: "✓" },
                 ].filter((g) => g.items.length > 0).map((g) => (
                   <div key={g.label}>
                     <p className={cn("widget-data-label", g.tone)}>{g.sign} {g.label} ({g.items.length})</p>
@@ -2441,6 +2445,34 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                     </div>
                   </div>
                 ))}
+
+                {/* Given its own block rather than a fourth chip row, because the
+                    REASON is the content. "We stopped being able to check this"
+                    reads as "sorted" the moment it is reduced to a label, which
+                    is precisely how a finding disappears. Neutral, not a warning
+                    colour: it is not a finding about the product. */}
+                {scanDiff.unverified.length > 0 && (
+                  <div className="border-t border-[var(--border-2)] pt-3">
+                    <p className="widget-data-label text-[var(--text-3)]">
+                      ? No longer verifiable ({scanDiff.unverified.length})
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-[var(--text-3)]">
+                      These were findings last time. This scan could not confirm or clear them, so they are
+                      still outstanding — not fixed.
+                    </p>
+                    <ul className="mt-2 space-y-1.5">
+                      {scanDiff.unverified.slice(0, 6).map((it) => (
+                        <li key={it.checkKey} className="text-xs leading-5">
+                          <span className="text-[var(--text-1)]">{it.label}</span>
+                          <span className="text-[var(--text-3)]"> — {it.detail}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {scanDiff.unverified.length > 6 && (
+                      <p className="mt-1 text-xs text-[var(--text-4)]">+{scanDiff.unverified.length - 6} more</p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -201,17 +201,42 @@ existing `Workspace.*Config` JSON pattern (`curatorConfig`, `foremanConfig`, `di
 `gatePolicyById` is the seam — but a customer-editable blocking list needs a UI that makes the
 consequence of removing a control obvious, which is a design question, not a coding one.
 
-### Phase 5 — finding lifecycle
+### Phase 5 — finding lifecycle — **the correctness half is SHIPPED**
 
-`NEW` / `EXISTING` / `REGRESSION` / `RESOLVED` / `ACCEPTED_RISK` / `FALSE_POSITIVE`, keyed on
-`checkKey` + asset. **A finding that disappears while its collector errored is not resolved** —
-Phase 0's `collectorOutcome` is what makes that distinguishable, and Phase 3 is what makes it
-complete. `PulseScan.previousHealthScore` and `PulseMonitor.lastCriticalKeys` are the existing
-seeds.
+⚠️ **Grep before you build here.** A scan-to-scan diff already existed (`getScanDiff` in
+`pulse.ts`), and it had exactly the defect this phase was written to prevent — twice, silently.
+It now delegates to the pure, unit-tested `pulse-checks/scan-diff.ts`.
 
-Accepted risk needs the full record (owner, approver, expiry, compensating control, scope) —
-`ForemanFindingAction` is the working precedent for read-time disposition, including the rule that
-a dismissal resurfaces when the metric worsens.
+**The rule: a fix must be proven; a disappearance must not be mistaken for one.**
+
+- **A previously-failing check that is MISSING from the current scan used to appear in no list at
+  all.** Not fixed, not new, not regressed — unmentioned. That is what a scan looks like when a
+  collector errors, a repo stops being reachable, or someone switches the check off. The finding
+  was still true; the report simply stopped saying so. Fixed by walking the PREVIOUS scan's issues,
+  a pass the old implementation did not have.
+- **Any `status === "PASS"` closed a finding, at any confidence.** A LOW-confidence PASS is one the
+  score itself declines to count. Letting it resolve a finding made it *more* powerful in the
+  remediation flow than in the maths. `isProvenPass` requires HIGH or MEDIUM, and an unrecognised
+  confidence value fails closed.
+
+The new `unverified` bucket carries a typed `reason` — `CHECK_ABSENT` · `CHECK_DISABLED` ·
+`NOT_APPLICABLE_NOW` · `PROBE_INCONCLUSIVE` · `PASS_NOT_PROVEN` — because *why* we stopped being
+able to check is what a reader has to act on. `CHECK_DISABLED` exists specifically so that turning
+a control off cannot be a way to make a finding go away quietly. `describeDiff` states the count
+**even when it is zero**, so its absence never teaches a reader that silence means nothing went
+missing.
+
+`status` is nullable on `UnverifiedDiffItem` and nowhere else — the commonest case is a control
+that produced no row, and a made-up status would be the fiction the bucket exists to prevent.
+
+**Still to build:** durable finding identity across scans (`ACCEPTED_RISK` / `FALSE_POSITIVE` as
+persisted dispositions rather than a per-diff computation), keyed on `checkKey` + asset.
+`ForemanFindingAction` is the working precedent for read-time disposition, **including the rule
+that a dismissal resurfaces when the metric worsens**. `PulseScan.previousHealthScore` and
+`PulseMonitor.lastCriticalKeys` are the other existing seeds.
+
+Accepted risk needs the full record: owner, approver, expiry, compensating control, scope. An
+acceptance without an expiry is indistinguishable from a finding nobody looked at again.
 
 ### Phase 6 — assurance manifest
 
