@@ -295,6 +295,47 @@ As the brief describes. Two notes from the trace:
 
 ---
 
+## 4a. Validate a check family against REAL code, not fixtures
+
+**The single highest-yield thing in this programme.** In one session, pointing three families
+at real code found three defects that their own unit tests passed straight through — because a
+fixture agrees with its author by construction. This is `CLAUDE.md` §34.3's lesson, and §38
+admits the 133 checks added in §37–§38 were never held to it.
+
+What it found:
+
+| Family | Defect | Consequence |
+|---|---|---|
+| `web-repo-source` | Three Prisma-only TypeScript routes reported as **SQL injection** | FAIL in Security → a **BLOCKED release** under the gate |
+| `code-cleanliness` | The framework seam between two App Router handlers counted as duplicated logic | 58% of sampled files "duplicated"; the real copy-pasted helper buried |
+| all source families | Coverage went **UP** on a truncated tree | Unfounded absence findings promoted into scored failures |
+
+**`__tests__/real-corpus.test.ts` is now the standing guard.** It runs the source families over
+this repository's own ~460 API route files — ordinary, heavily-reviewed Next.js code that is
+definitively free of raw SQL, `eval`, shell building and committed credentials — and asserts no
+FAIL. Any FAIL there is a false positive by construction. Both of the defects above make it go
+red, with a message naming the cause.
+
+It is the same idea as `audit:ui --self-test` (§31): prove the rule stays **quiet on the fix**,
+not only that it fires on the defect.
+
+⚠️ **When it fails, read the finding before touching the test.** Two very different things turn
+it red and they need opposite responses — a rule that started firing on ordinary code (fix the
+rule) versus someone genuinely introducing raw SQL into a route (fix the code). Narrowing the
+corpus to make it pass is the one response that is always wrong.
+
+**Corpora available without a `GITHUB_TOKEN`**, worth reaching for before asking for repo access:
+this repo itself (a large TypeScript/Next.js app), `node_modules` (46 real published npm packages
+with a `bin`, for the CLI family), and `vendor/bento` (a real vendored Vite app).
+
+⚠️ **Know what a corpus cannot test.** The npm corpus produced two checks warning on 100% of
+packages — but both read *repository* evidence (a root lockfile, CI workflows) that npm strips
+from a published tarball. Neither was changed on that basis. A corpus that cannot express the
+defect cannot verify the fix, and reading a 100% rate as a bug would have made both checks worse.
+
+**Still unvalidated against real code:** desktop (Electron/Tauri), React Native, browser
+extension, native Android, iOS, Flutter, API behaviour. Those need real repositories.
+
 ## 5. Verification honesty
 
 Everything above was verified by `npm run verify` (tsc + lint 0 errors, **1,909 tests**,
