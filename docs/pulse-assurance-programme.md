@@ -381,6 +381,29 @@ the only thing making the gate conditional. Cause: the `CONDITIONAL` branch inhe
 rule's `trustBucket === "CONFIRMED"` filter, and all four real failures are MEDIUM confidence. Fixed
 above; both sites are `CONDITIONAL` again, now for the four reasons that are actually true.
 
+### 4b.1 The fix moved the dishonesty one layer out, into the public widget
+
+Fixing the scanner changed what `/embed/pulse` shows, and the widget was not ready for it. Three
+defects, all pre-existing, all made material by the reclassification — because the embed is aimed
+at vibe-coded sites, so "we could not read the page" is its **normal** case, not an edge one.
+
+- **`summarise()` dropped unresolved controls into no bucket at all.** It excluded only `SKIPPED`,
+  so an `INCONCLUSIVE` check fell past every branch: absent from `pass`/`warn`/`fail`, still
+  counted in `totalChecks`, and still creating an all-zero category row. Tolerable at ~5 per scan;
+  not at ~28. It now counts them, excludes `NOT_APPLICABLE` too, and `else continue`s on any status
+  nobody has taught it about rather than inventing a bucket.
+- **A category where nothing resolved rendered 100% and a full green bar.** `total > 0 ? … : 100`
+  — a perfect score awarded for measuring nothing, which is this programme's founding defect in a
+  UI component. It reads `NOT ASSESSED` in neutral grey now.
+- **The widget's `Check.status` union listed four of the nine statuses.** It is a `fetch` response,
+  so TypeScript could never catch the drift. **Narrowing a wire type to the cases you happen to
+  handle is a lie the compiler cannot check** — worth remembering anywhere a client mirrors a
+  server DTO by hand.
+
+The visitor is now told, with the findings rather than buried: *"N checks couldn't be assessed"*,
+and when `spa_client_rendered` fired, why — their content is JavaScript-rendered, the checks are
+inconclusive rather than failed, and either way they are not in the score.
+
 **Still unvalidated against real sites:** every URL family other than these three shells — and
 notably, a *server-rendered* site, where the reclassification must stay off. Actively probing
 strangers' live apps is a decision for the account owner, not the scanner: `api-behaviour` performs
@@ -388,12 +411,19 @@ CORS reflection, TRACE and GraphQL introspection probes.
 
 ## 5. Verification honesty
 
-Everything above was verified by `npm run verify` (tsc + lint 0 errors, **2,066 tests**,
+Everything above was verified by `npm run verify` (tsc + lint 0 errors, **2,072 tests**,
 `audit:ui` 0 findings with its self-test passing) and `npx next build`.
 
-**Nothing was run through the product.** `/app` is auth-gated, there is no staging and no local
-database, so no scan was executed end to end through the UI, no model call was made, and the reply
-paths were not exercised against real data.
+**Nothing was run through the product.** `/app` is auth-gated and there is no local database, so no
+scan was executed end to end through the UI, no model call was made, and the reply paths were not
+exercised against real data.
+
+⚠️ "There is no staging" was doing more work in that sentence than it should have — **a Vercel
+branch preview does exist and is reachable** (corrected in `docs/build-checklist.md` §4). It does
+not make `/app` visible, but it does mean the public Pulse surfaces on this branch could be checked
+at runtime, which is a smaller gap than "we have no environment" implies. `POST /api/public/pulse/scan`
+was deliberately NOT run there: it permanently burns an email's free scan, writes a `PulseLead` and
+notifies admins, which is not a side effect to incur for a self-check.
 
 **The URL scanner itself, however, was run against live targets** — §4b. `runLiteScan` needs no
 database, so a throwaway harness calling it directly is a genuine end-to-end exercise of the URL

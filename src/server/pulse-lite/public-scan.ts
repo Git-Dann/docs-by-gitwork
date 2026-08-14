@@ -18,7 +18,16 @@ export interface LiteCategorySummary {
   pass: number;
   warn: number;
   fail: number;
+  /** Ran, but could not establish an answer. Counted so a category is never shown as 0/0/0. */
+  inconclusive: number;
 }
+
+/**
+ * Statuses that mean "we asked and could not answer". Kept out of pass/warn/fail — an
+ * inconclusive control is not a pass — but counted, because dropping them silently is how a
+ * scan that measured three quarters of a page reports as if it measured all of it.
+ */
+const UNRESOLVED_STATUSES = new Set(["INCONCLUSIVE", "ERROR", "NOT_TESTED", "EVIDENCE_REQUIRED"]);
 
 export interface PublicScanView {
   id: string;
@@ -30,6 +39,9 @@ export interface PublicScanView {
   pass: number;
   warn: number;
   fail: number;
+  /** Controls that ran without reaching a verdict — most often a client-rendered page whose
+   *  content is not in the static HTML. Shown to the visitor so the score is read in context. */
+  inconclusive: number;
   categories: LiteCategorySummary[];
   emailCaptured: boolean;
   /** Per-check detail — only present once an email has been captured (gated). */
@@ -37,27 +49,41 @@ export interface PublicScanView {
   errorMessage: string | null;
 }
 
-/** Per-category + overall PASS/WARN/FAIL counts (SKIPPED excluded). Free to show. */
+/**
+ * Per-category + overall counts. SKIPPED and NOT_APPLICABLE are excluded entirely — the control
+ * did not apply, so there is nothing to report. Everything else is counted somewhere.
+ *
+ * ⚠️ An unresolved status must never fall through into no bucket at all. It used to: only SKIPPED
+ * was excluded, so an INCONCLUSIVE check was silently dropped from pass/warn/fail while still
+ * counting toward `totalChecks` and still creating an all-zero category row. That was tolerable at
+ * ~5 per scan and stopped being so the moment client-rendered pages started reclassifying ~24 SEO
+ * controls — on the exact population this widget is aimed at.
+ */
 export function summarise(checks: PulseScanCheckInput[]): {
   categories: LiteCategorySummary[];
   pass: number;
   warn: number;
   fail: number;
+  inconclusive: number;
 } {
   const byCat = new Map<string, LiteCategorySummary>();
   let pass = 0;
   let warn = 0;
   let fail = 0;
+  let inconclusive = 0;
   for (const c of checks) {
-    if (c.status === "SKIPPED") continue;
-    const s = byCat.get(c.category) ?? { category: c.category, pass: 0, warn: 0, fail: 0 };
+    if (c.status === "SKIPPED" || c.status === "NOT_APPLICABLE") continue;
+    const s = byCat.get(c.category)
+      ?? { category: c.category, pass: 0, warn: 0, fail: 0, inconclusive: 0 };
     if (c.status === "PASS") { s.pass++; pass++; }
     else if (c.status === "WARN") { s.warn++; warn++; }
     else if (c.status === "FAIL") { s.fail++; fail++; }
+    else if (UNRESOLVED_STATUSES.has(c.status)) { s.inconclusive++; inconclusive++; }
+    else continue; // a status nobody has taught this function about — do not invent a bucket
     byCat.set(c.category, s);
   }
   const categories = [...byCat.values()].sort((a, b) => (b.fail + b.warn) - (a.fail + a.warn));
-  return { categories, pass, warn, fail };
+  return { categories, pass, warn, fail, inconclusive };
 }
 
 export async function runPublicLiteScan(liteScanId: string, url: string): Promise<void> {

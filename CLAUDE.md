@@ -24,8 +24,10 @@ class name" and a request to move fast are **not** exemptions — most of the de
   **§32**. This is how work is tracked across the team; an untagged chat is invisible.
 - **Run `npm run verify` before any PR**, and report what it actually printed. CI runs the same
   thing on every PR (§31), and a `pre-push` hook runs it for you on a push to `main`. Never call
-  something verified that wasn't run. There is **no staging and no branch previews** — only `main`
-  deploys, straight to the Fasthosts VPS (§23), not Vercel.
+  something verified that wasn't run. **Only `main` deploys to production** — straight to the
+  Fasthosts VPS (§23), not Vercel. There is no staging. But **Vercel branch previews DO still
+  build and ARE reachable** (§23's "vestigial" applies to production traffic, not to the preview
+  URL) — see `docs/build-checklist.md` §4 for what one can and cannot verify.
 - **Keep [`ONBOARDING.md`](ONBOARDING.md) current — in the same PR as the change.** It's the
   one-page handover new builders actually read, so a stale one actively misleads them. It is **not**
   a summary of this file; it only covers what someone needs in week one. Update it when you change:

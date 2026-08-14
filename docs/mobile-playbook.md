@@ -162,8 +162,10 @@ audit stays manual/`deck:verify` until there's a staging environment to point it
 ## 4. Standing rules
 
 - Branch → PR → **squash-merge to `main`** (merge/rebase disabled). `main` **auto-deploys to the
-  Fasthosts VPS** via GitHub Actions (`.github/workflows/deploy.yml`, ~6 min). This is the only
-  deployed environment — **there are no branch previews**. See `CLAUDE.md` §23.
+  Fasthosts VPS** via GitHub Actions (`.github/workflows/deploy.yml`, ~6 min). That is the only
+  **production** environment — but a **Vercel branch preview is built for every PR and is
+  reachable**, so `audit:clipping` CAN be pointed at a public route on your own branch. It is
+  Neon-backed and `/app` is auth-gated on it; see `docs/build-checklist.md` §4 before relying on it.
 - Never declare something "done and verified" unless it was actually exercised. If it was only
   static-checked, say exactly that.
 - Purely presentational Tailwind changes are low-risk, but still get the blast-radius check —

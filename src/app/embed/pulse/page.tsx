@@ -9,8 +9,21 @@ type Check = {
   category: string;
   checkKey: string;
   label: string;
-  status: "PASS" | "WARN" | "FAIL" | "SKIPPED";
+  // The full PulseCheckStatus union. It was "PASS" | "WARN" | "FAIL" | "SKIPPED" while the API
+  // could already return four more — and since this is a fetch response, TypeScript never
+  // noticed. Narrowing a wire type to the cases you happen to handle is a lie the compiler
+  // cannot check, and it hid that inconclusive results were reaching this widget unlabelled.
+  status:
+    | "PASS" | "WARN" | "FAIL" | "SKIPPED"
+    | "NOT_APPLICABLE" | "INCONCLUSIVE" | "ERROR" | "NOT_TESTED" | "EVIDENCE_REQUIRED";
   detail?: string | null;
+};
+type CategorySummary = {
+  category: string;
+  pass: number;
+  warn: number;
+  fail: number;
+  inconclusive: number;
 };
 type View = {
   id: string;
@@ -22,7 +35,9 @@ type View = {
   pass: number;
   warn: number;
   fail: number;
-  categories: { category: string; pass: number; warn: number; fail: number }[];
+  /** Ran without reaching a verdict. Absent on a scan stored before this field existed. */
+  inconclusive?: number;
+  categories: CategorySummary[];
   emailCaptured: boolean;
   checks: Check[] | null;
   errorMessage: string | null;
@@ -62,11 +77,14 @@ const EXAMPLE_VIEW: View = {
   pass: 30,
   warn: 7,
   fail: 3,
+  // `inconclusive: 0` is deliberate, not filler: this example is a server-rendered site whose
+  // every control resolved. A fixture carrying inconclusive counts would advertise the
+  // "NOT ASSESSED" state as the normal look of a scan.
   categories: [
-    { category: "Performance", pass: 9, warn: 2, fail: 1 },
-    { category: "SEO", pass: 7, warn: 1, fail: 1 },
-    { category: "Security", pass: 6, warn: 2, fail: 1 },
-    { category: "Mobile", pass: 8, warn: 2, fail: 0 },
+    { category: "Performance", pass: 9, warn: 2, fail: 1, inconclusive: 0 },
+    { category: "SEO", pass: 7, warn: 1, fail: 1, inconclusive: 0 },
+    { category: "Security", pass: 6, warn: 2, fail: 1, inconclusive: 0 },
+    { category: "Mobile", pass: 8, warn: 2, fail: 0, inconclusive: 0 },
   ],
   emailCaptured: true,
   checks: [
@@ -124,25 +142,32 @@ function ScoreRing({ score }: { score: number | null }) {
   );
 }
 
-function CategoryTile({ cat }: { cat: { category: string; pass: number; warn: number; fail: number } }) {
+function CategoryTile({ cat }: { cat: CategorySummary }) {
   const total = cat.pass + cat.warn + cat.fail;
-  const s = total > 0 ? Math.round(((cat.pass + cat.warn * 0.5) / total) * 100) : 100;
-  const tone = s >= 75 ? "#16a34a" : s >= 50 ? "#d97706" : "#dc2626";
+  // ⚠️ A category where nothing resolved used to render 100% and a full green bar — a perfect
+  // score awarded for measuring nothing. It is reachable whenever every check in a category is
+  // inconclusive, which client-rendered pages make routine. Say "not assessed" instead.
+  const unmeasured = total === 0;
+  const s = unmeasured ? 0 : Math.round(((cat.pass + cat.warn * 0.5) / total) * 100);
+  const tone = unmeasured ? "#9ca3af" : s >= 75 ? "#16a34a" : s >= 50 ? "#d97706" : "#dc2626";
   return (
     <div style={{ display: "flex", background: "#ffffff", border: "1px solid #eceef2", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
       <div style={{ width: 4, background: tone, flexShrink: 0 }} />
       <div style={{ flex: 1, padding: "10px 12px" }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
           <span style={{ fontSize: 12.5, fontWeight: 600, color: "#374151" }}>{cat.category}</span>
-          <span style={{ fontSize: 13, fontWeight: 700, color: tone, fontVariantNumeric: "tabular-nums" }}>{s}%</span>
+          <span style={{ fontSize: unmeasured ? 10.5 : 13, fontWeight: 700, color: tone, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+            {unmeasured ? "NOT ASSESSED" : `${s}%`}
+          </span>
         </div>
         <div style={{ background: "#eef0f4", borderRadius: 4, height: 4, marginBottom: 6, overflow: "hidden" }}>
           <div style={{ height: "100%", borderRadius: 4, background: tone, width: `${s}%`, transition: "width 600ms ease" }} />
         </div>
-        <div style={{ display: "flex", gap: 8, fontSize: 10.5, fontWeight: 600, color: "#9ca3af" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 10.5, fontWeight: 600, color: "#9ca3af" }}>
           {cat.pass > 0 && <span style={{ color: "#16a34a" }}>{cat.pass} pass</span>}
           {cat.warn > 0 && <span style={{ color: "#d97706" }}>{cat.warn} warn</span>}
           {cat.fail > 0 && <span style={{ color: "#dc2626" }}>{cat.fail} fail</span>}
+          {cat.inconclusive > 0 && <span>{cat.inconclusive} inconclusive</span>}
         </div>
       </div>
     </div>
@@ -407,6 +432,14 @@ export default function EmbedPulsePage() {
     .filter((c) => c.status === "FAIL" || c.status === "WARN")
     .sort((a, b) => (a.status === "FAIL" ? 0 : 1) - (b.status === "FAIL" ? 0 : 1));
 
+  // Prefer the server's count; fall back to summing the category tiles so a scan stored before
+  // the field existed still reports honestly rather than reading as "everything was assessed".
+  const unresolved = view?.inconclusive
+    ?? (view?.categories ?? []).reduce((sum, cat) => sum + (cat.inconclusive ?? 0), 0);
+  const clientRendered = (view?.checks ?? []).some(
+    (c) => c.checkKey === "spa_client_rendered" && c.status !== "PASS",
+  );
+
   const formDisabled = running || starting || isExample;
   const submitDisabled = formDisabled || !url.trim() || !email.trim() || awaitingVerification;
 
@@ -639,6 +672,23 @@ export default function EmbedPulsePage() {
                         +{findings.length - 5} more issues — book a call to get them all fixed.
                       </p>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* What the scan could NOT establish. Sits with the findings deliberately: a
+                  visitor reading "3 things to fix" must not assume everything else was checked
+                  and passed. Client-rendered pages are the common case here — their content is
+                  not in the static HTML, so a scanner cannot read it without running the app. */}
+              {done && unresolved > 0 && (
+                <div style={{ marginTop: 14, padding: "10px 12px", border: "1px solid #e5e7eb", borderRadius: 10, background: "#f9fafb" }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
+                    {`${unresolved} check${unresolved === 1 ? "" : "s"} couldn't be assessed`}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                    {clientRendered
+                      ? "This site renders its content with JavaScript, so the content and SEO checks can't read it from the page source. They're reported as inconclusive rather than failed — and they're not counted in the score either way."
+                      : "These ran without reaching a verdict, so they're excluded from the score rather than counted as passes."}
                   </div>
                 </div>
               )}

@@ -113,14 +113,30 @@ So for any visual change:
 
 ## 4. Verification honesty
 
-**There is no staging environment and there are no branch preview deploys.** Production is the
-Fasthosts VPS and only `main` deploys to it (`CLAUDE.md` §23) — Vercel is not in the path. So:
+**There is no staging environment.** Production is the Fasthosts VPS and only `main` deploys to it
+(`CLAUDE.md` §23) — Vercel is not in the production path.
 
-- `/app` pages **cannot be self-screenshotted** today. If a change only got a typecheck and a
-  reasoned read, say exactly that, and hand over a precise capture list — the page, the 2–3
-  viewports, the specific elements — never "please check everything".
+⚠️ **But a Vercel branch preview IS built for every PR, and it IS reachable.** This file used to
+say there were none, and that was simply wrong — measured on PR #612 in Aug 2026: `/pulse-overview`,
+`/embed/pulse` and `/api/health` all answered 200, `/` redirected to `/portal/login` as designed.
+Vercel being "vestigial" (§23) means production DNS no longer points at it; it does not mean the
+preview does not exist. The URL is in the `vercel[bot]` comment on the PR.
+
+What that does and does not buy you:
+
+- **Public routes can be verified per-branch.** `npm run audit:clipping <preview-url>/pulse-overview`
+  is a real runtime check on the actual branch — no longer something that has to wait for staging.
+- **`/app` pages still cannot be self-screenshotted.** The preview is auth-gated exactly like
+  production. Use the `renderToStaticMarkup` + compiled-CSS technique (`CLAUDE.md` §39.1) for those.
+- **The preview is backed by NEON, not the VPS Postgres.** Vercel's env still carries the Neon URLs
+  kept for rollback (§23), so anything you write there lands in the rollback database and is not
+  production data — and its build runs `prisma db push` against it.
+- **Some public paths have real side effects.** `POST /api/public/pulse/scan` permanently burns
+  that email's one free scan, writes a `PulseLead`, and emails the admins. Reachable is not free.
 - Never call something "verified" that wasn't actually exercised. `npm run verify` output is the
-  evidence; paste it.
+  evidence; paste it. If a change only got a typecheck and a reasoned read, say exactly that, and
+  hand over a precise capture list — the page, the 2–3 viewports, the specific elements — never
+  "please check everything".
 
 ---
 
