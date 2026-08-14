@@ -404,6 +404,32 @@ The visitor is now told, with the findings rather than buried: *"N checks couldn
 and when `spa_client_rendered` fired, why — their content is JavaScript-rendered, the checks are
 inconclusive rather than failed, and either way they are not in the score.
 
+**What was actually verified, and what was not.** `summarise` has 6 unit tests, proved to
+discriminate by reverting it (4 failures). `CategoryTile` was rendered in three states — healthy,
+mixed-with-inconclusive, and all-inconclusive — confirming the last reads `NOT ASSESSED` in grey
+with a zero-width bar rather than 100% green. `npm run audit:clipping` is clean at 390 · 768 ·
+1280×620 · 1440 on the widget's **form** state. Its **results** state was not audited: it needs a
+completed scan, there is no local database, and two attempts at driving it with a mocked API did
+not reach that state. The inconclusive note is a static two-line block, so the untested risk is
+small — but it is untested, and a post-deploy look at one real embed scan closes it.
+
+### 4b.2 The clipping audit exited 0 on a run that audited nothing
+
+Found while trying the above. `scripts/audit-clipping.mjs` summed findings only, so a run where
+**every** `page.goto()` failed printed `0 finding(s)` and exited **0** — output indistinguishable
+from a genuine pass. `docs/mobile-playbook.md` step 5 tells builders to trust this script. It now
+reports how many combinations were actually audited, states plainly that the failures prove
+nothing, and exits 1. Proved by pointing it at a `.invalid` host: exit 1 where it was 0.
+
+The reason every page failed is worth recording too: **Chromium does not read the standard proxy
+environment variables**, so behind an egress proxy every load dies with `ERR_CONNECTION_RESET`
+while `curl` to the same URL returns 200 — which reads as "the site is down" rather than "the
+browser was never told how to leave the network". The script now passes `HTTPS_PROXY` through to
+`chromium.launch`. That is not sufficient inside a Claude Code sandbox — the Playwright browser
+keeps its own NSS store and does not trust the proxy's re-terminated TLS — so remote URLs still
+need a normal machine. `--ignore-certificate-errors` is not the answer: an audit run with TLS
+verification disabled is not evidence.
+
 **Still unvalidated against real sites:** every URL family other than these three shells — and
 notably, a *server-rendered* site, where the reclassification must stay off. Actively probing
 strangers' live apps is a decision for the account owner, not the scanner: `api-behaviour` performs

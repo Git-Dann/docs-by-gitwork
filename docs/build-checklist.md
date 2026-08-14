@@ -126,6 +126,12 @@ What that does and does not buy you:
 
 - **Public routes can be verified per-branch.** `npm run audit:clipping <preview-url>/pulse-overview`
   is a real runtime check on the actual branch — no longer something that has to wait for staging.
+  ⚠️ **From a Claude Code sandbox this currently does not complete.** The script now passes
+  `HTTPS_PROXY` through to Chromium (it does not read the proxy env vars itself, which is why every
+  page used to die with `ERR_CONNECTION_RESET` while `curl` to the same URL returned 200), but the
+  Playwright browser keeps its own NSS store and does not trust the agent proxy's re-terminated
+  TLS, so the request resets inside the tunnel. Run it from a normal machine. Do **not** reach for
+  `--ignore-certificate-errors`: a clipping audit run with TLS verification off is not evidence.
 - **`/app` pages still cannot be self-screenshotted.** The preview is auth-gated exactly like
   production. Use the `renderToStaticMarkup` + compiled-CSS technique (`CLAUDE.md` §39.1) for those.
 - **The preview is backed by NEON, not the VPS Postgres.** Vercel's env still carries the Neon URLs

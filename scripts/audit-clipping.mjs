@@ -336,7 +336,18 @@ async function selfTest(browser) {
   return ok
 }
 
-const browser = await chromium.launch({ executablePath: findChromium(), args: ['--no-sandbox'] })
+// Honour an outbound HTTP(S) proxy. Chromium does NOT read the standard proxy env vars the way
+// curl and node do, so behind a proxy every page.goto() dies with ERR_CONNECTION_RESET while a
+// hand-run curl to the same URL succeeds — which reads as "the site is down", not "the browser
+// was never told how to leave the network". Trust is separate and already handled: the CA is in
+// the browser's NSS store. Never pass --ignore-certificate-errors to work around a proxy.
+const proxyServer = process.env.HTTPS_PROXY || process.env.https_proxy
+  || process.env.HTTP_PROXY || process.env.http_proxy
+const browser = await chromium.launch({
+  executablePath: findChromium(),
+  args: ['--no-sandbox'],
+  ...(proxyServer ? { proxy: { server: proxyServer } } : {}),
+})
 const report = []
 
 if (args.includes('--self-test')) {
@@ -373,7 +384,17 @@ if (asJson) {
     for (const f of r.findings) console.log(`  ${f.kind.padEnd(9)} ${f.el}\n            ↳ ${f.detail}`)
   }
 }
+// ⚠️ A page that never loaded is NOT a clean page. `total` counts findings, so a run where every
+// single goto() failed used to print "0 finding(s)" and exit 0 — the identical output to a genuine
+// pass, on a run that audited nothing. Observed for real: four ERROR lines followed by a green
+// exit. The playbook tells builders to trust this script, so silence here has to mean "we looked
+// and found nothing", never "we could not look".
+const errors = report.filter((r) => r.error)
+const audited = report.length - errors.length
 const total = report.reduce((n, r) => n + (r.findings?.length ?? 0), 0)
-console.log(`\n${total} finding(s) across ${report.length} page/viewport combination(s)`)
-process.exit(total ? 1 : 0)
+console.log(`\n${total} finding(s) across ${audited} page/viewport combination(s)`)
+if (errors.length) {
+  console.log(`${errors.length} combination(s) FAILED TO LOAD and were not audited — this run proves nothing about them.`)
+}
+process.exit(total || errors.length ? 1 : 0)
 }
