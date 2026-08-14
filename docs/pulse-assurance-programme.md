@@ -413,6 +413,38 @@ completed scan, there is no local database, and two attempts at driving it with 
 not reach that state. The inconclusive note is a static two-line block, so the untested risk is
 small — but it is untested, and a post-deploy look at one real embed scan closes it.
 
+### 4b.3 Pulse now reads a JS-built page instead of declining to
+
+§4b made the scanner honest about client-rendered sites; it did not make it able to read them. It
+can now: `pulse-agents/render-agent.ts` loads the page in the same headless Chromium the PDF routes
+and visual agent already use, and the content checks measure the hydrated DOM.
+
+Four rules hold it together, and each has a test:
+
+- **It runs only when the served HTML is already a shell.** Rendering a server-rendered page costs
+  a browser launch to learn nothing, and a scanner that boots Chromium per URL is one nobody runs
+  on a schedule.
+- **A failed or unconvincing render changes NOTHING.** `isMateriallyRicher` demands the DOM be at
+  least double the source, or +100 words, and at least 30 words absolute. Below that the shell
+  stays in place and the content checks stay INCONCLUSIVE. This is the §35 disease reached from
+  the opposite direction: a hydration that errored leaves the empty shell behind, and measuring
+  *that* would restore the confident "your page has 4 words" this whole thread removed.
+- **`spa_content_rendered_for_scan` says which of the four things happened** — read, not
+  requested, errored, or added nothing. Every outcome but the first is INCONCLUSIVE, never FAIL:
+  a browser that could not load a page is not a defect in the customer's product.
+- **Off on the public embed**, defaulting to the same switch as PageSpeed. A browser launch per
+  anonymous scan is a cost and an abuse surface.
+
+⚠️ **Verified asymmetrically, and the gap is the success path.** Run against the live Lovable
+target, Chromium could not egress this sandbox (the §4b.2 TLS limit) — so what was proven
+end-to-end is the FAILURE path, and it behaved exactly as specified: render errored, nothing
+adopted, coverage still 89%, content checks still inconclusive, and a new row naming the cause.
+The success path has unit tests over its decision logic and no live exercise, because the SSRF
+guard correctly refuses a loopback target and adding a test bypass to a security function is how
+`skipUrlGuard` happened (§18). **Post-deploy: scan a Lovable URL as a full internal scan and
+confirm `spa_content_rendered_for_scan` reads PASS with a real word count, and that
+`has_word_count` reports a genuine verdict rather than Inconclusive.**
+
 ### 4b.2 The clipping audit exited 0 on a run that audited nothing
 
 Found while trying the above. `scripts/audit-clipping.mjs` summed findings only, so a run where
@@ -437,7 +469,7 @@ CORS reflection, TRACE and GraphQL introspection probes.
 
 ## 5. Verification honesty
 
-Everything above was verified by `npm run verify` (tsc + lint 0 errors, **2,072 tests**,
+Everything above was verified by `npm run verify` (tsc + lint 0 errors, **2,094 tests**,
 `audit:ui` 0 findings with its self-test passing) and `npx next build`.
 
 **Nothing was run through the product.** `/app` is auth-gated and there is no local database, so no
@@ -466,10 +498,11 @@ phase. Post-deploy, the checks worth making in order:
    score is unchanged.
 4. As a non-admin, `DELETE /api/settings/checks/<key>` and confirm a 403.
 5. Run the fix agent against a repo and confirm the PR contains only repo-relative paths.
-6. Scan a Lovable/Bolt URL **through the app** and confirm the streamed checks arrive already
-   reclassified — the SEO content checks should read Inconclusive as they land, never flash a red
-   FAIL first. The bug in §4b lived entirely in the streamed path, so watching the final state is
-   exactly what would miss its return.
+6. Scan a Lovable/Bolt URL **through the app** and confirm `spa_content_rendered_for_scan` reads
+   PASS with a real word count, and that `has_word_count` gives a genuine verdict. If Chromium is
+   unavailable it must degrade to Inconclusive with the reason — never to a red FAIL, and never
+   flashing one as the checks stream in. The bug in §4b lived entirely in the streamed path, so
+   watching only the settled state is exactly what would miss its return.
 7. Scan a server-rendered site and confirm those same checks still report normally. The
    reclassification must be off by default; a fix that made every scan inconclusive would look
    identical in the numbers.

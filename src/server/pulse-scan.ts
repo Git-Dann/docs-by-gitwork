@@ -11,7 +11,8 @@ import {
 } from "./pulse-checks/jurisdictions";
 import { computeScoreBreakdown } from "./pulse-checks/score-breakdown";
 import { detectAiBuilder } from "./pulse-checks/vibe-code-hygiene";
-import { detectSpaContext, reclassifySpaChecks } from "./pulse-lite/spa-detect";
+import { detectSpaContext, reclassifySpaChecks, staticTextWordCount } from "./pulse-lite/spa-detect";
+import { isMateriallyRicher, runRenderAgent, type RenderResult } from "./pulse-agents/render-agent";
 import {
   applyNativeApplicability,
   nativeTechStack,
@@ -565,6 +566,57 @@ function applyJurisdictionFilter(
  * Reclassification runs FIRST so the applicability filters keep the last word: a check the
  * platform says does not apply must stay out of the denominator, not be re-admitted as unknown.
  */
+/**
+ * Say what the render attempt did. Emitted only when the served HTML was a shell — there is
+ * nothing to report about a page that arrived complete.
+ *
+ * Every outcome other than "we read the content" is INCONCLUSIVE, never PASS and never FAIL.
+ * A failed hydration is not a defect in the customer's product, and it is certainly not proof
+ * their page is fine: it is Pulse saying it could not see. Reporting it any other way is how a
+ * coverage gap gets laundered into a verdict.
+ */
+export function renderCoverageCheck(input: {
+  rendered: RenderResult | null;
+  staticWords: number;
+  adopted: boolean;
+  requested: boolean;
+}): PulseScanCheckInput {
+  const base = {
+    category: CATEGORIES.VIBE_HYGIENE,
+    checkKey: "spa_content_rendered_for_scan",
+    label: "Client-rendered content was read for this scan",
+  } as const;
+
+  if (input.adopted && input.rendered) {
+    return {
+      ...base,
+      status: "PASS",
+      confidence: "HIGH",
+      detail: `The page was rendered in a browser before its content was assessed: ${input.staticWords.toLocaleString()} words in the served HTML, ${input.rendered.renderedWords.toLocaleString()} after JavaScript ran. The content and SEO checks below measure what a visitor sees. Search crawlers and AI answer engines vary in how reliably they do the same, so server-rendering still matters.`,
+    };
+  }
+  if (!input.requested) {
+    return {
+      ...base,
+      status: "INCONCLUSIVE",
+      detail:
+        "This page's content is rendered by JavaScript, and this scan did not run a browser, so the content and SEO checks could not read it. Re-run it as a full scan to have the page rendered first.",
+    };
+  }
+  if (input.rendered?.error) {
+    return {
+      ...base,
+      status: "INCONCLUSIVE",
+      detail: `The page's content is rendered by JavaScript and the browser render did not complete (${input.rendered.error}), so the content and SEO checks could not read it. This says nothing about the page itself.`,
+    };
+  }
+  return {
+    ...base,
+    status: "INCONCLUSIVE",
+    detail: `The browser render returned no more content than the served HTML (${input.staticWords.toLocaleString()} words in the source, ${input.rendered?.renderedWords.toLocaleString() ?? 0} after rendering), so it was not used. That usually means hydration failed or the content needs a sign-in. The content checks remain unassessed rather than being measured against an empty shell.`,
+  };
+}
+
 export function finaliseUrlChecks(
   batch: PulseScanCheckInput[],
   opts: {
@@ -591,7 +643,17 @@ export async function runUrlChecks(
   // repo, runGithubChecks resolves before this runs on the homepage — see
   // orchestrator.ts / run-lite-scan.ts). Lets package.json deps correct a
   // homepage-HTML-only false negative (e.g. Stripe used server-side only).
-  contextHints?: { githubTechStack?: string[] },
+  contextHints?: {
+    githubTechStack?: string[];
+    /**
+     * Render a client-rendered page with headless Chromium before reading its content.
+     *
+     * Off by default, and the public embed path leaves it off deliberately — booting a browser
+     * per anonymous scan is an abuse surface and a cost, the same reason that path also skips
+     * PageSpeed. Internal scans turn it on, which is where the assessment is actually sold.
+     */
+    renderJs?: boolean;
+  },
 ): Promise<{
   checks: PulseScanCheckInput[];
   techStack: string[];
@@ -645,6 +707,10 @@ export async function runUrlChecks(
     }).isSpa;
   }
 
+  // `contentHtml` is what every body-parse check reads. Set below, after the early returns —
+  // an App Store listing or a security interstitial must never cost a browser launch.
+  let contentHtml = pageResult?.html ?? "";
+
   // Infrastructure
   checks.push({
     category: CATEGORIES.INFRASTRUCTURE,
@@ -695,6 +761,28 @@ export async function runUrlChecks(
 
   if (pageResult) {
     let ctx = detectProjectContext(pageResult.html, pageResult.headers);
+
+    // ── Render a client-rendered page, when asked ───────────────────────────────────────
+    // Hydration gives the body-parse checks the page a human actually sees. On success
+    // `spaShell` goes false, so those checks report real verdicts instead of being
+    // reclassified as unassessable.
+    //
+    // ⚠️ A failed or unconvincing render must change NOTHING. Leaving `spaShell` true is what
+    // keeps the honest INCONCLUSIVE; adopting a DOM we failed to hydrate would turn "we could
+    // not look" back into a confident finding about an empty page — the §35 disease, arrived at
+    // from the opposite direction.
+    if (spaShell) {
+      const rendered = contextHints?.renderJs ? await runRenderAgent(pageResult.finalUrl || httpsUrl) : null;
+      const staticWords = staticTextWordCount(pageResult.html);
+      const adopted = Boolean(
+        rendered?.html && isMateriallyRicher(staticWords, rendered.renderedWords),
+      );
+      if (adopted && rendered?.html) {
+        contentHtml = rendered.html;
+        spaShell = false;
+      }
+      checks.push(renderCoverageCheck({ rendered, staticWords, adopted, requested: Boolean(contextHints?.renderJs) }));
+    }
 
     // Catch-all baseline — probe a random nonexistent path. If the host returns
     // 200 (the app shell) for a URL that cannot exist, it serves catch-all 200s
@@ -867,7 +955,7 @@ export async function runUrlChecks(
       detail: hasCanonical ? "Canonical URL tag found." : "No canonical URL tag.",
     });
 
-    const hasH1 = /<h1[\s>]/i.test(pageResult.html);
+    const hasH1 = /<h1[\s>]/i.test(contentHtml);
     checks.push({
       category: CATEGORIES.SEO,
       checkKey: "h1_present",
@@ -1656,7 +1744,7 @@ export async function runUrlChecks(
     });
 
     // ─── Additional SEO ────────────────────────────────────────────────────────
-    const hasStructuredData = /<script[^>]+type=["']application\/ld\+json["']/i.test(pageResult.html);
+    const hasStructuredData = /<script[^>]+type=["']application\/ld\+json["']/i.test(contentHtml);
     checks.push({
       category: CATEGORIES.SEO,
       checkKey: "structured_data",
@@ -2670,7 +2758,7 @@ export async function runUrlChecks(
     });
 
     // ─── A4: Content Quality (HTML analysis) ──────────────────────────────────
-    const strippedText = pageResult.html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    const strippedText = contentHtml.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
       .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ")
@@ -2688,8 +2776,8 @@ export async function runUrlChecks(
           : `Page contains only approximately ${wordCount.toLocaleString()} words — too thin for search engine indexing. Search engines prefer pages with substantial content.`,
     });
 
-    const a4HasH1 = /<h1[\s>]/i.test(pageResult.html);
-    const hasH2orH3 = /<h[23][\s>]/i.test(pageResult.html);
+    const a4HasH1 = /<h1[\s>]/i.test(contentHtml);
+    const hasH2orH3 = /<h[23][\s>]/i.test(contentHtml);
     checks.push({
       category: CATEGORIES.SEO,
       checkKey: "has_heading_hierarchy",
@@ -2702,7 +2790,7 @@ export async function runUrlChecks(
           : "No heading tags detected — headings are critical for SEO and screen reader navigation.",
     });
 
-    const imgTags = pageResult.html.match(/<img[^>]*>/gi) ?? [];
+    const imgTags = contentHtml.match(/<img[^>]*>/gi) ?? [];
     const imgsWithAlt = imgTags.filter((img) => /\balt=/i.test(img)).length;
     const altCoverage = imgTags.length > 0 ? imgsWithAlt / imgTags.length : 1;
     checks.push({
@@ -2719,7 +2807,7 @@ export async function runUrlChecks(
     });
 
     const internalLinkPattern = new RegExp(`<a[^>]+href=["'](/|https?://${hostname.replace(".", "\\.")})[^"']*["']`, "gi");
-    const internalLinkMatches = pageResult.html.match(internalLinkPattern) ?? [];
+    const internalLinkMatches = contentHtml.match(internalLinkPattern) ?? [];
     const internalLinkCount = internalLinkMatches.length;
     checks.push({
       category: CATEGORIES.SEO,

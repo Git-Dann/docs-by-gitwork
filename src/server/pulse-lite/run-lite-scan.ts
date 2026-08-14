@@ -49,6 +49,15 @@ export interface LiteScanInput {
   /** Include the Google PageSpeed (Lighthouse) wave. Default true. Off for the
    *  public path to stay fast and avoid PSI quota pressure. */
   includePageSpeed?: boolean;
+  /**
+   * Render a client-rendered page in headless Chromium before reading its content, so the
+   * content and SEO checks measure the page a visitor sees rather than an empty shell.
+   *
+   * Defaults to the same switch as PageSpeed, and for the same reason: the public embed path
+   * turns both off. A browser launch per anonymous scan is a cost and an abuse surface, and
+   * the public scan already declares what it could not assess.
+   */
+  renderJs?: boolean;
   /** Workspace policy loaded by the authenticated orchestration path. */
   checkPolicy?: CheckPolicy;
   /** Jurisdiction codes the product serves — drives compliance filtering + scorecard. */
@@ -77,6 +86,7 @@ export interface LiteScanResult {
 
 export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult> {
   const includePageSpeed = input.includePageSpeed ?? true;
+  const renderJs = input.renderJs ?? includePageSpeed;
 
   // De-dup + stable ordering across every wave; first writer of a checkKey wins.
   const seen = new Map<string, PulseScanCheckInput>();
@@ -133,7 +143,7 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     // Classify the actual document first. Starting deploy/PageSpeed in parallel
     // used quota and time on App Store pages, source-only platforms, prototypes,
     // and Vercel/Cloudflare checkpoints whose results were later discarded.
-    const urlResult = await runUrlChecks(safeUrl, input.platform, onWave, input.targetMarkets);
+    const urlResult = await runUrlChecks(safeUrl, input.platform, onWave, input.targetMarkets, { renderJs });
     collectorCompleted("url-checks");
     techStack = urlResult.techStack;
     detectedMarkets = urlResult.detectedMarkets;
