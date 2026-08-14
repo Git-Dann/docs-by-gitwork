@@ -238,11 +238,63 @@ export interface DuplicationReport {
  * the standard approach and it is deterministic — the same repo always yields the
  * same number, which is what makes it safe to put in a score.
  *
- * Two deliberate exclusions, both learned from what produces false positives:
- * windows that are entirely import/require lines (every file in a codebase shares
- * those), and windows with fewer than 3 distinct normalised lines (a run of
- * closing braces, or a repeated `break;` in a switch, is not duplicated LOGIC).
+ * Three deliberate exclusions, all learned from what produces false positives.
+ * Windows that are entirely import/require lines (every file in a codebase shares
+ * those); windows with fewer than 3 distinct normalised lines (a run of closing
+ * braces, or a repeated `break;` in a switch); and — the one that matters most —
+ * windows that do not contain enough SUBSTANTIVE lines.
+ *
+ * ⚠️ That third exclusion came from running this against a real 1,885-file
+ * Next.js repository, where the check reported 853 cross-file duplicate blocks
+ * across 58% of sampled files. Inspecting them, roughly half were framework
+ * STRUCTURE rather than logic — the seam between two route handlers:
+ *
+ *     } catch (error) { return fromError(error); } }
+ *     export async function POST(request: NextRequest) { try {
+ *
+ * — and the closing brackets of an `opengraph-image.tsx`. Every App Router file
+ * that exports two handlers contains that seam verbatim; it is mandated by the
+ * framework, not copy-pasted by anyone.
+ *
+ * This matters because of what the finding CLAIMS: "the next bug fix lands in
+ * one copy, the others keep the bug". That is true of a copy-pasted helper and
+ * false of `try {`. A duplication metric that counts framework glue reports every
+ * Next.js, Rails and Django codebase as heavily duplicated, at which point the
+ * number says nothing about the project and a real duplicated helper is buried
+ * among hundreds of `}` windows.
  */
+/**
+ * Does this line carry logic, or is it structure the language or framework
+ * requires? Only the first kind can hold a bug that a fix might miss in a copy.
+ *
+ * Exported because it is the discriminator the whole duplication metric rests
+ * on, and it deserves to be asserted directly rather than only through the
+ * aggregate.
+ */
+// Defined by EXCLUSION, not by inclusion. The first cut required a minimum
+// length and an operator character, which read `return a1;`, `other(a1);` and
+// `if (a1) {` as structure and broke three existing tests — short lines are
+// still logic. Naming the small closed set of things that are NOT logic is both
+// safer and easier to argue with.
+export function isSubstantiveLine(line: string): boolean {
+  // Closers, separators, JSX self-close — `}`, `);`, `),`, `/>`.
+  if (/^[)}\]>;,/\s]+$/.test(line)) return false;
+  // Bare scaffolding keywords: `try {`, `} catch (error) {`, `} else {`,
+  // `do {`, `} finally {`. Note `if` and `return` are deliberately NOT here —
+  // they carry a condition or a value, so they are logic.
+  if (/^\}?\s*(try|else|do|finally)\b/.test(line)) return false;
+  if (/^\}\s*catch\b/.test(line)) return false;
+  return true;
+}
+
+/**
+ * How many of a window's lines must carry logic for it to count as duplicated
+ * LOGIC rather than repeated structure. Four of six: measured against the real
+ * repository above, this drops the framework seams and the JSX tails while
+ * keeping a genuinely copy-pasted six-line helper, which has five or six.
+ */
+const MIN_SUBSTANTIVE_LINES = 4;
+
 export function detectDuplication(files: Map<string, string>): DuplicationReport {
   const seen = new Map<string, Set<string>>();
   const inFileCounts = new Map<string, number>();
@@ -258,6 +310,7 @@ export function detectDuplication(files: Map<string, string>): DuplicationReport
       const window = lines.slice(i, i + DUP_WINDOW);
       if (window.every((l) => /^(import|from|require|using|#include|package)/.test(l))) continue;
       if (new Set(window).size < 3) continue;
+      if (window.filter(isSubstantiveLine).length < MIN_SUBSTANTIVE_LINES) continue;
 
       const key = window.join("");
       if (localSeen.has(key)) inFileCounts.set(path, (inFileCounts.get(path) ?? 0) + 1);
