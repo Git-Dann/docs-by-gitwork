@@ -1,3 +1,5 @@
+import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
+
 // ─── Care analytics — shared adapter types ──────────────────────────────────────
 //
 // Each Care client can connect a product-analytics API (their SaaS backend) so the
@@ -87,7 +89,21 @@ export interface AnalyticsConnectionConfig {
   firebaseMetrics?: FirebaseMetricSpec[];
 }
 
-/** Authenticated JSON GET with consistent error surfacing. */
+/**
+ * Authenticated JSON GET with consistent error surfacing.
+ *
+ * ⚠️ The URL is not ours. It comes from `AccountConnection.scraperConfig.baseUrl`, typed into the
+ * Care → Connectors form, so a plain `fetch` here is a server-side request to an address a user
+ * chose — reachable from inside the VPS network, cloud metadata at 169.254.169.254 included. It
+ * now goes through the same guard Pulse uses on scan targets, which also **pins DNS**, so the
+ * check cannot be defeated by re-resolving between validation and connection, and re-runs on
+ * every call rather than only when the connector was saved. Same rule as the wiki intake webhook
+ * (`CLAUDE.md` §40.1): a host that resolved publicly last month can be repointed today.
+ *
+ * `sameOriginRedirectsOnly` is not optional here. This request carries the client's analytics
+ * bearer token, and every redirect hop reuses the same headers — so without it, a connector URL
+ * that 302s to somewhere else hands that host a live customer credential.
+ */
 export async function getJson<T>(url: string, token?: string): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -95,7 +111,12 @@ export async function getJson<T>(url: string, token?: string): Promise<T> {
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(url, { headers, cache: "no-store" });
+  const res = await fetchScannableUrl(
+    url,
+    { headers, cache: "no-store" },
+    {},
+    { sameOriginRedirectsOnly: true },
+  );
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`${url} → ${res.status}: ${body.slice(0, 200)}`);
