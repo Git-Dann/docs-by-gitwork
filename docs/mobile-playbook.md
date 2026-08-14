@@ -106,6 +106,12 @@ npm run audit:clipping http://localhost:3000/api-docs
 npm run audit:clipping http://localhost:3000/ --viewports=390x844,1280x620
 ```
 
+⚠️ **A page that failed to load is not a clean page, and the script used to say it was.** `total`
+counted findings only, so a run where every `goto()` errored printed `0 finding(s)` and **exited
+0** — byte-identical to a genuine pass, on a run that audited nothing. It now reports how many
+combinations were actually audited, says plainly that the failures prove nothing, and exits 1.
+Read the ERROR lines before believing a clean summary.
+
 **It is deliberately quiet** about content that is *meant* to be out of view: `display:none`,
 `visibility:hidden`, `opacity:0`, `aria-hidden`, sr-only nodes, closed disclosures (`aria-expanded`,
 `<details>`, a `collapsed`/`closed` class, a zero-size rail), SVG internals, fixed-canvas artboards
@@ -162,8 +168,11 @@ audit stays manual/`deck:verify` until there's a staging environment to point it
 ## 4. Standing rules
 
 - Branch → PR → **squash-merge to `main`** (merge/rebase disabled). `main` **auto-deploys to the
-  Fasthosts VPS** via GitHub Actions (`.github/workflows/deploy.yml`, ~6 min). This is the only
-  deployed environment — **there are no branch previews**. See `CLAUDE.md` §23.
+  Fasthosts VPS** via GitHub Actions (`.github/workflows/deploy.yml`, ~6 min). That is the only
+  **production** environment — but a **Vercel branch preview is built for every PR and is
+  reachable**, so `audit:clipping` CAN be pointed at a public route on your own branch — from a
+  normal machine; it does not complete from a Claude Code sandbox. It is Neon-backed and `/app` is
+  auth-gated on it; read `docs/build-checklist.md` §4 in full before relying on it.
 - Never declare something "done and verified" unless it was actually exercised. If it was only
   static-checked, say exactly that.
 - Purely presentational Tailwind changes are low-risk, but still get the blast-radius check —

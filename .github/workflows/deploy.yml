@@ -150,8 +150,19 @@ jobs:
 
             docker compose pull app
             docker compose up -d db
-            docker compose run --rm --no-deps --user root --entrypoint sh app \
-              -c "npx --yes prisma@6.19.3 db push --schema=prisma/schema.prisma --skip-generate"
+            # The migration must GATE the restart. ssh-action runs this script
+            # without `set -e` and without script_stop, and the step's success is
+            # decided by the last command — so a failed `db push` used to fall
+            # straight through to the restart below, shipping code that reads
+            # columns the database does not have, and reporting a green deploy.
+            #
+            # Guarded here rather than with `set -e` on the whole script, which
+            # would newly abort the deploy on any incidental non-zero exit above.
+            if ! docker compose run --rm --no-deps --user root --entrypoint sh app \
+              -c "npx --yes prisma@6.19.3 db push --schema=prisma/schema.prisma --skip-generate"; then
+              echo "::error::prisma db push failed — leaving the running app on the previous image rather than restarting it against an unmigrated database."
+              exit 1
+            fi
             # Recreate so the container picks up any .env change made above.
             docker compose up -d --no-deps --force-recreate app
             docker image prune -f

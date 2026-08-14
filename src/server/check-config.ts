@@ -164,6 +164,16 @@ export async function loadCheckPolicy(workspaceId: string): Promise<CheckPolicy>
 /**
  * Apply policy before persistence and scoring. Disabled controls remain visible
  * as NOT_TESTED so a policy pack can never silently improve a score.
+ *
+ * Whenever policy changes a verdict it records the detector's own on
+ * `detectorStatus`/`detectorDetail`. Without that the rewrite was destructive:
+ * a stored scan could not be replayed against a different policy, and there was
+ * no way to ask "what did the scanner actually find" about a disabled or
+ * re-graded check. The two are separate facts and both are worth keeping — the
+ * detector's finding, and the workspace's decision about it.
+ *
+ * `label` is deliberately NOT preserved: the built-in label is recoverable from
+ * CHECKS_REGISTRY, so storing it again would be a second copy that can drift.
  */
 export function applyCheckPolicy(
   checks: PulseScanCheckInput[],
@@ -177,20 +187,33 @@ export function applyCheckPolicy(
         status: "NOT_TESTED",
         detail: "Check disabled in workspace settings.",
         scoreEligible: false,
+        detectorStatus: check.status,
+        ...(check.detail ? { detectorDetail: check.detail } : {}),
       };
     }
 
     const override = policy.overrides.get(check.checkKey);
     if (!override) return check;
+    // The override only re-grades an issue the detector already found. A PASS, a
+    // SKIP or an INCONCLUSIVE is never rewritten — policy cannot invent a finding.
+    const regrades =
+      Boolean(override.severityOverride) && (check.status === "WARN" || check.status === "FAIL");
     return {
       ...check,
       ...(override.labelOverride ? { label: override.labelOverride } : {}),
-      ...(override.severityOverride && (check.status === "WARN" || check.status === "FAIL")
-        ? { status: override.severityOverride as "WARN" | "FAIL" }
+      ...(regrades
+        ? {
+            status: override.severityOverride as "WARN" | "FAIL",
+            detectorStatus: check.status,
+          }
         : {}),
     };
   });
 }
+
+// `policyDisposition()` — how to read the status/detectorStatus pair — lives in
+// pulse-checks/policy-disposition.ts, which is Prisma-free so the report UI can
+// import it too.
 
 /** Enabled custom controls are honest manual evidence requests until a typed
  * executor exists for their declared customConfig. They no longer disappear. */

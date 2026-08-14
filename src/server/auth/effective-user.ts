@@ -342,6 +342,18 @@ export function canRunFixAgent(user: EffectiveUser): boolean {
 export function canIssueCountermark(user: EffectiveUser): boolean {
   return can(user, "provenance.issue");
 }
+/**
+ * Read the workspace's Pulse check configuration (Settings → Checks).
+ *
+ * Deliberately the SAME matrix permission the settings page itself gates that section on
+ * (`settings.agents`), not `assertAtLeastAdmin`. A Super Admin can grant that section to a
+ * staff member or developer, and an API gate stricter than the page it serves would render
+ * as a broken panel for exactly the people the grant was made for. Writing is a separate,
+ * stricter act — POST and DELETE stay admin-only, so a granted reader can look and not touch.
+ */
+export function canViewCheckConfig(user: EffectiveUser): boolean {
+  return can(user, "settings.agents");
+}
 /** Add/edit/delete candidates + run analysis in Code. */
 export function canManageCode(user: EffectiveUser): boolean {
   return can(user, "code.manage");

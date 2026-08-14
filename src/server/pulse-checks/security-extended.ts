@@ -1,5 +1,5 @@
 import { CATEGORIES } from "./categories";
-import { type ExtendedCheckContext, type PulseScanCheckInput, fetchWithTimeout, headRequest, verifyFileExposure, checkDnsRecord, skip, platformIs, CATCH_ALL_NOTE } from "./_types";
+import { type ExtendedCheckContext, type PulseScanCheckInput, fetchWithTimeout, headRequest, verifyFileExposure, resolveDnsRecord, probeInconclusive, skip, platformIs, CATCH_ALL_NOTE } from "./_types";
 
 const CHECKS: Array<[string, string]> = [
   ["cross_origin_opener_policy", "Cross-Origin-Opener-Policy (COOP)"],
@@ -65,15 +65,27 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
   const hasRateLimit = !!h["x-ratelimit-limit"] || !!h["x-ratelimit-remaining"] || !!h["retry-after"] || !!h["ratelimit-limit"];
   checks.push({ category: CATEGORIES.SECURITY, checkKey: "rate_limiting_headers", label: "Rate-limiting headers present", status: hasRateLimit ? "PASS" : "WARN", detail: hasRateLimit ? "Rate limiting headers detected — API endpoint protection in place." : "No rate-limiting headers — consider adding X-RateLimit-* headers to API responses to signal throttling behaviour." });
 
-  // CAA DNS record
-  const caaRecords = await checkDnsRecord(hostname, "CAA");
-  const hasCaa = caaRecords.length > 0;
-  checks.push({ category: CATEGORIES.SECURITY, checkKey: "caa_dns_record", label: "CAA DNS record (cert authority restriction)", status: hasCaa ? "PASS" : "WARN", detail: hasCaa ? `CAA record found — only authorised CAs can issue certificates for this domain.` : "No CAA record — any certificate authority can issue SSL certificates for your domain. Add a CAA record to restrict issuance to your CA." });
+  // CAA DNS record. Both this and DNSSEC below conclude from an EMPTY answer, so
+  // a failed lookup must not reach them — it would report a record the domain may
+  // well have as missing.
+  const caa = await resolveDnsRecord(hostname, "CAA");
+  if (!caa.ok) {
+    checks.push(probeInconclusive(CATEGORIES.SECURITY, "caa_dns_record", "CAA DNS record (cert authority restriction)",
+      `The CAA lookup for ${hostname} did not complete (${caa.reason}).`));
+  } else {
+    const hasCaa = caa.records.length > 0;
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "caa_dns_record", label: "CAA DNS record (cert authority restriction)", status: hasCaa ? "PASS" : "WARN", detail: hasCaa ? `CAA record found — only authorised CAs can issue certificates for this domain.` : "No CAA record — any certificate authority can issue SSL certificates for your domain. Add a CAA record to restrict issuance to your CA." });
+  }
 
   // DNSSEC
-  const dsRecords = await checkDnsRecord(hostname, "DS");
-  const hasDnssec = dsRecords.length > 0;
-  checks.push({ category: CATEGORIES.SECURITY, checkKey: "dnssec_enabled", label: "DNSSEC enabled on domain", status: hasDnssec ? "PASS" : "WARN", detail: hasDnssec ? "DNSSEC DS record found — DNS responses are cryptographically signed." : "No DNSSEC detected — DNS responses are unauthenticated and vulnerable to cache poisoning attacks." });
+  const ds = await resolveDnsRecord(hostname, "DS");
+  if (!ds.ok) {
+    checks.push(probeInconclusive(CATEGORIES.SECURITY, "dnssec_enabled", "DNSSEC enabled on domain",
+      `The DS lookup for ${hostname} did not complete (${ds.reason}).`));
+  } else {
+    const hasDnssec = ds.records.length > 0;
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "dnssec_enabled", label: "DNSSEC enabled on domain", status: hasDnssec ? "PASS" : "WARN", detail: hasDnssec ? "DNSSEC DS record found — DNS responses are cryptographically signed." : "No DNSSEC detected — DNS responses are unauthenticated and vulnerable to cache poisoning attacks." });
+  }
 
   // Certificate expiry (check for Strict-Transport-Security max-age or server header)
   const stsHeader = h["strict-transport-security"] ?? "";
@@ -119,8 +131,10 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
   checks.push({ category: CATEGORIES.SECURITY, checkKey: "no_exposed_actuator", label: "/actuator endpoints not public", status: actuatorExposed ? "FAIL" : "PASS", detail: actuatorExposed ? "CRITICAL: Spring Boot Actuator endpoint publicly accessible — exposes heap dumps, env vars, and internal metrics." : "/actuator not publicly accessible." + endpointNote });
   checks.push({ category: CATEGORIES.SECURITY, checkKey: "no_exposed_prometheus_metrics", label: "/metrics endpoint not public", status: metricsExposed ? "WARN" : "PASS", detail: metricsExposed ? "/metrics endpoint is publicly accessible — may expose internal infrastructure details and business metrics." : "/metrics endpoint not publicly accessible." + endpointNote });
 
-  // GraphQL introspection
+  // GraphQL introspection. The probe failing is NOT evidence that introspection is
+  // off — that inversion previously turned any timeout into a clean PASS.
   let gqlIntrospectionOff = true;
+  let gqlProbeError: string | null = null;
   if (graphqlPresent) {
     try {
       const gqlRes = await fetchWithTimeout(`${httpsUrl}/graphql`, {
@@ -131,11 +145,16 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
       });
       const body = await gqlRes.text();
       gqlIntrospectionOff = !body.includes("__schema");
-    } catch {
-      gqlIntrospectionOff = true;
+    } catch (error) {
+      gqlProbeError = error instanceof Error ? error.message : "introspection query failed";
     }
   }
-  checks.push({ category: CATEGORIES.SECURITY, checkKey: "no_graphql_introspection_prod", label: "GraphQL introspection disabled in prod", status: graphqlPresent && !gqlIntrospectionOff ? "WARN" : "PASS", detail: graphqlPresent && !gqlIntrospectionOff ? "GraphQL introspection is enabled — attackers can enumerate your entire API schema. Disable introspection in production." : "GraphQL introspection appears disabled or endpoint not present." });
+  if (gqlProbeError) {
+    checks.push(probeInconclusive(CATEGORIES.SECURITY, "no_graphql_introspection_prod", "GraphQL introspection disabled in prod",
+      `A GraphQL endpoint responded at /graphql but the introspection query did not complete (${gqlProbeError}). Re-run the scan, or send the introspection query by hand.`));
+  } else {
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "no_graphql_introspection_prod", label: "GraphQL introspection disabled in prod", status: graphqlPresent && !gqlIntrospectionOff ? "WARN" : "PASS", detail: graphqlPresent && !gqlIntrospectionOff ? "GraphQL introspection is enabled — attackers can enumerate your entire API schema. Disable introspection in production." : "GraphQL introspection appears disabled or endpoint not present." });
+  }
 
   // Source maps
   const hasSourceMaps = /\.js\.map["']/i.test(pageResult.html) || /sourceMappingURL=/i.test(pageResult.html);
@@ -193,14 +212,17 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
   const hasOldLib = /jquery[/-]1\.[0-6]\./i.test(pageResult.html) || /angular\.js.*1\.[0-3]\./i.test(pageResult.html);
   checks.push({ category: CATEGORIES.SECURITY, checkKey: "dependency_audit_clean", label: "No obvious vulnerable library versions", status: hasOldLib ? "WARN" : "PASS", detail: hasOldLib ? "Outdated library version detected — check npm audit / Dependabot for known CVEs." : "No obviously vulnerable library versions detected in page source." });
 
-  // Subdomain takeover (CNAME to common unclaimed services)
-  let subTakeoverRisk = false;
-  try {
-    const cnameRecords = await checkDnsRecord(hostname, "CNAME");
+  // Subdomain takeover (CNAME to common unclaimed services). The PASS here rests on
+  // an EMPTY answer, so a failed lookup must not reach it — see resolveDnsRecord.
+  const cname = await resolveDnsRecord(hostname, "CNAME");
+  if (!cname.ok) {
+    checks.push(probeInconclusive(CATEGORIES.SECURITY, "subdomain_takeover_risk", "No dangling CNAME / subdomain takeover risk",
+      `The CNAME lookup for ${hostname} did not complete (${cname.reason}), so dangling-CNAME risk could not be assessed.`));
+  } else {
     const dangling = ["s3.amazonaws.com", "azurewebsites.net", "herokuapp.com", "pages.github.io", "ghost.io", "cargo.site", "surge.sh", "bitbucket.io"];
-    subTakeoverRisk = cnameRecords.some((r) => dangling.some((d) => r.includes(d)));
-  } catch { /* ignore */ }
-  checks.push({ category: CATEGORIES.SECURITY, checkKey: "subdomain_takeover_risk", label: "No dangling CNAME / subdomain takeover risk", status: subTakeoverRisk ? "FAIL" : "PASS", detail: subTakeoverRisk ? "CNAME points to a cloud service that may be unclaimed — subdomain takeover risk. Verify the target resource still exists." : "No obvious dangling CNAME records detected." });
+    const subTakeoverRisk = cname.records.some((r) => dangling.some((d) => r.includes(d)));
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "subdomain_takeover_risk", label: "No dangling CNAME / subdomain takeover risk", status: subTakeoverRisk ? "FAIL" : "PASS", detail: subTakeoverRisk ? "CNAME points to a cloud service that may be unclaimed — subdomain takeover risk. Verify the target resource still exists." : "No obvious dangling CNAME records detected." });
+  }
 
   // CSP nonce
   const hasCspNonce = csp.includes("nonce-") || /nonce=["'][^"']+["']/i.test(pageResult.html);

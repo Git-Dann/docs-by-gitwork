@@ -234,10 +234,29 @@ export async function fetchScannableUrl(
   raw: string,
   init: RequestInit = {},
   dependencies: ScannableRequestDependencies = {},
+  options: {
+    /**
+     * Refuse to follow a redirect that leaves the origin the caller asked for.
+     *
+     * Off by default, because a scan legitimately follows a target across hosts and carries no
+     * credentials while doing it. Callers that send an `Authorization` header MUST turn it on:
+     * every hop is issued with the same `init`, so a target that 302s elsewhere would hand that
+     * host the caller's bearer token. The SSRF guard does not help there — the attacker's host
+     * is perfectly public.
+     */
+    sameOriginRedirectsOnly?: boolean;
+  } = {},
 ): Promise<Response> {
   const resolve = dependencies.lookup ?? systemLookup;
   const request = dependencies.request ?? pinnedRequest;
   let current = raw;
+  const startOrigin = (() => {
+    try {
+      return new URL(raw).origin;
+    } catch {
+      return null;
+    }
+  })();
 
   for (let hop = 0; hop <= 5; hop++) {
     const approved = await assertScannableUrl(current, resolve);
@@ -251,7 +270,13 @@ export async function fetchScannableUrl(
     const location = response.headers.get("location");
     if (!location) return response;
     await response.body?.cancel().catch(() => undefined);
-    current = new URL(location, approved.url).toString();
+    const next = new URL(location, approved.url).toString();
+    if (options.sameOriginRedirectsOnly && startOrigin && new URL(next).origin !== startOrigin) {
+      throw new UrlNotScannableError(
+        `That endpoint redirected to a different host (${new URL(next).origin}). Refusing to follow it, because the request carries an API token.`,
+      );
+    }
+    current = next;
   }
 
   throw new UrlNotScannableError("Too many redirects — the target could not be scanned safely.");

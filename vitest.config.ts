@@ -18,5 +18,10 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    // Stubs the layout APIs jsdom omits. Without it ProseMirror throws from
+    // `focus()` as an UNHANDLED async error, which lands on whichever test is
+    // in flight — a flake that failed two unrelated files in one run and none
+    // in the next six. See the file for the reproduction.
+    setupFiles: ["./vitest.setup.ts"],
   },
 });

@@ -3,8 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { renderPulseBadge, type BadgeBar, type BadgeStyle, type BadgeTheme } from "@/lib/badge/pulse-badge";
 import { prisma } from "@/lib/prisma";
-import { DOMAIN_DEFS } from "@/server/pulse-checks/categories";
-import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
+import { computePillarBreakdown } from "@/server/pulse-checks/pillars";
 import type { PulseScanCheckInput } from "@/types/pulse";
 
 /**
@@ -54,16 +53,30 @@ const loadBadgeScan = (token: string) =>
         select: {
           projectName: true,
           healthScore: true,
-          checks: { select: { checkKey: true, category: true, status: true, confidence: true } },
+          // EVERY field the score maths reads. The previous select was
+          // category/status/confidence with a comment claiming that was all
+          // `computeScoreBreakdown` touches — it is not. It also reads `severity`
+          // and `evidenceStrength` (the per-control weight), `scoreEligible` (the
+          // eligibility gate), `completenessEligible`, and `controlId` (the
+          // independence damper that stops several views of one signal counting
+          // several times). Absent, each silently fell back to a default, so the
+          // badge's domain bars could disagree with the report they link to.
+          //
+          // Still narrow: the prose fields (detail, evidence, remediation) are the
+          // bulk of a check row and none of them reach the maths.
+          checks: {
+            select: {
+              checkKey: true, category: true, status: true, confidence: true,
+              severity: true, evidenceStrength: true, scoreEligible: true,
+              completenessEligible: true, controlId: true,
+            },
+          },
         },
       });
       if (!scan) return null;
       return {
         projectName: scan.projectName,
         healthScore: scan.healthScore,
-        // Narrowed to what the score maths reads. `computeScoreBreakdown` only
-        // touches category/status/confidence, so the badge never pulls the full
-        // check payload (evidence, remediation prose) into the cache entry.
         checks: scan.checks as unknown as PulseScanCheckInput[],
       };
     },
@@ -74,25 +87,25 @@ const loadBadgeScan = (token: string) =>
 /** Domain rollup for the `card` style, ordered by how much weight each carries. */
 function domainBars(checks: PulseScanCheckInput[]): BadgeBar[] {
   if (checks.length === 0) return [];
-  const byCategory = new Map(
-    computeScoreBreakdown(checks).byCategory.map((c) => [c.category, c]),
-  );
 
-  return DOMAIN_DEFS.map((domain) => {
-    let earned = 0;
-    let possible = 0;
-    for (const category of domain.categories) {
-      const row = byCategory.get(category);
-      if (!row) continue;
-      earned += row.earned;
-      possible += row.possible;
-    }
-    return { label: domain.label, value: possible > 0 ? earned / possible : 0, possible };
-  })
-    .filter((d) => d.possible > 0)
-    .sort((a, b) => b.possible - a.possible)
+  // The published pillars, not a per-scan pick of domains.
+  //
+  // This used to roll the 12 report domains up and take the top four BY WEIGHT,
+  // so which dimensions a badge showed varied between clients — and between two
+  // scans of the same client, as check counts moved. A mark someone puts in their
+  // own footer has to mean the same thing every time it renders.
+  //
+  // Pillars are stable, carry published weights, and delegate to the same
+  // `computeScoreBreakdown` the report headline uses, so the badge cannot grade on
+  // different rules from the page it links to. Ordered by weight so the bars a
+  // reader sees first are the ones that matter most, and pillars that measured
+  // nothing are already excluded — `computePillarBreakdown` drops and names them
+  // rather than showing a zero it did not earn.
+  return computePillarBreakdown(checks)
+    .pillars.filter((pillar) => pillar.score !== null)
+    .sort((a, b) => b.publishedWeight - a.publishedWeight)
     .slice(0, MAX_BARS)
-    .map(({ label, value }) => ({ label, value }));
+    .map((pillar) => ({ label: pillar.label.toUpperCase(), value: (pillar.score ?? 0) / 100 }));
 }
 
 function parseStyle(v: string | null): BadgeStyle {

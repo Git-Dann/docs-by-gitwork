@@ -33,7 +33,12 @@ export interface RepoSnapshot {
   paths: string[];
   /** path → UTF-8 text, only for the capped set of files we chose to read. */
   files: Map<string, string>;
-  /** GitHub truncates very large trees; findings stay best-effort when true. */
+  /**
+   * GitHub truncates very large trees. When true, `paths` is INCOMPLETE — feed
+   * it to `sampleCoverage` so absence findings stop claiming soundness they do
+   * not have. (This comment used to say findings "stay best-effort when true";
+   * nothing read the flag, so that was simply untrue.)
+   */
   truncated: boolean;
   /** False when the tree could not be read (private repo / no token / empty). */
   accessible: boolean;
@@ -42,6 +47,32 @@ export interface RepoSnapshot {
 /** Case-insensitive "does any path match" helper. */
 export function anyPath(paths: string[], re: RegExp): boolean {
   return paths.some((p) => re.test(p));
+}
+
+/**
+ * The sampled fraction of a project's source files — the number every ABSENCE
+ * finding's soundness rests on, since "no X anywhere" is only credible in
+ * proportion to how much of the project was actually read.
+ *
+ * ⚠️ Returns 0 on a TRUNCATED tree, and that is the entire point.
+ *
+ * Every family computed this as `read / paths-matching-a-source-extension`. On
+ * a truncated tree `paths` is short, so the DENOMINATOR shrinks and coverage
+ * goes UP — a repository we saw less of reported as one we saw more of. The
+ * consequence is the wrong way round in the worst possible way: thin coverage
+ * is the mechanism that downgrades an absence finding to LOW confidence and
+ * drops it out of the score, so truncation was PROMOTING unfounded absences
+ * into scored failures, on precisely the largest repositories.
+ *
+ * There is no honest coverage figure for a truncated tree — the denominator is
+ * unknown, not merely large — so this reports 0 and lets every absence finding
+ * declare itself inconclusive. That is the §35 rule applied to the file list:
+ * "we could not look" must never render as "there is nothing there".
+ */
+export function sampleCoverage(read: number, totalSourcePaths: number, truncated: boolean): number {
+  if (truncated) return 0;
+  if (totalSourcePaths <= 0) return 0;
+  return Math.min(1, read / totalSourcePaths);
 }
 
 /**

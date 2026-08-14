@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { evaluateIosChecks, stripSwiftComments } from "../ios-app";
+import { evaluateIosChecks, stripSwiftComments, hasStrayLocalhost } from "../ios-app";
 import type { RepoSnapshot } from "../native-mobile";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,7 +65,12 @@ const BAD_SWIFT_LEFTOVERS = `
 //
 struct FramedVideoPlayer {
     var remoteURL: String? = "https://vz-b5cdb98e-9cd.b-cdn.net/abc/play_720p.mp4"
-//    static let base = "https://innocent-subtly-duck.ngrok-free.app/api"
+    // ⚠️ LIVE, not commented. This line used to be commented out, which meant the
+    // fixture was asserting that a URL the Swift compiler strips still counts as a
+    // leftover "in a release binary" — the check's own words. It does not, and
+    // reading the shipped source rather than the raw source is what fixed that.
+    // The commented case has its own test below.
+    static let base = "https://innocent-subtly-duck.ngrok-free.app/api"
 }
 `;
 
@@ -485,5 +490,92 @@ describe("evidence model", () => {
     // No config and no source — every verdict must be SKIPPED or a safe default,
     // never a confident failure invented from missing data.
     expect(empty.filter((c) => c.status === "FAIL")).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `ios_dev_leftovers` — found wrong by running the family against a REAL Swift
+// repository (§4a). It reported "a localhost endpoint" in the shipped app on a
+// codebase that has none. THREE separate causes, one check:
+//
+//   1. It read `swiftRaw`, so a DOC COMMENT describing the OAuth loopback flow
+//      counted as shipped code.
+//   2. `swiftRaw` includes test targets, so `http://localhost:3000` set in an
+//      XCTest case counted — while the finding's own wording is "in a release
+//      binary".
+//   3. The real hits were `http://127.0.0.1:<port>` used as the OAuth REDIRECT
+//      URI. That is RFC 8252 §7.3 — the method Apple and Google both require for
+//      a native app. This is not a harmless false positive: acting on the advice
+//      would break sign-in.
+//
+// And the fix took two attempts. Excluding by surrounding text still fired on
+// `LoopbackCatcher.swift`, whose giveaway is the FILENAME — the matching lines
+// never say "oauth" or "redirect". Concatenating all source throws that away.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("hasStrayLocalhost", () => {
+  const file = (path: string, text: string) => new Map([[path, text]]);
+
+  it("flags a stray dev base URL", () => {
+    expect(hasStrayLocalhost(file(
+      "Foundry/App/AppEnvironment.swift",
+      'let baseURL = URL(string: "http://localhost:3000")!',
+    ))).toBe(true);
+  });
+
+  it("does NOT flag an OAuth redirect URI", () => {
+    // Verbatim shape from the real repo.
+    expect(hasStrayLocalhost(file(
+      "Foundry/Services/GoogleAuthStore.swift",
+      'let redirectURI = "http://127.0.0.1:\\(port)"',
+    ))).toBe(false);
+  });
+
+  it("does NOT flag a loopback handler identified only by its FILENAME", () => {
+    // The line itself carries no auth vocabulary — this is the case that
+    // survived the first fix, and the reason the rule is path-aware.
+    expect(hasStrayLocalhost(file(
+      "Foundry/Services/LoopbackCatcher.swift",
+      'guard let components = URLComponents(string: "http://127.0.0.1\\(pathField)") else { return }',
+    ))).toBe(false);
+  });
+
+  it("is quiet on a repo with no loopback URLs at all", () => {
+    expect(hasStrayLocalhost(file("A.swift", "let x = 1"))).toBe(false);
+  });
+});
+
+describe("ios_dev_leftovers reads only what ships", () => {
+  it("ignores a localhost URL that exists only in a test target", () => {
+    const out = evaluateIosChecks(snapshot({
+      "Foundry/App/AppEnvironment.swift": "struct AppEnvironment { let name = \"prod\" }",
+      "FoundryTests/AppEnvironmentTests.swift":
+        'func testOverride() { env.setBaseURLOverride("http://localhost:3000") }',
+    }));
+    expect(statusOf(out, "ios_dev_leftovers")).toBe("PASS");
+  });
+
+  it("ignores an ngrok URL that exists only in a comment", () => {
+    // The commented half of the fixture above. A commented tunnel URL is not in
+    // the release binary, so the finding this check makes would not be true.
+    const out = evaluateIosChecks(snapshot({
+      "Foundry/App/Api.swift": '// static let base = "https://a-b-c.ngrok-free.app/api"\nlet x = 1',
+    }));
+    expect(statusOf(out, "ios_dev_leftovers")).toBe("PASS");
+  });
+
+  it("ignores a localhost URL that exists only in a comment", () => {
+    const out = evaluateIosChecks(snapshot({
+      "Foundry/Services/Catcher.swift":
+        '/// Serves http://127.0.0.1:<port> after consent.\nlet x = 1',
+    }));
+    expect(statusOf(out, "ios_dev_leftovers")).toBe("PASS");
+  });
+
+  it("still reports one that genuinely ships", () => {
+    const out = evaluateIosChecks(snapshot({
+      "Foundry/App/AppEnvironment.swift": 'let baseURL = URL(string: "http://localhost:3000")!',
+    }));
+    expect(statusOf(out, "ios_dev_leftovers")).toBe("WARN");
   });
 });

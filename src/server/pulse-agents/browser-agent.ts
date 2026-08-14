@@ -29,9 +29,16 @@ function scoreStatus(
   return score >= good ? "PASS" : score >= ok ? "WARN" : "FAIL";
 }
 
+/**
+ * `collectorError` is how this agent says "I did not run", as distinct from
+ * "I ran and found nothing". Returning bare `{ checks: [], insights: null }` for
+ * both meant the caller recorded a quota-exhausted or timed-out PageSpeed run as
+ * a COMPLETED collector, and the scan's own completeness check then asserted the
+ * failure had succeeded. Set it on every path that gives up early.
+ */
 export async function runBrowserAgent(
   url: string,
-): Promise<{ checks: PulseScanCheckInput[]; insights: BrowserAgentInsights | null }> {
+): Promise<{ checks: PulseScanCheckInput[]; insights: BrowserAgentInsights | null; collectorError?: string }> {
   const apiKey = process.env.GOOGLE_PSI_API_KEY?.trim();
   const checks: PulseScanCheckInput[] = [];
 
@@ -53,11 +60,15 @@ export async function runBrowserAgent(
       headers: { "User-Agent": "Gitwork-Pulse/1.0" },
     });
     clearTimeout(timer);
-    if (!res.ok) return { checks: [], insights: null };
+    if (!res.ok) {
+      return { checks: [], insights: null, collectorError: `PageSpeed Insights returned HTTP ${res.status}` };
+    }
 
     const data = (await res.json()) as PsiResponse;
     const lhr = data.lighthouseResult;
-    if (!lhr) return { checks: [], insights: null };
+    if (!lhr) {
+      return { checks: [], insights: null, collectorError: "PageSpeed Insights returned no Lighthouse result" };
+    }
 
     const audits = lhr.audits;
     const cats = lhr.categories;
@@ -196,7 +207,11 @@ export async function runBrowserAgent(
         cruxCategory,
       },
     };
-  } catch {
-    return { checks: [], insights: null };
+  } catch (error) {
+    return {
+      checks: [],
+      insights: null,
+      collectorError: error instanceof Error ? error.message : "PageSpeed Insights request failed",
+    };
   }
 }

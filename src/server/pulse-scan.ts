@@ -2,6 +2,7 @@ import { CATEGORIES, type CheckCategory } from "./pulse-checks/categories";
 import { safeGithubRequest, parseGithubRepo, hasGithubToken } from "@/lib/github";
 import type { PulseScanCheckInput, PulseScanInputType } from "@/types/pulse";
 import { runExtendedChecks } from "./pulse-scan-extended";
+import { collectorCompletenessCheck } from "./pulse-checks/collector-health";
 import {
   type JurisdictionCode,
   CHECK_JURISDICTIONS,
@@ -10,7 +11,8 @@ import {
 } from "./pulse-checks/jurisdictions";
 import { computeScoreBreakdown } from "./pulse-checks/score-breakdown";
 import { detectAiBuilder } from "./pulse-checks/vibe-code-hygiene";
-import { detectSpaContext, reclassifySpaChecks } from "./pulse-lite/spa-detect";
+import { detectSpaContext, reclassifySpaChecks, staticTextWordCount } from "./pulse-lite/spa-detect";
+import { isMateriallyRicher, runRenderAgent, type RenderResult } from "./pulse-agents/render-agent";
 import {
   applyNativeApplicability,
   nativeTechStack,
@@ -549,6 +551,89 @@ function applyJurisdictionFilter(
   });
 }
 
+/**
+ * The single pipeline every URL check passes through — whether it is streamed in a wave or
+ * returned at the end of the scan.
+ *
+ * ⚠️ These were two separate code paths and they disagreed. The waves applied the platform and
+ * jurisdiction filters only; SPA reclassification happened just once, on the final return. And
+ * because `runLiteScan`'s ingest keeps the FIRST result it sees for a checkKey, the wave always
+ * won and the corrected status was silently discarded. Net effect: every Lovable/Bolt/v0 site —
+ * exactly the population Pulse targets — was scored with `has_word_count`, `has_heading_hierarchy`
+ * and `internal_links_present` FAILing at HIGH confidence, while `spa_client_rendered` correctly
+ * WARNed one row above. The mechanism existed, was unit-tested, and never reached a single scan.
+ *
+ * Reclassification runs FIRST so the applicability filters keep the last word: a check the
+ * platform says does not apply must stay out of the denominator, not be re-admitted as unknown.
+ */
+/**
+ * Say what the render attempt did. Emitted only when the served HTML was a shell — there is
+ * nothing to report about a page that arrived complete.
+ *
+ * Every outcome other than "we read the content" is INCONCLUSIVE, never PASS and never FAIL.
+ * A failed hydration is not a defect in the customer's product, and it is certainly not proof
+ * their page is fine: it is Pulse saying it could not see. Reporting it any other way is how a
+ * coverage gap gets laundered into a verdict.
+ */
+export function renderCoverageCheck(input: {
+  rendered: RenderResult | null;
+  staticWords: number;
+  adopted: boolean;
+  requested: boolean;
+}): PulseScanCheckInput {
+  const base = {
+    category: CATEGORIES.VIBE_HYGIENE,
+    checkKey: "spa_content_rendered_for_scan",
+    label: "Client-rendered content was read for this scan",
+  } as const;
+
+  if (input.adopted && input.rendered) {
+    return {
+      ...base,
+      status: "PASS",
+      confidence: "HIGH",
+      detail: `The page was rendered in a browser before its content was assessed: ${input.staticWords.toLocaleString()} words in the served HTML, ${input.rendered.renderedWords.toLocaleString()} after JavaScript ran. The content and SEO checks below measure what a visitor sees. Search crawlers and AI answer engines vary in how reliably they do the same, so server-rendering still matters.`,
+    };
+  }
+  if (!input.requested) {
+    return {
+      ...base,
+      status: "INCONCLUSIVE",
+      detail:
+        "This page's content is rendered by JavaScript, and this scan did not run a browser, so the content and SEO checks could not read it. Re-run it as a full scan to have the page rendered first.",
+    };
+  }
+  if (input.rendered?.error) {
+    return {
+      ...base,
+      status: "INCONCLUSIVE",
+      detail: `The page's content is rendered by JavaScript and the browser render did not complete (${input.rendered.error}), so the content and SEO checks could not read it. This says nothing about the page itself.`,
+    };
+  }
+  return {
+    ...base,
+    status: "INCONCLUSIVE",
+    detail: `The browser render returned no more content than the served HTML (${input.staticWords.toLocaleString()} words in the source, ${input.rendered?.renderedWords.toLocaleString() ?? 0} after rendering), so it was not used. That usually means hydration failed or the content needs a sign-in. The content checks remain unassessed rather than being measured against an empty shell.`,
+  };
+}
+
+export function finaliseUrlChecks(
+  batch: PulseScanCheckInput[],
+  opts: {
+    platform?: string;
+    surfaceKind: UrlSurfaceKind;
+    markets: JurisdictionCode[];
+    /** The static HTML is a client-rendered shell, so body-parse verdicts are not evidence. */
+    spaShell: boolean;
+  },
+): PulseScanCheckInput[] {
+  const reclassified = opts.spaShell ? reclassifySpaChecks(batch) : batch;
+  return applyJurisdictionFilter(
+    applyPlatformFilter(reclassified, opts.platform, opts.surfaceKind),
+    opts.markets,
+  );
+}
+
 export async function runUrlChecks(
   url: string,
   platform?: string,
@@ -558,7 +643,17 @@ export async function runUrlChecks(
   // repo, runGithubChecks resolves before this runs on the homepage — see
   // orchestrator.ts / run-lite-scan.ts). Lets package.json deps correct a
   // homepage-HTML-only false negative (e.g. Stripe used server-side only).
-  contextHints?: { githubTechStack?: string[] },
+  contextHints?: {
+    githubTechStack?: string[];
+    /**
+     * Render a client-rendered page with headless Chromium before reading its content.
+     *
+     * Off by default, and the public embed path leaves it off deliberately — booting a browser
+     * per anonymous scan is an abuse surface and a cost, the same reason that path also skips
+     * PageSpeed. Internal scans turn it on, which is where the assessment is actually sold.
+     */
+    renderJs?: boolean;
+  },
 ): Promise<{
   checks: PulseScanCheckInput[];
   techStack: string[];
@@ -578,12 +673,15 @@ export async function runUrlChecks(
   let effectiveMarkets: JurisdictionCode[] = targetMarkets ?? [];
   let detectedMarkets: JurisdictionCode[] = [];
   let surfaceKind: UrlSurfaceKind = "DEPLOYED_PRODUCT";
-  // Optional incremental emitter — fires partial waves so callers (runLiteScan)
-  // can persist + stream checks as they land. Applies the same platform +
-  // jurisdiction filters the final return uses, so streamed statuses match.
+  // Set the moment the page is read, before any wave is emitted — mutable so the emit wrapper
+  // picks it up, the same pattern `effectiveMarkets` and `surfaceKind` already use.
+  let spaShell = false;
+  // Optional incremental emitter — fires partial waves so callers (runLiteScan) can persist +
+  // stream checks as they land. Goes through finaliseUrlChecks, the same function the final
+  // return uses, so a streamed status cannot differ from the one the scan settles on.
   const emit = onWave
     ? (batch: PulseScanCheckInput[]) =>
-        onWave(applyJurisdictionFilter(applyPlatformFilter(batch, platform, surfaceKind), effectiveMarkets))
+        onWave(finaliseUrlChecks(batch, { platform, surfaceKind, markets: effectiveMarkets, spaShell }))
     : undefined;
 
   const httpsUrl = url.startsWith("http://") ? url.replace("http://", "https://") : url;
@@ -591,7 +689,27 @@ export async function runUrlChecks(
   const baseUrl = httpsUrl.replace(/\/$/, "");
 
   const pageResult = await fetchPage(httpsUrl);
-  if (pageResult) surfaceKind = detectUrlSurfaceKind(pageResult.html);
+  if (pageResult) {
+    surfaceKind = detectUrlSurfaceKind(pageResult.html);
+    spaShell = detectSpaContext({
+      builder: detectAiBuilder(
+        (() => {
+          try {
+            return new URL(pageResult.finalUrl || httpsUrl).hostname.toLowerCase();
+          } catch {
+            return "";
+          }
+        })(),
+        pageResult.html.toLowerCase(),
+      ),
+      html: pageResult.html,
+      contentType: pageResult.headers["content-type"] ?? "",
+    }).isSpa;
+  }
+
+  // `contentHtml` is what every body-parse check reads. Set below, after the early returns —
+  // an App Store listing or a security interstitial must never cost a browser launch.
+  let contentHtml = pageResult?.html ?? "";
 
   // Infrastructure
   checks.push({
@@ -643,6 +761,28 @@ export async function runUrlChecks(
 
   if (pageResult) {
     let ctx = detectProjectContext(pageResult.html, pageResult.headers);
+
+    // ── Render a client-rendered page, when asked ───────────────────────────────────────
+    // Hydration gives the body-parse checks the page a human actually sees. On success
+    // `spaShell` goes false, so those checks report real verdicts instead of being
+    // reclassified as unassessable.
+    //
+    // ⚠️ A failed or unconvincing render must change NOTHING. Leaving `spaShell` true is what
+    // keeps the honest INCONCLUSIVE; adopting a DOM we failed to hydrate would turn "we could
+    // not look" back into a confident finding about an empty page — the §35 disease, arrived at
+    // from the opposite direction.
+    if (spaShell) {
+      const rendered = contextHints?.renderJs ? await runRenderAgent(pageResult.finalUrl || httpsUrl) : null;
+      const staticWords = staticTextWordCount(pageResult.html);
+      const adopted = Boolean(
+        rendered?.html && isMateriallyRicher(staticWords, rendered.renderedWords),
+      );
+      if (adopted && rendered?.html) {
+        contentHtml = rendered.html;
+        spaShell = false;
+      }
+      checks.push(renderCoverageCheck({ rendered, staticWords, adopted, requested: Boolean(contextHints?.renderJs) }));
+    }
 
     // Catch-all baseline — probe a random nonexistent path. If the host returns
     // 200 (the app shell) for a URL that cannot exist, it serves catch-all 200s
@@ -815,7 +955,7 @@ export async function runUrlChecks(
       detail: hasCanonical ? "Canonical URL tag found." : "No canonical URL tag.",
     });
 
-    const hasH1 = /<h1[\s>]/i.test(pageResult.html);
+    const hasH1 = /<h1[\s>]/i.test(contentHtml);
     checks.push({
       category: CATEGORIES.SEO,
       checkKey: "h1_present",
@@ -1604,7 +1744,7 @@ export async function runUrlChecks(
     });
 
     // ─── Additional SEO ────────────────────────────────────────────────────────
-    const hasStructuredData = /<script[^>]+type=["']application\/ld\+json["']/i.test(pageResult.html);
+    const hasStructuredData = /<script[^>]+type=["']application\/ld\+json["']/i.test(contentHtml);
     checks.push({
       category: CATEGORIES.SEO,
       checkKey: "structured_data",
@@ -2618,7 +2758,7 @@ export async function runUrlChecks(
     });
 
     // ─── A4: Content Quality (HTML analysis) ──────────────────────────────────
-    const strippedText = pageResult.html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    const strippedText = contentHtml.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
       .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ")
@@ -2636,8 +2776,8 @@ export async function runUrlChecks(
           : `Page contains only approximately ${wordCount.toLocaleString()} words — too thin for search engine indexing. Search engines prefer pages with substantial content.`,
     });
 
-    const a4HasH1 = /<h1[\s>]/i.test(pageResult.html);
-    const hasH2orH3 = /<h[23][\s>]/i.test(pageResult.html);
+    const a4HasH1 = /<h1[\s>]/i.test(contentHtml);
+    const hasH2orH3 = /<h[23][\s>]/i.test(contentHtml);
     checks.push({
       category: CATEGORIES.SEO,
       checkKey: "has_heading_hierarchy",
@@ -2650,21 +2790,24 @@ export async function runUrlChecks(
           : "No heading tags detected — headings are critical for SEO and screen reader navigation.",
     });
 
-    const imgTags = pageResult.html.match(/<img[^>]*>/gi) ?? [];
+    const imgTags = contentHtml.match(/<img[^>]*>/gi) ?? [];
     const imgsWithAlt = imgTags.filter((img) => /\balt=/i.test(img)).length;
     const altCoverage = imgTags.length > 0 ? imgsWithAlt / imgTags.length : 1;
     checks.push({
       category: CATEGORIES.ACCESSIBILITY,
       checkKey: "image_alt_coverage",
       label: "Image alt text coverage",
-      status: imgTags.length === 0 ? "PASS" : altCoverage >= 0.8 ? "PASS" : altCoverage >= 0.5 ? "WARN" : "FAIL",
+      // Zero images is NOT_APPLICABLE, never PASS. A PASS asserts the control was satisfied; with
+      // nothing to caption there is no control to satisfy, and on a client-rendered shell the
+      // images simply had not rendered — so a PASS there would be a finding invented from absence.
+      status: imgTags.length === 0 ? "NOT_APPLICABLE" : altCoverage >= 0.8 ? "PASS" : altCoverage >= 0.5 ? "WARN" : "FAIL",
       detail: imgTags.length === 0
-        ? "No images detected on this page."
+        ? "No images were present in the page HTML, so there was no alt-text coverage to measure."
         : `${imgsWithAlt}/${imgTags.length} images have alt attributes (${Math.round(altCoverage * 100)}%). ${altCoverage < 0.8 ? "Missing alt text fails WCAG 1.1.1 and harms screen reader users." : "Good alt text coverage."}`,
     });
 
     const internalLinkPattern = new RegExp(`<a[^>]+href=["'](/|https?://${hostname.replace(".", "\\.")})[^"']*["']`, "gi");
-    const internalLinkMatches = pageResult.html.match(internalLinkPattern) ?? [];
+    const internalLinkMatches = contentHtml.match(internalLinkPattern) ?? [];
     const internalLinkCount = internalLinkMatches.length;
     checks.push({
       category: CATEGORIES.SEO,
@@ -2934,8 +3077,20 @@ export async function runUrlChecks(
         effectiveMarkets,
       }, emit);
       checks.push(...extended);
-    } catch {
-      // Extended checks are non-critical — swallow errors so core scan still succeeds
+    } catch (error) {
+      // The scan still succeeds without the extended families — but it must not
+      // LOOK like a complete one. runExtendedChecks emits its own completeness
+      // check from inside itself, so a throw here loses that row too: ~300 checks
+      // and the only record that they were expected both disappear, while
+      // url-checks still reports COMPLETED. Emit the row the collector could not.
+      checks.push(collectorCompletenessCheck(
+        [{
+          name: "extended-checks",
+          outcome: "ERROR",
+          detail: error instanceof Error ? error.message.slice(0, 160) : "collector failed",
+        }],
+        "scan_extended_collector_completeness",
+      ));
     }
 
   } else {
@@ -3417,9 +3572,6 @@ export async function runUrlChecks(
     }
   }
 
-  // Client-rendered SPA / vibe-code preview (Lovable/Bolt/Replit): the static HTML is an empty
-  // shell, so HTML-parse SEO/content checks fail falsely. Reclassify those to SKIPPED (excluded
-  // from the score) rather than letting them tank an otherwise-fine prototype. See spa-detect.ts.
   const spaHostname = (() => {
     try {
       return new URL(pageResult?.finalUrl || httpsUrl).hostname.toLowerCase();
@@ -3429,18 +3581,14 @@ export async function runUrlChecks(
   })();
   const techStack = pageResult ? detectTechStack(pageResult.headers, pageResult.html, spaHostname) : [];
   const rawChecks = checks.map((check, i) => ({ ...check, sortOrder: i }));
-  const platformFiltered = applyPlatformFilter(rawChecks, platform, surfaceKind);
-  const filteredChecks = applyJurisdictionFilter(platformFiltered, effectiveMarkets);
-  const spaAdjusted =
-    pageResult &&
-    detectSpaContext({
-      builder: detectAiBuilder(spaHostname, pageResult.html.toLowerCase()),
-      html: pageResult.html,
-      contentType: pageResult.headers["content-type"] ?? "",
-    }).isSpa
-      ? reclassifySpaChecks(filteredChecks)
-      : filteredChecks;
-  return { checks: spaAdjusted, techStack, detectedMarkets, surfaceKind };
+  // Same pipeline as every streamed wave — see finaliseUrlChecks for why that matters.
+  const finalChecks = finaliseUrlChecks(rawChecks, {
+    platform,
+    surfaceKind,
+    markets: effectiveMarkets,
+    spaShell,
+  });
+  return { checks: finalChecks, techStack, detectedMarkets, surfaceKind };
 }
 
 type GitHubContentsEntry = { name: string; type: "file" | "dir" };

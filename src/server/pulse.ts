@@ -16,6 +16,9 @@ import { calculateHealthScore, SCAN_VERSION } from "@/server/pulse-scan";
 import { resolveTargetMarkets, isJurisdictionCode, type JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
 import { computeComplianceScorecard } from "@/server/pulse-checks/compliance-scorecard";
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
+import { collectorCoverage, type CollectorExecution } from "@/server/pulse-checks/collector-health";
+import { evaluateReleaseGate, DEFAULT_GATE_POLICY } from "@/server/pulse-checks/release-decision";
+import { diffChecks } from "@/server/pulse-checks/scan-diff";
 import { computePricingBandsForWorkspace } from "@/server/pulse-pricing";
 import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison } from "@/server/pulse-ai";
 import { runLiteScan } from "@/server/pulse-lite/run-lite-scan";
@@ -45,7 +48,6 @@ import type {
   ScoreBreakdown,
   PricingBand,
   PulseScanDiff,
-  ScanDiffItem,
   CheckCategory,
 } from "@/types/pulse";
 import { runVisualAgent } from "@/server/pulse-agents/visual-agent";
@@ -129,7 +131,10 @@ export function serializePulseScan(record: PulseScanDbRecord): PulseScanRecord {
       severity: (check.severity as PulseScanCheckRecord["severity"]) ?? null,
       evidenceStrength: (check.evidenceStrength as PulseScanCheckRecord["evidenceStrength"]) ?? null,
       scoreEligible: check.scoreEligible,
+      completenessEligible: check.completenessEligible,
       controlId: check.controlId ?? null,
+      detectorStatus: (check.detectorStatus as PulseScanCheckRecord["detectorStatus"]) ?? null,
+      detectorDetail: check.detectorDetail ?? null,
     })),
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
@@ -407,14 +412,22 @@ export async function recordStarterOutcomeIfApplicable(scanId: string): Promise<
   }
 }
 
-/** Diff this scan against the previous COMPLETED scan of the same target — what got
- *  fixed, what regressed, what's new. Null when there's no prior scan. */
+/**
+ * Diff this scan against the previous COMPLETED scan of the same target — what
+ * got fixed, what regressed, what's new, and what this scan can no longer speak
+ * to. Null when there's no prior scan.
+ *
+ * The comparison itself is pure and unit-tested in `pulse-checks/scan-diff.ts`.
+ * ⚠️ `confidence` is part of the contract, not an optional extra: without it a
+ * probe that could not complete would be able to close a finding. `DiffCheck`
+ * requires it so narrowing this select is a compile error.
+ */
 export async function getScanDiff(scanId: string): Promise<PulseScanDiff | null> {
   const current = await prisma.pulseScan.findUnique({
     where: { id: scanId },
     select: {
       workspaceId: true, inputType: true, inputUrl: true, inputGithubRepo: true, completedAt: true, healthScore: true,
-      checks: { select: { checkKey: true, label: true, category: true, status: true } },
+      checks: { select: { checkKey: true, label: true, category: true, status: true, confidence: true } },
     },
   });
   if (!current || !current.completedAt) return null;
@@ -429,36 +442,21 @@ export async function getScanDiff(scanId: string): Promise<PulseScanDiff | null>
     orderBy: { completedAt: "desc" },
     select: {
       id: true, completedAt: true, healthScore: true,
-      checks: { select: { checkKey: true, label: true, category: true, status: true } },
+      checks: { select: { checkKey: true, label: true, category: true, status: true, confidence: true } },
     },
   });
   if (!prev) return null;
 
-  const prevByKey = new Map(prev.checks.map((c) => [c.checkKey, c]));
-  const isIssue = (s: string) => s === "FAIL" || s === "WARN";
-  const fixed: ScanDiffItem[] = [];
-  const regressed: ScanDiffItem[] = [];
-  const newIssues: ScanDiffItem[] = [];
-
-  for (const c of current.checks) {
-    const before = prevByKey.get(c.checkKey);
-    const item: ScanDiffItem = { checkKey: c.checkKey, label: c.label, category: c.category, status: c.status, prevStatus: before?.status };
-    if (!before) {
-      if (isIssue(c.status)) newIssues.push(item);
-    } else if (isIssue(before.status) && c.status === "PASS") {
-      fixed.push(item);
-    } else if (before.status === "PASS" && isIssue(c.status)) {
-      regressed.push(item);
-    }
-  }
+  const diff = diffChecks(prev.checks, current.checks);
 
   return {
     previousScanId: prev.id,
     previousCompletedAt: prev.completedAt?.toISOString() ?? null,
     scoreChange: (current.healthScore ?? 0) - (prev.healthScore ?? 0),
-    fixed,
-    regressed,
-    newIssues,
+    fixed: diff.fixed,
+    regressed: diff.regressed,
+    newIssues: diff.newIssues,
+    unverified: diff.unverified,
   };
 }
 
@@ -1006,7 +1004,12 @@ export async function runAnalysis(
           severity: check.severity ?? null,
           evidenceStrength: check.evidenceStrength ?? null,
           scoreEligible: check.scoreEligible ?? true,
+          // Was dropped here, so completeness recomputed from stored rows
+          // disagreed with the value this very scan recorded.
+          completenessEligible: check.completenessEligible ?? false,
           controlId: check.controlId ?? null,
+          detectorStatus: check.detectorStatus ?? null,
+          detectorDetail: check.detectorDetail ?? null,
         })),
       });
     };
@@ -1018,6 +1021,7 @@ export async function runAnalysis(
     let deployInsights: DeployAgentInsights | null = null;
     let browserInsights: BrowserAgentInsights | null = null;
     let visualInsights: VisualAgentInsights | null = null;
+    let collectorExecutions: CollectorExecution[] = [];
 
     const checkPolicy = workspaceId ? await loadCheckPolicy(workspaceId) : undefined;
 
@@ -1043,6 +1047,7 @@ export async function runAnalysis(
       deployInsights = lite.deployInsights;
       browserInsights = lite.browserInsights;
       detectedMarkets = lite.detectedMarkets;
+      collectorExecutions = lite.collectorExecutions;
     }
 
     const healthScore = calculateHealthScore(allChecks);
@@ -1050,7 +1055,18 @@ export async function runAnalysis(
     // auto-detected. Scorecard + score breakdown are deterministic (no AI).
     const effectiveMarkets = resolveTargetMarkets(declaredMarkets, detectedMarkets).effective;
     const complianceScorecard = computeComplianceScorecard(allChecks, effectiveMarkets);
-    const scoreBreakdown = computeScoreBreakdown(allChecks);
+    // Coverage explains completeness, so it travels with it rather than dying
+    // inside the collector-completeness check's evidence JSON.
+    const scoreBreakdown = {
+      ...computeScoreBreakdown(allChecks),
+      ...(collectorExecutions.length > 0 ? { collectors: collectorCoverage(collectorExecutions) } : {}),
+    };
+    // The release decision. Deterministic and computed from the checks and the
+    // coverage above — no model output reaches it. Stored WITH its policy version,
+    // so a scan read months later says which rules produced its answer rather than
+    // being silently re-judged by whatever the policy has since become.
+    const gate = evaluateReleaseGate(allChecks, scoreBreakdown, DEFAULT_GATE_POLICY);
+    scoreBreakdown.gate = gate;
 
     // Compute AI Maturity Score (0–4) from AI Readiness check pass rate.
     // Only set when AI Readiness checks actually ran (not all SKIPPED).

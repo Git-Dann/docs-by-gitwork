@@ -31,7 +31,7 @@ import {
   detectUrlTargetKind,
   effectivePlatformForRepoShape,
 } from "@/server/pulse-checks/scan-execution-plan";
-import { collectorCompletenessCheck, type CollectorExecution } from "@/server/pulse-checks/collector-health";
+import { collectorCompletenessCheck, collectorOutcome, sourceCollectorsUnavailable, urlCollectorsUnavailable, type CollectorExecution } from "@/server/pulse-checks/collector-health";
 import { applyCheckPolicy, customPolicyChecks, type CheckPolicy } from "@/server/check-config";
 import type { JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
 import type {
@@ -49,6 +49,15 @@ export interface LiteScanInput {
   /** Include the Google PageSpeed (Lighthouse) wave. Default true. Off for the
    *  public path to stay fast and avoid PSI quota pressure. */
   includePageSpeed?: boolean;
+  /**
+   * Render a client-rendered page in headless Chromium before reading its content, so the
+   * content and SEO checks measure the page a visitor sees rather than an empty shell.
+   *
+   * Defaults to the same switch as PageSpeed, and for the same reason: the public embed path
+   * turns both off. A browser launch per anonymous scan is a cost and an abuse surface, and
+   * the public scan already declares what it could not assess.
+   */
+  renderJs?: boolean;
   /** Workspace policy loaded by the authenticated orchestration path. */
   checkPolicy?: CheckPolicy;
   /** Jurisdiction codes the product serves — drives compliance filtering + scorecard. */
@@ -67,10 +76,17 @@ export interface LiteScanResult {
   homepageUrl: string | null;
   /** Jurisdiction codes auto-detected from the page (audit + legacy fallback). */
   detectedMarkets: JurisdictionCode[];
+  /**
+   * What ran, what failed and what was unavailable. Returned so the scan can
+   * state its own coverage rather than leaving it inside one check row's
+   * evidence JSON, where nothing but a reader of raw rows would ever find it.
+   */
+  collectorExecutions: CollectorExecution[];
 }
 
 export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult> {
   const includePageSpeed = input.includePageSpeed ?? true;
+  const renderJs = input.renderJs ?? includePageSpeed;
 
   // De-dup + stable ordering across every wave; first writer of a checkKey wins.
   const seen = new Map<string, PulseScanCheckInput>();
@@ -127,7 +143,7 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     // Classify the actual document first. Starting deploy/PageSpeed in parallel
     // used quota and time on App Store pages, source-only platforms, prototypes,
     // and Vercel/Cloudflare checkpoints whose results were later discarded.
-    const urlResult = await runUrlChecks(safeUrl, input.platform, onWave, input.targetMarkets);
+    const urlResult = await runUrlChecks(safeUrl, input.platform, onWave, input.targetMarkets, { renderJs });
     collectorCompleted("url-checks");
     techStack = urlResult.techStack;
     detectedMarkets = urlResult.detectedMarkets;
@@ -164,29 +180,38 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
         : Promise.resolve(null),
     ]);
 
+    // `collectorOutcome` (not the bare settled status) decides COMPLETED vs ERROR —
+    // both agents catch their own network failures and resolve with an empty result,
+    // so a fulfilled promise is not proof either of them collected anything.
+    // Whatever checks they did produce are still ingested; a partial result is
+    // evidence, it just is not a complete one.
     if (deployOutcome) {
+      collectorExecutions.push(collectorOutcome("deploy-agent", deployOutcome));
       if (deployOutcome.status === "fulfilled") {
         deployInsights = deployOutcome.value.insights;
-        collectorCompleted("deploy-agent");
         pending.push(ingest(deployOutcome.value.checks));
-      } else {
-        collectorFailed("deploy-agent", deployOutcome.reason);
       }
     } else {
       collectorExecutions.push({ name: "deploy-agent", outcome: "NOT_APPLICABLE" });
     }
 
     if (browserOutcome) {
+      collectorExecutions.push(collectorOutcome("browser-agent", browserOutcome));
       if (browserOutcome.status === "fulfilled") {
         browserInsights = browserOutcome.value.insights;
-        collectorCompleted("browser-agent");
         pending.push(ingest(browserOutcome.value.checks));
-      } else {
-        collectorFailed("browser-agent", browserOutcome.reason);
       }
     } else {
       collectorExecutions.push({ name: "browser-agent", outcome: "NOT_APPLICABLE" });
     }
+
+    // The source collectors are not merely absent from a URL scan — they are
+    // UNAVAILABLE, and for a reason the customer can act on. Recording nothing
+    // made the coverage check read "every collector completed" while half of
+    // Pulse had not run.
+    collectorExecutions.push(...sourceCollectorsUnavailable(
+      "No repository was connected, so the source-analysis families did not run. Re-scan with a GitHub repo to include them.",
+    ));
   } else {
     // GITHUB_REPO — detect the artefact, then run only its source families.
     const repo = (input.githubRepo ?? "").trim();
@@ -215,6 +240,15 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     });
     if (coverage) pending.push(ingest([coverage]));
 
+    // The mirror of the URL branch: a repo scan never reaches the live site, so
+    // headers, TLS, rendered content and deployment signals are unmeasured. Left
+    // unrecorded, coverage would report "3 of 3 collectors completed" and read as
+    // a whole-product assessment — the same defect as the URL side, in the other
+    // direction, and I fixed only one of them the first time.
+    collectorExecutions.push(...urlCollectorsUnavailable(
+      "No deployed URL was scanned, so the live-site families (headers, TLS, rendered content, deployment) did not run. Re-scan with a URL to include them.",
+    ));
+
     // The optional GitHub homepage remains useful metadata for the report, but it
     // is not the selected artefact and is never scanned implicitly. Users can run
     // a separate URL scan when they want that surface assessed.
@@ -239,5 +273,6 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     codeInsights,
     homepageUrl,
     detectedMarkets,
+    collectorExecutions,
   };
 }

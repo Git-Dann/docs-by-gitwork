@@ -28,7 +28,7 @@
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { RepoSnapshot } from "./native-mobile";
-import { isVendoredPath, stripCStyleComments } from "./native-mobile";
+import { isVendoredPath, stripCStyleComments, sampleCoverage } from "./native-mobile";
 
 /** Below this sampled-file coverage, absence findings self-downgrade to LOW. */
 const SOUND_ABSENCE_COVERAGE = 0.3;
@@ -79,7 +79,7 @@ function buildContext(snapshot: RepoSnapshot): AndroidContext {
     manifest,
     gradle,
     lines: sourceRaw.split("\n").length,
-    coverage: sourcePaths.length === 0 ? 0 : Math.min(1, read.length / sourcePaths.length),
+    coverage: sampleCoverage(read.length, sourcePaths.length, snapshot.truncated),
     paths: snapshot.paths,
   };
 }
@@ -552,16 +552,41 @@ function securityChecks(ctx: AndroidContext): PulseScanCheckInput[] {
 }
 
 // ── Secrets & keys ──────────────────────────────────────────────────────────
+/**
+ * A password reaching preference storage — the WRITE, not the word.
+ *
+ * Matches the SharedPreferences/DataStore write APIs with a password-shaped key,
+ * as either a literal or a `*_PASSWORD` constant. Those are the two ways it is
+ * actually written; a string that merely mentions passwords is not one of them.
+ *
+ * Exported because this predicate is the whole check, and the difference between
+ * a true finding and a 100% false-positive rate lives in it alone.
+ */
+export function tokenKeyInPrefsApi(source: string): boolean {
+  return /\b(?:put|get)(?:String|StringSet)\s*\(\s*(?:"[^"\n]*(?:access|refresh|auth|bearer|id)[_-]?token[^"\n]*"|[A-Za-z0-9_]*TOKEN[A-Za-z0-9_]*)\s*[,)]/i
+    .test(source);
+}
+
+export function writesPasswordToPrefs(source: string): boolean {
+  return /\bput(?:String|Boolean|Int|Long|Float|StringSet)\s*\(\s*(?:"[^"\n]*password[^"\n]*"|[A-Za-z0-9_]*PASSWORD[A-Za-z0-9_]*)\s*,/i
+    .test(source);
+}
+
 function secretsChecks(ctx: AndroidContext): PulseScanCheckInput[] {
   const checks: PulseScanCheckInput[] = [];
 
   // Tokens in SharedPreferences. The exact inversion found across this client's
   // iOS and Flutter apps: a secure store exists in the project and the tokens are
   // not in it.
-  const TOKEN_KEY = /("[^"]*(?:access|refresh|auth|bearer|id)_?token[^"]*"|\b(?:access|refresh|auth)Token\b)/i;
+  // ⚠️ Same co-occurrence defect as android_password_retention below, same fix.
+  // The old rule was "a token-shaped identifier anywhere" AND "SharedPreferences
+  // anywhere" — so any app with an `accessToken` variable and a settings screen
+  // FAILED. Measured across the corpus it fired on 5 of 6 real Android apps. The
+  // finding claims tokens are "read from or written to SharedPreferences", so it
+  // has to match the preference API itself.
   const usesPrefs = /getSharedPreferences\s*\(|PreferenceManager\.|\bdataStore\b/i.test(ctx.source);
   const usesEncrypted = /EncryptedSharedPreferences|MasterKeys?\.|androidx\.security/i.test(ctx.source + ctx.gradle);
-  const tokenNearPrefs = usesPrefs && TOKEN_KEY.test(ctx.source);
+  const tokenNearPrefs = usesPrefs && tokenKeyInPrefsApi(ctx.source);
 
   if (tokenNearPrefs) {
     checks.push({
@@ -582,7 +607,25 @@ function secretsChecks(ctx: AndroidContext): PulseScanCheckInput[] {
   }
 
   // A password persisted at all is worse than where it is persisted.
-  if (/"[^"]*password[^"]*"\s*(,|\))/i.test(ctx.source) && usesPrefs) {
+  //
+  // ⚠️ This must match the WRITE, not the word. The rule was previously "a string
+  // literal containing 'password'" AND "SharedPreferences used somewhere in the
+  // sampled source" — co-occurrence in a concatenated blob, not a relationship.
+  // Run across 7 real Android apps it reported a FAIL on ALL SEVEN, including
+  // nextcloud/android, duckduckgo/Android and mozilla-mobile/reference-browser.
+  // The actual matches were:
+  //
+  //     @property providerId ... ("google.com", "facebook.com", "password")   ← KDoc
+  //     message?.contains("password", ignoreCase = true)                      ← error text
+  //     message = "Create user with email and password was cancelled"         ← UI copy
+  //     Timber.w(e, "Failed to save password credential for: %s", email)      ← a log line
+  //
+  // Not one is a password reaching storage. A 100% FAIL rate in SECRETS_KEYS —
+  // a category every release-gate policy blocks on — is not seven security
+  // incidents, it is a broken check. Requiring the preference-write API is what
+  // makes the finding mean what it says; the key may be a literal or a
+  // *_PASSWORD constant, which are the two ways it is actually written.
+  if (writesPasswordToPrefs(ctx.source) && usesPrefs) {
     checks.push({
       category: CATEGORIES.SECRETS_KEYS,
       checkKey: "android_password_retention",

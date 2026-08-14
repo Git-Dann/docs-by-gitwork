@@ -1074,6 +1074,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "vibe_placeholder_content", category: CATEGORIES.VIBE_HYGIENE, label: "No placeholder / filler content in production" },
   { key: "vibe_placeholder_images", category: CATEGORIES.VIBE_HYGIENE, label: "No placeholder / stock filler images" },
   { key: "spa_client_rendered", category: CATEGORIES.VIBE_HYGIENE, label: "Content is server-rendered (not a JS-only shell)" },
+  { key: "spa_content_rendered_for_scan", category: CATEGORIES.VIBE_HYGIENE, label: "Client-rendered content was read for this scan" },
   { key: "wcag22_consistent_help", category: CATEGORIES.ACCESSIBILITY, label: "Consistent help mechanism (WCAG 3.3.6)" },
   { key: "wcag22_dragging_alternative", category: CATEGORIES.ACCESSIBILITY, label: "Dragging movements have an alternative (WCAG 2.5.7)" },
 

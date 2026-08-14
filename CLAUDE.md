@@ -24,8 +24,10 @@ class name" and a request to move fast are **not** exemptions — most of the de
   **§32**. This is how work is tracked across the team; an untagged chat is invisible.
 - **Run `npm run verify` before any PR**, and report what it actually printed. CI runs the same
   thing on every PR (§31), and a `pre-push` hook runs it for you on a push to `main`. Never call
-  something verified that wasn't run. There is **no staging and no branch previews** — only `main`
-  deploys, straight to the Fasthosts VPS (§23), not Vercel.
+  something verified that wasn't run. **Only `main` deploys to production** — straight to the
+  Fasthosts VPS (§23), not Vercel. There is no staging. But **Vercel branch previews DO still
+  build and ARE reachable** (§23's "vestigial" applies to production traffic, not to the preview
+  URL) — see `docs/build-checklist.md` §4 for what one can and cannot verify.
 - **Keep [`ONBOARDING.md`](ONBOARDING.md) current — in the same PR as the change.** It's the
   one-page handover new builders actually read, so a stale one actively misleads them. It is **not**
   a summary of this file; it only covers what someone needs in week one. Update it when you change:
@@ -546,14 +548,31 @@ Core domains:
 - **`PulseScanCheckInput.category` is the typed union `CheckCategory`** — a check that emits a
   raw/typo'd category is a **compile error**. Always tag checks with `CATEGORIES.<X>`, never a
   string literal. This applies in `pulse-checks/*`, `pulse-agents/*`, and `pulse-scan.ts`.
-- **To ADD A CHECK:** emit it with `category: CATEGORIES.<X>` **and** add its `{ key, category,
-  label }` row to `src/server/checks-registry.ts`. That's the catalogue the Settings → Checks
-  panel + per-workspace `PulseCheckConfig` overrides + framework counts are built from.
+- **To ADD A CHECK:** emit it with `category: CATEGORIES.<X>`, add its `{ key, category,
+  label }` row to `src/server/checks-registry.ts`, then run **`npm run pulse:catalogue`** to record
+  the new key. The registry is the catalogue the Settings → Checks panel + per-workspace
+  `PulseCheckConfig` overrides + framework counts are built from.
 - **To ADD A CATEGORY:** add one entry to `CATEGORIES` + one row to `CATEGORY_META` (pick a
   domain + weight + blurb). Nothing else needs editing.
-- **Enforced by `src/server/pulse-checks/__tests__/categories.reconcile.test.ts`** (`npm test`):
-  every emitted `checkKey` must be in the registry, every category must have metadata + one
-  domain, no duplicate keys. If it fails, the catalogue drifted — fix the source, not the test.
+- ⚠️ **To REMOVE A CHECK: you don't — you retire it.** A `checkKey` is a **public identifier**,
+  not an internal name: it keys every historical `PulseScanCheck` row *and* every
+  `PulseCheckConfig` row a workspace has set (`@@unique([workspaceId, checkKey])`). Deleting or
+  renaming one orphans a customer's own enable/label/severity decisions and makes the matching
+  rows in their stored scans unreadable — silently, because nothing recomputes an old scan. Add a
+  `RETIRED_CHECKS` entry in **`src/server/pulse-checks/catalogue-compat.ts`** naming the successor
+  and the relationship (`SUPERSEDED_BY` · `MERGED_INTO` · `SPLIT_INTO` · `ALIAS_OF` ·
+  `WITHDRAWN`), *then* run `npm run pulse:catalogue`. The key stays readable; only its
+  implementation goes.
+- **Enforced by two tests** (`npm test`), which cover opposite directions and neither is
+  sufficient alone:
+  - `pulse-checks/__tests__/categories.reconcile.test.ts` — every **emitted** `checkKey` is in the
+    registry, every category has metadata + exactly one domain, no duplicate keys.
+  - `pulse-checks/__tests__/catalogue-compat.test.ts` — every **registered** key is backed by an
+    implementation (so the Settings panel can't advertise a control that never runs), every key in
+    `catalogue-baseline.json` is still registered or explicitly retired, and every retirement names
+    a live successor. Baseline out of date? `npm run pulse:catalogue`.
+
+  If either fails, the catalogue drifted — fix the source, not the test.
 - Runtime stats are already automatic: all scan-results UI derives pass/warn/fail, category
   cards, score and priority live from the persisted `scan.checks` — nothing to wire per check.
 
@@ -900,12 +919,14 @@ checks (`runUrlChecks`/`runGithubChecks`/`runExtendedChecks`/`runDeployAgent`/`r
 were already AI-free; the AI (`pulse-ai.ts`) only ever ran on top. This work makes that split
 explicit and reuses it three ways.
 
-- **Shared core** — `runLiteScan({ inputType, url|githubRepo, includePageSpeed, skipUrlGuard, onChecks })`
+- **Shared core** — `runLiteScan({ inputType, url|githubRepo, includePageSpeed, checkPolicy, onChecks })`
   returns `{ checks, techStack, healthScore, browser/deploy/codeInsights, homepageUrl }`, de-duped by
   `checkKey` + stably ordered. It emits **incremental waves** via `onChecks` — implemented by an
   optional `onWave` threaded into `runUrlChecks` (emits core checks before extended) and
   `runExtendedChecks` (emits each of the 19 category modules as it resolves). No AI imports in
   `pulse-lite/*` — keep it that way.
+  ⚠️ **`skipUrlGuard` no longer exists** — it was removed in `2f6782a` (Aug 2026) along with both
+  of its call sites, so the guard is unconditional. Don't re-add a bypass parameter.
 - **SSRF guard** (`pulse-lite/url-guard.ts`) — `assertScannableUrl()`: http/https only, no creds,
   `dns.lookup` + reject private/reserved/loopback/link-local/metadata ranges. **Mandatory on the
   public path**; applied defensively elsewhere. **Rate limit** (`pulse-lite/rate-limit.ts`) —

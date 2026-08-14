@@ -162,7 +162,12 @@ export interface PillarScore {
   pass: number;
   warn: number;
   fail: number;
-  /** SKIPPED, plus LOW-confidence FAIL/WARN — measured but not scored. */
+  /**
+   * Measured but not scored: any non-outcome status (SKIPPED, NOT_APPLICABLE,
+   * INCONCLUSIVE, ERROR, NOT_TESTED, EVIDENCE_REQUIRED) or a check marked
+   * score-ineligible. NOT low-confidence outcomes — score v3 weights those
+   * symmetrically and still counts them, which is the point of the trust model.
+   */
   excluded: number;
   /** Set when the pillar was dropped, saying why in one line. */
   droppedReason?: string;

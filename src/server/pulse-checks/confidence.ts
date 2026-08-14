@@ -78,7 +78,19 @@ const LOW_CONFIDENCE_KEYS = new Set<string>([
   "text_spacing_supported",
 ]);
 
-const CRITICAL_KEYS = new Set([
+/**
+ * Controls whose failure is technically CRITICAL — they lose data, expose credentials, or let
+ * one user reach another's. Assigning `severity: "CRITICAL"` here is what gives them the heaviest
+ * scoring weight and lets them block a release via the gate's blocking categories.
+ *
+ * Exported because `priority.ts` must rank every one of these at the top of the fix list. It kept
+ * its own separate list and the two had silently diverged in both directions: `outbound_target_
+ * ssrf_safe` and `auth_content_redaction` were CRITICAL for scoring but got no priority boost, so
+ * a confirmed SSRF in the scanned product could sit below a cosmetic finding in the ranked list a
+ * customer actually works through. `criticalControls.test.ts` now asserts the containment, so a
+ * key added here cannot fail to be ranked.
+ */
+export const CRITICAL_KEYS = new Set([
   "ssl_valid", "supabase_rls_enforced", "no_service_role_key_exposed",
   "no_exposed_env", "no_exposed_git", "outbound_target_ssrf_safe",
   "auth_content_redaction",

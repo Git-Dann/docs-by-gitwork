@@ -43,7 +43,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const config = await getPulseEmbedWorkspaceConfig();
     const allChecks = (lite.checks as PulseScanCheckInput[] | null) ?? [];
     const checks = filterToEmbedChecks(allChecks, config.checkKeys);
-    const { categories, pass, warn, fail } = summarise(checks);
+    const { categories, pass, warn, fail, inconclusive } = summarise(checks);
     const healthScore = checks.length > 0 ? calculateHealthScore(checks) : lite.healthScore;
 
     const view: PublicScanView = {
@@ -56,6 +56,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       pass,
       warn,
       fail,
+      inconclusive,
       categories,
       emailCaptured: lite.emailCaptured,
       checks: lite.emailCaptured ? checks : null, // gated detail
