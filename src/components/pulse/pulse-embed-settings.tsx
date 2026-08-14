@@ -34,7 +34,7 @@ function Widget({ number, title, status, children }: { number: string; title: st
 }
 
 export function PulseEmbedSettings() {
-  const { data, isLoading } = usePulseEmbedConfig();
+  const { data, isLoading, isError, error, refetch, isFetching } = usePulseEmbedConfig();
   const { mutate: save, isPending } = useSetPulseEmbedConfig();
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -154,6 +154,24 @@ export function PulseEmbedSettings() {
     const next = new Set(checkKeys);
     for (const c of checks) next.delete(c.key);
     saveCheckKeys(next);
+  }
+
+  if (isError) {
+    return (
+      <div className="flex flex-col items-start gap-2">
+        <p className="rounded-[6px] border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          Couldn&apos;t load the embed config — {error instanceof Error ? error.message : "please try again."}
+        </p>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="text-sm font-medium text-[var(--brand-700)] hover:underline disabled:opacity-50"
+        >
+          {isFetching ? "Retrying…" : "Retry"}
+        </button>
+      </div>
+    );
   }
 
   if (isLoading || !data) {
