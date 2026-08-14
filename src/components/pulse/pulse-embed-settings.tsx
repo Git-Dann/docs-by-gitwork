@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
+import { MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, ArrowPathIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 import { usePulseEmbedConfig, useSetPulseEmbedConfig } from "@/hooks/use-pulse";
 import { CHECKS_REGISTRY } from "@/server/checks-registry";
 import { DEFAULT_EMBED_CHECK_KEYS } from "@/server/pulse-embed-config";
@@ -301,14 +301,25 @@ export function PulseEmbedSettings() {
           number="03"
           title="LIVE PREVIEW"
           status={
-            <button
-              type="button"
-              onClick={() => setPreviewKey((k) => k + 1)}
-              className="widget-header__status inline-flex items-center gap-1.5 hover:text-[var(--brand-700)]"
-            >
-              <ArrowPathIcon className="size-3.5" />
-              Reload
-            </button>
+            <div className="flex items-center gap-3">
+              <a
+                href="/embed/pulse?example=1"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="widget-header__status inline-flex items-center gap-1.5 hover:text-[var(--brand-700)]"
+              >
+                <ArrowTopRightOnSquareIcon className="size-3.5" />
+                View example
+              </a>
+              <button
+                type="button"
+                onClick={() => setPreviewKey((k) => k + 1)}
+                className="widget-header__status inline-flex items-center gap-1.5 hover:text-[var(--brand-700)]"
+              >
+                <ArrowPathIcon className="size-3.5" />
+                Reload
+              </button>
+            </div>
           }
         >
           <p className="mb-3 text-xs text-[var(--text-4)]">The real widget — run a scan against your current settings.</p>

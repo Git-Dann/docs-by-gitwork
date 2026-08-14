@@ -47,6 +47,43 @@ const SERIF = "var(--font-fraunces), 'Fraunces', Georgia, serif";
 // 40 attempts is ~100s — generous for a transient blip, but finite.
 const MAX_POLL_FAILURES = 40;
 
+// ?example=1 shows a fixed, fabricated completed scan — no API call, no real scan
+// row — so the full branded results view can be previewed (e.g. from Settings →
+// Public Embed) without running one. This id is never polled; see the guard at
+// the top of the polling effect below.
+const EXAMPLE_SCAN_ID = "example-preview";
+const EXAMPLE_VIEW: View = {
+  id: EXAMPLE_SCAN_ID,
+  status: "COMPLETED",
+  targetUrl: "https://acme-app.io/",
+  healthScore: 71,
+  techStack: ["Next.js", "Vercel", "Stripe"],
+  totalChecks: 40,
+  pass: 30,
+  warn: 7,
+  fail: 3,
+  categories: [
+    { category: "Performance", pass: 9, warn: 2, fail: 1 },
+    { category: "SEO", pass: 7, warn: 1, fail: 1 },
+    { category: "Security", pass: 6, warn: 2, fail: 1 },
+    { category: "Mobile", pass: 8, warn: 2, fail: 0 },
+  ],
+  emailCaptured: true,
+  checks: [
+    { category: "Security", checkKey: "example_csp", label: "No Content-Security-Policy header", status: "FAIL", detail: "The site sends no CSP header, leaving pages more exposed to injected scripts." },
+    { category: "SEO", checkKey: "example_sitemap", label: "Missing sitemap.xml", status: "FAIL", detail: "Search engines can't discover pages that aren't linked internally." },
+    { category: "Performance", checkKey: "example_render_blocking", label: "Render-blocking JavaScript delays first paint", status: "FAIL", detail: "Two scripts in <head> block rendering before they've finished loading." },
+    { category: "Performance", checkKey: "example_lcp", label: "Largest Contentful Paint is slow on mobile", status: "WARN", detail: "Measured at 4.1s on a throttled connection — above the 2.5s target." },
+    { category: "Security", checkKey: "example_hsts", label: "Missing Strict-Transport-Security header", status: "WARN" },
+    { category: "Mobile", checkKey: "example_tap_targets", label: "Tap targets smaller than 44px on the pricing page", status: "WARN" },
+    { category: "SEO", checkKey: "example_meta_desc", label: "3 pages are missing a meta description", status: "WARN" },
+    { category: "Security", checkKey: "example_secure_cookie", label: "Cookies set without the Secure flag", status: "WARN" },
+    { category: "Mobile", checkKey: "example_viewport", label: "Viewport not configured for small screens on /checkout", status: "WARN" },
+    { category: "Performance", checkKey: "example_image_format", label: "Images aren't served in a modern format (WebP/AVIF)", status: "WARN" },
+  ],
+  errorMessage: null,
+};
+
 function scoreColor(score: number | null): string {
   if (score == null) return "#9ca3af";
   if (score >= 75) return "#16a34a";
@@ -138,6 +175,7 @@ export default function EmbedPulsePage() {
   const [starting, setStarting] = useState(false);
   const [emailAlreadyUsed, setEmailAlreadyUsed] = useState(false);
   const [displayScore, setDisplayScore] = useState<number | null>(null);
+  const [isExample, setIsExample] = useState(false);
 
   const [honeypot, setHoneypot] = useState("");
   const [turnstileReady, setTurnstileReady] = useState(false);
@@ -171,6 +209,21 @@ export default function EmbedPulsePage() {
       const ref = document.referrer;
       if (ref && /(^|\.)gitwork\.co\.uk$/.test(new URL(ref).hostname)) setSource("gitwork.co.uk");
     } catch { /* not embedded / no referrer */ }
+  }, []);
+
+  // ?example=1 shows a fixed, fabricated completed scan for previewing the full
+  // branded results view (Settings → Public Embed → View example) without
+  // running a real one — reads the query string directly rather than
+  // next/navigation's useSearchParams, which would require a Suspense boundary
+  // around this page just to support an admin-only preview link.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (new URLSearchParams(window.location.search).get("example") !== "1") return;
+    setIsExample(true);
+    setUrl(EXAMPLE_VIEW.targetUrl);
+    setEmail("you@company.com");
+    setScanId(EXAMPLE_SCAN_ID);
+    setView(EXAMPLE_VIEW);
   }, []);
 
   // Workspace-configurable Turnstile site key + CTA link — fetched once, not baked
@@ -212,7 +265,9 @@ export default function EmbedPulsePage() {
   // blip, transient 5xx, unparseable body) retries with a hard cap so a
   // persistently broken backend surfaces an error instead of spinning forever.
   useEffect(() => {
-    if (!scanId) return;
+    // The example scan id is never real — nothing to poll, and its view was
+    // already seeded directly by the ?example=1 effect above.
+    if (!scanId || scanId === EXAMPLE_SCAN_ID) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     let failures = 0;
@@ -305,7 +360,7 @@ export default function EmbedPulsePage() {
   // Don't let a click through before Turnstile has actually produced a token —
   // submitting without one always fails server-side ("Verification failed"),
   // which reads as a broken form rather than "still checking you're human".
-  const awaitingVerification = Boolean(turnstileSiteKey) && !scanToken;
+  const awaitingVerification = !isExample && Boolean(turnstileSiteKey) && !scanToken;
 
   // Email is required up front — one combined submission starts the scan and
   // captures the lead in the same call (see POST /api/public/pulse/scan).
@@ -352,7 +407,7 @@ export default function EmbedPulsePage() {
     .filter((c) => c.status === "FAIL" || c.status === "WARN")
     .sort((a, b) => (a.status === "FAIL" ? 0 : 1) - (b.status === "FAIL" ? 0 : 1));
 
-  const formDisabled = running || starting;
+  const formDisabled = running || starting || isExample;
   const submitDisabled = formDisabled || !url.trim() || !email.trim() || awaitingVerification;
 
   // A single, always-mounted screen-reader announcement for the meaningful state
@@ -385,7 +440,7 @@ export default function EmbedPulsePage() {
         margin: "0 auto",
       }}
     >
-      {turnstileSiteKey && (
+      {turnstileSiteKey && !isExample && (
         <Script
           src="https://challenges.cloudflare.com/turnstile/v0/api.js"
           strategy="afterInteractive"
@@ -463,9 +518,11 @@ export default function EmbedPulsePage() {
           {running ? "Scanning…" : starting ? "Starting…" : awaitingVerification ? "Verifying…" : "Scan my site"}
         </button>
       </div>
-      {turnstileSiteKey && <div ref={scanTurnstileRef} style={{ marginTop: 10 }} />}
+      {turnstileSiteKey && !isExample && <div ref={scanTurnstileRef} style={{ marginTop: 10 }} />}
       <p style={{ marginTop: 8, fontSize: 11.5, color: "#9ca3af" }}>
-        We&apos;ll email you the full results too — no spam, just your report.
+        {isExample
+          ? "Example results, shown for illustration."
+          : "No spam, ever — get in touch with us for the full report."}
       </p>
 
       {/* Visually-hidden live region — announces the meaningful state
