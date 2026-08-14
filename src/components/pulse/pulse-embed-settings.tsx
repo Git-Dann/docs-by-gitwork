@@ -303,7 +303,7 @@ export function PulseEmbedSettings() {
           status={
             <div className="flex items-center gap-3">
               <a
-                href="/embed/pulse?example=1"
+                href="/demo/pulse-embed"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="widget-header__status inline-flex items-center gap-1.5 hover:text-[var(--brand-700)]"
