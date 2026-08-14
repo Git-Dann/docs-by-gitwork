@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { evaluateAndroidChecks } from "../android-app";
+import { evaluateAndroidChecks, writesPasswordToPrefs, tokenKeyInPrefsApi } from "../android-app";
 import type { RepoSnapshot } from "../native-mobile";
 
 // Same discipline as the iOS and Flutter families (§34): presence findings are sound
@@ -382,5 +382,95 @@ describe("Android — platform quality", () => {
     const check = find(checks, "android_firebase_config_committed")!;
     expect(check.status).toBe("WARN");
     expect(check.detail).toMatch(/not a leak/i);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A claim about STORAGE must match the storage API, not the word.
+//
+// Measured across 79 real public repositories (§4a). Both of these checks were
+// "a password/token-shaped string ANYWHERE in the sampled source" AND
+// "SharedPreferences ANYWHERE in the sampled source" — co-occurrence in a
+// concatenated blob, not a relationship. The result:
+//
+//   android_password_retention   FAIL on 7 of 7 Android apps
+//   android_token_storage        FAIL on 5 of 6
+//
+// including nextcloud/android, duckduckgo/Android and mozilla-mobile/
+// reference-browser. A 100% FAIL rate in SECRETS_KEYS — which every release-gate
+// policy blocks on — is a broken check, not seven security incidents.
+//
+// Every string below is copied from the real repositories: the four false
+// positives are what actually matched, and the two true positives are what the
+// checks are for.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("writesPasswordToPrefs matches the write, not the word", () => {
+  it("fires on a real password write", () => {
+    // Waboodoo/HTTP-Shortcuts, UserPreferences.kt — a genuine finding.
+    expect(writesPasswordToPrefs('set(value) = putString(KEY_REMOTE_EDIT_PASSWORD, value ?: "")')).toBe(true);
+    expect(writesPasswordToPrefs('prefs.edit().putString("user_password", pw).apply()')).toBe(true);
+  });
+
+  it("stays quiet on the four things that really matched", () => {
+    for (const line of [
+      // UweTrottmann/SeriesGuide — a KDoc listing auth provider ids.
+      '@property providerId The provider ID (e.g., "google.com", "facebook.com", "password", "phone")',
+      // ReauthenticationDialog.kt — inspecting an error message.
+      'message?.contains("password", ignoreCase = true) == true ->',
+      // EmailAuthProvider — user-facing copy.
+      'message = "Create user with email and password was cancelled",',
+      // A log line.
+      'Timber.w(e, "Failed to save password credential for: %s", email)',
+    ]) expect(writesPasswordToPrefs(line), line.slice(0, 48)).toBe(false);
+  });
+});
+
+describe("the checks actually USE those predicates", () => {
+  // ⚠️ Asserting the helper alone does not cover the call site. The first cut of
+  // these tests exercised writesPasswordToPrefs directly, and restoring the old
+  // co-occurrence rule at the call site failed NOTHING — the §42.15 trap in a
+  // new shape. These drive evaluateAndroidChecks end to end.
+  const prefsPlus = (line: string) => ({
+    "app/src/main/java/Auth.kt":
+      `val prefs = context.getSharedPreferences("app", 0)\nprefs.edit().putString("theme", "dark").apply()\n${line}`,
+  });
+
+  it("does not report password retention for a log line about passwords", () => {
+    const out = evaluateAndroidChecks(snapshot(prefsPlus(
+      'Timber.w(e, "Failed to save password credential for: %s", email)',
+    )));
+    expect(keys(out)).not.toContain("android_password_retention");
+  });
+
+  it("does not report token storage for a token-shaped local variable", () => {
+    const out = evaluateAndroidChecks(snapshot(prefsPlus("val accessToken = response.accessToken")));
+    expect(keys(out)).not.toContain("android_token_storage");
+  });
+
+  it("still reports a real password write alongside preferences use", () => {
+    const out = evaluateAndroidChecks(snapshot(prefsPlus(
+      'putString(KEY_REMOTE_EDIT_PASSWORD, value ?: "")',
+    )));
+    expect(find(out, "android_password_retention")?.status).toBe("FAIL");
+  });
+});
+
+describe("tokenKeyInPrefsApi matches the preference API", () => {
+  it("fires on a real token read and write", () => {
+    // UweTrottmann/SeriesGuide, TraktOAuthSettings.java — a genuine finding.
+    expect(tokenKeyInPrefsApi("return getSettings(context).getString(KEY_REFRESH_TOKEN, null);")).toBe(true);
+    expect(tokenKeyInPrefsApi(".putString(KEY_REFRESH_TOKEN, refreshToken)")).toBe(true);
+    // The Kotlin KTX idiom has no receiver dot — requiring one missed it, which
+    // is what an existing test caught when this rule was first tightened.
+    expect(tokenKeyInPrefsApi('prefs.edit { putString("access_token", t) }')).toBe(true);
+  });
+
+  it("stays quiet on a token-shaped identifier that never reaches preferences", () => {
+    for (const line of [
+      "val accessToken = response.accessToken",
+      "fun refreshToken(): String = api.refresh().token",
+      'headers["Authorization"] = "Bearer $accessToken"',
+    ]) expect(tokenKeyInPrefsApi(line), line.slice(0, 42)).toBe(false);
   });
 });
