@@ -28,7 +28,7 @@
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { RepoSnapshot } from "./native-mobile";
-import { isVendoredPath, stripCStyleComments } from "./native-mobile";
+import { isVendoredPath, stripCStyleComments, sampleCoverage } from "./native-mobile";
 
 /** Below this sampled-file coverage, absence findings self-downgrade to LOW. */
 const SOUND_ABSENCE_COVERAGE = 0.3;
@@ -79,7 +79,7 @@ function buildContext(snapshot: RepoSnapshot): AndroidContext {
     manifest,
     gradle,
     lines: sourceRaw.split("\n").length,
-    coverage: sourcePaths.length === 0 ? 0 : Math.min(1, read.length / sourcePaths.length),
+    coverage: sampleCoverage(read.length, sourcePaths.length, snapshot.truncated),
     paths: snapshot.paths,
   };
 }

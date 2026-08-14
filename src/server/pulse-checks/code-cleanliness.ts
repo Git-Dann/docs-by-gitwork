@@ -30,7 +30,7 @@
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { RepoSnapshot } from "./native-mobile";
-import { isVendoredPath, stripCStyleComments } from "./native-mobile";
+import { isVendoredPath, stripCStyleComments, sampleCoverage } from "./native-mobile";
 
 /**
  * File-length bands.
@@ -98,7 +98,7 @@ function buildContext(snapshot: RepoSnapshot): CleanContext {
   return {
     files,
     lines,
-    coverage: sourcePaths.length === 0 ? 0 : Math.min(1, files.size / sourcePaths.length),
+    coverage: sampleCoverage(files.size, sourcePaths.length, snapshot.truncated),
     paths: snapshot.paths,
   };
 }

@@ -35,7 +35,7 @@
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { RepoSnapshot } from "./native-mobile";
-import { isVendoredPath, stripCStyleComments } from "./native-mobile";
+import { isVendoredPath, stripCStyleComments, sampleCoverage } from "./native-mobile";
 import { anyDependency, parsePackageManifest, type PackageManifest } from "./project-shape";
 
 /** Below this sampled-file coverage, absence findings self-downgrade to LOW. */
@@ -108,7 +108,7 @@ function buildContext(snapshot: RepoSnapshot): WebContext {
     automation,
     sql,
     pkg: parsePackageManifest(pkgText),
-    coverage: sourcePaths.length === 0 ? 0 : Math.min(1, files.size / sourcePaths.length),
+    coverage: sampleCoverage(files.size, sourcePaths.length, snapshot.truncated),
     paths: snapshot.paths,
   };
 }
