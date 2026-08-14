@@ -1859,6 +1859,26 @@ export async function getClientIdBySlug(
   return record?.id ?? null;
 }
 
+/**
+ * Just the display name, for a page's document title.
+ *
+ * Deliberately its own tiny query rather than reusing a full client loader:
+ * `generateMetadata` runs on every navigation to these routes, and pulling a
+ * whole client record (with its relations) to render eight characters into a
+ * browser tab would be a real cost for no reason.
+ *
+ * Resolves the default workspace itself so a caller only needs the slug — the
+ * pages calling this have the slug from the route and nothing else.
+ */
+export async function getClientNameBySlug(slug: string): Promise<string | null> {
+  const { workspace } = await ensureBaseRecords();
+  const record = await workspaceClients.findUnique({
+    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+    select: { name: true },
+  });
+  return record?.name ?? null;
+}
+
 function clientLifecycleTarget(clientId: string): string {
   return `client:${clientId}`;
 }

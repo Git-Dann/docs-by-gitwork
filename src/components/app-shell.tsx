@@ -23,6 +23,7 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
+import { buildPageTitle } from "@/lib/page-title";
 import { avatarPosition, resolveAvatar } from "@/lib/avatar";
 import { useAccount } from "@/hooks/use-account";
 import { isAtLeast } from "@/types/auth";
@@ -93,6 +94,7 @@ export function AppShell({
   titleAccessory,
   hideContentHeader = false,
   mainClassName,
+  titleContext,
 }: {
   children: React.ReactNode;
   title: string;
@@ -100,6 +102,12 @@ export function AppShell({
   /** Optional element rendered inline next to the page title (e.g. an attribution chip). */
   titleAccessory?: React.ReactNode;
   hideContentHeader?: boolean;
+  /**
+   * What this page is ABOUT, when the feature name alone isn't enough to tell
+   * two tabs apart — the client on a client-scoped page. Ends up first in the
+   * document title: "YourGroop · Tasks · Foundry".
+   */
+  titleContext?: string;
   forceCollapsedSidebar?: boolean;
   mainClassName?: string;
 }) {
@@ -160,6 +168,22 @@ export function AppShell({
     staleTime: 60_000,
   });
   const hideCareForScopedUser = shouldScopeCareNav && (scopedCareClients.data?.clients.length ?? 0) === 0;
+
+  /**
+   * Keep the browser tab named after the page.
+   *
+   * Done here rather than page-by-page because `title` is a REQUIRED prop on
+   * AppShell: every /app page must already pass one, so this cannot be forgotten
+   * on a new page the way a missing `export const metadata` silently would be.
+   * The 56 app pages had exactly one between them, which is why every tab read
+   * "Foundry by Gitwork".
+   *
+   * Client-scoped pages also set it server-side via generateMetadata (no flash
+   * on first paint); both call buildPageTitle, so they produce the same string.
+   */
+  useEffect(() => {
+    document.title = buildPageTitle(title, titleContext);
+  }, [title, titleContext]);
 
   // Close drawer on route change
   useEffect(() => {

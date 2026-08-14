@@ -8,7 +8,14 @@ export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL ?? "https://foundry.gitwork.co.uk",
   ),
-  title: "Foundry by Gitwork",
+  title: {
+    // The bare app name is the fallback for anything that sets no title of its own.
+    default: "Foundry by Gitwork",
+    // Any page exporting `title: "X"` becomes "X · Foundry". Pages that build a
+    // full title themselves (the client-scoped ones, via pageMetadataTitle) return
+    // `{ absolute }` so this template doesn't append a second " · Foundry".
+    template: "%s · Foundry",
+  },
   description:
     "Gitwork’s prompt-to-production delivery platform for projects, signals, documents, reviews, and support.",
   // Self-referencing canonical. With metadataBase set, "./" resolves per route, so
