@@ -1487,6 +1487,14 @@ export async function importPulseLead(leadId: string): Promise<{ scanId: string 
   return apiFetch<{ scanId: string }>(`/api/pulse/leads/${leadId}/import`, { method: "POST" });
 }
 
+export async function getPulseLeadPreview(
+  leadId: string,
+): Promise<import("@/server/pulse-lite/leads-admin").PulseLeadPreview> {
+  return apiFetch<import("@/server/pulse-lite/leads-admin").PulseLeadPreview>(
+    `/api/pulse/leads/${leadId}/preview`,
+  );
+}
+
 export interface PulseEmbedConfig {
   enabled: boolean;
   checkKeys: string[];
