@@ -179,13 +179,19 @@ agent verdict, and what `scripts/pulse-gate.mjs` now exits on. Operator guide: `
 findings reading as a pass. Same precedent as Provenance's `INCOMPLETE` (`CLAUDE.md` §38): "could
 not establish" and "is broken" are different facts with different fixes.
 
-Four rules worth not undoing:
+Five rules worth not undoing:
 
 - **Precedence is `BLOCKED > INCONCLUSIVE > CONDITIONAL > READY`.** A confirmed blocker outranks
   thin coverage because it is knowledge rather than the absence of it. Saying "inconclusive" over
   a proven exposed `.env` would bury the one thing the scan is certain of.
 - **Only `status === "FAIL" && trustBucket === "CONFIRMED"` may block.** Blocking a release on a
   heuristic is how a gate gets switched off and stays off.
+- **But `CONDITIONAL` takes `LIKELY` failures too**, and the asymmetry with the rule above is the
+  point. Blocking must be certain; a *reservation* does not have to be, because "we think this is
+  failing" is what a reservation is. This inherited the confirmed-only filter at first, and three
+  live sites were graded `READY` while failing `privacy_policy`, `terms_of_service` and
+  `cookie_consent_granular` — every one a MEDIUM-confidence FAIL. LOW-confidence adverse checks
+  stay out: they bucket as `INCONCLUSIVE`, and the score already treats those as unproven alarms.
 - **Low health is `CONDITIONAL`, never `BLOCKED`.** A low score is debt spread over many controls,
   not a thing anyone can point at and fix before shipping. Blocking belongs to named failures.
 - **A scan that did not finish can never be `READY` or `CONDITIONAL`** (`withScanIncomplete`) — but
@@ -336,14 +342,65 @@ defect cannot verify the fix, and reading a 100% rate as a bug would have made b
 **Still unvalidated against real code:** desktop (Electron/Tauri), React Native, browser
 extension, native Android, iOS, Flutter, API behaviour. Those need real repositories.
 
+## 4b. Validate the URL families against REAL sites — the SPA fix that never ran
+
+§4a pointed the *source* families at real code. Doing the same for the *URL* path — three live
+AI-builder sites (two Lovable, one Bolt) — found a defect of a shape worth naming, because it is
+not "a rule was wrong": **the rule was right, was unit-tested, and had never once executed.**
+
+All three scans reported `spa_client_rendered` as a WARN — the detector fired correctly — and then
+FAILed `has_word_count`, `has_heading_hierarchy` and `internal_links_present` **at HIGH
+confidence** in the same scan. Verified by hand: one shell has 6 words, 0 headings and 0 links. The
+whole point of `spa-detect.ts` is to stop precisely that, and it did nothing.
+
+**Why.** `runUrlChecks` streams partial waves so the UI can fill in as results land. The wave path
+applied the platform and jurisdiction filters; SPA reclassification happened once, on the final
+return. And `runLiteScan`'s `ingest` keeps the **first** status it sees for a `checkKey` — so the
+wave always won, and the corrected verdict was dropped without a word. Two code paths that were
+supposed to agree, one of them carrying a correction the other did not.
+
+The fix is structural, not a patch: **`finaliseUrlChecks` is the one pipeline both call.** A test
+asserts `reclassifySpaChecks` is invoked in exactly one place and that both call sites route
+through it. Reverting the emit wrapper to its old inline filters fails that test.
+
+**Two related honesty changes came out of it:**
+
+- **The reclassified status is `INCONCLUSIVE`, not `SKIPPED`.** SKIPPED means "does not apply" and
+  leaves the denominator, so coverage kept reading 96% on pages whose content was never read. SEO
+  applies perfectly well to a Lovable marketing page; Pulse just could not measure it without
+  running JS. INCONCLUSIVE says exactly that, and is counted against completeness. On the three
+  sites coverage moved **96% → 87–89%** while health moved 71 → 72: the honest direction on both.
+- **`image_alt_coverage` reported PASS on zero images.** True of a text-only page and a lie about a
+  shell whose images had not rendered — a control asserted satisfied by the absence of evidence
+  (§35 again). Zero images is `NOT_APPLICABLE`; on a shell it reclassifies with the rest.
+
+⚠️ **Removing three false failures exposed a real gate defect, which is the thing to expect after
+any false-positive fix.** With those FAILs gone the gate flipped `CONDITIONAL → READY` — on sites
+with **no privacy policy, no terms and no cookie consent**. The three false SEO failures had been
+the only thing making the gate conditional. Cause: the `CONDITIONAL` branch inherited the blocking
+rule's `trustBucket === "CONFIRMED"` filter, and all four real failures are MEDIUM confidence. Fixed
+above; both sites are `CONDITIONAL` again, now for the four reasons that are actually true.
+
+**Still unvalidated against real sites:** every URL family other than these three shells — and
+notably, a *server-rendered* site, where the reclassification must stay off. Actively probing
+strangers' live apps is a decision for the account owner, not the scanner: `api-behaviour` performs
+CORS reflection, TRACE and GraphQL introspection probes.
+
 ## 5. Verification honesty
 
-Everything above was verified by `npm run verify` (tsc + lint 0 errors, **1,909 tests**,
+Everything above was verified by `npm run verify` (tsc + lint 0 errors, **2,066 tests**,
 `audit:ui` 0 findings with its self-test passing) and `npx next build`.
 
-**Nothing was run against a live target.** `/app` is auth-gated, there is no staging and no local
-database, so no scan was executed end to end, no model call was made, and the reply paths were not
-exercised against real data. Post-deploy, the checks worth making in order:
+**Nothing was run through the product.** `/app` is auth-gated, there is no staging and no local
+database, so no scan was executed end to end through the UI, no model call was made, and the reply
+paths were not exercised against real data.
+
+**The URL scanner itself, however, was run against live targets** — §4b. `runLiteScan` needs no
+database, so a throwaway harness calling it directly is a genuine end-to-end exercise of the URL
+collectors, the trust layer, the score and the gate. That is what found the SPA defect, and it is
+the cheapest real verification available on this branch; reach for it before assuming a URL-path
+change is only unit-testable. It still says nothing about persistence, the report UI or the AI
+phase. Post-deploy, the checks worth making in order:
 
 1. Scan a URL whose DNS is unreachable and confirm `ipv6_dns_record` and `subdomain_takeover_risk`
    report **Inconclusive**, not a pass or a warning.
@@ -353,3 +410,10 @@ exercised against real data. Post-deploy, the checks worth making in order:
    score is unchanged.
 4. As a non-admin, `DELETE /api/settings/checks/<key>` and confirm a 403.
 5. Run the fix agent against a repo and confirm the PR contains only repo-relative paths.
+6. Scan a Lovable/Bolt URL **through the app** and confirm the streamed checks arrive already
+   reclassified — the SEO content checks should read Inconclusive as they land, never flash a red
+   FAIL first. The bug in §4b lived entirely in the streamed path, so watching the final state is
+   exactly what would miss its return.
+7. Scan a server-rendered site and confirm those same checks still report normally. The
+   reclassification must be off by default; a fix that made every scan inconclusive would look
+   identical in the numbers.

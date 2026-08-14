@@ -250,14 +250,33 @@ export function evaluateReleaseGate(
     });
   }
 
-  const remainingFailures = confirmedFailures.filter(
-    (check) => !namedBlockers.includes(check) && !criticalInBlockedCategory.includes(check),
+  // ⚠️ CONDITIONAL takes LIKELY failures as well as CONFIRMED ones, and that asymmetry with the
+  // blocking rule above is deliberate. Blocking must be certain — stopping a release on a
+  // heuristic is how a gate gets switched off. A reservation does not have to be certain; a
+  // reservation is what "we think this is failing" IS. Inheriting the CONFIRMED-only filter here
+  // meant a scan could report READY while carrying real failures whose only flaw was MEDIUM
+  // confidence — observed on three live sites with no privacy policy, no terms and no cookie
+  // consent, every one of them a MEDIUM-confidence FAIL. LOW-confidence adverse checks are still
+  // excluded: they bucket as INCONCLUSIVE, and score-breakdown already treats those as unproven
+  // alarms rather than findings.
+  const reservations = checks.filter(
+    (check) =>
+      check.status === "FAIL" &&
+      (check.trustBucket === "CONFIRMED" || check.trustBucket === "LIKELY") &&
+      !namedBlockers.includes(check) &&
+      !criticalInBlockedCategory.includes(check),
   );
-  if (remainingFailures.length > 0) {
+  if (reservations.length > 0) {
+    const confirmedCount = reservations.filter((check) => check.trustBucket === "CONFIRMED").length;
+    const likelyCount = reservations.length - confirmedCount;
+    const grading = [
+      confirmedCount > 0 && `${confirmedCount} confirmed`,
+      likelyCount > 0 && `${likelyCount} likely`,
+    ].filter(Boolean).join(", ");
     conditional.push({
       code: "UNRESOLVED_FAILURES",
-      summary: `${remainingFailures.length} confirmed ${plural(remainingFailures.length, "failure", "failures")} outside the blocking set.`,
-      checkKeys: remainingFailures.map((check) => check.checkKey),
+      summary: `${reservations.length} ${plural(reservations.length, "failure", "failures")} outside the blocking set (${grading}).`,
+      checkKeys: reservations.map((check) => check.checkKey),
     });
   }
 

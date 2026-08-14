@@ -550,6 +550,38 @@ function applyJurisdictionFilter(
   });
 }
 
+/**
+ * The single pipeline every URL check passes through — whether it is streamed in a wave or
+ * returned at the end of the scan.
+ *
+ * ⚠️ These were two separate code paths and they disagreed. The waves applied the platform and
+ * jurisdiction filters only; SPA reclassification happened just once, on the final return. And
+ * because `runLiteScan`'s ingest keeps the FIRST result it sees for a checkKey, the wave always
+ * won and the corrected status was silently discarded. Net effect: every Lovable/Bolt/v0 site —
+ * exactly the population Pulse targets — was scored with `has_word_count`, `has_heading_hierarchy`
+ * and `internal_links_present` FAILing at HIGH confidence, while `spa_client_rendered` correctly
+ * WARNed one row above. The mechanism existed, was unit-tested, and never reached a single scan.
+ *
+ * Reclassification runs FIRST so the applicability filters keep the last word: a check the
+ * platform says does not apply must stay out of the denominator, not be re-admitted as unknown.
+ */
+export function finaliseUrlChecks(
+  batch: PulseScanCheckInput[],
+  opts: {
+    platform?: string;
+    surfaceKind: UrlSurfaceKind;
+    markets: JurisdictionCode[];
+    /** The static HTML is a client-rendered shell, so body-parse verdicts are not evidence. */
+    spaShell: boolean;
+  },
+): PulseScanCheckInput[] {
+  const reclassified = opts.spaShell ? reclassifySpaChecks(batch) : batch;
+  return applyJurisdictionFilter(
+    applyPlatformFilter(reclassified, opts.platform, opts.surfaceKind),
+    opts.markets,
+  );
+}
+
 export async function runUrlChecks(
   url: string,
   platform?: string,
@@ -579,12 +611,15 @@ export async function runUrlChecks(
   let effectiveMarkets: JurisdictionCode[] = targetMarkets ?? [];
   let detectedMarkets: JurisdictionCode[] = [];
   let surfaceKind: UrlSurfaceKind = "DEPLOYED_PRODUCT";
-  // Optional incremental emitter — fires partial waves so callers (runLiteScan)
-  // can persist + stream checks as they land. Applies the same platform +
-  // jurisdiction filters the final return uses, so streamed statuses match.
+  // Set the moment the page is read, before any wave is emitted — mutable so the emit wrapper
+  // picks it up, the same pattern `effectiveMarkets` and `surfaceKind` already use.
+  let spaShell = false;
+  // Optional incremental emitter — fires partial waves so callers (runLiteScan) can persist +
+  // stream checks as they land. Goes through finaliseUrlChecks, the same function the final
+  // return uses, so a streamed status cannot differ from the one the scan settles on.
   const emit = onWave
     ? (batch: PulseScanCheckInput[]) =>
-        onWave(applyJurisdictionFilter(applyPlatformFilter(batch, platform, surfaceKind), effectiveMarkets))
+        onWave(finaliseUrlChecks(batch, { platform, surfaceKind, markets: effectiveMarkets, spaShell }))
     : undefined;
 
   const httpsUrl = url.startsWith("http://") ? url.replace("http://", "https://") : url;
@@ -592,7 +627,23 @@ export async function runUrlChecks(
   const baseUrl = httpsUrl.replace(/\/$/, "");
 
   const pageResult = await fetchPage(httpsUrl);
-  if (pageResult) surfaceKind = detectUrlSurfaceKind(pageResult.html);
+  if (pageResult) {
+    surfaceKind = detectUrlSurfaceKind(pageResult.html);
+    spaShell = detectSpaContext({
+      builder: detectAiBuilder(
+        (() => {
+          try {
+            return new URL(pageResult.finalUrl || httpsUrl).hostname.toLowerCase();
+          } catch {
+            return "";
+          }
+        })(),
+        pageResult.html.toLowerCase(),
+      ),
+      html: pageResult.html,
+      contentType: pageResult.headers["content-type"] ?? "",
+    }).isSpa;
+  }
 
   // Infrastructure
   checks.push({
@@ -2658,9 +2709,12 @@ export async function runUrlChecks(
       category: CATEGORIES.ACCESSIBILITY,
       checkKey: "image_alt_coverage",
       label: "Image alt text coverage",
-      status: imgTags.length === 0 ? "PASS" : altCoverage >= 0.8 ? "PASS" : altCoverage >= 0.5 ? "WARN" : "FAIL",
+      // Zero images is NOT_APPLICABLE, never PASS. A PASS asserts the control was satisfied; with
+      // nothing to caption there is no control to satisfy, and on a client-rendered shell the
+      // images simply had not rendered — so a PASS there would be a finding invented from absence.
+      status: imgTags.length === 0 ? "NOT_APPLICABLE" : altCoverage >= 0.8 ? "PASS" : altCoverage >= 0.5 ? "WARN" : "FAIL",
       detail: imgTags.length === 0
-        ? "No images detected on this page."
+        ? "No images were present in the page HTML, so there was no alt-text coverage to measure."
         : `${imgsWithAlt}/${imgTags.length} images have alt attributes (${Math.round(altCoverage * 100)}%). ${altCoverage < 0.8 ? "Missing alt text fails WCAG 1.1.1 and harms screen reader users." : "Good alt text coverage."}`,
     });
 
@@ -3430,9 +3484,6 @@ export async function runUrlChecks(
     }
   }
 
-  // Client-rendered SPA / vibe-code preview (Lovable/Bolt/Replit): the static HTML is an empty
-  // shell, so HTML-parse SEO/content checks fail falsely. Reclassify those to SKIPPED (excluded
-  // from the score) rather than letting them tank an otherwise-fine prototype. See spa-detect.ts.
   const spaHostname = (() => {
     try {
       return new URL(pageResult?.finalUrl || httpsUrl).hostname.toLowerCase();
@@ -3442,18 +3493,14 @@ export async function runUrlChecks(
   })();
   const techStack = pageResult ? detectTechStack(pageResult.headers, pageResult.html, spaHostname) : [];
   const rawChecks = checks.map((check, i) => ({ ...check, sortOrder: i }));
-  const platformFiltered = applyPlatformFilter(rawChecks, platform, surfaceKind);
-  const filteredChecks = applyJurisdictionFilter(platformFiltered, effectiveMarkets);
-  const spaAdjusted =
-    pageResult &&
-    detectSpaContext({
-      builder: detectAiBuilder(spaHostname, pageResult.html.toLowerCase()),
-      html: pageResult.html,
-      contentType: pageResult.headers["content-type"] ?? "",
-    }).isSpa
-      ? reclassifySpaChecks(filteredChecks)
-      : filteredChecks;
-  return { checks: spaAdjusted, techStack, detectedMarkets, surfaceKind };
+  // Same pipeline as every streamed wave — see finaliseUrlChecks for why that matters.
+  const finalChecks = finaliseUrlChecks(rawChecks, {
+    platform,
+    surfaceKind,
+    markets: effectiveMarkets,
+    spaShell,
+  });
+  return { checks: finalChecks, techStack, detectedMarkets, surfaceKind };
 }
 
 type GitHubContentsEntry = { name: string; type: "file" | "dir" };

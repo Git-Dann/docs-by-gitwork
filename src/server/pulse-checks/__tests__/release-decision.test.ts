@@ -115,6 +115,48 @@ describe("only a failure we are sure of may block", () => {
   });
 });
 
+describe("a reservation does not have to be certain", () => {
+  // Blocking demands CONFIRMED; a reservation does not, because "we think this is failing" is
+  // what a reservation IS. Found on three live sites: no privacy policy, no terms and no cookie
+  // consent, all MEDIUM-confidence FAILs, and the gate read READY.
+  const likelyFail = (checkKey: string) =>
+    check({ checkKey, label: checkKey, status: "FAIL", confidence: "MEDIUM", trustBucket: "LIKELY" });
+
+  it("is CONDITIONAL on likely failures, not READY", () => {
+    const result = evaluateReleaseGate(
+      [likelyFail("cookie_consent_granular"), likelyFail("vibe_placeholder_content")],
+      breakdown(90, 95),
+    );
+    expect(result.decision).toBe("CONDITIONAL");
+    expect(result.conditional[0].code).toBe("UNRESOLVED_FAILURES");
+    expect(result.conditional[0].summary).toContain("2 likely");
+  });
+
+  it("still refuses to BLOCK on one — a heuristic must not stop a release", () => {
+    // privacy_policy is in launch-ready's blockingKeys; at MEDIUM confidence it is a reservation.
+    const result = evaluateReleaseGate([likelyFail("privacy_policy")], breakdown(90, 95));
+    expect(result.decision).toBe("CONDITIONAL");
+    expect(result.blocking).toEqual([]);
+  });
+
+  it("ignores a LOW-confidence adverse check — an unproven alarm is not a finding", () => {
+    const unproven = check({
+      checkKey: "some_guess", label: "some_guess", status: "FAIL",
+      confidence: "LOW", trustBucket: "INCONCLUSIVE",
+    });
+    expect(evaluateReleaseGate([unproven], breakdown(90, 95)).decision).toBe("READY");
+  });
+
+  it("names both gradings when a scan carries each", () => {
+    const result = evaluateReleaseGate(
+      [confirmedFail("a_sure_thing"), likelyFail("a_probable_thing")],
+      breakdown(90, 95),
+    );
+    expect(result.conditional[0].summary).toContain("1 confirmed");
+    expect(result.conditional[0].summary).toContain("1 likely");
+  });
+});
+
 describe("a low score is debt, not a blocker", () => {
   it("is CONDITIONAL, never BLOCKED", () => {
     const result = evaluateReleaseGate([check({ status: "PASS" })], breakdown(10, 95));

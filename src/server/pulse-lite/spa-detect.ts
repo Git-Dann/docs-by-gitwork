@@ -4,8 +4,15 @@ import type { PulseScanCheckInput } from "@/types/pulse";
 // Lovable / Bolt / Replit (and other client-rendered builders) serve a near-empty HTML
 // shell — the content is rendered by JS in the browser. Pulse fetches raw HTML (no JS), so
 // SEO/content/meta/heading checks parse an empty shell and falsely FAIL, tanking the score.
-// This module detects that situation so those checks can be reclassified to SKIPPED (which
-// score-breakdown.ts excludes from the denominator) instead of counted as failures.
+// This module detects that situation so those checks can be reclassified to INCONCLUSIVE.
+//
+// ⚠️ INCONCLUSIVE, not SKIPPED, and the difference is the whole point. SKIPPED means "this
+// control does not apply" — it leaves the denominator, and coverage still reads 100%. But SEO
+// absolutely applies to a Lovable marketing page; Pulse simply could not measure it without
+// running JS. INCONCLUSIVE says exactly that: excluded from the score (so it cannot invent a
+// failure) *and* counted against completeness (so the scan admits what it did not see). Using
+// SKIPPED here would be the §35 disease — "we could not look" reported as "there is nothing
+// there", and a 96%-coverage claim on a page whose content was never read.
 //
 // Pure + dependency-free (only a type import) so it's cheap to unit-test and has no import
 // cycle with the check modules. `builder` is passed in by the caller (from detectAiBuilder).
@@ -60,6 +67,15 @@ export const HTML_RENDER_DEPENDENT_CHECK_KEYS = new Set<string>([
   "internal_link_depth",
 ]);
 
+/**
+ * Checks whose *non-adverse* result is manufactured from the ABSENCE of body content, and which
+ * are therefore vacuously satisfied by an empty shell. `image_alt_coverage` reports PASS ("no
+ * images detected") on a page that has no images — true of a text-only page, and a lie about a
+ * shell whose images had not rendered yet. These are reclassified too, which is the one case
+ * where a non-failing status must be rewritten.
+ */
+export const VACUOUS_ON_EMPTY_SHELL_KEYS = new Set<string>(["image_alt_coverage"]);
+
 const SPA_SKIP_PREFIX =
   "Not assessable — client-rendered SPA/preview (content is JS-rendered, not in the static HTML).";
 
@@ -99,19 +115,27 @@ export function detectSpaContext(input: {
 }
 
 /**
- * Reclassify HTML-parse-dependent checks that FAILed/WARNed only because the static HTML is an
- * empty SPA shell → SKIPPED (excluded from the score), with an explanatory detail prefix.
- * PASS checks and any check not in the set are left untouched.
+ * Reclassify checks whose verdict came from parsing a body that was never rendered → INCONCLUSIVE,
+ * with an explanatory detail prefix. Two families:
+ *  - HTML_RENDER_DEPENDENT_CHECK_KEYS, but only where they FAILed/WARNed. A PASS there was earned
+ *    from something really present in the shell (a `<title>`, an og: tag), so it stands.
+ *  - VACUOUS_ON_EMPTY_SHELL_KEYS in *any* non-adverse state, because there the pass IS the absence.
+ * Anything else is left untouched — notably ssl_valid, robots, privacy/terms, which are fetched
+ * rather than parsed and whose failures are real on a shell.
  */
 export function reclassifySpaChecks(checks: PulseScanCheckInput[]): PulseScanCheckInput[] {
   return checks.map((c) => {
-    if (
-      (c.status === "FAIL" || c.status === "WARN") &&
-      HTML_RENDER_DEPENDENT_CHECK_KEYS.has(c.checkKey)
-    ) {
+    const adverse = c.status === "FAIL" || c.status === "WARN";
+    const parseDependent = adverse && HTML_RENDER_DEPENDENT_CHECK_KEYS.has(c.checkKey);
+    // Only PASS/NOT_APPLICABLE — a check already marked SKIPPED by a platform or jurisdiction
+    // filter must stay out of the denominator; re-admitting it would overstate what was assessed.
+    const vacuous =
+      (c.status === "PASS" || c.status === "NOT_APPLICABLE") &&
+      VACUOUS_ON_EMPTY_SHELL_KEYS.has(c.checkKey);
+    if (parseDependent || vacuous) {
       return {
         ...c,
-        status: "SKIPPED" as const,
+        status: "INCONCLUSIVE" as const,
         detail: c.detail ? `${SPA_SKIP_PREFIX} ${c.detail}` : SPA_SKIP_PREFIX,
       };
     }
