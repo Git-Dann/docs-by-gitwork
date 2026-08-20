@@ -78,7 +78,7 @@
   {
     "slug": "design-strava",
     "name": "Strava Design System",
-    "summary": "Map-first social fitness design system: a chromatically neutral canvas, one signature orange accent, and a glowing route polyline as the app's core visual motif.",
+    "summary": "Map-first social fitness design system: a neutral canvas, one signature orange accent, and a glowing route polyline as the app's core motif.",
     "description": "Recreates the newspaper-flat, map-centric aesthetic of a social fitness-tracking app — a single orange brand accent, tabular data-forward typography, and the route-polyline-plus-3-up-stat-grid activity card as paste-ready SwiftUI.",
     "type": "PROMPT",
     "tags": [
@@ -154,7 +154,7 @@
   {
     "slug": "design-whoop",
     "name": "Whoop Design System",
-    "summary": "Cockpit-style design system for a physiological performance tracker: pitch-black canvas, neon strain and color-shifting recovery accents, and all-caps instrument-panel typography.",
+    "summary": "Cockpit-style design system for a physiological tracker: pitch-black canvas, neon strain and recovery accents, all-caps instrument-panel typography.",
     "description": "Recreates the clinical, dark-canvas-only aesthetic of a wearable performance-tracking app — neon strain green, a red-to-green recovery gradient ring, all-caps tracked headers, and hard-edged instrument-panel components as paste-ready SwiftUI.",
     "type": "PROMPT",
     "tags": [
@@ -192,7 +192,7 @@
   {
     "slug": "design-zwift",
     "name": "Zwift Design System",
-    "summary": "Game-first design system for a virtual-world cycling app: a full-bleed 3D world canvas, glassmorphic HUD overlays, and fixed semantic metric colors for the ride heads-up display.",
+    "summary": "Game-first design system for a virtual-world cycling app: full-bleed 3D canvas, glassmorphic HUD overlays, fixed semantic colors for ride metrics.",
     "description": "Recreates the videogame-meets-fitness aesthetic of an indoor cycling/virtual-world app — translucent glass overlays floating over a 3D scene, a condensed display face for oversized ride metrics, and a dual off-ride dark app shell as paste-ready SwiftUI.",
     "type": "PROMPT",
     "tags": [

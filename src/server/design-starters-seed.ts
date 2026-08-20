@@ -23,6 +23,12 @@ import PRODUCTIVITY_2 from "@/data/design-starters-productivity-2.json";
 import PRODUCTIVITY_3 from "@/data/design-starters-productivity-3.json";
 import SOCIAL_1 from "@/data/design-starters-social-1.json";
 import SOCIAL_2 from "@/data/design-starters-social-2.json";
+import SOCIAL_3 from "@/data/design-starters-social-3.json";
+import TRAVEL_1 from "@/data/design-starters-travel-1.json";
+import TRAVEL_2 from "@/data/design-starters-travel-2.json";
+import TRAVEL_3 from "@/data/design-starters-travel-3.json";
+import VIDEO_1 from "@/data/design-starters-video-1.json";
+import VIDEO_2 from "@/data/design-starters-video-2.json";
 
 interface DesignSystemStarter {
   slug: string;
@@ -69,6 +75,12 @@ const DESIGN_SYSTEM_STARTERS: DesignSystemStarter[] = [
   ...(PRODUCTIVITY_3 as unknown as DesignSystemStarter[]),
   ...(SOCIAL_1 as unknown as DesignSystemStarter[]),
   ...(SOCIAL_2 as unknown as DesignSystemStarter[]),
+  ...(SOCIAL_3 as unknown as DesignSystemStarter[]),
+  ...(TRAVEL_1 as unknown as DesignSystemStarter[]),
+  ...(TRAVEL_2 as unknown as DesignSystemStarter[]),
+  ...(TRAVEL_3 as unknown as DesignSystemStarter[]),
+  ...(VIDEO_1 as unknown as DesignSystemStarter[]),
+  ...(VIDEO_2 as unknown as DesignSystemStarter[]),
 ];
 
 export async function seedDesignSystemStarters(workspaceId: string): Promise<number> {
