@@ -3,6 +3,7 @@ import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertSuperAdminOrApiKey, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { seedBuiltInStarters } from "@/server/starters-catalog";
 import { seedStarterAdditions } from "@/server/starters-additions-seed";
+import { seedDesignSystemStarters } from "@/server/design-starters-seed";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,8 @@ export async function POST(request: Request) {
     const { workspace } = await ensureBaseRecords();
     const count = await seedBuiltInStarters(workspace.id);
     const additionsCount = await seedStarterAdditions(workspace.id);
-    return apiOk({ count: count + additionsCount });
+    const designCount = await seedDesignSystemStarters(workspace.id);
+    return apiOk({ count: count + additionsCount + designCount });
   } catch (error) {
     return fromError(error);
   }

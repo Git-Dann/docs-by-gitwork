@@ -41,6 +41,7 @@ import { getDefaultCodeClearCandidatePayloads } from "@/server/codeclear";
 import { migratePermissionModel } from "@/server/permissions";
 import { seedBuiltInStarters } from "@/server/starters-catalog";
 import { seedStarterAdditions } from "@/server/starters-additions-seed";
+import { seedDesignSystemStarters } from "@/server/design-starters-seed";
 import { seedMasterPromptStarter } from "@/server/master-prompt-starter";
 import { seedHandbookArticles } from "@/server/handbook-catalog";
 import { seedGolfClubs } from "@/server/golf-clubs";
@@ -476,6 +477,9 @@ async function _ensureBaseRecords() {
   await seedBuiltInStarters(workspace.id);
   // Net-new Prompt starters added after a gap analysis pass — see starters-additions-seed.ts.
   await seedStarterAdditions(workspace.id);
+  // iOS design-system Starters (one per app, reverse-engineered from awesome-ios-design-md).
+  // See design-starters-seed.ts.
+  await seedDesignSystemStarters(workspace.id);
   // The editable, versioned master build-prompt template — workspace-owned + create-only.
   await seedMasterPromptStarter(workspace.id);
 

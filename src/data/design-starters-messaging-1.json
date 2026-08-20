@@ -1,0 +1,306 @@
+[
+  {
+    "slug": "design-discord",
+    "name": "Discord Design System",
+    "summary": "Generates a SwiftUI prompt for a dense, dark-first community chat UI with a server rail, role-colored usernames, and live presence.",
+    "description": "A deep SwiftUI prompt for building a Discord-style community messaging app: three-pane server/channel/chat navigation, a tuned dark gray surface stack, role-colored usernames, presence dots, and grouped message runs.",
+    "type": "PROMPT",
+    "tags": [
+      "messaging",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A full color/type token reference for a dense, dark-first community chat surface",
+        "SwiftUI-ready specs for a server-rail navigation shell, message rows, and reaction chips",
+        "House rules that keep presence, role-color, and flat-shadow conventions consistent as the app grows"
+      ],
+      "promptText": "<role>\nYou are a senior iOS product designer and SwiftUI engineer who specializes in dense, multi-pane community and chat applications. You have shipped production messaging apps that need to render hundreds of messages per screen without visual fatigue, and you think in terms of surface hierarchies, presence systems, and per-user theming rather than generic chat bubbles.\n</role>\n\n<reference_data>\nColor roles (dark-first, three-gray surface stack):\n- Server rail (leftmost pane): #1E1F22\n- Channel list (middle pane): #2B2D31\n- Chat canvas (rightmost pane): #313338\n- Compose bar / elevated surface: #383A40\n- Divider hairline: #3F4147\n- Brand accent \"Blurple\": #5865F2, pressed #4752C4, legacy tone #7289DA\n- Nitro gradient accent: #5865F2 -> #EB459E (diagonal, premium-only)\n- Presence: online #23A55A, idle #F0B232, do-not-disturb #F23F43, offline #80848E, streaming #593695\n- Text: primary #F2F3F5, secondary #B5BAC1, muted #949BA4, link #00A8FC\n- Destructive #DA373C, boost accent #EB459E\n\nType ladder: a proprietary geometric sans (fallback to the platform system sans) at a compact working range of 14-20pt. Screen titles sit at 20pt/700, active list labels at 16pt/600, body copy at 16pt/400, inline timestamps at 12pt/500, uppercase section labels at 12pt/700 with wide tracking. A dedicated monospace face is reserved for code blocks at 14pt/400. Weight, not size, is what does most of the hierarchy work here.\n\nNamed distinctive patterns to reproduce:\n1. Rail-of-servers navigation: a vertical column of 48pt rounded-square icons (16pt radius idle, morphing to 12pt when active — a \"squircle\" tightening), with a 4x40pt vertical accent bar marking the selected server.\n2. Per-server role-colored usernames: the sender name above a message inherits a server-assigned hex color rather than a fixed brand tone.\n3. Presence ring/dot system: a small bordered dot bottom-right of every avatar, with a distinct hue per state, always visible (never hidden behind a tap).\n4. Grouped message runs: consecutive messages under 5 minutes apart from the same sender collapse the avatar/name and tighten vertical rhythm to a few points, versus a much larger gap when the sender changes.\n5. Inline reaction chips: small pill rows beneath a message showing emoji + count, with a distinct tint when the viewer themselves reacted.\n6. A three-pane architecture (rail, list, canvas) that collapses to a single active pane on phone width via horizontal swipe/drawer rather than tab bars.\n</reference_data>\n\n<house_rules>\n1. Never let the three background grays drift far apart in luminance — they must read as siblings of one family, not competing cards; if in doubt, tighten the delta rather than widen it.\n2. The accent color is structural, not decorative — reserve it for calls-to-action, active-state indicators, and mentions; never use it as a body-text color or a fill on ordinary content.\n3. Every avatar carries a presence indicator with a border matching whatever surface it sits on, so the dot visually \"punches through\" rather than floating.\n4. Username color is per-server and per-role, not global — build the type system so a name's color is a runtime input, with a safe fallback to the primary text color when no role color is set.\n5. Treat the interface as fundamentally flat: shadows are reserved only for genuinely floating layers (popovers, sheets, modals), never for ordinary messages, list rows, or icons.\n6. Corner geometry communicates state — a shape that visibly tightens its radius on selection (rather than simply changing color) reinforces \"this is now active\" more effectively than a border would.\n7. Respect the compact type scale — resist the urge to enlarge body text for legibility; the density is intentional so a screenful of conversation stays scannable.\n8. Markdown-style inline formatting (bold, italic, strikethrough, inline code, spoiler-block, quote) must render live in the message stream, not just in a preview pane.\n9. A voice/live-presence surface (if built) should visually differ from a text channel row — expanding in place to show active participants with a pulsing ring around whoever is currently speaking.\n</house_rules>\n\n<the_project>\n- App name and one-line pitch:\n- Primary audience (gamers / hobby communities / work teams / other):\n- Brand accent color (hex) if different from the reference default, and where it must NOT be used:\n- Does the product need multi-server or multi-workspace navigation, or just a single flat conversation list?\n- Does the product need voice/live channels, or text-only?\n- Platform target (iOS only / iOS + iPadOS / also Android or web):\n- Any existing typeface or type license constraints:\n- Light-mode requirement: is dark-first acceptable, or must light mode be equally polished?\n</the_project>\n\n<what_to_give_me>\n1. A complete SwiftUI Color and Font token file (extensions on Color/Font) covering the surface stack, accent, presence states, and text ranks, annotated with the hex value each token maps to.\n2. The three-pane navigation shell as SwiftUI views: a rail/list component and the swipe- or drawer-based mobile collapse behavior, including the squircle-morph selection state.\n3. A message row component handling avatar/presence, role-colored sender name, grouped-run spacing, and inline Markdown rendering.\n4. A reaction-chip row component with the \"you reacted\" tint state and tap-to-toggle behavior.\n5. A compose bar component with a leading attachment affordance, an auto-growing text field, and a send affordance that only becomes prominent once there is text to send.\n6. A short design-rationale note explaining which patterns were kept faithful to the reference system and which were adapted for the described product's audience.\n7. A do/don't checklist specific to this build, derived from the house rules above, that a reviewer could use to sign off on a PR.\n</what_to_give_me>",
+      "keywords": [
+        "discord",
+        "chat ui",
+        "swiftui",
+        "dark mode",
+        "community app",
+        "presence",
+        "server rail",
+        "role colors",
+        "reaction chips",
+        "design tokens"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:discord",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-groupme",
+    "name": "GroupMe Design System",
+    "summary": "Generates a SwiftUI prompt for a friendly, bright-blue group chat UI with a colored nav header, a docked like-count pill, and per-group theming.",
+    "description": "A deep SwiftUI prompt for building a GroupMe-style group messenger: a solid-accent chat header, circular gradient avatars, a docked heart-like pill, and settings-driven per-group color theming.",
+    "type": "PROMPT",
+    "tags": [
+      "messaging",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A color/type token set for a bright single-accent group-chat surface",
+        "SwiftUI specs for a colored nav header, grouped message bubbles, and a docked like-count pill",
+        "House rules distinguishing fixed brand chrome from per-group theme-able elements"
+      ],
+      "promptText": "<role>\nYou are an iOS product designer who specializes in warm, social group-messaging apps aimed at friend groups rather than professional teams. You favor system typography, circular identity, and a single loud accent color, and you are fluent in translating that restraint into idiomatic SwiftUI.\n</role>\n\n<reference_data>\nColor roles:\n- Brand accent \"chat blue\": #00AFF0, pressed #0091C7, deep tone #0077B5\n- Light canvas #FFFFFF, dark canvas #121212 (intentionally warm, not neutral black)\n- Inbound bubble: #F0F0F0 light / #2A2A2C dark\n- Outbound bubble: brand accent (white text)\n- Per-group theme accents (user-selectable, recolor avatars and sender names only): coral #FF6B6B, green #2ECC71, purple #9B59B6, teal #1ABC9C, plus a default blue->deep-blue gradient pair\n- Reaction accent (a heart glyph): #FF3B5C\n- Divider light #E4E4E6 / dark #2C2C2E\n- Text primary light #1A1A1A / dark #ECECEC; text secondary light #6A6A6A / dark #A0A0A0\n\nType ladder: platform system sans throughout (no bundled brand face). Group name in a large nav title sits around 22pt/700 on the colored header; message body at 16pt/400; sender name above a bubble run at 12pt/600 tinted with the active group's accent; list-row title at 15pt/600 with a 14pt/400 preview line beneath it; an emoji-only message enlarges to roughly 40pt.\n\nNamed distinctive patterns to reproduce:\n1. A solid-color (not white or gray) navigation bar painted in the brand accent whenever a conversation is open, carrying the group name and member count in white.\n2. A \"like\" gesture on any message (double-tap or a tap-target) that docks a small rounded count pill overlapping the trailing-bottom corner of the bubble, holding a heart glyph plus a numeric count — never rendered as inline emoji text.\n3. Per-group theming: a settings control that recolors avatar gradients and the sender-name tint for that specific group, while leaving the navigation bar, outbound-bubble color, and send button untouched.\n4. Generated two-stop gradient avatars carrying the member's initial, used for any member without a photo.\n5. An inline multi-photo share that renders as a compact grid inside a single bubble-shaped container, with an overflow tile (e.g. \"+N\") when more photos exist than grid cells.\n6. A pill-shaped composer: a leading attachment affordance, a rounded text field, and a trailing circular send button that is only tinted with the accent once there is text.\n</reference_data>\n\n<house_rules>\n1. The navigation bar is not neutral chrome here — it is a full-bleed block of the brand accent whenever a conversation is open, and that block is the single strongest brand signal in the app; never let it default to white or gray.\n2. Outbound bubbles always use the fixed brand accent, never the per-group theme color — only avatars and sender names are allowed to shift with a group's chosen theme.\n3. The \"like\" affordance is a docked pill overlapping a bubble corner, not an inline emoji character appended to the message text — keep the interaction visually distinct from a text reaction.\n4. Avatars are always circles carrying a generated two-stop gradient with an initial, never a static solid-color fill and never a squared shape.\n5. Consecutive messages from one sender collapse into a single visual run — show the avatar and name once at the top of the run, then tighten the vertical gap between subsequent bubbles dramatically.\n6. Keep the thread itself close to flat; reserve any shadow for the \"like\" pill and for sheets/pickers that genuinely float above the content.\n7. Do not introduce a secondary display or brand typeface — lean entirely on the platform system font and let color plus circular avatars carry personality instead.\n8. Multi-photo shares group into a small grid inside one container rather than stacking as separate full-width images — this keeps a photo-heavy thread scannable.\n9. Keep the dark-mode canvas a warm near-black rather than a neutral or pure black, so the app still reads as friendly rather than austere at night.\n</house_rules>\n\n<the_project>\n- App name and one-line pitch:\n- Primary audience (friend groups / clubs / families / other):\n- Brand accent color (hex) if different from the reference default:\n- Should per-conversation theming be supported, and if so what's the palette of selectable themes?\n- Is a \"like\" or lightweight reaction gesture central to the product, or optional?\n- Any existing multi-photo/gallery sharing requirement?\n- Platform target (iOS only / iOS + iPadOS / also Android):\n- Any accessibility or Dynamic Type constraints beyond the iOS defaults:\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color and Font token file covering the brand accent, canvas/surface pairs for light and dark, per-theme accent set, and the text-rank ladder.\n2. A colored navigation-bar header component for an open conversation, including the group avatar, name, and a subordinate status line.\n3. An inbound/outbound message-bubble pair with same-sender run grouping and the tail-corner treatment described in the reference data.\n4. The \"like\" pill component: its docked position relative to a bubble, its pop-in animation, and its tap target for viewing who reacted.\n5. A per-group theme picker component that recolors only the scoped elements (avatars, sender names) without touching the fixed accent used elsewhere.\n6. A pill composer component with the attachment affordance, growing text field, and accent-tinted send button.\n7. A short rationale note on how the per-group theming boundary was implemented so it can't accidentally leak into the fixed-accent elements.\n</what_to_give_me>",
+      "keywords": [
+        "groupme",
+        "group chat",
+        "swiftui",
+        "like reaction",
+        "gradient avatar",
+        "chat ui",
+        "per-group theme",
+        "design tokens",
+        "ios messaging",
+        "composer"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:groupme",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-imessage",
+    "name": "iMessage Design System",
+    "summary": "Generates a SwiftUI prompt for a minimal, system-native chat UI with dual-channel bubbles, a long-press reaction strip, and quiet receipts.",
+    "description": "A deep SwiftUI prompt for building an iMessage-style conversation surface: platform system typography and colors, a two-channel bubble fallback, a docked reaction chip, and a quiet delivery/read receipt line.",
+    "type": "PROMPT",
+    "tags": [
+      "messaging",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A token reference mapping every role to platform system colors/fonts where possible",
+        "SwiftUI specs for capped-width bubbles, tail-corner geometry, and same-sender grouping",
+        "House rules protecting the native, chrome-light feel across reactions, receipts, and typing state"
+      ],
+      "promptText": "<role>\nYou are a senior iOS designer-engineer who specializes in reproducing the platform's own native conversation idiom — minimal chrome, system typography, and a small set of highly refined interaction primitives that most third-party chat apps borrow from. You default to system materials and platform color roles rather than inventing a custom palette.\n</role>\n\n<reference_data>\nColor roles (built almost entirely from platform system colors rather than a custom brand palette):\n- Outgoing bubble (primary channel): systemBlue, approx #007AFF\n- Outgoing bubble (fallback/secondary channel): systemGreen, approx #34C759\n- Incoming bubble: neutral gray, approx #E9E9EB light / #26262A dark\n- Canvas: white #FFFFFF light / true black #000000 dark (OLED-appropriate)\n- Destructive/decline: systemRed, approx #FF3B30 light / #FF453A dark\n- Text on colored bubbles: always white; text on incoming bubbles: the platform label color\n\nType ladder: entirely the platform system sans at Dynamic Type sizes, no bundled or named brand face. Message body sits at 17pt/400, a contact-name headline at 17pt/600, list-row previews around 15pt regular, and small receipt/timestamp text around 13pt/600 in a muted secondary tone. Only four weights are used across the whole app: regular, medium, semibold, bold.\n\nNamed distinctive patterns to reproduce:\n1. A two-channel bubble color system: one accent for the primary secure channel, a second accent as an automatic visual fallback when that channel is unavailable for a given recipient — the two must never be swapped or blended.\n2. A long-press reaction strip: a small fixed set of six glyph reactions appears in a floating capsule above a pressed message; the chosen reaction then docks as a small chip overlapping the message's corner rather than replacing the message.\n3. A three-dot typing indicator rendered inside an incoming-shaped bubble, with each dot pulsing on a staggered loop.\n4. A delivery/read receipt line in small muted text directly beneath the most recent outgoing bubble, updating from a \"sent\" state to a \"read\" state.\n5. Bubble tail geometry: an otherwise uniform, generously rounded rectangle with exactly one corner tightened toward a point, on the edge nearest the sender, and only on the last bubble of a same-sender run.\n6. A capped bubble width (well under full-bleed) so that the empty space on the opposite side of the thread is itself the visual cue for who sent a message.\n</reference_data>\n\n<house_rules>\n1. Build the palette almost entirely from platform system color roles rather than inventing custom hex values — this keeps the app visually \"native\" and automatically correct in both appearance modes.\n2. Never mix the two outgoing-bubble accents on the same message — a conversation's fallback channel is a per-recipient, per-message state, not a stylistic choice.\n3. Incoming bubbles are always a neutral, untinted gray — the contrast between a neutral incoming bubble and a saturated outgoing bubble is the entire directional language of the thread; do not tint incoming bubbles to match a brand.\n4. Only the bubble corner nearest the sender's edge tightens to form a tail, and only on the final bubble of a consecutive run — every other corner stays uniformly rounded.\n5. Elevation comes from system blur materials on chrome (navigation bar, input bar), never from drop shadows on message content; a shadow should appear only under a genuinely floating popover or menu.\n6. Cap bubble width well short of full-bleed on every device size so the opposite-side whitespace remains a reliable \"who sent this\" signal at a glance.\n7. Use only the platform system typeface at Dynamic Type sizes — never bundle or reference a custom brand font.\n8. Reactions dock as a small chip overlapping a message's corner, never as a reply appended below it, and the reaction picker itself is a small fixed capsule triggered by a long press, not a full-screen picker.\n9. Read/delivery status is a quiet single line of small muted text under the last outgoing bubble — it must never be styled as a colored badge or a loud confirmation banner.\n</house_rules>\n\n<the_project>\n- App name and one-line pitch:\n- Does the product need a two-channel fallback bubble system (e.g. an in-app + SMS-style fallback), or a single always-available channel?\n- Primary audience and expected message volume per thread:\n- Should reactions be a fixed small set or fully open emoji picker?\n- Platform target (iOS only / iOS + iPadOS):\n- Any brand accent requirement, or should the palette stay fully system-native?\n- Accessibility requirements beyond standard Dynamic Type and VoiceOver:\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color and Font reference mapping every role above to either a system color/font or an explicit custom token, clearly marked which is which.\n2. An outgoing/incoming bubble pair component implementing the capped width, tail-corner geometry, and same-sender run grouping described above.\n3. A long-press reaction-strip component with its floating capsule presentation and the corner-docked chip result state.\n4. A typing-indicator component using the staggered three-dot animation inside an incoming-shaped bubble.\n5. A delivery/read receipt line component that updates state under the last outgoing bubble.\n6. A compose bar using system blur material, an attachment affordance, and a send button that only appears once there is text.\n7. A short accessibility note covering VoiceOver grouping of avatar/sender/message and how presence-independent reaction chips should be announced.\n</what_to_give_me>",
+      "keywords": [
+        "imessage",
+        "chat ui",
+        "swiftui",
+        "system colors",
+        "tapback",
+        "reactions",
+        "read receipt",
+        "typing indicator",
+        "bubble ui",
+        "design tokens"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:imessage",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-kakaotalk",
+    "name": "KakaoTalk Design System",
+    "summary": "Generates a SwiftUI prompt for a saturated-yellow super-app chat UI with outside-docked unread marks, rounded-square avatars, and gift cards.",
+    "description": "A deep SwiftUI prompt for building a KakaoTalk-style super-app messenger: brand-yellow bubbles with brown ink, an outside-docked unread/timestamp mark, rounded-square avatars, and a rich gift-voucher card.",
+    "type": "PROMPT",
+    "tags": [
+      "messaging",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A color/type token set pairing a saturated brand accent with its required ink color",
+        "SwiftUI specs for the outside-docked unread mark, rounded-square avatars, and a voucher card",
+        "House rules protecting Hangul line-height and the accent/ink pairing across the system"
+      ],
+      "promptText": "<role>\nYou are an iOS designer-engineer with deep experience building Korean and East-Asian super-app messaging surfaces, comfortable pairing a saturated single-hue brand system with Hangul-aware typography and a social-commerce composer.\n</role>\n\n<reference_data>\nColor roles:\n- Brand accent (a saturated warm yellow): #FEE500, pressed #E6CF00\n- Ink color used on the brand accent (a deep near-black brown, never white or pure black): #3C1E1E, softer variant #5A3A3A\n- Light canvas #FFFFFF, dark canvas #1A1A1A (warm, not neutral)\n- Signature chat-thread backdrop (distinct from the list canvas): a soft blue-gray, approx #B2C7DA light / #1E2A33 dark\n- Inbound bubble: #FFFFFF light / #2E2E2E dark\n- Outbound bubble: brand accent, with the deep-brown ink text\n- Divider light #E6E6E6 / dark #333333\n- Notification/badge red: #FF3B30; link blue: #4B9BFF\n\nType ladder: platform system sans for Latin text, the platform Korean system face for Hangul, with an extra-heavy weight reserved for large screen titles. Nav titles run around 20pt at a very heavy weight; message body sits around 15pt/400; sender names and list-row titles run 15pt/600; small metadata (timestamps, unread marks) drop to 10-11pt. Line height for body text is kept generous to give Hangul glyphs, which are visually taller than Latin, room to breathe.\n\nNamed distinctive patterns to reproduce:\n1. An unread-count/timestamp cluster docked to the OUTSIDE of an outbound bubble (on the side facing the screen edge, not inside the bubble), rendered in the brand accent color — this is the single most recognized affordance in the whole system.\n2. Rounded-square avatars (never circular) used consistently across the contact list, chat thread, and any channel/brand-account surface.\n3. A distinct backdrop color behind the chat thread itself, separate from the plain white/near-black canvas used everywhere else in the app.\n4. A profile/contact-list row carrying a one-line status message (which may include emoji or a \"currently playing\" music badge) beneath the display name.\n5. A rich sendable gift-voucher card rendered inline in the thread, showing a product image, brand name, and a redeem affordance, distinct from an ordinary image share.\n6. A composer with no placeholder text in the empty input field, flanked by a leading multi-purpose menu affordance and a trailing sticker-keyboard affordance.\n</reference_data>\n\n<house_rules>\n1. Text placed on the brand-accent surface must always use the deep near-black-brown ink color — never pure white and never pure black — this pairing is the entire identity of the brand and is non-negotiable.\n2. Unread count and timestamp metadata for an outbound message dock to the bubble's outer/inner edge (between the bubble and the screen edge), never inside the bubble body — keep the bubble itself free of that metadata.\n3. Avatars are rounded squares everywhere in the system; do not substitute circles, even for small metadata avatars.\n4. The chat thread carries its own distinct backdrop color, separate from the flat white/near-black canvas used on list and settings screens — don't let the thread inherit the plain list background.\n5. Keep Hangul line-height noticeably more generous than a typical Latin-only chat app would use; cramped vertical rhythm reads as a bug to Korean-literate users.\n6. A composer's empty state should not show placeholder copy — the empty pill itself is the affordance; reserve placeholder text for search fields only.\n7. Treat a sticker/character send as a large borderless image, never wrapped in a standard bubble shape — it is closer to a sticker than a text message.\n8. A rich product/voucher card gets its own container treatment (image band + name + redeem action) distinct from both a text bubble and a plain photo share.\n9. The active state of a bottom tab is communicated by icon fill and the primary text color, not by tinting it with the brand accent — reserve the accent for bubbles, CTAs, and the unread mark.\n</house_rules>\n\n<the_project>\n- App name and one-line pitch:\n- Primary audience and language/locale requirements (Korean-first, bilingual, other CJK):\n- Brand accent color (hex) if different from the reference default, and the ink color that must pair with it:\n- Does the product need a gifting/voucher-card feature, or is it text/photo only?\n- Does the product need a character/sticker economy, and if so is it built-in or third-party?\n- Platform target (iOS only / iOS + iPadOS / also Android):\n- Any existing typeface constraints for Latin or Hangul text:\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color and Font token file covering the brand accent, its required ink pairing, the two-tier canvas/backdrop system, and the text-rank ladder for both Latin and Hangul.\n2. A contact/friend-list row component with a rounded-square avatar, name, and a status-message or now-playing subtitle line.\n3. An inbound/outbound bubble pair implementing the outside-docked unread-count-and-timestamp metadata pattern.\n4. A borderless sticker/character send component distinct from the ordinary bubble.\n5. A rich product/voucher card component with an image band, brand/product text, and a redeem call-to-action.\n6. A composer component with no placeholder text, a leading multi-action menu, and a trailing sticker-keyboard affordance.\n7. A short rationale note on how Hangul line-height and rounded-square avatars were handled so the system stays correct if new locales are added later.\n</what_to_give_me>",
+      "keywords": [
+        "kakaotalk",
+        "chat ui",
+        "swiftui",
+        "korean app",
+        "super app",
+        "unread badge",
+        "rounded square avatar",
+        "gift card",
+        "hangul typography",
+        "design tokens"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:kakaotalk",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-kik",
+    "name": "Kik Design System",
+    "summary": "Generates a SwiftUI prompt for a username-first chat UI with a single-letter delivery receipt, a scannable ID glyph, and bot-account tags.",
+    "description": "A deep SwiftUI prompt for building a Kik-style anonymous messenger: a bright accent with contrast-safe ink, a terse sent/delivered/read letter receipt, a scannable add-by-code glyph, and rounded-square bot avatars.",
+    "type": "PROMPT",
+    "tags": [
+      "messaging",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A color/type token set built around a bright accent and its mandatory contrast-safe ink",
+        "SwiftUI specs for the single-letter receipt, a scannable ID glyph, and bot-tagged avatars",
+        "House rules protecting the username-only identity model and terse receipt vocabulary"
+      ],
+      "promptText": "<role>\nYou are an iOS designer-engineer who specializes in identity-anonymous, username-first messaging products aimed at a young audience, and who is comfortable designing terse, information-dense status systems (like a single-letter receipt) instead of verbose ones.\n</role>\n\n<reference_data>\nColor roles:\n- Modern brand accent (a bright sky blue): #00B0F0, deep tone #0093C8, pressed #0086B8, a lighter cyan highlight #4FCBF7\n- Legacy/heritage accent (a lime green, used only for nostalgic or \"classic\" theming, never the default call-to-action): #82BC23\n- Light canvas #FFFFFF, dark canvas #121316 (a neutral near-black, not color-cast)\n- Incoming bubble: #E9EAEC light / #25282D dark\n- Outgoing bubble: brand accent, with a dark-cyan ink text color for contrast (never white text on the bright accent)\n- Destructive/error accent: #F0473E\n\nType ladder: a clean humanist sans (a good open-source substitute is Inter or Open Sans) with heavy 700-800 weights reserved for titles and username headlines. Body text in a bubble sits around 14pt (regular for incoming, medium for outgoing so the contrast ink stays legible), row titles/usernames at 15pt/700, and small receipt/caption text at 11pt/600-700 with slightly increased letter spacing.\n\nNamed distinctive patterns to reproduce:\n1. A three-state single-letter delivery receipt (rather than checkmarks or a text label) shown beside the timestamp and in the conversation-list row: a neutral gray letter for \"sent\", a slightly different gray letter for \"delivered\", and the brand accent color only for \"read\" — color entering the receipt is itself the signal.\n2. Username-first identity throughout: the contact/people surface is a searchable handle directory, never a phone-number-based address book, and a handle is always rendered at a heavy weight with its leading symbol kept the same weight.\n3. A circular scannable identity glyph (a dotted-ring pattern on a solid brand-accent plate) used to add a contact, join a group, or follow an automated account by camera scan rather than typed username.\n4. Automated/bot accounts marked with an explicit text tag and a rounded-square avatar shape, deliberately breaking the otherwise-circular avatar rhythm used for real people.\n5. A text-label send affordance (\"Send\") at the trailing edge of the composer instead of a circular icon button — a callback to the product's earlier, more literal era.\n6. Dark-cyan (never white) ink text on the bright accent bubble/button, required for contrast compliance against such a saturated fill.\n</reference_data>\n\n<house_rules>\n1. Never put white text on the bright accent bubble or button — always use the dark-cyan ink color; this is a hard contrast requirement, not a stylistic option.\n2. The heritage green accent may only appear in an explicitly \"classic\"/legacy-themed context — it must never be the default call-to-action color or the default outgoing-bubble color.\n3. The delivery receipt is always a single letter, never a checkmark icon or a verbose \"Read 9:41\" string — keep the vocabulary terse and swap the glyph instantly with no animated transition, except that the \"read\" state's color-change is allowed to read as the one moment of feedback.\n4. Never surface a phone number anywhere in the identity or contact surfaces — the product's entire premise is username-based anonymity, so the contact directory must be a searchable handle list.\n5. Bot/automated accounts always get a rounded-square avatar and an explicit tag, breaking the circular-avatar rhythm on purpose so automation is visually obvious at a glance.\n6. Keep the dark-mode canvas a neutral near-black, not a color-tinted dark — a neutral backdrop keeps the bright accent looking vivid rather than muddy.\n7. The circular scannable identity glyph must stay flat and high-contrast with no shadow — anything that reduces contrast risks the glyph failing to scan.\n8. There is no call/video iconography anywhere in the chat header — this product is text- and bot-first, not call-first, and its header chrome should reflect that.\n9. The composer's send affordance is a text label, not an icon button, at the trailing edge of the input row.\n</house_rules>\n\n<the_project>\n- App name and one-line pitch:\n- Primary audience (age range, anonymity requirements):\n- Should the product support automated/bot accounts, and if so what visual tag convention should mark them?\n- Brand accent color (hex) if different from the reference default, and its required contrast-safe ink pairing:\n- Does the product need a scannable add-by-code identity glyph, or a different discovery mechanism?\n- Platform target (iOS only / iOS + iPadOS / also Android):\n- Accessibility requirements (color-blind-safe receipt states, VoiceOver labels for the single-letter receipt):\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color and Font token file covering the modern and heritage accents, their required ink pairings, and the neutral dark-mode canvas.\n2. A three-state single-letter delivery-receipt component (sent/delivered/read) usable both in a bubble footer and a conversation-list row.\n3. An outgoing/incoming bubble pair with the correct ink-on-accent contrast handling.\n4. A conversation-list row component distinguishing person avatars (circular) from bot avatars (rounded-square + tag).\n5. A scannable identity-glyph component (the dotted-ring plate) suitable for a profile screen or share sheet.\n6. A composer component using a text \"Send\" label rather than an icon button.\n7. A short accessibility note on how the receipt states should be announced by VoiceOver so color is never the only signal.\n</what_to_give_me>",
+      "keywords": [
+        "kik",
+        "chat ui",
+        "swiftui",
+        "anonymous messaging",
+        "delivery receipt",
+        "bot accounts",
+        "qr identity",
+        "username directory",
+        "contrast ink",
+        "design tokens"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:kik",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-line",
+    "name": "LINE Design System",
+    "summary": "Generates a SwiftUI prompt for a sticker-first chat UI with oversized bubble-less character stickers, a colored backdrop, and a verified badge.",
+    "description": "A deep SwiftUI prompt for building a LINE-style CJK messenger: an oversized bubble-less sticker as the primary expressive unit, a themeable colored chat backdrop, pale-green outgoing bubbles, and an inline verification badge.",
+    "type": "PROMPT",
+    "tags": [
+      "messaging",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A color/type token set built around a colored chat backdrop and a two-weight CJK-friendly type ladder",
+        "SwiftUI specs for a bubble-less oversized sticker, backdrop-tuned bubbles, and a verification badge",
+        "House rules protecting the sticker-vs-bubble boundary and the reserved 'go' accent usage"
+      ],
+      "promptText": "<role>\nYou are an iOS designer-engineer who specializes in sticker-first, character-driven messaging products for CJK markets, comfortable treating an oversized illustrated sticker as the primary unit of communication rather than a novelty add-on to text bubbles.\n</role>\n\n<reference_data>\nColor roles:\n- Brand accent (a clear, saturated green reserved for \"go\" chrome): #06C755, pressed #05A647\n- Outgoing bubble color: a soft, pale mint-green — deliberately NOT the saturated brand accent: #C5F0B1\n- Incoming bubble: #FFFFFF\n- Signature chat-thread backdrop (distinct from the plain-white list/settings canvas): a soft periwinkle blue, #8CABD9 light / #1A2230 dark, user-themeable\n- Text primary #000000, secondary #8C8C8C, tertiary #B3B3B3\n- Notification/unread red: #FF334B; link blue: #1F8FFF\n\nType ladder: a single humanist sans with deep CJK coverage, used at only two weights across the entire system — regular and bold, with no semibold step. Message body sits at 16pt/400 with a generous 1.45 line-height to give CJK glyphs room; friend/contact names run 16pt/400; a thread header title runs 17pt/700; small metadata (timestamps, a \"read\" label) drops to 11-12pt/400.\n\nNamed distinctive patterns to reproduce:\n1. An oversized sticker message: rendered bubble-less, directly on the colored chat backdrop, at roughly 140pt on its long edge — character illustration art, not a small emoji-sized glyph — with only a tiny timestamp floating beside it, and a springy bounce-in entrance.\n2. A colored, non-white default chat-thread backdrop that the ordinary bubble colors (white incoming, pale-mint outgoing) are specifically tuned to sit on top of, distinct from the plain white canvas used for lists and settings.\n3. A verification badge (a small shield/diamond glyph in the brand accent) shown inline immediately after a business or official account's display name, functioning as the product's trust primitive.\n4. Timestamp and \"read\" status metadata floating OUTSIDE the bubble, on the colored backdrop itself, rather than being embedded inside the bubble body.\n5. A first-class sticker-shop surface with priced and free tiles, treating stickers as a purchasable content economy rather than a built-in emoji set.\n6. A broad, five-item bottom tab bar reflecting a super-app product surface (chat plus several adjacent services), rather than a narrow two-or-three-tab messaging-only bar.\n</reference_data>\n\n<house_rules>\n1. A sticker is never placed inside a bubble and never constrained by the ordinary bubble max-width rule — it renders large, bubble-less, and directly on the backdrop; this is the single most important rule in the whole system.\n2. The outgoing bubble color is a soft pale mint, never the saturated brand-accent green — reserve the saturated accent strictly for \"go\" chrome: the active tab, primary buttons, and the verification badge.\n3. Do not default the chat-thread backdrop to plain white — it carries its own distinct color (themeable by the user) that the bubble colors are specifically tuned against.\n4. Timestamp and read-status metadata floats on the backdrop just outside a bubble's corner, never inside the bubble body.\n5. Never introduce a third (semibold) weight — this typographic system deliberately uses only regular and bold, and that binary contrast is part of its character.\n6. Keep CJK line-height generous (never tighten below what's specified) — cramped line spacing reads as a legibility bug for Han/Hangul/Kana text specifically.\n7. The verification badge is never optional or hidden for an official/business account — it is the product's core trust signal and must render inline after the name in every surface (lists, headers, chat).\n8. Ordinary text bubbles get a very faint lift shadow so they read clearly against the colored backdrop, but a sticker itself is always flat and shadowless — it should feel drawn directly onto the conversation, not floating above it.\n9. Don't collapse the tab bar down to a narrow messaging-only set if the product is meant to be a broader multi-service surface — a wider tab bar is an intentional signal of platform breadth.\n</house_rules>\n\n<the_project>\n- App name and one-line pitch:\n- Primary audience and locale requirements (CJK-first, bilingual, Latin-only):\n- Is a sticker/character economy central to the product, and if so is it a built-in set or user-purchasable packs?\n- Brand accent color (hex) if different from the reference default, and the pale outgoing-bubble tone that should pair with it:\n- Should the chat backdrop be user-themeable, or fixed to one color?\n- Does the product need an official/verified-account badge system?\n- Platform target (iOS only / iOS + iPadOS / also Android):\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color and Font token file covering the brand accent, the pale outgoing-bubble tone, the colored chat backdrop (light/dark), and the two-weight type ladder.\n2. A bubble-less oversized sticker-message component with its bounce-in entrance animation and floating timestamp.\n3. An incoming/outgoing text-bubble pair tuned to sit on the colored backdrop, with outside-floating timestamp/read metadata.\n4. A verification-badge component for official/business account names, usable inline in lists, headers, and chat.\n5. A sticker-shop tile component showing a preview image, title, author, and a priced or free call-to-action.\n6. A broad bottom tab-bar component reflecting a multi-service product surface.\n7. A short rationale note explaining why stickers deliberately break the bubble/max-width rule that every other message type follows.\n</what_to_give_me>",
+      "keywords": [
+        "line app",
+        "chat ui",
+        "swiftui",
+        "stickers",
+        "cjk typography",
+        "verification badge",
+        "super app",
+        "chat backdrop",
+        "sticker shop",
+        "design tokens"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:line",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-messenger",
+    "name": "Messenger Design System",
+    "summary": "Generates a SwiftUI prompt for a playful chat UI with a conversation-anchored gradient bubble, a bouncy reaction popover, and a big-thumb send button.",
+    "description": "A deep SwiftUI prompt for building a Messenger-style expressive chat app: a three-stop gradient bubble spanning the whole thread, a springy six-emoji reactions popover, a thumbs-up-to-send composer morph, and a true-black dark canvas.",
+    "type": "PROMPT",
+    "tags": [
+      "messaging",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A color/type token set built around a three-stop conversation-anchored gradient and a true-black dark canvas",
+        "SwiftUI specs for the gradient bubble, a springy reactions popover, and a morphing like/send button",
+        "House rules protecting the gradient-vs-flat-incoming distinction and the app's playful motion language"
+      ],
+      "promptText": "<role>\nYou are an iOS designer-engineer who specializes in expressive, motion-rich consumer messaging products, comfortable implementing a gradient that spans an entire conversation thread as a single continuous surface rather than per-message fills, and confident designing springy, playful micro-interactions.\n</role>\n\n<reference_data>\nColor roles:\n- Outgoing-bubble gradient (conversation-anchored, not per-bubble): a diagonal sweep through three stops — a blue start (#0A7CFF), a violet mid-stop (#9D4EDD), and a pink end-stop (#FF5CA0)\n- Solid UI accent (used for buttons, links, tab selection — distinct from the bubble gradient): #0A7CFF, pressed #0866D6\n- Incoming bubble: #F1F1F2 light / #303030 dark — always flat neutral gray, never gradient\n- Canvas: white #FFFFFF light / TRUE black #000000 dark (deliberately pure black so the gradient glows)\n- Presence accent (an \"active now\" indicator): #31D158\n- Error accent: #FA383E\n\nType ladder: a clean grotesque sans at three weights only (regular, semibold, bold) with no display or light weights. Conversation names run 17pt/600 (bumping to 700 when unread), message body at 16pt/400, list preview text at 15pt/400, and small metadata (bubble timestamps, reaction counts) around 12pt.\n\nNamed distinctive patterns to reproduce:\n1. A conversation-anchored gradient bubble: rather than tinting each outgoing bubble independently, the gradient is conceptually painted across the full vertical extent of the visible thread, and each bubble simply shows its slice of that continuous ribbon — a run of several outgoing messages should read as one flowing color surface, not a stack of separately-gradiented chips.\n2. A six-emoji reactions popover triggered by a long press, presented as a springy floating capsule above the pressed message, with each emoji popping in on a slight stagger; the chosen reaction then animates down and lands as a small badge on the message's corner.\n3. A \"big-thumb\" send affordance: when the composer is empty, the trailing send position shows an outlined thumbs-up glyph that itself is tappable to instantly send a one-tap \"like\"; the moment text is typed, it morphs (with a quick spring) into a filled, solid-accent send button.\n4. A true (not near-) black dark-mode canvas, chosen specifically because it makes the gradient bubble read as more luminous by contrast.\n5. An \"active now\" presence dot/ring rendered on avatars across the conversation list, the thread header, and any stories/status tray.\n6. Fully rounded, circular treatment applied everywhere identity appears — avatars, \"chat head\" style icons, and the reaction badge — paired with generously rounded (not sharp-cornered) bubbles and pill fields throughout.\n</reference_data>\n\n<house_rules>\n1. The outgoing bubble is always the three-stop conversation-anchored gradient — never a flat single color — and the gradient must be implemented so a run of consecutive outgoing bubbles reads as one continuous flowing surface, not independently-colored chips.\n2. Incoming bubbles are always flat neutral gray — never apply the gradient, or any tint, to incoming messages; all the chromatic energy in the thread belongs to the sender's own messages.\n3. Dark mode uses true, maximum-contrast black for the canvas — resist the temptation to soften it to a near-black, because the pure-black backdrop is specifically what makes the gradient glow.\n4. The reactions popover must feel bouncy and alive: a springy scale-in for the capsule itself, a slight stagger between each emoji's pop-in, and a bounce when a chosen reaction lands on the message corner — a stiff, linear presentation undercuts the entire point of this interaction.\n5. The empty-composer send position is a thumbs-up \"like\" affordance, not a grayed-out send icon — it only morphs into an actual filled send button once the user has typed something.\n6. Reserve the solid UI accent color for structural chrome (buttons, links, active tab, the thumbs-up glyph) and keep it distinct from the gradient, which is reserved exclusively for the outgoing-bubble surface.\n7. An unread conversation is signaled by bolding its row (and a small accent dot), never by recoloring its title text — color in the row list stays reserved for the unread dot and the active-now presence indicator.\n8. Round everything: bubbles, avatars, pill fields, and the reaction badge should all favor generous circular or heavily-rounded geometry over sharp corners, reinforcing the app's playful tone.\n9. Keep typography restrained (three weights, no display sizes) specifically so the gradient and the springy motion are what carry the personality — text should never compete with the color for attention.\n</house_rules>\n\n<the_project>\n- App name and one-line pitch:\n- Primary audience (casual social / dating-adjacent / family, etc.):\n- Should the outgoing bubble use a fixed gradient, or should it be user-customizable per conversation?\n- Solid UI accent color (hex) if different from the reference default:\n- Does the product need a one-tap \"like\" send affordance, or a standard send-only composer?\n- Does the product need an \"active now\" presence system across avatars?\n- Platform target (iOS only / iOS + iPadOS / also Android):\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color and Font token file covering the three-stop gradient, the solid UI accent, presence accent, and the true-black dark canvas.\n2. A conversation-anchored gradient bubble implementation approach (masking a full-thread-height gradient layer to the union of outgoing bubble shapes) alongside the flat incoming-bubble counterpart.\n3. A six-emoji reactions-popover component with the staggered pop-in, spring presentation, and corner-badge landing animation.\n4. A \"big-thumb\" send-affordance component that morphs between a thumbs-up like button and a filled send button based on composer content.\n5. A conversation-list row component with active-now presence dot, bold/dot unread signaling, and a preview line.\n6. A pill composer component with attachment glyphs, a growing text field, and the big-thumb send affordance wired in.\n7. A short rationale note on how the conversation-anchored gradient should be implemented so it doesn't visually \"reset\" at each bubble boundary.\n</what_to_give_me>",
+      "keywords": [
+        "messenger",
+        "chat ui",
+        "swiftui",
+        "gradient bubble",
+        "reactions popover",
+        "presence indicator",
+        "playful motion",
+        "true black dark mode",
+        "like button",
+        "design tokens"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:messenger",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-signal",
+    "name": "Signal Design System",
+    "summary": "Generates a SwiftUI prompt for a calm, single-accent chat UI with an appear-on-content send button and quiet privacy affordances.",
+    "description": "A deep SwiftUI prompt for building a Signal-style privacy-minimal messenger: one accent color, a send button that only exists once you've typed something, a quiet disappearing-message chip, and a grouped safety-code verification screen.",
+    "type": "PROMPT",
+    "tags": [
+      "messaging",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A color/type token set built around exactly one accent and a soft near-black dark canvas",
+        "SwiftUI specs for the appear-on-content send button, a disappearing-message chip, and a safety-code screen",
+        "House rules protecting the single-accent, no-gamification, list-thread-settings restraint"
+      ],
+      "promptText": "<role>\nYou are an iOS designer-engineer who specializes in privacy-first, minimal-chrome consumer products, comfortable stripping a messaging surface down to a single accent color and a handful of quiet, well-behaved primitives instead of reaching for gamified or attention-seeking UI patterns.\n</role>\n\n<reference_data>\nColor roles:\n- Single accent (the only saturated color in the whole system): #3A76F0, pressed #2F5FCC, a very light tint for selected rows/backgrounds: #E7EEFD\n- Light canvas #FFFFFF, dark canvas #1B1B1B (a soft near-black, deliberately not pure black)\n- Incoming bubble: #E9E9EB light / #2A2A2A dark\n- Outgoing bubble: the single accent, with white text\n- Outgoing bubble metadata tint (timestamp/read-check inside the bubble): a soft blue-white, #CBD9F9\n- Destructive accent #D7263D; confirmation accent #3AB54A\n\nType ladder: one humanist sans throughout at exactly three weights (regular, medium, bold) with a monospace face reserved only for a grouped, human-verifiable numeric safety code. There is no display type tier at all — the largest text in ordinary use is a 28pt nav title. Conversation name sits at 17pt/500, message body at 16pt/400, list preview at 15pt/400, and small metadata (timestamps, receipts) at 12-13pt/400 in a muted secondary tone.\n\nNamed distinctive patterns to reproduce:\n1. A send affordance that does not exist in the UI until there is text to send: the composer shows a neutral microphone/voice affordance by default, and a filled accent-colored send circle only slides up and fades in once the field has content, reverting instantly when it's emptied.\n2. A disappearing-message duration indicator rendered as a small quiet neutral-gray pill (a clock-ring glyph plus a short duration label) beside the conversation title — deliberately never styled as a colored badge or promotional banner.\n3. A privacy/encryption primitive (e.g. a sealed-delivery indicator) surfaced only as a small neutral glyph in a detail/info view, never as a marketing-style banner on the main thread.\n4. A centered, small, muted system note at the top of a new thread stating that the conversation is protected, styled identically to any other quiet system note rather than called out with special color or size.\n5. A near-total absence of gamified surface area: no algorithmic feed content, no streak or vanity-count mechanics, no promotional badge system — every screen is one of exactly three kinds: a list, a thread, or a settings group.\n6. A monospace, grouped-digit safety/verification code screen for manual identity verification between two parties, paired with a scannable code.\n</reference_data>\n\n<house_rules>\n1. There is exactly one accent color in the entire system — do not introduce a second saturated color anywhere, including for destructive or success states beyond the two clearly-scoped semantic exceptions.\n2. The send button does not exist at rest — it only appears (sliding up, fading in) once the composer has content, and it reverts to a neutral voice/mic affordance the instant the field empties; never show a grayed-out send icon as a permanent fixture.\n3. Privacy and security affordances (disappearing timers, sealed delivery, encryption notices) are always rendered as small, neutral-gray, quiet UI — never as a colored badge, banner, or anything that reads as a marketing callout.\n4. Keep the dark-mode canvas a soft near-black, never pure black — the restraint of the palette is the point, and a harsher pure black would undercut the calm, utility feel.\n5. Do not add gamified mechanics of any kind (streaks, vanity counts, algorithmic feed content, unnecessary badges) — every screen must reduce to a list, a thread, or a settings group, and that reduction is itself the design philosophy.\n6. Bubbles separate from their surroundings purely by fill-color contrast — never add a shadow to a message bubble; reserve any elevation/shadow treatment strictly for genuinely transient floating layers like a context menu or an attachment sheet.\n7. Keep the typographic system to exactly three weights with no display tier — the largest ordinary-use text stays modest, reinforcing that this is a utility rather than a showcase.\n8. A manual identity-verification code is always grouped and monospaced for human readability, paired with a scannable alternative — never render it as an unbroken string of digits.\n9. Body/content text stays a single neutral color throughout — only inline links and the active navigation state may use the accent; never color body text for emphasis or status.\n</house_rules>\n\n<the_project>\n- App name and one-line pitch:\n- Primary audience and privacy requirements (must the product support disappearing messages, verifiable encryption, or similar):\n- Single accent color (hex) if different from the reference default:\n- Should the product include a manual identity/safety verification flow?\n- Any secondary product surfaces beyond chat (calls, a stories-like feature) — should they stay equally minimal?\n- Platform target (iOS only / iOS + iPadOS / also Android):\n- Any regulatory or compliance constraints that affect what metadata can be shown or stored:\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color and Font token file covering the single accent, its light tint, the soft near-black dark canvas, and the three-weight type ladder.\n2. An outgoing/incoming bubble pair with in-bubble metadata (timestamp + read state) styled per the reference data.\n3. A composer + send-button component implementing the appear-on-content-only send circle and its revert-to-mic empty state.\n4. A disappearing-message duration chip component (clock-ring glyph + label) suitable for a thread header and a settings row.\n5. A quiet centered system-note component for thread-level privacy/encryption notices.\n6. A grouped monospace safety/verification code screen component paired with a scannable code area.\n7. A short rationale note on how to resist adding gamified UI elements as the product grows, tying each restraint back to the house rules above.\n</what_to_give_me>",
+      "keywords": [
+        "signal",
+        "chat ui",
+        "swiftui",
+        "privacy messaging",
+        "single accent color",
+        "disappearing messages",
+        "safety number",
+        "minimal design",
+        "send button animation",
+        "design tokens"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:signal",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  }
+]
