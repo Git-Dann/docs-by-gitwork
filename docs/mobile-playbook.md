@@ -165,6 +165,44 @@ in. Both are blind to "this looks wrong" — a mismatched corner radius on a spl
 **Both are wired into CI** (`.github/workflows/checks.yml`) — `audit:ui` on every PR; the clipping
 audit stays manual/`deck:verify` until there's a staging environment to point it at.
 
+## 3c. The height chain — a `lg:`-only bound means the phone cannot scroll
+
+The app shells frame themselves as `h-[100dvh] overflow-hidden` and make `<main
+overflow-auto>` the scroll container. That only works while **every ancestor
+between the root and `<main>` has a bounded height**. Break the chain anywhere and
+`<main flex-1>` resolves against `auto`, grows to fit its content, and the root's
+`overflow-hidden` clips it — with **nothing** scrollable, page or main. Content
+below the fold becomes unreachable rather than merely awkward.
+
+The trap is a bound that is applied at `lg:` only:
+
+```
+"min-h-0 flex-1 w-full lg:grid lg:grid-rows-[minmax(0,1fr)]"   ← desktop-only bound
+```
+
+That reads as correct because the desktop grid row genuinely does bound `<main>`.
+Below `lg` the element is a plain block, so nothing does. This shipped in
+`app-shell.tsx` and was found by a developer being unable to scroll their My Day
+list on a phone — measured at 390×844, `<main>` was **2504px tall in an 844px
+viewport with `main-scrolls=false` and `page-scrolls=false`**.
+
+**The rule:** if a shell bounds its height with a `lg:` grid, it must ALSO set a
+mobile display mode and let the column claim it:
+
+```
+wrapper  "flex min-h-0 w-full flex-1 flex-col lg:grid lg:grid-rows-[minmax(0,1fr)]"
+column   "flex min-h-0 flex-1 flex-col …"
+```
+
+`flex-1` is inert on a grid item, so the same classes are correct at both sizes.
+
+**Neither audit can see this.** `audit:ui` reads source patterns and
+`audit:clipping` needs a reachable URL — and `/app` is auth-gated with no staging.
+It is caught instead by `src/components/__tests__/shell-scroll-chain.test.ts`,
+which asserts the mechanism on both `app-shell.tsx` and `demo-shell.tsx`. When you
+touch a shell's height chain, the honest check is still to render it and measure:
+`main.scrollHeight > main.clientHeight` at 390px, or the page scrolling instead.
+
 ## 4. Standing rules
 
 - Branch → PR → **squash-merge to `main`** (merge/rebase disabled). `main` **auto-deploys to the

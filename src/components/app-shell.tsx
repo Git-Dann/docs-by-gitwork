@@ -398,7 +398,14 @@ export function AppShell({
           // bounded to the viewport, so <main overflow-auto> becomes the scroll container instead of
           // the body growing. Without it, height-framed pages (the Docs editor) can't bound to the
           // viewport and the whole page scrolls. (demo-shell already does this — keep them in sync.)
-          "min-h-0 flex-1 w-full lg:grid lg:grid-rows-[minmax(0,1fr)]",
+          //
+          // ⚠️ `flex flex-col` is for BELOW lg, and it is not cosmetic. The grid above only applies
+          // at lg+, so on a phone this was a plain block: the content column below took its natural
+          // height, <main flex-1> resolved against `auto` and grew to fit its content, and the root's
+          // `overflow-hidden` then clipped the lot with NOTHING scrollable — page or main. A dev's
+          // My Day list simply stopped at the fold. Measured at 390×844: main 2504px tall in an
+          // 844px viewport, main-scrolls=false, page-scrolls=false.
+          "flex min-h-0 w-full flex-1 flex-col lg:grid lg:grid-rows-[minmax(0,1fr)]",
           collapsed ? "lg:grid-cols-[76px_minmax(0,1fr)]" : "lg:grid-cols-[280px_minmax(0,1fr)]",
         )}
       >
@@ -421,7 +428,9 @@ export function AppShell({
         {/* ── Content column ── */}
         {/* pb-12 reserves the 48px height of the fixed "On Your Desk" dock so page
             content (and any bottom pagination bars) never sits underneath it. */}
-        <div className="flex min-h-0 flex-col bg-[var(--surface-canvas)] pb-12">
+        {/* flex-1 is what gives this column a bounded height below lg (as a flex child of the
+            wrapper above); at lg+ the grid row bounds it and flex-1 is inert on a grid item. */}
+        <div className="flex min-h-0 flex-1 flex-col bg-[var(--surface-canvas)] pb-12">
           {/* View-as preview banner */}
           {isAdmin && viewAs && previewLabel && (
             <div className="flex items-center justify-between gap-4 border-b border-amber-200 bg-amber-50 px-6 py-2">
