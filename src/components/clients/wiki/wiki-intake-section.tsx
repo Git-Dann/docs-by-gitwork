@@ -62,6 +62,23 @@ const DEV_LABEL_LABEL: Record<DevLabel, string> = {
 
 const PAGE_SIZE = 10;
 
+/**
+ * Requests still needing attention.
+ *
+ * "Mark dealt with" sets status CLOSED, and until now a dealt-with request stayed
+ * in the list forever — so the page grew monotonically and the things actually
+ * outstanding got harder to find with every one you resolved. Dealt-with items
+ * are hidden by default and revealed by the toggle beside the category tabs;
+ * nothing is deleted, and the count is always shown so it never looks like work
+ * went missing.
+ */
+export function visibleIntakeItems<T extends { status: string }>(
+  items: readonly T[],
+  showDealtWith: boolean,
+): T[] {
+  return showDealtWith ? [...items] : items.filter((i) => i.status !== "CLOSED");
+}
+
 export function WikiIntakeSection({
   slug,
   token,
@@ -107,6 +124,8 @@ export function WikiIntakeSection({
    *  bare string would have nowhere to render and the failure would be silent. */
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
   const [activeTab, setActiveTab] = useState<string>("ALL");
+  /** Off by default: the list should show what still needs doing. */
+  const [showDealtWith, setShowDealtWith] = useState(false);
   const [page, setPage] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -127,7 +146,12 @@ export function WikiIntakeSection({
   }
 
   const allItems = isInternal ? items : localItems;
-  const filteredItems = activeTab === "ALL" ? allItems : allItems.filter((item) => inCategory(item, activeTab));
+  const dealtWithCount = allItems.filter((item) => item.status === "CLOSED").length;
+  /** What the tabs count and the list shows — the dealt-with filter applies to both,
+   *  or a tab would read "5" above three rows. */
+  const scopedItems = visibleIntakeItems(allItems, showDealtWith);
+  const filteredItems =
+    activeTab === "ALL" ? scopedItems : scopedItems.filter((item) => inCategory(item, activeTab));
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const pagedItems = filteredItems.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -323,10 +347,13 @@ export function WikiIntakeSection({
         {/* Category tabs — filters the list below; doesn't affect what a client
             can submit on the left. Keeps Design items out of a dev's way without
             splitting them into a separate page. */}
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--border-1)] px-5 py-3">
+        <div className="flex items-start justify-between gap-3 border-b border-[var(--border-1)] px-5 py-3">
+          <div className="flex flex-wrap items-center gap-1.5">
           {[{ id: "ALL", label: "All" }, ...categories].map((tab) => {
             const count =
-              tab.id === "ALL" ? allItems.length : allItems.filter((item) => inCategory(item, tab.id)).length;
+              tab.id === "ALL"
+                ? scopedItems.length
+                : scopedItems.filter((item) => inCategory(item, tab.id)).length;
             const active = activeTab === tab.id;
             return (
               <button
@@ -346,11 +373,44 @@ export function WikiIntakeSection({
               </button>
             );
           })}
+          </div>
+          {/* Dealt-with toggle — far right of the tabs. Rendered only when there is
+              something to reveal, or while it's on so it can be switched back off.
+              Nothing is deleted: the count states exactly how much is hidden. */}
+          {dealtWithCount > 0 || showDealtWith ? (
+            <button
+              type="button"
+              aria-pressed={showDealtWith}
+              onClick={() => {
+                setShowDealtWith((v) => !v);
+                setPage(1);
+              }}
+              title={
+                showDealtWith
+                  ? "Hide requests already dealt with"
+                  : "Show requests already dealt with"
+              }
+              className={[
+                "shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] transition",
+                showDealtWith
+                  ? "bg-[var(--text-2)] text-white"
+                  : "text-[var(--text-4)] ring-1 ring-[var(--border-1)] hover:bg-[var(--surface-1)]",
+              ].join(" ")}
+              style={{ fontFamily: MONO }}
+            >
+              Dealt with{" "}
+              <span className={showDealtWith ? "text-white/70" : "text-[var(--text-4)]"}>
+                {dealtWithCount}
+              </span>
+            </button>
+          ) : null}
         </div>
         <div className="divide-y divide-[var(--border-1)]">
           {filteredItems.length === 0 ? (
             <p className="p-8 text-center text-sm text-[var(--text-4)]">
-              {activeTab === "ALL"
+              {!showDealtWith && dealtWithCount > 0 && allItems.length === dealtWithCount
+                ? `Nothing outstanding — ${dealtWithCount} request${dealtWithCount === 1 ? "" : "s"} dealt with.`
+                : activeTab === "ALL"
                 ? "No bugs, feedback, or requests yet."
                 : `No ${(categories.find((c) => c.id === activeTab)?.label ?? activeTab).toLowerCase()} items yet.`}
             </p>
