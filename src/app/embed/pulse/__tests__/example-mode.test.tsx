@@ -113,6 +113,8 @@ describe("embed ?example=1", () => {
     await settle();
 
     expect(host.textContent).not.toContain("acme-app.io");
-    expect(host.textContent).toMatch(/get in touch with us for the full report/i);
+    // The scan form is URL-only and free — no email required to see results.
+    expect(host.textContent).toMatch(/no email needed to see your results/i);
+    expect(host.querySelector('input[type="email"]')).toBeNull();
   });
 });

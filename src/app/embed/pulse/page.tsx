@@ -41,6 +41,19 @@ type View = {
   emailCaptured: boolean;
   checks: Check[] | null;
   errorMessage: string | null;
+  /**
+   * The triaged report — FREE. `actionable` is every P1/P2 finding with its evidence
+   * (typically 5-20); `advisoryCount` is the P3 tail, which belongs to the in-depth
+   * review; `notEstablished` is what the scan could not answer, and why.
+   *
+   * Optional because a scan stored before this field existed replays without it.
+   */
+  triage?: {
+    actionable: { checkKey: string; category: string; label: string; status: string; detail: string; tier: "P1" | "P2" }[];
+    advisoryCount: number;
+    advisoryByCategory: { category: string; count: number }[];
+    notEstablished: { checkKey: string; category: string; label: string; reason: string }[];
+  };
 };
 
 declare global {
@@ -86,7 +99,31 @@ const EXAMPLE_VIEW: View = {
     { category: "Security", pass: 6, warn: 2, fail: 1, inconclusive: 0 },
     { category: "Mobile", pass: 8, warn: 2, fail: 0, inconclusive: 0 },
   ],
-  emailCaptured: true,
+  emailCaptured: false,
+  // Mirrors the real triaged shape a visitor now receives: P1/P2 findings in full
+  // with evidence (free), the advisory tail counted, and what could not be
+  // established named. Numbers taken from a real measured scan so the example does
+  // not advertise a shape the product does not produce.
+  triage: {
+    actionable: [
+      { checkKey: "example_csp", category: "Security", label: "No Content-Security-Policy header", status: "FAIL", detail: "The site sends no CSP header, leaving pages more exposed to injected scripts.", tier: "P1" },
+      { checkKey: "example_sitemap", category: "SEO", label: "Missing sitemap.xml", status: "FAIL", detail: "Search engines can't discover pages that aren't linked internally.", tier: "P1" },
+      { checkKey: "example_render_blocking", category: "Performance", label: "Render-blocking JavaScript delays first paint", status: "FAIL", detail: "Two scripts in <head> block rendering before they've finished loading.", tier: "P2" },
+      { checkKey: "example_lcp", category: "Performance", label: "Largest Contentful Paint is slow on mobile", status: "WARN", detail: "Measured at 4.1s on a throttled connection — above the 2.5s target.", tier: "P2" },
+      { checkKey: "example_hsts", category: "Security", label: "Missing Strict-Transport-Security header", status: "WARN", detail: "Without HSTS a first visit over http can be intercepted before the redirect.", tier: "P2" },
+    ],
+    advisoryCount: 512,
+    advisoryByCategory: [
+      { category: "SEO", count: 190 },
+      { category: "Accessibility", count: 168 },
+      { category: "Observability", count: 84 },
+      { category: "Performance", count: 70 },
+    ],
+    notEstablished: [
+      { checkKey: "example_mfa", category: "Authentication", label: "Multi-factor authentication", reason: "Skipped — no authentication system was detected on this site." },
+      { checkKey: "example_ios", category: "App Store", label: "iOS build configuration", reason: "Needs a connected GitHub repository; this was a URL-only scan." },
+    ],
+  },
   checks: [
     { category: "Security", checkKey: "example_csp", label: "No Content-Security-Policy header", status: "FAIL", detail: "The site sends no CSP header, leaving pages more exposed to injected scripts." },
     { category: "SEO", checkKey: "example_sitemap", label: "Missing sitemap.xml", status: "FAIL", detail: "Search engines can't discover pages that aren't linked internally." },
@@ -199,6 +236,10 @@ export default function EmbedPulsePage() {
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [emailAlreadyUsed, setEmailAlreadyUsed] = useState(false);
+  // The enquiry gate — asked only after the free report has been shown.
+  const [enquirySending, setEnquirySending] = useState(false);
+  const [enquirySent, setEnquirySent] = useState(false);
+  const [enquiryError, setEnquiryError] = useState<string | null>(null);
   const [displayScore, setDisplayScore] = useState<number | null>(null);
   const [isExample, setIsExample] = useState(false);
 
@@ -393,7 +434,7 @@ export default function EmbedPulsePage() {
     // Mirrors the button's own disabled condition (running/starting/empty fields/
     // awaiting Turnstile) so the Enter key can't fire a submit the button itself
     // would have blocked — previously Enter skipped the Turnstile-readiness check.
-    if (!url.trim() || !email.trim() || starting || running || awaitingVerification) return;
+    if (!url.trim() || starting || running || awaitingVerification) return;
     setStarting(true);
     setError(null);
     setEmailAlreadyUsed(false);
@@ -403,7 +444,8 @@ export default function EmbedPulsePage() {
       const res = await fetch("/api/public/pulse/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim(), email: email.trim(), honeypot, turnstileToken: scanToken, source }),
+        // No email: the scan and the free report do not require one.
+        body: JSON.stringify({ url: url.trim(), honeypot, turnstileToken: scanToken, source }),
       });
       let data: { id?: string; error?: string } = {};
       try {
@@ -424,10 +466,50 @@ export default function EmbedPulsePage() {
     } finally {
       setStarting(false);
     }
-  }, [url, email, starting, running, awaitingVerification, honeypot, scanToken, source]);
+  }, [url, starting, running, awaitingVerification, honeypot, scanToken, source]);
 
-  // Findings are visible as soon as they're discovered — email was already
-  // required to start the scan, so there's no separate "unlock" gate anymore.
+  /**
+   * Ask for the in-depth review. This is the conversion event: the visitor has
+   * already seen the score, the triaged findings and the not-established list for
+   * free, and is now asking what it means.
+   *
+   * Deliberately does NOT run anything expensive — it records a warm lead. An
+   * anonymous caller must never be able to spend AI tokens.
+   */
+  const sendEnquiry = useCallback(async () => {
+    const trimmed = email.trim();
+    if (!scanId || !trimmed || enquirySending) return;
+    setEnquirySending(true);
+    setEnquiryError(null);
+    try {
+      const res = await fetch(`/api/public/pulse/scan/${scanId}/enquiry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmed, honeypot, turnstileToken: scanToken, source }),
+      });
+      let data: { error?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        // Non-JSON body (gateway page) — never surface a raw parse error.
+        throw new Error("Couldn't send that just now. Please try again.");
+      }
+      if (!res.ok) {
+        throw new Error(
+          res.status === 409
+            ? "We already have a request against this email — we'll be in touch."
+            : data?.error ?? "Couldn't send that just now. Please try again.",
+        );
+      }
+      setEnquirySent(true);
+    } catch (e) {
+      setEnquiryError(e instanceof Error ? e.message : "Something went wrong.");
+    } finally {
+      setEnquirySending(false);
+    }
+  }, [email, scanId, enquirySending, honeypot, scanToken, source]);
+
+  // Fallback finding list for scans stored before `triage` existed.
   const findings = (view?.checks ?? [])
     .filter((c) => c.status === "FAIL" || c.status === "WARN")
     .sort((a, b) => (a.status === "FAIL" ? 0 : 1) - (b.status === "FAIL" ? 0 : 1));
@@ -441,7 +523,7 @@ export default function EmbedPulsePage() {
   );
 
   const formDisabled = running || starting || isExample;
-  const submitDisabled = formDisabled || !url.trim() || !email.trim() || awaitingVerification;
+  const submitDisabled = formDisabled || !url.trim() || awaitingVerification;
 
   // A single, always-mounted screen-reader announcement for the meaningful state
   // transitions (not the per-tick "N checks done" count, which would be noisy at
@@ -495,7 +577,9 @@ export default function EmbedPulsePage() {
         A quick check across performance, SEO, security & mobile — in seconds.
       </p>
 
-      {/* Form — URL, then email directly underneath. Both required to run a scan. */}
+      {/* Form — URL only. Email moved to the post-results enquiry: the FACTS are free
+          (they cost nothing to produce), and contact details are asked for at the point
+          the visitor wants the interpretation. See POST /api/public/pulse/scan. */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <input
           type="url"
@@ -505,24 +589,6 @@ export default function EmbedPulsePage() {
           aria-describedby={error ? "pulse-embed-error" : undefined}
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") startScan(); }}
-          disabled={formDisabled}
-          style={{
-            padding: "12px 14px",
-            border: "1px solid #d1d5db",
-            borderRadius: 10,
-            fontSize: 15,
-            outline: "none",
-          }}
-        />
-        <input
-          type="email"
-          inputMode="email"
-          placeholder="you@company.com"
-          aria-label="Email address"
-          aria-describedby={error ? "pulse-embed-error" : undefined}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") startScan(); }}
           disabled={formDisabled}
           style={{
@@ -555,7 +621,7 @@ export default function EmbedPulsePage() {
       <p style={{ marginTop: 8, fontSize: 11.5, color: "#9ca3af" }}>
         {isExample
           ? "Example results, shown for illustration."
-          : "No spam, ever — get in touch with us for the full report."}
+          : "Free, no sign-up. Over 900 automated checks — no email needed to see your results."}
       </p>
 
       {/* Visually-hidden live region — announces the meaningful state
@@ -661,30 +727,63 @@ export default function EmbedPulsePage() {
                 </>
               )}
 
-              {/* Findings — appear as they're discovered */}
-              {findings.length > 0 && (
+              {/* The FREE report: every P1/P2 finding, in full, with its evidence.
+                  Falls back to the old FAIL/WARN list for a scan stored before
+                  `triage` existed, so replaying an old row still renders. */}
+              {(view.triage?.actionable.length ?? findings.length) > 0 && (
                 <div style={{ marginTop: 22 }}>
-                  <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 10px" }}>
-                    {`What to fix (${findings.length})`}
+                  <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 4px" }}>
+                    {`What to fix (${view.triage?.actionable.length ?? findings.length})`}
+                  </p>
+                  <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 10px" }}>
+                    Ranked worst-first by severity and certainty. All of it, free.
                   </p>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {findings.slice(0, 5).map((f) => (
-                      <div key={f.checkKey} style={{ display: "flex", gap: 10, padding: "10px 12px", border: `1px solid ${f.status === "FAIL" ? "#fecaca" : "#fde68a"}`, borderRadius: 10, background: f.status === "FAIL" ? "#fef2f2" : "#fffbeb" }}>
-                        <span style={{ color: f.status === "FAIL" ? "#dc2626" : "#d97706", fontWeight: 800, fontSize: 16, lineHeight: 1 }}>
-                          {f.status === "FAIL" ? "✕" : "!"}
+                    {(view.triage
+                      ? view.triage.actionable.map((f) => ({ ...f, isFail: f.status === "FAIL" }))
+                      : findings.slice(0, 5).map((f) => ({ ...f, tier: undefined as "P1" | "P2" | undefined, isFail: f.status === "FAIL" }))
+                    ).map((f) => (
+                      <div
+                        key={f.checkKey}
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          padding: "10px 12px",
+                          border: `1px solid ${f.isFail ? "#fecaca" : "#fde68a"}`,
+                          borderRadius: 10,
+                          background: f.isFail ? "#fef2f2" : "#fffbeb",
+                        }}
+                      >
+                        <span style={{ color: f.isFail ? "#dc2626" : "#d97706", fontWeight: 800, fontSize: 16, lineHeight: 1, flexShrink: 0 }}>
+                          {f.isFail ? "\u2715" : "!"}
                         </span>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600 }}>{f.label}</div>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>
+                            {f.label}
+                            {f.tier && (
+                              <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: "#6b7280", letterSpacing: 0.4 }}>
+                                {f.tier}
+                              </span>
+                            )}
+                          </div>
                           {f.detail && <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>{f.detail}</div>}
                         </div>
                       </div>
                     ))}
-                    {findings.length > 5 && (
-                      <p style={{ fontSize: 12, color: "#6b7280", textAlign: "center", margin: 0 }}>
-                        +{findings.length - 5} more issues — book a call to get them all fixed.
-                      </p>
-                    )}
                   </div>
+
+                  {/* The advisory tail — counted honestly, not hidden. This is the
+                      gated half, and naming its size is what makes the gate fair. */}
+                  {(view.triage?.advisoryCount ?? 0) > 0 && (
+                    <p style={{ fontSize: 12, color: "#6b7280", marginTop: 10, marginBottom: 0 }}>
+                      Plus <strong style={{ color: "#374151" }}>{view.triage!.advisoryCount}</strong> lower-priority
+                      advisory checks
+                      {view.triage!.advisoryByCategory.length > 0 && (
+                        <> — mostly {view.triage!.advisoryByCategory.slice(0, 3).map((a) => a.category).join(", ")}</>
+                      )}
+                      . Those come with the in-depth review.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -705,25 +804,97 @@ export default function EmbedPulsePage() {
                 </div>
               )}
 
-              {/* CTA */}
+              {/* THE GATE. Everything above is free and needs no email. This asks for
+                  contact details in exchange for the interpretation — what the findings
+                  mean, the order to fix them in, the implementation brief and the
+                  advisory tail. That is the half with real AI cost and real expertise
+                  behind it, so it is the honest place to ask. */}
               {done && (
-                <div style={{ marginTop: 22, textAlign: "center", background: NAVY_GRADIENT, borderRadius: 12, padding: 20 }}>
-                  <p style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 700, color: "white", margin: "0 0 4px" }}>
-                    {view.fail > 0
-                      ? `${view.fail} failing check${view.fail === 1 ? "" : "s"}. We can fix them.`
-                      : "Ready to take this further?"}
-                  </p>
-                  <p style={{ fontSize: 13, color: "#9ca3af", margin: "0 0 14px" }}>
-                    Gitwork builds and ships products — from fast fixes to full-stack delivery.
-                  </p>
-                  <a
-                    href={bookingUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ display: "inline-block", background: "white", color: "#111827", fontSize: 14, fontWeight: 700, padding: "10px 22px", borderRadius: 10, textDecoration: "none" }}
-                  >
-                    Book a call →
-                  </a>
+                <div style={{ marginTop: 22, background: NAVY_GRADIENT, borderRadius: 12, padding: 20 }}>
+                  {enquirySent ? (
+                    <div style={{ textAlign: "center" }}>
+                      <p style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 700, color: "white", margin: "0 0 4px" }}>
+                        Thanks — that&apos;s with us.
+                      </p>
+                      <p style={{ fontSize: 13, color: "#9ca3af", margin: "0 0 14px" }}>
+                        We&apos;ll come back to you with the in-depth review of {view.targetUrl}. If you&apos;d
+                        rather talk it through now, grab a slot.
+                      </p>
+                      <a
+                        href={bookingUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ display: "inline-block", background: "white", color: "#111827", fontSize: 14, fontWeight: 700, padding: "10px 22px", borderRadius: 10, textDecoration: "none" }}
+                      >
+                        Book a call →
+                      </a>
+                    </div>
+                  ) : (
+                    <>
+                      <p style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 700, color: "white", margin: "0 0 6px" }}>
+                        {view.fail > 0
+                          ? `${view.fail} failing check${view.fail === 1 ? "" : "s"}. Want to know what they mean?`
+                          : "Want to know what this means?"}
+                      </p>
+                      <p style={{ fontSize: 13, color: "#9ca3af", margin: "0 0 14px" }}>
+                        The in-depth review adds what the numbers actually mean for your launch, the
+                        order to fix things in, an implementation brief your developers (or your AI)
+                        can work straight from
+                        {(view.triage?.advisoryCount ?? 0) > 0 && <>, and all {view.triage!.advisoryCount} advisory checks</>}.
+                      </p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <input
+                          type="email"
+                          inputMode="email"
+                          placeholder="you@company.com"
+                          aria-label="Your email address"
+                          aria-describedby={enquiryError ? "pulse-enquiry-error" : undefined}
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") sendEnquiry(); }}
+                          disabled={enquirySending}
+                          style={{
+                            padding: "12px 14px",
+                            border: "1px solid rgba(255,255,255,0.25)",
+                            borderRadius: 10,
+                            fontSize: 15,
+                            outline: "none",
+                            background: "rgba(255,255,255,0.06)",
+                            color: "white",
+                          }}
+                        />
+                        <Honeypot value={honeypot} onChange={setHoneypot} />
+                        <button
+                          onClick={sendEnquiry}
+                          disabled={enquirySending || !email.trim()}
+                          style={{
+                            padding: "12px 20px",
+                            borderRadius: 10,
+                            border: "none",
+                            background: enquirySending || !email.trim() ? "rgba(255,255,255,0.35)" : "white",
+                            color: "#111827",
+                            fontSize: 14,
+                            fontWeight: 700,
+                            cursor: enquirySending || !email.trim() ? "default" : "pointer",
+                          }}
+                        >
+                          {enquirySending ? "Sending…" : "Get the in-depth review"}
+                        </button>
+                      </div>
+                      {enquiryError && (
+                        <p id="pulse-enquiry-error" role="alert" style={{ marginTop: 8, marginBottom: 0, fontSize: 12, color: "#fca5a5" }}>
+                          {enquiryError}
+                        </p>
+                      )}
+                      <p style={{ fontSize: 11.5, color: "#6b7280", margin: "10px 0 0" }}>
+                        Or{" "}
+                        <a href={bookingUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#d1d5db", textDecoration: "underline" }}>
+                          book a call
+                        </a>{" "}
+                        and we&apos;ll walk through it with you.
+                      </p>
+                    </>
+                  )}
                 </div>
               )}
             </>

@@ -62,14 +62,11 @@ async function settle() {
 
 function fillAndSubmit() {
   const url = host.querySelector('input[type="url"]') as HTMLInputElement;
-  const email = host.querySelector('input[type="email"]') as HTMLInputElement;
   const button = host.querySelector("button") as HTMLButtonElement;
   const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
   act(() => {
     setValue.call(url, "example.com");
     url.dispatchEvent(new Event("input", { bubbles: true }));
-    setValue.call(email, "test@example.com");
-    email.dispatchEvent(new Event("input", { bubbles: true }));
   });
   act(() => button.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 }
