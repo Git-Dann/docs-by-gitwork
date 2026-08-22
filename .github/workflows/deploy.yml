@@ -150,6 +150,33 @@ jobs:
 
             docker compose pull app
             docker compose up -d db
+
+            # ── ONE-SHOT REPAIR (2026-08-22) — delete this block once it has run ──
+            # `_StarterBackup_20260822` was created by hand in the `public` schema, a
+            # belt-and-braces copy of `Starter` taken before a Starter-row cleanup.
+            # Prisma does not know about it, so `db push` wants to DROP it; it is not
+            # empty, so the guarded push (no --accept-data-loss, §2) refuses — and per
+            # §2's all-or-nothing behaviour the ENTIRE sync aborts. Net effect: every
+            # deploy fails, for every commit, until the table is out of `public`.
+            # First hit: run 32566488844 / commit 7180a327.
+            #
+            # This MOVES the table, it does not drop it: the 438 rows are preserved
+            # verbatim under a `scratch` schema, which `db push` never reconciles because
+            # the datasource only manages `public`. Reversible with the inverse
+            # `SET SCHEMA public`. Idempotent — a no-op once it has run.
+            #
+            # ⚠️ THE RULE THIS ENCODES: never create a table in `public` on this
+            # database, not even a scratch copy. It is a deploy blocker with a delay
+            # fuse — nothing fails until the next person pushes. Use a `scratch` schema.
+            # See docs/deploy-blocked-starter-backup-table.md.
+            if docker compose exec -T db psql -U foundry -d foundry -tAc \
+                 "select 1 from information_schema.tables where table_schema='public' and table_name='_StarterBackup_20260822'" \
+                 2>/dev/null | grep -q 1; then
+              echo "Relocating unmanaged table _StarterBackup_20260822 out of public (moving, NOT dropping)"
+              docker compose exec -T db psql -U foundry -d foundry -v ON_ERROR_STOP=1 -c \
+                'CREATE SCHEMA IF NOT EXISTS scratch; ALTER TABLE public."_StarterBackup_20260822" SET SCHEMA scratch;' \
+                || echo "::warning::could not relocate it — the db push below will fail and say why"
+            fi
             # The migration must GATE the restart. ssh-action runs this script
             # without `set -e` and without script_stop, and the step's success is
             # decided by the last command — so a failed `db push` used to fall
