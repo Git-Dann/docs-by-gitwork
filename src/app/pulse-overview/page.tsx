@@ -1,3 +1,4 @@
+import { ADVERTISED_CHECK_COUNT_LABEL } from "@/server/checks-registry";
 export default function PulseOverviewPage() {
   return (
     <div className="pulse-overview min-h-screen bg-white" style={{ fontFamily: "var(--font-inter, ui-sans-serif, system-ui, sans-serif)" }}>
@@ -254,14 +255,14 @@ export default function PulseOverviewPage() {
         </div>
       </section>
 
-      {/* 450+ checks */}
+      {/* Automated checks */}
       <section style={{ padding: "80px 24px", background: "white" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 56, alignItems: "center" }}>
             <div style={{ flex: "1 1 340px" }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: "#4f46e5", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 12 }}>Automated checks</p>
               <h2 style={{ fontSize: "clamp(28px, 4vw, 40px)", fontWeight: 800, color: "#0f172a", letterSpacing: "-0.03em", margin: "0 0 16px" }}>
-                500+ checks.<br />23 categories.<br />Built for AI products.
+                {ADVERTISED_CHECK_COUNT_LABEL} checks.<br />23 categories.<br />Built for AI products.
               </h2>
               <p style={{ fontSize: 15, color: "#475569", lineHeight: 1.8, margin: "0 0 24px" }}>
                 Pulse doesn&apos;t run generic checks. It detects the project type first — AI app, SaaS, mobile app, marketing site, API — then runs only the checks that matter. Purpose-built for 2026: it knows what an LLM product needs in production, and what AI code generators leave behind.
@@ -315,7 +316,7 @@ export default function PulseOverviewPage() {
                 Switch AI providers in Settings. No code changes needed.
               </p>
               <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.7, margin: 0 }}>
-                If no key is configured, Pulse still runs all 500+ automated checks and returns a structured mock analysis — so the whole workflow can be tested without spending API credits.
+                If no key is configured, Pulse still runs all {ADVERTISED_CHECK_COUNT_LABEL} automated checks and returns a structured mock analysis — so the whole workflow can be tested without spending API credits.
               </p>
             </div>
             <div style={{ flex: "1 1 480px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>

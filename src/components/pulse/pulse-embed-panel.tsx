@@ -100,7 +100,9 @@ export function PulseEmbedTopCard({
       ) : (
         <div className="flex flex-1 flex-col p-4">
           <p className="text-[12px] leading-snug text-[var(--text-4)]">
-            The free site-health teaser embedded on gitwork.co.uk — {checkCount} check{checkCount === 1 ? "" : "s"} shown, email-gated findings.
+            The free scanner embedded on gitwork.co.uk. Every deterministic check runs and the
+            triaged findings are shown with their evidence — no email required. The in-depth
+            review (what it means, the fix order, the advisory tail) is what converts.
           </p>
 
           <div className="mt-3 flex items-center justify-between gap-3">

@@ -2,7 +2,7 @@ import { after, NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { assertScannableUrl } from "@/server/pulse-lite/url-guard";
-import { assertWithinLiteScanQuota, clientIpFrom } from "@/server/pulse-lite/rate-limit";
+import { assertWithinLiteScanQuota, clientIpFrom, rateLimitHeaders, retryAfterHeaders, RateLimitedError } from "@/server/pulse-lite/rate-limit";
 import { runPublicLiteScan } from "@/server/pulse-lite/public-scan";
 import { capturePulseLead } from "@/server/pulse-lite/leads";
 import { PulseEmbedDisabledError } from "@/server/pulse-lite/kill-switch";
@@ -74,8 +74,10 @@ export async function POST(request: NextRequest) {
     // SSRF guard + normalisation (throws 400 on unsafe input).
     const { url, hostname } = await assertScannableUrl(body.url ?? "");
 
-    // Abuse protection (throws 429 when over quota).
-    await assertWithinLiteScanQuota({ ip, targetHost: hostname });
+    // Abuse protection (throws 429 when over quota). Also bounds TOTAL concurrency,
+    // which nothing did before: per-IP caps limit one actor, not a stampede — and the
+    // same container serves the authenticated app.
+    const quota = await assertWithinLiteScanQuota({ ip, targetHost: hostname });
 
     const lite = await prisma.pulseLiteScan.create({
       data: {
@@ -93,8 +95,17 @@ export async function POST(request: NextRequest) {
 
     after(() => runPublicLiteScan(lite.id, url));
 
-    return apiOk({ id: lite.id }, { status: 201 });
+    // Advertise the limit we actually enforce. Pulse WARNS every site it scans for
+    // not doing this; sending none of its own was the plainest hypocrisy in the audit.
+    return apiOk({ id: lite.id }, { status: 201, headers: rateLimitHeaders(quota) });
   } catch (error) {
+    // A 429 without Retry-After tells a client nothing except "no" — which is
+    // exactly the complaint api-behaviour.ts raises against scanned sites.
+    if (error instanceof RateLimitedError) {
+      const res = fromError(error);
+      for (const [k, v] of Object.entries(retryAfterHeaders())) res.headers.set(k, v);
+      return res;
+    }
     return fromError(error);
   }
 }

@@ -8,11 +8,12 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { ADVERTISED_CHECK_COUNT_LABEL } from "@/server/checks-registry";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { sendWorkspaceEmail, escapeHtml } from "@/server/email";
 import { isAtLeast } from "@/types/auth";
-import { calculateHealthScore } from "@/server/pulse-scan";
-import { filterToEmbedChecks } from "@/server/pulse-embed-config";
+import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
+import { triage } from "./public-scan";
 import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
 import type { PulseScanCheckInput } from "@/types/pulse";
 
@@ -126,12 +127,18 @@ async function notifyVisitorOfResults(leadId: string): Promise<void> {
 
   const lite = await prisma.pulseLiteScan.findUnique({ where: { id: lead.liteScanId }, select: { checks: true } });
   const allChecks = (lite?.checks as PulseScanCheckInput[] | null) ?? [];
-  const embedChecks = filterToEmbedChecks(allChecks, config.checkKeys);
-  const score = calculateHealthScore(embedChecks);
-  const findings = embedChecks
-    .filter((c) => c.status === "FAIL" || c.status === "WARN")
-    .sort((a, b) => (a.status === "FAIL" ? 0 : 1) - (b.status === "FAIL" ? 0 : 1));
-  const criticalCount = embedChecks.filter((c) => c.status === "FAIL").length;
+  // ⚠️ ONE score per scan. This used to rescore a curated ~10-check subset with
+  // `calculateHealthScore`, so the same visitor was emailed a DIFFERENT number from
+  // the one on their screen and on /scan/[id] — same person, same scan, two scores.
+  // `computeScoreBreakdown` over the full set is what every other surface uses.
+  const score = computeScoreBreakdown(allChecks).finalScore;
+  // And the same triage as the page, so the email echoes the report rather than
+  // inventing its own selection.
+  const { actionable, advisoryCount } = triage(allChecks);
+  // The shareable result page (Phase 3). Absolute, because this is an email.
+  const reportUrl = `${(process.env.NEXTAUTH_URL ?? "https://foundry.gitwork.co.uk").replace(/\/$/, "")}/scan/${lead.liteScanId}`;
+  const findings = actionable;
+  const criticalCount = actionable.filter((f) => f.status === "FAIL").length;
 
   const findingsHtml = findings.length
     ? `<ul>${findings
@@ -150,7 +157,9 @@ async function notifyVisitorOfResults(leadId: string): Promise<void> {
       <p><strong>Health score:</strong> ${score}/100</p>
       <p><strong>Critical issues:</strong> ${criticalCount}</p>
       ${findingsHtml}
-      <p>Want help fixing these, or a full deep-dive across 100+ checks?
+      ${advisoryCount > 0 ? `<p>Plus ${advisoryCount} lower-priority advisory checks, which come with the in-depth review.</p>` : ""}
+      <p><a href="${reportUrl}">View the full report</a> — a link you can share.</p>
+      <p>Want help fixing these, or a full deep-dive across ${ADVERTISED_CHECK_COUNT_LABEL} checks?
         <a href="${config.bookingUrl}">Book a call</a> with Gitwork.</p>`,
   });
 }

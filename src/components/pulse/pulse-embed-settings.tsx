@@ -185,7 +185,7 @@ export function PulseEmbedSettings() {
           <div className="flex items-center justify-between gap-3 border-b border-[var(--border-2)] pb-4">
             <div>
               <p className="text-sm font-medium text-[var(--text-1)]">Public embed enabled</p>
-              <p className="mt-0.5 text-xs text-[var(--text-4)]">Off rejects all scan/unlock requests with a friendly &quot;unavailable&quot; message.</p>
+              <p className="mt-0.5 text-xs text-[var(--text-4)]">Off rejects new scans and in-depth-review requests with a friendly &quot;unavailable&quot; message.</p>
             </div>
             <ToggleSwitch checked={data.enabled} disabled={isPending} onChange={(v) => save({ enabled: v })} />
           </div>
@@ -226,8 +226,12 @@ export function PulseEmbedSettings() {
           </div>
 
           <div className="border-b border-[var(--border-2)] py-3">
-            <p className="text-sm font-medium text-[var(--text-1)]">Free-scan limit</p>
-            <p className="widget-timestamp mt-0.5">One lifetime unlock per email — fixed, not editable here.</p>
+            <p className="text-sm font-medium text-[var(--text-1)]">Free scans</p>
+            <p className="widget-timestamp mt-0.5">
+              Unlimited to view — no email needed to see a result. One in-depth-review request per
+              email address. Abuse is bounded by Turnstile plus per-IP, per-host and total
+              concurrency caps (rate-limit.ts), not by withholding results.
+            </p>
           </div>
 
           <div className="pt-3">
@@ -245,9 +249,21 @@ export function PulseEmbedSettings() {
 
         <Widget
           number="02"
-          title="CHECKS SHOWN"
+          title="CHECKS IN THE EMAIL"
           status={<span className="widget-header__status">{checkKeys.size} / {CHECKS_REGISTRY.length}</span>}
         >
+          {/* ⚠️ This no longer controls the public scan. It once filtered — and
+              RESCORED — what a visitor saw, which made the teaser score a different
+              quantity from the paid one. The on-screen report now shows every
+              triaged P1/P2 finding and scores the full set like every other surface.
+              What this set still drives is the results EMAIL's highlighted findings
+              (notifyLeadOfScanResult), so the label says that rather than implying a
+              control that no longer exists. */}
+          <p className="mb-3 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-2 text-xs text-[var(--text-4)]">
+            These pick which checks the <strong className="text-[var(--text-3)]">results email</strong> highlights.
+            They no longer limit the on-screen report — that shows every triaged finding and scores
+            the full check set, so the free number matches the paid one.
+          </p>
           <div className="relative mb-3">
             <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--text-4)]" />
             <input

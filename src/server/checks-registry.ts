@@ -1229,6 +1229,27 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
 
 /** All unique categories in display order */
 /** All categories in canonical display order — derived from the SoT, never hand-listed. */
+/**
+ * Single source of truth for the check count we ADVERTISE.
+ *
+ * Derived from the registry and rounded DOWN to the nearest hundred, so the public
+ * claim can only ever understate what the scanner does. Hardcoded figures had
+ * drifted badly — the same product was simultaneously described as "150+",
+ * "450+", "500+" and "100+ checks" across /context, /pulse-overview, the OG image
+ * and the results email a visitor actually receives, against a real registry of
+ * over a thousand.
+ *
+ * ⚠️ Not the same as what one scan emits. A URL-only public scan measures ~963 of
+ * these (verified against real sites); the platform families — iOS, Android,
+ * Flutter, desktop, React Native, CLI, browser extension — and the source-analysis
+ * families need a repository. So this is the catalogue size, which is the honest
+ * thing to advertise for the product; per-scan counts come from the scan itself.
+ */
+export const ADVERTISED_CHECK_COUNT = Math.floor(CHECKS_REGISTRY.length / 100) * 100;
+
+/** e.g. "over 1,000" — for prose. */
+export const ADVERTISED_CHECK_COUNT_LABEL = `over ${ADVERTISED_CHECK_COUNT.toLocaleString("en-GB")}`;
+
 export const CHECK_CATEGORIES: readonly CheckCategory[] = ORDERED_CATEGORIES;
 
 export function getCheckDefinition(key: string): CheckDefinition | undefined {

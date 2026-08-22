@@ -1,9 +1,17 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
-export function apiOk<T>(data: T, init?: { status?: number }) {
+/**
+ * `headers` is optional and additive — existing callers are unaffected.
+ *
+ * Added so the public scan endpoint can advertise the rate limit it actually
+ * enforces. Pulse's own `api_rate_limit_headers` check WARNS every scanned site
+ * for omitting these, so sending none was the plainest hypocrisy in the audit.
+ */
+export function apiOk<T>(data: T, init?: { status?: number; headers?: Record<string, string> }) {
   return NextResponse.json(data, {
     status: init?.status ?? 200,
+    ...(init?.headers ? { headers: init.headers } : {}),
   });
 }
 

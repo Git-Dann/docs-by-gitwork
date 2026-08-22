@@ -17,7 +17,7 @@ the platform.
 ## Public pages
 
 - [Pulse](https://foundry.gitwork.co.uk/pulse-overview): Pulse checks whether a
-  web app, mobile app or repository is genuinely production-ready — over 1,000
+  web app, mobile app or repository is genuinely production-ready — over 1,600
   automated checks across security, SEO, infrastructure, accessibility,
   performance, code quality and AI readiness — and returns a scored report that
   states what it could NOT establish as clearly as what it found. Includes a
