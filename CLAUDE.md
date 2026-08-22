@@ -4248,6 +4248,60 @@ the table rather than dropping it: `CREATE SCHEMA IF NOT EXISTS scratch` +
 place — delete the block once it has run. Full record in
 `docs/deploy-blocked-starter-backup-table.md`.
 
+### 44.5a Then it WAS validated against a live scan, and that found four more
+
+Every previous pass ended "not validated against a live scan", which §34.3 says is the
+step that finds the wrong checks. It has now happened — twice, against `https://www.gov.uk`
+through the deployed scanner.
+
+**The audit's findings were confirmed fixed.** `privacy_policy` and `terms_of_service`
+both PASS, `blocking: []`, score 78 → 81. The mask-icon P1 is gone. The prose-regex
+family, `cors_policy`, `rate_limiting_headers` and `x_frame_options` are all quiet. 391
+checks returned INCONCLUSIVE rather than guessing. And DMARC now reads:
+
+> No DMARC record at `_dmarc.www.gov.uk`. Discovery falls back to `_dmarc.gov.uk`, which
+> publishes `p=reject` and `sp=none` — and the policy that applies to a subdomain is
+> `sp=none`… Publish a record at `_dmarc.www.gov.uk`, or tighten `sp=` on `gov.uk`.
+
+which is the RFC 7489 §6.6.3 ladder working without falling into the false negative of
+passing on the parent's `p=reject`.
+
+**And the live scan found four more false positives that four passes of unit-tested
+review had not**, all on the most credible site in the corpus:
+
+| Check | What it claimed | What gov.uk actually has |
+|---|---|---|
+| `accessibility_statement` | "No accessibility statement" | `href="/help/accessibility-statement"`, in the markup Pulse parsed |
+| `cookie_policy_page` | "No dedicated cookie policy" | `href="/help/cookies"`, same |
+| `cookie_consent` | "No cookie consent mechanism" | The reference UK banner: `id="global-cookie-message"`, `govuk-cookie-banner` |
+| `cookie_consent_granular` | "no reject/manage options" | "Reject additional cookies" + `data-reject-cookies="true"` |
+
+Two root causes, both already named in this section:
+
+- **A fixed root path probed while ignoring the links in hand.** The first two HEADed
+  `/accessibility` and `/cookies` and never read the page's own hrefs, so a site serving
+  them under `/help/` was reported as not having them. `linksPathContaining()` reads the
+  links first — evidence already held, and cheaper than the HEAD.
+- **A closed list of fingerprints reported as a directly-observed absence.** The third
+  matched seven CMP vendor names; the fourth matched three phrases. Both missed a
+  self-hosted implementation.
+
+⚠️ **That third pattern has now cost three separate fixes in one audit** — the CDN
+five-vendor list, the CMP vendor list, and the granular-consent phrase list. The rule
+worth carrying: **if a check's evidence is "we looked for these N strings and found
+none", its verdict is bounded by the completeness of that list, and that is a
+MEDIUM-confidence derivation, not a HIGH-confidence observation.** Detect the mechanism,
+or declare the confidence honestly.
+
+Tests for all four are built from **verbatim slices of the live page** (two fixtures in
+`pulse-checks/__tests__/fixtures/`), not from the implementation's own token lists — the
+distinction that let the original gov.uk terms bug survive a passing suite.
+
+**Still owed post-deploy** (in `docs/pulse-false-positive-audit-2026-08.md`): the other
+five audited sites, a real `*.vercel.app` deployment, a real Caddy/LiteSpeed/nginx trio
+for the dual-role INCONCLUSIVE tier, and an SPA behind catch-all 200s to see the release
+gate say INCONCLUSIVE rather than READY.
+
 ### 44.6 `audit:clipping` runs on macOS after all
 
 Documented in `docs/mobile-playbook.md` §3a. Three non-obvious blockers: this repo's own
