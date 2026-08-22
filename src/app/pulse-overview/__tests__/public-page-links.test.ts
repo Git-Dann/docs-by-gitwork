@@ -18,8 +18,18 @@ const source = readFileSync("src/app/pulse-overview/page.tsx", "utf8");
 
 describe("the public Pulse page does not send visitors to a login", () => {
   it("links to no auth-gated /app route", () => {
-    const gated = [...source.matchAll(/href="(\/app[^"]*)"/g)].map((m) => m[1]);
+    // Anchored on a path-segment boundary, not a bare prefix. `/app` must not match
+    // `/apple-icon.png` — the root layout injects exactly that, and an unanchored
+    // prefix would fail this test for a favicon. Same trap CLAUDE.md §33 records for
+    // MODULE_PATHS, where `/app/code` incidentally matched `/app/codex`.
+    const gated = [...source.matchAll(/href="(\/app(?:\/[^"]*)?)"/g)].map((m) => m[1]);
     expect(gated).toEqual([]);
+  });
+
+  it("that guard does not fire on a path that merely starts with the same letters", () => {
+    // Proves the anchoring above actually anchors, rather than passing by luck.
+    const decoy = '<link rel="apple-touch-icon" href="/apple-icon.png"/>';
+    expect([...decoy.matchAll(/href="(\/app(?:\/[^"]*)?)"/g)]).toHaveLength(0);
   });
 
   it("does not describe itself as INTERNAL", () => {
