@@ -329,13 +329,26 @@ export default async function PulseReportPage({
                         const catPass  = catApp.filter((c) => c.status === "PASS").length;
                         const catTotal = catApp.length;
                         const issues   = checks.filter((c) => c.status === "FAIL" || c.status === "WARN");
+                        // A category where NOTHING ran is not a category that passed.
+                        // catTotal === 0 made `catPass === catTotal` true (0 === 0), so an
+                        // entirely-skipped category printed a green "0/0" and "All checks
+                        // passing ✓" — asserting a clean bill over a measurement that was
+                        // never taken. That is the exact inversion the scanner was fixed for
+                        // in §34.2/§35 and it survived in the client-facing report.
+                        const nothingRan = catTotal === 0;
                         return (
                           <div key={name} className="kb" style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #f1f5f9", background: "white" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: issues.length > 0 ? 8 : 0 }}>
                               <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>{name}</span>
-                              <span style={{ fontSize: 11, color: catPass === catTotal ? "#16a34a" : "#6b7280" }}>{catPass}/{catTotal}</span>
+                              <span style={{ fontSize: 11, color: nothingRan ? "#9ca3af" : catPass === catTotal ? "#16a34a" : "#6b7280" }}>
+                                {nothingRan ? "—" : `${catPass}/${catTotal}`}
+                              </span>
                             </div>
-                            {issues.length === 0 ? (
+                            {nothingRan ? (
+                              <p style={{ margin: "3px 0 0", fontSize: 11, color: "#9ca3af" }}>
+                                Not checked — {checks.length} check{checks.length === 1 ? "" : "s"} did not run. Nothing here is a pass or a failure.
+                              </p>
+                            ) : issues.length === 0 ? (
                               <p style={{ margin: "3px 0 0", fontSize: 11, color: "#16a34a" }}>All checks passing ✓</p>
                             ) : (
                               <div>

@@ -2991,7 +2991,13 @@ export async function runUrlChecks(
     const openApiStatuses = apiQualityApplicable
       ? await checkPaths(httpsUrl, ["/openapi.json", "/openapi.yaml", "/swagger.json", "/api-docs"])
       : [];
-    const hasOpenApiEndpoint = openApiStatuses.some((s) => s === 200);
+    // A bare 200 proves nothing on a catch-all host (SPA / Vercel / Next), which
+    // 200s every path with the app shell — the same reason the exposed-file probes
+    // at :2141 consult catchAll200. Without this guard the status-only probe emitted
+    // a false PASS, and because the content-verified `openapi_spec_served` in
+    // api-quality.ts correctly WARNed on the same host, one report asserted both
+    // that a spec exists and that it does not.
+    const hasOpenApiEndpoint = !catchAll200 && openApiStatuses.some((s) => s === 200);
     checks.push({
       category: CATEGORIES.API_QUALITY,
       checkKey: "openapi_endpoint",
@@ -2999,14 +3005,18 @@ export async function runUrlChecks(
       status: hasOpenApiEndpoint ? "PASS" : "WARN",
       detail: hasOpenApiEndpoint
         ? "OpenAPI/Swagger spec endpoint found — machine-readable API spec enables auto-generated SDKs and Postman imports."
-        : "No OpenAPI spec endpoint found. A machine-readable API spec enables auto-generated SDKs, Postman imports, and reduces integration friction.",
+        : catchAll200
+          ? "Could not establish an OpenAPI spec endpoint: this host returns 200 for paths that cannot exist, so a 200 on /openapi.json is not evidence a spec is served. Serve the spec with a JSON content type to make it verifiable."
+          : "No OpenAPI spec endpoint found. A machine-readable API spec enables auto-generated SDKs, Postman imports, and reduces integration friction.",
     });
 
     const hasGraphqlInHtml = /\bgraphql\b/i.test(pageResult.html);
     const graphqlPathStatus = apiQualityApplicable
       ? await checkPaths(httpsUrl, ["/graphql"]).then((s) => s[0])
       : 0;
-    const hasGraphql = hasGraphqlInHtml || graphqlPathStatus === 200;
+    // Same catch-all caveat: only trust the /graphql 200 when the host does not
+    // 200 everything. An in-HTML mention is independent evidence and still counts.
+    const hasGraphql = hasGraphqlInHtml || (!catchAll200 && graphqlPathStatus === 200);
     checks.push({
       category: CATEGORIES.API_QUALITY,
       checkKey: "graphql_signal",
@@ -3712,7 +3722,27 @@ export async function runGithubChecks(
     names.includes(".windsurfrules") ||
     names.includes(".aider.conf.yml") ||
     names.some((n) => n.startsWith("agent") && n.endsWith(".md"));
-  const hasRepoLlmsTxt = names.includes("llms.txt") || names.includes("llms-full.txt");
+  // llms.txt must be SERVED at /llms.txt, and for every mainstream web framework
+  // the only way to achieve that is to commit it to a static root — public/ for
+  // Next, Vite and Astro, static/ for Nuxt and SvelteKit. Matching the repo root
+  // only therefore WARNed every correctly-configured project for failing to publish
+  // a file it does publish (verified against this repo: no root llms.txt,
+  // public/llms.txt present and served). Only probe the static roots that exist,
+  // so a repo without one costs no extra API calls.
+  const STATIC_ROOTS = ["public", "static", "www", "assets"] as const;
+  const presentStaticRoots = STATIC_ROOTS.filter((d) =>
+    entries.some((e) => e.name.toLowerCase() === d && e.type === "dir"),
+  );
+  const staticRootListings = await Promise.all(
+    presentStaticRoots.map((d) =>
+      safeGithubRequest<GitHubContentsResponse>(`/repos/${fullName}/contents/${d}`, []),
+    ),
+  );
+  const staticNames = staticRootListings
+    .flatMap((l) => (Array.isArray(l) ? (l as GitHubContentsEntry[]) : []))
+    .map((e) => e.name.toLowerCase());
+  const isLlmsTxt = (n: string) => n === "llms.txt" || n === "llms-full.txt";
+  const hasRepoLlmsTxt = names.some(isLlmsTxt) || staticNames.some(isLlmsTxt);
 
   checks.push(
     {
