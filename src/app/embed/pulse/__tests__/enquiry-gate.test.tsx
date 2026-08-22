@@ -12,6 +12,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import EmbedPulsePage from "@/app/embed/pulse/page";
 
 let host: HTMLDivElement;
@@ -188,5 +189,45 @@ describe("the in-depth review is the gate", () => {
     await settle(4);
 
     expect(host.textContent).toMatch(/we already have a request against this email/i);
+  });
+});
+
+describe("Turnstile tokens are single-use", () => {
+  // ⚠️ The bug this pins: Cloudflare rejects a re-redeemed token as
+  // `timeout-or-duplicate`. The enquiry endpoint requires a valid token, and the
+  // widget originally re-sent the one its SCAN had already spent — so with Turnstile
+  // configured (which it is in production, site key 0x4AAA…) every "Get the in-depth
+  // review" failed "Verification failed". The whole conversion path, silently dead.
+  //
+  // Asserted at source level ON PURPOSE. Driving the real widget needs
+  // `next/script`'s onLoad to fire, which jsdom does not do, so a behavioural test
+  // here would only ever exercise the no-Turnstile path — i.e. it would pass while
+  // the bug was live, which is worse than no test. These greps cannot regress
+  // silently.
+  const source = readFileSync("src/app/embed/pulse/page.tsx", "utf8");
+  const enquirySource = readFileSync("src/app/scan/[id]/enquiry.tsx", "utf8");
+
+  it("the widget discards the scan token and asks for a fresh one", () => {
+    expect(source).toMatch(/setScanToken\(null\)/);
+    expect(source).toMatch(/window\.turnstile\?\.reset\?\.\(\)/);
+  });
+
+  it("both enquiry paths send a turnstileToken", () => {
+    expect(source).toMatch(/turnstileToken: scanToken/);
+    expect(enquirySource).toMatch(/turnstileToken: token/);
+  });
+
+  it("both enquiry buttons refuse to submit before a token exists", () => {
+    // Submitting without one always fails server-side, which reads as a broken form.
+    expect(source).toMatch(/enquirySending \|\| !email\.trim\(\) \|\| awaitingVerification/);
+    expect(enquirySource).toMatch(/sending \|\| !email\.trim\(\) \|\| awaitingVerification/);
+    expect(enquirySource).toMatch(/const awaitingVerification = Boolean\(turnstileSiteKey\) && !token/);
+  });
+
+  it("the shared widget treats an expired token as no token", () => {
+    const box = readFileSync("src/components/pulse/turnstile-box.tsx", "utf8");
+    // An expired token is worse than none: it fails verification while the UI
+    // still believes it is ready to submit.
+    expect(box).toMatch(/"expired-callback": \(\) => onToken\(null\)/);
   });
 });

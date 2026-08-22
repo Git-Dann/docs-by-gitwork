@@ -56,16 +56,10 @@ type View = {
   };
 };
 
-declare global {
-  interface Window {
-    turnstile?: {
-      render: (
-        container: HTMLElement,
-        options: { sitekey: string; callback: (token: string) => void; "expired-callback"?: () => void },
-      ) => string;
-    };
-  }
-}
+// The Window.turnstile shape is declared once in
+// src/components/pulse/turnstile-box.tsx. Two `declare global` blocks for the same
+// property must describe the identical type or TS errors, so this file no longer
+// declares its own.
 
 const ACCENT = "#6B52FF"; // Gitwork purple
 const NAVY_GRADIENT = "linear-gradient(160deg, #17172a 0%, #0C0C18 100%)";
@@ -461,6 +455,13 @@ export default function EmbedPulsePage() {
       }
       if (!data.id) throw new Error("Couldn't start the scan. Please try again.");
       setScanId(data.id);
+      // ⚠️ A Turnstile token is SINGLE-USE — Cloudflare's siteverify rejects a
+      // second redemption as `timeout-or-duplicate`. The enquiry endpoint needs its
+      // own, so reset the widget now; its callback re-fires with a fresh token.
+      // Without this, "Get the in-depth review" always failed "Verification failed"
+      // wherever Turnstile is configured, which is production.
+      setScanToken(null);
+      try { window.turnstile?.reset?.(); } catch { /* widget not mounted */ }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
@@ -866,24 +867,38 @@ export default function EmbedPulsePage() {
                         <Honeypot value={honeypot} onChange={setHoneypot} />
                         <button
                           onClick={sendEnquiry}
-                          disabled={enquirySending || !email.trim()}
+                          disabled={enquirySending || !email.trim() || awaitingVerification}
                           style={{
                             padding: "12px 20px",
                             borderRadius: 10,
                             border: "none",
-                            background: enquirySending || !email.trim() ? "rgba(255,255,255,0.35)" : "white",
+                            background: enquirySending || !email.trim() || awaitingVerification ? "rgba(255,255,255,0.35)" : "white",
                             color: "#111827",
                             fontSize: 14,
                             fontWeight: 700,
-                            cursor: enquirySending || !email.trim() ? "default" : "pointer",
+                            cursor: enquirySending || !email.trim() || awaitingVerification ? "default" : "pointer",
                           }}
                         >
-                          {enquirySending ? "Sending…" : "Get the in-depth review"}
+                          {enquirySending ? "Sending…" : awaitingVerification ? "Verifying…" : "Get the in-depth review"}
                         </button>
                       </div>
                       {enquiryError && (
                         <p id="pulse-enquiry-error" role="alert" style={{ marginTop: 8, marginBottom: 0, fontSize: 12, color: "#fca5a5" }}>
                           {enquiryError}
+                        </p>
+                      )}
+                      {!isExample && (
+                        <p style={{ fontSize: 11.5, color: "#9ca3af", margin: "10px 0 0" }}>
+                          Or{" "}
+                          <a
+                            href={`/scan/${view.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: "#d1d5db", textDecoration: "underline" }}
+                          >
+                            open the full report on its own page
+                          </a>{" "}
+                          — a link you can share.
                         </p>
                       )}
                       <p style={{ fontSize: 11.5, color: "#6b7280", margin: "10px 0 0" }}>
