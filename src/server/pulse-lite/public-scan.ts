@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { runLiteScan } from "./run-lite-scan";
 import { notifyLeadOfScanResult } from "./leads";
 import { rankFindings } from "@/server/pulse-checks/priority";
+import { recordScanInCorpus } from "./corpus";
 import type { PulseScanCheckInput } from "@/types/pulse";
 
 export interface LiteCategorySummary {
@@ -241,8 +242,21 @@ export async function runPublicLiteScan(liteScanId: string, url: string): Promis
       },
       select: { leadId: true },
     });
-    // Email is required up front now, so a lead almost always exists by completion —
-    // this is where the visitor + internal notifications actually fire, with real results.
+
+    // Fold this scan into the anonymous corpus BEFORE anything can prune the raw row.
+    // Done here rather than in the reconcile cron on purpose: several crons in this
+    // deployment have never run, and a corpus that depends on one stays empty. Holds
+    // no URL, host, IP or email — see corpus.ts.
+    // segment: null → the all-segments row. `LiteScanResult` does not surface the
+    // resolved project shape, and recording a GUESSED segment would be worse than
+    // recording none — a percentile is only meaningful if the cohort is real. The
+    // column and the widening logic are in place for when the shape is threaded
+    // through; until then every scan lands in the honest cross-segment bucket.
+    void recordScanInCorpus({ score: result.healthScore, segment: null }).catch(() => {});
+
+    // Email is now OPTIONAL, so a lead exists only when the visitor asked for the
+    // in-depth review — either up front or later via the enquiry endpoint. This is
+    // where the visitor + internal notifications fire, with real results.
     if (updated.leadId) void notifyLeadOfScanResult(updated.leadId).catch(() => {});
   } catch (e) {
     clearInterval(flusher);

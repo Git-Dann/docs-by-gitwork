@@ -3344,6 +3344,47 @@ model PulseCheckConfig {
 
 // Materialised per-check usage aggregate (the analog of a telemetry sidecar). Refreshed by the
 // curator from persisted PulseScanCheck rows — NOT written on the scan hot path.
+/// Durable, anonymous rollup of PUBLIC lite scans — the corpus a percentile needs.
+///
+/// Exists because the raw rows are DELETED: `PulseLiteScan.expiresAt` is 7 days and the
+/// reconcile cron prunes them, so every anonymous scan's outcomes were being destroyed
+/// while nothing aggregated them first. Only `PulseLead` survived, and it carries score
+/// + URL + createdAt with no segment and no check detail — and only for the scans where
+/// an email was captured, which is now the minority.
+///
+/// Deliberately holds NO identifying data: no URL, no host, no IP, no email. Just "in
+/// month M, segment S, N scans scored like this", which keeps the privacy posture of the
+/// 7-day delete fully intact while retaining the statistics.
+///
+/// Written at scan COMPLETION, not at prune time — several crons in this deployment have
+/// never run (docs/vps-crons.md), and a corpus that depends on one is a corpus that stays
+/// empty.
+model PulseScoreDistribution {
+  id        String   @id @default(cuid())
+  /// "YYYY-MM" — the month the scans were run in.
+  month     String
+  /// Detected project shape (e.g. "MARKETING_SITE"), or the literal "ALL" for the
+  /// all-segments row. Segmenting matters: comparing a brochure site to a SaaS app is
+  /// noise, not signal.
+  ///
+  /// NOT nullable, deliberately. Postgres treats NULLs as DISTINCT in a unique index,
+  /// so `@@unique([month, segment])` with a nullable segment would happily accept
+  /// unlimited duplicate all-segments rows for the same month — silently double-counting
+  /// the corpus. A sentinel makes the constraint actually constrain.
+  segment   String   @default("ALL")
+  scanCount Int      @default(0)
+  /// Sum of scores, so a mean needs no per-scan retention.
+  scoreSum  Int      @default(0)
+  /// Ten 10-point buckets: index 0 = score 0-9 … index 9 = 90-100. A histogram yields
+  /// percentiles without keeping any individual scan.
+  buckets   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([month, segment])
+  @@index([month])
+}
+
 model PulseCheckStat {
   id            String    @id @default(cuid())
   workspaceId   String
