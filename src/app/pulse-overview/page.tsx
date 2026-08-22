@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 export default function PulseOverviewPage() {
   return (
     <div className="pulse-overview min-h-screen bg-white" style={{ fontFamily: "var(--font-inter, ui-sans-serif, system-ui, sans-serif)" }}>
@@ -11,11 +9,10 @@ export default function PulseOverviewPage() {
             <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>Gitwork</span>
             <span style={{ color: "#d1d5db" }}>/</span>
             <span style={{ fontSize: 14, fontWeight: 600, color: "#4f46e5" }}>Pulse</span>
-            <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 99, background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0" }}>INTERNAL</span>
           </div>
-          <Link href="/app/pulse/new" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#4f46e5", color: "white", fontSize: 13, fontWeight: 600, padding: "8px 18px", borderRadius: 8, textDecoration: "none" }}>
+          <a href="#try-it-free" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#4f46e5", color: "white", fontSize: 13, fontWeight: 600, padding: "8px 18px", borderRadius: 8, textDecoration: "none" }}>
             Run a scan →
-          </Link>
+          </a>
         </div>
       </header>
 
@@ -37,12 +34,12 @@ export default function PulseOverviewPage() {
                 Before we&apos;ve had a single call with a new client, Pulse tells us exactly what&apos;s broken, what&apos;s missing, and what it will cost to fix. That&apos;s how we walk into every discovery call with the diagnosis already done.
               </p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-                <Link href="/app/pulse/new" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#4f46e5", color: "white", fontWeight: 700, fontSize: 15, padding: "14px 28px", borderRadius: 12, textDecoration: "none" }}>
+                <a href="#try-it-free" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#4f46e5", color: "white", fontWeight: 700, fontSize: 15, padding: "14px 28px", borderRadius: 12, textDecoration: "none" }}>
                   Run a scan now →
-                </Link>
-                <Link href="/app/pulse" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.08)", color: "white", fontWeight: 600, fontSize: 15, padding: "14px 28px", borderRadius: 12, textDecoration: "none", border: "1px solid rgba(255,255,255,0.12)" }}>
+                </a>
+                <a href="#try-it-free" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.08)", color: "white", fontWeight: 600, fontSize: 15, padding: "14px 28px", borderRadius: 12, textDecoration: "none", border: "1px solid rgba(255,255,255,0.12)" }}>
                   View scan history
-                </Link>
+                </a>
               </div>
             </div>
 
@@ -93,7 +90,7 @@ export default function PulseOverviewPage() {
       {/* Live demo — the real embeddable widget */}
       <section style={{ padding: "72px 24px", background: "white", borderBottom: "1px solid #eef2f7" }}>
         <div style={{ maxWidth: 760, margin: "0 auto", textAlign: "center" }}>
-          <p style={{ fontSize: 12, fontWeight: 700, color: "#4f46e5", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 12 }}>
+          <p id="try-it-free" style={{ fontSize: 12, fontWeight: 700, color: "#4f46e5", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 12, scrollMarginTop: 72 }}>
             Try it live — free
           </p>
           <h2 style={{ fontSize: "clamp(26px, 4vw, 38px)", fontWeight: 800, color: "#0f172a", lineHeight: 1.2, letterSpacing: "-0.02em", margin: "0 0 8px" }}>
@@ -390,12 +387,9 @@ export default function PulseOverviewPage() {
             Paste any URL and get a full health report in under 60 seconds. No API key needed to test.
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 14, justifyContent: "center" }}>
-            <Link href="/app/pulse/new" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "white", color: "#4f46e5", fontWeight: 800, fontSize: 16, padding: "16px 36px", borderRadius: 14, textDecoration: "none" }}>
+            <a href="#try-it-free" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "white", color: "#4f46e5", fontWeight: 800, fontSize: 16, padding: "16px 36px", borderRadius: 14, textDecoration: "none" }}>
               Run a scan →
-            </Link>
-            <Link href="/app/settings" style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "rgba(255,255,255,0.7)", fontWeight: 600, fontSize: 14, padding: "16px 24px", textDecoration: "none" }}>
-              Settings → Integrations
-            </Link>
+            </a>
           </div>
         </div>
       </section>
