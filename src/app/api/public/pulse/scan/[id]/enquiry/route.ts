@@ -5,11 +5,11 @@ import { clientIpFrom } from "@/server/pulse-lite/rate-limit";
 import { PulseEmbedDisabledError } from "@/server/pulse-lite/kill-switch";
 import { assertValidTurnstileToken } from "@/server/pulse-lite/turnstile";
 import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
+import { isPulseScanSource } from "@/server/pulse-embed-config";
 
 export const dynamic = "force-dynamic";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const KNOWN_SOURCES = new Set(["gitwork.co.uk", "foundry-demo"]);
 
 /**
  * POST /api/public/pulse/scan/[id]/enquiry  (PUBLIC — no API key)
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return apiError("Enter a valid email address.", 400);
     }
 
-    const source = body.source && KNOWN_SOURCES.has(body.source) ? body.source : undefined;
+    const source = isPulseScanSource(body.source) ? body.source : undefined;
     // capturePulseLead is idempotent per scan and throws EmailAlreadyUsedError (409)
     // for an address that has already been captured — `fromError` maps that status.
     const { leadId } = await capturePulseLead({ liteScanId: id, email, source });

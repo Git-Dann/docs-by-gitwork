@@ -204,7 +204,11 @@ describe("Turnstile tokens are single-use", () => {
   // here would only ever exercise the no-Turnstile path — i.e. it would pass while
   // the bug was live, which is worse than no test. These greps cannot regress
   // silently.
-  const source = readFileSync("src/app/embed/pulse/page.tsx", "utf8");
+  // The scanner moved out of the route into a shared component (both /embed/pulse and
+  // /production-ready render it), so these greps follow the code. The route file is now
+  // a five-line server wrapper with none of this logic in it — pointing them at the old
+  // path would leave three tests passing against a file that cannot contain the bug.
+  const source = readFileSync("src/components/pulse/public-scanner.tsx", "utf8");
   const enquirySource = readFileSync("src/app/scan/[id]/enquiry.tsx", "utf8");
 
   it("the widget discards the scan token and asks for a fresh one", () => {

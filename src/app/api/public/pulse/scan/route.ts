@@ -8,13 +8,13 @@ import { capturePulseLead } from "@/server/pulse-lite/leads";
 import { PulseEmbedDisabledError } from "@/server/pulse-lite/kill-switch";
 import { assertValidTurnstileToken } from "@/server/pulse-lite/turnstile";
 import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
+import { isPulseScanSource } from "@/server/pulse-embed-config";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // lite scan (no PageSpeed) finishes well within this
 
 const LITE_SCAN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const KNOWN_SOURCES = new Set(["gitwork.co.uk", "foundry-demo"]);
 
 /**
  * POST /api/public/pulse/scan  (PUBLIC — no API key)
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
       select: { id: true },
     });
 
-    const source = body.source && KNOWN_SOURCES.has(body.source) ? body.source : undefined;
+    const source = isPulseScanSource(body.source) ? body.source : undefined;
     if (email !== null) await capturePulseLead({ liteScanId: lite.id, email, source });
 
     after(() => runPublicLiteScan(lite.id, url));
