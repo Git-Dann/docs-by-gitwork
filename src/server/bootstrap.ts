@@ -214,11 +214,45 @@ async function ensurePortalSchema() {
 
 type BaseRecords = Awaited<ReturnType<typeof _ensureBaseRecords>>;
 let baseRecordsCache: BaseRecords | null = null;
+let baseRecordsPromise: Promise<BaseRecords> | null = null;
 
+/**
+ * Bootstrap the workspace, schema patches and built-in content. Runs once per
+ * container.
+ *
+ * ⚠️ Memoises the PROMISE, not just the resolved value. It previously did
+ * `if (cache) return cache; cache = await _ensureBaseRecords()`, so on a cold
+ * container every request that arrived before the first one finished saw an empty
+ * cache and started its OWN bootstrap. That is a check-then-act race across the
+ * whole of `_ensureBaseRecords`, and it had two visible consequences in production:
+ *
+ *  1. Three `CREATE INDEX IF NOT EXISTS` statements failed with 23505 on every
+ *     boot — both callers passed the existence check, then collided writing
+ *     `pg_class`. Harmless in outcome, but it put three `prisma:error` lines in the
+ *     log on every deploy, which is how a real error gets missed.
+ *
+ *  2. **Duplicate built-in Starters.** `_ensureBaseRecords` calls four starter
+ *     seeders, each an upsert-by-slug. Run concurrently, two invocations both read
+ *     "not present" and both insert. Production had 13 duplicate rows across 12
+ *     slugs, and the affected slug moved between observations — different races on
+ *     different boots. Cleaning them up without this fix would only postpone them.
+ *
+ * On failure the memo is cleared so a later request can retry; otherwise one
+ * transient database blip would poison the container for its whole lifetime.
+ */
 export async function ensureBaseRecords(): Promise<BaseRecords> {
   if (baseRecordsCache) return baseRecordsCache;
-  baseRecordsCache = await _ensureBaseRecords();
-  return baseRecordsCache;
+  baseRecordsPromise ??= _ensureBaseRecords().then(
+    (records) => {
+      baseRecordsCache = records;
+      return records;
+    },
+    (error) => {
+      baseRecordsPromise = null;
+      throw error;
+    },
+  );
+  return baseRecordsPromise;
 }
 
 async function _ensureBaseRecords() {
