@@ -130,8 +130,39 @@ export async function verifyFileExposure(
  * collapsing them is what lets a resolver timeout be reported as a clean result.
  */
 export type DnsResolution =
-  | { ok: true; records: string[] }
-  | { ok: false; reason: string };
+  | { ok: true; records: string[]; status?: number }
+  | { ok: false; reason: string; status?: number };
+
+/**
+ * DNS response codes (RFC 1035 §4.1.1 / RFC 2136 / RFC 8914), by their numeric
+ * value in a DoH JSON `Status` field.
+ *
+ * Only two of them are ANSWERS about the name:
+ *   0 NOERROR  — the name resolved; an empty Answer here means "no such record"
+ *   3 NXDOMAIN — the name does not exist
+ * Everything else is the resolver telling us it did not answer the question, so
+ * it must be reported as a failed lookup rather than an empty one.
+ */
+const DNS_RCODES: Record<number, string> = {
+  0: "NOERROR",
+  1: "FORMERR",
+  2: "SERVFAIL",
+  3: "NXDOMAIN",
+  4: "NOTIMP",
+  5: "REFUSED",
+  6: "YXDOMAIN",
+  7: "YXRRSET",
+  8: "NXRRSET",
+  9: "NOTAUTH",
+  10: "NOTZONE",
+};
+
+/** The two rcodes that constitute an answer about the name. */
+const ANSWERED_RCODES = new Set([0, 3]);
+
+function rcodeName(status: number): string {
+  return DNS_RCODES[status] ?? `rcode ${status}`;
+}
 
 export async function resolveDnsRecord(name: string, type: string): Promise<DnsResolution> {
   try {
@@ -141,8 +172,25 @@ export async function resolveDnsRecord(name: string, type: string): Promise<DnsR
     );
     // A non-200 from the resolver is a failed lookup, not an empty answer.
     if (!res.ok) return { ok: false, reason: `DNS resolver returned HTTP ${res.status}` };
-    const json = await res.json() as { Answer?: { data: string }[] };
-    return { ok: true, records: (json.Answer ?? []).map((a) => a.data) };
+    const json = await res.json() as { Status?: number; Answer?: { data: string }[] };
+    // ⚠️ A DoH resolver answers HTTP 200 for a FAILED lookup too — SERVFAIL and
+    // REFUSED both arrive as 200 with an empty Answer, indistinguishable from
+    // "there is no such record" unless the `Status` rcode is read. Reading only
+    // the HTTP status is precisely the "we could not look" → "it isn't there"
+    // collapse every INCONCLUSIVE path in these modules exists to prevent.
+    const status = typeof json.Status === "number" ? json.Status : undefined;
+    if (status !== undefined && !ANSWERED_RCODES.has(status)) {
+      return {
+        ok: false,
+        status,
+        reason: `DNS resolver returned ${rcodeName(status)} (rcode ${status}) — the lookup did not complete, so nothing can be concluded about this record.`,
+      };
+    }
+    // NOERROR with an empty Answer, and NXDOMAIN, are both real answers: the
+    // record genuinely is not there, and callers must keep reporting absence.
+    // A response with no `Status` at all is not a claim of failure — Cloudflare
+    // always sends one, so treat it as answered rather than inventing an outage.
+    return { ok: true, records: (json.Answer ?? []).map((a) => a.data), ...(status !== undefined ? { status } : {}) };
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : "DNS lookup failed" };
   }

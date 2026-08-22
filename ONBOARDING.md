@@ -127,11 +127,14 @@ gated screens** to check your own work. Two consequences:
 
 - If a change only got a typecheck and a careful read, **say exactly that.** Then hand over a
   precise capture list: the page, 2–3 viewports, the specific elements to look at.
-- Public pages *can* be driven headlessly — `/`, `/pulse-overview`, `/api-docs`, `/context`,
-  `/login`, `/embed/*`, and the tokenised `/docs/`, `/timeline/`, `/report/` pages. Run
-  `npm run audit:clipping <url>` against them. It needs `npm i --no-save playwright-core` plus a
+- Public pages *can* be driven headlessly — `/`, `/pulse-overview`, `/production-ready`,
+  `/api-docs`, `/context`, `/login`, `/embed/*`, and the tokenised `/docs/`, `/timeline/`,
+  `/report/` pages. Run `npm run audit:clipping <url>` against them. It needs `npm i --no-save playwright-core` plus a
   Chromium; in a Claude Code web session one is already installed, locally you may need
   `npx playwright install chromium`.
+- **`/production-ready` is how you verify the public scanner.** It renders the real
+  `PublicScanner` component inline (the same one `/embed/pulse` serves in an iframe), so it is
+  the one place you can screenshot that component with no auth and no database.
 - **`/demo/**` is your way in to a gated screen.** The 16 sales demos render the *real* components
   on mock data and are public, so `/demo/care`, `/demo/docs`, `/demo/portal` … are drivable. Layout
   work on an `/app` screen should be verified through its demo before you call it done.

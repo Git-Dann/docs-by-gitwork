@@ -50,17 +50,45 @@ const statusOf = (checks: { checkKey: string; status: string }[], key: string) =
 const detailOf = (checks: { checkKey: string; detail?: string }[], key: string) =>
   checks.find((check) => check.checkKey === key)?.detail ?? "";
 
-/** DoH answer for one name+type; every other request 404s. */
-function dnsResponder(answers: Record<string, string[]>, dnsBehaviour: "ok" | "throw" | "http500" = "ok") {
+/**
+ * DoH answer for one name+type; every other request 404s.
+ *
+ * ⚠️ `servfail` / `refused` / `nxdomain` all return **HTTP 200** with an empty
+ * Answer, because that is what a DoH resolver really does — the rcode lives in
+ * the JSON `Status` field, not in the HTTP status. Only `Status` separates "the
+ * resolver failed" from "there is no such record".
+ */
+type DnsBehaviour = "ok" | "throw" | "http500" | "servfail" | "refused" | "nxdomain" | "formerr";
+
+const RCODE: Record<string, number> = { servfail: 2, refused: 5, nxdomain: 3, formerr: 1 };
+
+function dnsResponder(answers: Record<string, string[]>, dnsBehaviour: DnsBehaviour = "ok") {
   return vi.fn(async (url: string | URL) => {
     const value = String(url);
     if (value.includes(DNS)) {
       if (dnsBehaviour === "throw") throw new Error("ECONNRESET");
       if (dnsBehaviour === "http500") return new Response("upstream error", { status: 500 });
+      if (dnsBehaviour !== "ok") {
+        return new Response(JSON.stringify({ Status: RCODE[dnsBehaviour], Answer: [] }), {
+          headers: { "content-type": "application/dns-json" },
+        });
+      }
       const name = new URL(value).searchParams.get("name") ?? "";
       const type = new URL(value).searchParams.get("type") ?? "";
       const records = answers[`${name}:${type}`] ?? [];
       return new Response(JSON.stringify({ Answer: records.map((data) => ({ data })) }), {
+        headers: { "content-type": "application/dns-json" },
+      });
+    }
+    return new Response("Not found", { status: 404, headers: { "content-type": "text/plain" } });
+  });
+}
+
+/** A DoH responder that states its rcode explicitly, answers included. */
+function dohResponder(status: number, records: string[] = []) {
+  return vi.fn(async (url: string | URL) => {
+    if (String(url).includes(DNS)) {
+      return new Response(JSON.stringify({ Status: status, Answer: records.map((data) => ({ data })) }), {
         headers: { "content-type": "application/dns-json" },
       });
     }
@@ -88,6 +116,77 @@ describe("resolveDnsRecord distinguishes 'no record' from 'could not ask'", () =
     const result = await resolveDnsRecord("example.test", "AAAA");
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("500");
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // The DoH `Status` rcode, which the HTTP status cannot stand in for.
+  //
+  // A resolver answers HTTP 200 for a failed lookup: SERVFAIL and REFUSED both
+  // arrive as 200 with an empty Answer. Reading only the HTTP status makes them
+  // indistinguishable from "there is no such record" — which silently defeats
+  // every INCONCLUSIVE branch below, because those branches correctly test `ok`
+  // and `ok` was lying to them.
+  //
+  // These sit alongside the NOERROR-empty and NXDOMAIN cases deliberately: those
+  // two ARE answers and must keep reporting absence.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it("reports SERVFAIL as a failed lookup, not as 'there is no such record'", async () => {
+    vi.stubGlobal("fetch", dnsResponder({}, "servfail"));
+    const result = await resolveDnsRecord("example.test", "TXT");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain("SERVFAIL");
+      expect(result.status).toBe(2);
+    }
+  });
+
+  it("reports REFUSED as a failed lookup", async () => {
+    vi.stubGlobal("fetch", dnsResponder({}, "refused"));
+    const result = await resolveDnsRecord("example.test", "TXT");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain("REFUSED");
+      expect(result.status).toBe(5);
+    }
+  });
+
+  it("reports any other non-answering rcode as a failed lookup", async () => {
+    vi.stubGlobal("fetch", dnsResponder({}, "formerr"));
+    const result = await resolveDnsRecord("example.test", "TXT");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("FORMERR");
+  });
+
+  it("keeps NXDOMAIN an ANSWER — the name does not exist, which is a real finding", async () => {
+    vi.stubGlobal("fetch", dnsResponder({}, "nxdomain"));
+    const result = await resolveDnsRecord("www.www.gov.test", "CNAME");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.records).toEqual([]);
+      expect(result.status).toBe(3);
+    }
+  });
+
+  it("keeps NOERROR-with-an-empty-answer an ANSWER — the record genuinely is absent", async () => {
+    vi.stubGlobal("fetch", dohResponder(0));
+    const result = await resolveDnsRecord("example.test", "AAAA");
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.records).toEqual([]);
+  });
+
+  it("still returns the records on an explicit NOERROR answer", async () => {
+    vi.stubGlobal("fetch", dohResponder(0, ["2606:4700::1"]));
+    const result = await resolveDnsRecord("example.test", "AAAA");
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.records).toEqual(["2606:4700::1"]);
+  });
+
+  it("treats a response with no Status field as answered rather than inventing an outage", async () => {
+    // Cloudflare always sends `Status`; a double or a non-conforming resolver
+    // that omits it must not flip every DNS check to inconclusive.
+    vi.stubGlobal("fetch", dnsResponder({ "example.test:AAAA": ["2606:4700::1"] }));
+    expect(await resolveDnsRecord("example.test", "AAAA")).toEqual({ ok: true, records: ["2606:4700::1"] });
   });
 
   it("leaves checkDnsRecord's contract unchanged for its existing callers", async () => {
@@ -271,6 +370,80 @@ describe("CAA and DNSSEC — the same rule as their siblings", () => {
     const checks = await runSecurityExtended(context());
     expect(statusOf(checks, "caa_dns_record")).toBe("WARN");
     expect(statusOf(checks, "dnssec_enabled")).toBe("WARN");
+  });
+});
+
+describe("a resolver rcode failure reaches the checks, and NXDOMAIN still doesn't", () => {
+  // The end of the same thread: the checks below branch correctly on `ok`, so
+  // they were only ever as honest as `resolveDnsRecord`. A SERVFAIL served as
+  // HTTP 200 used to arrive as `{ok: true, records: []}` and every one of them
+  // would state, at HIGH-visibility severity, that a record the customer
+  // publishes is missing — or that a security gate is fine when it was never
+  // measured.
+
+  it("does not claim a missing CAA or DS record on SERVFAIL", async () => {
+    vi.stubGlobal("fetch", dnsResponder({}, "servfail"));
+    const checks = await runSecurityExtended(context());
+    expect(statusOf(checks, "caa_dns_record")).toBe("INCONCLUSIVE");
+    expect(statusOf(checks, "dnssec_enabled")).toBe("INCONCLUSIVE");
+    expect(detailOf(checks, "caa_dns_record")).toContain("SERVFAIL");
+  });
+
+  it("does not claim a broken mail setup on REFUSED", async () => {
+    vi.stubGlobal("fetch", dnsResponder({}, "refused"));
+    const checks = await runEmailDeliverabilityChecks(context());
+    for (const key of ["spf_hardfail", "dmarc_quarantine_reject", "email_mx_present", "dkim_record_present"]) {
+      expect(statusOf(checks, key), key).toBe("INCONCLUSIVE");
+    }
+  });
+
+  it("does not PASS the subdomain-takeover gate on SERVFAIL", async () => {
+    vi.stubGlobal("fetch", dnsResponder({}, "servfail"));
+    const checks = await runSecurityExtended(context());
+    expect(statusOf(checks, "subdomain_takeover_risk")).toBe("INCONCLUSIVE");
+  });
+
+  it("does not claim 'no AAAA record' on SERVFAIL", async () => {
+    vi.stubGlobal("fetch", dnsResponder({}, "servfail"));
+    const checks = await runInfrastructureExtended(context());
+    expect(statusOf(checks, "ipv6_dns_record")).toBe("INCONCLUSIVE");
+  });
+
+  // …and the other half of the rule: an rcode that IS an answer must keep
+  // producing the finding. NXDOMAIN on the counterpart `www.` name is the exact
+  // real-world case from the audit, and it is a genuine defect, not an outage.
+  it("still WARNs on a real NXDOMAIN for the www counterpart", async () => {
+    vi.stubGlobal("fetch", dnsResponder({}, "nxdomain"));
+    const checks = await runInfrastructureExtended(context());
+    expect(statusOf(checks, "backup_domain_configured")).toBe("WARN");
+  });
+
+  it("still reports genuinely absent mail records when the resolver answered NXDOMAIN", async () => {
+    vi.stubGlobal("fetch", dnsResponder({}, "nxdomain"));
+    const checks = await runEmailDeliverabilityChecks(context());
+    for (const key of ["spf_hardfail", "dmarc_quarantine_reject", "email_mx_present"]) {
+      expect(statusOf(checks, key), key).toBe("WARN");
+    }
+  });
+
+  it("still FAILs on a dangling CNAME returned with an explicit NOERROR", async () => {
+    vi.stubGlobal("fetch", dohResponder(0, ["abandoned.herokuapp.com."]));
+    const checks = await runSecurityExtended(context());
+    expect(statusOf(checks, "subdomain_takeover_risk")).toBe("FAIL");
+  });
+});
+
+describe("resolveAllDnsRecords fails the combined answer on an rcode failure", () => {
+  it("does not merge a SERVFAIL into an empty combined answer", async () => {
+    vi.stubGlobal("fetch", dnsResponder({}, "servfail"));
+    const result = await resolveAllDnsRecords([["a.test", "MX"], ["b.test", "MX"]]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("SERVFAIL");
+  });
+
+  it("still merges when every lookup answered NXDOMAIN", async () => {
+    vi.stubGlobal("fetch", dnsResponder({}, "nxdomain"));
+    expect(await resolveAllDnsRecords([["a.test", "MX"], ["b.test", "MX"]])).toEqual({ ok: true, records: [] });
   });
 });
 

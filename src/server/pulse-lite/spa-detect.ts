@@ -31,8 +31,27 @@ const CLIENT_RENDERED_BUILDERS = new Set([
 ]);
 
 /** Checks that parse the page's HTML body/head and therefore fail falsely on an empty SPA
- * shell. HTTP-fetched checks (robots/sitemap/SSL/privacy/terms) are deliberately excluded so
- * their real failures — and the SSL/privacy/terms hard caps — still fire. */
+ * shell.
+ *
+ * HTTP-FETCHED checks (`ssl_valid`, `robots_txt`, `sitemap_xml`) are deliberately excluded:
+ * they never read the body, so their failures are real on a shell and the SSL hard cap must
+ * still fire.
+ *
+ * ⚠️ `privacy_policy` / `terms_of_service` are NOT in either group, and the reason is worth
+ * stating because the comment here used to name them alongside the fetched checks — which was
+ * simply false. They are PARSED, not fetched: a regex over the markup. On an unrendered shell
+ * their old FAIL was manufactured from HTML nobody read, and in the same gitwork.co.uk scan
+ * `canonical_url`/`h1_present`/`image_alt_coverage` were correctly INCONCLUSIVE while
+ * `privacy_policy` was a launch-blocking FAIL for a policy the rendered footer links.
+ *
+ * They are still not listed here, because adding them would be the WRONG repair. These two are
+ * `release-decision.ts` blocking keys, so a blanket adverse→INCONCLUSIVE rewrite would also
+ * downgrade a FAIL that Pulse had genuinely established — a false negative on a legal gate.
+ * Instead `resolveLegalDocumentChecks` (pulse-scan.ts) resolves the shell case AT THE CHECK,
+ * by reading the adopted rendered DOM and, when the links were never legible, fetching the
+ * conventional policy paths and content-verifying what comes back. It emits INCONCLUSIVE itself
+ * when the answer is genuinely unobtainable (a catch-all host, a JS-rendered policy route) and
+ * FAIL only on evidence. Do not add these keys here without removing that. */
 export const HTML_RENDER_DEPENDENT_CHECK_KEYS = new Set<string>([
   // core SEO/content (pulse-scan.ts runUrlChecks)
   "meta_title",
@@ -120,8 +139,14 @@ export function detectSpaContext(input: {
  *  - HTML_RENDER_DEPENDENT_CHECK_KEYS, but only where they FAILed/WARNed. A PASS there was earned
  *    from something really present in the shell (a `<title>`, an og: tag), so it stands.
  *  - VACUOUS_ON_EMPTY_SHELL_KEYS in *any* non-adverse state, because there the pass IS the absence.
- * Anything else is left untouched — notably ssl_valid, robots, privacy/terms, which are fetched
- * rather than parsed and whose failures are real on a shell.
+ *
+ * Anything else is left untouched — notably `ssl_valid`, `robots_txt` and `sitemap_xml`, which are
+ * fetched rather than parsed and whose failures are real on a shell.
+ *
+ * ⚠️ `privacy_policy`/`terms_of_service` are also left untouched, but they are NOT in that group:
+ * they are parsed, not fetched. They handle the shell case themselves — see the note on
+ * HTML_RENDER_DEPENDENT_CHECK_KEYS above — because a blanket downgrade of a launch-blocking legal
+ * check would turn an established failure into an excuse.
  */
 export function reclassifySpaChecks(checks: PulseScanCheckInput[]): PulseScanCheckInput[] {
   return checks.map((c) => {

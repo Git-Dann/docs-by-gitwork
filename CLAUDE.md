@@ -4065,3 +4065,196 @@ home. The obvious shape is a `custom_doc` type carrying its own markdown body + 
 list in the template JSON, authored in Settings → Launchpad with no code change. Note that
 half of that ask is already possible: a document the client *provides* (an insurance
 certificate) is a `checklist_item` with a link, not a generated doc.
+
+## 44. Recent Changes (August 2026) — A second door to the free scanner, and the scanner told the truth about six real sites
+
+Two pieces of work, and the second one is the important one.
+
+### 44.1 `/production-ready` — the sales page, and the end of iframing our own scanner
+
+There are now **two doors to the same free scanner**: the embeddable widget a third party
+drops into their page, and a public sales page gitwork.co.uk links to. Conventional
+lead-gen structure, because it works — outcome-led hero with the tool immediately usable,
+stakes, the free/in-depth offer ladder, the differentiator, how it works, objections,
+close. Static (462 B), so it renders with no JavaScript and no database.
+
+**Nothing on it is invented.** No testimonials, no logos, no "trusted by" counts. Every
+number is derived from the check registry or measured. A page whose pitch is "we tell you
+what we could not establish" cannot itself embellish, and that is a constraint on future
+edits, not a one-off.
+
+**The page framed `/embed/pulse` at first, and that was wrong.** Same origin, so the
+iframe bought nothing and cost a visible seam: a second "Pulse / Free site health check"
+header above the page's own headline, a second "Powered by Gitwork Foundry" above the
+page's own footer, and postMessage resizing that snapped as results arrived. It looked
+broken because it was two of everything.
+
+So the scanner moved to **`src/components/pulse/public-scanner.tsx`** and takes a variant:
+
+| | `variant="embed"` | `variant="page"` |
+|---|---|---|
+| Where | `/embed/pulse`, for THIRD-PARTY sites | `/production-ready`, inline |
+| Card, header, credit | Yes — on someone else's page all three are the point | None; the page owns them |
+| postMessage resize | Yes | No — `window.parent` IS this window |
+
+`/embed/pulse` is now a five-line **server** wrapper, which also keeps the 135KB check
+registry out of the browser (`checkCountLabel` is a prop, not an import — verified against
+the build manifest that neither public route ships it; only `/app/pulse*` and
+`/app/settings` do, and they need it).
+
+⚠️ **`/embed/pulse` is an external contract** (allow-listed for gitwork.co.uk in
+`next.config.ts`, and the only route exempt from the baseline security headers). The
+variant split is pinned in **both** directions by
+`src/components/pulse/__tests__/public-scanner-variant.test.tsx` — asserting only that the
+page drops the chrome would let the embed silently lose it too, and that breaks a live
+third-party placement with nothing to catch it.
+
+**Three live defects fixed on the way:**
+- Both scanner text inputs were **15px**. iOS Safari zooms the viewport when a text field
+  under 16px takes focus, so tapping the URL box on a phone shoved the widget half
+  off-screen. Same rule already documented at `onboarding/field-renderer.tsx:66`. Pinned
+  by a test that checks every `<input>` — the submit button and a notice paragraph are
+  legitimately 15px, and only focusable text fields cause the zoom.
+- The widget claimed **"Over 900 automated checks"** and its layout metadata claimed
+  "100+", while the registry holds 1,646 and every other surface reads
+  `ADVERTISED_CHECK_COUNT_LABEL`. Both read the registry now, so they cannot drift.
+- Turnstile rendered with its default `auto` theme (which follows the **visitor's** OS), so
+  dark-mode visitors got a black box in the middle of a cream card — seen in production.
+  It was also missing `expired-callback`, which `turnstile-box.tsx` documents as mandatory:
+  an expired token fails server-side while the button still reads ready.
+
+`PULSE_SCAN_SOURCES` is declared once and shared. A caller that declares its source
+**skips referrer sniffing entirely** — the sales page is same-origin, so sniffing would
+have filed its leads under `gitwork.co.uk` and lost the one number that says which door
+converts.
+
+### 44.2 Pulse was audited against six real sites, and every one produced false positives
+
+Prompted by "the reports need to be truthful and real. Never false information." Six real
+sites were scanned, then **every P1/P2 finding was verified independently of Pulse** —
+`curl`, `dig`, DoH, `openssl`, headless Chrome against the live sites. A scanner's own
+report is not evidence about the scanner.
+
+**88 actionable findings checked · 38 defective · 19 root causes · no site scored zero.**
+
+| Site | Score | Actionable | Defective |
+|---|---|---|---|
+| gov.uk | 78 | 11 | **7** — both P1s wrong |
+| news.ycombinator.com | 74 | 19 | 8 — both P1s wrong |
+| gitwork.co.uk | 71 | 21 | 6 |
+| developer.mozilla.org | 80 | 14 | 7 |
+| vercel.com | 87 | 13 | 6 |
+| linear.app | 90 | 10 | 4 |
+
+Two of the six were told their **P1 launch blockers** were legal documents linked from the
+footer of the page Pulse had just parsed. Full evidence base, with the command that
+reproduces each one, in **`docs/pulse-false-positive-audit-2026-08.md`** — kept because the
+reproductions are the expensive part.
+
+**Three reproduced by hand afterwards, and that pass found things the audit missed:**
+- `linksLegalDocument` returned FALSE for gov.uk's `/help/terms-conditions` while
+  `GET` on it returns 200 with `<h1>Terms and conditions</h1>`.
+- The secret scanner fired on `govuk-icon-mask-<sha256>.svg` at P1 *"rotate credentials
+  immediately"* — **and** could not match a real modern OpenAI key, because
+  `sk-[a-zA-Z0-9]{32,}` has no hyphen in its class so it stops at `sk-proj`. A false
+  negative on the most important case there is, which the audit had not spotted.
+- A **20th root cause**: a brand-prefixed legal path (`github-terms-of-service`,
+  `company-privacy-policy`) is missed, because the matcher requires the token to start
+  immediately after a `/`. Found by sweeping ten live homepages, not by reading code.
+
+**Two patterns generate the whole class, and both are §35 one layer out:**
+- **A lookup narrower than the standard it cites.** DMARC queried with no RFC 7489 §6.6.3
+  org-domain retry; `www.` concatenated onto a subdomain (`www.www.gov.uk`, NXDOMAIN); CDN
+  detected by a five-vendor list omitting RFC 9211 `Cache-Status`; CSP reporting read only
+  from the enforced policy. Each turns a partial probe into a confident negative.
+- **Absence is the secure state, or the wrong response class was graded.** No
+  `Access-Control-Allow-Origin` on an HTML document is the locked-down state, and was
+  warned on all six sites — while Pulse's own newer `api-behaviour.ts` says the opposite
+  about identical evidence. `X-RateLimit-*` asked of a cached `text/html` page.
+
+### 44.3 The process: three passes, because pass one made it worse
+
+This is the part worth keeping. **The fixes were adversarially reviewed, and the review
+found the fixes had introduced false negatives — several worse than the bugs they
+replaced.** All four reviewers returned NEEDS_WORK. Examples:
+
+- A bare `<html lang="en-US">` began narrowing the market set on its own, so
+  `applyJurisdictionFilter` rewrote **46 of 55** jurisdiction-tagged checks to "not
+  applicable to your selected markets" — silently dropping GDPR and CCPA for any
+  English-language site. Same class as the bug it fixed, same direction, and **invisible on
+  the report**: the checks read as inapplicable rather than wrong.
+- Widening the legal terminator to accept `privacy.html` also made
+  `href="/assets/terms.css"` satisfy `terms_of_service`. **A stylesheet passed a
+  launch-blocking legal gate**, with zero fetches so no content-verify could save it.
+- A Cloudflare **NEL** `report-to` header counted as CSP reporting — Cloudflare sets it on
+  a large share of the web.
+- Nine keys were demoted to MEDIUM as "absence-derived" **while other agents were, in the
+  same tree, repairing those very probes** so they now read a header before speaking. Real
+  CORS origin reflection dropped out of the free actionable list. That was a coordination
+  failure in how the work was partitioned, not a reasoning error.
+
+Pass two closed those; a second independent re-verification confirmed the closures
+(3 of 4 SOUND) and found residuals, which pass three closed.
+
+⚠️ **The lesson: a false-positive fix is a two-sided change and needs a two-sided test.**
+Every fix here now has an input that must change AND a representative correct input that
+must not. Where a fix could not be made precise, the residual was documented instead of
+guessed at.
+
+### 44.4 The release gate could not tell "verified" from "could not verify"
+
+Found by re-verification, fixed in `release-decision.ts`, and the most dangerous single
+item in the whole review.
+
+`unverified` was populated by exactly three codes — `COVERAGE_BELOW_FLOOR`,
+`REQUIRED_COLLECTOR_UNAVAILABLE`, `EVIDENCE_REQUIRED` — none of which an **INCONCLUSIVE
+blocking key** triggers. Measured: `privacy_policy` and `terms_of_service` both
+INCONCLUSIVE on an otherwise-clean 42-check scan returned **`READY`, score 100,
+`unverified: []`** — byte-identical to the run where both PASSED.
+
+That contradicts the precedence argued at the top of that very file ("INCONCLUSIVE
+outranks CONDITIONAL and READY because the opposite mistake is worse"), and it is not an
+edge case: **a client-rendered site behind catch-all 200 routing cannot have either legal
+document established from outside, and that is Pulse's core target population.** The
+commonest scan we run was being rubber-stamped on the two controls a launch actually turns
+on.
+
+New `BLOCKING_CONTROL_UNESTABLISHED` reason: any blocking key whose status is
+`INCONCLUSIVE`, `ERROR` or `NOT_TESTED` yields decision `INCONCLUSIVE`, with wording that
+says Pulse could not see enough — **not** that the control is failing.
+
+⚠️ `SKIPPED` and `NOT_APPLICABLE` are deliberately **excluded**: those mean the control
+does not apply to this subject, which is a decision made on evidence, not a gap. Including
+them would make every URL-only scan permanently INCONCLUSIVE on its repo-only blockers. A
+blocker that produced **no check at all** is excluded too — that is what
+`COVERAGE_BELOW_FLOOR` already measures, and double-counting it would fire on any policy
+whose blocking set outruns the scan's input type. Both exclusions are pinned by tests.
+
+### 44.5 A deploy blocker with a delay fuse
+
+**Never create a table in the `public` schema of this database, not even a scratch copy.**
+
+A `_StarterBackup_20260822` table was created by hand as a second safety net before a
+Starter-row cleanup. Prisma does not know it, so `db push` wants to DROP it; it is not
+empty, so the guarded push refuses — and per §2's all-or-nothing behaviour the **entire**
+sync aborts. Net effect: **every deploy failed, for every commit**, and nothing failed
+until the next person pushed.
+
+Nothing broke, because the push is ordered before the app restart and gates it — the old
+image kept serving (`/api/health` 200 throughout). The repair, in `deploy.yml`, **moves**
+the table rather than dropping it: `CREATE SCHEMA IF NOT EXISTS scratch` +
+`ALTER TABLE … SET SCHEMA scratch`, guarded and idempotent, reversible with the inverse.
+`db push` stops seeing it because the datasource only manages `public`. Marked one-shot in
+place — delete the block once it has run. Full record in
+`docs/deploy-blocked-starter-backup-table.md`.
+
+### 44.6 `audit:clipping` runs on macOS after all
+
+Documented in `docs/mobile-playbook.md` §3a. Three non-obvious blockers: this repo's own
+`engines: {node: "22.x"}` makes npm refuse **any** install on a newer node (use
+`--engine-strict=false`); a Claude Code worktree shares one `node_modules` by symlink so
+installing there disturbs other running sessions (install into a scratch dir); and the
+script is ESM so `NODE_PATH` is ignored (run it from where playwright lives). `CHROMIUM_PATH`
+accepts a normal system Chrome, so no browser download is needed. `/production-ready` and
+`/embed/pulse` both verified clean at 390 · 768 · 1280x620 · 1440, with `--self-test`
+passing first.

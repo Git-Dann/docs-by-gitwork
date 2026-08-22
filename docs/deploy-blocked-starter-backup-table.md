@@ -1,6 +1,13 @@
-# ⛔ Deploys are blocked by `_StarterBackup_20260822` — read this before pushing
+# Deploys were blocked by `_StarterBackup_20260822` — RESOLVED
 
-**Status: OPEN as of 2026-08-22 11:10 UTC. Production is HEALTHY; deploys are not.**
+**Status: RESOLVED 2026-08-22 12:21 UTC.** The fix shipped in `abd627a7` and ran on the
+next deploy — the log reads `Relocating unmanaged table _StarterBackup_20260822 out of
+public (moving, NOT dropping)` then `ALTER TABLE`, the `prisma db push` then succeeded,
+and `https://foundry.gitwork.co.uk/production-ready` returned 200. The 438 rows are
+intact at `scratch."_StarterBackup_20260822"`.
+
+Kept because the mistake is repeatable and the rule below is the point. The one-shot
+block in `deploy.yml` has now run and can be deleted.
 
 ## What is happening
 

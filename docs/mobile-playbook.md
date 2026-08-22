@@ -106,6 +106,33 @@ npm run audit:clipping http://localhost:3000/api-docs
 npm run audit:clipping http://localhost:3000/ --viewports=390x844,1280x620
 ```
 
+**On a local macOS machine none of that works, and the three reasons are all
+non-obvious** (worked out 2026-08-22 while auditing the live `/production-ready`):
+
+1. `npm i --no-save playwright-core` **fails outright** with `EBADENGINE`. It is not
+   playwright's engines field — it is this repo's own: `package.json` pins
+   `engines: {node: "22.x"}`, so npm refuses *any* install here on a newer node.
+   Add `--engine-strict=false`.
+2. Do **not** install it into a Claude Code worktree. Those share one `node_modules`
+   by symlink, so an install lands in the tree other sessions are running tests
+   against. Install into a scratch directory instead.
+3. `NODE_PATH` does **not** help — the script is ESM, which ignores it. Copy the
+   script next to the install and run it from there.
+
+```bash
+mkdir -p /tmp/pwtools && cd /tmp/pwtools
+printf '{"name":"pwtools","private":true}\n' > package.json
+npm i --engine-strict=false playwright-core
+cp /path/to/repo/scripts/audit-clipping.mjs .
+CHROMIUM_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  node audit-clipping.mjs https://foundry.gitwork.co.uk/production-ready
+```
+
+`CHROMIUM_PATH` is honoured by `findChromium()` ahead of everything else, so a normal
+system Chrome works and no browser download is needed. Verified clean at 390 · 768 ·
+1280x620 · 1440 against the live `/production-ready` and `/embed/pulse`, with
+`--self-test` passing first.
+
 ⚠️ **A page that failed to load is not a clean page, and the script used to say it was.** `total`
 counted findings only, so a run where every `goto()` errored printed `0 finding(s)` and **exited
 0** — byte-identical to a genuine pass, on a run that audited nothing. It now reports how many

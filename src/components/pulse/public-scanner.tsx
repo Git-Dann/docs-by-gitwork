@@ -367,7 +367,20 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
   useEffect(() => {
     if (!turnstileReady || !turnstileSiteKey || !window.turnstile) return;
     if (scanTurnstileRef.current && !scanTurnstileRef.current.hasChildNodes()) {
-      window.turnstile.render(scanTurnstileRef.current, { sitekey: turnstileSiteKey, callback: setScanToken });
+      window.turnstile.render(scanTurnstileRef.current, {
+        sitekey: turnstileSiteKey,
+        // Both surfaces are light-only — the embed paints its own white card, and the
+        // sales page a white panel on cream. Turnstile's default is `auto`, which
+        // follows the VISITOR's OS, so anyone in dark mode got a black box sitting in
+        // the middle of a cream card. Seen in production.
+        theme: "light",
+        callback: setScanToken,
+        // An expired token is worse than no token: it fails server-side verification
+        // while `awaitingVerification` still reads false, so the button looks ready and
+        // the submit fails "Verification failed". turnstile-box.tsx has always done
+        // this; this render call was written separately and never did.
+        "expired-callback": () => setScanToken(null),
+      });
     }
   }, [turnstileReady, turnstileSiteKey]);
 

@@ -41,7 +41,8 @@ export type GateReasonCode =
   | "REQUIRED_COLLECTOR_UNAVAILABLE"
   | "HEALTH_BELOW_FLOOR"
   | "UNRESOLVED_FAILURES"
-  | "EVIDENCE_REQUIRED";
+  | "EVIDENCE_REQUIRED"
+  | "BLOCKING_CONTROL_UNESTABLISHED";
 
 export interface GateReason {
   code: GateReasonCode;
@@ -238,6 +239,40 @@ export function evaluateReleaseGate(
       code: "EVIDENCE_REQUIRED",
       summary: `${evidenceRequired.length} control${plural(evidenceRequired.length, "", "s")} ${plural(evidenceRequired.length, "needs", "need")} evidence Pulse cannot collect itself — account access, a document, or a human review.`,
       checkKeys: evidenceRequired.map((check) => check.checkKey),
+    });
+  }
+
+  // ── A named blocker Pulse could not establish either way ───────────────────
+  //
+  // The precedence argued at the top of this file says INCONCLUSIVE outranks READY
+  // "because the opposite mistake is worse" — and yet a blocking key that came back
+  // INCONCLUSIVE fed into nothing, so it read to this function exactly like a PASS.
+  // Measured before this existed: privacy_policy and terms_of_service both
+  // INCONCLUSIVE on an otherwise-clean scan returned decision READY, score 100,
+  // unverified []. Byte-identical to the all-PASS run.
+  //
+  // That is not an edge case. A client-rendered site behind catch-all 200 routing
+  // cannot have either legal document established from outside — and that is Pulse's
+  // core target population, so the commonest scan we run was being rubber-stamped on
+  // the two controls a launch actually turns on.
+  //
+  // ⚠️ SKIPPED and NOT_APPLICABLE are deliberately EXCLUDED. Those mean "this control
+  // does not apply to this subject", which is a decision Pulse made on evidence, not a
+  // gap in what it saw — including them would make every URL-only scan permanently
+  // INCONCLUSIVE on its repo-only blockers. A blocker that produced no check at all is
+  // likewise excluded: that is what COVERAGE_BELOW_FLOOR already measures, and
+  // double-counting it here would fire on any policy whose blockers outrun the scan's
+  // input type.
+  const unestablishedBlockers = checks.filter(
+    (check) =>
+      policy.blockingKeys.includes(check.checkKey) &&
+      (check.status === "INCONCLUSIVE" || check.status === "ERROR" || check.status === "NOT_TESTED"),
+  );
+  if (unestablishedBlockers.length > 0) {
+    unverified.push({
+      code: "BLOCKING_CONTROL_UNESTABLISHED",
+      summary: `${unestablishedBlockers.length} control${plural(unestablishedBlockers.length, "", "s")} this policy treats as non-negotiable could not be established either way: ${unestablishedBlockers.map((check) => check.label).join("; ")}. Pulse is not saying ${plural(unestablishedBlockers.length, "it is", "they are")} failing — it is saying it could not see enough to clear ${plural(unestablishedBlockers.length, "it", "them")}, so this decision cannot be a pass.`,
+      checkKeys: unestablishedBlockers.map((check) => check.checkKey),
     });
   }
 

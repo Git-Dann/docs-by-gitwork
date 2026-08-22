@@ -183,3 +183,21 @@ describe("mobile", () => {
     expect(src).toMatch(/padding: "13px 20px"/);
   });
 });
+
+describe("the Turnstile widget", () => {
+  // Source-level, deliberately: jsdom will not fire next/script's onLoad, so the widget
+  // never renders in a test and a behavioural assertion here would pass while broken —
+  // the same reasoning as the enquiry-gate suite.
+  const src = readFileSync("src/components/pulse/public-scanner.tsx", "utf8");
+
+  it("is pinned to the light theme", () => {
+    // Default is `auto`, which follows the VISITOR's OS. Both surfaces are light-only,
+    // so a dark-mode visitor got a black box in the middle of a cream card.
+    expect(src).toMatch(/theme: "light"/);
+  });
+
+  it("treats an expired token as no token", () => {
+    // Otherwise the button reads ready while the server rejects the stale token.
+    expect(src).toMatch(/"expired-callback": \(\) => setScanToken\(null\)/);
+  });
+});

@@ -145,11 +145,23 @@ export interface PublicTriage {
  *
  * So "show everything" would be a wall of ~600 yellow rows on every site including
  * excellent ones — worse than useless, because it would discredit the score above
- * it. `rankFindings` already grades severity × certainty × category weight
- * correctly (verified: Stripe's top 12 are privacy policy, terms, http_redirect,
- * permissions_policy, secure_cookie_attributes, cors_policy, COEP/CORP and
- * rate-limit headers — every one real and defensible). The report simply never
- * used it.
+ * it. `rankFindings` grades severity × certainty × category weight, and the report
+ * simply never used it.
+ *
+ * ⚠️ This comment used to certify the ranked output as verified: it named Stripe's
+ * top 12 (privacy policy, terms, http_redirect, permissions_policy,
+ * secure_cookie_attributes, cors_policy, COEP/CORP, rate-limit headers) and called
+ * them "every one real and defensible". FOUR of those eight named items have since
+ * been found wrong — `secure_cookie_attributes` (warned a site that sets no cookies
+ * at all; fixed, see pulse-scan.ts), and then `permissions_policy`, `cors_policy`
+ * and `rate_limiting_headers` in the July-2026 false-positive audit
+ * (`FP-PLAN-SCRATCH.md`, items 4, 11, 13). RANKING IS NOT VALIDATION: putting a
+ * finding at the top is orthogonal to whether the finding is true, and because this
+ * file gates the FREE report, a wrong item here is the first thing a stranger reads.
+ *
+ * So: no all-clear is recorded here. The audit is the current statement of what is
+ * known to be defective, and a check reaching this triage is not evidence it was
+ * checked. Re-verify against a live response before trusting any row.
  *
  * Free therefore means the TRIAGED answer — typically 5–20 items with evidence —
  * plus an honest count of the advisory tail and an honest list of what could not
