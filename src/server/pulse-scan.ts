@@ -624,6 +624,69 @@ function linksLegalHostLabel(html: string, kind: LegalDocKind, scannedHost?: str
 }
 
 /** True when this href points at a legal hub rather than a specific document. */
+/**
+ * True when the page LINKS a path containing one of these tokens.
+ *
+ * ⚠️ Why this exists, and why several checks were wrong without it. A family of
+ * compliance checks probed a FIXED ROOT PATH and never looked at the page's own links:
+ * `accessibility_statement` HEADed `/accessibility` and `/accessibility-statement`,
+ * `cookie_policy_page` HEADed `/cookie-policy` and `/cookies`. Live-scanned www.gov.uk
+ * on 2026-08-22 and both came back as findings — while the markup Pulse had just parsed
+ * contained `href="/help/accessibility-statement"` and `href="/help/cookies"`. Telling
+ * the UK government its site has no accessibility statement, on the strength of a path
+ * we guessed wrong, is the same defect as the legal-link matcher above: probing a guess
+ * while ignoring the evidence in hand.
+ *
+ * Reads the INERT-STRIPPED markup, so a commented-out or `<template>`d link does not
+ * count — the same rule the legal matcher uses.
+ */
+export function linksPathContaining(html: string, tokens: string[]): boolean {
+  const pattern = new RegExp(`(?:^|/)[^/?#]*(?:${tokens.join("|")})`, "i");
+  return extractHrefs(stripInertMarkup(html)).some((href) => {
+    const path = href.split("#")[0].split("?")[0].toLowerCase();
+    return pattern.test(path);
+  });
+}
+
+/**
+ * True when the page carries a cookie-consent mechanism.
+ *
+ * ⚠️ This was a CLOSED VENDOR LIST (cookiebot / osano / onetrust / cookie-consent /
+ * cookieconsent / cookie_notice / gdpr), so a SELF-HOSTED banner was invisible.
+ * Live-scanned www.gov.uk on 2026-08-22 and it was reported as having no cookie consent
+ * mechanism — while the page ships the reference UK implementation, with
+ * `id="global-cookie-message"`, `govuk-cookie-banner` / `gem-c-cookie-banner`, and
+ * accept/reject confirmation copy. Same shape as the CDN five-vendor list in §44.2:
+ * a closed fingerprint list reported as directly-observed absence.
+ *
+ * Detects the MECHANISM — a container named for what it is, or the copy a visitor
+ * actually reads — and keeps the vendor names as additional signals rather than as the
+ * definition of the thing.
+ */
+const COOKIE_BANNER_VENDORS = [
+  "cookiebot", "osano", "onetrust", "termly", "iubenda", "cookieyes", "complianz",
+  "consentmanager", "trustarc", "quantcast", "didomi", "usercentrics", "klaro",
+  "tarteaucitron", "orejime",
+];
+
+const COOKIE_BANNER_CONTAINER =
+  /(?:class|id)="[^"]*cookie[-_]?(?:banner|consent|notice|message|bar|law|prompt|dialog)[^"]*"/i;
+
+const CONSENT_CONTAINER =
+  /(?:class|id)="[^"]*(?:consent|cookie)[-_]?(?:manager|modal|overlay)[^"]*"/i;
+
+const COOKIE_BANNER_COPY =
+  /accept (?:all )?cookies|reject (?:all )?cookies|cookie settings|manage cookies|we use cookies|essential cookies/i;
+
+export function hasCookieConsentMechanism(html: string): boolean {
+  const lower = html.toLowerCase();
+  if (COOKIE_BANNER_VENDORS.some((vendor) => lower.includes(vendor))) return true;
+  if (COOKIE_BANNER_CONTAINER.test(lower) || CONSENT_CONTAINER.test(lower)) return true;
+  // The copy test is gated on the page mentioning cookies at all, so a page saying
+  // "manage cookies" in a blog post about baking does not qualify on its own.
+  return lower.includes("cookie") && COOKIE_BANNER_COPY.test(lower);
+}
+
 export function isLegalHubHref(href: string): boolean {
   const path = href.split("#")[0].split("?")[0].toLowerCase();
   return new RegExp(`(?:^|/)(?:${LEGAL_HUB_TOKENS})/?$`).test(path);
@@ -2781,9 +2844,16 @@ export async function runUrlChecks(
       confidence: legalVerdicts.terms.confidence,
     });
 
-    const hasCookieBanner = ["cookiebot", "osano", "onetrust", "cookie-consent", "cookieconsent", "cookie_notice", "gdpr"].some((s) =>
-      htmlLower.includes(s),
-    );
+    // ⚠️ This used to be a CLOSED VENDOR LIST (cookiebot / osano / onetrust / ...), so a
+    // SELF-HOSTED banner was invisible. Live-scanned www.gov.uk on 2026-08-22 and it was
+    // reported as having no cookie consent mechanism — while the page ships the reference
+    // UK implementation: `govuk-cookie-banner` / `gem-c-cookie-banner`, with accept and
+    // reject confirmation messages. Same shape as the CDN five-vendor list in §44.2:
+    // a closed fingerprint list reported as directly-observed absence.
+    //
+    // Detect the MECHANISM — a banner container named for what it is — and keep the
+    // vendor names as additional signals rather than as the definition.
+    const hasCookieBanner = hasCookieConsentMechanism(pageResult.html);
     const hasCookieLink = ["/cookie-policy", "/cookies", "/legal/cookies"].some((p) =>
       htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
     );
@@ -3610,9 +3680,12 @@ export async function runUrlChecks(
     const cookiePolicyAltStatus = legalApplicable && cookiePolicyStatus !== 200
       ? await headRequest(`${baseUrl}/cookies`) : 200;
 
+    // A link on the page outranks a HEAD on a guessed path: it is evidence we already
+    // hold, and it costs nothing. See linksPathContaining for the www.gov.uk case.
+    const linksAccessibility = linksPathContaining(pageResult.html, ["accessibility"]);
     checks.push(routePageCheck(
       "Legal & Compliance", "accessibility_statement", "Accessibility statement",
-      accessibilityStatus === 200 || accessibilityAltStatus === 200,
+      linksAccessibility || accessibilityStatus === 200 || accessibilityAltStatus === 200,
       "Accessibility statement page found — EU Web Accessibility Directive compliance documented.",
       "No accessibility statement — required by EU Web Accessibility Directive; recommended for all public-facing SaaS.",
     ));
@@ -3657,9 +3730,10 @@ export async function runUrlChecks(
         : "No 'last updated' date in policy — regulators and users expect visible evidence of ongoing policy maintenance.",
     });
 
+    const linksCookiePolicy = linksPathContaining(pageResult.html, ["cookie-policy", "cookiepolicy", "cookies", "cookie"]);
     checks.push(routePageCheck(
       "Legal & Compliance", "cookie_policy_page", "Dedicated cookie policy page",
-      cookiePolicyStatus === 200 || cookiePolicyAltStatus === 200,
+      linksCookiePolicy || cookiePolicyStatus === 200 || cookiePolicyAltStatus === 200,
       "Dedicated cookie policy page found — GDPR ePrivacy Directive requirement met.",
       "No dedicated cookie policy — GDPR and ePrivacy Directive require transparent disclosure of all cookies used.",
     ));
