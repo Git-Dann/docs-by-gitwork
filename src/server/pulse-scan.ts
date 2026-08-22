@@ -55,11 +55,16 @@ type FetchResult = {
   finalUrl: string;
 };
 
-async function fetchWithTimeout(url: string, options?: RequestInit): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  options?: RequestInit,
+  /** Passed through to the SSRF-guarded transport. See fetchScannableUrl's options. */
+  guard?: { followRedirects?: boolean },
+): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    return await fetchScannableUrl(url, { ...options, signal: controller.signal });
+    return await fetchScannableUrl(url, { ...options, signal: controller.signal }, {}, guard);
   } finally {
     clearTimeout(timer);
   }
@@ -105,11 +110,14 @@ async function headRequest(url: string): Promise<number> {
 // back to GET when HEAD is rejected (405/501).
 async function inspectRedirect(url: string): Promise<{ status: number; location: string }> {
   const probe = async (method: "HEAD" | "GET") => {
-    const response = await fetchWithTimeout(url, {
-      method,
-      redirect: "manual",
-      headers: { "User-Agent": "Gitwork-Pulse/1.0" },
-    });
+    const response = await fetchWithTimeout(
+      url,
+      { method, redirect: "manual", headers: { "User-Agent": "Gitwork-Pulse/1.0" } },
+      // Essential, not cosmetic: the guarded transport follows redirects itself, so
+      // without this the 3xx this function exists to observe is invisible and every
+      // correctly-configured site reads as "does not redirect to HTTPS".
+      { followRedirects: false },
+    );
     return { status: response.status, location: response.headers.get("location") ?? "" };
   };
   try {
@@ -177,7 +185,7 @@ async function fileServed(
   return looksRight ? looksRight(r.body, r.contentType) : true;
 }
 
-function detectTechStack(headers: Record<string, string>, html: string, hostname?: string): string[] {
+export function detectTechStack(headers: Record<string, string>, html: string, hostname?: string): string[] {
   const stack: string[] = [];
 
   // AI/no-code builder origin (Lovable, Bolt, v0, Replit, ...) — hostname-suffix + HTML watermark
@@ -198,22 +206,49 @@ function detectTechStack(headers: Record<string, string>, html: string, hostname
   if (headers["server"]?.toLowerCase().includes("nginx")) stack.push("Nginx");
   if (headers["server"]?.toLowerCase().includes("apache")) stack.push("Apache");
 
-  if (html.includes("__NEXT_DATA__") || html.includes("_next/static")) stack.push("Next.js");
-  if (html.includes("nuxt") || html.includes("__NUXT__")) stack.push("Nuxt.js");
-  if (html.includes("svelte") || html.includes("_svelte")) stack.push("Svelte");
-  if (html.includes("gatsby")) stack.push("Gatsby");
-  if (html.includes("react")) stack.push("React");
-  if (html.includes("vue")) stack.push("Vue");
-  if (html.includes("js.stripe.com") || html.includes("stripe")) stack.push("Stripe");
-  if (html.includes("supabase")) stack.push("Supabase");
-  if (html.includes("firebase")) stack.push("Firebase");
-  if (html.includes("clerk")) stack.push("Clerk");
-  if (html.includes("next-auth") || html.includes("nextauth")) stack.push("NextAuth");
-  if (html.includes("plausible.io")) stack.push("Plausible");
-  if (html.includes("posthog")) stack.push("PostHog");
-  if (html.includes("gtag") || html.includes("google-analytics") || html.includes("_ga")) stack.push("Google Analytics");
-  if (html.includes("sentry")) stack.push("Sentry");
-  if (html.includes("intercom")) stack.push("Intercom");
+  // ⚠️ USE, not MENTION. Every line below used to be a naked `html.includes("<brand>")`,
+  // which asks "does this word appear anywhere on the page" — not "is this technology
+  // in use". On the B2B marketing sites Pulse mostly scans, that is routinely false:
+  //
+  //   · stripe.com/gb mentions "supabase" 14 times because Supabase is a Stripe
+  //     CUSTOMER (`/gb/customers/supabase`, `Supabase.png`). Pulse concluded the site
+  //     runs on Supabase and raised a P2 telling Stripe to verify their Row-Level
+  //     Security. Verified outside Pulse with curl.
+  //   · `includes("vue")`   matched "a**venue**", "re**vue**", "Belle**vue**".
+  //   · `includes("clerk")` matched the ordinary English word "clerk".
+  //   · `includes("react")` matched "reaction", "reactive", "reacted".
+  //
+  // This is not cosmetic: techStack drives `hasBackend` and platform detection, which
+  // decide WHICH CHECK FAMILIES RUN. A wrong stack manufactures wrong findings
+  // downstream — the Stripe case is exactly that chain.
+  //
+  // So each signal is now something only actual use produces: a first-party asset
+  // path, a vendor script host, or a runtime fingerprint. Where a bare product name
+  // is genuinely the only signal available, it is matched on a word boundary AND
+  // alongside a corroborating asset reference.
+  const has = (re: RegExp) => re.test(html);
+
+  // Framework runtime fingerprints — emitted by the build, impossible to mention.
+  if (has(/__NEXT_DATA__|_next\/static/)) stack.push("Next.js");
+  if (has(/__NUXT__|\/_nuxt\//)) stack.push("Nuxt.js");
+  if (has(/\/_app\/immutable\/|__sveltekit_|data-svelte-h=/)) stack.push("Svelte");
+  if (has(/\/page-data\/app-data\.json|gatsby-image-wrapper|___gatsby/)) stack.push("Gatsby");
+  if (has(/data-reactroot|__REACT_DEVTOOLS_|\/react(?:-dom)?[.@][\d.]*\/?[a-z.]*\.js/)) stack.push("React");
+  if (has(/__VUE__|data-v-[0-9a-f]{8}|\/vue(?:@|\.runtime|\.min)/)) stack.push("Vue");
+
+  // Third-party services — identified by the host they load from, not their name.
+  if (has(/js\.stripe\.com|checkout\.stripe\.com|api\.stripe\.com/)) stack.push("Stripe");
+  // `(?![a-z])` matters: without it this matches inside `.supabase.company`, which is
+  // literally present in stripe.com/gb's i18n keys.
+  if (has(/[a-z0-9-]+\.supabase\.(?:co|in)(?![a-z])|supabase-js/)) stack.push("Supabase");
+  if (has(/firebaseio\.com|firebaseapp\.com|googleapis\.com\/identitytoolkit|firebase-app\.js/)) stack.push("Firebase");
+  if (has(/clerk\.[a-z0-9-]+\.(?:dev|com)|clerk\.accounts\.|@clerk\//)) stack.push("Clerk");
+  if (has(/\/api\/auth\/(?:session|providers|csrf)|next-auth\.session-token/)) stack.push("NextAuth");
+  if (has(/plausible\.io/)) stack.push("Plausible");
+  if (has(/posthog\.com|posthog\.js|\/static\/array\.js/)) stack.push("PostHog");
+  if (has(/googletagmanager\.com|google-analytics\.com|gtag\(/)) stack.push("Google Analytics");
+  if (has(/sentry-cdn\.com|\.ingest\.sentry\.io|@sentry\//)) stack.push("Sentry");
+  if (has(/widget\.intercom\.io|intercomcdn\.com|intercomSettings/)) stack.push("Intercom");
 
   return [...new Set(stack)];
 }
@@ -240,7 +275,12 @@ function detectProjectContext(html: string, headers: Record<string, string>): Pr
   const isAuthEnabled =
     ["/login", "/signin", "/sign-in", "/signup", "/sign-up", "/auth", "/register"].some(
       (p) => lower.includes(`href="${p}`) || lower.includes(`href='${p}`),
-    ) || ["clerk", "next-auth", "nextauth", "supabase", "auth0", "lucia", "kinde"].some((p) => lower.includes(p));
+    )
+    // Auth-provider evidence, not the provider's NAME. `lower.includes("clerk")`
+    // matched the English word, `"supabase"` matched a customer logo, and `"lucia"`
+    // matched a person's name — each of which switched on the whole auth check family
+    // for a site with no auth at all. Same USE-not-MENTION rule as detectTechStack.
+    || /clerk\.[a-z0-9-]+\.(?:dev|com)|@clerk\/|next-auth\.session-token|\/api\/auth\/(?:session|providers|csrf)|[a-z0-9-]{8,}\.supabase\.(?:co|in)(?![a-z])|supabase-js|[a-z0-9-]+\.auth0\.com|lucia-auth|[a-z0-9-]+\.kinde\.com/i.test(html);
 
   // Auth *method* — password vs. OTP/passwordless — so checks that only make
   // sense for traditional passwords (strength rules, breach-password lookups)
@@ -1177,10 +1217,27 @@ export async function runUrlChecks(
     detectedMarkets = detectMarketsFromPage({ hostname, html: pageResult.html, htmlLower });
     if (effectiveMarkets.length === 0) effectiveMarkets = detectedMarkets;
 
-    const hasPrivacy = ["/privacy", "/privacy-policy", "/legal/privacy", "/legal"].some((p) =>
-      htmlLower.includes(`href="${p}"`) || htmlLower.includes(`href='${p}'`) ||
-      htmlLower.includes(`href="${p} `) || htmlLower.includes(`href="${p}>`),
-    );
+    // ⚠️ These two checks accuse a site of a LEGAL-COMPLIANCE failure, so a false
+    // negative is far more damaging than a false positive. They used to demand an
+    // EXACT `href="/privacy"` (closing quote, space or `>`), which missed:
+    //   · any locale prefix — verified outside Pulse with curl: stripe.com/gb links
+    //     `href="/gb/privacy"`, and Pulse reported "No privacy policy link" as its
+    //     single highest-priority finding about Stripe;
+    //   · a trailing slash (`/privacy/`), an absolute URL, or a query/fragment;
+    //   · every non-English path (`/datenschutz`, `/confidentialite`, `/privacidad`).
+    //
+    // So the path segment is now matched anywhere inside an href, with an optional
+    // prefix and a terminator, rather than as the whole attribute value.
+    const linksTo = (paths: string[]) =>
+      new RegExp(
+        `href=["'][^"']*/(?:${paths.join("|")})(?:/|["'#?]|$)`,
+        "i",
+      ).test(htmlLower);
+
+    const hasPrivacy = linksTo([
+      "privacy", "privacy-policy", "privacy-notice", "privacypolicy",
+      "datenschutz", "confidentialite", "privacidad", "privacybeleid",
+    ]) || /href=["'][^"']*\/legal\/[^"']*privacy/i.test(htmlLower);
     checks.push({
       category: CATEGORIES.LEGAL,
       checkKey: "privacy_policy",
@@ -1191,10 +1248,10 @@ export async function runUrlChecks(
         : "No privacy policy link — required for GDPR, CCPA, and app store distribution.",
     });
 
-    const hasToS = ["/terms", "/tos", "/terms-of-service", "/terms-and-conditions", "/legal/terms"].some((p) =>
-      htmlLower.includes(`href="${p}"`) || htmlLower.includes(`href='${p}'`) ||
-      htmlLower.includes(`href="${p} `) || htmlLower.includes(`href="${p}>`),
-    );
+    const hasToS = linksTo([
+      "terms", "tos", "terms-of-service", "terms-of-use", "terms-and-conditions",
+      "termsofservice", "conditions", "agb", "nutzungsbedingungen",
+    ]) || /href=["'][^"']*\/legal\/[^"']*terms/i.test(htmlLower);
     checks.push({
       category: CATEGORIES.LEGAL,
       checkKey: "terms_of_service",
@@ -1815,15 +1872,24 @@ export async function runUrlChecks(
     });
 
     const setCookieHeader = pageResult.headers["set-cookie"] ?? "";
-    const hasSecureCookieAttrs = setCookieHeader.toLowerCase().includes("secure") && setCookieHeader.toLowerCase().includes("samesite");
+    const lowerCookies = setCookieHeader.toLowerCase();
+    const hasSecureCookieAttrs = lowerCookies.includes("secure") && lowerCookies.includes("samesite");
+    // A response that sets NO cookies cannot have insecure ones. The old ternary read
+    // `setCookieHeader ? "WARN" : "WARN"` — someone began drawing this distinction and
+    // never finished it — so every cookie-less site was told its cookies were
+    // "vulnerable to CSRF and session theft". Verified outside Pulse with curl:
+    // stripe.com/gb sets zero cookies and was warned anyway.
+    const setsCookies = setCookieHeader.trim().length > 0;
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "secure_cookie_attributes",
       label: "Secure cookie attributes",
-      status: hasSecureCookieAttrs ? "PASS" : setCookieHeader ? "WARN" : "WARN",
-      detail: hasSecureCookieAttrs
-        ? "Cookies have Secure and SameSite attributes — session hijacking risk reduced."
-        : "Cookies lack Secure or SameSite attributes — vulnerable to CSRF and session theft on mixed-content pages.",
+      status: !setsCookies ? "SKIPPED" : hasSecureCookieAttrs ? "PASS" : "WARN",
+      detail: !setsCookies
+        ? "Not assessed — this response set no cookies, so there are no cookie attributes to check. If cookies are only set after sign-in, they are not visible to an unauthenticated scan."
+        : hasSecureCookieAttrs
+          ? "Cookies have Secure and SameSite attributes — session hijacking risk reduced."
+          : "Cookies lack Secure or SameSite attributes — vulnerable to CSRF and session theft on mixed-content pages.",
     });
 
     const corsHeader = pageResult.headers["access-control-allow-origin"];

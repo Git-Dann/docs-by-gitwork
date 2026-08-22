@@ -11,6 +11,7 @@
 import { prisma } from "@/lib/prisma";
 import { runLiteScan } from "./run-lite-scan";
 import { notifyLeadOfScanResult } from "./leads";
+import { rankFindings } from "@/server/pulse-checks/priority";
 import type { PulseScanCheckInput } from "@/types/pulse";
 
 export interface LiteCategorySummary {
@@ -44,7 +45,17 @@ export interface PublicScanView {
   inconclusive: number;
   categories: LiteCategorySummary[];
   emailCaptured: boolean;
-  /** Per-check detail — only present once an email has been captured (gated). */
+  /**
+   * The triaged report. FREE and always present — the facts are not the gate.
+   * What is gated is the AI interpretation ("what this means", the prioritised
+   * roadmap, the fix brief) and the P3 advisory tail, which is where both the
+   * token cost and the expertise actually sit.
+   */
+  triage: PublicTriage;
+  /**
+   * Full per-check array. Retained for the in-depth view; still gated, because
+   * this is the ~960-row tail rather than the report.
+   */
   checks: PulseScanCheckInput[] | null;
   errorMessage: string | null;
 }
@@ -84,6 +95,109 @@ export function summarise(checks: PulseScanCheckInput[]): {
   }
   const categories = [...byCat.values()].sort((a, b) => (b.fail + b.warn) - (a.fail + a.warn));
   return { categories, pass, warn, fail, inconclusive };
+}
+
+/** A finding as shown to the public — evidence included, no interpretation. */
+export interface PublicFinding {
+  checkKey: string;
+  category: string;
+  label: string;
+  status: string;
+  /** What we actually observed. Never an LLM paraphrase. */
+  detail: string;
+  tier: "P1" | "P2";
+}
+
+/** A check that did not reach a verdict, and why. Shown FREE — this is the differentiator. */
+export interface PublicNotEstablished {
+  checkKey: string;
+  category: string;
+  label: string;
+  reason: string;
+}
+
+export interface PublicTriage {
+  /** P1/P2 — the defensible, actionable report. Free, in full, with evidence. */
+  actionable: PublicFinding[];
+  /** P3 advisory count. The long tail belongs to the in-depth review. */
+  advisoryCount: number;
+  advisoryByCategory: { category: string; count: number }[];
+  /** Could not be established, with reasons. Free. */
+  notEstablished: PublicNotEstablished[];
+}
+
+/**
+ * Split a full scan into what a stranger should see for free.
+ *
+ * ⚠️ Measured on real sites BEFORE designing this:
+ *
+ *   site                        score  FAIL  WARN   P1+P2    P3
+ *   example.com (blank page)       72     5   716       -  ~700
+ *   gitwork.co.uk                  71     3   635       -  ~630
+ *   stripe.com                     90     2   603      14   591
+ *
+ * stripe.com — one of the best engineering organisations on the internet — emits
+ * 603 warnings, of which 588 are LOW severity, 591 are P3, and 395 already do not
+ * score at all. A number that barely moves between a blank placeholder (716) and
+ * Stripe (603) is not a signal about the site; it is an artefact of carrying ~960
+ * checks, most of which are advisory by nature.
+ *
+ * So "show everything" would be a wall of ~600 yellow rows on every site including
+ * excellent ones — worse than useless, because it would discredit the score above
+ * it. `rankFindings` already grades severity × certainty × category weight
+ * correctly (verified: Stripe's top 12 are privacy policy, terms, http_redirect,
+ * permissions_policy, secure_cookie_attributes, cors_policy, COEP/CORP and
+ * rate-limit headers — every one real and defensible). The report simply never
+ * used it.
+ *
+ * Free therefore means the TRIAGED answer — typically 5–20 items with evidence —
+ * plus an honest count of the advisory tail and an honest list of what could not
+ * be established. That is more valuable than the wall, not less, which is exactly
+ * what makes gating the interpretation fair rather than mean.
+ */
+export function triage(checks: PulseScanCheckInput[]): PublicTriage {
+  const actionable: PublicFinding[] = [];
+  let advisoryCount = 0;
+  const advisoryCats = new Map<string, number>();
+
+  for (const { check, priority } of rankFindings(checks)) {
+    if (priority.tier === "P1" || priority.tier === "P2") {
+      actionable.push({
+        checkKey: check.checkKey,
+        category: check.category,
+        label: check.label,
+        status: check.status,
+        detail: check.detail ?? "",
+        tier: priority.tier,
+      });
+    } else if (priority.tier === "P3") {
+      advisoryCount++;
+      advisoryCats.set(check.category, (advisoryCats.get(check.category) ?? 0) + 1);
+    }
+  }
+
+  // Only checks that say WHY. A bare SKIPPED with no reason is not informative, and
+  // shipping it would recreate the silence this section exists to remove.
+  const notEstablished: PublicNotEstablished[] = checks
+    .filter((c) =>
+      (c.status === "SKIPPED" || c.status === "NOT_APPLICABLE" || UNRESOLVED_STATUSES.has(c.status))
+      && (c.detail ?? "").trim().length > 0,
+    )
+    .map((c) => ({
+      checkKey: c.checkKey,
+      category: c.category,
+      label: c.label,
+      reason: (c.detail ?? "").trim(),
+    }));
+
+  return {
+    actionable,
+    advisoryCount,
+    advisoryByCategory: [...advisoryCats.entries()]
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count),
+    notEstablished,
+  };
 }
 
 export async function runPublicLiteScan(liteScanId: string, url: string): Promise<void> {

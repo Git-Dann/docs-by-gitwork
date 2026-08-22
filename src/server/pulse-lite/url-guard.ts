@@ -245,6 +245,25 @@ export async function fetchScannableUrl(
      * is perfectly public.
      */
     sameOriginRedirectsOnly?: boolean;
+    /**
+     * Return the FIRST response, redirect included, instead of following the chain.
+     *
+     * ⚠️ Without this a caller cannot observe a redirect AT ALL. This function
+     * overrides `init.redirect` to `"manual"` unconditionally — it has to, because
+     * every hop must be re-approved by the SSRF guard — and then follows the chain
+     * itself, so a caller that passed `redirect: "manual"` still received the FINAL
+     * response with the redirect invisible.
+     *
+     * That silently broke `http_redirect`: it probed `http://host` expecting a 301
+     * to https, received the followed 200, concluded "no redirect" and WARNed — on
+     * every correctly-configured site on the internet. Verified outside Pulse with
+     * curl against stripe.com, github.com and gitwork.co.uk: all three answer 301
+     * with `Location: https://…`, and all three were reported as not redirecting.
+     *
+     * Redirect-inspecting callers must set this. The guard still runs on the one hop
+     * that is issued, so nothing is loosened.
+     */
+    followRedirects?: boolean;
   } = {},
 ): Promise<Response> {
   const resolve = dependencies.lookup ?? systemLookup;
@@ -267,6 +286,8 @@ export async function fetchScannableUrl(
     );
 
     if (!REDIRECT_STATUSES.has(response.status)) return response;
+    // Hand the redirect back unfollowed when the caller needs to see it.
+    if (options.followRedirects === false) return response;
     const location = response.headers.get("location");
     if (!location) return response;
     await response.body?.cancel().catch(() => undefined);

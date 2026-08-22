@@ -633,20 +633,32 @@ export default function EmbedPulsePage() {
                 )}
               </div>
 
-              {/* Category tiles (fill in live) */}
+              {/* Category tiles (fill in live).
+                  Capped at 8. The public scan now scores the FULL check set rather than
+                  a curated 10, so `categories` went from ~6 to ~25 — which in a narrow
+                  embedded iframe is a wall rather than a summary. `summarise` already
+                  sorts worst-first, so the cap shows the categories that actually need
+                  attention and names the remainder honestly. */}
               {view.categories.length > 0 && (
-                <div
-                  style={{
-                    marginTop: 18,
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
-                    gap: 10,
-                  }}
-                >
-                  {view.categories.map((cat) => (
-                    <CategoryTile key={cat.category} cat={cat} />
-                  ))}
-                </div>
+                <>
+                  <div
+                    style={{
+                      marginTop: 18,
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+                      gap: 10,
+                    }}
+                  >
+                    {view.categories.slice(0, 8).map((cat) => (
+                      <CategoryTile key={cat.category} cat={cat} />
+                    ))}
+                  </div>
+                  {view.categories.length > 8 && (
+                    <p style={{ marginTop: 10, fontSize: 12, color: "#6b7280", textAlign: "center" }}>
+                      +{view.categories.length - 8} more categories checked — see the full report.
+                    </p>
+                  )}
+                </>
               )}
 
               {/* Findings — appear as they're discovered */}

@@ -73,8 +73,20 @@ export async function runVibeSecurityChecks(ctx: ExtendedCheckContext): Promise<
   }
 
   const html = ctx.pageResult.html;
-  const usesSupabase = ctx.htmlLower.includes("supabase");
-  const usesFirebase = ctx.htmlLower.includes("firebase") || ctx.htmlLower.includes("firestore");
+  // ⚠️ USE, not MENTION. These were `htmlLower.includes("supabase"/"firebase")`, which
+  // fire on any page that merely NAMES the product. Verified outside Pulse with curl:
+  // stripe.com 307s to stripe.com/gb, whose HTML contains "supabase" 14 times because
+  // Supabase is a Stripe CUSTOMER — a case-study carousel plus i18n keys such as
+  // `mkt-ssr.homepage.startups.carousel.supabase.company`. Pulse consequently told
+  // Stripe to go and verify their Supabase Row-Level Security.
+  //
+  // Note the trailing `(?![a-z])`: without it `\.supabase\.co` matches inside
+  // `.supabase.company`, which is the literal string on that page. The project-URL
+  // form mirrors the one this file already uses correctly for `supabaseUrl` below.
+  const SUPABASE_USE = /https:\/\/[a-z0-9-]{8,}\.supabase\.(?:co|in)(?![a-z])|supabase-js/i;
+  const FIREBASE_USE = /firebaseio\.com|firebaseapp\.com|firebase-app\.js|firebaseConfig\s*=|identitytoolkit\.googleapis\.com/i;
+  const usesSupabase = SUPABASE_USE.test(html);
+  const usesFirebase = FIREBASE_USE.test(html);
   if (!usesSupabase && !usesFirebase) {
     return skip(CATEGORY, ALL_CHECKS, "No Supabase or Firebase backend detected — vibe-coded backend probes not applicable.");
   }
