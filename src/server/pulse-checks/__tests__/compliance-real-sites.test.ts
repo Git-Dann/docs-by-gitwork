@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { hasCookieConsentMechanism, linksPathContaining } from "@/server/pulse-scan";
+import { hasCookieConsentMechanism, hasGranularCookieControls, linksPathContaining } from "@/server/pulse-scan";
 
 /**
  * Three compliance checks were reported as findings on www.gov.uk by a LIVE scan on
@@ -108,5 +108,43 @@ describe("cookie consent is detected by MECHANISM, not by vendor", () => {
     expect(hasCookieConsentMechanism("<p>Our chocolate chip cookies are famous.</p>")).toBe(false);
     expect(hasCookieConsentMechanism("<p>This site stores a session cookie.</p>")).toBe(false);
     expect(hasCookieConsentMechanism("<html><body><h1>Hello</h1></body></html>")).toBe(false);
+  });
+});
+
+describe("granular consent is the AFFORDANCE, not one vendor's phrasing", () => {
+  it("finds gov.uk's reject control", () => {
+    // The banner says "Reject additional cookies", not "reject all", and carries
+    // data-reject-cookies="true". The old three-phrase list saw neither, and reported
+    // "Basic cookie notice detected but no reject/manage options" about a banner that
+    // has both. Third instance of the closed-list shape in one audit.
+    const banner = readFileSync("src/server/pulse-checks/__tests__/fixtures/govuk-cookie-banner.html", "utf8");
+    expect(hasGranularCookieControls(banner)).toBe(true);
+  });
+
+  it("recognises the wordings real banners use", () => {
+    for (const copy of [
+      "Reject additional cookies",
+      "Reject all cookies",
+      "Decline optional cookies",
+      "Refuse non-essential cookies",
+      "Accept additional",
+      "Accept selected",
+      "Essential cookies only",
+      "Only strictly necessary cookies",
+      "Manage cookie preferences",
+      "Customise your privacy settings",
+      "Cookie settings",
+      '<button data-reject-cookies="true">No</button>',
+      '<button data-cookie-types="all">Yes</button>',
+    ]) expect(hasGranularCookieControls(`<div>${copy}</div>`), copy).toBe(true);
+  });
+
+  it("is not satisfied by a bare accept-only banner", () => {
+    // The case the check exists to catch: a notice with no way to decline.
+    for (const copy of [
+      "<div>We use cookies. <button>OK</button></div>",
+      "<div>This site uses cookies to work. <button>Got it</button></div>",
+      "<div>We use cookies.<button>I agree</button></div>",
+    ]) expect(hasGranularCookieControls(copy), copy).toBe(false);
   });
 });

@@ -678,6 +678,33 @@ const CONSENT_CONTAINER =
 const COOKIE_BANNER_COPY =
   /accept (?:all )?cookies|reject (?:all )?cookies|cookie settings|manage cookies|we use cookies|essential cookies/i;
 
+// ⚠️ This was a THREE-PHRASE list (`accept all`, `reject all`,
+// `manage cookies|preferences`), which is one vendor's wording rather than the
+// affordance. Live-scanned www.gov.uk on 2026-08-22 and it read "Basic cookie notice
+// detected but no reject/manage options" — while the GDS banner ships
+// "Reject additional cookies", "Accept additional cookies" and a machine-readable
+// `data-reject-cookies="true"`. Third time this shape has appeared in one audit
+// (the CDN vendor list, the CMP vendor list, and now this): a closed phrase list
+// reported as a directly-observed absence.
+//
+// Match the AFFORDANCE — a decline control, or a way to manage the choice — in the
+// wordings real banners actually use. Still gated by hasBasicConsent below, so prose
+// in a privacy policy cannot satisfy it on its own.
+    export function hasGranularCookieControls(html: string): boolean {
+  return (
+  // A decline control, however it is worded.
+    /(?:reject|decline|refuse|deny)\s+(?:all\s+|additional\s+|non-essential\s+|optional\s+|analytics\s+)?cookies?/i.test(html)
+    || /\baccept\s+(?:all|additional|selected)\b/i.test(html)
+  // "Essential only" / "Necessary cookies only" — a decline by another name.
+    || /(?:only\s+)?(?:strictly\s+)?(?:essential|necessary|required)\s+cookies?(?:\s+only)?\b/i.test(html)
+  // A way to manage or customise the choice.
+    || /(?:manage|customi[sz]e|adjust|change|review)\s+(?:your\s+)?(?:cookie|consent|privacy)\s*(?:settings|preferences|choices|options)?/i.test(html)
+    || /cookie\s*(?:settings|preferences|choices)/i.test(html)
+  // Machine-readable controls, which are the least ambiguous signal of all.
+    || /data-(?:reject|decline|deny)-cookies|data-cookie-(?:types|preferences)|onclick="[^"]*reject[^"]*cookie/i.test(html)
+  );
+}
+
 export function hasCookieConsentMechanism(html: string): boolean {
   const lower = html.toLowerCase();
   if (COOKIE_BANNER_VENDORS.some((vendor) => lower.includes(vendor))) return true;
@@ -4766,7 +4793,7 @@ export async function runUrlChecks(
         : "No search functionality detected. Apps without search force users to navigate manually — search reduces time-to-value.",
     });
 
-    const hasGranularConsent = /accept\s+all|reject\s+all|manage\s+(cookies|preferences)/i.test(pageResult.html);
+    const hasGranularConsent = hasGranularCookieControls(pageResult.html);
     const hasBasicConsent = /cookie\s*(consent|banner|notice)|we\s+use\s+cookies|this\s+site\s+uses\s+cookies/i.test(pageResult.html);
     checks.push({
       category: CATEGORIES.LEGAL,
