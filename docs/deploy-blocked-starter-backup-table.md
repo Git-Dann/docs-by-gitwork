@@ -7,7 +7,8 @@ and `https://foundry.gitwork.co.uk/production-ready` returned 200. The 438 rows 
 intact at `scratch."_StarterBackup_20260822"`.
 
 Kept because the mistake is repeatable and the rule below is the point. The one-shot
-block in `deploy.yml` has now run and can be deleted.
+block in `deploy.yml` has run and has since been removed — four consecutive deploys
+succeeded after it, which they could not have done if the table were still in `public`.
 
 ## What is happening
 
