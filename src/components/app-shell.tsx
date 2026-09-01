@@ -32,6 +32,7 @@ import { listSupportClients, listTeamMembers } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { AiSpendCard } from "@/components/ai-spend-card";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Modal } from "@/components/ui/modal";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { PushPromptBanner } from "@/components/notifications/push-prompt-banner";
 
@@ -777,6 +778,11 @@ function ProfileMenu({
   const [open, setOpen] = useState(false);
   // View-as list is collapsed until asked for — see the comment at its trigger.
   const [viewAsOpen, setViewAsOpen] = useState(false);
+  /** Sign-out confirmation. Signing out mid-task loses unsaved work and costs a
+   *  Google round trip to get back in, and the control now sits directly under
+   *  Settings — one slip away from the thing people actually meant to click. */
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   // Fetch team members so we can show real admin users in the preview switcher
   const { data: teamData } = useQuery({
@@ -875,16 +881,6 @@ function ProfileMenu({
             collapsed ? "left-0 w-72" : "left-0 right-0",
           )}
         >
-
-          {/* Settings — moved here out of the sidebar so the rail is products only. */}
-          <Link
-            href="/app/settings/account"
-            onClick={() => setOpen(false)}
-            className="mb-1 flex w-full items-center gap-3 rounded-[6px] border-b border-[var(--border-3)] px-3 py-2.5 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-          >
-            <Cog8ToothIcon className="h-4.5 w-4.5 shrink-0 text-[var(--text-4)]" style={{ width: 18, height: 18 }} />
-            Settings
-          </Link>
 
           {/* View as — Super Admin only. Collapsed behind one row by default: the
               full list (you + every restricted admin + a teammate picker + two
@@ -1051,17 +1047,67 @@ function ProfileMenu({
             <ThemeToggle iconOnly />
           </div>
 
-          <button
-            type="button"
-            onClick={() => { setOpen(false); import("next-auth/react").then(({ signOut }) => signOut()); }}
-            className="flex w-full items-center gap-3 rounded-[10px] px-4 py-3 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-          >
-            <ArrowRightOnRectangleIcon className="h-5 w-5 text-[var(--text-4)]" />
-            Sign out
-          </button>
+          {/* Account group, last: Settings and Sign out belong together, and both are
+              things you reach for far less often than View as or Theme. */}
+          <div>
+            <Link
+              href="/app/settings/account"
+              onClick={() => setOpen(false)}
+              className="flex w-full items-center gap-3 rounded-[6px] px-3 py-2.5 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            >
+              <Cog8ToothIcon className="h-4.5 w-4.5 shrink-0 text-[var(--text-4)]" style={{ width: 18, height: 18 }} />
+              Settings
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                // Close the menu but keep the confirm mounted — it lives outside this
+                // dropdown precisely so dismissing the menu can't unmount the dialog.
+                setOpen(false);
+                setConfirmSignOut(true);
+              }}
+              className="flex w-full items-center gap-3 rounded-[6px] px-3 py-2.5 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            >
+              <ArrowRightOnRectangleIcon className="h-4.5 w-4.5 shrink-0 text-[var(--text-4)]" style={{ width: 18, height: 18 }} />
+              Sign out
+            </button>
+          </div>
         </div>
       ) : null}
 
+      {/* Outside the `open &&` above on purpose: clicking Sign out closes the menu,
+          and a dialog nested inside it would unmount on the same click. */}
+      <Modal
+        open={confirmSignOut}
+        onClose={() => setConfirmSignOut(false)}
+        title="Sign out?"
+        panelClassName="w-[380px] max-w-[92vw]"
+      >
+        <p className="text-sm leading-6 text-[var(--text-3)]">
+          You&rsquo;ll be signed out of Foundry on this device. Anything you haven&rsquo;t saved
+          will be lost, and you&rsquo;ll need to sign in with Google again.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setConfirmSignOut(false)}
+            className="app-button app-button-md"
+          >
+            Stay signed in
+          </button>
+          <button
+            type="button"
+            disabled={signingOut}
+            onClick={() => {
+              setSigningOut(true);
+              void import("next-auth/react").then(({ signOut }) => signOut());
+            }}
+            className="app-button app-button-md app-button-danger"
+          >
+            {signingOut ? "Signing out…" : "Sign out"}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
