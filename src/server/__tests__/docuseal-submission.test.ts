@@ -17,6 +17,9 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: vi.fn(),
       update: vi.fn().mockResolvedValue({}),
     },
+    documentSection: {
+      update: vi.fn().mockResolvedValue({}),
+    },
     signatureRequest: {
       findFirst: vi.fn(),
       findUniqueOrThrow: vi.fn(),
@@ -338,5 +341,113 @@ describe("DocuSeal submission route — pre-flight validation", () => {
 
     expect(response.status).toBe(400);
     expect(createDocuSealSubmission).not.toHaveBeenCalled();
+  });
+
+  // ── Completed document guard → 409 ──────────────────────────────────────────
+
+  it("returns 409 when document has already completed signature execution", async () => {
+    vi.mocked(prisma.document.findUnique).mockResolvedValueOnce(baseDoc() as never);
+    vi.mocked(prisma.signatureRequest.findFirst).mockResolvedValueOnce({
+      id: "req_completed",
+      status: "COMPLETED",
+    } as never);
+
+    const response = await POST(makeRequest(), makeRouteContext());
+    const json = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(json.error).toMatch(/already been fully signed and executed/i);
+    expect(createDocuSealSubmission).not.toHaveBeenCalled();
+  });
+
+  // ── In-flight partial signature reset ───────────────────────────────────────
+
+  it("resets partial signature block data in the database before sending to DocuSeal", async () => {
+    vi.mocked(prisma.document.findUnique).mockResolvedValueOnce(
+      baseDoc({
+        sections: [
+          {
+            id: "sec_sig",
+            key: "signatures",
+            data: {
+              blocks: [
+                {
+                  id: "blk_1",
+                  type: "gitwork",
+                  signatoryName: "Gitwork Admin",
+                  signatoryEmail: "admin@gitwork.tech",
+                  variableName: "gitwork_signature",
+                  signed: true,
+                  signaturePayload: "Dan Lindsay",
+                  signatureDate: "1 September 2026",
+                },
+                {
+                  id: "blk_2",
+                  type: "client",
+                  signatoryName: "Alice Smith",
+                  signatoryEmail: "alice@acme.com",
+                  variableName: "client_signature",
+                },
+              ],
+            },
+          },
+        ],
+      }) as never,
+    );
+
+    vi.mocked(createDocuSealSubmission).mockResolvedValueOnce({
+      id: "ds_sub_cleaned",
+      name: "Test NDA",
+      submitters: [
+        {
+          id: "ds_1",
+          slug: "slug_gitwork",
+          embed_src: "https://api.docuseal.com/s/slug_gitwork",
+          role: "gitwork",
+          email: "admin@gitwork.tech",
+          name: "Gitwork Admin",
+          status: "pending",
+        },
+        {
+          id: "ds_2",
+          slug: "slug_client",
+          embed_src: "https://api.docuseal.com/s/slug_client",
+          role: "client",
+          email: "alice@acme.com",
+          name: "Alice Smith",
+          status: "pending",
+        },
+      ],
+    });
+
+    vi.mocked(prisma.signatureRequest.findFirst).mockResolvedValueOnce(null); // completed check
+    vi.mocked(prisma.signatureRequest.findFirst).mockResolvedValueOnce(null); // active check
+    const { createSignatureRequest } = await import("@/server/signatures");
+    vi.mocked(createSignatureRequest).mockResolvedValueOnce({ id: "req_clean" } as never);
+    vi.mocked(prisma.signatureRequest.findUniqueOrThrow).mockResolvedValueOnce({
+      id: "req_clean",
+      signers: [],
+    } as never);
+
+    const response = await POST(makeRequest(), makeRouteContext());
+    expect(response.status).toBe(200);
+
+    // Verify documentSection was updated with clean blocks
+    expect(prisma.documentSection.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "sec_sig" },
+        data: expect.objectContaining({
+          data: expect.objectContaining({
+            blocks: expect.arrayContaining([
+              expect.objectContaining({
+                id: "blk_1",
+                signed: false,
+                signatureDate: "",
+              }),
+            ]),
+          }),
+        }),
+      }),
+    );
   });
 });
