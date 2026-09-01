@@ -34,6 +34,7 @@ import {
 
 interface SignaturePanelProps {
   documentId: string;
+  isStale?: boolean;
 }
 
 const SIGNER_STATUS_STYLE: Record<SignerStatus, { label: string; bg: string; color: string }> = {
@@ -43,7 +44,7 @@ const SIGNER_STATUS_STYLE: Record<SignerStatus, { label: string; bg: string; col
   DECLINED: { label: "DECLINED", bg: "var(--danger-50)", color: "var(--danger-500)" },
 };
 
-export function SignaturePanel({ documentId }: SignaturePanelProps) {
+export function SignaturePanel({ documentId, isStale }: SignaturePanelProps) {
   const requestsQuery = useSignatureRequests(documentId);
   const createMutation = useCreateSignatureRequest(documentId);
   const sendMutation = useSendSignatureRequest(documentId);
@@ -59,7 +60,7 @@ export function SignaturePanel({ documentId }: SignaturePanelProps) {
 
   const docUpdatedAt = active?.document?.updatedAt ? new Date(active.document.updatedAt).getTime() : 0;
   const requestSentAt = active?.sentAt ? new Date(active.sentAt).getTime() : active?.createdAt ? new Date(active.createdAt).getTime() : 0;
-  const isDocModified = docUpdatedAt > 0 && requestSentAt > 0 && docUpdatedAt > requestSentAt + 2000;
+  const isDocModified = isStale !== undefined ? isStale : (docUpdatedAt > 0 && requestSentAt > 0 && docUpdatedAt > requestSentAt + 2000);
 
   async function handleSendNow() {
     setError(null);
