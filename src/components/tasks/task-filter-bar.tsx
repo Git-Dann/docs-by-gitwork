@@ -8,17 +8,19 @@ import {
   CheckIcon,
 } from "@heroicons/react/16/solid";
 import { cn, formatDate } from "@/lib/format";
-import type { TaskDTO, TaskPriority } from "@/types/tasks";
+import { TASK_LABELS, TASK_LABEL_LABELS } from "@/types/tasks";
+import type { TaskDTO, TaskPriority, TaskLabel } from "@/types/tasks";
 
 export type TaskFilters = {
   q: string;
   categoryIds: string[]; // feature-block ids; "none" = tasks with no category
   assigneeIds: string[];
   priorities: TaskPriority[];
+  labels: TaskLabel[];
   sourceMeetingIds: string[];
 };
 
-export const EMPTY_FILTERS: TaskFilters = { q: "", categoryIds: [], assigneeIds: [], priorities: [], sourceMeetingIds: [] };
+export const EMPTY_FILTERS: TaskFilters = { q: "", categoryIds: [], assigneeIds: [], priorities: [], labels: [], sourceMeetingIds: [] };
 
 const PRIORITY_OPTS: { id: TaskPriority; label: string }[] = [
   { id: "HIGH", label: "High" },
@@ -137,6 +139,7 @@ export function TaskFilterBar({
     value.categoryIds.length +
     value.assigneeIds.length +
     value.priorities.length +
+    value.labels.length +
     value.sourceMeetingIds.length +
     (value.q.trim() ? 1 : 0);
 
@@ -213,6 +216,17 @@ export function TaskFilterBar({
             on={value.priorities.includes(p.id)}
             label={p.label}
             onClick={() => onChange({ ...value, priorities: toggle(value.priorities, p.id) })}
+          />
+        ))}
+      </Dropdown>
+
+      <Dropdown label="Label" count={value.labels.length}>
+        {TASK_LABELS.map((l) => (
+          <CheckRow
+            key={l}
+            on={value.labels.includes(l)}
+            label={TASK_LABEL_LABELS[l]}
+            onClick={() => onChange({ ...value, labels: toggle(value.labels, l) })}
           />
         ))}
       </Dropdown>

@@ -151,12 +151,14 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
     const cat = new Set(filters.categoryIds);
     const asg = new Set(filters.assigneeIds);
     const pri = new Set(filters.priorities);
+    const lbl = new Set(filters.labels);
     const src = new Set(filters.sourceMeetingIds);
     return tasks.filter((t) => {
       if (q && !(t.title.toLowerCase().includes(q) || taskRef(t.id).toLowerCase().includes(q))) return false;
       if (cat.size && !cat.has(t.featureBlock?.id ?? "none")) return false;
       if (asg.size && !t.assignees.some((a) => asg.has(a.id))) return false;
       if (pri.size && !pri.has(t.priority)) return false;
+      if (lbl.size && !(t.label && lbl.has(t.label))) return false;
       if (src.size && (!t.scribeSource || !src.has(t.scribeSource.meetingId))) return false;
       return true;
     });
