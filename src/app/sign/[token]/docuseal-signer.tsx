@@ -21,6 +21,26 @@ export function DocuSealSigner({ src, email, name, token }: DocuSealSignerProps)
         src={src}
         email={email}
         name={name}
+        withTitle={false}
+        customCss={`
+          .header-container,
+          .title-container,
+          .company-logo,
+          .template-title,
+          .template-name,
+          .start-form-header,
+          .submitted-form-company-logo,
+          .form-header,
+          header {
+            display: none !important;
+          }
+          .main-container,
+          .form-container,
+          .page-container:first-child {
+            padding-top: 0 !important;
+            margin-top: 0 !important;
+          }
+        `}
         className="w-full min-h-[720px]"
         onComplete={async () => {
           if (token) {

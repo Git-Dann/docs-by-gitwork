@@ -430,7 +430,7 @@ export const ndaSectionBlueprints: SectionBlueprint[] = [
         {
           id: id(),
           type: "gitwork",
-          variableName: "gitwork_signature",
+          variableName: "Gitwork Signature",
           partyName: "Gitwork Group Ltd",
           signatoryName: "",
           signatoryRole: "",
@@ -441,7 +441,7 @@ export const ndaSectionBlueprints: SectionBlueprint[] = [
         {
           id: id(),
           type: "client",
-          variableName: "client_signature",
+          variableName: "Client Signature",
           partyName: "{{client_name}}",
           signatoryName: "",
           signatoryRole: "",

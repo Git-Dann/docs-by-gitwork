@@ -790,11 +790,11 @@ export function SignaturesEditor({
             const autoVar =
               defaultType === "gitwork"
                 ? count === 0
-                  ? "gitwork_signature"
-                  : `gitwork_signature_${count + 1}`
+                  ? "Gitwork Signature"
+                  : `Gitwork Signature ${count + 1}`
                 : count === 0
-                ? "client_signature"
-                : `client_signature_${count + 1}`;
+                ? "Client Signature"
+                : `Client Signature ${count + 1}`;
 
             onChange({
               ...data,
@@ -838,11 +838,11 @@ export function SignaturesEditor({
                       const nextType = e.target.value as "gitwork" | "client";
                       // Auto-update variableName if it's currently unedited/empty or matching default pattern
                       let nextVar = block.variableName;
-                      if (!nextVar || nextVar === "gitwork_signature" || nextVar === "client_signature" || nextVar.startsWith("client_signature_") || nextVar.startsWith("gitwork_signature_")) {
+                      if (!nextVar || nextVar === "Gitwork Signature" || nextVar === "Client Signature" || nextVar === "gitwork_signature" || nextVar === "client_signature" || nextVar.startsWith("client_signature_") || nextVar.startsWith("Client Signature ") || nextVar.startsWith("gitwork_signature_") || nextVar.startsWith("Gitwork Signature ")) {
                         const count = blocks.filter((b, i) => i !== index && (b.type ?? (i === 0 ? "gitwork" : "client")) === nextType).length;
                         nextVar = nextType === "gitwork"
-                          ? (count === 0 ? "gitwork_signature" : `gitwork_signature_${count + 1}`)
-                          : (count === 0 ? "client_signature" : `client_signature_${count + 1}`);
+                          ? (count === 0 ? "Gitwork Signature" : `Gitwork Signature ${count + 1}`)
+                          : (count === 0 ? "Client Signature" : `Client Signature ${count + 1}`);
                       }
                       patch(index, { type: nextType, variableName: nextVar });
                     }}

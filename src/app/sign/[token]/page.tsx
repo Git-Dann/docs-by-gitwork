@@ -96,8 +96,8 @@ export default async function SignPage({ params }: PageProps) {
   const embedSrc = signer.docusealEmbedSrc;
   const iframeSrc = embedSrc
     ? embedSrc.includes("?")
-      ? `${embedSrc}&embed=true`
-      : `${embedSrc}?embed=true`
+      ? `${embedSrc}&embed=true&with_title=false&with_logo=false`
+      : `${embedSrc}?embed=true&with_title=false&with_logo=false`
     : null;
 
   return (

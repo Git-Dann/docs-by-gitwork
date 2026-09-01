@@ -63,29 +63,36 @@ export function getDocusealBlocksMeta(
     // Unique role per submitter
     const role = count === 1 ? baseType : `${baseType}_${count}`;
 
-    // Default variable names — compact so tags stay short and single-line in PDF text layer
+    // Default variable names — human-readable field labels for DocuSeal modal and tags
     const defaultSigVar = isGitwork
-      ? "gitwork_sig"
+      ? "Gitwork Signature"
       : count > 1
-      ? `client_sig_${count}`
-      : "client_sig";
+      ? `Client Signature ${count}`
+      : "Client Signature";
 
     const defaultDateVar = isGitwork
-      ? "gitwork_date"
+      ? "Gitwork Date"
       : count > 1
-      ? `client_date_${count}`
-      : "client_date";
+      ? `Client Date ${count}`
+      : "Client Date";
 
-    // Honour an explicit variableName stored on the block, compacting long "signature" tokens
-    const rawVar = (block.variableName?.trim() || defaultSigVar)
-      .toLowerCase()
-      .replace(/[^a-z0-9_]/g, "_")
-      .replace(/_signature/g, "_sig");
+    // Honour an explicit variableName stored on the block, converting internal snake_case to Title Case
+    let rawVar = block.variableName?.trim();
+    if (!rawVar || rawVar === "gitwork_sig" || rawVar === "gitwork_signature") {
+      rawVar = defaultSigVar;
+    } else if (rawVar === "client_sig" || rawVar === "client_signature") {
+      rawVar = defaultSigVar;
+    } else if (rawVar.startsWith("client_sig_") || rawVar.startsWith("client_signature_")) {
+      const num = rawVar.split("_").pop();
+      rawVar = `Client Signature ${num}`;
+    }
 
     const sigVarName = rawVar;
-    const dateVarName = sigVarName.includes("_sig")
-      ? sigVarName.replace("_sig", "_date")
-      : sigVarName.replace("signature", "date");
+    const dateVarName = isGitwork
+      ? "Gitwork Date"
+      : count > 1
+      ? `Client Date ${count}`
+      : "Client Date";
 
     // DocuSeal official PDF text-tag format (semicolon-separated attributes):
     // {{Field Name;role=RoleName;type=signature}}
