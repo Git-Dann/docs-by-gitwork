@@ -90,14 +90,41 @@ import type {
   SignaturesSectionData,
 } from "@/types/proposal";
 
+function normalizeSectionDataForHash(key: string, data: unknown): unknown {
+  if (!data || typeof data !== "object") return data;
+
+  if (key === "signatures") {
+    const sigData = data as SignaturesSectionData;
+    if (Array.isArray(sigData.blocks)) {
+      return {
+        ...sigData,
+        blocks: sigData.blocks.map((b) => {
+          // Omit transient signing capture fields (signature payload, signed status, date, name)
+          // so that signing the document does not falsely flag the document as modified.
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { signed, signaturePayload, signedName, signatureDate, ...rest } = b;
+          return rest;
+        }),
+      };
+    }
+  }
+
+  return data;
+}
+
 // ── DocuSeal stale detection ─────────────────────────────────────────────────
 // Produces a stable fingerprint of a document's section content — the same
 // data that gets rendered into the DocuSeal PDF. Excludes timestamps and
 // metadata fields that don't affect what the signer actually sees.
-function computeSectionsHash(sections: ProposalSection[]): string {
+export function computeSectionsHash(sections: ProposalSection[]): string {
   const normalized = [...sections]
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-    .map(({ key, title, data, isVisible }) => ({ key, title, data, isVisible }));
+    .map(({ key, title, data, isVisible }) => ({
+      key,
+      title,
+      data: normalizeSectionDataForHash(key, data),
+      isVisible,
+    }));
   return JSON.stringify(normalized);
 }
 
