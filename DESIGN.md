@@ -377,6 +377,14 @@ set a height, or vertical padding that implies one, on either cell independently
 - Both **truncate** with a `title=` attribute rather than wrapping. Wrapping would grow the band and knock the hairlines out of step; truncating without `title=` would be a TRUNCATED defect under `audit:clipping`. It needs to be both.
 - ⚠️ This is **not** `{typography.heading-1}`. That token is 44px and remains correct for public/standalone pages (`/timeline/[token]`, `/sign/[token]`, marketing) where a full-bleed serif headline is the point. Inside the app shell a 44px headline made the band 129.6px tall on every single page.
 
+⚠️ **A scrolling column clips focus rings.** `overflow-y-auto` forces `overflow-x`
+to `auto` as well — CSS will not let one axis be `visible` while the other scrolls —
+so the element becomes a clipping box. A field sitting flush against its edge has
+its 4px focus halo sliced off dead straight, which reads as a hard second border
+rather than a ring. Any scroll container holding inputs needs **at least 4px of
+horizontal padding** (use 6px); `pr-1` alone leaves the left side at zero. Found
+in the Add-platform modal, Sep 2026, where the field column measured 0px of room.
+
 **Sidebar nav** (Row 2, Col 1) — `ExpandedRail` component. Right border `1px solid {colors.hairline}`. Background: same brand-soft gradient. Width 280px fixed.
 - Nav items: 6px radius, 10px horizontal / 6px vertical padding, Inter 13px/500, 16px icon. Active state: `{colors.surface-brand}` bg, `{colors.brand-300}` border, `{colors.brand-800}` text.
 - **Descriptors are 2–3 words, and must fit one line.** The second line under each label is 11px/400 in `{colors.text-4}`. At the 280px rail a descriptor has ~204px, which is about three short words; longer copy wraps and the row grows from 47px to 62px, so a couple of long entries make the whole rail look ragged and inconsistently spaced. Say what the product *is* ("Developer vetting"), not what it contains ("Proposals, SLAs, SOWs and other documents"). If it won't fit in three words, the label is doing the work and the descriptor should be dropped — Foundry HQ has none.

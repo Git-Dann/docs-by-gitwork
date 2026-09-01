@@ -564,7 +564,13 @@ export function ClientPlatformFormModal({
                   without it this 1fr track is pushed wider than its share by the
                   nested two-column rows, and the panel's overflow-hidden clips the
                   right-hand fields (Type, Staging URL) clean off. */}
-              <div className="min-w-0 max-h-[65vh] space-y-4 overflow-y-auto pr-1">
+              {/* px-1.5, not pr-1: `overflow-y-auto` forces overflow-x to `auto` too —
+                  CSS won't let one axis be visible while the other scrolls — so this
+                  column CLIPS anything painting outside its content box. The fields
+                  sat flush against its left edge (measured: 0px), so their 4px focus
+                  ring was sliced off dead straight and read as a hard second border.
+                  6px either side gives the ring room to paint. */}
+              <div className="min-w-0 max-h-[65vh] space-y-4 overflow-y-auto px-1.5">
                 {!isAppStoreType && (
                   <>
                     <div className="grid gap-4 sm:grid-cols-2">
