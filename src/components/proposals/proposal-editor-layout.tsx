@@ -69,7 +69,7 @@ import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { StatusBadge } from "@/components/status-badge";
 import { slugifyClientName } from "@/lib/clients";
-import { useProposal, useUpdateProposal } from "@/hooks/use-proposals";
+import { useDuplicateProposal, useProposal, useUpdateProposal } from "@/hooks/use-proposals";
 import { useDeleteSnippet, useSnippets } from "@/hooks/use-snippets";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatCurrency, formatDate, statusLabel } from "@/lib/format";
@@ -81,7 +81,14 @@ import { deriveProposalStatus } from "@/lib/proposal-workflow";
 import { approvalTrackApplies } from "@/lib/templates";
 import { createTemplateFromDocument } from "@/lib/api";
 import { DEFAULT_DOC_THEME } from "@/types/proposal";
-import type { DocumentType, ProposalDocument, ProposalSection, SectionKey } from "@/types/proposal";
+import type {
+  DocumentType,
+  ProposalDocument,
+  ProposalSection,
+  SectionKey,
+  SignatureBlockItem,
+  SignaturesSectionData,
+} from "@/types/proposal";
 
 // ── DocuSeal stale detection ─────────────────────────────────────────────────
 // Produces a stable fingerprint of a document's section content — the same
@@ -249,6 +256,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const { error: toastError, success: toastSuccess } = useToast();
   const requestsQuery = useSignatureRequests(proposalId);
   const activeSignatureReq = findActiveRequest(requestsQuery.data);
+  const isCompleted = activeSignatureReq?.status === "COMPLETED";
   const isDocusealActivated = Boolean(
     activeSignatureReq?.docusealSubmissionId ||
     (activeSignatureReq &&
@@ -257,6 +265,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
       activeSignatureReq.status !== "EXPIRED"),
   );
   const updateMutation = useUpdateProposal(proposalId);
+  const duplicateProposalMutation = useDuplicateProposal();
   const docusealMutation = usePushDocuSeal(proposalId);
   const snippetsQuery = useSnippets();
   const deleteSnippet = useDeleteSnippet();
@@ -1620,12 +1629,41 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
 
                     {/* Actions */}
                     <div className="mt-5 space-y-2 border-t border-[var(--border-2)] pt-4">
-                      {/* ── DocuSeal 3-state button ─────────────────────────────────────────
-                          STALE  : document changed after activation — show amber warning + re-activate
-                          ACTIVE : activated + content unchanged — green disabled indicator
-                          READY  : not yet activated — primary CTA
+                      {/* ── DocuSeal / Lifecycle state button ─────────────────────────
+                          COMPLETED : document fully executed — locked banner + duplicate to amend
+                          STALE     : document changed after activation — show amber warning + re-activate
+                          ACTIVE    : activated + content unchanged — approved indicator
+                          READY     : not yet activated — primary CTA
                       */}
-                      {isDocusealStale ? (
+                      {isCompleted ? (
+                        <div className="space-y-2">
+                          <div className="flex items-start gap-2 rounded-[8px] border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+                            <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                            <p className="text-[12px] leading-5 text-emerald-800">
+                              <span className="font-semibold">Document fully executed & locked.</span> All parties have completed signing.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            className="w-full justify-center"
+                            loading={duplicateProposalMutation.isPending}
+                            onClick={async () => {
+                              try {
+                                const res = await duplicateProposalMutation.mutateAsync(proposalId);
+                                toastSuccess("Created an amended duplicate copy.");
+                                router.push(`/docs/${res.proposal.id}`);
+                              } catch (err) {
+                                toastError(err instanceof Error ? err.message : "Failed to duplicate document.");
+                              }
+                            }}
+                            leadingIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                          >
+                            Duplicate to Amend
+                          </Button>
+                        </div>
+                      ) : isDocusealStale ? (
                         <div className="space-y-2">
                           {/* Warning banner */}
                           <div className="flex items-start gap-2 rounded-[8px] border border-amber-200 bg-amber-50 px-3 py-2.5">
@@ -1650,8 +1688,30 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                                   setDocusealBaseline(currentSectionsHash);
                                 }
                                 if (draft) {
+                                  const cleanSections: ProposalSection[] = (draft.sections || []).map((sec) => {
+                                    if (sec.key === "signatures" && sec.data && typeof sec.data === "object") {
+                                      const sigData = sec.data as SignaturesSectionData;
+                                      if (Array.isArray(sigData.blocks)) {
+                                        return {
+                                          ...sec,
+                                          data: {
+                                            ...sigData,
+                                            blocks: sigData.blocks.map((b): SignatureBlockItem => ({
+                                              ...b,
+                                              signed: false,
+                                              signaturePayload: undefined,
+                                              signedName: undefined,
+                                              signatureDate: "",
+                                            })),
+                                          },
+                                        };
+                                      }
+                                    }
+                                    return sec;
+                                  });
                                   updateDraft({
                                     ...draft,
+                                    sections: cleanSections,
                                     status: "APPROVED",
                                     metadata: {
                                       ...draft.metadata,
@@ -1685,7 +1745,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                           disabled
                           leadingIcon={<CheckCircleIcon className="h-4 w-4 text-emerald-600" />}
                         >
-                          DocuSeal Activated
+                          Approved
                         </Button>
                       ) : (
                         <Button

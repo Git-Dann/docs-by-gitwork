@@ -6,6 +6,7 @@
  */
 
 import { NextRequest } from "next/server";
+import { Prisma } from "@prisma/client";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { originFrom } from "@/lib/request-origin";
@@ -42,8 +43,19 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (!doc) return apiError("Document not found", 404);
     if (doc.archivedAt) return apiError("Cannot send an archived document", 409);
 
+    // Hard-lock: Completed documents cannot be pushed directly to DocuSeal.
+    const completedRequest = await prisma.signatureRequest.findFirst({
+      where: { documentId: id, status: "COMPLETED" },
+    });
+    if (completedRequest) {
+      return apiError(
+        "This document has already been fully signed and executed. To make changes, please duplicate the document to create an amended version.",
+        409,
+      );
+    }
+
     // Extract signature blocks from sections
-    const sections = doc.sections as Array<{ key: string; data: unknown }>;
+    const sections = doc.sections as Array<{ id: string; key: string; data: unknown }>;
     const signaturesSection = sections.find((s) => s.key === "signatures");
     const signatureData = signaturesSection?.data as { blocks?: SignatureBlockItem[] } | undefined;
     const rawBlocks = signatureData?.blocks ?? [];
@@ -52,11 +64,39 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return apiError("Document must have at least one signature block to send via DocuSeal.", 400);
     }
 
+    // In-flight reset: Ensure signature blocks in the database have no stale partial signatures.
+    // This guarantees the PDF renderer prints clean DocuSeal {{...}} tags for ALL submitters,
+    // eliminating template party mismatch errors on DocuSeal.
+    const hasPartialSignatures = rawBlocks.some(
+      (b) => b.signed || b.signaturePayload || b.signedName || (b.signatureDate && b.signatureDate.trim() !== ""),
+    );
+
+    let activeBlocks = rawBlocks;
+    if (hasPartialSignatures && signaturesSection?.id) {
+      activeBlocks = rawBlocks.map((b) => ({
+        ...b,
+        signed: false,
+        signaturePayload: undefined,
+        signedName: undefined,
+        signatureDate: "",
+      }));
+
+      await prisma.documentSection.update({
+        where: { id: signaturesSection.id },
+        data: {
+          data: {
+            ...signatureData,
+            blocks: activeBlocks,
+          } as unknown as Prisma.InputJsonValue,
+        },
+      });
+    }
+
     // Derive the exact same role + field names the PDF renderer uses so the
     // DocuSeal text tags match the submitter fields 1-to-1.
-    const blocksMeta = getDocusealBlocksMeta(rawBlocks);
+    const blocksMeta = getDocusealBlocksMeta(activeBlocks);
 
-    const submittersInput = rawBlocks.map((block, index) => {
+    const submittersInput = activeBlocks.map((block, index) => {
       const meta = blocksMeta[index];
       const isGitwork = block.type === "gitwork" || (index === 0 && block.type !== "client");
 
@@ -322,6 +362,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         return prisma.signatureSigner.update({
           where: { id: signer.id },
           data: {
+            status: "PENDING",
+            signedAt: null,
+            signaturePayload: null,
             docusealSubmitterId: dsSub ? String(dsSub.id) : null,
             docusealSlug: nextSlug,
             docusealEmbedSrc: nextEmbed,

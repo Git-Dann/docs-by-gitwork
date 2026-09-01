@@ -228,4 +228,86 @@ describe("POST /api/proposals/[id]/duplicate — permission gate", () => {
       }),
     );
   });
+
+  it("sanitizes signature blocks and resets approval flags on clone", async () => {
+    seed([
+      documentRow({
+        id: "signed-doc",
+        metadata: {
+          productSignOff: true,
+          techSignOff: true,
+          approvalChecked: true,
+        },
+        sections: [
+          {
+            id: "sec-sig",
+            key: "signatures",
+            title: "Signatures",
+            description: null,
+            sortOrder: 0,
+            isVisible: true,
+            data: {
+              blocks: [
+                {
+                  id: "blk-1",
+                  type: "gitwork",
+                  signatoryName: "Dan Lindsay",
+                  signed: true,
+                  signaturePayload: "Dan Lindsay",
+                  signatureDate: "1 September 2026",
+                },
+                {
+                  id: "blk-2",
+                  type: "client",
+                  signatoryName: "Alice Smith",
+                  signed: true,
+                  signaturePayload: "Alice",
+                  signatureDate: "1 September 2026",
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    ]);
+    getEffectiveUserOrNull.mockResolvedValue(
+      member({ id: "user-7", name: "Dan", role: "ADMIN", permissions: ["docs.manage", "docs.viewAdminTypes"] }),
+    );
+
+    const response = await callDuplicate("signed-doc");
+    expect(response.status).toBe(201);
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: expect.objectContaining({
+            productSignOff: false,
+            techSignOff: false,
+            approvalChecked: false,
+          }),
+          sections: {
+            create: expect.arrayContaining([
+              expect.objectContaining({
+                key: "signatures",
+                data: expect.objectContaining({
+                  blocks: [
+                    expect.objectContaining({
+                      id: "blk-1",
+                      signed: false,
+                      signatureDate: "",
+                    }),
+                    expect.objectContaining({
+                      id: "blk-2",
+                      signed: false,
+                      signatureDate: "",
+                    }),
+                  ],
+                }),
+              }),
+            ]),
+          },
+        }),
+      }),
+    );
+  });
 });
