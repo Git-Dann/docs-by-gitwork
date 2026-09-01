@@ -34,6 +34,7 @@ import {
 import { loadWikiMonitors, type WikiMonitorsSection } from "./wiki-monitors";
 import { assertWithinIntakeQuota } from "./wiki-intake-limit";
 import { deliverIntakeWebhook } from "./wiki-intake-webhook";
+import { notifyClientSlackChangelogApproved, notifyClientSlackNewRequests } from "./wiki-slack-notify";
 import { loadWikiDocuments, type WikiDocumentsSection } from "./wiki-documents";
 import { loadWikiCodeHandover, type WikiCodeHandoverSection } from "./wiki-code";
 import { getLaunchpadByWikiId } from "./launchpad";
@@ -943,10 +944,19 @@ export async function updateChangelogEntryStatus(
   entryId: string,
   status: WikiEntryStatus,
 ): Promise<ChangelogEntryRecord> {
+  const before = await prisma.clientChangelogEntry.findUnique({
+    where: { id: entryId },
+    select: { status: true },
+  });
   const entry = await prisma.clientChangelogEntry.update({
     where: { id: entryId },
     data: { status },
   });
+  // Only a genuine PENDING → APPROVED transition pings Slack — re-saving an
+  // already-approved entry (e.g. a typo fix) shouldn't post again.
+  if (status === "APPROVED" && before?.status !== "APPROVED") {
+    void notifyClientSlackChangelogApproved(entry.wikiId, entry);
+  }
   return serializeEntry(entry);
 }
 
@@ -961,6 +971,10 @@ export async function updateChangelogEntry(
     status?: WikiEntryStatus;
   },
 ): Promise<ChangelogEntryRecord> {
+  const before =
+    input.status !== undefined
+      ? await prisma.clientChangelogEntry.findUnique({ where: { id: entryId }, select: { status: true } })
+      : null;
   const entry = await prisma.clientChangelogEntry.update({
     where: { id: entryId },
     data: {
@@ -973,6 +987,9 @@ export async function updateChangelogEntry(
       ...(input.status !== undefined ? { status: input.status } : {}),
     },
   });
+  if (input.status === "APPROVED" && before?.status !== "APPROVED") {
+    void notifyClientSlackChangelogApproved(entry.wikiId, entry);
+  }
   return serializeEntry(entry);
 }
 
@@ -1438,6 +1455,10 @@ async function ingestWikiItemsIntoWiki(
       groupKey: `tasks.client_request:${wiki.client.id}`,
       count: created.length,
     });
+    // Best-effort ping to the client's own linked internal Slack channel, if
+    // any — separate from the in-app/push notification above, which goes to
+    // Gitwork staff.
+    void notifyClientSlackNewRequests(wiki.id, created);
   }
 
   return { client, created, skipped, count: created.length };
