@@ -3416,8 +3416,8 @@ export async function setClientDesignSystemGuidelinesEnabled(
 
 // ─── Client Wiki ──────────────────────────────────────────────────────────────
 
-import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiBlockerRecord, WikiUserSummary } from "@/server/wiki";
-export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiBlockerRecord, WikiUserSummary };
+import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiIntakeCommentRecord, WikiBlockerRecord, WikiUserSummary } from "@/server/wiki";
+export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiIntakeCommentRecord, WikiBlockerRecord, WikiUserSummary };
 import type { IntakeCategory } from "@/lib/wiki-intake-categories";
 export type { IntakeCategory };
 import type {
@@ -3505,6 +3505,10 @@ export interface WikiIntakeItemPayload {
   label?: "BACKEND" | "FRONTEND" | "UI_UX" | "RESEARCH" | "DESIGN" | null;
   /** One of the client's own category ids — the server derives `type` from it. */
   categoryId?: string | null;
+  /** Free-text device (e.g. "iPhone 14 Pro") — optional context for bug reports. */
+  device?: string | null;
+  /** Free-text OS/version (e.g. "iOS 17.4") — optional context for bug reports. */
+  osVersion?: string | null;
 }
 
 /** Staff-only: replace this client's Requests categories (empty → defaults). */
@@ -3595,6 +3599,31 @@ export async function updateWikiIntakeItemApi(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+/** Gitwork team member replies on a request — attributed to the signed-in user. */
+export async function addWikiIntakeComment(
+  slug: string,
+  itemId: string,
+  body: string,
+): Promise<WikiIntakeCommentRecord> {
+  return apiFetch<WikiIntakeCommentRecord>(
+    `/api/clients/${slug}/wiki/intake-items/${itemId}/comments`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) },
+  );
+}
+
+/** A reply on a request from the public wiki page — the signed-in wiki user
+ *  or previewing Gitwork user is stamped server-side, no typed name. */
+export async function addPublicWikiIntakeComment(
+  token: string,
+  itemId: string,
+  body: string,
+): Promise<WikiIntakeCommentRecord> {
+  return apiFetch<WikiIntakeCommentRecord>(
+    `/api/wiki/${token}/intake-items/${itemId}/comments`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) },
+  );
 }
 
 export async function deleteWikiIntakeItemApi(slug: string, id: string): Promise<void> {

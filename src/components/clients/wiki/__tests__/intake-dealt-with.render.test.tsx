@@ -15,7 +15,7 @@ const mk = (id: string, title: string, status: string): WikiIntakeItemRecord =>
     id, title, status, type: "BUG", priority: "MEDIUM", description: null,
     requestedBy: "Luke", externalRef: null, externalUrl: null, attachmentUrls: [],
     categoryId: null, categoryLabel: null, label: null, taskId: null,
-    hasImage: false, source: "wiki",
+    hasImage: false, source: "wiki", device: null, osVersion: null, comments: [],
     createdAt: "2026-08-20T00:00:00.000Z", updatedAt: "2026-08-20T00:00:00.000Z",
   }) as unknown as WikiIntakeItemRecord;
 

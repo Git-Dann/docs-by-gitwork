@@ -66,6 +66,8 @@ import {
   promoteWikiIntakeItemApi,
   uploadWikiIntakeItemImage,
   uploadPublicWikiIntakeItemImage,
+  addWikiIntakeComment,
+  addPublicWikiIntakeComment,
 } from "@/lib/api";
 import type { CourseImportInput, BigWedgeSyncResult, MonitorInput, WikiIntakeItemPayload } from "@/lib/api";
 
@@ -431,6 +433,21 @@ export function useUploadWikiIntakeItemImage(slug: string) {
 export function useUploadPublicWikiIntakeItemImage(token: string) {
   return useMutation({
     mutationFn: ({ id, file }: { id: string; file: File }) => uploadPublicWikiIntakeItemImage(token, id, file),
+  });
+}
+
+export function useAddWikiIntakeComment(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, body }: { itemId: string; body: string }) => addWikiIntakeComment(slug, itemId, body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useAddPublicWikiIntakeComment(token: string) {
+  return useMutation({
+    mutationFn: ({ itemId, body }: { itemId: string; body: string }) =>
+      addPublicWikiIntakeComment(token, itemId, body),
   });
 }
 

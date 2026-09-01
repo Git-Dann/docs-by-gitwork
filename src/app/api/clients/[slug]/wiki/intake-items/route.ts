@@ -17,6 +17,8 @@ const bodySchema = z.object({
   label: z.enum(["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN"]).optional().nullable(),
   /** One of the client's own category ids — decides `type` server-side. */
   categoryId: z.string().trim().max(64).optional().nullable(),
+  device: z.string().trim().max(120).optional().nullable(),
+  osVersion: z.string().trim().max(60).optional().nullable(),
 });
 
 const toggleSchema = z.object({ enabled: z.boolean() });
