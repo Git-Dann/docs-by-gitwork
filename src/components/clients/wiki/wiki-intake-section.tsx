@@ -47,8 +47,8 @@ const STATUS_LABEL: Record<string, string> = {
  *  the way devs filter. Kept as a literal list rather than imported so this
  *  client component doesn't pull the whole task types module into the public
  *  wiki bundle — the reconcile test below keeps the two in step. */
-type DevLabel = "BACKEND" | "FRONTEND" | "UI_UX" | "RESEARCH" | "DESIGN";
-const DEV_LABELS: DevLabel[] = ["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN"];
+type DevLabel = "BACKEND" | "FRONTEND" | "UI_UX" | "RESEARCH" | "DESIGN" | "SUPPORT";
+const DEV_LABELS: DevLabel[] = ["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN", "SUPPORT"];
 /**
  * Statuses a client may still edit or withdraw themselves. Mirrors
  * CLIENT_MUTABLE_STATUSES in src/server/wiki.ts — the server is the gate, this
@@ -61,6 +61,7 @@ const DEV_LABEL_LABEL: Record<DevLabel, string> = {
   UI_UX: "UI/UX Done",
   RESEARCH: "Research",
   DESIGN: "Design",
+  SUPPORT: "Support",
 };
 
 const PAGE_SIZE = 10;

@@ -3502,7 +3502,7 @@ export interface WikiIntakeItemPayload {
   requestedBy?: string | null;
   externalRef?: string | null;
   /** The dev-facing label (same taxonomy as Task.label). */
-  label?: "BACKEND" | "FRONTEND" | "UI_UX" | "RESEARCH" | "DESIGN" | null;
+  label?: "BACKEND" | "FRONTEND" | "UI_UX" | "RESEARCH" | "DESIGN" | "SUPPORT" | null;
   /** One of the client's own category ids — the server derives `type` from it. */
   categoryId?: string | null;
   /** Free-text device (e.g. "iPhone 14 Pro") — optional context for bug reports. */
