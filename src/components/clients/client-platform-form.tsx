@@ -519,7 +519,11 @@ export function ClientPlatformFormModal({
             </h2>
 
             {/* ── Two-column layout ── */}
-            <div className="grid grid-cols-[240px_1fr] gap-6 items-start">
+            {/* The 240px preview column is FIXED, so below ~500px it ate the space
+                and squeezed every field to a stub — measured at 430px: 7 fields
+                under 120px wide and 4 labels clipped. Browser zoom does the same
+                thing, since it shrinks the viewport in CSS pixels. Stack below sm. */}
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-[240px_1fr] sm:items-start">
               {/* Left — preview image (only for non-app-store) */}
               {!isAppStoreType ? (
                 <div>
@@ -786,7 +790,17 @@ export function ClientPlatformFormModal({
             </div>
 
             {/* Footer */}
-            <div className="mt-6 flex justify-end gap-2 border-t border-[rgba(0,0,0,0.06)] pt-4">
+            <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-[rgba(0,0,0,0.06)] pt-4">
+              {/* Say WHY the button is dead. A disabled primary with no reason is a
+                  dead end — the required marker on Name is a red asterisk halfway
+                  up a two-column form, and it is easy to fill in everything else
+                  and be left wondering what is wrong. */}
+              {!form.name.trim() ? (
+                <p className="mr-auto text-[13px] text-[var(--text-4)]">
+                  Add a <span className="font-medium text-[var(--text-2)]">Name</span> to save this
+                  platform.
+                </p>
+              ) : null}
               <Button type="button" variant="secondary" size="md" onClick={onClose}>
                 Cancel
               </Button>
@@ -797,6 +811,7 @@ export function ClientPlatformFormModal({
                 loading={isSaving}
                 onClick={handleSubmit}
                 disabled={!form.name.trim()}
+                title={!form.name.trim() ? "Name is required" : undefined}
               >
                 {platform ? "Save changes" : "Add platform"}
               </Button>
