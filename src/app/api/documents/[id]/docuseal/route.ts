@@ -278,6 +278,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
       },
     });
 
+    // Auto-switch document status to APPROVED and mark internal sign-offs complete when DocuSeal is activated
+    const currentMeta = (doc.metadata as Record<string, unknown> | null) ?? {};
+    await prisma.document.update({
+      where: { id },
+      data: {
+        status: "APPROVED",
+        metadata: {
+          ...currentMeta,
+          productSignOff: true,
+          techSignOff: true,
+          approvalChecked: true,
+        },
+      },
+    });
+
     // Update each signer with returned DocuSeal slug, embed_src, and submitter ID
     const updatedSigners = await Promise.all(
       activeRequest.signers.map(async (signer, index) => {

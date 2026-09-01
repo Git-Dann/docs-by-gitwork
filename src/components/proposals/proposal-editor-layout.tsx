@@ -1508,7 +1508,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 {/* The status is already a mono readout in this card's header strip, so the chip is a
                     nicety — dropped below 2xl to keep the toolbar on ONE row at 1280. */}
                 <span className="hidden rounded-[4px] border border-white/20 bg-white/12 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-white/95 2xl:inline-block">
-                  {statusLabel(draft.status)}
+                  {statusLabel(isDocusealActivated ? "APPROVED" : draft.status)}
                 </span>
                 <ChevronDownIcon
                   className={cn("h-4 w-4 opacity-80 transition", approvalOpen && "rotate-180")}
@@ -1526,7 +1526,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                   {/* Widget-header strip — the platform signature; live status on the right. */}
                   <div className="widget-header">
                     <span className="widget-header-label">REVIEW &amp; SEND</span>
-                    <span className="widget-header-right">{statusLabel(draft.status)}</span>
+                    <span className="widget-header-right">{statusLabel(isDocusealActivated ? "APPROVED" : draft.status)}</span>
                   </div>
 
                   <div className="p-5">
@@ -1557,7 +1557,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                     {approvalApplies ? (
                       <div className="mt-3 divide-y divide-[var(--border-2)] border-t border-[var(--border-2)] pt-1">
                         {approvalOptions.map((option) => {
-                          const checked = Boolean(draft.metadata[option.key]);
+                          const checked = Boolean(draft.metadata[option.key] || isDocusealActivated);
                           return (
                             <label
                               key={option.key}
@@ -1649,6 +1649,18 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                                   localStorage.setItem(docusealBaselineKey(proposalId), currentSectionsHash);
                                   setDocusealBaseline(currentSectionsHash);
                                 }
+                                if (draft) {
+                                  updateDraft({
+                                    ...draft,
+                                    status: "APPROVED",
+                                    metadata: {
+                                      ...draft.metadata,
+                                      productSignOff: true,
+                                      techSignOff: true,
+                                      approvalChecked: true,
+                                    },
+                                  });
+                                }
                                 toastSuccess("DocuSeal re-activated with the latest document.");
                                 setApprovalOpen(false);
                                 setActiveTab("overview");
@@ -1688,6 +1700,18 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                               if (currentSectionsHash) {
                                 localStorage.setItem(docusealBaselineKey(proposalId), currentSectionsHash);
                                 setDocusealBaseline(currentSectionsHash);
+                              }
+                              if (draft) {
+                                updateDraft({
+                                  ...draft,
+                                  status: "APPROVED",
+                                  metadata: {
+                                    ...draft.metadata,
+                                    productSignOff: true,
+                                    techSignOff: true,
+                                    approvalChecked: true,
+                                  },
+                                });
                               }
                               toastSuccess("DocuSeal submission activated successfully!");
                               setApprovalOpen(false);

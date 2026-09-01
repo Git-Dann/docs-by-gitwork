@@ -154,7 +154,7 @@ export const coSectionBlueprints: SectionBlueprint[] = [
         {
           id: id(),
           type: "gitwork",
-          variableName: "gitwork_signature",
+          variableName: "Gitwork Signature",
           partyName: "Gitwork Ltd",
           signatoryName: "[REVIEW] Authorised Gitwork signatory",
           signatoryRole: "Director",
@@ -164,7 +164,7 @@ export const coSectionBlueprints: SectionBlueprint[] = [
         {
           id: id(),
           type: "client",
-          variableName: "client_signature",
+          variableName: "Client Signature",
           partyName: "Client organisation",
           signatoryName: "[REVIEW] Authorised client signatory",
           signatoryRole: "Authorised representative",

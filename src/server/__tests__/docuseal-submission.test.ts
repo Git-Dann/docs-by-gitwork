@@ -15,6 +15,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     document: {
       findUnique: vi.fn(),
+      update: vi.fn().mockResolvedValue({}),
     },
     signatureRequest: {
       findFirst: vi.fn(),

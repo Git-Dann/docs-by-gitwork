@@ -75,8 +75,14 @@ export async function createDocuSealSubmission(
   const { apiKey, baseUrl, defaultTemplateId, webhookUrl } = getDocuSealConfig();
 
   const formattedSubmitters = input.submitters.map((s) => {
-    const defaultVarName = s.role === "gitwork" ? "gitwork_signature" : "client_signature";
-    const varName = s.variableName?.trim() || defaultVarName;
+    const isGitwork = s.role.toLowerCase().startsWith("gitwork");
+    const defaultVarName = isGitwork ? "Gitwork Signature" : "Client Signature";
+    let varName = s.variableName?.trim() || defaultVarName;
+    if (varName === "gitwork_sig" || varName === "gitwork_signature") {
+      varName = "Gitwork Signature";
+    } else if (varName === "client_sig" || varName === "client_signature") {
+      varName = "Client Signature";
+    }
     return {
       name: s.name.trim(),
       email: s.email.trim().toLowerCase(),
