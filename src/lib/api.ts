@@ -713,7 +713,9 @@ export async function createClientPlatform(
     username?: string;
     password?: string;
     notes?: string;
+    previewImageUrl?: string;
     featuredInWiki?: boolean;
+    links?: { label?: string; url: string }[];
   },
 ): Promise<{ platform: ClientPlatformRecord }> {
   return apiFetch<{ platform: ClientPlatformRecord }>(`/api/clients/${slug}/platforms`, {
@@ -737,6 +739,7 @@ export async function updateClientPlatform(
     notes?: string;
     previewImageUrl?: string;
     featuredInWiki?: boolean;
+    links?: { label?: string; url: string }[];
   },
 ): Promise<{ platform: ClientPlatformRecord }> {
   return apiFetch<{ platform: ClientPlatformRecord }>(

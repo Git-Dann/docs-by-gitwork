@@ -1,4 +1,5 @@
 import { unstable_cache, revalidateTag } from "next/cache";
+import { normalisePlatformLinks } from "@/lib/platform-links";
 import { Prisma } from "@prisma/client";
 import { getClientLookupKey, normalizeClientName, slugifyClientName } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
@@ -561,6 +562,7 @@ function serializeClientPlatform(platform: {
   notes: string | null;
   previewImageUrl?: string | null;
   featuredInWiki?: boolean;
+  links?: unknown;
   createdAt: Date;
   updatedAt: Date;
 }): ClientPlatformRecord {
@@ -589,6 +591,10 @@ function serializeClientPlatform(platform: {
     notes: platform.notes,
     previewImageUrl: platform.previewImageUrl ?? null,
     featuredInWiki: platform.featuredInWiki ?? false,
+    // Normalised on the way OUT too: the column predates the field, so existing
+    // rows hold null, and a row written before validation tightened could hold
+    // anything. Callers get a clean array or an empty one, never a surprise.
+    links: normalisePlatformLinks(platform.links),
     createdAt: platform.createdAt.toISOString(),
     updatedAt: platform.updatedAt.toISOString(),
   };
@@ -1481,7 +1487,9 @@ export async function createClientPlatform(
     username?: string;
     password?: string;
     notes?: string;
+    previewImageUrl?: string;
     featuredInWiki?: boolean;
+    links?: { label?: string; url: string }[];
   },
 ): Promise<ClientPlatformRecord> {
   const platform = await clientPlatforms.create({
@@ -1495,7 +1503,14 @@ export async function createClientPlatform(
       usernameCipher: encryptNullable(input.username),
       passwordCipher: encryptNullable(input.password),
       notes: input.notes?.trim() || null,
+      // Was accepted by the validator and then dropped here, so a preview image
+      // set at creation time silently vanished — including the one the form now
+      // fetches automatically from the URL.
+      previewImageUrl: input.previewImageUrl || null,
       featuredInWiki: input.featuredInWiki ?? false,
+      // Re-normalised server-side: the form is not the gate. Anything with a
+      // non-http(s) scheme is dropped rather than stored and later rendered.
+      links: normalisePlatformLinks(input.links) as unknown as Prisma.InputJsonValue,
     },
   });
 
@@ -1515,6 +1530,7 @@ export async function updateClientPlatform(
     notes?: string;
     previewImageUrl?: string;
     featuredInWiki?: boolean;
+    links?: { label?: string; url: string }[];
   },
 ): Promise<ClientPlatformRecord | null> {
   const platform = await clientPlatforms.update({
@@ -1534,6 +1550,7 @@ export async function updateClientPlatform(
       ...(input.notes !== undefined ? { notes: input.notes.trim() || null } : {}),
       ...(input.previewImageUrl !== undefined ? { previewImageUrl: input.previewImageUrl || null } : {}),
       ...(input.featuredInWiki !== undefined ? { featuredInWiki: input.featuredInWiki } : {}),
+      ...(input.links !== undefined ? { links: normalisePlatformLinks(input.links) as unknown as Prisma.InputJsonValue } : {}),
     },
   });
 

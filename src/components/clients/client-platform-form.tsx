@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { EyeIcon, EyeSlashIcon, ClipboardIcon, CheckIcon, LockClosedIcon, PlusIcon, PencilIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { PreviewImagePicker } from "@/components/ui/preview-image-picker";
 import { usePlatformLoginActions } from "@/hooks/use-proposals";
 import type { ClientPlatformRecord, ClientPlatformLoginSummary, ClientPlatformReveal } from "@/types/client";
+import { isSafeLinkUrl, labelFromUrl, MAX_PLATFORM_LINKS, type PlatformLink } from "@/lib/platform-links";
+import { useOgPreview } from "@/hooks/use-proposals";
 
 type PlatformInput = {
   name: string;
@@ -16,6 +18,8 @@ type PlatformInput = {
   notes: string;
   previewImageUrl: string;
   featuredInWiki: boolean;
+  /** Extra client-provided links (ClickUp board, Figma file …). */
+  links: PlatformLink[];
 };
 
 const PLATFORM_TYPES = [
@@ -446,6 +450,7 @@ export function ClientPlatformFormModal({
     repoUrl: platform?.repoUrl ?? "",
     notes: isAppStore ? "" : (platform?.notes ?? ""),
     previewImageUrl: platform?.previewImageUrl ?? "",
+    links: platform?.links ?? [],
     featuredInWiki: platform?.featuredInWiki ?? false,
   });
 
@@ -457,6 +462,23 @@ export function ClientPlatformFormModal({
   function set(field: keyof PlatformInput, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
+
+  function setLinks(next: PlatformLink[]) {
+    setForm((prev) => ({ ...prev, links: next }));
+  }
+
+  /**
+   * Auto-fill the card image from whatever the link advertises (og:image), so
+   * nobody has to go and find a screenshot for every platform. Only ever fills a
+   * BLANK image — an uploaded or previously-fetched one is never overwritten,
+   * because the automatic guess should not beat a human's choice.
+   */
+  const previewSource = form.previewImageUrl ? null : form.url.trim() || null;
+  const og = useOgPreview(previewSource);
+  useEffect(() => {
+    const found = og.data?.imageUrl;
+    if (found && !form.previewImageUrl) set("previewImageUrl", found);
+  }, [og.data?.imageUrl, form.previewImageUrl]);
 
   function setAppField(field: string, value: string) {
     setAppStoreValues((prev) => ({ ...prev, [field]: value }));
@@ -533,8 +555,12 @@ export function ClientPlatformFormModal({
                 </div>
               )}
 
-              {/* Right — form fields */}
-              <div className="max-h-[65vh] space-y-4 overflow-y-auto pr-1">
+              {/* Right — form fields.
+                  min-w-0: a grid item's automatic minimum size is its content, so
+                  without it this 1fr track is pushed wider than its share by the
+                  nested two-column rows, and the panel's overflow-hidden clips the
+                  right-hand fields (Type, Staging URL) clean off. */}
+              <div className="min-w-0 max-h-[65vh] space-y-4 overflow-y-auto pr-1">
                 {!isAppStoreType && (
                   <>
                     <div className="grid gap-4 sm:grid-cols-2">
@@ -616,6 +642,79 @@ export function ClientPlatformFormModal({
                         type="url"
                       />
                     </label>
+
+                    {/* Other links — whatever the client hands over that isn't
+                        production/staging/repo: a ClickUp board, a Figma file, a
+                        status page. Free-form because the list is theirs, not ours. */}
+                    <div>
+                      <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
+                        Other links
+                      </span>
+                      <div className="space-y-2">
+                        {form.links.map((link, i) => {
+                          const bad = link.url.trim().length > 0 && !isSafeLinkUrl(link.url);
+                          return (
+                            <div key={i} className="flex items-start gap-2">
+                              <input
+                                value={link.label}
+                                onChange={(e) => {
+                                  const next = [...form.links];
+                                  next[i] = { ...next[i], label: e.target.value };
+                                  setLinks(next);
+                                }}
+                                className="app-input w-[34%] min-w-0"
+                                placeholder="ClickUp board"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <input
+                                  value={link.url}
+                                  onChange={(e) => {
+                                    const next = [...form.links];
+                                    const url = e.target.value;
+                                    // Name it after the host if they haven't typed a label —
+                                    // an unlabelled row would otherwise render as bare "Link".
+                                    const label =
+                                      next[i].label || (isSafeLinkUrl(url) ? labelFromUrl(url) : "");
+                                    next[i] = { label, url };
+                                    setLinks(next);
+                                  }}
+                                  className="app-input w-full"
+                                  placeholder="https://app.clickup.com/…"
+                                  type="url"
+                                />
+                                {bad ? (
+                                  <p className="mt-1 text-[12px] text-rose-600">
+                                    Needs to start with http:// or https:// — anything else is
+                                    dropped when saved.
+                                  </p>
+                                ) : null}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setLinks(form.links.filter((_, j) => j !== i))}
+                                aria-label={`Remove ${link.label || "link"}`}
+                                className="mt-1 shrink-0 rounded-[6px] p-1.5 text-[var(--text-4)] transition hover:bg-rose-50 hover:text-rose-600"
+                              >
+                                <TrashIcon className="h-4 w-4" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {form.links.length < MAX_PLATFORM_LINKS ? (
+                        <button
+                          type="button"
+                          onClick={() => setLinks([...form.links, { label: "", url: "" }])}
+                          className="mt-2 inline-flex items-center gap-1.5 text-[13px] font-medium text-[var(--brand-700)] transition hover:text-[var(--brand-800)]"
+                        >
+                          <PlusIcon className="h-4 w-4" /> Add link
+                        </button>
+                      ) : (
+                        <p className="mt-2 text-[12px] text-[var(--text-4)]">
+                          {MAX_PLATFORM_LINKS} links is the maximum.
+                        </p>
+                      )}
+                    </div>
 
                     <PlatformLogins slug={slug} platform={platform} />
 

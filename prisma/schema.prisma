@@ -1209,6 +1209,11 @@ model ClientPlatform {
   passwordCipher  String?               @db.Text // AES-256-GCM envelope
   notes           String?               @db.Text
   previewImageUrl String?               @db.Text
+  /// Extra links a client provides that aren't production/staging/repo — a ClickUp
+  /// board, a Figma file, a status page. Stored as [{ label, url }]; JSON rather
+  /// than a table because they are display-only, always read with the platform,
+  /// and never queried across clients. Additive → applies via the guarded db push.
+  links           Json?
   /// Placements engaged on this platform — drives the scoped GitHub scan.
   placements      Placement[]
   /// Multiple credential sets ("logins") — supersedes the single username/password ciphers

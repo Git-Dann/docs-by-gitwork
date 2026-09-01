@@ -806,13 +806,13 @@ const demoClientDetail: ClientDetailRecord = {
       id: "pf1", clientId: WIKI_CLIENT.id, name: "Production web", platformType: "WEB",
       url: "https://app.northwind.co", stagingUrl: "https://staging.northwind.co",
       repoUrl: "https://github.com/northwind/app", hasUsername: false, hasPassword: false,
-      logins: [], notes: null, previewImageUrl: null, featuredInWiki: true, createdAt: atDays(-110), updatedAt: atDays(-4),
+      logins: [], notes: null, previewImageUrl: null, featuredInWiki: true, links: [], createdAt: atDays(-110), updatedAt: atDays(-4),
     },
     {
       id: "pf2", clientId: WIKI_CLIENT.id, name: "iOS app", platformType: "IOS",
       url: "https://apps.apple.com/app/northwind", stagingUrl: null,
       repoUrl: "https://github.com/northwind/ios", hasUsername: false, hasPassword: false,
-      logins: [], notes: null, previewImageUrl: null, featuredInWiki: false, createdAt: atDays(-90), updatedAt: atDays(-9),
+      logins: [], notes: null, previewImageUrl: null, featuredInWiki: false, links: [], createdAt: atDays(-90), updatedAt: atDays(-9),
     },
   ],
   designs: [

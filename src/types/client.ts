@@ -1,4 +1,5 @@
 import type { ProposalListItem } from "@/types/proposal";
+import type { PlatformLink } from "@/lib/platform-links";
 import type { ProofDocumentRecord } from "@/lib/proof";
 
 export type ClientSource = "SUGGESTED" | "MANUAL";
@@ -217,6 +218,8 @@ export interface ClientPlatformRecord {
   logins: ClientPlatformLoginSummary[];
   notes: string | null;
   previewImageUrl: string | null;
+  /** Extra client-provided links (ClickUp board, Figma file …). Always normalised. */
+  links: PlatformLink[];
   /** When true, this platform's prod + staging URLs surface as buttons in the wiki header. */
   featuredInWiki: boolean;
   createdAt: string;

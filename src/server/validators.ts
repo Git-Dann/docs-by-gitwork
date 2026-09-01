@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_PLATFORM_LINKS } from "@/lib/platform-links";
 import { LAUNCHPAD_LINK_ERROR, safeLaunchpadLink } from "@/lib/launchpad/field-types";
 import { normalizeGithubRepo } from "@/lib/github";
 
@@ -281,6 +282,16 @@ export const clientPlatformCreateSchema = z.object({
   notes: z.string().trim().optional(),
   previewImageUrl: z.string().optional(),
   featuredInWiki: z.boolean().optional(),
+  /**
+   * Extra links a client provides beyond production/staging/repo — a ClickUp
+   * board, a Figma file. Scheme-checked again server-side by
+   * normalisePlatformLinks: these are rendered as anchors, so a stored
+   * `javascript:` URL would be script execution on click.
+   */
+  links: z
+    .array(z.object({ label: z.string().trim().max(60).optional(), url: z.string().trim() }))
+    .max(MAX_PLATFORM_LINKS)
+    .optional(),
 });
 
 // Product team = ordered list of workspace-member User ids shown on the wiki header.
