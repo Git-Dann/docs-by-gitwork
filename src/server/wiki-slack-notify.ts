@@ -1,7 +1,8 @@
 /**
- * Small, best-effort Slack pings into a client's own internal channel for two
- * wiki events: a changelog entry gets approved, and a new request comes in
- * from a client (public wiki page or the external intake API). Distinct from
+ * Small, best-effort Slack pings into a client's own internal channel for
+ * three wiki events: a changelog entry is added and awaiting approval, a
+ * changelog entry gets approved, and a new request comes in from a client
+ * (public wiki page or the external intake API). Distinct from
  * dispatchNotification's in-app/push notifications to Gitwork staff — this
  * posts to the CLIENT's linked Slack channel, when one exists.
  *
@@ -44,6 +45,19 @@ async function resolveClientSlackTarget(
   if (!botToken) return null;
 
   return { botToken, channel, clientName: client.name, clientSlug: client.slug };
+}
+
+/** A new changelog entry was added and is waiting to be approved. */
+export async function notifyClientSlackChangelogPending(
+  wikiId: string,
+  entry: { version: string; title: string },
+): Promise<void> {
+  const target = await resolveClientSlackTarget(wikiId);
+  if (!target) return;
+  await postMessage(target.botToken, {
+    channel: target.channel,
+    text: `:memo: *${target.clientName}* changelog *v${entry.version}* added — "${entry.title}" is awaiting approval.`,
+  }).catch(() => undefined);
 }
 
 /** A changelog entry moved from PENDING to APPROVED. */

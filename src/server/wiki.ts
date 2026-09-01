@@ -34,7 +34,11 @@ import {
 import { loadWikiMonitors, type WikiMonitorsSection } from "./wiki-monitors";
 import { assertWithinIntakeQuota } from "./wiki-intake-limit";
 import { deliverIntakeWebhook } from "./wiki-intake-webhook";
-import { notifyClientSlackChangelogApproved, notifyClientSlackNewRequests } from "./wiki-slack-notify";
+import {
+  notifyClientSlackChangelogApproved,
+  notifyClientSlackChangelogPending,
+  notifyClientSlackNewRequests,
+} from "./wiki-slack-notify";
 import { loadWikiDocuments, type WikiDocumentsSection } from "./wiki-documents";
 import { loadWikiCodeHandover, type WikiCodeHandoverSection } from "./wiki-code";
 import { getLaunchpadByWikiId } from "./launchpad";
@@ -936,7 +940,27 @@ export async function addChangelogEntry(
     },
   });
 
+  if (entry.status === "PENDING") {
+    void notifyClientSlackChangelogPending(entry.wikiId, entry);
+  }
   return serializeEntry(entry);
+}
+
+/**
+ * Atomically flip an entry to APPROVED and report whether THIS call is the
+ * one that actually made the change. A plain "read status, then write" is
+ * racy: two concurrent PATCHes (a double-click, a retry) can both read
+ * PENDING before either write commits, so both would conclude "I approved
+ * this" and both would ping Slack. `updateMany` with the guard in the WHERE
+ * clause is atomic at the database level — only one concurrent caller's
+ * update can match a row still not-APPROVED, so only one gets count > 0.
+ */
+async function markApprovedOnce(entryId: string): Promise<boolean> {
+  const result = await prisma.clientChangelogEntry.updateMany({
+    where: { id: entryId, status: { not: "APPROVED" } },
+    data: { status: "APPROVED" },
+  });
+  return result.count > 0;
 }
 
 /** Update the status of a single changelog entry. */
@@ -944,17 +968,12 @@ export async function updateChangelogEntryStatus(
   entryId: string,
   status: WikiEntryStatus,
 ): Promise<ChangelogEntryRecord> {
-  const before = await prisma.clientChangelogEntry.findUnique({
-    where: { id: entryId },
-    select: { status: true },
-  });
+  const approvedNow = status === "APPROVED" && (await markApprovedOnce(entryId));
   const entry = await prisma.clientChangelogEntry.update({
     where: { id: entryId },
     data: { status },
   });
-  // Only a genuine PENDING → APPROVED transition pings Slack — re-saving an
-  // already-approved entry (e.g. a typo fix) shouldn't post again.
-  if (status === "APPROVED" && before?.status !== "APPROVED") {
+  if (approvedNow) {
     void notifyClientSlackChangelogApproved(entry.wikiId, entry);
   }
   return serializeEntry(entry);
@@ -971,10 +990,7 @@ export async function updateChangelogEntry(
     status?: WikiEntryStatus;
   },
 ): Promise<ChangelogEntryRecord> {
-  const before =
-    input.status !== undefined
-      ? await prisma.clientChangelogEntry.findUnique({ where: { id: entryId }, select: { status: true } })
-      : null;
+  const approvedNow = input.status === "APPROVED" && (await markApprovedOnce(entryId));
   const entry = await prisma.clientChangelogEntry.update({
     where: { id: entryId },
     data: {
@@ -987,7 +1003,7 @@ export async function updateChangelogEntry(
       ...(input.status !== undefined ? { status: input.status } : {}),
     },
   });
-  if (input.status === "APPROVED" && before?.status !== "APPROVED") {
+  if (approvedNow) {
     void notifyClientSlackChangelogApproved(entry.wikiId, entry);
   }
   return serializeEntry(entry);
