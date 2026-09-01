@@ -1680,7 +1680,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                               try {
                                 const res = await duplicateProposalMutation.mutateAsync(proposalId);
                                 toastSuccess("Created an amended duplicate copy.");
-                                router.push(`/docs/${res.proposal.id}`);
+                                router.push(`/app/docs/${res.proposal.id}`);
                               } catch (err) {
                                 toastError(err instanceof Error ? err.message : "Failed to duplicate document.");
                               }
@@ -1932,7 +1932,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               defaultTabId="collab"
               tabs={[
                 { id: "collab", label: "Collaboration", panel: <CollabPanel documentId={proposalId} currentVersion={draft.version || "v1.0"} /> },
-                { id: "signature", label: "Signatures", panel: <SignaturePanel documentId={proposalId} /> },
+                { id: "signature", label: "Signatures", panel: <SignaturePanel documentId={proposalId} isStale={isDocusealStale} /> },
                 { id: "insights", label: "Insights", panel: <DocumentAnalyticsPanel documentId={proposalId} /> },
                 { id: "activity", label: "Activity", panel: <ActivityFeed documentId={proposalId} /> },
                 { id: "linked", label: "Linked", panel: <DocumentRelationsPanel documentId={proposalId} clientName={draft.clientName ?? null} /> },
