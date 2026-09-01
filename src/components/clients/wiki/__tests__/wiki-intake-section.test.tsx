@@ -48,8 +48,11 @@ function makeItem(id: string, type: WikiIntakeItemRecord["type"]): WikiIntakeIte
     taskId: null,
     hasImage: false,
     imageFilename: null,
+    device: null,
+    osVersion: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    comments: [],
   };
 }
 

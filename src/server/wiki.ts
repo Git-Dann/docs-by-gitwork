@@ -19,6 +19,7 @@ import type {
   CourseRequestStatus,
   WikiIntakeItemStatus,
   WikiIntakeItemType,
+  WikiIntakeCommentAuthorKind,
   TaskPriority,
 } from "@prisma/client";
 import type { DesignTokens } from "@/types/design-tokens";
@@ -115,8 +116,21 @@ export interface WikiIntakeItemRecord {
   /** True when an image is attached — bytes are served via a separate route. */
   hasImage: boolean;
   imageFilename: string | null;
+  /** Free-text device/OS context supplied with the report (both optional). */
+  device: string | null;
+  osVersion: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Reply thread — either side (Gitwork team or the client) can add to it. */
+  comments: WikiIntakeCommentRecord[];
+}
+
+export interface WikiIntakeCommentRecord {
+  id: string;
+  authorKind: "TEAM" | "CLIENT";
+  authorName: string;
+  body: string;
+  createdAt: string;
 }
 
 /** A feature block rendered as a Gantt bar on the wiki Timeline page. */
@@ -323,8 +337,17 @@ function serializeWikiIntakeItem(item: {
   taskId: string | null;
   mime?: string | null;
   filename?: string | null;
+  device?: string | null;
+  osVersion?: string | null;
   createdAt: Date;
   updatedAt: Date;
+  comments?: {
+    id: string;
+    authorKind: WikiIntakeCommentAuthorKind;
+    authorName: string;
+    body: string;
+    createdAt: Date;
+  }[];
 }): WikiIntakeItemRecord {
   return {
     id: item.id,
@@ -345,8 +368,17 @@ function serializeWikiIntakeItem(item: {
     taskId: item.taskId,
     hasImage: Boolean(item.mime),
     imageFilename: item.filename ?? null,
+    device: item.device ?? null,
+    osVersion: item.osVersion ?? null,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
+    comments: (item.comments ?? []).map((c) => ({
+      id: c.id,
+      authorKind: c.authorKind,
+      authorName: c.authorName,
+      body: c.body,
+      createdAt: c.createdAt.toISOString(),
+    })),
   };
 }
 
@@ -733,8 +765,14 @@ const WIKI_INCLUDE = {
       taskId: true,
       mime: true,
       filename: true,
+      device: true,
+      osVersion: true,
       createdAt: true,
       updatedAt: true,
+      comments: {
+        select: { id: true, authorKind: true, authorName: true, body: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+      },
     },
   },
   wikiUsers: { select: { id: true, email: true, name: true, createdAt: true } },
@@ -1203,6 +1241,10 @@ export interface WikiItemIngestItem {
   attachmentUrls?: string[] | null;
   /** Only meaningful on an update — a new item always starts at NEW. */
   status?: "NEW" | "TRIAGED" | "PROMOTED" | "CLOSED";
+  /** Free-text device (e.g. "iPhone 14 Pro") — optional context for bug reports. */
+  device?: string | null;
+  /** Free-text OS/version (e.g. "iOS 17.4") — optional context for bug reports. */
+  osVersion?: string | null;
 }
 
 /** http(s) only, so nothing can put a javascript:/data: URL in front of the team. */
@@ -1369,6 +1411,8 @@ async function ingestWikiItemsIntoWiki(
         label: raw.label ?? null,
         externalUrl: safeIntakeLink(raw.externalUrl),
         attachmentUrls: safeIntakeLinks(raw.attachmentUrls),
+        device: raw.device?.trim() || null,
+        osVersion: raw.osVersion?.trim() || null,
         source: "api",
       },
     });
@@ -1662,6 +1706,8 @@ export async function addWikiIntakeItem(
       requestedBy: item.requestedBy?.trim() || null,
       externalRef: item.externalRef?.trim() || null,
       label: item.label ?? null,
+      device: item.device?.trim() || null,
+      osVersion: item.osVersion?.trim() || null,
       source: "manual",
     },
   });
@@ -1735,6 +1781,85 @@ export async function deleteWikiIntakeItem(id: string): Promise<void> {
   if (row) {
     void deliverIntakeWebhook({ wikiId: row.wikiId, event: "request.deleted", item: row });
   }
+}
+
+function serializeWikiIntakeComment(c: {
+  id: string;
+  authorKind: WikiIntakeCommentAuthorKind;
+  authorName: string;
+  body: string;
+  createdAt: Date;
+}): WikiIntakeCommentRecord {
+  return {
+    id: c.id,
+    authorKind: c.authorKind,
+    authorName: c.authorName,
+    body: c.body,
+    createdAt: c.createdAt.toISOString(),
+  };
+}
+
+/** A Gitwork team member replies on a request. Internal — no token needed;
+ *  the route resolves the caller via the session and passes their identity. */
+export async function addWikiIntakeComment(
+  itemId: string,
+  author: { userId: string; name: string },
+  body: string,
+): Promise<WikiIntakeCommentRecord> {
+  const trimmed = body.trim();
+  if (!trimmed) throw new Error("Comment can't be empty.");
+  const comment = await prisma.clientWikiIntakeComment.create({
+    data: {
+      intakeItemId: itemId,
+      authorKind: "TEAM",
+      authorName: author.name,
+      authorUserId: author.userId,
+      body: trimmed,
+    },
+  });
+  return serializeWikiIntakeComment(comment);
+}
+
+/**
+ * A reply from the public wiki page — either a signed-in client user or a
+ * Gitwork user previewing the page (the route resolves which and passes the
+ * already-decided authorKind/authorName; same identity precedence as
+ * resolveRequestedBy on the sibling intake-items route, no typed-name field).
+ * Resolved via resolveWikiIdByPublicToken — the same helper the other
+ * public-page intake actions use (share token first, then a per-section
+ * token) — so a comment is reachable everywhere the item itself is.
+ * Deliberately NOT reused via findClientMutableItem: that helper locks once
+ * an item leaves NEW, but commenting is exactly what a client does AFTER the
+ * team has triaged or closed a request ("here's the fix"), so it stays open
+ * regardless of status. Returns null for an invalid/disabled token or an item
+ * that isn't theirs — same non-distinguishing failure as the rest of the
+ * token-scoped functions, so a caller can't use the error to probe for id
+ * existence.
+ */
+export async function addWikiIntakeCommentByToken(
+  token: string,
+  itemId: string,
+  input: { authorKind: WikiIntakeCommentAuthorKind; authorName: string; body: string },
+): Promise<WikiIntakeCommentRecord | null> {
+  const authorName = input.authorName.trim();
+  const body = input.body.trim();
+  if (!authorName || !body) return null;
+
+  const wikiId = await resolveWikiIdByPublicToken(token);
+  if (!wikiId) return null;
+  const wiki = await prisma.clientWiki.findUnique({ where: { id: wikiId }, select: { intakeEnabled: true } });
+  if (!wiki?.intakeEnabled) return null;
+
+  const item = await prisma.clientWikiIntakeItem.findFirst({
+    where: { id: itemId, wikiId },
+    select: { id: true },
+  });
+  if (!item) return null;
+
+  const comment = await prisma.clientWikiIntakeComment.create({
+    data: { intakeItemId: item.id, authorKind: input.authorKind, authorName, body },
+  });
+  return serializeWikiIntakeComment(comment);
 }
 
 async function nextWikiPromotedTaskOrderKey(workspaceId: string, clientId: string): Promise<number> {

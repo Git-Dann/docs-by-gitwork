@@ -220,6 +220,7 @@ model User {
   designSystemsUpdated      ClientDesignSystem[]    @relation("DesignSystemUpdatedBy")
   taskComments              TaskComment[]
   taskAttachments           TaskAttachment[]
+  wikiIntakeComments        ClientWikiIntakeComment[]
   dailyUpdates              DailyUpdate[]
   slackUpdateLogs           SlackUpdateLog[]
   // MCP / OAuth (Phase 3) — Foundry as an OAuth 2.1 authorization server.
@@ -1620,12 +1621,43 @@ model ClientWikiIntakeItem {
   thumb       Bytes?
   mime        String?
   filename    String?
+  /// Free-text device/OS context supplied with the report (e.g. "iPhone 14 Pro" /
+  /// "iOS 17.4") — both optional, filled in on the Add Request form.
+  device      String?
+  osVersion   String?
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
+  comments    ClientWikiIntakeComment[]
 
   @@index([wikiId])
   @@index([wikiId, externalRef])
   @@map("ClientWikiIntakeItem")
+}
+
+/// A reply on an intake item — either side of the conversation. TEAM comments
+/// come from a logged-in Gitwork user (authorUserId set, authorName mirrors
+/// User.name at post time); CLIENT comments come from the public wiki page,
+/// attributed to the signed-in ClientWikiUser (or a Gitwork user previewing
+/// the page) — never a typed name, since every route into the public wiki
+/// is already authenticated one way or the other.
+model ClientWikiIntakeComment {
+  id           String                      @id @default(cuid())
+  intakeItemId String
+  intakeItem   ClientWikiIntakeItem        @relation(fields: [intakeItemId], references: [id], onDelete: Cascade)
+  authorKind   WikiIntakeCommentAuthorKind
+  authorName   String
+  authorUserId String?
+  authorUser   User?                       @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
+  body         String                      @db.Text
+  createdAt    DateTime                    @default(now())
+
+  @@index([intakeItemId, createdAt])
+  @@map("ClientWikiIntakeComment")
+}
+
+enum WikiIntakeCommentAuthorKind {
+  TEAM
+  CLIENT
 }
 
 enum WikiIntakeItemType {

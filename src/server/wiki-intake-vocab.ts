@@ -116,4 +116,7 @@ export const intakeCommonFields = {
   externalUrl: z.string().trim().url().max(2000).optional().nullable(),
   /** Links only — never fetched server-side (SSRF). */
   attachmentUrls: z.array(z.string().trim().url().max(2000)).max(10).optional().nullable(),
+  /** Free-text device/OS context (e.g. "iPhone 14 Pro" / "iOS 17.4") — optional. */
+  device: z.string().trim().max(120).optional().nullable(),
+  osVersion: z.string().trim().max(60).optional().nullable(),
 } as const;

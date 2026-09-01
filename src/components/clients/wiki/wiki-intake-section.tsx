@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import {
   ArrowTopRightOnSquareIcon,
+  ChatBubbleLeftIcon,
   CheckCircleIcon,
   PaperClipIcon,
   PhotoIcon,
@@ -26,6 +27,8 @@ import {
   useUploadPublicWikiIntakeItemImage,
   useUpdatePublicWikiIntakeItem,
   useDeletePublicWikiIntakeItem,
+  useAddWikiIntakeComment,
+  useAddPublicWikiIntakeComment,
 } from "@/hooks/use-wiki";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -103,13 +106,23 @@ export function WikiIntakeSection({
   const uploadImagePublic = useUploadPublicWikiIntakeItemImage(token ?? "");
   const updatePublic = useUpdatePublicWikiIntakeItem(token ?? "");
   const deletePublic = useDeletePublicWikiIntakeItem(token ?? "");
+  const addCommentInternal = useAddWikiIntakeComment(slug);
+  const addCommentPublic = useAddPublicWikiIntakeComment(token ?? "");
 
   const [localItems, setLocalItems] = useState(items);
+  /** Which items' reply threads are open — collapsed by default so a long
+   *  list stays scannable; a request with replies already shown expanded. */
+  const [openComments, setOpenComments] = useState<Set<string>>(new Set());
+  const [commentDraft, setCommentDraft] = useState<Record<string, string>>({});
+  const [commentError, setCommentError] = useState<{ id: string; message: string } | null>(null);
+  const [postingCommentId, setPostingCommentId] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string>(categories[0]?.id ?? "FEEDBACK");
   const [priority, setPriority] = useState<Priority>("MEDIUM");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [label, setLabel] = useState<DevLabel | "">("");
+  const [device, setDevice] = useState("");
+  const [osVersion, setOsVersion] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewingImageId, setViewingImageId] = useState<string | null>(null);
@@ -175,6 +188,8 @@ export function WikiIntakeSection({
       title: title.trim(),
       description: description.trim() || null,
       label: label || null,
+      device: device.trim() || null,
+      osVersion: osVersion.trim() || null,
     };
     if (!payload.title) {
       setError("Add a short title first.");
@@ -197,9 +212,46 @@ export function WikiIntakeSection({
       setPriority("MEDIUM");
       setCategoryId(categories[0]?.id ?? "FEEDBACK");
       setLabel("");
+      setDevice("");
+      setOsVersion("");
       setImage(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not submit this item.");
+    }
+  }
+
+  function toggleComments(itemId: string) {
+    setOpenComments((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  }
+
+  async function postComment(itemId: string) {
+    const body = (commentDraft[itemId] ?? "").trim();
+    if (!body) return;
+    setCommentError(null);
+    setPostingCommentId(itemId);
+    try {
+      const comment = isInternal
+        ? await addCommentInternal.mutateAsync({ itemId, body })
+        : await addCommentPublic.mutateAsync({ itemId, body });
+      if (!isInternal) {
+        setLocalItems((prev) =>
+          prev.map((i) => (i.id === itemId ? { ...i, comments: [...i.comments, comment] } : i)),
+        );
+      }
+      setCommentDraft((prev) => ({ ...prev, [itemId]: "" }));
+      setOpenComments((prev) => new Set(prev).add(itemId));
+    } catch (err) {
+      setCommentError({
+        id: itemId,
+        message: err instanceof Error ? err.message : "Could not post that reply.",
+      });
+    } finally {
+      setPostingCommentId(null);
     }
   }
 
@@ -276,6 +328,23 @@ export function WikiIntakeSection({
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Device/OS — optional context for bug reports; free text since we
+              can't know every client's device fleet ahead of time. */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input
+              value={device}
+              onChange={(e) => setDevice(e.target.value)}
+              placeholder="Device (optional, e.g. iPhone 14 Pro)"
+              className="app-input"
+            />
+            <input
+              value={osVersion}
+              onChange={(e) => setOsVersion(e.target.value)}
+              placeholder="OS version (optional, e.g. iOS 17.4)"
+              className="app-input"
+            />
           </div>
 
           {/* Screenshot — optional, attached after the item is created. */}
@@ -415,7 +484,11 @@ export function WikiIntakeSection({
                 : `No ${(categories.find((c) => c.id === activeTab)?.label ?? activeTab).toLowerCase()} items yet.`}
             </p>
           ) : (
-            pagedItems.map((item) => (
+            pagedItems.map((item) => {
+              // Guard rather than trust `comments` is present — same principle
+              // as the server-side Json-column guards.
+              const itemComments = item.comments ?? [];
+              return (
               <article key={item.id} className="p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -501,6 +574,8 @@ export function WikiIntakeSection({
                     <p className="mt-2 text-[12px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
                       {item.requestedBy ? `${item.requestedBy} · ` : ""}
                       {new Date(item.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+                      {item.device ? ` · ${item.device}` : ""}
+                      {item.osVersion ? ` · ${item.osVersion}` : ""}
                     </p>
                   </div>
                   {/* The client's own controls: fix or withdraw a request they raised.
@@ -725,8 +800,79 @@ export function WikiIntakeSection({
                 {rowError?.id === item.id && (
                   <p className="mt-2 text-[12px] text-rose-600">{rowError.message}</p>
                 )}
+
+                {/* Reply thread — either side can add to it, so the client sees
+                    when a fix is in place without being told outside the wiki. */}
+                <div className="mt-3 border-t border-[var(--border-2)] pt-3">
+                  <button
+                    type="button"
+                    onClick={() => toggleComments(item.id)}
+                    className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+                  >
+                    <ChatBubbleLeftIcon className="h-3.5 w-3.5" />
+                    {itemComments.length > 0
+                      ? `${itemComments.length} repl${itemComments.length === 1 ? "y" : "ies"}`
+                      : "Reply"}
+                  </button>
+                  {openComments.has(item.id) && (
+                    <div className="mt-2.5 space-y-2.5">
+                      {itemComments.map((c) => (
+                        <div key={c.id} className="rounded-[8px] bg-[var(--surface-1)] px-3 py-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[12px] font-semibold text-[var(--text-1)]">
+                              {c.authorName}
+                            </span>
+                            <span
+                              className={[
+                                "rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.06em]",
+                                c.authorKind === "TEAM"
+                                  ? "bg-[var(--surface-brand)] text-[var(--brand-700)]"
+                                  : "bg-[var(--surface-2)] text-[var(--text-3)]",
+                              ].join(" ")}
+                              style={{ fontFamily: MONO }}
+                            >
+                              {c.authorKind === "TEAM" ? "Gitwork" : "Client"}
+                            </span>
+                            <span className="text-[11px] text-[var(--text-4)]">
+                              {new Date(c.createdAt).toLocaleDateString(undefined, {
+                                day: "numeric",
+                                month: "short",
+                              })}
+                            </span>
+                          </div>
+                          <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--text-2)]">
+                            {c.body}
+                          </p>
+                        </div>
+                      ))}
+                      <div className="flex items-start gap-2">
+                        <textarea
+                          value={commentDraft[item.id] ?? ""}
+                          onChange={(e) =>
+                            setCommentDraft((prev) => ({ ...prev, [item.id]: e.target.value }))
+                          }
+                          placeholder="Write a reply…"
+                          rows={2}
+                          className="app-input resize-y py-2 text-[13px] leading-relaxed"
+                        />
+                        <button
+                          type="button"
+                          disabled={postingCommentId === item.id || !(commentDraft[item.id] ?? "").trim()}
+                          onClick={() => void postComment(item.id)}
+                          className="shrink-0 rounded-[7px] bg-[var(--brand-600)] px-3 py-2 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60"
+                        >
+                          {postingCommentId === item.id ? "Posting…" : "Reply"}
+                        </button>
+                      </div>
+                      {commentError?.id === item.id && (
+                        <p className="text-[12px] text-rose-600">{commentError.message}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </article>
-            ))
+              );
+            })
           )}
         </div>
         {filteredItems.length > PAGE_SIZE && (
