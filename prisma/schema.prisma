@@ -3915,6 +3915,7 @@ enum TaskLabel {
   UI_UX
   RESEARCH
   DESIGN
+  SUPPORT
 }
 
 /// Links a team member to a specific client. Backs the `seeAllClients=off`

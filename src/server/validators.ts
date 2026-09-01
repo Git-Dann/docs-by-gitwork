@@ -1012,7 +1012,7 @@ export const taskStatusSchema = z.enum([
 
 export const taskPrioritySchema = z.enum(["LOW", "MEDIUM", "HIGH"]);
 
-export const taskLabelSchema = z.enum(["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN"]);
+export const taskLabelSchema = z.enum(["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN", "SUPPORT"]);
 
 export const taskInputSchema = z.object({
   clientId: z.string().cuid(),

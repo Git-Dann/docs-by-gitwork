@@ -5,7 +5,7 @@
 
 export type TaskStatus = "BACKLOG" | "TODO" | "DOING" | "IN_REVIEW" | "UI_DONE" | "DONE";
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
-export type TaskLabel = "BACKEND" | "FRONTEND" | "UI_UX" | "RESEARCH" | "DESIGN";
+export type TaskLabel = "BACKEND" | "FRONTEND" | "UI_UX" | "RESEARCH" | "DESIGN" | "SUPPORT";
 
 /** Board column order. "UI_DONE" is intentionally omitted — the "UI Done"
  *  column was removed (redundant; convey UI/backend/frontend via the task title
@@ -53,7 +53,7 @@ export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
   HIGH: "High",
 };
 
-export const TASK_LABELS: TaskLabel[] = ["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN"];
+export const TASK_LABELS: TaskLabel[] = ["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN", "SUPPORT"];
 
 export const TASK_LABEL_LABELS: Record<TaskLabel, string> = {
   BACKEND: "Backend",
@@ -61,6 +61,7 @@ export const TASK_LABEL_LABELS: Record<TaskLabel, string> = {
   UI_UX: "UI/UX Done",
   RESEARCH: "Research",
   DESIGN: "Design",
+  SUPPORT: "Support",
 };
 
 export type TaskUserRef = { id: string; name: string; avatarUrl: string | null };
