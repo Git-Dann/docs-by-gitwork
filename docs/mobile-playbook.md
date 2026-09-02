@@ -32,9 +32,9 @@ Grep every usage before editing any of these; a change here is never local:
 
 | Primitive | Where | Watch for |
 |---|---|---|
-| `widget-card` | globals.css `@layer components` | Base card for nearly every panel. |
+| `widget-card` | globals.css `@layer components` | Base card for nearly every panel. ⚠️ **It is `overflow: hidden`.** Anything inside it that is wider than the card is not merely off-screen, it is **unreachable** — there is no scrollable ancestor to get to it, and the page does not scroll sideways either, so a page-X check reports clean while the content is simply gone. Any wide child (a column grid, a table, a chart) must bring its own `overflow-x-auto`. |
 | `widget-header` | globals.css | Fixed **36px** tall. `widget-header__label` is `white-space: nowrap`; the **status** text on the right can wrap — this is the usual "header clipped / text overflow" culprit when a card is forced narrow. Fix by giving the card more width (stack the grid) rather than shrinking the label. |
-| `app-table` | globals.css | Must live inside a `overflow-x-auto` wrapper. Tables do **not** reflow — they scroll. Don't try to make a wide table fit a narrow column; give it full width on mobile. |
+| `app-table` | globals.css | Must live inside a `overflow-x-auto` wrapper. Tables do **not** reflow — they scroll. Don't try to make a wide table fit a narrow column; give it full width on mobile. **A column grid is a table** for this purpose — a `grid` with fixed `px` columns needs the same wrapper, and the header row must sit inside the **same** scroller as the rows or the two desync the moment anyone scrolls. Give the wrapper's inner frame a `min-w-[…]` generous enough that the `1fr` content column stays readable: sized to only what the columns strictly need, the flexible column is crushed to nothing and every value ellipses, which defeats the point of scrolling. |
 | `bento-grid` | globals.css / HQ dashboard | Already responsive (12→6 cols at 1023, 1 col at 639). Mirror this pattern, don't reinvent it. |
 | `<Modal>` | `src/components/ui/modal.tsx` | Focus trap, Escape, scroll-lock, ARIA. Reuse it; don't hand-roll dialogs. |
 | Design tokens | `DESIGN.md` | Mono caps for labels (`widget-data-label`), DM Serif Display for stat numbers, JetBrains Mono for timestamps. **Never "fix" a layout by dropping the type system.** |

@@ -18,7 +18,8 @@ import type { CourseRequestRecord } from "@/lib/api";
 import { fuzzySearch, normalise } from "@/lib/fuzzy-search";
 
 // JetBrains Mono stack — used for all data labels and timestamps per DESIGN.md
-const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
+const MONO =
+  "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
 const STATUSES = ["NEW", "SENT", "ADDED", "REJECTED"] as const;
 type Status = (typeof STATUSES)[number];
@@ -27,19 +28,23 @@ type ActiveStatus = (typeof ACTIVE_STATUSES)[number];
 
 // Semantic badge colors per DESIGN.md — no pill shapes, rounded-[4px] only
 const STATUS_STYLE: Record<Status, string> = {
-  NEW:      "bg-amber-50 text-amber-700 hover:bg-amber-100",
-  SENT:     "bg-blue-50 text-blue-700 hover:bg-blue-100",
-  ADDED:    "bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
+  NEW: "bg-amber-50 text-amber-700 hover:bg-amber-100",
+  SENT: "bg-blue-50 text-blue-700 hover:bg-blue-100",
+  ADDED: "bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
   REJECTED: "bg-red-50 text-red-700 hover:bg-red-100",
 };
 const STATUS_LABEL: Record<Status, string> = {
-  NEW: "New", SENT: "Sent", ADDED: "Added", REJECTED: "Rejected",
+  NEW: "New",
+  SENT: "Sent",
+  ADDED: "Added",
+  REJECTED: "Rejected",
 };
 
 /** Strip UUIDs that occasionally land in the country field from intake bugs. */
 function safeCountry(c: string | null): string | null {
   if (!c) return null;
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c)) return null;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c))
+    return null;
   return c;
 }
 
@@ -86,7 +91,7 @@ const menuPanel =
 const menuItem =
   "flex w-full items-center rounded-[6px] px-2.5 py-1.5 text-left text-[13px] text-[var(--text-2)] transition data-[focus]:bg-[var(--surface-1)] hover:bg-[var(--surface-1)]";
 
-interface Props {
+export interface CourseRequestsSectionProps {
   requests: CourseRequestRecord[];
   onAdd?: () => void;
   onEdit?: (req: CourseRequestRecord) => void;
@@ -102,7 +107,7 @@ export function CourseRequestsSection({
   onDelete,
   onSetStatus,
   readOnly = false,
-}: Props) {
+}: CourseRequestsSectionProps) {
   const [filter, setFilter] = useState<"ALL" | ActiveStatus>("ALL");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
@@ -113,7 +118,9 @@ export function CourseRequestsSection({
   // "All active" = still needs attention (New/Rejected). Sent is done-for-now —
   // stays fully reachable via its own tab, just not bundled into the default view.
   const nonAddedRequests = requests.filter((r) => r.status !== "ADDED");
-  const activeRequests = requests.filter((r) => r.status === "NEW" || r.status === "REJECTED");
+  const activeRequests = requests.filter(
+    (r) => r.status === "NEW" || r.status === "REJECTED",
+  );
   const addedRequests = requests.filter((r) => r.status === "ADDED");
 
   /**
@@ -127,7 +134,8 @@ export function CourseRequestsSection({
    */
   const searching = normalise(search).length > 0;
   const searchResults = useMemo(
-    () => fuzzySearch(requests, search, (r) => [r.courseName, r.country, r.notes]),
+    () =>
+      fuzzySearch(requests, search, (r) => [r.courseName, r.country, r.notes]),
     [requests, search],
   );
 
@@ -137,11 +145,15 @@ export function CourseRequestsSection({
       ? activeRequests
       : nonAddedRequests.filter((r) => r.status === filter);
 
-  const allVisibleSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.id));
+  const allVisibleSelected =
+    filtered.length > 0 && filtered.every((r) => selected.has(r.id));
   const selectedRows = nonAddedRequests.filter((r) => selected.has(r.id));
 
   const counts = STATUSES.reduce<Record<Status, number>>(
-    (acc, s) => ({ ...acc, [s]: requests.filter((r) => r.status === s).length }),
+    (acc, s) => ({
+      ...acc,
+      [s]: requests.filter((r) => r.status === s).length,
+    }),
     {} as Record<Status, number>,
   );
 
@@ -154,7 +166,9 @@ export function CourseRequestsSection({
     });
   }
   function toggleAll() {
-    setSelected(allVisibleSelected ? new Set() : new Set(filtered.map((r) => r.id)));
+    setSelected(
+      allVisibleSelected ? new Set() : new Set(filtered.map((r) => r.id)),
+    );
   }
 
   async function writeClipboard(rows: CourseRequestRecord[]) {
@@ -214,6 +228,21 @@ export function CourseRequestsSection({
   const gridCols = readOnly
     ? "1fr 88px 92px 92px 72px"
     : "20px 1fr 88px 92px 92px 72px 52px";
+  /**
+   * The fixed columns alone come to 416px (+72px of gaps, +24px row padding) before the
+   * course name is given a single pixel, so the row cannot fit a phone and must not try.
+   * Per docs/mobile-playbook.md a table scrolls rather than reflows — and here it is not
+   * optional: this section renders inside `.widget-card`, which is `overflow: hidden`, so
+   * with no scroller of its own the Status column and its dropdown were simply CUT OFF
+   * and unreachable below ~590px (measured: 200px lost at 390px wide). The header row and
+   * the list share ONE scroller so their columns stay in step.
+   */
+  const scrollFrame = "overflow-x-auto";
+  // 700px, not the 512px the columns strictly need: at the tighter figure the 1fr course
+  // name is squeezed to 76px — narrower than the Country column beside it — and every
+  // name ellipses. 700px gives the name 186px (measured at 390px wide), which is the
+  // point of scrolling rather than reflowing.
+  const scrollInner = "min-w-[700px]";
 
   return (
     <div>
@@ -244,23 +273,25 @@ export function CourseRequestsSection({
 
       {/* ── Filter tabs — rounded-[6px] per DESIGN.md (no pills) ─────── */}
       <div className="mb-4 flex flex-wrap items-center gap-1.5">
-        {(["ALL", ...ACTIVE_STATUSES] as Array<"ALL" | ActiveStatus>).map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setFilter(s)}
-            className={[
-              "rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition",
-              filter === s
-                ? "bg-[var(--text-1)] text-[var(--surface-0)]"
-                : "border border-[var(--border-2)] text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
-            ].join(" ")}
-          >
-            {s === "ALL"
-              ? `All active (${activeRequests.length})`
-              : `${STATUS_LABEL[s]} (${counts[s]})`}
-          </button>
-        ))}
+        {(["ALL", ...ACTIVE_STATUSES] as Array<"ALL" | ActiveStatus>).map(
+          (s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setFilter(s)}
+              className={[
+                "rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition",
+                filter === s
+                  ? "bg-[var(--text-1)] text-[var(--surface-0)]"
+                  : "border border-[var(--border-2)] text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
+              ].join(" ")}
+            >
+              {s === "ALL"
+                ? `All active (${activeRequests.length})`
+                : `${STATUS_LABEL[s]} (${counts[s]})`}
+            </button>
+          ),
+        )}
         {/* On a phone the tabs wrap first, so this group takes its own full-width
             row rather than leaving a 190px search stub floated right. */}
         <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
@@ -300,36 +331,14 @@ export function CourseRequestsSection({
         </div>
       </div>
 
-      {/* ── Column header row ──────────────────────────────────────────── */}
-      {filtered.length > 0 && (
-        <div
-          className="mb-1 grid items-center gap-x-3 px-3"
-          style={{ gridTemplateColumns: gridCols, fontFamily: MONO }}
-        >
-          {!readOnly && <span />}
-          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-            Course
-          </span>
-          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-            Country
-          </span>
-          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-            Submitted
-          </span>
-          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-            Sent
-          </span>
-          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-            Status
-          </span>
-          {!readOnly && <span />}
-        </div>
-      )}
-
-      {/* ── List ──────────────────────────────────────────────────────── */}
+      {/* ── List — header + rows share ONE horizontal scroller ──────────────────────────────────────────────────────── */}
       {searching && filtered.length > 0 && (
-        <p className="mb-2 text-[11px] uppercase tracking-[0.06em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
-          {filtered.length} match{filtered.length === 1 ? "" : "es"} across all {requests.length} requests
+        <p
+          className="mb-2 text-[11px] uppercase tracking-[0.06em] text-[var(--text-4)]"
+          style={{ fontFamily: MONO }}
+        >
+          {filtered.length} match{filtered.length === 1 ? "" : "es"} across all{" "}
+          {requests.length} requests
         </p>
       )}
       {filtered.length === 0 ? (
@@ -351,143 +360,183 @@ export function CourseRequestsSection({
           )}
         </div>
       ) : (
-        <div className="divide-y divide-[rgba(0,0,0,0.05)] overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white">
-          {filtered.map((r) => {
-            const status = (STATUSES.includes(r.status as Status) ? r.status : "NEW") as Status;
-            const isSelected = !readOnly && selected.has(r.id);
-            const country = safeCountry(r.country);
-            // Strip the "Via Big Wedge API …" source line — only show actual extra detail
-            const notesPreview = r.notes
-              ? r.notes.replace(/^Via Big Wedge API[^\n]*\n?/i, "").trim().split("\n")[0] || null
-              : null;
+        <div className={scrollFrame}>
+          <div className={scrollInner}>
+            <div
+              className="mb-1 grid items-center gap-x-3 px-3"
+              style={{ gridTemplateColumns: gridCols, fontFamily: MONO }}
+            >
+              {!readOnly && <span />}
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                Course
+              </span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                Country
+              </span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                Submitted
+              </span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                Sent
+              </span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                Status
+              </span>
+              {!readOnly && <span />}
+            </div>
+            <div className="divide-y divide-[rgba(0,0,0,0.05)] overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white">
+              {filtered.map((r) => {
+                const status = (
+                  STATUSES.includes(r.status as Status) ? r.status : "NEW"
+                ) as Status;
+                const isSelected = !readOnly && selected.has(r.id);
+                const country = safeCountry(r.country);
+                // Strip the "Via Big Wedge API …" source line — only show actual extra detail
+                const notesPreview = r.notes
+                  ? r.notes
+                      .replace(/^Via Big Wedge API[^\n]*\n?/i, "")
+                      .trim()
+                      .split("\n")[0] || null
+                  : null;
 
-            return (
-              <div
-                key={r.id}
-                className={[
-                  "grid items-center gap-x-3 px-3 py-2.5 transition",
-                  isSelected
-                    ? "bg-blue-50/50"
-                    : "hover:bg-[var(--surface-0,_#fafaf9)]",
-                ].join(" ")}
-                style={{ gridTemplateColumns: gridCols }}
-              >
-                {!readOnly && (
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => toggle(r.id)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="h-3.5 w-3.5 rounded-[3px] border-[var(--border-2)] accent-[var(--brand-700)]"
-                  />
-                )}
-
-                {/* Course name + one-line notes preview */}
-                <div className="min-w-0">
-                  <span className="block truncate text-[13px] font-semibold text-[var(--text-1)]">
-                    {r.courseName || (
-                      <span className="italic text-[var(--text-4)]">Untitled course</span>
+                return (
+                  <div
+                    key={r.id}
+                    className={[
+                      "grid items-center gap-x-3 px-3 py-2.5 transition",
+                      isSelected
+                        ? "bg-blue-50/50"
+                        : "hover:bg-[var(--surface-0,_#fafaf9)]",
+                    ].join(" ")}
+                    style={{ gridTemplateColumns: gridCols }}
+                  >
+                    {!readOnly && (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggle(r.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-3.5 w-3.5 rounded-[3px] border-[var(--border-2)] accent-[var(--brand-700)]"
+                      />
                     )}
-                  </span>
-                  {notesPreview && (
-                    <span className="block truncate text-[11px] text-[var(--text-4)]">
-                      {notesPreview}
+
+                    {/* Course name + one-line notes preview */}
+                    <div className="min-w-0">
+                      <span className="block truncate text-[13px] font-semibold text-[var(--text-1)]">
+                        {r.courseName || (
+                          <span className="italic text-[var(--text-4)]">
+                            Untitled course
+                          </span>
+                        )}
+                      </span>
+                      {notesPreview && (
+                        <span className="block truncate text-[11px] text-[var(--text-4)]">
+                          {notesPreview}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Country */}
+                    <div style={{ fontFamily: MONO }}>
+                      {country ? (
+                        <span className="inline-block max-w-full truncate rounded-[4px] bg-[var(--surface-1)] px-1.5 py-0.5 text-[11px] text-[var(--text-3)]">
+                          {country}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-[var(--text-4)]">
+                          —
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Submitted date — JetBrains Mono timestamp per DESIGN.md */}
+                    <span
+                      className="text-[12px] text-[var(--text-3)]"
+                      style={{ fontFamily: MONO }}
+                    >
+                      {fmtDate(r.createdAt)}
                     </span>
-                  )}
-                </div>
 
-                {/* Country */}
-                <div style={{ fontFamily: MONO }}>
-                  {country ? (
-                    <span className="inline-block max-w-full truncate rounded-[4px] bg-[var(--surface-1)] px-1.5 py-0.5 text-[11px] text-[var(--text-3)]">
-                      {country}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-[var(--text-4)]">—</span>
-                  )}
-                </div>
-
-                {/* Submitted date — JetBrains Mono timestamp per DESIGN.md */}
-                <span
-                  className="text-[12px] text-[var(--text-3)]"
-                  style={{ fontFamily: MONO }}
-                >
-                  {fmtDate(r.createdAt)}
-                </span>
-
-                {/* Sent date */}
-                <span
-                  className={[
-                    "text-[12px]",
-                    r.sentAt ? "text-[var(--text-3)]" : "text-[var(--text-4)]",
-                  ].join(" ")}
-                  style={{ fontFamily: MONO }}
-                >
-                  {fmtDate(r.sentAt)}
-                </span>
-
-                {/* Status — clickable dropdown per row */}
-                {!readOnly ? (
-                  <Menu as="div" className="relative">
-                    <MenuButton
+                    {/* Sent date */}
+                    <span
                       className={[
-                        "inline-flex w-full items-center justify-between gap-0.5 rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] transition",
-                        STATUS_STYLE[status],
+                        "text-[12px]",
+                        r.sentAt
+                          ? "text-[var(--text-3)]"
+                          : "text-[var(--text-4)]",
                       ].join(" ")}
                       style={{ fontFamily: MONO }}
                     >
-                      {STATUS_LABEL[status]}
-                      <ChevronDownIcon className="h-2.5 w-2.5 shrink-0" />
-                    </MenuButton>
-                    <MenuItems anchor="bottom end" className={`${menuPanel} w-36`}>
-                      {STATUSES.map((s) => (
-                        <MenuItem key={s}>
+                      {fmtDate(r.sentAt)}
+                    </span>
+
+                    {/* Status — clickable dropdown per row */}
+                    {!readOnly ? (
+                      <Menu as="div" className="relative">
+                        <MenuButton
+                          className={[
+                            "inline-flex w-full items-center justify-between gap-0.5 rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] transition",
+                            STATUS_STYLE[status],
+                          ].join(" ")}
+                          style={{ fontFamily: MONO }}
+                        >
+                          {STATUS_LABEL[status]}
+                          <ChevronDownIcon className="h-2.5 w-2.5 shrink-0" />
+                        </MenuButton>
+                        <MenuItems
+                          anchor="bottom end"
+                          className={`${menuPanel} w-36`}
+                        >
+                          {STATUSES.map((s) => (
+                            <MenuItem key={s}>
+                              <button
+                                type="button"
+                                onClick={() => void onSetStatus([r.id], s)}
+                                className={menuItem}
+                              >
+                                {STATUS_LABEL[s]}
+                              </button>
+                            </MenuItem>
+                          ))}
+                        </MenuItems>
+                      </Menu>
+                    ) : (
+                      <span
+                        className={`inline-block rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${STATUS_STYLE[status]}`}
+                        style={{ fontFamily: MONO }}
+                      >
+                        {STATUS_LABEL[status]}
+                      </span>
+                    )}
+
+                    {/* Row actions */}
+                    {!readOnly && (
+                      <div className="flex items-center justify-end gap-0.5">
+                        {onEdit && (
                           <button
                             type="button"
-                            onClick={() => void onSetStatus([r.id], s)}
-                            className={menuItem}
+                            onClick={() => onEdit(r)}
+                            className="rounded-[4px] p-1 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+                            title="Edit"
                           >
-                            {STATUS_LABEL[s]}
+                            <PencilSquareIcon className="h-3.5 w-3.5" />
                           </button>
-                        </MenuItem>
-                      ))}
-                    </MenuItems>
-                  </Menu>
-                ) : (
-                  <span
-                    className={`inline-block rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${STATUS_STYLE[status]}`}
-                    style={{ fontFamily: MONO }}
-                  >
-                    {STATUS_LABEL[status]}
-                  </span>
-                )}
-
-                {/* Row actions */}
-                {!readOnly && (
-                  <div className="flex items-center justify-end gap-0.5">
-                    {onEdit && (
-                      <button
-                        type="button"
-                        onClick={() => onEdit(r)}
-                        className="rounded-[4px] p-1 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-                        title="Edit"
-                      >
-                        <PencilSquareIcon className="h-3.5 w-3.5" />
-                      </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void onDelete([r.id])}
+                          className="rounded-[4px] p-1 text-[var(--text-4)] transition hover:bg-red-50 hover:text-red-600"
+                          title="Delete"
+                        >
+                          <TrashIcon className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => void onDelete([r.id])}
-                      className="rounded-[4px] p-1 text-[var(--text-4)] transition hover:bg-red-50 hover:text-red-600"
-                      title="Delete"
-                    >
-                      <TrashIcon className="h-3.5 w-3.5" />
-                    </button>
                   </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 
@@ -541,7 +590,9 @@ export function CourseRequestsSection({
                           {country}
                         </span>
                       ) : (
-                        <span className="text-[11px] text-[var(--text-4)]">—</span>
+                        <span className="text-[11px] text-[var(--text-4)]">
+                          —
+                        </span>
                       )}
                     </div>
                     <span

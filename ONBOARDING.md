@@ -102,8 +102,13 @@ Report what `verify` actually printed. Never call something verified that you di
    it handles prompt caching, the cheap Haiku tier, and cost tracking for you. Same rule for
    Gitwork's own company number / VAT / registered office: `src/lib/gitwork.ts` only. Both have a
    test that fails naming any file that pastes a copy back out.
-5. **Tables scroll, they don't reflow.** Wrap wide ones in `overflow-x-auto`. Note
-   `overflow-hidden` is *not* a scroller — it clips the content away where nobody can reach it.
+5. **Tables scroll, they don't reflow.** Wrap wide ones in `overflow-x-auto` — and a `grid` with
+   fixed `px` columns counts as a table. Note `overflow-hidden` is *not* a scroller: it clips the
+   content away where nobody can reach it, and because the page then never scrolls sideways
+   nothing flags it. **`.widget-card` — the base card under nearly every panel — is
+   `overflow: hidden`**, so this is the default outcome, not an edge case: a course-request table
+   lost 249px of itself on a phone, including the entire status control. Put the header row inside
+   the *same* scroller as the rows, or they desync the moment anyone scrolls.
 6. **A new page under `/app` needs a gate, explicitly.** Add a `MODULE_PATHS` entry (or a row in
    `UNGATED_APP_PREFIXES` if it's open to every member) in `src/server/auth/module-gate.ts`. Miss
    both and non-admins get redirected to `/app` — a unit test will tell you. This replaced the old

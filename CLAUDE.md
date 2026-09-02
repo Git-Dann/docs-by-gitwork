@@ -4312,3 +4312,86 @@ script is ESM so `NODE_PATH` is ignored (run it from where playwright lives). `C
 accepts a normal system Chrome, so no browser download is needed. `/production-ready` and
 `/embed/pulse` both verified clean at 390 · 768 · 1280x620 · 1440, with `--self-test`
 passing first.
+
+## 45. Recent Changes (September 2026) — Course requests: a forgiving search, and 200px of the table was unreachable on a phone
+
+### 45.1 Search that spans every status
+
+"Have we already got this course?" was only answerable by clicking through four status tabs
+and then expanding the collapsed **02 // ADDED COURSES** table. The Wedge list is ~750 rows.
+
+A search now sits at the **opposite end of the tab row** and **overrides the tabs while it has
+a value**, deliberately spanning every status — `NEW`, `SENT`, `ADDED`, `REJECTED`. That is the
+whole point: an answer of *"not in New"* is useless for a course that went out as Sent months
+ago and is now Added. Each row already renders its own status, so a hit reads correctly whichever
+bucket it came from, and the **Added** table is hidden while searching so the same row can't
+appear twice. Filtering runs over the list already in memory, so results appear as you type with
+no request behind it.
+
+**`src/lib/fuzzy-search.ts`** is the matcher (pure, no dependency). It is forgiving in the two
+directions that actually occur in this data, and the second one is the one people forget:
+
+- **the query is misspelled** — "wentwerth" finds Wentworth Club;
+- **THE DATA is misspelled** — the live rows literally include **"Iver Golf Vlub"**, so a search
+  for "iver golf club" has to find it. A matcher tested only against clean fixtures fails this.
+
+Both fall out of a capped Levenshtein distance whose tolerance scales with token length, plus an
+in-order subsequence fallback. Two rules worth keeping:
+
+- **Tokens are ANDed.** Every word typed must match something, so a second word narrows rather
+  than widens. Scoring the best token instead lets "iver" pull in every row containing "golf".
+- **≤3 characters must be a real prefix.** Below that length a one-character allowance matches
+  almost every row, and a search that returns everything is worse than no search.
+
+⚠️ **A sabotage that reported "the tests are weak" when they were fine.** Disabling `tolerance()`
+appeared to change nothing — 27 tests still green. The replacement string had missed a trailing
+`//` comment on the line, so the edit was a **no-op**. Always print the sabotaged region (or
+assert the edit applied) before believing a passing suite. Once applied for real, the four
+sabotages fail 4 / 1 / 2 / 3 tests respectively.
+
+### 45.2 ⚠️ `.widget-card` is `overflow: hidden` — a wide child is UNREACHABLE, not just off-screen
+
+Measuring the section on a phone turned up a **pre-existing** defect worth generalising. The row
+is a 7-column grid whose fixed columns total **416px**, plus 72px of gaps and 24px of padding,
+before the course name is allocated a single pixel — so it cannot fit a 364px card and never did.
+
+The section renders inside `.widget-card`, which is **`overflow: hidden`**. So the overflowing
+columns were not scrolled off, they were **clipped with no scrollable ancestor**: at 390px wide,
+**249px was lost, taking the entire Status column and its dropdown**. A phone user could not see
+or change a request's status at all.
+
+**Why nothing caught it for months:** `overflow: hidden` absorbs the overflow, so the *page* never
+scrolls sideways and a `PAGE-X` check reports clean. `audit:ui` reads source and sees no misused
+class. `audit:clipping` would have caught it — it tests precisely "cut off by an ancestor that
+cannot scroll" — but `/app` is auth-gated with no staging, so it has never been pointed at this
+page. **The card being `overflow: hidden` is now called out in `docs/mobile-playbook.md`'s
+primitive table**, because "wide child of a widget-card" is a whole class of invisible defect,
+not one section's bug.
+
+Fixed per the playbook — tables scroll, they do not reflow — with **one** `overflow-x-auto` frame
+wrapping the column header **and** the rows. Two details that are not optional:
+
+- **The header must share the rows' scroller.** Left outside, the columns desync the instant
+  anyone scrolls sideways. `scroller.contains(header)` is **not** a sufficient test for this: a
+  header nested in its own scroller inside the outer one satisfies it and still desyncs. The
+  committed test compares each grid's **nearest** scrollable ancestor instead — a distinction the
+  first version of that test got wrong and a sabotage exposed.
+- **The inner frame's `min-width` is 700px, not the 512px the columns strictly need.** At 512px
+  the `1fr` course-name column is squeezed to **76px** — narrower than the Country column beside
+  it — and every name ellipses, which defeats the point of scrolling. 700px gives the name 186px.
+
+The row's status dropdown was already `<MenuItems anchor="bottom end">`, which portals, so the new
+scroller does **not** clip it. Check that before wrapping any row that contains a popover — an
+inline Headless UI panel would have been cut off by the very frame that fixed the columns.
+
+**Verified:** `npm run verify` green — tsc + lint 0 errors, **3137 tests**, `audit:ui` 0 findings;
+`npx next build` clean. Geometry measured in headless Chromium against CSS built from this tree
+(Tailwind only emits classes the source uses, so a stale bundle silently ignores new ones), in
+both the editable and read-only variants, at 390 · 430 · 768 · 1024 · 1280: **0px unreachable,
+0px page scroll**, header and rows sharing one scroller. Proved to discriminate by removing the
+scroller (249px unreachable returns), removing the min-width, setting it to 512px, and giving the
+header its own scroller.
+
+**Still open:** a 7-column table on a 390px phone is a 384px sideways scroll — honest, and better
+than clipping, but a stacked card layout below `sm` would be better still. Not done here because
+it is a redesign rather than the defect, and `/app` cannot be visually verified before merge.
