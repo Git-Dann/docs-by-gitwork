@@ -489,6 +489,11 @@ export function useFeatureBlocks(clientId: string | null) {
     queryFn: () => listFeatureBlocks(clientId as string),
     enabled: Boolean(clientId),
     staleTime: 15_000,
+    // Same reasoning as useTasks: this backs the internal Gantt's own progress
+    // %, which is what a client's public timeline link is checked against. A
+    // long-open tab shouldn't sit on a stale % while the public share (always
+    // freshly rendered) has already moved on — refetch on refocus corrects it.
+    refetchOnWindowFocus: true,
   });
 }
 

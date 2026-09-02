@@ -1,8 +1,10 @@
 import { CATEGORIES } from "../pulse-checks/categories";
 import { githubGraphQL, hasGithubToken, parseGithubRepo } from "@/lib/github";
 import type { PulseScanCheckInput, CodeAgentInsights } from "@/types/pulse";
+import { collectorCompletenessCheck, collectorExecution } from "@/server/pulse-checks/collector-health";
 import { scanRepoSecrets, type SecretFinding } from "./secret-scanner";
 import {
+  detectRepoShape,
   runNativeMobileChecks,
   runChromeExtensionChecks,
   runDesktopChecks,
@@ -13,7 +15,14 @@ import {
   runContainerChecks,
   runServiceDepthChecks,
   runOperationalDepthChecks,
+  type SnapshotShape,
 } from "@/server/pulse-checks/native-repo";
+import {
+  buildRepoCollectorPlan,
+  effectivePlatformForRepoShape,
+  type RepoCollectorName,
+} from "@/server/pulse-checks/scan-execution-plan";
+import { keepApplicableChecks } from "@/server/pulse-checks/platform-applicability";
 
 const CODE_AGENT_QUERY = `
   query RepoIntelligence($owner: String!, $name: String!) {
@@ -134,7 +143,11 @@ interface GQLResponse {
   };
 }
 
-export async function runCodeAgent(repoInput: string): Promise<{
+export async function runCodeAgent(
+  repoInput: string,
+  platform?: string,
+  detectedShape?: SnapshotShape,
+): Promise<{
   checks: PulseScanCheckInput[];
   insights: CodeAgentInsights;
 }> {
@@ -143,13 +156,15 @@ export async function runCodeAgent(repoInput: string): Promise<{
     return { checks: [], insights: emptyInsights() };
   }
 
-  // ── REST-only families, run FIRST and unconditionally ───────────────────────
+  // ── REST-only families, selected by detected artefact and run FIRST ─────────
   // These need no GraphQL. They used to sit at the end of this function, after the
   // GraphQL early-return — so a token that could read the repo over REST but not
   // GraphQL's admin-scoped fields silently produced ZERO iOS/Flutter checks while
   // the scan still reported a plausible score. Measured on two real client apps:
   // 39 iOS and 21 Flutter checks, all missing, no error anywhere.
-  const rest = await runRestOnlyFamilies(parsed, repoInput);
+  const resolvedShape = detectedShape ?? await detectRepoShape(repoInput).catch(() => "none" as const);
+  const effectivePlatform = effectivePlatformForRepoShape(platform, resolvedShape);
+  const rest = await runRestOnlyFamilies(parsed, repoInput, effectivePlatform, resolvedShape);
 
   let data: GQLResponse | null = null;
   try {
@@ -168,13 +183,13 @@ export async function runCodeAgent(repoInput: string): Promise<{
   // from "this repo has no branch protection", and they need different fixes.
   if (!repo) {
     return {
-      checks: [
+      checks: keepApplicableChecks([
         ...rest.checks,
         {
           category: CATEGORIES.CODE_QUALITY,
           checkKey: "repo_intelligence",
           label: "GitHub repo intelligence",
-          status: "SKIPPED" as const,
+          status: "INCONCLUSIVE" as const,
           detail: hasGithubToken()
             ? "Repo intelligence (branch protection, releases, commit velocity, dependency alerts) " +
               "could not be read. The configured GITHUB_TOKEN most likely lacks the permissions these " +
@@ -182,7 +197,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
             : "GITHUB_TOKEN is not configured on this server, so branch protection, releases, commit " +
               "velocity and dependency alerts could not be read.",
         },
-      ],
+      ], effectivePlatform),
       insights: { ...emptyInsights(), exposedSecrets: rest.exposedSecrets },
     };
   }
@@ -204,7 +219,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
     checkKey: "dependency_vulnerabilities",
     label: "Known dependency vulnerabilities",
     status: vulnAlerts === null
-      ? "SKIPPED"
+      ? "INCONCLUSIVE"
       : criticalVulns > 0
         ? "FAIL"
         : highVulns > 0
@@ -228,7 +243,8 @@ export async function runCodeAgent(repoInput: string): Promise<{
   // (branchProtectionRules needs administration:read). Nulling one field must not
   // throw and lose the other seven checks.
   const branchRule = repo.branchProtectionRules?.nodes?.[0];
-  const branchProtected = Boolean(branchRule);
+  const branchMetadataAccessible = repo.branchProtectionRules !== null;
+  const branchProtected = branchMetadataAccessible && Boolean(branchRule);
   const requiresReviews = branchRule?.requiresApprovingReviews ?? false;
   const requiresChecks = branchRule?.requiresStatusChecks ?? false;
 
@@ -236,8 +252,10 @@ export async function runCodeAgent(repoInput: string): Promise<{
     category: CATEGORIES.CODE_QUALITY,
     checkKey: "branch_protection",
     label: "Branch protection on default branch",
-    status: !branchProtected ? "FAIL" : !requiresReviews ? "WARN" : "PASS",
-    detail: !branchProtected
+    status: !branchMetadataAccessible ? "INCONCLUSIVE" : !branchProtected ? "FAIL" : !requiresReviews ? "WARN" : "PASS",
+    detail: !branchMetadataAccessible
+      ? "Branch protection metadata is inaccessible with the configured GitHub permissions."
+      : !branchProtected
       ? "No branch protection rules — anyone can push directly to the default branch."
       : !requiresReviews
         ? "Branch protection enabled but does not require PR reviews before merging."
@@ -249,7 +267,15 @@ export async function runCodeAgent(repoInput: string): Promise<{
   const reviewedPrs = prs.filter((pr) => pr.reviews.totalCount > 0).length;
   const prReviewRate = prs.length > 0 ? reviewedPrs / prs.length : null;
 
-  if (prs.length > 0) {
+  if (repo.pullRequests === null) {
+    checks.push({
+      category: CATEGORIES.CODE_QUALITY,
+      checkKey: "pr_review_culture",
+      label: "Pull request review culture",
+      status: "INCONCLUSIVE",
+      detail: "Pull request metadata could not be read with the configured GitHub permissions.",
+    });
+  } else if (prs.length > 0) {
     checks.push({
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "pr_review_culture",
@@ -290,6 +316,14 @@ export async function runCodeAgent(repoInput: string): Promise<{
       status: commitVelocity >= 3 ? "PASS" : commitVelocity >= 1 ? "WARN" : "FAIL",
       detail: `${commitVelocity} commits/week over last 30 days, ${uniqueContributors} contributor${uniqueContributors !== 1 ? "s" : ""}.`,
     });
+  } else if (!repo.isEmpty && repo.defaultBranchRef === null) {
+    checks.push({
+      category: CATEGORIES.CODE_QUALITY,
+      checkKey: "commit_velocity",
+      label: "Active development velocity",
+      status: "INCONCLUSIVE",
+      detail: "Default-branch history could not be read.",
+    });
   }
 
   // ── Releases / versioning ─────────────────────────────────────────────────
@@ -298,8 +332,10 @@ export async function runCodeAgent(repoInput: string): Promise<{
     category: CATEGORIES.CODE_QUALITY,
     checkKey: "has_releases",
     label: "GitHub releases / version tags",
-    status: releaseCount >= 3 ? "PASS" : releaseCount >= 1 ? "WARN" : "FAIL",
-    detail: releaseCount > 0
+    status: repo.releases === null ? "INCONCLUSIVE" : releaseCount >= 3 ? "PASS" : releaseCount >= 1 ? "WARN" : "FAIL",
+    detail: repo.releases === null
+      ? "Release metadata could not be read."
+      : releaseCount > 0
       ? `${releaseCount} release${releaseCount !== 1 ? "s" : ""} published — versioning history documented.`
       : "No releases — users and integrators cannot pin to a stable version.",
   });
@@ -313,11 +349,14 @@ export async function runCodeAgent(repoInput: string): Promise<{
     category: CATEGORIES.CODE_QUALITY,
     checkKey: "issue_close_rate",
     label: "Issue closure rate",
-    status: issueCloseRate === null ? "WARN"
+    status: repo.issues === null || repo.closedIssues === null ? "INCONCLUSIVE"
+      : issueCloseRate === null ? "WARN"
       : issueCloseRate >= 0.7 ? "PASS"
       : issueCloseRate >= 0.4 ? "WARN"
       : "FAIL",
-    detail: issueCloseRate !== null
+    detail: repo.issues === null || repo.closedIssues === null
+      ? "Issue metadata could not be read."
+      : issueCloseRate !== null
       ? `${Math.round(issueCloseRate * 100)}% of issues closed (${closedIssues}/${totalIssues}).`
       : "No issues found — either no bug tracker activity or issues are disabled.",
   });
@@ -379,7 +418,7 @@ export async function runCodeAgent(repoInput: string): Promise<{
   checks.push(...rest.checks);
 
   return {
-    checks,
+    checks: keepApplicableChecks(checks, effectivePlatform),
     insights: {
       vulnerabilities,
       branchProtected,
@@ -394,12 +433,11 @@ export async function runCodeAgent(repoInput: string): Promise<{
 }
 
 /**
- * Everything the code agent can learn over plain REST, with no GraphQL involved:
- * the secret scan and the native-mobile (iOS / Flutter) families.
+ * Everything the code agent can learn over plain REST, with no GraphQL involved.
  *
- * Kept separate and run unconditionally because these are the checks that actually
- * read the app's source. GraphQL only supplies repo *metadata* — losing it should
- * cost you branch-protection and star count, never the 39 iOS checks.
+ * Kept separate because these are the checks that actually read the app's source.
+ * Only the detected artefact family is invoked. GraphQL only supplies repo
+ * metadata — losing it should cost repo intelligence, never source coverage.
  *
  * Each family is independently best-effort: neither may break the code agent, and a
  * failure in one must not take out the other.
@@ -407,62 +445,41 @@ export async function runCodeAgent(repoInput: string): Promise<{
 async function runRestOnlyFamilies(
   parsed: { owner: string; repo: string },
   repoInput: string,
+  platform: string | undefined,
+  detectedShape: SnapshotShape,
 ): Promise<{ checks: PulseScanCheckInput[]; exposedSecrets: SecretFinding[] }> {
   const checks: PulseScanCheckInput[] = [];
   let exposedSecrets: SecretFinding[] = [];
 
-  // Every family is settled independently and on ONE shared memoized tree fetch
-  // (pulse-checks/native-repo.ts). Independence is the point: a throw in any one of
-  // them must not delete the others' findings, which is the §35.1 failure mode.
-  // Each returns [] for a repo of the wrong shape, so this is a no-op for a plain
-  // web service beyond the secret scan.
-  const [
-    secretResult,
-    nativeResult,
-    extensionResult,
-    desktopResult,
-    cliResult,
-    webResult,
-    cleanResult,
-    ciResult,
-    containerResult,
-    serviceResult,
-    operationalResult,
-  ] = await Promise.allSettled([
-    scanRepoSecrets(parsed.owner, parsed.repo),
-    runNativeMobileChecks(repoInput),
-    runChromeExtensionChecks(repoInput),
-    runDesktopChecks(repoInput),
-    runCliChecks(repoInput),
-    runWebSourceChecks(repoInput),
-    runCleanlinessChecks(repoInput),
-    // Shape-agnostic: both grade config that any repo can carry, so they run for
-    // every shape rather than being gated on one.
-    runCiWorkflowChecks(repoInput),
-    runContainerChecks(repoInput),
-    runServiceDepthChecks(repoInput),
-    runOperationalDepthChecks(repoInput),
-  ]);
+  // Every planned family is settled independently and shares ONE memoized tree
+  // fetch. A throw in one must not delete the other relevant findings.
+  const collectors: Record<RepoCollectorName, () => Promise<{ checks: PulseScanCheckInput[]; secrets?: SecretFinding[] }>> = {
+    "secret-scan": () => scanRepoSecrets(parsed.owner, parsed.repo),
+    "native-mobile": () => runNativeMobileChecks(repoInput),
+    "chrome-extension": () => runChromeExtensionChecks(repoInput),
+    desktop: () => runDesktopChecks(repoInput),
+    cli: () => runCliChecks(repoInput),
+    "web-source": () => runWebSourceChecks(repoInput),
+    cleanliness: () => runCleanlinessChecks(repoInput),
+    "ci-workflows": () => runCiWorkflowChecks(repoInput),
+    containers: () => runContainerChecks(repoInput),
+    "service-depth": () => runServiceDepthChecks(repoInput),
+    "operational-depth": () => runOperationalDepthChecks(repoInput),
+  };
+  const plannedCollectors = buildRepoCollectorPlan(platform, detectedShape);
+  const settled = await Promise.allSettled(plannedCollectors.map((name) => collectors[name]()));
 
-  if (secretResult.status === "fulfilled") {
-    checks.push(...secretResult.value.checks);
-    exposedSecrets = secretResult.value.secrets;
+  for (const result of settled) {
+    if (result.status !== "fulfilled") continue;
+    checks.push(...result.value.checks);
+    if (result.value.secrets) exposedSecrets = result.value.secrets;
   }
 
-  for (const result of [
-    nativeResult,
-    extensionResult,
-    desktopResult,
-    cliResult,
-    webResult,
-    cleanResult,
-    ciResult,
-    containerResult,
-    serviceResult,
-    operationalResult,
-  ]) {
-    if (result.status === "fulfilled") checks.push(...result.value.checks);
-  }
+  const familyResults = plannedCollectors.map((name, index) => [name, settled[index]] as const);
+  checks.push(collectorCompletenessCheck(
+    familyResults.map(([name, result]) => collectorExecution(name, result)),
+    "repo_collector_completeness",
+  ));
 
   return { checks, exposedSecrets };
 }

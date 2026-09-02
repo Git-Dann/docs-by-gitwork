@@ -51,6 +51,26 @@ interface IosContext {
   swift: string;
   /** Sampled Swift source verbatim — only for signals that live IN comments (TODOs). */
   swiftRaw: string;
+  /**
+   * Sampled Swift that actually SHIPS: comments stripped AND test targets excluded.
+   *
+   * ⚠️ Use this for any finding phrased as "…in a release binary" or "in shipped
+   * code". `swift` and `swiftRaw` include `FoundryTests/`, so a claim about what
+   * ships could be evidenced by a file that does not — which is how
+   * `ios_dev_leftovers` reported `http://localhost:3000` from an XCTest case as
+   * a leftover in the shipped app.
+   */
+  shipped: string;
+  /**
+   * The same shipped source, still keyed by PATH.
+   *
+   * ⚠️ Concatenating source throws away the filename, and for some findings the
+   * filename IS the context: `LoopbackCatcher.swift` holds an OAuth loopback URL
+   * whose surrounding lines never say "oauth" or "redirect" — the file is named
+   * for it. Any rule whose meaning depends on where the code lives must read
+   * this rather than the blob.
+   */
+  shippedByPath: Map<string, string>;
   /** All Info.plist contents concatenated (app + any extensions). */
   plist: string;
   /** All .entitlements contents concatenated. */
@@ -69,13 +89,24 @@ function buildContext(snapshot: RepoSnapshot): IosContext {
   const isSwift = (p: string) => /\.swift$/i.test(p) && !isVendoredPath(p);
   const swiftTotal = snapshot.paths.filter(isSwift).length;
   const readSwift: string[] = [];
+  const readShipped: string[] = [];
+  const shippedByPath = new Map<string, string>();
+  // Same test-file shape `ios_test_targets` already uses further down, so the two
+  // agree on what a test is.
+  const isTest = (p: string) => /Tests?\/.*\.swift$|.*Tests?\.swift$/i.test(p);
   let plist = "";
   let entitlements = "";
   let pbxproj = "";
   let googleServicePlist = "";
 
   for (const [path, text] of snapshot.files) {
-    if (isSwift(path)) readSwift.push(text);
+    if (isSwift(path)) {
+      readSwift.push(text);
+      if (!isTest(path)) {
+        readShipped.push(text);
+        shippedByPath.set(path, stripSwiftComments(text));
+      }
+    }
     // GoogleService-Info.plist first: it must NOT land in `plist`, or its keys could
     // satisfy an Info.plist check it has nothing to do with.
     else if (/(^|\/)GoogleService-Info\.plist$/i.test(path)) googleServicePlist += `\n${text}`;
@@ -89,6 +120,8 @@ function buildContext(snapshot: RepoSnapshot): IosContext {
     snapshot,
     swift: stripSwiftComments(swiftRaw),
     swiftRaw,
+    shipped: stripSwiftComments(readShipped.join("\n")),
+    shippedByPath,
     plist,
     entitlements,
     googleServicePlist,
@@ -143,6 +176,37 @@ export function evaluateIosChecks(snapshot: RepoSnapshot): PulseScanCheckInput[]
 // they always rank P3 and can't push a security finding down the fix list.
 // They read the RAW source, because what they are looking for lives in comments.
 
+/**
+ * A loopback URL that is a stray dev endpoint, not an OAuth redirect.
+ *
+ * RFC 8252 §7.3 tells a native app to receive its authorisation code on
+ * `http://127.0.0.1:<port>`, and Google's iOS/macOS guidance requires exactly
+ * that. It is the correct implementation, so it must never be reported as
+ * something to remove — the loopback line is *adjacent* to the words that give
+ * it away (`redirectURI`, `callback`, `oauth`, `loopback`), so the discriminator
+ * is proximity rather than the URL itself.
+ *
+ * Exported for direct testing: this rule is the difference between useful advice
+ * and advice that breaks sign-in.
+ */
+export function hasStrayLocalhost(files: Map<string, string>): boolean {
+  const LOOPBACK = /https?:\/\/(localhost|127\.0\.0\.1|10\.0\.2\.2)[^\s"')]*/gi;
+  const AUTH_CONTEXT = /(redirect|callback|oauth|loopback|authoriz|\bASWebAuthentication)/i;
+  for (const [path, source] of files) {
+    // The PATH counts as context. `LoopbackCatcher.swift` parses the incoming
+    // authorisation redirect; nothing on the matching line says so.
+    if (AUTH_CONTEXT.test(path)) continue;
+    for (const match of source.matchAll(LOOPBACK)) {
+      const at = match.index ?? 0;
+      // The identifier naming the URL sits before it; the handler that consumes
+      // it can sit just after. Look both ways, one line's worth either side.
+      const window = source.slice(Math.max(0, at - 160), at + match[0].length + 80);
+      if (!AUTH_CONTEXT.test(window)) return true;
+    }
+  }
+  return false;
+}
+
 function hygieneChecks(ctx: IosContext): PulseScanCheckInput[] {
   const checks: PulseScanCheckInput[] = [];
   const C = CATEGORIES.CODE_QUALITY;
@@ -150,15 +214,30 @@ function hygieneChecks(ctx: IosContext): PulseScanCheckInput[] {
   // Too little source to derive a rate — skip rather than report noise.
   const MIN_LINES = 200;
 
-  // Development leftovers that made it into a shipped build.
+  // ── Development leftovers that made it into a shipped build ───────────────
+  //
+  // ⚠️ These read `ctx.shipped` — comments stripped, test targets excluded — not
+  // `ctx.swiftRaw`. Validating against a real macOS/Swift repo turned up all
+  // three ways the raw source was wrong here, on one check:
+  //
+  //   1. A doc comment DESCRIBING the OAuth loopback flow matched, because raw
+  //      source keeps comments. A commented URL does not ship.
+  //   2. `FoundryTests/AppEnvironmentTests.swift` set `http://localhost:3000` in
+  //      an XCTest case. Tests do not ship, and this finding's own wording is
+  //      "in a release binary".
+  //   3. The remaining hits were `http://127.0.0.1:<port>` in the app's OAuth
+  //      REDIRECT URI — which is RFC 8252, the method Apple and Google both
+  //      require for a native app. Calling that a development leftover is not a
+  //      false positive in the harmless sense: it is advice that would push a
+  //      team to break their sign-in.
   const leftovers: string[] = [];
-  if (/ngrok(-free)?\.(app|io)/i.test(ctx.swiftRaw)) leftovers.push("an ngrok tunnel URL");
-  if (/https?:\/\/(localhost|127\.0\.0\.1|10\.0\.2\.2)/i.test(ctx.swiftRaw)) leftovers.push("a localhost endpoint");
+  if (/ngrok(-free)?\.(app|io)/i.test(ctx.shipped)) leftovers.push("an ngrok tunnel URL");
+  if (hasStrayLocalhost(ctx.shippedByPath)) leftovers.push("a localhost endpoint");
   if (/^\/\/\s+(fdsf|untitled|file|temp|asdf|qwerty|test)\w*\.swift/im.test(ctx.swiftRaw)) {
     leftovers.push("a placeholder file header (the file was renamed but its header wasn't)");
   }
   // A media URL hardcoded as a DEFAULT PARAMETER value — a demo asset that ships.
-  if (/=\s*"https?:\/\/[^"]+\.(mp4|m3u8|jpg|png)"/i.test(ctx.swiftRaw)) {
+  if (/=\s*"https?:\/\/[^"]+\.(mp4|m3u8|jpg|png)"/i.test(ctx.shipped)) {
     leftovers.push("a hardcoded media URL used as a default value");
   }
   checks.push({

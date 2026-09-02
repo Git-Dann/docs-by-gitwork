@@ -1,3 +1,4 @@
+import { ADVERTISED_CHECK_COUNT_LABEL } from "@/server/checks-registry";
 /**
  * AI Context Page — /context
  *
@@ -53,8 +54,8 @@ export default function ContextPage() {
               ["Proof", "/app/proof", "Document sign-off workflow — DRAFT → APPROVED", "Live"],
               ["Code", "/app/codeclear", "Developer hiring pipeline with GitHub analysis + scoring", "Live"],
               ["Portal", "/app/portal", "Client management and profile pages", "Live"],
-              ["Pulse", "/app/pulse", "AI project validation — 150+ checks, gap analysis, fix agent; includes an optional Study research tool (multi-agent interviews) at /app/study", "Live"],
-              ["Care / Support", "/app/support", "Client support ops — conversations, tickets, workflow rules", "Live"],
+              ["Pulse", "/app/pulse", `AI project validation — ${ADVERTISED_CHECK_COUNT_LABEL} checks, gap analysis, fix agent; includes an optional Study research tool (multi-agent interviews) at /app/study`, "Live"],
+              ["Care", "/app/care", "Client support ops — one conversation queue per client, answered from the reply state the connectors report. The legacy /app/support dashboard still owns tickets, monthly reports and workflow rules", "Live"],
               ["Deck", "/deck", "Foundry's slide editor — a deck is one self-contained file: edit it, present it, send it. Served as a single static shell (vendor/bento) and opened in its own window from HQ + the Docs toolbar. Follows the platform's light/dark setting. Signed-in members only; holds no workspace data", "Beta"],
               ["Pulse Overview", "/pulse-overview", "Public-facing standalone Pulse product page (not in app nav)", "Live"],
               ["Rate Card", "(settings)", "People rates used in proposal costing", "Live"],
@@ -104,7 +105,7 @@ export default function ContextPage() {
     bootstrap.ts                ← Ensures base Prisma records exist
     validators.ts               ← Zod schemas for all API inputs
     pulse.ts                    ← Pulse CRUD + scan management
-    pulse-scan.ts               ← Core scan engine (150+ checks, 3200+ lines)
+    pulse-scan.ts               ← Core scan engine (${ADVERTISED_CHECK_COUNT_LABEL} checks, 3200+ lines)
     pulse-ai.ts                 ← AI model routing (Anthropic/OpenAI/Gemini/Local)
     pulse-agents/
       browser-agent.ts          ← Headless browser checks

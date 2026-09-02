@@ -1,6 +1,14 @@
 services:
   db:
-    image: postgres:17-alpine
+    # Must ship the pgvector extension — bootstrap.ts runs CREATE EXTENSION
+    # IF NOT EXISTS vector on every boot for Care's semantic search (CLAUDE.md
+    # §23). Plain postgres:17-alpine never had it, so that call has been
+    # failing on every deploy. No alpine build of pgvector/pgvector exists
+    # (Debian-only), so this crosses musl → glibc under the existing
+    # en_US.utf8-collated data directory — safe, but a `REINDEX DATABASE`
+    # is required once after the image changes to rebuild any collation-
+    # dependent text indexes under the new libc's sort rules.
+    image: pgvector/pgvector:pg17
     container_name: foundry-db
     restart: unless-stopped
     environment:

@@ -31,6 +31,7 @@ import {
   deleteMonitor,
   listPulseLeads,
   importPulseLead,
+  getPulseLeadPreview,
   getPulseEmbedConfig,
   updatePulseEmbedConfig,
 } from "@/lib/api";
@@ -407,6 +408,15 @@ export function useImportPulseLead() {
       queryClient.invalidateQueries({ queryKey: ["pulse-leads"] });
       queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
     },
+  });
+}
+
+export function usePulseLeadPreview(leadId: string | null) {
+  return useQuery({
+    queryKey: ["pulse-lead-preview", leadId],
+    queryFn: () => getPulseLeadPreview(leadId as string),
+    enabled: leadId != null,
+    staleTime: 1000 * 30,
   });
 }
 

@@ -15,13 +15,12 @@ import { readFileSync } from "node:fs";
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 
 describe("the live scan path carries the guards", () => {
-  it("run-lite-scan skips the web suite for a mobile repo", () => {
+  it("run-lite-scan never expands a repository scan into its optional homepage", () => {
     // runLiteScan IS the live path: pulse.ts's runAnalysis calls it directly.
     const src = read("../run-lite-scan.ts");
-    expect(src, "the guard must exist on the live path").toContain("isMobileRepo");
-    expect(src).toContain("mobile_repo_web_suite_skipped");
-    // And it must gate the homepage branch, not sit unused beside it.
-    expect(src).toMatch(/if \(homepageUrl && isMobileRepo\)[\s\S]*?else if \(homepageUrl\)/);
+    expect(src).not.toContain("runUrlChecks(safeHome");
+    expect(src).not.toContain("runDeployAgent(safeHome");
+    expect(src).not.toContain("runBrowserAgent(safeHome");
   });
 
   it("run-lite-scan threads the caller's target markets into the URL checks", () => {
@@ -33,6 +32,21 @@ describe("the live scan path carries the guards", () => {
     for (const call of urlCheckCalls) {
       expect(call, `must pass targetMarkets: ${call}`).toContain("input.targetMarkets");
     }
+  });
+
+  it("run-lite-scan plans agents after URL classification, so irrelevant calls never start", () => {
+    const src = read("../run-lite-scan.ts");
+    const urlChecksAt = src.indexOf("await runUrlChecks(safeUrl");
+    const deployAt = src.indexOf("runDeployAgent(safeUrl", urlChecksAt);
+    const browserAt = src.indexOf("runBrowserAgent(safeUrl", urlChecksAt);
+
+    expect(urlChecksAt).toBeGreaterThan(-1);
+    expect(deployAt).toBeGreaterThan(urlChecksAt);
+    expect(browserAt).toBeGreaterThan(urlChecksAt);
+    expect(src).toContain("buildUrlCollectorPlan");
+    expect(src).toContain("target_content_accessible");
+    expect(src).toContain("urlSurfaceIsProduction");
+    expect(src).toMatch(/if \(!urlTargetBlocked && urlSurfaceIsProduction && shouldResolveStandards\)[\s\S]*?resolveEvidenceBackedControls/);
   });
 });
 

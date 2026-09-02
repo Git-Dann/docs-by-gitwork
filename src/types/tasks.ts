@@ -5,7 +5,7 @@
 
 export type TaskStatus = "BACKLOG" | "TODO" | "DOING" | "IN_REVIEW" | "UI_DONE" | "DONE";
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
-export type TaskLabel = "BACKEND" | "FRONTEND" | "UI_UX" | "RESEARCH" | "DESIGN";
+export type TaskLabel = "BACKEND" | "FRONTEND" | "UI_UX" | "RESEARCH" | "DESIGN" | "SUPPORT";
 
 /** Board column order. "UI_DONE" is intentionally omitted — the "UI Done"
  *  column was removed (redundant; convey UI/backend/frontend via the task title
@@ -29,6 +29,22 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   DONE: "Done",
 };
 
+/** Per-status task counts for a Gantt block's status-composition bar fill.
+ *  Coalesces the retired UI_DONE status into In Review — the same read-side
+ *  rule `taskRowToDTO` applies (server/tasks.ts) — so a legacy row never shows
+ *  up under a status the board no longer has. */
+export function buildTaskStatusCounts(tasks: { status: TaskStatus }[]): Record<TaskStatus, number> {
+  const counts = TASK_STATUSES.reduce(
+    (acc, s) => ({ ...acc, [s]: 0 }),
+    {} as Record<TaskStatus, number>,
+  );
+  for (const t of tasks) {
+    const status = t.status === "UI_DONE" ? "IN_REVIEW" : t.status;
+    counts[status] += 1;
+  }
+  return counts;
+}
+
 export const TASK_PRIORITIES: TaskPriority[] = ["LOW", "MEDIUM", "HIGH"];
 
 export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
@@ -37,7 +53,7 @@ export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
   HIGH: "High",
 };
 
-export const TASK_LABELS: TaskLabel[] = ["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN"];
+export const TASK_LABELS: TaskLabel[] = ["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN", "SUPPORT"];
 
 export const TASK_LABEL_LABELS: Record<TaskLabel, string> = {
   BACKEND: "Backend",
@@ -45,6 +61,7 @@ export const TASK_LABEL_LABELS: Record<TaskLabel, string> = {
   UI_UX: "UI/UX Done",
   RESEARCH: "Research",
   DESIGN: "Design",
+  SUPPORT: "Support",
 };
 
 export type TaskUserRef = { id: string; name: string; avatarUrl: string | null };
@@ -376,6 +393,7 @@ export type PublicTimelineBlock = {
   color: string | null;
   progress: number;
   tasks: { title: string; done: boolean }[];
+  statusCounts: Record<TaskStatus, number>;
 };
 
 export type PublicTimelineMilestone = {

@@ -3,7 +3,18 @@ export type { CheckCategory };
 
 export type PulseScanStatus = "RUNNING" | "COMPLETED" | "FAILED";
 export type PulseScanInputType = "URL" | "GITHUB_REPO" | "FREE_TEXT";
-export type PulseCheckStatus = "PASS" | "WARN" | "FAIL" | "SKIPPED";
+export type PulseCheckStatus =
+  | "PASS"
+  | "WARN"
+  | "FAIL"
+  | "SKIPPED"
+  | "NOT_APPLICABLE"
+  | "INCONCLUSIVE"
+  | "ERROR"
+  | "NOT_TESTED"
+  | "EVIDENCE_REQUIRED";
+export type PulseControlSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
+export type PulseEvidenceStrength = "VERIFIED" | "STRONG" | "HEURISTIC" | "CLAIMED";
 export type PulseUrgency = "CRITICAL" | "HIGH" | "MEDIUM";
 export type PulseEffort = "S" | "M" | "L" | "XL";
 export type PulseBusinessValue = "HIGH" | "MEDIUM" | "LOW";
@@ -78,6 +89,13 @@ export interface PulseScanCheckRecord {
   confidence: CheckConfidence | null;
   confidenceReason: string | null;
   trustBucket: TrustBucket | null;
+  severity: PulseControlSeverity | null;
+  evidenceStrength: PulseEvidenceStrength | null;
+  scoreEligible: boolean;
+  completenessEligible: boolean;
+  controlId: string | null;
+  detectorStatus: PulseCheckStatus | null;
+  detectorDetail: string | null;
 }
 
 export interface PulseStrength {
@@ -238,6 +256,7 @@ export interface ScoreCategoryBreakdown {
   warn: number;
   fail: number;
   skipped: number;
+  unknown: number;
   earned: number;
   possible: number;
 }
@@ -252,6 +271,49 @@ export interface ScoreBreakdown {
   earnedWeight: number;
   byCategory: ScoreCategoryBreakdown[];
   capsApplied: ScoreCap[];
+  scoreVersion: "pulse-score-v3";
+  policyVersion: "pulse-policy-v3";
+  completeness: number;
+  lowerBound: number;
+  upperBound: number;
+  unknownWeight: number;
+  excludedCount: number;
+  /**
+   * Which collectors ran, failed, or could not run — the EXPLANATION of
+   * `completeness`, which is otherwise a percentage with no account of itself.
+   * Optional: scans recorded before this existed have none, and a missing value
+   * must read as "not recorded", never as "everything ran".
+   */
+  collectors?: {
+    completed: number;
+    failed: number;
+    notApplicable: number;
+    failedNames: string[];
+    unavailable: { name: string; reason: string }[];
+  };
+  /**
+   * The release decision — READY / CONDITIONAL / BLOCKED / INCONCLUSIVE — under a
+   * named, versioned policy. Optional: scans predating the gate have none, and a
+   * missing value must read as "no decision was taken", never as READY.
+   */
+  gate?: GateEvaluationRecord;
+}
+
+export type ReleaseDecisionState = "READY" | "CONDITIONAL" | "BLOCKED" | "INCONCLUSIVE";
+
+export interface GateReasonRecord {
+  code: string;
+  summary: string;
+  checkKeys: string[];
+}
+
+export interface GateEvaluationRecord {
+  decision: ReleaseDecisionState;
+  policy: { id: string; version: string; label: string };
+  blocking: GateReasonRecord[];
+  conditional: GateReasonRecord[];
+  unverified: GateReasonRecord[];
+  metrics: { health: number; coverage: number };
 }
 
 export interface PulseScanRecord {
@@ -377,13 +439,37 @@ export interface ScanDiffItem {
   status: PulseCheckStatus;
   prevStatus?: PulseCheckStatus;
 }
+
+/**
+ * A finding this scan can no longer speak to. `status` is nullable here and
+ * nowhere else, because the commonest case is a control that produced no row at
+ * all — and a made-up status would be exactly the fiction this bucket exists to
+ * prevent. Shapes match `pulse-checks/scan-diff.ts`, which computes them.
+ */
+export interface UnverifiedDiffItem {
+  checkKey: string;
+  label: string;
+  category: string;
+  status: PulseCheckStatus | null;
+  prevStatus: PulseCheckStatus;
+  reason: "CHECK_ABSENT" | "PROBE_INCONCLUSIVE" | "CHECK_DISABLED" | "NOT_APPLICABLE_NOW" | "PASS_NOT_PROVEN";
+  detail: string;
+}
+
 export interface PulseScanDiff {
   previousScanId: string;
   previousCompletedAt: string | null;
   scoreChange: number; // current - previous health score
-  fixed: ScanDiffItem[];     // was FAIL/WARN, now PASS
+  fixed: ScanDiffItem[];     // was an issue, now passing WITH PROOF
   regressed: ScanDiffItem[]; // was PASS, now FAIL/WARN
   newIssues: ScanDiffItem[]; // FAIL/WARN checkKey not present last time
+  /**
+   * Was an issue, and this scan cannot say whether it still is — the control
+   * did not run, was switched off, stopped applying, or passed on evidence too
+   * weak to count. NOT a fix. Left out of a diff, these findings simply vanish,
+   * which is how "we stopped looking" reads as "we sorted it".
+   */
+  unverified: UnverifiedDiffItem[];
 }
 
 export interface PulseScanCheckInput {
@@ -400,6 +486,21 @@ export interface PulseScanCheckInput {
   confidence?: CheckConfidence;
   confidenceReason?: string;
   trustBucket?: TrustBucket;
+  severity?: PulseControlSeverity;
+  evidenceStrength?: PulseEvidenceStrength;
+  /** False for diagnostics, manual evidence and product-growth observations. */
+  scoreEligible?: boolean;
+  /** Diagnostic unknowns can reduce scan completeness without changing health. */
+  completenessEligible?: boolean;
+  /** Shared by controls backed by the same underlying signal. */
+  controlId?: string;
+  /**
+   * What the detector concluded before workspace policy was applied. Set only when
+   * policy changed the verdict, so `null`/absent means `status` is the detector's
+   * own. Never write this from a check module — `applyCheckPolicy` owns it.
+   */
+  detectorStatus?: PulseCheckStatus;
+  detectorDetail?: string;
 }
 
 // ── Agent intelligence outputs ────────────────────────────────────────────────

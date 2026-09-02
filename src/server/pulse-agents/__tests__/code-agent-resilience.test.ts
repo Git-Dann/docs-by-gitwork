@@ -37,6 +37,7 @@ vi.mock("../secret-scanner", () => ({
 // ("No export is defined on the mock") rather than silently — which is the right
 // way round, so leave this list exhaustive.
 vi.mock("@/server/pulse-checks/native-repo", () => ({
+  detectRepoShape: async () => "ios",
   runNativeMobileChecks: (...args: unknown[]) => nativeChecks(...args),
   runChromeExtensionChecks: async () => ({ isExtension: false, checks: [] }),
   runDesktopChecks: async () => ({ shape: null, checks: [] }),
@@ -85,13 +86,13 @@ describe("runCodeAgent — source analysis survives a metadata failure", () => {
     expect(keys).toContain("ios_credential_logging");
     // And the loss of metadata is reported rather than hidden.
     expect(keys).toContain("repo_intelligence");
-    expect(result.checks.find((c) => c.checkKey === "repo_intelligence")?.status).toBe("SKIPPED");
+    expect(result.checks.find((c) => c.checkKey === "repo_intelligence")?.status).toBe("INCONCLUSIVE");
   });
 
   it("still emits operational-depth controls when repository metadata fails", async () => {
     graphQL.mockRejectedValue(new Error("GraphQL unavailable"));
 
-    const result = await runCodeAgent("Git-Dann/FellasRebuild");
+    const result = await runCodeAgent("Git-Dann/FellasRebuild", "API_BACKEND", "none");
     expect(result.checks.map((check) => check.checkKey)).toContain("api_depth_request_deadline");
     expect(operationalChecks).toHaveBeenCalledWith("Git-Dann/FellasRebuild");
   });

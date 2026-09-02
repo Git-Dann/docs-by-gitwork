@@ -75,12 +75,15 @@ export function PhoneInput({
           </option>
         ))}
       </select>
+      {/* Says what's accepted rather than showing one format. Any sample number is
+          either mobile-shaped or landline-shaped, and whichever it is reads as the
+          required form — which is what made the old "7903 076159" misleading. */}
       <input
         type="tel"
         value={national}
         onChange={(e) => emit(iso, e.target.value)}
         className="app-input flex-1"
-        placeholder="7903 076159"
+        placeholder="Mobile or landline"
       />
     </div>
   );
@@ -103,17 +106,34 @@ export function WebsiteInput({
     const cleaned = raw.replace(/^https?:\/\//i, "").trim();
     onChange(cleaned ? `https://${cleaned}` : "");
   }
+  /**
+   * The `https://` prefix sits IN the flow, not absolutely positioned over a
+   * guessed left padding.
+   *
+   * It used to be `absolute left-3` paired with `pl-[4.5rem]` on the input — two
+   * numbers that had to agree about how wide "https://" renders. They didn't, so
+   * the placeholder sat a visible step away from the prefix, and the gap would
+   * drift again with any change of font or size. In a flex row the browser does
+   * the measuring.
+   *
+   * The wrapper carries `app-input` (border, radius, height) and the inner field
+   * is stripped bare, so focus has to be mirrored with focus-within — otherwise
+   * the ring would draw around the invisible inner input instead of the control.
+   */
   return (
-    <div className="relative">
-      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[var(--text-4)]">
-        https://
-      </span>
+    <div
+      className={cn(
+        "app-input flex items-center gap-1 px-3 focus-within:border-[var(--brand-500)] focus-within:shadow-[0_0_0_4px_var(--brand-focus-ring),var(--shadow-xs)]",
+        className,
+      )}
+    >
+      <span className="shrink-0 select-none text-sm text-[var(--text-4)]">https://</span>
       <input
         type="text"
         inputMode="url"
         value={display}
         onChange={(e) => handle(e.target.value)}
-        className={cn("app-input pl-[4.5rem]", className)}
+        className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-[var(--text-1)] outline-none focus:shadow-none"
         placeholder={placeholder ?? "client.com"}
       />
     </div>

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { listConversations, createConversation } from "@/server/support";
-import type { ConversationStatus, ConversationPriority, SupportSource } from "@/types/support";
+import type { ConversationStatus, ConversationPriority, SupportSource, ReplyState } from "@/types/support";
 
 export const dynamic = "force-dynamic";
 
@@ -34,9 +34,13 @@ export async function GET(
       cursor,
       status,
       assigneeId,
+      unassigned: sp.get("unassigned") === "1",
       priority: (sp.get("priority") as ConversationPriority) ?? undefined,
       issueType: sp.get("issueType") ?? undefined,
       source: (sp.get("source") as SupportSource) ?? undefined,
+      replyState: (sp.get("replyState") as ReplyState) ?? undefined,
+      q: sp.get("q") ?? undefined,
+      sort: sp.get("sort") === "oldest_inbound" ? "oldest_inbound" : undefined,
       includeSnoozedDue: sp.get("includeSnoozedDue") === "1",
     });
     return apiOk({ conversations, nextCursor });

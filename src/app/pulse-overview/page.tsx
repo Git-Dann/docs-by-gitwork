@@ -1,5 +1,4 @@
-import Link from "next/link";
-
+import { ADVERTISED_CHECK_COUNT_LABEL } from "@/server/checks-registry";
 export default function PulseOverviewPage() {
   return (
     <div className="pulse-overview min-h-screen bg-white" style={{ fontFamily: "var(--font-inter, ui-sans-serif, system-ui, sans-serif)" }}>
@@ -11,11 +10,10 @@ export default function PulseOverviewPage() {
             <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>Gitwork</span>
             <span style={{ color: "#d1d5db" }}>/</span>
             <span style={{ fontSize: 14, fontWeight: 600, color: "#4f46e5" }}>Pulse</span>
-            <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 99, background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0" }}>INTERNAL</span>
           </div>
-          <Link href="/app/pulse/new" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#4f46e5", color: "white", fontSize: 13, fontWeight: 600, padding: "8px 18px", borderRadius: 8, textDecoration: "none" }}>
+          <a href="#try-it-free" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#4f46e5", color: "white", fontSize: 13, fontWeight: 600, padding: "8px 18px", borderRadius: 8, textDecoration: "none" }}>
             Run a scan →
-          </Link>
+          </a>
         </div>
       </header>
 
@@ -37,12 +35,12 @@ export default function PulseOverviewPage() {
                 Before we&apos;ve had a single call with a new client, Pulse tells us exactly what&apos;s broken, what&apos;s missing, and what it will cost to fix. That&apos;s how we walk into every discovery call with the diagnosis already done.
               </p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-                <Link href="/app/pulse/new" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#4f46e5", color: "white", fontWeight: 700, fontSize: 15, padding: "14px 28px", borderRadius: 12, textDecoration: "none" }}>
+                <a href="#try-it-free" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#4f46e5", color: "white", fontWeight: 700, fontSize: 15, padding: "14px 28px", borderRadius: 12, textDecoration: "none" }}>
                   Run a scan now →
-                </Link>
-                <Link href="/app/pulse" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.08)", color: "white", fontWeight: 600, fontSize: 15, padding: "14px 28px", borderRadius: 12, textDecoration: "none", border: "1px solid rgba(255,255,255,0.12)" }}>
+                </a>
+                <a href="#try-it-free" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.08)", color: "white", fontWeight: 600, fontSize: 15, padding: "14px 28px", borderRadius: 12, textDecoration: "none", border: "1px solid rgba(255,255,255,0.12)" }}>
                   View scan history
-                </Link>
+                </a>
               </div>
             </div>
 
@@ -93,7 +91,7 @@ export default function PulseOverviewPage() {
       {/* Live demo — the real embeddable widget */}
       <section style={{ padding: "72px 24px", background: "white", borderBottom: "1px solid #eef2f7" }}>
         <div style={{ maxWidth: 760, margin: "0 auto", textAlign: "center" }}>
-          <p style={{ fontSize: 12, fontWeight: 700, color: "#4f46e5", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 12 }}>
+          <p id="try-it-free" style={{ fontSize: 12, fontWeight: 700, color: "#4f46e5", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 12, scrollMarginTop: 72 }}>
             Try it live — free
           </p>
           <h2 style={{ fontSize: "clamp(26px, 4vw, 38px)", fontWeight: 800, color: "#0f172a", lineHeight: 1.2, letterSpacing: "-0.02em", margin: "0 0 8px" }}>
@@ -108,11 +106,14 @@ export default function PulseOverviewPage() {
             title="Gitwork Pulse — live site health check"
             style={{ width: "100%", maxWidth: 720, margin: "0 auto", border: "1px solid #e2e8f0", borderRadius: 16, minHeight: 540, background: "white", display: "block", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}
           />
-          {/* Auto-resize the demo iframe to its content height. */}
+          {/* Auto-resize the demo iframe to its content height. Same-origin self-embed
+              (src="/embed/pulse" resolves to this page's own origin), so both the
+              message origin and its source window are checked against this specific
+              iframe before trusting the payload. */}
           <script
             dangerouslySetInnerHTML={{
               __html:
-                "(function(){var f=document.getElementById('pulse-embed-demo');window.addEventListener('message',function(e){var d=e.data||{};if(d.type==='pulse-embed-height'&&typeof d.height==='number'&&f){f.style.height=d.height+'px';}});})();",
+                "(function(){var f=document.getElementById('pulse-embed-demo');window.addEventListener('message',function(e){if(!f||e.origin!==window.location.origin||e.source!==f.contentWindow)return;var d=e.data||{};if(d.type==='pulse-embed-height'&&typeof d.height==='number'){f.style.height=d.height+'px';}});})();",
             }}
           />
 
@@ -254,14 +255,14 @@ export default function PulseOverviewPage() {
         </div>
       </section>
 
-      {/* 450+ checks */}
+      {/* Automated checks */}
       <section style={{ padding: "80px 24px", background: "white" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 56, alignItems: "center" }}>
             <div style={{ flex: "1 1 340px" }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: "#4f46e5", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 12 }}>Automated checks</p>
               <h2 style={{ fontSize: "clamp(28px, 4vw, 40px)", fontWeight: 800, color: "#0f172a", letterSpacing: "-0.03em", margin: "0 0 16px" }}>
-                500+ checks.<br />23 categories.<br />Built for AI products.
+                {ADVERTISED_CHECK_COUNT_LABEL} checks.<br />23 categories.<br />Built for AI products.
               </h2>
               <p style={{ fontSize: 15, color: "#475569", lineHeight: 1.8, margin: "0 0 24px" }}>
                 Pulse doesn&apos;t run generic checks. It detects the project type first — AI app, SaaS, mobile app, marketing site, API — then runs only the checks that matter. Purpose-built for 2026: it knows what an LLM product needs in production, and what AI code generators leave behind.
@@ -315,7 +316,7 @@ export default function PulseOverviewPage() {
                 Switch AI providers in Settings. No code changes needed.
               </p>
               <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.7, margin: 0 }}>
-                If no key is configured, Pulse still runs all 500+ automated checks and returns a structured mock analysis — so the whole workflow can be tested without spending API credits.
+                If no key is configured, Pulse still runs all {ADVERTISED_CHECK_COUNT_LABEL} automated checks and returns a structured mock analysis — so the whole workflow can be tested without spending API credits.
               </p>
             </div>
             <div style={{ flex: "1 1 480px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -387,12 +388,9 @@ export default function PulseOverviewPage() {
             Paste any URL and get a full health report in under 60 seconds. No API key needed to test.
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 14, justifyContent: "center" }}>
-            <Link href="/app/pulse/new" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "white", color: "#4f46e5", fontWeight: 800, fontSize: 16, padding: "16px 36px", borderRadius: 14, textDecoration: "none" }}>
+            <a href="#try-it-free" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "white", color: "#4f46e5", fontWeight: 800, fontSize: 16, padding: "16px 36px", borderRadius: 14, textDecoration: "none" }}>
               Run a scan →
-            </Link>
-            <Link href="/app/settings" style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "rgba(255,255,255,0.7)", fontWeight: 600, fontSize: 14, padding: "16px 24px", textDecoration: "none" }}>
-              Settings → Integrations
-            </Link>
+            </a>
           </div>
         </div>
       </section>

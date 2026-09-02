@@ -3,6 +3,8 @@ import type {
   AuditLog,
   Connection,
   Conversation,
+  ConversationViewCounts,
+  ClientQueueSummary,
   DraftAction,
   Message,
   SupportClient,
@@ -711,7 +713,9 @@ export async function createClientPlatform(
     username?: string;
     password?: string;
     notes?: string;
+    previewImageUrl?: string;
     featuredInWiki?: boolean;
+    links?: { label?: string; url: string }[];
   },
 ): Promise<{ platform: ClientPlatformRecord }> {
   return apiFetch<{ platform: ClientPlatformRecord }>(`/api/clients/${slug}/platforms`, {
@@ -735,6 +739,7 @@ export async function updateClientPlatform(
     notes?: string;
     previewImageUrl?: string;
     featuredInWiki?: boolean;
+    links?: { label?: string; url: string }[];
   },
 ): Promise<{ platform: ClientPlatformRecord }> {
   return apiFetch<{ platform: ClientPlatformRecord }>(
@@ -1485,6 +1490,14 @@ export async function importPulseLead(leadId: string): Promise<{ scanId: string 
   return apiFetch<{ scanId: string }>(`/api/pulse/leads/${leadId}/import`, { method: "POST" });
 }
 
+export async function getPulseLeadPreview(
+  leadId: string,
+): Promise<import("@/server/pulse-lite/leads-admin").PulseLeadPreview> {
+  return apiFetch<import("@/server/pulse-lite/leads-admin").PulseLeadPreview>(
+    `/api/pulse/leads/${leadId}/preview`,
+  );
+}
+
 export interface PulseEmbedConfig {
   enabled: boolean;
   checkKeys: string[];
@@ -1816,9 +1829,17 @@ export async function getSupportReport(reportId: string): Promise<{ report: Supp
 export interface ConversationListParams {
   status?: string | string[];
   assigneeId?: string;
+  /** Only conversations with no assignee. */
+  unassigned?: boolean;
   priority?: string;
   issueType?: string;
   source?: string;
+  /** Derived reply state — filtered in SQL, so a page is complete rather than a sample. */
+  replyState?: string;
+  /** Free-text over subject / preview / customer, matched server-side across ALL rows. */
+  q?: string;
+  /** "oldest_inbound" = longest-waiting first, for working the awaiting queue. */
+  sort?: string;
   includeSnoozedDue?: boolean;
   limit?: number;
   cursor?: string;
@@ -1834,11 +1855,32 @@ export async function listSupportConversations(
   if (params?.priority) qs.set("priority", params.priority);
   if (params?.issueType) qs.set("issueType", params.issueType);
   if (params?.source) qs.set("source", params.source);
+  if (params?.unassigned) qs.set("unassigned", "1");
+  if (params?.replyState) qs.set("replyState", params.replyState);
+  if (params?.q) qs.set("q", params.q);
+  if (params?.sort) qs.set("sort", params.sort);
   if (params?.includeSnoozedDue) qs.set("includeSnoozedDue", "1");
   if (params?.limit) qs.set("limit", String(params.limit));
   if (params?.cursor) qs.set("cursor", params.cursor);
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
   return apiFetch(`/api/support/clients/${clientId}/conversations${suffix}`);
+}
+
+/** True per-view totals across the whole client — not a tally of the loaded page. */
+export async function getSupportConversationCounts(
+  clientId: string,
+): Promise<{ counts: ConversationViewCounts }> {
+  return apiFetch(`/api/support/clients/${clientId}/conversations/counts`);
+}
+
+/**
+ * Queue figures for every client at once, keyed by client id — one request for the whole Care home
+ * list instead of one per row.
+ */
+export async function getClientQueueSummaries(): Promise<{
+  summaries: Record<string, ClientQueueSummary>;
+}> {
+  return apiFetch("/api/support/queue-summaries");
 }
 
 // ── Conversation triage (monitor + route; never reply in-app) ──
@@ -3377,8 +3419,10 @@ export async function setClientDesignSystemGuidelinesEnabled(
 
 // ─── Client Wiki ──────────────────────────────────────────────────────────────
 
-import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiBlockerRecord, WikiUserSummary } from "@/server/wiki";
-export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiBlockerRecord, WikiUserSummary };
+import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiIntakeCommentRecord, WikiBlockerRecord, WikiUserSummary } from "@/server/wiki";
+export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiIntakeCommentRecord, WikiBlockerRecord, WikiUserSummary };
+import type { IntakeCategory } from "@/lib/wiki-intake-categories";
+export type { IntakeCategory };
 import type {
   WikiCodeHandoverSection,
   WikiCodeModuleRecord,
@@ -3454,12 +3498,35 @@ export async function deleteWikiCodeVersionApi(slug: string, versionId: string):
 
 
 export interface WikiIntakeItemPayload {
-  type?: "BUG" | "FEEDBACK" | "TASK";
+  type?: "BUG" | "FEEDBACK" | "TASK" | "DESIGN";
   title: string;
   description?: string | null;
   priority?: "LOW" | "MEDIUM" | "HIGH";
   requestedBy?: string | null;
   externalRef?: string | null;
+  /** The dev-facing label (same taxonomy as Task.label). */
+  label?: "BACKEND" | "FRONTEND" | "UI_UX" | "RESEARCH" | "DESIGN" | "SUPPORT" | null;
+  /** One of the client's own category ids — the server derives `type` from it. */
+  categoryId?: string | null;
+  /** Free-text device (e.g. "iPhone 14 Pro") — optional context for bug reports. */
+  device?: string | null;
+  /** Free-text OS/version (e.g. "iOS 17.4") — optional context for bug reports. */
+  osVersion?: string | null;
+}
+
+/** Staff-only: replace this client's Requests categories (empty → defaults). */
+export async function setWikiIntakeCategoriesApi(
+  slug: string,
+  categories: { id?: string; label: string; mapsTo: "BUG" | "FEEDBACK" | "TASK" | "DESIGN" }[],
+): Promise<{ categories: IntakeCategory[] }> {
+  return apiFetch<{ categories: IntakeCategory[] }>(
+    `/api/clients/${slug}/wiki/intake-categories`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ categories }),
+    },
+  );
 }
 
 export async function createWikiIntakeItem(
@@ -3471,6 +3538,34 @@ export async function createWikiIntakeItem(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+/** A client editing a request they raised — auth is their wiki share token. */
+export async function updatePublicWikiIntakeItem(
+  token: string,
+  id: string,
+  patch: {
+    title?: string;
+    description?: string | null;
+    priority?: "LOW" | "MEDIUM" | "HIGH";
+    categoryId?: string | null;
+  },
+): Promise<WikiIntakeItemRecord> {
+  return apiFetch<WikiIntakeItemRecord>(
+    `/api/wiki/${token}/intake-items/${encodeURIComponent(id)}`,
+    { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) },
+  );
+}
+
+/** A client withdrawing a request they raised. */
+export async function deletePublicWikiIntakeItem(
+  token: string,
+  id: string,
+): Promise<{ deleted: boolean; id: string }> {
+  return apiFetch<{ deleted: boolean; id: string }>(
+    `/api/wiki/${token}/intake-items/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
 }
 
 export async function createPublicWikiIntakeItem(
@@ -3507,6 +3602,31 @@ export async function updateWikiIntakeItemApi(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+/** Gitwork team member replies on a request — attributed to the signed-in user. */
+export async function addWikiIntakeComment(
+  slug: string,
+  itemId: string,
+  body: string,
+): Promise<WikiIntakeCommentRecord> {
+  return apiFetch<WikiIntakeCommentRecord>(
+    `/api/clients/${slug}/wiki/intake-items/${itemId}/comments`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) },
+  );
+}
+
+/** A reply on a request from the public wiki page — the signed-in wiki user
+ *  or previewing Gitwork user is stamped server-side, no typed name. */
+export async function addPublicWikiIntakeComment(
+  token: string,
+  itemId: string,
+  body: string,
+): Promise<WikiIntakeCommentRecord> {
+  return apiFetch<WikiIntakeCommentRecord>(
+    `/api/wiki/${token}/intake-items/${itemId}/comments`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) },
+  );
 }
 
 export async function deleteWikiIntakeItemApi(slug: string, id: string): Promise<void> {
@@ -4243,4 +4363,219 @@ export function saveCostingConfig(payload: SavedCostingConfig) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+}
+
+// ─── Launchpad ────────────────────────────────────────────────────────────────
+// Two families, mirroring the wiki intake split: by client SLUG for the internal
+// team (session + canManageClients), and by wiki share TOKEN for the client
+// themselves (wiki-access cookie). Both return the whole LaunchpadDTO on a write, so
+// completeness and the item list re-render from one authoritative payload rather
+// than from a locally-patched guess.
+
+import type {
+  LaunchpadDTO,
+  LaunchpadItemStatus,
+  LaunchpadTemplateRecord,
+  LaunchpadTemplateSummary,
+} from "@/types/launchpad";
+
+export type { LaunchpadDTO, LaunchpadTemplateRecord, LaunchpadTemplateSummary };
+
+export interface LaunchpadItemPatch {
+  status?: LaunchpadItemStatus;
+  link?: string | null;
+  note?: string | null;
+  ownedByClient?: boolean | null;
+}
+
+export interface LaunchpadDocPatch {
+  answers?: Record<string, unknown>;
+  body?: string | null;
+}
+
+const jsonHeaders = { "Content-Type": "application/json" };
+
+// ── Internal (by client slug) ────────────────────────────────────────────────
+
+export async function getClientLaunchpadApi(slug: string): Promise<{ launchpad: LaunchpadDTO | null }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad`);
+}
+
+export async function setLaunchpadEnabledApi(
+  slug: string,
+  enabled: boolean,
+): Promise<{ enabled: boolean; launchpad: LaunchpadDTO | null }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function assignLaunchpadApi(
+  slug: string,
+  input: { templateId?: string; enabledModules?: string[] },
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  });
+}
+
+export async function setLaunchpadModulesApi(
+  slug: string,
+  enabledModules: string[],
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad/modules`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify({ enabledModules }),
+  });
+}
+
+export async function updateLaunchpadItemApi(
+  slug: string,
+  itemId: string,
+  patch: LaunchpadItemPatch,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad/items/${encodeURIComponent(itemId)}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function saveLaunchpadAnswersApi(
+  slug: string,
+  answers: Record<string, unknown>,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad/answers`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify({ answers }),
+  });
+}
+
+export async function updateLaunchpadDocApi(
+  slug: string,
+  docKey: string,
+  patch: LaunchpadDocPatch,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad/docs/${docKey}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function approveLaunchpadDocApi(
+  slug: string,
+  docKey: string,
+  approved: boolean,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad/docs/${docKey}`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ approved }),
+  });
+}
+
+// ── Client-facing (by wiki share token) ──────────────────────────────────────
+
+export async function updatePublicLaunchpadItemApi(
+  token: string,
+  itemId: string,
+  patch: LaunchpadItemPatch,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/wiki/${token}/launchpad/items/${encodeURIComponent(itemId)}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function savePublicLaunchpadAnswersApi(
+  token: string,
+  answers: Record<string, unknown>,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/wiki/${token}/launchpad`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify({ answers }),
+  });
+}
+
+export async function updatePublicLaunchpadDocApi(
+  token: string,
+  docKey: string,
+  patch: LaunchpadDocPatch,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/wiki/${token}/launchpad/docs/${docKey}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function approvePublicLaunchpadDocApi(
+  token: string,
+  docKey: string,
+  approved: boolean,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/wiki/${token}/launchpad/docs/${docKey}`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ approved }),
+  });
+}
+
+// ── Templates (Settings → Launchpad) ─────────────────────────────────────────
+
+export async function listLaunchpadTemplatesApi(
+  includeArchived = false,
+): Promise<{ templates: LaunchpadTemplateSummary[] }> {
+  const qs = includeArchived ? "?includeArchived=true" : "";
+  return apiFetch(`/api/launchpad-templates${qs}`);
+}
+
+export async function getLaunchpadTemplateApi(
+  id: string,
+): Promise<{ template: LaunchpadTemplateRecord }> {
+  return apiFetch(`/api/launchpad-templates/${id}`);
+}
+
+export async function createLaunchpadTemplateApi(input: {
+  name: string;
+  description?: string;
+  cloneFromId?: string;
+}): Promise<{ template: LaunchpadTemplateRecord }> {
+  return apiFetch("/api/launchpad-templates", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateLaunchpadTemplateApi(
+  id: string,
+  input: Record<string, unknown>,
+): Promise<{ template: LaunchpadTemplateRecord }> {
+  return apiFetch(`/api/launchpad-templates/${id}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  });
+}
+
+export async function duplicateLaunchpadTemplateApi(
+  id: string,
+): Promise<{ template: LaunchpadTemplateRecord }> {
+  return apiFetch(`/api/launchpad-templates/${id}/duplicate`, { method: "POST" });
+}
+
+export async function deleteLaunchpadTemplateApi(
+  id: string,
+): Promise<{ deleted: boolean; archived?: boolean }> {
+  return apiFetch(`/api/launchpad-templates/${id}`, { method: "DELETE" });
 }

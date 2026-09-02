@@ -1,4 +1,5 @@
 import type { ProposalListItem } from "@/types/proposal";
+import type { PlatformLink } from "@/lib/platform-links";
 import type { ProofDocumentRecord } from "@/lib/proof";
 
 export type ClientSource = "SUGGESTED" | "MANUAL";
@@ -109,8 +110,14 @@ export interface ClientListItem extends ClientRecord {
   pulseHealthScore?: number | null;
   /** Id of that latest Pulse scan (deep-link target). */
   pulseScanId?: string | null;
-  /** Composite delivery-health signal (overdue tasks + Pulse). Null when no signal exists. */
+  /** Composite delivery-health signal (overdue tasks + Pulse + Launchpad). Null when no signal exists. */
   health?: ClientHealth | null;
+  /**
+   * Launchpad completeness — what we're waiting on the CLIENT for. Null when the
+   * client has no Launchpad, which is deliberately distinct from `needed: 0`: the
+   * first means we never asked, the second that they've given us everything.
+   */
+  launchpad?: { percent: number; needed: number; outstanding: string[] } | null;
   /** How the engagement is structured (fixed/phased/rolling/retainer). Attached ungated. */
   engagementType?: ClientEngagementType | null;
   /** Project/proposal end date (ISO). Null = ongoing (rolling/retainer). Attached ungated. */
@@ -211,6 +218,8 @@ export interface ClientPlatformRecord {
   logins: ClientPlatformLoginSummary[];
   notes: string | null;
   previewImageUrl: string | null;
+  /** Extra client-provided links (ClickUp board, Figma file …). Always normalised. */
+  links: PlatformLink[];
   /** When true, this platform's prod + staging URLs surface as buttons in the wiki header. */
   featuredInWiki: boolean;
   createdAt: string;

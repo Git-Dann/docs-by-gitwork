@@ -6,6 +6,7 @@
 
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { bytesForPrisma } from "@/lib/prisma-bytes";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import {
   type EffectiveUser,
@@ -1368,8 +1369,8 @@ export async function addTaskAttachment(
     data: {
       taskId,
       uploadedById: user.id,
-      image: storedBytes,
-      thumb,
+      image: bytesForPrisma(storedBytes),
+      thumb: bytesForPrisma(thumb),
       mime: storedMime,
       filename,
     },

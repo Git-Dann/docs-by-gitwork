@@ -220,6 +220,7 @@ model User {
   designSystemsUpdated      ClientDesignSystem[]    @relation("DesignSystemUpdatedBy")
   taskComments              TaskComment[]
   taskAttachments           TaskAttachment[]
+  wikiIntakeComments        ClientWikiIntakeComment[]
   dailyUpdates              DailyUpdate[]
   slackUpdateLogs           SlackUpdateLog[]
   // MCP / OAuth (Phase 3) — Foundry as an OAuth 2.1 authorization server.
@@ -414,6 +415,7 @@ model Workspace {
   clients                     WorkspaceClient[]
   clientOnboardings           ClientOnboarding[]
   onboardingForms             OnboardingForm[]
+  launchpadTemplates          LaunchpadTemplate[]
   rateCardPeople              RateCardPerson[]
   proofDocuments              ProofDocument[]
   candidates                  Candidate[]
@@ -1217,6 +1219,11 @@ model ClientPlatform {
   passwordCipher  String?               @db.Text // AES-256-GCM envelope
   notes           String?               @db.Text
   previewImageUrl String?               @db.Text
+  /// Extra links a client provides that aren't production/staging/repo — a ClickUp
+  /// board, a Figma file, a status page. Stored as [{ label, url }]; JSON rather
+  /// than a table because they are display-only, always read with the platform,
+  /// and never queried across clients. Additive → applies via the guarded db push.
+  links           Json?
   /// Placements engaged on this platform — drives the scoped GitHub scan.
   placements      Placement[]
   /// Multiple credential sets ("logins") — supersedes the single username/password ciphers
@@ -1363,9 +1370,21 @@ model ClientWiki {
   /// Defaults false so a fresh wiki starts minimal (Dashboard + Timeline only);
   /// existing wikis keep whatever value they already have stored.
   intakeEnabled       Boolean                @default(false)
+  /// This client's OWN Requests categories, as `[{ id, label, mapsTo }]` where
+  /// `mapsTo` is a WikiIntakeItemType. Lets a client use their own vocabulary
+  /// ("Quick Design fix (V1)") without their wording becoming a global enum
+  /// value on every other client's form. Null/empty → the built-in four.
+  /// Shape is parsed defensively in lib/wiki-intake-categories.ts.
+  intakeCategories    Json?
   /// Whether the Code Handover section is enabled — versioned source per hardware
   /// module (e.g. Receiver / Sender firmware) handed to the client to flash.
   codeHandoverEnabled Boolean                @default(false)
+  /// Whether the Launchpad section is enabled — the tracked list of everything we
+  /// need FROM the client to start and ship, plus the fillable boilerplate legal
+  /// docs. Flag-driven exactly like `intakeEnabled`: default false so a fresh wiki
+  /// starts minimal, and the client-facing write routes reject until it's on.
+  launchpadEnabled    Boolean                @default(false)
+  launchpad           ClientLaunchpad?
   pages               ClientWikiPage[]
   changelog           ClientChangelogEntry[]
   courseRequests      ClientCourseRequest[]
@@ -1585,6 +1604,20 @@ model ClientWikiIntakeItem {
   status      WikiIntakeItemStatus @default(NEW)
   requestedBy String?
   externalRef String?
+  /// The SAME dev-facing label Task.label uses (Backend/Frontend/UI-UX/Research/
+  /// Design) — a client picks one in the Wiki form so a promoted request lands
+  /// on the board already categorised the way devs already filter/label tasks,
+  /// rather than needing a dev to re-triage it after the fact.
+  label       TaskLabel?
+  /// Which of the CLIENT's own categories was picked (ClientWiki.intakeCategories).
+  /// `type` above stays the underlying behaviour; this is the client's wording.
+  /// Resolved live at render, so renaming a category updates requests already
+  /// raised under it.
+  categoryId  String?
+  /// The category's label AS IT READ when the request was raised. Fallback only —
+  /// used when the category has since been deleted, so a client's own wording
+  /// isn't silently rewritten to a generic type.
+  categoryLabel String?
   /// Deep link back to the item in the client's own tracker, sent by the intake
   /// API so the team can open the source of a request. Rendered as a link on the
   /// Requests row; never fetched server-side.
@@ -1603,18 +1636,50 @@ model ClientWikiIntakeItem {
   thumb       Bytes?
   mime        String?
   filename    String?
+  /// Free-text device/OS context supplied with the report (e.g. "iPhone 14 Pro" /
+  /// "iOS 17.4") — both optional, filled in on the Add Request form.
+  device      String?
+  osVersion   String?
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
+  comments    ClientWikiIntakeComment[]
 
   @@index([wikiId])
   @@index([wikiId, externalRef])
   @@map("ClientWikiIntakeItem")
 }
 
+/// A reply on an intake item — either side of the conversation. TEAM comments
+/// come from a logged-in Gitwork user (authorUserId set, authorName mirrors
+/// User.name at post time); CLIENT comments come from the public wiki page,
+/// attributed to the signed-in ClientWikiUser (or a Gitwork user previewing
+/// the page) — never a typed name, since every route into the public wiki
+/// is already authenticated one way or the other.
+model ClientWikiIntakeComment {
+  id           String                      @id @default(cuid())
+  intakeItemId String
+  intakeItem   ClientWikiIntakeItem        @relation(fields: [intakeItemId], references: [id], onDelete: Cascade)
+  authorKind   WikiIntakeCommentAuthorKind
+  authorName   String
+  authorUserId String?
+  authorUser   User?                       @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
+  body         String                      @db.Text
+  createdAt    DateTime                    @default(now())
+
+  @@index([intakeItemId, createdAt])
+  @@map("ClientWikiIntakeComment")
+}
+
+enum WikiIntakeCommentAuthorKind {
+  TEAM
+  CLIENT
+}
+
 enum WikiIntakeItemType {
   BUG
   FEEDBACK
   TASK
+  DESIGN
 }
 
 enum WikiIntakeItemStatus {
@@ -1888,6 +1953,119 @@ model OnboardingForm {
   onboardings ClientOnboarding[]
 
   @@index([workspaceId, isArchived, updatedAt])
+}
+
+// ─── Launchpad ────────────────────────────────────────────────────────────────
+// Everything Gitwork needs FROM a client to start and ship: a tracked
+// requirements checklist grouped into modules, plus fillable boilerplate legal
+// docs. A SIBLING of the onboarding engine (same master-template + snapshot-on-
+// assign shape) rather than an extension of it, because two things diverge too
+// far from onboarding's flat id→value answer map to share it: per-item checklist
+// status (LaunchpadItem) and per-doc approval state (LaunchpadDoc).
+
+/// The editable master template. Mirrors `OnboardingForm`, but the JSON column is
+/// named `structure` (not `steps`) because a Launchpad is modules, not a wizard.
+model LaunchpadTemplate {
+  id          String            @id @default(cuid())
+  workspaceId String?
+  workspace   Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  name        String
+  slug        String            @unique
+  description String?
+  /// LaunchpadStructure: { modules: LaunchpadModule[] }. Validated in app code, not Prisma.
+  structure   Json
+  isDefault   Boolean           @default(false)
+  isArchived  Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  launchpads  ClientLaunchpad[]
+
+  @@index([workspaceId, isArchived, updatedAt])
+}
+
+/// One client's assigned Launchpad, hanging off their wiki (the surface it renders
+/// in). `structureSnapshot` is frozen at assign so later template edits never
+/// disturb a live kit — the same reasoning as `ClientOnboarding.formSnapshot` and
+/// `Document`'s template copy. `templateId` is SetNull so deleting a template can
+/// never destroy an assigned kit.
+model ClientLaunchpad {
+  id                String             @id @default(cuid())
+  wikiId            String             @unique
+  wiki              ClientWiki         @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  templateId        String?
+  template          LaunchpadTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  /// The frozen LaunchpadStructure this kit renders from.
+  structureSnapshot Json
+  /// Module ids switched on for this client (e.g. ["foundations","ios"]).
+  enabledModules    String[]           @default([])
+  /// Custom (non-checklist, non-doc) field answers, keyed by field id.
+  answers           Json?
+  items             LaunchpadItem[]
+  docs              LaunchpadDoc[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([templateId])
+}
+
+/// One requirement's live state. `itemId` is the field id from the snapshot, so a
+/// row is only meaningful alongside the kit that froze it.
+model LaunchpadItem {
+  id            String              @id @default(cuid())
+  kitId         String
+  kit           ClientLaunchpad     @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  /// The snapshot field id this row tracks.
+  itemId        String
+  status        LaunchpadItemStatus @default(NEEDED)
+  /// A pasted Drive/Figma/etc URL. LINKS ONLY — never fetched server-side (SSRF),
+  /// same posture as ClientWikiIntakeItem.attachmentUrls.
+  link          String?
+  note          String?             @db.Text
+  /// Who owns the account/asset. Null = inherit the template's default (which is
+  /// client-owned for every account item). Explicit false = Gitwork holds it.
+  ownedByClient Boolean?
+  /// Display name of whoever last moved it — a client wiki user or a Gitwork user.
+  updatedBy     String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@unique([kitId, itemId])
+  @@index([kitId, status])
+}
+
+/// A fillable boilerplate legal doc. Deliberately NOT a `Document` record: these
+/// are Launchpad artifacts rendered deterministically from `answers`, so the
+/// DocumentType enum and its exhaustive maps stay untouched.
+model LaunchpadDoc {
+  id              String             @id @default(cuid())
+  kitId           String
+  kit             ClientLaunchpad    @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  /// "cookie" | "terms" | "privacy" — the generator key.
+  docKey          String
+  /// The client's typed answers, merged into the template at render time.
+  answers         Json?
+  /// Set on the FIRST edit, which is what makes TEMPLATE → EDITED a real
+  /// transition rather than a diff against a moving template.
+  bodyOverride    String?            @db.Text
+  status          LaunchpadDocStatus @default(TEMPLATE)
+  approvedAt      DateTime?
+  approvedByEmail String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@unique([kitId, docKey])
+}
+
+enum LaunchpadItemStatus {
+  NEEDED
+  PROVIDED
+  NA
+}
+
+enum LaunchpadDocStatus {
+  TEMPLATE
+  EDITED
+  APPROVED
 }
 
 /// Encrypted bank details for an active client. Same schema as the onboarding
@@ -2346,6 +2524,11 @@ enum PulseCheckStatus {
   WARN
   FAIL
   SKIPPED
+  NOT_APPLICABLE
+  INCONCLUSIVE
+  ERROR
+  NOT_TESTED
+  EVIDENCE_REQUIRED
 }
 
 model PulseScan {
@@ -2454,6 +2637,26 @@ model PulseScanCheck {
   confidence       String? // "HIGH" | "MEDIUM" | "LOW"
   confidenceReason String?
   trustBucket      String? // "CONFIRMED" | "LIKELY" | "VERIFIED_WORKING" | "INCONCLUSIVE"
+  severity         String? // "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO"
+  evidenceStrength String? // "VERIFIED" | "STRONG" | "HEURISTIC" | "CLAIMED"
+  scoreEligible    Boolean @default(true)
+  controlId        String?
+  // Counts toward assurance completeness while contributing nothing to the health
+  // score — a diagnostic saying "this family is unknown, not passing". It existed
+  // on PulseScanCheckInput with no column here, so it was dropped on write and
+  // completeness recomputed from stored rows disagreed with the value the scan
+  // recorded. `false` matches how every historical row already behaves on read.
+  completenessEligible Boolean @default(false)
+  // What the DETECTOR concluded, before workspace policy was applied. Null means
+  // policy changed nothing and `status`/`detail` are the detector's own words.
+  //
+  // applyCheckPolicy rewrites status and detail in place, so without these a
+  // stored scan could not be replayed against a different policy, and nobody could
+  // ask "what did the scanner actually find" about a disabled or re-graded check.
+  // The policy DISPOSITION is derived from the pair, not stored — see
+  // policyDisposition() in src/server/pulse-checks/policy-disposition.ts.
+  detectorStatus   PulseCheckStatus?
+  detectorDetail   String?
 
   @@index([scanId, category])
   @@index([scanId, sortOrder])
@@ -2719,6 +2922,17 @@ model SupportConversation {
   snoozeUntil     DateTime?
   firstTriagedAt  DateTime? // first transition out of NEW (replaces ticket.firstReplyAt for metrics)
   closedAt        DateTime? // set on CLOSED/IGNORED (replaces ticket.resolvedAt)
+  // ── reply tracking ──
+  // FACTS ONLY. The reply state ("awaiting reply" / "replied") is DERIVED from these by
+  // deriveReplyState() in src/server/support-reply-state.ts and is never stored — so a reply
+  // sent OUTSIDE Care (a mail client, the Gmail web UI) flips the state the moment the sync
+  // sees it, with nobody marking anything. A stored flag would drift, which is the whole
+  // reason Care could not be trusted as the source of truth.
+  lastInboundAt   DateTime? // last message FROM the customer
+  lastOutboundAt  DateTime? // last message FROM us (sent in Care, or synced back from outside)
+  lastMessageAt   DateTime? // max(lastInboundAt, lastOutboundAt) — the real activity sort key.
+  // ^ receivedAt is the thread START and is never updated after creation, so ordering by it
+  //   strands a months-old thread that got a reply an hour ago at the bottom of the list.
   // ── deep-link out to the native channel ──
   externalUrl     String? // canonical native-thread URL ("Open in {channel}")
   externalGuildId String? // Discord guild id, used to build the channel deep-link
@@ -2732,6 +2946,8 @@ model SupportConversation {
   @@index([clientId, status])
   @@index([clientId, assigneeId])
   @@index([clientId, snoozeUntil])
+  @@index([clientId, lastMessageAt])
+  @@index([clientId, lastInboundAt])
 }
 
 // Internal staff-only notes on a conversation. Kept separate from SupportMessage so
@@ -3175,6 +3391,47 @@ model PulseCheckConfig {
 
 // Materialised per-check usage aggregate (the analog of a telemetry sidecar). Refreshed by the
 // curator from persisted PulseScanCheck rows — NOT written on the scan hot path.
+/// Durable, anonymous rollup of PUBLIC lite scans — the corpus a percentile needs.
+///
+/// Exists because the raw rows are DELETED: `PulseLiteScan.expiresAt` is 7 days and the
+/// reconcile cron prunes them, so every anonymous scan's outcomes were being destroyed
+/// while nothing aggregated them first. Only `PulseLead` survived, and it carries score
+/// + URL + createdAt with no segment and no check detail — and only for the scans where
+/// an email was captured, which is now the minority.
+///
+/// Deliberately holds NO identifying data: no URL, no host, no IP, no email. Just "in
+/// month M, segment S, N scans scored like this", which keeps the privacy posture of the
+/// 7-day delete fully intact while retaining the statistics.
+///
+/// Written at scan COMPLETION, not at prune time — several crons in this deployment have
+/// never run (docs/vps-crons.md), and a corpus that depends on one is a corpus that stays
+/// empty.
+model PulseScoreDistribution {
+  id        String   @id @default(cuid())
+  /// "YYYY-MM" — the month the scans were run in.
+  month     String
+  /// Detected project shape (e.g. "MARKETING_SITE"), or the literal "ALL" for the
+  /// all-segments row. Segmenting matters: comparing a brochure site to a SaaS app is
+  /// noise, not signal.
+  ///
+  /// NOT nullable, deliberately. Postgres treats NULLs as DISTINCT in a unique index,
+  /// so `@@unique([month, segment])` with a nullable segment would happily accept
+  /// unlimited duplicate all-segments rows for the same month — silently double-counting
+  /// the corpus. A sentinel makes the constraint actually constrain.
+  segment   String   @default("ALL")
+  scanCount Int      @default(0)
+  /// Sum of scores, so a mean needs no per-scan retention.
+  scoreSum  Int      @default(0)
+  /// Ten 10-point buckets: index 0 = score 0-9 … index 9 = 90-100. A histogram yields
+  /// percentiles without keeping any individual scan.
+  buckets   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([month, segment])
+  @@index([month])
+}
+
 model PulseCheckStat {
   id            String    @id @default(cuid())
   workspaceId   String
@@ -3673,6 +3930,7 @@ enum TaskLabel {
   UI_UX
   RESEARCH
   DESIGN
+  SUPPORT
 }
 
 /// Links a team member to a specific client. Backs the `seeAllClients=off`

@@ -4,13 +4,14 @@ import { apiOk, fromError } from "@/lib/api-response";
 import { deleteWikiIntakeItem, updateWikiIntakeItem } from "@/server/wiki";
 
 const patchSchema = z.object({
-  type: z.enum(["BUG", "FEEDBACK", "TASK"]).optional(),
+  type: z.enum(["BUG", "FEEDBACK", "TASK", "DESIGN"]).optional(),
   title: z.string().trim().min(1).max(180).optional(),
   description: z.string().trim().max(10_000).optional().nullable(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
   status: z.enum(["NEW", "TRIAGED", "PROMOTED", "CLOSED"]).optional(),
   requestedBy: z.string().trim().max(120).optional().nullable(),
   externalRef: z.string().trim().max(180).optional().nullable(),
+  label: z.enum(["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN", "SUPPORT"]).optional().nullable(),
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string; id: string }> }) {

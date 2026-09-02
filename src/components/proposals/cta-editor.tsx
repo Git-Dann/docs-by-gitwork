@@ -1,13 +1,14 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { GITWORK } from "@/lib/gitwork";
 import type { CTAInput, LinkType } from "@/types/proposal";
 
 const destinationOptions: Array<{ value: LinkType; label: string; placeholder: string }> = [
-  { value: "EXTERNAL_URL", label: "Website link", placeholder: "https://gitwork.io" },
+  { value: "EXTERNAL_URL", label: "Website link", placeholder: GITWORK.url },
   { value: "DOCUMENT_LINK", label: "Document link", placeholder: "https://docs.google.com/..." },
   { value: "DECK_LINK", label: "Deck link", placeholder: "https://pitch.com/..." },
-  { value: "EMAIL_LINK", label: "Email action", placeholder: "hello@gitwork.io" },
+  { value: "EMAIL_LINK", label: "Email action", placeholder: GITWORK.email },
   { value: "INTERNAL_ROUTE", label: "Internal page", placeholder: "/app/docs/123" },
 ];
 

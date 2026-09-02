@@ -1,0 +1,268 @@
+[
+  {
+    "slug": "design-figma",
+    "name": "Figma Design System",
+    "summary": "Prompt for a SwiftUI companion-app design system: five fixed brand-cube avatar colors, a 6pt/16:10 signature geometry, and a review-first comment workflow.",
+    "description": "A deep SwiftUI prompt that captures Figma iOS's companion-app identity — five per-user avatar cube colors kept separate from a single action blue, 6pt corner radii, 16:10 file cards, and the comment-pin-to-thread-sheet review loop.",
+    "type": "PROMPT",
+    "tags": [
+      "productivity",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A SwiftUI Color/Font token set separating fixed per-user 'brand cube' accents from the single UI action color",
+        "A 16:10 file/board preview card component with a no-preview fallback state",
+        "A comment-pin-to-thread-sheet review flow with composer, motion timings and haptics"
+      ],
+      "promptText": "<role>\nYou are a senior iOS product designer/engineer who specializes in building companion mobile clients for browser-first creative tools — apps whose job is fast review and commenting on someone else's canvas, not authoring from scratch.\n</role>\n\n<reference_data>\nPalette: five fixed brand accent swatches used only for avatars/thumbnails/cursors — Red #F24E1E, Orange #FF7262, Purple #A259FF, Blue #1ABCFE, Green #0ACF83. A separate UI action blue #0D99FF (pressed #0769B5) drives every CTA and never touches the five brand swatches. A soft pink #FFC8C8 is reserved for illustration/empty-state moments only. Canvas is pure white #FFFFFF in light mode and near-black #1E1E1E in dark mode, matching the desktop editor's own canvas tone. Surface grays step F5F5F5 to E5E5E5 in light and 2C2C2C to 383838 to 444444 in dark. Primary ink text is #1E1E1E, secondary text #757575.\nType: Inter across the app, weights 400/500/600/700, tabular numerals switched on for every numeric value; a monospace face for hex codes and pixel dimensions, always rendered uppercase.\nGeometry: one primary corner radius, 6pt, used on thumbnails, buttons, inputs and search; a 50% circle radius for every avatar and comment pin; a fixed 16:10 aspect ratio for every file-preview card.\nNamed patterns: the file card (16:10 thumbnail + name + \"Edited Xh ago - N collaborators\"), a per-user avatar color assigned once and kept forever, a circular numbered comment pin overlaid on a canvas frame, a bottom-anchored comment-thread sheet with a growing pill-shaped composer, and a permanently dark floating capsule action bar that stays near-black even in light mode because it belongs to the underlying tool, not the app chrome.\nDepth: shadows are rare and shallow (max around 16% black) — hairline 1px borders do almost all the separating work instead of elevation.\n</reference_data>\n\n<house_rules>\n1. Never use the five brand accent colors as a button fill or background — they identify a person or a file, never an action.\n2. Keep the single UI action color visually distinct from any secondary brand blue used for upgrades or cross-product links, so the two blues are never confused on one screen.\n3. Every avatar's color must be derived deterministically from the user's identity (never re-randomized per render) so a person reads as the same color across sessions.\n4. File-preview thumbnails are always 16:10 — never crop or stretch to another ratio; when there is no real preview, fill the space with a solid color panel and one giant initial rather than a placeholder icon.\n5. Reserve genuine drop shadows for exactly two situations: something that must float above arbitrary content (a pin), or something that must float above the whole screen (a sticky bar) — everything else reads through a hairline border alone.\n6. Hex values and pixel measurements always render in the monospace face, uppercase, tabular-aligned, never in the body sans.\n7. Build hierarchy through size and color saturation more than weight — most surfaces should live in an 11-16pt range; density beats hero type in a review tool.\n8. A collaborator avatar stack never shows more than three faces before collapsing the remainder into a \"+N\" chip.\n9. Keep the outer page margin generous even though internal card padding stays tight — the tension between airy framing and dense content is the signature feel.\n</house_rules>\n\n<the_project>\n- App name & one-line pitch:\n- Primary object being reviewed (design file, prototype, board, document, etc.):\n- Number of bottom tabs and their names:\n- The one action that deserves the accent action color on this screen:\n- Collaboration model (live cursors, threaded comments, or both):\n- Any existing brand accent colors that must be preserved:\n- Target iOS version and any specific device sizes to design for:\n- Light/dark mode requirement:\n</the_project>\n\n<what_to_give_me>\n1. A complete SwiftUI Color and Font token file matching the reference palette and type ladder, adapted to the project's own brand accents where the fields above specify them.\n2. The primary content card component (the file/board/document preview equivalent) built to the 16:10-and-6pt-radius discipline, including its no-preview fallback state.\n3. The avatar/identity component with deterministic per-user color assignment and a collaborator-stack variant with overflow handling.\n4. The comment-pin-to-thread-sheet flow: pin component, sheet component, and reply composer, with motion timings and haptics.\n5. The bottom navigation and any persistent floating action bar, styled per the elevation rules above.\n6. A short written rationale for every place you deviated from the reference facts and why.\n</what_to_give_me>",
+      "keywords": [
+        "figma",
+        "ios",
+        "swiftui",
+        "design system",
+        "comment thread",
+        "avatar colors",
+        "file card",
+        "productivity app",
+        "companion app",
+        "review workflow"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:figma",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-google-calendar",
+    "name": "Google Calendar Design System",
+    "summary": "Prompt for a SwiftUI scheduling-app design system built on Material's dual-shadow FAB, tabular event times, and a semantic four-color event model.",
+    "description": "A deep SwiftUI prompt for a Material-on-iOS scheduling app: a strict Regular/Medium weight ladder, tabular time figures, a fixed-position dual-shadow floating action button, and a left-bar-or-tint event card pattern.",
+    "type": "PROMPT",
+    "tags": [
+      "productivity",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A SwiftUI Color/Font token set for the semantic four-color event model plus a full user-selectable calendar palette",
+        "An event card component in both its list-row left-bar form and its timeline tinted-block form",
+        "A floating action button with Material's dual-shadow recipe and its action menu"
+      ],
+      "promptText": "<role>\nYou are a senior iOS engineer and designer who specializes in adapting Material Design scheduling products for a native iOS feel, without losing the source system's own visual logic.\n</role>\n\n<reference_data>\nColor: a single primary action blue #1A73E8 (pressed #1557B0, 12% tint #E8F0FE) drives the create button, links and the \"today\" highlight. Four semantic event colors cover the default categories: Blue #1A73E8 for standard events, Red #D93025 for declined/alerts, Yellow #F9AB00 for tasks, Green #188038 for goals. Beyond those, a much larger user-selectable calendar-color palette exists (named swatches such as Tomato #D50000, Peacock #039BE5, Blueberry #3F51B5, Lavender #7986CB) so any individual calendar can carry its own identity. Canvas is white #FFFFFF with a light gray #F1F3F4 section fill and a #DADCE0 hairline divider; primary text is a warm near-black #202124, not pure black. Dark mode keeps that same warm near-black as its canvas and brightens the action blue to #8AB4F8 for contrast.\nType: a display face for nav titles and day numbers, paired with the iOS system text face for body rows and metadata — weights are limited to Regular and Medium only, with no bold anywhere. Tabular figures are mandatory on every time, date and day number so adjacent rows and columns line up exactly.\nGeometry: a compact 4pt corner radius on event cards and buttons is the system's primary radius; a full pill radius is reserved for RSVP-style choice controls; a full circle marks the floating action button and the \"today\" indicator.\nSignature components: an event card that is either a full-width row with a colored left bar (list views) or a 20%-tint colored block with a saturated left edge (timeline views) — never both treatments in the same view. A floating circular create button sits fixed at the bottom-right corner with a two-layer shadow (a tight dark layer plus a soft diffuse layer). A red current-time line with a leading dot crosses a day timeline and updates on a clock-driven schedule.\n</reference_data>\n\n<house_rules>\n1. Never combine the left-bar treatment and the tinted-fill treatment on the same view — pick one presentation per view mode and hold it consistently.\n2. Weight carries almost no hierarchy — reach for size and saturation before reaching for bold; Regular and Medium are the entire weight vocabulary.\n3. Every time, date and day-number value must use tabular figures so adjacent rows align in a column.\n4. The floating create button occupies one fixed location, one fixed color, and one fixed elevation — it never moves, never recolors, and (unlike most buttons) does not scale down on press.\n5. A calendar's own user-chosen color always wins over the default semantic category color for that calendar's events — the semantic set is a default, not an override.\n6. \"Today\" is communicated identically everywhere it appears: a filled action-color circle behind a white or inverse-colored number.\n7. Shadows follow a two-layer recipe — a tight, slightly darker layer plus a soft, more diffuse layer — tinted faintly warm rather than pure black.\n8. Uppercase, letter-spaced primary-button labels are reserved for prominent calls to action and date-banner labels — do not uppercase ordinary body copy.\n</house_rules>\n\n<the_project>\n- App name & scheduling domain (personal calendar, team booking, resource scheduling, etc.):\n- View modes needed (day, week, month, agenda — pick the subset):\n- Event categories and their colors specific to this product:\n- Where the create/add action lives (floating button vs. toolbar button):\n- Conferencing/video-call integration, if any:\n- Multi-calendar or single-calendar model:\n- Target iOS version:\n</the_project>\n\n<what_to_give_me>\n1. Color/Font SwiftUI token extensions matching the semantic-event-color model, plus a full selectable user-calendar palette as an array.\n2. The event card component in both its list-row (left-bar) and timeline-tinted-block presentations.\n3. A day banner or agenda header component with the \"today\" circle treatment.\n4. The floating create button (or equivalent) with its two-layer shadow and action-menu sheet.\n5. A month-grid cell component with today, selected, and other-month states plus event-dot indicators.\n6. Motion specs (as SwiftUI animation modifiers) for the create button, the current-time line, and the today-circle transition.\n</what_to_give_me>",
+      "keywords": [
+        "google calendar",
+        "ios",
+        "swiftui",
+        "design system",
+        "scheduling app",
+        "floating action button",
+        "material design",
+        "event card",
+        "calendar app",
+        "productivity"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:google-calendar",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-grammarly",
+    "name": "Grammarly Design System",
+    "summary": "Prompt for a SwiftUI writing-assistant design system: one brand accent, four underline-only feedback colors, a suggestion card, an animated score ring.",
+    "description": "A deep SwiftUI prompt for a calm, monobrand writing-assistant app: a single green accent, pill-only buttons, category-colored inline underlines, and a serially-presented bottom suggestion card with an animated 0-100 score ring.",
+    "type": "PROMPT",
+    "tags": [
+      "productivity",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A SwiftUI Color/Font token set enforcing a single brand accent alongside underline-only functional category colors",
+        "A bottom-anchored suggestion card component with before/after swap line and pill actions",
+        "An animated threshold-colored score ring component"
+      ],
+      "promptText": "<role>\nYou are a senior iOS engineer and designer who specializes in calm, single-accent writing-assistant apps that layer inline feedback over a document surface without ever feeling like a dashboard.\n</role>\n\n<reference_data>\nColor: exactly one brand accent, a teal-green #15C39A (deepening to #11A683, pressed #0E8A6D, with a 12%-opacity tint variant) — there is no secondary brand color anywhere in the system. Four functional category colors exist purely to mark feedback in text and are never used as buttons or CTAs: red #E5484D, blue #3B82F6, green #16A34A, purple #8B5CF6. A warm gold #E0A82E is reserved strictly for premium/upsell moments. The canvas is pure white #FFFFFF in light mode and a warm charcoal #121212 in dark mode (never pure black). Primary text sits at #1A1A1A light / #E4E4E4 dark, with secondary text around #6B6B70 / #9A9A9F.\nType: a single humanist sans across an editorial-style ladder — a large extrabold screen title, a bold document heading, and a calm 16pt regular body set at a roomy line-height (around 1.65x) so long-form reading stays comfortable. Category tags render as small uppercase, heavily tracked labels.\nGeometry: every button in the system is a fully rounded pill (essentially 999pt radius) — there are no rectangular or sharp-cornered buttons anywhere. A generous 16pt card radius applies to the one floating component that matters.\nSignature components: a suggestion card that slides up from the bottom showing a small category-colored dot, a strikethrough old-word-to-accent-colored-new-word swap line, a one- or two-line plain-language explanation, and a full-width accent \"accept\" pill plus a separate icon-only dismiss control. A thin animated score ring (roughly 0-100) sits near the top of the screen and changes color by threshold. A persistent bottom bar shows a small brand-colored orb, a running issue count, and a single review call-to-action.\n</reference_data>\n\n<house_rules>\n1. There is exactly one brand color in the whole system — resist adding a second \"accent\" anywhere; if something needs emphasis, deepen or tint the single accent instead of introducing a new hue.\n2. The functional category colors may only ever paint an underline, a dot, or a small tag — never a button fill, never a call-to-action background.\n3. Every button, without exception, is a fully rounded pill — no rounded-rectangle or sharp-corner buttons anywhere in the system.\n4. Only one feedback or suggestion card is visible at a time; the assistant walks the user through issues serially rather than surfacing a stacked list.\n5. The editing surface itself carries zero elevation — no border, no card, no shadow around the document; only the assistant's own floating UI (the suggestion card, the bottom bar) is allowed to lift off the canvas.\n6. Body and editor text sits at a noticeably roomier line-height than typical UI copy, because reading comfort is the product's core promise.\n7. A numeric score always animates into place rather than appearing instantly, and its color is threshold-driven rather than fixed.\n8. Motion stays soft and unhurried relative to most productivity apps — favor eases in the 200-600ms range rather than snappy sub-150ms transitions, because the tone is a calm assistant, not a fast tool.\n</house_rules>\n\n<the_project>\n- App name & the kind of content it assists with (prose, code, email, etc.):\n- Number and names of feedback/suggestion categories:\n- The single brand accent color (hex) to use, if not green:\n- Is there a numeric score or health metric, and what does it represent:\n- Premium/paywall model, if any:\n- Where suggestions are surfaced (inline underline, sidebar, both):\n- Target iOS version:\n</the_project>\n\n<what_to_give_me>\n1. SwiftUI Color/Font tokens enforcing the single-brand-plus-functional-categories rule.\n2. The suggestion/feedback card component with its category dot, before-to-after swap line, explanation, and pill actions.\n3. The animated score-ring component with threshold-based coloring.\n4. The inline-marking system (underline/highlight styles) for each feedback category, with tap-to-open behavior.\n5. The persistent bottom assistant/status bar with a live count and call-to-action.\n6. A motion/haptics spec sheet covering card present, accept, dismiss, and score-update transitions.\n</what_to_give_me>",
+      "keywords": [
+        "grammarly",
+        "ios",
+        "swiftui",
+        "design system",
+        "writing assistant",
+        "suggestion card",
+        "score ring",
+        "monobrand",
+        "pill buttons",
+        "productivity app"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:grammarly",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-jira",
+    "name": "Jira Design System",
+    "summary": "Prompt for a SwiftUI work-tracking design system: a semantic status-lozenge model, fixed issue-type color mapping, and dense card-based boards.",
+    "description": "A deep SwiftUI prompt for an enterprise work-tracking app: one action-only brand blue, a six-way semantic status system rendered as lozenges, fixed type-to-color icon mapping, and a horizontally-scrolling card board.",
+    "type": "PROMPT",
+    "tags": [
+      "productivity",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A SwiftUI Color/Font token set for the semantic status-lozenge system with fixed work-item type-to-color mapping",
+        "A dense, two-line-clamped item-card component with a left/right footer pattern",
+        "A horizontally-scrolling status-column board with drag-to-change-status interaction"
+      ],
+      "promptText": "<role>\nYou are a senior iOS engineer and designer who specializes in dense enterprise work-tracking tools, where legibility under heavy information load matters more than visual flourish.\n</role>\n\n<reference_data>\nColor: one saturated brand blue, #0052CC (brightened to #1868DB for dark-mode interactive elements), used only for primary actions, links and selection — never as a content or section background. A six-way semantic status system pairs a light fill-and-text combination with a separate dark-mode fill-and-text combination for each of: neutral, information, success, warning, danger, and a distinct discovery/epic hue. Work-item type has a fixed color-and-icon mapping: a green square for one category, a red circle for another, a blue check for a third, a purple lightning bolt for a fourth, and a muted gray glyph for the smallest sub-item type. The canvas is near-white in light mode and a genuine charcoal (never true black) in dark mode; primary text on light uses a warm desaturated navy ink rather than pure black.\nType: a humanist sans (with a free-face fallback) carrying tabular numerals on every count, point total, and short alphanumeric identifier so columns of numbers align exactly. A distinctive uppercase, letter-spaced micro-label style (11-12pt) marks column headers and field names as structural chrome rather than content.\nGeometry: a tight 3pt corner radius marks small structural chips (status pills, label chips, type-icon containers); a standard 6pt radius covers buttons and inputs; an 8pt radius covers the primary card component.\nSignature components: a compact item card with an optional colored top stripe, a two-line-clamped title, a row of small label chips, and a footer that pairs a type-icon-plus-identifier on the left with a point-count-and-avatar on the right. Status renders only as a small uppercase, letter-spaced, semantic-colored lozenge — never as plain colored text. A board presents fixed-width status columns scrolling horizontally, each holding a vertical stack of cards with a sticky column header.\n</reference_data>\n\n<house_rules>\n1. The one brand blue is action-only — it must never appear as a card, column, or section background fill.\n2. Status always renders as a colored lozenge, never as plain colored text or an unstyled label.\n3. The type-to-color-and-icon mapping for work-item categories is fixed system-wide; a given type renders in the same color and shape on every card, list row, and detail screen.\n4. Every item-style card clamps its title or summary to two lines with an ellipsis — cards must never grow unbounded from long text.\n5. Numerals that represent counts, points, or identifiers are always tabular so they align vertically down a column of rows.\n6. Field names and column headers render as uppercase, letter-spaced micro-labels distinct from ordinary body text, signaling structural chrome rather than content.\n7. Favor hairline 1px dividers between rows over nesting a card inside a card — structural density comes from borders, not boxes.\n8. Use a warm, desaturated near-black for text on light backgrounds and a genuine dark charcoal (not pure black) as the dark-mode canvas.\n9. Keep interaction motion brief and functional (roughly 150-300ms ease-out) — this is a tool for moving through a backlog quickly, not a showcase for animation.\n</house_rules>\n\n<the_project>\n- App name & the kind of work items it tracks (tickets, tasks, orders, cases, etc.):\n- Work-item types and their fixed color/icon mapping:\n- Status values and which semantic bucket each maps to:\n- Board/column model (status columns, swimlanes) or list-only:\n- Fields to show on the compact card (assignee, points, due date, etc.):\n- Team size / density expectations (how many items on screen at once):\n- Target iOS version:\n</the_project>\n\n<what_to_give_me>\n1. SwiftUI Color/Font tokens for the semantic status system (light and dark fill/text pairs) and the fixed type-to-color/icon mapping.\n2. The compact item-card component with two-line clamp, label chips, and the left/right footer pairing pattern.\n3. The status lozenge component, including its dropdown or status-change variant.\n4. A horizontally-scrolling board (status columns of vertical card stacks) with sticky column headers and drag-to-change-status interaction.\n5. A field-detail panel pattern (label plus tappable value rows) for the item-detail screen.\n6. Shadow/elevation and motion specs matching the functional-not-decorative philosophy above.\n</what_to_give_me>",
+      "keywords": [
+        "jira",
+        "ios",
+        "swiftui",
+        "design system",
+        "work tracking",
+        "status lozenge",
+        "kanban board",
+        "issue card",
+        "enterprise app",
+        "productivity"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:jira",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-linear",
+    "name": "Linear Design System",
+    "summary": "Prompt for a SwiftUI issue-tracker design system: a near-OLED canvas, one accent color, drawn status glyphs, and a fast keyboard-first command palette.",
+    "description": "A deep SwiftUI prompt for a speed-first, keyboard-driven issue tracker: an extremely dark canvas, exactly one accent color, vector status glyphs instead of colored badges, and a dense command-palette overlay.",
+    "type": "PROMPT",
+    "tags": [
+      "productivity",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A SwiftUI Color/Font token set for a near-OLED, single-accent, layered-surface color system",
+        "A dense list-row component with a drawn vector status-glyph set replacing colored badges",
+        "A command-palette overlay component with fuzzy-filtered rows and monospace shortcut hints"
+      ],
+      "promptText": "<role>\nYou are a senior iOS engineer obsessed with speed-first, keyboard-driven productivity tools, comfortable building near-OLED dark interfaces where density and near-instant motion are the entire aesthetic.\n</role>\n\n<reference_data>\nColor: the canvas is an extremely dark near-black, deliberately darker than a typical dark-mode gray. A single accent color (a mid-tone purple-blue, roughly #5E6AD2, with a pressed state and a low-opacity tint variant) marks primary action, current focus, and current selection — nothing else in the system may borrow it. Surfaces step upward through three flat layers rather than relying on shadows, separated by a single hairline divider color. Primary text is near-white, secondary text a cool mid-gray, and tertiary/disabled text a darker cool gray.\nStatus is communicated entirely through a small set of drawn vector glyphs rather than colored badges: a dashed circle, a thin empty ring, a half-filled circle, an accent-colored partial ring, a filled checkmark circle, and a filled cross circle, each mapping to one lifecycle stage.\nType: one humanist sans at only three weights (regular, medium, semibold — nothing bolder), with tabular numerals on every identifier and count. A monospace face renders short alphanumeric identifiers and keyboard-shortcut hints, keeping them visually distinct from ordinary prose.\nGeometry: list rows are dense — roughly 44pt tall, sitting edge to edge with no gap between them, separated only by a hover-state color change and thin divider lines when grouped. A centered command-palette overlay (roughly 560pt wide) is the signature surface: a search field on top, and fuzzy-filterable action rows below, each showing its keyboard shortcut in monospace on the trailing edge.\n</reference_data>\n\n<house_rules>\n1. The canvas must be genuinely near-black — resist settling for a conventional dark-mode gray; the extra darkness is a deliberate part of the identity.\n2. Exactly one accent color exists in the whole system; it marks the primary action, the current focus, and the current selection, and nothing else may borrow it.\n3. Status is drawn as small vector glyphs, never as a colored text badge or filled pill — build the glyph set once and reuse it everywhere status appears.\n4. Elevation is communicated by stepping to the next lighter flat surface color plus a hairline border — reserve actual blurred shadows only for the one or two surfaces that truly float above everything, such as a command palette or dropdown.\n5. Keep list rows dense (roughly 44pt tall, touching with no gap) — resist adding breathing-room padding \"for comfort\"; density is the value proposition here.\n6. Weight tops out at semibold system-wide — never introduce a bolder weight, and never anything lighter than regular.\n7. Any identifier (a ticket or reference code) and any keyboard-shortcut hint renders in monospace with tabular figures; everything else stays in the humanist sans.\n8. All transitions are fast — aim for roughly 90-240ms; anything slower should read as sluggish in this system.\n9. A command-style search overlay should be reachable from anywhere and should fuzzy-filter every available action, not only navigation destinations.\n</house_rules>\n\n<the_project>\n- App name & the kind of work items it tracks:\n- Status values and their glyph shapes (adapt or extend the drawn-icon language):\n- The single accent color (hex) if not purple-blue:\n- Whether a command-palette / quick-action overlay is in scope:\n- Grouping model for the main list (by status, by assignee, by project, etc.):\n- Whether the app needs a bottom tab bar or a sidebar-only navigation model:\n- Target iOS version:\n</the_project>\n\n<what_to_give_me>\n1. SwiftUI Color/Font tokens for the single-accent, layered-surface system, with shadows reserved only for true overlays.\n2. The dense list-row component (status glyph, identifier, title, trailing metadata/avatar) with hover, selected, and pressed states.\n3. The drawn status-glyph set as SwiftUI Shape or Path-based views, not emoji and not colored badges.\n4. The command-palette overlay: search field, fuzzy-filtered action rows, keyboard-shortcut hints in monospace.\n5. A sidebar (or navigation-rail) component if the project needs one, following the no-bottom-tab-bar convention.\n6. A motion spec table listing every transition and its duration/easing, all within the fast-and-instant range described above.\n</what_to_give_me>",
+      "keywords": [
+        "linear",
+        "ios",
+        "swiftui",
+        "design system",
+        "issue tracker",
+        "command palette",
+        "dark mode",
+        "status glyphs",
+        "dense ui",
+        "productivity app"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:linear",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-microsoft-teams",
+    "name": "Microsoft Teams Design System",
+    "summary": "Prompt for a SwiftUI enterprise-collaboration design system: dual light/dark identity, a two-tone brand accent, presence dots, and card-based channel posts.",
+    "description": "A deep SwiftUI prompt for a Fluent-style enterprise collaboration app: two first-class appearances, a per-appearance brand accent, a loaded presence-dot color system, and a two-level team-to-channel navigation tree.",
+    "type": "PROMPT",
+    "tags": [
+      "productivity",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A SwiftUI Color/Font token set covering both light and dark canvases with per-appearance brand accent values",
+        "A two-level navigation tree component (parent row plus indented child rows) with active/unread states",
+        "A full-width message-card component and a four-state presence-dot component with cross-fade transitions"
+      ],
+      "promptText": "<role>\nYou are a senior iOS engineer and designer who builds enterprise collaboration and communication apps that must feel calm and dependable across an entire workday, in both light and dark appearance.\n</role>\n\n<reference_data>\nColor: a dual-identity system where both appearances are first-class — a near-white canvas with white cards in light mode, a deep gray canvas with charcoal cards in dark mode. One brand accent (a muted purple) carries two distinct hex values, one per appearance, the dark-mode one lightened for contrast, plus a shared pressed state. Presence status is the one place a loaded semantic palette is used deliberately: green for available, red for busy/do-not-disturb (with a small added marker distinguishing the two), amber for away, and a hollow gray ring for offline — always rendered as a small dot anchored to an avatar's corner.\nType: a humanist sans at only three weights (regular, semibold, bold — no light weights), following a three-level hierarchy: a bold parent-group name, a semibold child-item name, and a regular gray preview line beneath it. Tabular figures apply to call durations and timestamps where columns need to align.\nGeometry: Fluent-style rounding throughout, generally 8-12pt radii, with a full pill radius reserved for chips and a prominent contextual join button. Shadows are soft and low-contrast in light mode; dark mode replaces them with a surface-color step plus a hairline divider.\nSignature components: an expandable two-level navigation tree (a parent group containing indented child items) with a colored left-bar marking the active leaf and a bold name plus dot marking an unread one. A full-width message card (not a rounded chat bubble) carries an avatar-with-presence-dot, an author name, a timestamp, body text, a reactions row, and a reply/thread-count line. A pinned, brand-colored, gently pulsing banner appears at the top of a view whenever a live, time-sensitive event (such as a meeting) is in progress.\n</reference_data>\n\n<house_rules>\n1. Design and verify every component in both appearances at once — light and dark are equally primary here, not a light-mode-first app with a dark mode bolted on.\n2. The single brand accent must have two distinct hex values, one per appearance, both meeting contrast on their own canvas — don't reuse the light-mode value verbatim in dark mode.\n3. Presence-status color is the only place \"loaded\" semantic hues (green, red, amber) may appear as small dots — never reuse those exact hues for unrelated chrome, badges, or buttons.\n4. Channel-style content renders as a full-width card, never as a rounded chat bubble — bubbles belong to a separate one-to-one messaging surface, not this one.\n5. Navigation that groups a parent and its children is expressed as an indentable two-level tree with a colored bar marking the active leaf — never flatten it into one list.\n6. Any prominent, contextual, time-sensitive banner (like a live-meeting notice) is allowed a soft brand-colored glow and a slow pulse — it is the one component permitted to visually interrupt the calm baseline.\n7. Presence-dot color changes cross-fade rather than snapping instantly — an abrupt swap reads as a glitch in a status system people rely on all day.\n8. Keep corner radii inside the Fluent range system-wide; avoid both sharp rectangles and fully-rounded pills except where a component is explicitly a pill (reaction chips, a join button).\n9. Weight ladder stops at regular/semibold/bold — no light weights anywhere, keeping the system feel substantial and legible at a glance across a long list.\n</house_rules>\n\n<the_project>\n- App name & organizational surface it represents (chat, project rooms, support queues, etc.):\n- The brand accent's light and dark hex values, if not the reference purple:\n- Presence/status states needed beyond available/busy/away/offline, if any:\n- Navigation model — does it need a two-level tree, or a flatter list:\n- Whether a \"live now\" contextual banner applies to this product:\n- Bottom tab set and their order:\n- Target iOS version:\n</the_project>\n\n<what_to_give_me>\n1. SwiftUI Color/Font tokens covering both the light and dark full canvases and both accent values.\n2. The two-level navigation tree component (parent row plus indented child rows) with active/unread states.\n3. The message-card component (not a bubble) with reactions row and thread/reply count.\n4. The presence-dot component with all four states and its cross-fade state-change animation.\n5. The contextual pulsing action banner (the live-event pattern) with its soft colored shadow and pulse animation.\n6. A bottom tab bar matching the Fluent rounding and elevation rules, with unread badge treatment.\n</what_to_give_me>",
+      "keywords": [
+        "microsoft teams",
+        "ios",
+        "swiftui",
+        "design system",
+        "enterprise app",
+        "presence status",
+        "dark mode",
+        "message card",
+        "fluent design",
+        "collaboration app"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:microsoft-teams",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-miro",
+    "name": "Miro Design System",
+    "summary": "Prompt for a SwiftUI infinite-canvas design system: separated brand/selection colors, tight-radius paper objects, a floating toolbar, live cursors.",
+    "description": "A deep SwiftUI prompt for a gesture-driven, real-time-multiplayer whiteboard app: a strict brand-yellow-versus-selection-blue separation, tight-radius pastel content objects, a floating creation toolbar, and gliding remote cursors.",
+    "type": "PROMPT",
+    "tags": [
+      "productivity",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A SwiftUI Color/Font token set enforcing a strict brand-color-versus-selection-color separation and a fixed paper-object palette",
+        "An infinite-canvas container handling pinch-zoom, two-finger pan with inertia, and an absolute-coordinate object model",
+        "A tight-radius sticky-note-style object component with lift shadow, auto-fitting text, and a selection bounding box"
+      ],
+      "promptText": "<role>\nYou are a senior iOS engineer and designer specializing in infinite-canvas, real-time-multiplayer creative tools, where gesture-driven spatial navigation replaces scrolling lists entirely.\n</role>\n\n<reference_data>\nColor: a brand pair of a warm gold-yellow (primary/action color, with a pressed state) and a deep desaturated indigo \"ink\" tone that serves as the brand's near-black for text, glyphs drawn on top of the yellow, and dark-filled buttons. A completely separate functional blue is reserved strictly for selection/interaction state — bounding boxes, resize handles, marquee selection — and must never be confused with the brand yellow. The canvas surface carries a zoom-scaled dotted or line grid as its only spatial reference, rendered in a light neutral in light mode and a darker neutral in dark mode. A fixed pastel content palette (roughly eight named hues covering yellow, pink, green, blue and similar tones) stays full-saturation \"paper\" in both light and dark appearance — only the surrounding chrome goes dark, content paper never does. Remote-collaborator cursors round-robin through a small fixed set of distinct hex colors.\nType: one humanist sans, with an extrabold weight reserved only for the single top-level board title and everything else topping out at bold; UI/chrome text stays a fixed pixel size regardless of the canvas zoom level, while only canvas content itself scales as the user zooms.\nGeometry: the primary content object (a note-style square) uses a small, tight corner radius so it reads as cut paper rather than a UI card. A floating, rounded, shadowed toolbar (never an opaque frame) hosts creation tools; its active tool fills with the brand yellow and its glyph renders in the brand ink color. A persistent zoom control and an optional overview minimap provide wayfinding since the canvas has no fixed page bound.\nSignature interaction: the note object gets a soft \"lift\" shadow so it reads as physical paper resting on the board, an auto-fitting centered text label, and — only when selected — a thin blue bounding box with corner resize handles and a bottom drag-grip. Connecting lines snap to object anchor points and reflow automatically as objects move. Remote collaborators appear as colored cursor arrows with name tags that interpolate smoothly between position updates.\n</reference_data>\n\n<house_rules>\n1. The board itself is an unbounded 2D coordinate space, not a scrollable list or a fixed page — pan and zoom are camera transforms over absolute object coordinates, never a scroll-view offset standing in for infinite space.\n2. Brand yellow means \"primary action / create\"; functional blue means \"this object is selected\" — the two must never swap roles or appear for the same purpose.\n3. Any glyph or label drawn on top of the brand yellow always renders in the brand ink color, never white or another dark tone — that pairing is the whole brand mark.\n4. Content objects (notes, shapes) keep a small, tight corner radius so they read as cut paper rather than a soft UI card.\n5. Paper/content colors never desaturate or go dark-mode-aware — only the surrounding chrome switches with appearance; canvas content stays full-color paper in both themes.\n6. UI chrome text is always a fixed pixel size independent of the current zoom level; only the objects living on the canvas scale as the user zooms.\n7. A floating toolbar or panel always floats above the canvas with its own shadow — it must never become an opaque bar that frames or boxes in the canvas edge-to-edge.\n8. Every object create, drag, drop, and connector-snap gets a spring animation plus a matching haptic — the tactile, physical feel of manipulating objects is core to the product, not optional polish.\n9. Provide an explicit zoom control and, where useful, a small overview minimap — an unbounded canvas without visible wayfinding leaves users lost.\n10. Remote collaborators' cursors interpolate smoothly between position updates so they glide continuously rather than snapping frame to frame.\n</house_rules>\n\n<the_project>\n- App name & the kind of canvas/board content it hosts:\n- Brand primary color and its paired ink/dark-neutral color, if not yellow/indigo:\n- Fixed content-color palette (note/shape fill options) to offer users:\n- Whether real-time multiplayer cursors are in scope:\n- Toolbar tool set and their order:\n- Presentation/slide mode requirement, if any (frames-as-slides equivalent):\n- Target iOS version:\n</the_project>\n\n<what_to_give_me>\n1. SwiftUI Color/Font tokens enforcing the brand-yellow-versus-selection-blue separation and the fixed content-color palette.\n2. The infinite-canvas container view handling pinch-to-zoom, two-finger pan with inertia, and double-tap-to-fit, over an absolute-coordinate object model.\n3. The primary content-object component (the note-style equivalent) with its unselected/selected/editing states and lift shadow.\n4. The floating toolbar component with an active-tool fill state and a long-press sub-palette pattern.\n5. The zoom control and optional minimap components for spatial wayfinding.\n6. A motion/haptic spec covering object create, drag-and-drop-with-snap, and, if in scope, live multiplayer cursor interpolation.\n</what_to_give_me>",
+      "keywords": [
+        "miro",
+        "ios",
+        "swiftui",
+        "design system",
+        "infinite canvas",
+        "whiteboard app",
+        "multiplayer cursors",
+        "sticky note",
+        "floating toolbar",
+        "productivity app"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:miro",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  }
+]

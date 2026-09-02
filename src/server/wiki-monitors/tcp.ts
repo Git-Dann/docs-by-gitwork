@@ -1,6 +1,7 @@
 // TCP port connector — up when a TCP connection to host:port opens within the
 // timeout (covers databases, SMTP, custom services). SSRF-guarded via
-// assertPublicHost. Raw sockets work on the VPS runtime (not serverless).
+// assertPublicHost, then pinned to an approved address. Raw sockets work on the
+// VPS runtime (not serverless).
 
 import net from "node:net";
 import type { WikiMonitor } from "@prisma/client";
@@ -28,8 +29,9 @@ export const tcpConnector: MonitorConnector = {
     if (!parsed) {
       return { status: "DOWN", latencyMs: null, statusCode: null, error: 'Use "host:port" (e.g. db.example.com:5432)' };
     }
+    let approvedAddresses: string[];
     try {
-      await assertPublicHost(parsed.host);
+      approvedAddresses = (await assertPublicHost(parsed.host)).addresses;
     } catch (e) {
       return {
         status: "DOWN",
@@ -62,7 +64,9 @@ export const tcpConnector: MonitorConnector = {
       socket.once("error", (err) =>
         finish({ status: "DOWN", latencyMs: Date.now() - started, statusCode: null, error: err.message }),
       );
-      socket.connect(parsed.port, parsed.host);
+      // Connect to the exact address approved above. Supplying the hostname
+      // here would perform a second DNS lookup and reopen a rebinding window.
+      socket.connect(parsed.port, approvedAddresses[0]);
     });
   },
 };

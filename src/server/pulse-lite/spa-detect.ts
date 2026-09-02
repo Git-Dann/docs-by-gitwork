@@ -4,8 +4,15 @@ import type { PulseScanCheckInput } from "@/types/pulse";
 // Lovable / Bolt / Replit (and other client-rendered builders) serve a near-empty HTML
 // shell — the content is rendered by JS in the browser. Pulse fetches raw HTML (no JS), so
 // SEO/content/meta/heading checks parse an empty shell and falsely FAIL, tanking the score.
-// This module detects that situation so those checks can be reclassified to SKIPPED (which
-// score-breakdown.ts excludes from the denominator) instead of counted as failures.
+// This module detects that situation so those checks can be reclassified to INCONCLUSIVE.
+//
+// ⚠️ INCONCLUSIVE, not SKIPPED, and the difference is the whole point. SKIPPED means "this
+// control does not apply" — it leaves the denominator, and coverage still reads 100%. But SEO
+// absolutely applies to a Lovable marketing page; Pulse simply could not measure it without
+// running JS. INCONCLUSIVE says exactly that: excluded from the score (so it cannot invent a
+// failure) *and* counted against completeness (so the scan admits what it did not see). Using
+// SKIPPED here would be the §35 disease — "we could not look" reported as "there is nothing
+// there", and a 96%-coverage claim on a page whose content was never read.
 //
 // Pure + dependency-free (only a type import) so it's cheap to unit-test and has no import
 // cycle with the check modules. `builder` is passed in by the caller (from detectAiBuilder).
@@ -24,8 +31,27 @@ const CLIENT_RENDERED_BUILDERS = new Set([
 ]);
 
 /** Checks that parse the page's HTML body/head and therefore fail falsely on an empty SPA
- * shell. HTTP-fetched checks (robots/sitemap/SSL/privacy/terms) are deliberately excluded so
- * their real failures — and the SSL/privacy/terms hard caps — still fire. */
+ * shell.
+ *
+ * HTTP-FETCHED checks (`ssl_valid`, `robots_txt`, `sitemap_xml`) are deliberately excluded:
+ * they never read the body, so their failures are real on a shell and the SSL hard cap must
+ * still fire.
+ *
+ * ⚠️ `privacy_policy` / `terms_of_service` are NOT in either group, and the reason is worth
+ * stating because the comment here used to name them alongside the fetched checks — which was
+ * simply false. They are PARSED, not fetched: a regex over the markup. On an unrendered shell
+ * their old FAIL was manufactured from HTML nobody read, and in the same gitwork.co.uk scan
+ * `canonical_url`/`h1_present`/`image_alt_coverage` were correctly INCONCLUSIVE while
+ * `privacy_policy` was a launch-blocking FAIL for a policy the rendered footer links.
+ *
+ * They are still not listed here, because adding them would be the WRONG repair. These two are
+ * `release-decision.ts` blocking keys, so a blanket adverse→INCONCLUSIVE rewrite would also
+ * downgrade a FAIL that Pulse had genuinely established — a false negative on a legal gate.
+ * Instead `resolveLegalDocumentChecks` (pulse-scan.ts) resolves the shell case AT THE CHECK,
+ * by reading the adopted rendered DOM and, when the links were never legible, fetching the
+ * conventional policy paths and content-verifying what comes back. It emits INCONCLUSIVE itself
+ * when the answer is genuinely unobtainable (a catch-all host, a JS-rendered policy route) and
+ * FAIL only on evidence. Do not add these keys here without removing that. */
 export const HTML_RENDER_DEPENDENT_CHECK_KEYS = new Set<string>([
   // core SEO/content (pulse-scan.ts runUrlChecks)
   "meta_title",
@@ -59,6 +85,15 @@ export const HTML_RENDER_DEPENDENT_CHECK_KEYS = new Set<string>([
   "bing_webmaster_verified",
   "internal_link_depth",
 ]);
+
+/**
+ * Checks whose *non-adverse* result is manufactured from the ABSENCE of body content, and which
+ * are therefore vacuously satisfied by an empty shell. `image_alt_coverage` reports PASS ("no
+ * images detected") on a page that has no images — true of a text-only page, and a lie about a
+ * shell whose images had not rendered yet. These are reclassified too, which is the one case
+ * where a non-failing status must be rewritten.
+ */
+export const VACUOUS_ON_EMPTY_SHELL_KEYS = new Set<string>(["image_alt_coverage"]);
 
 const SPA_SKIP_PREFIX =
   "Not assessable — client-rendered SPA/preview (content is JS-rendered, not in the static HTML).";
@@ -99,19 +134,33 @@ export function detectSpaContext(input: {
 }
 
 /**
- * Reclassify HTML-parse-dependent checks that FAILed/WARNed only because the static HTML is an
- * empty SPA shell → SKIPPED (excluded from the score), with an explanatory detail prefix.
- * PASS checks and any check not in the set are left untouched.
+ * Reclassify checks whose verdict came from parsing a body that was never rendered → INCONCLUSIVE,
+ * with an explanatory detail prefix. Two families:
+ *  - HTML_RENDER_DEPENDENT_CHECK_KEYS, but only where they FAILed/WARNed. A PASS there was earned
+ *    from something really present in the shell (a `<title>`, an og: tag), so it stands.
+ *  - VACUOUS_ON_EMPTY_SHELL_KEYS in *any* non-adverse state, because there the pass IS the absence.
+ *
+ * Anything else is left untouched — notably `ssl_valid`, `robots_txt` and `sitemap_xml`, which are
+ * fetched rather than parsed and whose failures are real on a shell.
+ *
+ * ⚠️ `privacy_policy`/`terms_of_service` are also left untouched, but they are NOT in that group:
+ * they are parsed, not fetched. They handle the shell case themselves — see the note on
+ * HTML_RENDER_DEPENDENT_CHECK_KEYS above — because a blanket downgrade of a launch-blocking legal
+ * check would turn an established failure into an excuse.
  */
 export function reclassifySpaChecks(checks: PulseScanCheckInput[]): PulseScanCheckInput[] {
   return checks.map((c) => {
-    if (
-      (c.status === "FAIL" || c.status === "WARN") &&
-      HTML_RENDER_DEPENDENT_CHECK_KEYS.has(c.checkKey)
-    ) {
+    const adverse = c.status === "FAIL" || c.status === "WARN";
+    const parseDependent = adverse && HTML_RENDER_DEPENDENT_CHECK_KEYS.has(c.checkKey);
+    // Only PASS/NOT_APPLICABLE — a check already marked SKIPPED by a platform or jurisdiction
+    // filter must stay out of the denominator; re-admitting it would overstate what was assessed.
+    const vacuous =
+      (c.status === "PASS" || c.status === "NOT_APPLICABLE") &&
+      VACUOUS_ON_EMPTY_SHELL_KEYS.has(c.checkKey);
+    if (parseDependent || vacuous) {
       return {
         ...c,
-        status: "SKIPPED" as const,
+        status: "INCONCLUSIVE" as const,
         detail: c.detail ? `${SPA_SKIP_PREFIX} ${c.detail}` : SPA_SKIP_PREFIX,
       };
     }

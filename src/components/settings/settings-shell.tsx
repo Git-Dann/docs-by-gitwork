@@ -17,6 +17,7 @@ import {
   DocumentDuplicateIcon,
   BeakerIcon,
   ShieldCheckIcon,
+  RocketLaunchIcon,
   SparklesIcon,
   Squares2X2Icon,
   UserCircleIcon,
@@ -36,6 +37,7 @@ export type SettingsSectionId =
   | "branding"
   | "templates"
   | "onboarding"
+  | "launchpad"
   | "content"
   | "rate-card"
   | "people"
@@ -124,6 +126,13 @@ const GROUPS: SectionGroup[] = [
         label: "Onboarding",
         description: "Client onboarding forms.",
         icon: ClipboardDocumentCheckIcon,
+        adminOnly: true,
+      },
+      {
+        id: "launchpad",
+        label: "Launchpad",
+        description: "What we need from clients.",
+        icon: RocketLaunchIcon,
         adminOnly: true,
       },
       // Rate card management isn't surfaced in the Settings nav anymore — it belongs alongside

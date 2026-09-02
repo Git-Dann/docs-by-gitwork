@@ -34,7 +34,7 @@
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { RepoSnapshot } from "./native-mobile";
-import { isVendoredPath, stripCStyleComments } from "./native-mobile";
+import { isVendoredPath, stripCStyleComments, sampleCoverage } from "./native-mobile";
 import { allDependencies, anyDependency, hasDependency, parsePackageManifest, type PackageManifest, type ProjectShape } from "./project-shape";
 
 /** Below this sampled-file coverage, absence findings self-downgrade to LOW. */
@@ -118,7 +118,7 @@ function buildContext(snapshot: RepoSnapshot, shape: "electron" | "tauri"): Desk
     capabilities,
     packagerConfig,
     pkg: parsePackageManifest(pkgText),
-    coverage: jsPaths.length === 0 ? 0 : Math.min(1, read.length / jsPaths.length),
+    coverage: sampleCoverage(read.length, jsPaths.length, snapshot.truncated),
     paths: snapshot.paths,
   };
 }

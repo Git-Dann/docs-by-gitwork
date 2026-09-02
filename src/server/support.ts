@@ -11,6 +11,9 @@ import type {
   Connection,
   Conversation,
   ConversationNote,
+  ConversationViewCounts,
+  ClientQueueSummary,
+  ReplyState,
   Message,
   Ticket,
   DraftAction,
@@ -26,7 +29,8 @@ import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { canSeeAllClients, ForbiddenError } from "@/server/auth/effective-user";
 import { assignedClientIds } from "@/server/tasks";
-import { encrypt, decrypt } from "@/lib/encryption";
+import { deriveReplyState, foldMessageActivity } from "@/server/support-reply-state";
+import { resolveCustomer, derivePreview, isSelfLabel } from "@/server/support-channels/identity";
 import type {
   SupportClientStatus,
   SupportSource as PrismaSupportSource,
@@ -196,6 +200,7 @@ export function serializeSupportClient(row: {
   reportDueDay: number | null;
   workspaceClientId?: string | null;
   courseRequestOnly?: boolean | null;
+  workspaceClient?: { slug: string } | null;
   _count?: { conversations?: number };
 }): SupportClient {
   return {
@@ -208,6 +213,10 @@ export function serializeSupportClient(row: {
     reportingRecipient: row.reportingRecipient ?? undefined,
     reportDueDay: row.reportDueDay ?? undefined,
     workspaceClientId: row.workspaceClientId ?? undefined,
+    // The PORTAL client's slug, which is what the per-client wiki features key on. Care's own slug
+    // is a different string for the same client ("big-wedge-golf" vs "wedge"), so gating on
+    // `slug` above would silently never match.
+    workspaceClientSlug: row.workspaceClient?.slug ?? undefined,
     courseRequestOnly: row.courseRequestOnly ?? false,
     unreadCount: row._count?.conversations ?? 0,
   };
@@ -215,47 +224,17 @@ export function serializeSupportClient(row: {
 
 // ─── Scraper config encryption helpers ───────────────────────────────────────
 
-const SENSITIVE_SCRAPER_KEYS = ["botToken", "serviceAccountJson", "apiToken", "webhookToken", "password"];
+// Moved to the dependency-light `support-scraper-config` so the decrypt step can be
+// unit-tested without loading this module's NextAuth/Prisma import chain — the gap that
+// let the sync cron skip decryption unnoticed. Re-exported here so call sites that import
+// them from `@/server/support` keep working.
+import {
+  SENSITIVE_SCRAPER_KEYS,
+  encryptScraperConfig,
+  decryptScraperConfig,
+} from "@/server/support-scraper-config";
 
-/**
- * Encrypts sensitive values in a scraperConfig object using AES-256-GCM.
- * No-ops when ENCRYPTION_KEY is not set, so existing deployments are unaffected
- * until the key is provisioned.
- */
-export function encryptScraperConfig(
-  config: Record<string, unknown>,
-): Record<string, unknown> {
-  if (!process.env.ENCRYPTION_KEY) return config;
-  return Object.fromEntries(
-    Object.entries(config).map(([k, v]) =>
-      SENSITIVE_SCRAPER_KEYS.includes(k) && typeof v === "string" && v && !v.startsWith("enc:")
-        ? [k, `enc:${encrypt(v)}`]
-        : [k, v],
-    ),
-  );
-}
-
-/**
- * Decrypts `enc:…` values in a scraperConfig object. Plain-text values (legacy or
- * unset ENCRYPTION_KEY) are returned as-is.
- */
-export function decryptScraperConfig(
-  config: Record<string, unknown> | null | undefined,
-): Record<string, unknown> | null {
-  if (!config) return null;
-  return Object.fromEntries(
-    Object.entries(config).map(([k, v]) => {
-      if (typeof v === "string" && v.startsWith("enc:")) {
-        try {
-          return [k, decrypt(v.slice(4))];
-        } catch {
-          return [k, ""];  // decryption failure → empty (won't expose ciphertext)
-        }
-      }
-      return [k, v];
-    }),
-  );
-}
+export { SENSITIVE_SCRAPER_KEYS, encryptScraperConfig, decryptScraperConfig };
 
 export function serializeConnection(row: {
   id: string;
@@ -320,6 +299,12 @@ export function serializeConversation(row: {
   firstTriagedAt: Date | null;
   closedAt: Date | null;
   externalUrl: string | null;
+  // Required, NOT optional: replyState is derived from these, so a caller that narrows its
+  // `select` and omits them would get a silent, confident "no_inbound" on a conversation that
+  // is actually awaiting a reply. Requiring them turns that into a compile error.
+  lastInboundAt: Date | null;
+  lastOutboundAt: Date | null;
+  lastMessageAt: Date | null;
   tickets?: Array<{ id: string }>;
   _count?: { notes?: number };
 }): Conversation {
@@ -342,6 +327,12 @@ export function serializeConversation(row: {
     firstTriagedAt: row.firstTriagedAt?.toISOString(),
     closedAt: row.closedAt?.toISOString(),
     externalUrl: row.externalUrl ?? undefined,
+    lastInboundAt: row.lastInboundAt?.toISOString(),
+    lastOutboundAt: row.lastOutboundAt?.toISOString(),
+    lastMessageAt: row.lastMessageAt?.toISOString(),
+    // Derived here, once, so every consumer (cockpit, legacy dashboard, iOS) agrees on what
+    // "replied" means instead of each re-implementing the comparison.
+    replyState: deriveReplyState({ lastInboundAt: row.lastInboundAt, lastOutboundAt: row.lastOutboundAt }),
     noteCount: row._count?.notes,
     ticketId: row.tickets?.[0]?.id,
   };
@@ -506,6 +497,7 @@ export async function listSupportClients(user?: EffectiveUser): Promise<SupportC
     orderBy: { name: "asc" },
     include: {
       _count: { select: { conversations: { where: { unread: true } } } },
+      workspaceClient: { select: { slug: true } },
     },
   });
   return rows.map(serializeSupportClient);
@@ -654,6 +646,57 @@ export async function deleteSupportClient(clientId: string): Promise<void> {
 
 // ─── Conversations ────────────────────────────────────────────────────────────
 
+/**
+ * The reply-state rule, expressed as a query.
+ *
+ * ⚠️ This is the SAME rule as `deriveReplyState()` and the two must agree exactly, or a
+ * conversation can be listed in the Awaiting queue and then render a "Replied" chip. In
+ * particular `awaiting` uses `lte` (not `lt`) so an exact timestamp tie lands in the awaiting
+ * queue, matching the pure function's deliberate fail-toward-being-seen choice.
+ *
+ * A null `lastOutboundAt` needs its own branch: SQL comparisons against NULL yield NULL, not
+ * true, so a never-answered conversation would be silently dropped from its own queue.
+ */
+function replyStateWhere(state: ReplyState): Prisma.SupportConversationWhereInput {
+  const inbound = prisma.supportConversation.fields.lastInboundAt;
+  switch (state) {
+    case "awaiting_reply":
+      return {
+        lastInboundAt: { not: null },
+        OR: [{ lastOutboundAt: null }, { lastOutboundAt: { lte: inbound } }],
+      };
+    case "replied":
+      return { lastInboundAt: { not: null }, lastOutboundAt: { gt: inbound } };
+    case "no_inbound":
+      return { lastInboundAt: null };
+  }
+}
+
+/**
+ * Oldest customer message still believed unanswered for a client, or null when nothing is waiting.
+ *
+ * Used by the IMAP adapter to decide how far back to read the Sent folder. Reading Sent answers one
+ * question — "were these threads actually replied to?" — so the window need only reach the oldest
+ * thread we still think is unanswered.
+ *
+ * Deliberately built on `replyStateWhere("awaiting_reply")` rather than repeating the predicate:
+ * if the sync window and the queue ever disagreed about what "awaiting" means, the sync would scan
+ * the wrong period and the queue would stay wrong with no visible error.
+ *
+ * Rides @@index([clientId, lastInboundAt]).
+ */
+export async function oldestUnansweredInboundAt(clientId: string): Promise<Date | null> {
+  const row = await prisma.supportConversation.aggregate({
+    where: {
+      clientId,
+      status: { in: ["NEW", "OPEN"] },
+      ...replyStateWhere("awaiting_reply"),
+    },
+    _min: { lastInboundAt: true },
+  });
+  return row._min.lastInboundAt ?? null;
+}
+
 export async function listConversations(
   clientId: string,
   opts: {
@@ -661,33 +704,78 @@ export async function listConversations(
     cursor?: string;
     status?: ConversationStatus | ConversationStatus[];
     assigneeId?: string;
+    /** Only conversations with no assignee. Mutually exclusive with assigneeId. */
+    unassigned?: boolean;
     priority?: ConversationPriority;
     issueType?: string;
     source?: SupportSource;
+    /** Filter by derived reply state — applied in SQL so a page is complete, not a sample. */
+    replyState?: ReplyState;
+    /** Free-text over subject / preview / customer, applied in SQL for the same reason. */
+    q?: string;
+    /** "oldest_inbound" = longest-waiting first, for working the awaiting queue. */
+    sort?: "activity" | "oldest_inbound";
     /** When true, snoozed conversations whose snoozeUntil has passed are surfaced. */
     includeSnoozedDue?: boolean;
   } = {},
 ): Promise<{ conversations: Conversation[]; nextCursor: string | null }> {
-  const limit = Math.min(opts.limit ?? 100, 200);
+  // 50, not 100. Every filter that shapes a view is applied in SQL below, so a page is 50 rows
+  // OF THE THING YOU ASKED FOR and "Load more" reaches the rest — rather than 100 recent rows
+  // that a client-side predicate then whittles down to an arbitrary and silently partial subset.
+  const limit = Math.min(opts.limit ?? 50, 200);
 
   const statusList = opts.status
     ? (Array.isArray(opts.status) ? opts.status : [opts.status]).map(toDbConversationStatus)
     : undefined;
 
-  const where: Prisma.SupportConversationWhereInput = { clientId };
+  // Composed with AND so independent filters can each contribute their own OR branch without
+  // overwriting one another — replyState and includeSnoozedDue both need one.
+  const and: Prisma.SupportConversationWhereInput[] = [];
+  const where: Prisma.SupportConversationWhereInput = { clientId, AND: and };
+
   if (statusList) where.status = { in: statusList };
   if (opts.assigneeId) where.assigneeId = opts.assigneeId;
+  else if (opts.unassigned) where.assigneeId = null;
   if (opts.priority) where.priority = toDbConversationPriority(opts.priority);
   if (opts.issueType) where.issueType = opts.issueType;
   if (opts.source) where.source = toDbSource(opts.source);
+  if (opts.replyState) and.push(replyStateWhere(opts.replyState));
+
+  const q = opts.q?.trim();
+  if (q) {
+    and.push({
+      OR: [
+        { subject: { contains: q, mode: "insensitive" } },
+        { preview: { contains: q, mode: "insensitive" } },
+        { customerLabel: { contains: q, mode: "insensitive" } },
+      ],
+    });
+  }
+
   if (opts.includeSnoozedDue) {
     // Surface snoozed items whose timer has elapsed alongside the requested status set.
-    where.OR = [
-      ...(statusList ? [{ status: { in: statusList } }] : []),
-      { status: "SNOOZED", snoozeUntil: { lte: new Date() } },
-    ];
+    and.push({
+      OR: [
+        ...(statusList ? [{ status: { in: statusList } }] : []),
+        { status: "SNOOZED" as PrismaConversationStatus, snoozeUntil: { lte: new Date() } },
+      ],
+    });
     delete where.status;
   }
+
+  // Order by ACTIVITY, not by when the thread started. `receivedAt` is stamped once at creation
+  // and never updated, so ordering by it stranded a months-old thread that got a reply an hour
+  // ago at the bottom of the list. `nulls: "last"` covers the window before
+  // backfillConversationActivity has drained a client; `id` is a deterministic tiebreaker so
+  // cursor pagination can't skip or repeat a row.
+  const orderBy: Prisma.SupportConversationOrderByWithRelationInput[] =
+    opts.sort === "oldest_inbound"
+      ? [{ lastInboundAt: { sort: "asc", nulls: "last" } }, { id: "desc" }]
+      : [
+          { lastMessageAt: { sort: "desc", nulls: "last" } },
+          { receivedAt: "desc" },
+          { id: "desc" },
+        ];
 
   const rows = await prisma.supportConversation.findMany({
     where,
@@ -695,7 +783,7 @@ export async function listConversations(
       tickets: { select: { id: true }, take: 1 },
       _count: { select: { notes: true } },
     },
-    orderBy: { receivedAt: "desc" },
+    orderBy,
     take: limit + 1,
     ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
   });
@@ -748,6 +836,146 @@ export async function createConversation(
     include: { tickets: { select: { id: true }, take: 1 } },
   });
   return serializeConversation(row);
+}
+
+/**
+ * True counts per saved view, plus the longest-waiting customer.
+ *
+ * These were previously derived client-side from the fetched page, so every badge silently
+ * meant "…within the first 100 rows we happened to load" — a count that under-reports exactly
+ * when it matters most, on a busy client. Counting in SQL costs a handful of indexed COUNTs and
+ * is the difference between a number you can act on and one you learn to ignore.
+ *
+ * Care home also uses this instead of pulling every conversation per client just to tally them.
+ */
+export async function getConversationViewCounts(
+  clientId: string,
+  currentUserId?: string,
+): Promise<ConversationViewCounts> {
+  const active: Prisma.SupportConversationWhereInput = { clientId, status: { in: ["NEW", "OPEN"] } };
+  const awaiting = { ...active, AND: [replyStateWhere("awaiting_reply")] };
+
+  const [
+    awaitingCount,
+    repliedCount,
+    assignedMe,
+    unassigned,
+    urgent,
+    open,
+    snoozed,
+    closed,
+    all,
+    oldest,
+    sourceGroups,
+  ] = await Promise.all([
+    prisma.supportConversation.count({ where: awaiting }),
+    prisma.supportConversation.count({ where: { ...active, AND: [replyStateWhere("replied")] } }),
+    currentUserId
+      ? prisma.supportConversation.count({ where: { ...active, assigneeId: currentUserId } })
+      : Promise.resolve(0),
+    // Unassigned counts only what is AWAITING a reply: an unowned thread that has already been
+    // answered is not work sitting on nobody's desk, and counting it there inflated the badge.
+    prisma.supportConversation.count({ where: { ...awaiting, assigneeId: null } }),
+    prisma.supportConversation.count({ where: { ...active, priority: "URGENT" } }),
+    prisma.supportConversation.count({ where: active }),
+    prisma.supportConversation.count({ where: { clientId, status: "SNOOZED" } }),
+    prisma.supportConversation.count({ where: { clientId, status: { in: ["CLOSED", "IGNORED"] } } }),
+    prisma.supportConversation.count({ where: { clientId } }),
+    prisma.supportConversation.findFirst({
+      where: awaiting,
+      orderBy: { lastInboundAt: { sort: "asc", nulls: "last" } },
+      select: { lastInboundAt: true },
+    }),
+    // Which channels this client's conversations ACTUALLY came from.
+    //
+    // ⚠️ The cockpit used to build its channel filter from the client's live CONNECTIONS, so a
+    // source whose connector has since been removed or replaced — Fellas' Gmail connector, swapped
+    // for IMAP — vanished from the dropdown while its conversations stayed in the table. Those
+    // rows were visible and unfilterable. Conversations outlive connectors; the filter has to be
+    // built from the data, and it rides here because this endpoint is already one round trip of
+    // groupBys for the tab badges.
+    prisma.supportConversation.groupBy({
+      by: ["source"],
+      where: { clientId },
+      _count: { _all: true },
+    }),
+  ]);
+
+  return {
+    awaiting: awaitingCount,
+    replied: repliedCount,
+    assignedMe,
+    unassigned,
+    urgent,
+    open,
+    snoozed,
+    closed,
+    all,
+    oldestAwaitingAt: oldest?.lastInboundAt?.toISOString() ?? null,
+    sources: sourceGroups
+      .map((g) => ({ source: mapSource(g.source), count: g._count._all }))
+      .sort((a, b) => b.count - a.count),
+  };
+}
+
+/**
+ * The same figures as getConversationViewCounts, for EVERY client in the workspace, in a fixed
+ * number of queries.
+ *
+ * Care home rendered one `getConversationViewCounts` per client row — 10 indexed counts each, so
+ * ~50 round trips for five clients and growing linearly with the client list. The page felt slow
+ * and its numbers arrived in a ragged cascade, which is a large part of why it didn't feel solid.
+ *
+ * Five `groupBy`s answer it for all clients at once, so the cost no longer depends on how many
+ * clients there are. Deliberately built on the same `replyStateWhere` predicate as the per-client
+ * version — if the two disagreed, the home page and the cockpit would report different numbers for
+ * the same client, which is exactly the class of thing that destroys trust in a dashboard.
+ */
+export async function getClientQueueSummaries(): Promise<Record<string, ClientQueueSummary>> {
+  const workspaceId = await getWorkspaceId();
+  const scope: Prisma.SupportConversationWhereInput = { client: { workspaceId } };
+  const active: Prisma.SupportConversationWhereInput = { ...scope, status: { in: ["NEW", "OPEN"] } };
+  const awaiting: Prisma.SupportConversationWhereInput = {
+    ...active,
+    AND: [replyStateWhere("awaiting_reply")],
+  };
+
+  const [openRows, awaitingRows, unassignedRows, urgentRows, oldestRows] = await Promise.all([
+    prisma.supportConversation.groupBy({ by: ["clientId"], where: active, _count: { _all: true } }),
+    prisma.supportConversation.groupBy({ by: ["clientId"], where: awaiting, _count: { _all: true } }),
+    prisma.supportConversation.groupBy({
+      by: ["clientId"],
+      where: { ...awaiting, assigneeId: null },
+      _count: { _all: true },
+    }),
+    prisma.supportConversation.groupBy({
+      by: ["clientId"],
+      where: { ...active, priority: "URGENT" },
+      _count: { _all: true },
+    }),
+    prisma.supportConversation.groupBy({
+      by: ["clientId"],
+      where: awaiting,
+      _min: { lastInboundAt: true },
+    }),
+  ]);
+
+  const out: Record<string, ClientQueueSummary> = {};
+  const ensure = (clientId: string): ClientQueueSummary =>
+    (out[clientId] ??= { awaiting: 0, replied: 0, unassigned: 0, urgent: 0, open: 0, oldestAwaitingAt: null });
+
+  for (const r of openRows) ensure(r.clientId).open = r._count._all;
+  for (const r of awaitingRows) ensure(r.clientId).awaiting = r._count._all;
+  for (const r of unassignedRows) ensure(r.clientId).unassigned = r._count._all;
+  for (const r of urgentRows) ensure(r.clientId).urgent = r._count._all;
+  for (const r of oldestRows) {
+    ensure(r.clientId).oldestAwaitingAt = r._min.lastInboundAt?.toISOString() ?? null;
+  }
+  // "Replied" is the rest of the active set — derived rather than counted, saving a query and
+  // guaranteeing awaiting + replied === open instead of three numbers that can disagree.
+  for (const s of Object.values(out)) s.replied = Math.max(0, s.open - s.awaiting);
+
+  return out;
 }
 
 export async function updateConversation(
@@ -1010,6 +1238,10 @@ export async function createMessage(
     },
   });
 
+  // Move the conversation's reply state on the same call that sends the reply, so the row
+  // flips to "Replied" immediately rather than waiting for the next connector sync.
+  await recordMessageActivity(convId, [row]);
+
   // Stamp firstReplyAt on any linked ticket the first time an outbound message is sent.
   if (data.direction === "outbound") {
     const ticket = await prisma.supportTicket.findFirst({
@@ -1025,6 +1257,252 @@ export async function createMessage(
   }
 
   return serializeMessage(row);
+}
+
+// ─── Reply tracking ───────────────────────────────────────────────────────────
+//
+// One writer for the activity stamps, shared by every ingest path (the channel core, the
+// Gmail adapter, and in-app replies) so no connector can forget to maintain them and quietly
+// leave its conversations reading "awaiting reply" forever.
+
+/**
+ * Fold newly-stored messages into a conversation's activity stamps.
+ *
+ * `unread` is set ONLY when an inbound message landed. Previously any new message re-flagged
+ * the thread — including our own reply syncing back from Gmail — so the unread counters could
+ * only ever grow and the badge meant nothing.
+ */
+export async function recordMessageActivity(
+  convId: string,
+  messages: Array<{ direction: string; createdAt: Date }>,
+): Promise<void> {
+  if (messages.length === 0) return;
+
+  const current = await prisma.supportConversation.findUnique({
+    where: { id: convId },
+    select: { lastInboundAt: true, lastOutboundAt: true },
+  });
+  if (!current) return;
+
+  const { sawInbound, ...stamps } = foldMessageActivity(messages, current);
+  if (Object.keys(stamps).length === 0 && !sawInbound) return;
+
+  await prisma.supportConversation.update({
+    where: { id: convId },
+    data: { ...stamps, ...(sawInbound ? { unread: true } : {}) },
+  });
+}
+
+/** Every source whose conversations can arrive via a mailbox, and so via a forwarder. */
+const MAIL_SOURCES: PrismaSupportSource[] = ["GMAIL", "IMAP"];
+
+/**
+ * Repair conversations whose customer label is the FORWARDER and whose preview is a copy of the
+ * subject — the two defects that made a 226-row queue read as the same person writing the same
+ * thing 226 times.
+ *
+ * Runs over stored messages, so it needs no mailbox round trip. Self-terminating without a schema
+ * change: it only selects rows that still exhibit the defect, so a repaired client matches nothing
+ * on the next pass. Bounded per run for the same reason as the activity backfill.
+ *
+ * ⚠️ **Three things used to stop this repairing anything, and all three are the same mistake:
+ * scoping the repair to the connector that happened to write the rows.**
+ *
+ *  1. It required a `GMAIL` *connection* and returned early without one. A client whose Gmail
+ *     connector has since been replaced by IMAP therefore had its whole Gmail history frozen
+ *     broken — the connector is gone, the conversations are not.
+ *  2. It only considered `source: "GMAIL"` *rows*, while the same forwarder writes through the
+ *     IMAP connector today, so the live rows were out of scope as well.
+ *  3. Its defect test compared the WHOLE stored label to the client name, which only matches
+ *     Gmail's stripped form and never IMAP's `"Name" <addr>` form (see `parseAddressLabel`).
+ *
+ * The mailbox config is now a *signal*, not a gate: the client's own name identifies a forwarder on
+ * its own, and it is always available.
+ */
+export async function repairForwardedIdentities(
+  clientId: string,
+  opts: { batch?: number } = {},
+): Promise<{ repaired: number; remaining: number }> {
+  const take = Math.min(opts.batch ?? 400, 500);
+
+  const connections = await prisma.accountConnection.findMany({
+    where: { clientId, source: { in: MAIL_SOURCES } },
+    select: { id: true, scraperConfig: true },
+  });
+
+  // Every address/name this client's mailboxes speak as — anything labelled with one of these
+  // is a forward, not a customer. Absent config is fine; clientName carries the test.
+  const mailboxes = connections.map((c) => {
+    const cfg = (decryptScraperConfig(c.scraperConfig as Record<string, unknown> | null) ?? {}) as {
+      impersonateEmail?: string;
+      intakeAddress?: string;
+      email?: string;
+    };
+    return { address: cfg.impersonateEmail ?? cfg.email ?? null, name: cfg.intakeAddress ?? null };
+  });
+
+  const client = await prisma.supportClient.findUnique({ where: { id: clientId }, select: { name: true } });
+  const clientName = client?.name ?? null;
+
+  // Candidates are selected plainly and the "does this need repair?" test is done in JS.
+  // ⚠️ The first version filtered with a Prisma field reference (`preview equals fields.subject`)
+  // comparing a nullable column to a non-nullable one, plus a `customerLabel in selfLabels` clause
+  // where selfLabels are ADDRESSES and the stored label is a DISPLAY NAME — between them the query
+  // matched nothing and repaired nothing. Ordinary code cannot fail silently in that way.
+  const candidates = await prisma.supportConversation.findMany({
+    where: { clientId, source: { in: MAIL_SOURCES } },
+    select: {
+      id: true,
+      subject: true,
+      customerLabel: true,
+      preview: true,
+      messages: {
+        where: { direction: "inbound" },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+        select: { body: true, authorLabel: true },
+      },
+    },
+    orderBy: { receivedAt: "desc" },
+    take,
+  });
+  if (candidates.length === 0) return { repaired: 0, remaining: 0 };
+
+  const primary = mailboxes[0] ?? { address: null, name: null };
+  const identityCtx = { mailboxAddress: primary.address, mailboxName: primary.name, clientName };
+
+  // `isSelfLabel` parses the label first, so it matches BOTH stored forms — Gmail's stripped
+  // `Fellas Loaded` and IMAP's `"Fellas Loaded" <noreply@fellasloaded.com>`. The previous whole-
+  // string comparison only ever matched the first, which is why the live IMAP rows never repaired.
+  const rows = candidates.filter(
+    (r) =>
+      isSelfLabel(r.customerLabel, identityCtx) ||
+      (r.preview !== null && r.preview === r.subject),
+  );
+  if (rows.length === 0) return { repaired: 0, remaining: 0 };
+
+  let repaired = 0;
+  const CHUNK = 25;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    await Promise.all(
+      rows.slice(i, i + CHUNK).map((row) => {
+        const first = row.messages[0];
+        const body = first?.body ?? "";
+        // Gmail's adapter strips `<address>` before storing while IMAP keeps it, so the resolver
+        // is handed whichever form exists and does the parsing itself.
+        const identity = resolveCustomer(
+          { fromText: first?.authorLabel ?? row.customerLabel, subject: row.subject, body },
+          identityCtx,
+        );
+        const preview = derivePreview(body, row.subject);
+
+        const data: Prisma.SupportConversationUpdateInput = {};
+        if (identity.label && identity.label !== row.customerLabel) data.customerLabel = identity.label;
+        // Only clear a preview that is literally the subject; never blank a good one.
+        if (preview) data.preview = preview;
+        else if (row.preview && row.preview === row.subject) data.preview = null;
+
+        if (Object.keys(data).length === 0) return Promise.resolve(null);
+        repaired++;
+        return prisma.supportConversation.update({ where: { id: row.id }, data });
+      }),
+    );
+  }
+
+  // `remaining` distinguishes "nothing to do" from "more to come" — a bounded repair that reports
+  // only a count leaves an operator unable to tell a drained client from a partially-drained one.
+  const remaining = candidates.length === take ? await prisma.supportConversation.count({
+    where: { clientId, source: { in: MAIL_SOURCES } },
+  }) - take : 0;
+
+  return { repaired, remaining: Math.max(0, remaining) };
+}
+
+/**
+ * Populate the activity stamps on conversations that predate reply tracking.
+ *
+ * Bounded and self-terminating: it only looks at rows where `lastMessageAt` is null, so once a
+ * client is drained the query matches nothing and the call costs one indexed lookup. That is
+ * why it can run on the ordinary sync path with no one-shot route and no manual migration step.
+ *
+ * A conversation with no captured messages is stamped from `receivedAt` rather than skipped —
+ * otherwise it would match the "needs backfill" filter on every sync, forever.
+ */
+export async function backfillConversationActivity(
+  clientId: string,
+  opts: { batch?: number } = {},
+): Promise<{ updated: number }> {
+  // Sized so one sync drains a typical client outright — until a client is drained its
+  // conversations have no stamps, which renders as "No customer message" and an empty
+  // awaiting-reply queue. That transient state looks exactly like a broken feature, so the
+  // window wants to be one sync, not five.
+  const take = Math.min(opts.batch ?? 500, 500);
+
+  const stale = await prisma.supportConversation.findMany({
+    where: { clientId, lastMessageAt: null },
+    select: { id: true, receivedAt: true },
+    take,
+  });
+  if (stale.length === 0) return { updated: 0 };
+
+  const ids = stale.map((c) => c.id);
+  // One grouped read for the whole batch rather than a query per conversation.
+  const grouped = await prisma.supportMessage.groupBy({
+    by: ["conversationId", "direction"],
+    where: { conversationId: { in: ids } },
+    _max: { createdAt: true },
+  });
+
+  const byConv = new Map<string, { lastInboundAt?: Date; lastOutboundAt?: Date }>();
+  for (const g of grouped) {
+    const at = g._max.createdAt;
+    if (!at) continue;
+    const entry = byConv.get(g.conversationId) ?? {};
+    if (g.direction === "outbound") entry.lastOutboundAt = at;
+    else entry.lastInboundAt = at;
+    byConv.set(g.conversationId, entry);
+  }
+
+  // Each row needs its own values, so this cannot be one updateMany. Chunked rather than
+  // sequential so 500 rows is a handful of round trips instead of 500, and rather than one
+  // giant Promise.all so a large client can't open 500 connections at once.
+  let updated = 0;
+  const CHUNK = 25;
+  for (let i = 0; i < stale.length; i += CHUNK) {
+    await Promise.all(
+      stale.slice(i, i + CHUNK).map((conv) => {
+        const found = byConv.get(conv.id);
+        // ⚠️ NO message rows at all is not the same as "no customer message". A conversation
+        // exists because a connector ingested something INBOUND — an email, a review, a post —
+        // and plenty of older rows carry a `preview` while their message bodies were never
+        // captured (empty body, a purge, a pre-message-capture sync). Treating those as
+        // no_inbound put a confident "No customer message" on threads with visible content and
+        // dropped them out of the awaiting queue entirely. `receivedAt` is when that inbound
+        // thing arrived, so it is the honest floor.
+        //
+        // Rows that DO exist are trusted as-is: an all-outbound thread (one we started, or one
+        // reconstructed from the Sent folder) correctly stays no_inbound.
+        const hasMessageRows = byConv.has(conv.id);
+        const lastInboundAt = hasMessageRows ? (found?.lastInboundAt ?? null) : conv.receivedAt;
+        const latest = [lastInboundAt, found?.lastOutboundAt]
+          .filter((d): d is Date => d instanceof Date)
+          .sort((a, b) => b.getTime() - a.getTime())[0];
+        return prisma.supportConversation.update({
+          where: { id: conv.id },
+          data: {
+            lastInboundAt,
+            lastOutboundAt: found?.lastOutboundAt ?? null,
+            // Falls back to receivedAt so a conversation with nothing at all still drains —
+            // otherwise it would re-match the "needs backfill" filter on every sync forever.
+            lastMessageAt: latest ?? conv.receivedAt,
+          },
+        });
+      }),
+    );
+    updated += Math.min(CHUNK, stale.length - i);
+  }
+
+  return { updated };
 }
 
 // ─── Tickets ─────────────────────────────────────────────────────────────────

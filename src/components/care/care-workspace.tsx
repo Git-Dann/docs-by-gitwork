@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import type { SupportClient } from "@/types/support";
-import { useAccount } from "@/hooks/use-account";
 import { useSupportClients } from "@/hooks/use-support";
 import { CareHome } from "./care-home";
 import { ClientCockpit } from "./client-cockpit";
@@ -15,7 +14,6 @@ const ACTIVE_CLIENT_KEY = "care-active-client";
  * The selected client persists in localStorage so a refresh lands you back where you were.
  */
 export function CareWorkspace() {
-  const account = useAccount();
   const clientsQ = useSupportClients();
   const [activeClientId, setActiveClientId] = useState<string | null>(null);
 
@@ -39,7 +37,6 @@ export function CareWorkspace() {
     return (
       <ClientCockpit
         client={activeClient}
-        currentUserId={account.data?.id}
         onBack={() => select(null)}
       />
     );

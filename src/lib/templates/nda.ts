@@ -356,8 +356,8 @@ export const ndaSectionBlueprints: SectionBlueprint[] = [
   // here instead, immediately after the clause run, so `01`–`15` stay correct.
   {
     key: "callout",
-    title: "",
-    description: "",
+    title: "Why this needs a personal signature",
+    description: "Plain-English explainer.",
     data: {
       tone: "info",
       headline: "Why the Founder signs personally",
@@ -366,8 +366,8 @@ export const ndaSectionBlueprints: SectionBlueprint[] = [
   },
   {
     key: "callout",
-    title: "",
-    description: "",
+    title: "Plain English summary",
+    description: "Plain-English explainer.",
     data: {
       tone: "info",
       headline: "Plain English summary of clause 7",
@@ -421,8 +421,8 @@ export const ndaSectionBlueprints: SectionBlueprint[] = [
   // a value there PRINTS above its rule, and the reference leaves every rule empty to be signed.
   {
     key: "signatures",
-    title: "",
-    description: "",
+    title: "Signatures",
+    description: "Authorised signatories for each party.",
     data: {
       intro:
         "Each person signing below confirms they are authorised to sign in the capacity shown, and agrees to the terms set out in this agreement.",

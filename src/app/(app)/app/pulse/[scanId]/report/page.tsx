@@ -78,13 +78,13 @@ export default async function PulseReportPage({
   const passCount = scan.checks.filter((c) => c.status === "PASS").length;
   const warnCount = scan.checks.filter((c) => c.status === "WARN").length;
   const failCount = scan.checks.filter((c) => c.status === "FAIL").length;
-  const skipCount = scan.checks.filter((c) => c.status === "SKIPPED").length;
+  const skipCount = scan.checks.filter((c) => !["PASS", "WARN", "FAIL"].includes(c.status)).length;
 
   const stats = [
     { count: passCount, label: "Passing",  color: "#16a34a", bg: "#f0fdf4" },
     { count: warnCount, label: "Warnings", color: "#d97706", bg: "#fffbeb" },
     { count: failCount, label: "Failed",   color: "#dc2626", bg: "#fef2f2" },
-    ...(skipCount > 0 ? [{ count: skipCount, label: "Skipped", color: "#9ca3af", bg: "#f9fafb" }] : []),
+    ...(skipCount > 0 ? [{ count: skipCount, label: "Unverified", color: "#64748b", bg: "#f8fafc" }] : []),
   ];
 
   return (
@@ -229,7 +229,12 @@ export default async function PulseReportPage({
             <div style={{ marginBottom: 48 }}>
               <div className="rp-widget-h kb">
                 <span className="rp-widget-label">00 // EXECUTIVE OVERVIEW</span>
-                <span className="rp-widget-right">{score}/100 health score</span>
+                <span className="rp-widget-right">
+                  {score}/100 health score
+                  {typeof scan.scoreBreakdown?.completeness === "number"
+                    ? ` · ${scan.scoreBreakdown.completeness}% complete · ${scan.scoreBreakdown.lowerBound}–${scan.scoreBreakdown.upperBound}`
+                    : ""}
+                </span>
               </div>
               <div style={{ border: "1px solid #e2e8f0", borderTop: "none", borderRadius: "0 0 10px 10px", padding: "20px 20px 24px" }}>
                 {analysis.executiveSummary && (
@@ -324,13 +329,26 @@ export default async function PulseReportPage({
                         const catPass  = catApp.filter((c) => c.status === "PASS").length;
                         const catTotal = catApp.length;
                         const issues   = checks.filter((c) => c.status === "FAIL" || c.status === "WARN");
+                        // A category where NOTHING ran is not a category that passed.
+                        // catTotal === 0 made `catPass === catTotal` true (0 === 0), so an
+                        // entirely-skipped category printed a green "0/0" and "All checks
+                        // passing ✓" — asserting a clean bill over a measurement that was
+                        // never taken. That is the exact inversion the scanner was fixed for
+                        // in §34.2/§35 and it survived in the client-facing report.
+                        const nothingRan = catTotal === 0;
                         return (
                           <div key={name} className="kb" style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #f1f5f9", background: "white" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: issues.length > 0 ? 8 : 0 }}>
                               <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>{name}</span>
-                              <span style={{ fontSize: 11, color: catPass === catTotal ? "#16a34a" : "#6b7280" }}>{catPass}/{catTotal}</span>
+                              <span style={{ fontSize: 11, color: nothingRan ? "#9ca3af" : catPass === catTotal ? "#16a34a" : "#6b7280" }}>
+                                {nothingRan ? "—" : `${catPass}/${catTotal}`}
+                              </span>
                             </div>
-                            {issues.length === 0 ? (
+                            {nothingRan ? (
+                              <p style={{ margin: "3px 0 0", fontSize: 11, color: "#9ca3af" }}>
+                                Not checked — {checks.length} check{checks.length === 1 ? "" : "s"} did not run. Nothing here is a pass or a failure.
+                              </p>
+                            ) : issues.length === 0 ? (
                               <p style={{ margin: "3px 0 0", fontSize: 11, color: "#16a34a" }}>All checks passing ✓</p>
                             ) : (
                               <div>

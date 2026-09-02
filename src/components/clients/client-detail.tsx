@@ -7,6 +7,7 @@ import {
   BeakerIcon,
   BookOpenIcon,
   ChatBubbleLeftRightIcon,
+  LifebuoyIcon,
   CheckCircleIcon,
   ChevronDownIcon,
   ChevronUpIcon,
@@ -534,7 +535,7 @@ export function ClientDetail({ slug }: { slug: string }) {
                 className="flex items-center gap-1 rounded-[4px] border border-[var(--mist-border)] bg-[var(--mist)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)] transition hover:opacity-80"
                 style={{ fontFamily: "var(--font-mono)" }}
               >
-                <ChatBubbleLeftRightIcon className="h-3 w-3" />
+                <LifebuoyIcon className="h-3 w-3" />
                 Care
               </Link>
             )}
@@ -1475,7 +1476,7 @@ export function ClientDetail({ slug }: { slug: string }) {
 
       {/* ── Edit client modal ── */}
       {pausing && (
-        <div className="fixed inset-0 z-30">
+        <div className="fixed inset-0 z-50">
           <button
             type="button"
             aria-label="Close"
@@ -2986,7 +2987,10 @@ function PlatformCard({
               {primaryUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}
             </p>
           )}
-          {(platform.platformType || platform.stagingUrl || platform.repoUrl) && (
+          {(platform.platformType ||
+            platform.stagingUrl ||
+            platform.repoUrl ||
+            (platform.links?.length ?? 0) > 0) && (
             <div className="mt-1 flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
               {platform.platformType && (
                 <span
@@ -3020,6 +3024,22 @@ function PlatformCard({
                   <span>Repo</span>
                 </a>
               )}
+              {/* Client-provided extras (ClickUp board, Figma file …). Already
+                  scheme-checked server-side by normalisePlatformLinks, so these
+                  can be rendered as anchors. */}
+              {(platform.links ?? []).map((link) => (
+                <a
+                  key={link.url}
+                  href={link.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex max-w-[140px] items-center gap-0.5 text-[10px] text-[var(--text-4)] transition hover:text-[var(--brand-700)]"
+                  title={`${link.label} — ${link.url}`}
+                >
+                  <ArrowTopRightOnSquareIcon className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{link.label}</span>
+                </a>
+              ))}
             </div>
           )}
         </div>
@@ -3422,7 +3442,7 @@ function ClientEditModal({
   }
 
   return (
-    <div className="fixed inset-0 z-30">
+    <div className="fixed inset-0 z-50">
       <button
         type="button"
         aria-label="Close"

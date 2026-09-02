@@ -8,6 +8,7 @@
 // the internal Portal workspace and the public /brand/[token] page.
 
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { INK_LIGHT, readableInk, readableInkOnGradient, relativeLuminance, rgba } from "@/lib/contrast";
 import type {
   ColourToken,
   DesignTokens,
@@ -18,34 +19,6 @@ import { formatDate } from "@/lib/format";
 
 // ── colour helpers ────────────────────────────────────────────────────────────
 
-function parseHex(hex: string): { r: number; g: number; b: number } | null {
-  let h = (hex || "").trim().replace(/^#/, "");
-  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
-  if (h.length !== 6 || /[^0-9a-fA-F]/.test(h)) return null;
-  const n = parseInt(h, 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-}
-
-function relLuminance(hex: string): number {
-  const rgb = parseHex(hex);
-  if (!rgb) return 1; // treat unparseable as light
-  const f = (c: number) => {
-    const s = c / 255;
-    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-  };
-  return 0.2126 * f(rgb.r) + 0.7152 * f(rgb.g) + 0.0722 * f(rgb.b);
-}
-
-/** Near-black or white, whichever reads on the given background hex. */
-function readable(bg: string): string {
-  return relLuminance(bg) > 0.5 ? "#0B0F19" : "#FFFFFF";
-}
-
-function rgba(hex: string, a: number): string {
-  const rgb = parseHex(hex);
-  if (!rgb) return hex;
-  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${a})`;
-}
 
 /** True when a ramp value is an actual colour (filters out prose keys like "source"). */
 function isColour(v: string): boolean {
@@ -54,8 +27,8 @@ function isColour(v: string): boolean {
 
 /** WCAG 2.1 contrast ratio between two hex colours. */
 function wcagRatio(hex1: string, hex2: string): number {
-  const l1 = relLuminance(hex1);
-  const l2 = relLuminance(hex2);
+  const l1 = relativeLuminance(hex1);
+  const l2 = relativeLuminance(hex2);
   const lighter = Math.max(l1, l2);
   const darker = Math.min(l1, l2);
   return (lighter + 0.05) / (darker + 0.05);
@@ -172,9 +145,9 @@ function ColourChip({ c, varName }: { c: ColourToken; varName?: string }) {
   const [copiedSwatch, setCopiedSwatch] = useState(false);
   const [copiedVar, setCopiedVar] = useState(false);
 
-  const veryLight = relLuminance(c.hex) > 0.9;
+  const veryLight = relativeLuminance(c.hex) > 0.9;
   const level = wcagLevel(c.hex);
-  const fgOnSwatch = readable(c.hex);
+  const fgOnSwatch = readableInk(c.hex);
 
   function copy(value: string, which: "swatch" | "var") {
     void navigator.clipboard.writeText(value).then(() => {
@@ -541,8 +514,24 @@ function ButtonsSection({
 
   const surfaces: Array<{ key: string; label: string; bg: string; border?: string; labelColor: string }> = [
     { key: "light", label: "On light", bg: "var(--surface-raised,#fff)", border: "1px solid rgba(0,0,0,0.08)", labelColor: "var(--text-4)" },
-    { key: "dark", label: "On dark", bg: darkSurface, labelColor: "rgba(255,255,255,0.55)" },
-    { key: "gradient", label: "On gradient", bg: gradientCss, labelColor: "rgba(255,255,255,0.7)" },
+    // "dark" and "gradient" are the client's own colours, so neither is reliably
+    // dark: the darkest colour in a pale palette is still pale. Derive the label
+    // ink rather than assuming white.
+    {
+      key: "dark",
+      label: "On dark",
+      bg: darkSurface,
+      labelColor: readableInk(darkSurface) === INK_LIGHT ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.55)",
+    },
+    {
+      key: "gradient",
+      label: "On gradient",
+      bg: gradientCss,
+      labelColor:
+        readableInkOnGradient(gradientCss, darkSurface) === INK_LIGHT
+          ? "rgba(255,255,255,0.7)"
+          : "rgba(0,0,0,0.7)",
+    },
   ];
 
   return (
@@ -1063,8 +1052,18 @@ function Hero({
   clientLogoUrl?: string | null;
   intro?: string;
 }) {
-  const heroInk = readable(tokens.colours.primary[0]?.hex ?? "#0F172A");
-  const onDark = heroInk === "#FFFFFF";
+  /**
+   * ⚠️ Derived from the GRADIENT, not from `primary`.
+   *
+   * This used to read `readable(primary)` while the band behind it painted
+   * `gradientCss` — the client's own gradient. For a brand whose gradient is pale
+   * (a cream, a soft peach) but whose primary is a mid tone, that put white text
+   * on a near-white band: the brand name and tagline were invisible on Pollen IQ's
+   * guide, and fixing the ink-choice threshold did nothing, because the colour
+   * being measured was never on screen.
+   */
+  const heroInk = readableInkOnGradient(gradientCss, tokens.colours.primary[0]?.hex ?? "#0F172A");
+  const onDark = heroInk === INK_LIGHT;
   return (
     <section className="widget-card overflow-hidden">
       <div className="widget-header">
@@ -1109,7 +1108,7 @@ function Hero({
             className="mt-2 max-w-xl text-[14px] leading-relaxed"
             style={{
               fontFamily: `${tokens.typography.bodyFont}, ${tokens.typography.systemFallback}`,
-              color: heroInk === "#FFFFFF" ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.7)",
+              color: onDark ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.7)",
             }}
           >
             {tokens.brandVoice}
@@ -1216,7 +1215,7 @@ export function DesignSystemViewer({
   ];
   const darkSurface =
     allColours.reduce<ColourToken | null>(
-      (a, b) => (a && relLuminance(a.hex) <= relLuminance(b.hex) ? a : b),
+      (a, b) => (a && relativeLuminance(a.hex) <= relativeLuminance(b.hex) ? a : b),
       null,
     )?.hex ?? "#0F172A";
   const gradientCss =

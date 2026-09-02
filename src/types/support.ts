@@ -15,6 +15,12 @@ export type ConversationSentiment = "positive" | "neutral" | "negative";
 /** Triage state machine for the shared-inbox cockpit (the conversation is the unit of triage). */
 export type ConversationStatus = "new" | "open" | "snoozed" | "closed" | "ignored";
 export type ConversationPriority = "urgent" | "high" | "normal" | "low";
+/**
+ * Whether the customer is waiting on us. DERIVED server-side from lastInboundAt/lastOutboundAt
+ * (see src/server/support-reply-state.ts) and never stored — so a reply sent outside Care flips
+ * it as soon as the connector sees it. Orthogonal to `status`, which is triage, not answering.
+ */
+export type ReplyState = "awaiting_reply" | "replied" | "no_inbound";
 export type TicketStatus = "open" | "in_progress" | "dev_review" | "awaiting_customer" | "resolved";
 export type TicketPriority = "urgent" | "high" | "normal" | "low";
 export type DraftType = "reply" | "stripe_cancel" | "stripe_refund";
@@ -31,6 +37,11 @@ export interface SupportClient {
   reportingRecipient?: string;
   reportDueDay?: number;
   workspaceClientId?: string;
+  /**
+   * The linked PORTAL client's slug — what the per-client wiki features key on
+   * (`src/lib/wiki-sections.ts`). Distinct from `slug` above, which is Care's own.
+   */
+  workspaceClientSlug?: string;
   /** Support paused: ingest quietly, skip triage/rules, auto-import course requests. */
   courseRequestOnly?: boolean;
   unreadCount?: number;
@@ -127,6 +138,12 @@ export interface Connection {
     fromName?: string;
     fromAddress?: string;
     folder?: string;
+    /** Override the Sent mailbox name; unset = auto-discovered by its \Sent special-use flag. */
+    sentFolder?: string;
+    /** False stops Care reading Sent, so replies made outside Care become invisible again. */
+    readSentFolder?: boolean;
+    /** Manual one-off deep Sent catch-up (days). Normally unnecessary — the window follows the data. */
+    sentBackfillDays?: number;
     // Per-connector auto-fetch cadence (minutes; 0 = manual). Read by the sync cron.
     syncIntervalMinutes?: number;
     // Legacy / generic
@@ -158,12 +175,59 @@ export interface Conversation {
   firstTriagedAt?: string;
   /** ISO timestamp the conversation was closed/ignored. */
   closedAt?: string;
+  // ── reply tracking (see ReplyState) ──
+  /** ISO timestamp of the customer's last message. */
+  lastInboundAt?: string;
+  /** ISO timestamp of our last message — sent in Care OR synced back from outside it. */
+  lastOutboundAt?: string;
+  /** ISO timestamp of the latest message either way; the activity sort key. */
+  lastMessageAt?: string;
+  /** Derived server-side so web and iOS can never disagree about what "replied" means. */
+  replyState: ReplyState;
   /** Canonical native-thread URL — the "Open in {channel}" deep-link. */
   externalUrl?: string;
   /** Count of internal staff notes on this conversation. */
   noteCount?: number;
   /** @deprecated retained only during the ticket→conversation cutover. */
   ticketId?: string;
+}
+
+/**
+ * True per-view totals, counted in SQL over the whole client rather than derived from whatever
+ * page happened to be loaded. Keys mirror the SAVED_VIEWS ids.
+ */
+export interface ConversationViewCounts {
+  awaiting: number;
+  replied: number;
+  assignedMe: number;
+  unassigned: number;
+  urgent: number;
+  open: number;
+  snoozed: number;
+  closed: number;
+  all: number;
+  /** ISO timestamp of the longest-waiting customer message, or null when nobody is waiting. */
+  oldestAwaitingAt: string | null;
+  /**
+   * Channels this client's conversations actually came from, busiest first — NOT its live
+   * connections. A connector can be removed or replaced (Gmail → IMAP) while its conversations
+   * remain, and a filter built from connections cannot reach them.
+   */
+  sources: Array<{ source: SupportSource; count: number }>;
+}
+
+/**
+ * Per-client queue figures for the Care home list, rolled up for the whole workspace in one
+ * request. Keyed by client id. `awaiting + replied === open` by construction.
+ */
+export interface ClientQueueSummary {
+  awaiting: number;
+  replied: number;
+  unassigned: number;
+  urgent: number;
+  open: number;
+  /** ISO timestamp of the longest-waiting customer message, or null when nobody is waiting. */
+  oldestAwaitingAt: string | null;
 }
 
 /** An internal, staff-only note on a conversation (never shown to the customer). */

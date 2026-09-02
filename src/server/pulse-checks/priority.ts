@@ -4,6 +4,7 @@
 
 import type { PulseScanCheckInput, PulseScanCheckRecord } from "@/types/pulse";
 import { WEIGHTED_CATEGORIES } from "./categories";
+import { CRITICAL_KEYS } from "./confidence";
 
 export type PriorityTier = "P1" | "P2" | "P3" | null;
 export interface CheckPriority {
@@ -16,11 +17,28 @@ type AnyCheck = PulseScanCheckInput | PulseScanCheckRecord;
 // Production-critical categories carry double weight — imported from the SoT
 // (categories.ts), the same set score-breakdown uses.
 
-// Findings that are launch-blocking on their own — bumped to the top.
-const HARD_CRITICAL = new Set([
-  "ssl_valid", "privacy_policy", "terms_of_service",
-  "supabase_rls_enforced", "no_service_role_key_exposed", "no_exposed_env", "no_exposed_git",
-]);
+/**
+ * Findings that are launch-blocking on their own — bumped to the top of the fix list.
+ *
+ * ⚠️ Built from `CRITICAL_KEYS` rather than retyped. The two lists were maintained by hand and had
+ * drifted in both directions: this one carried `privacy_policy`/`terms_of_service` (which are not
+ * technically severe), and — the defect that mattered — it was MISSING `outbound_target_ssrf_safe`
+ * and `auth_content_redaction`, both of which the severity model already calls CRITICAL.
+ *
+ * Measured effect: a CONFIRMED SSRF finding scored **6** while a missing privacy policy scored
+ * **10**, so the fix list told a customer their missing policy page was more urgent than a
+ * server-side request forgery in their product. Both tiered P1 — Security is double-weighted, so
+ * the tier was never wrong — which is exactly why this went unnoticed: the bug was in the ORDER
+ * inside P1, and nothing asserted order.
+ *
+ * The two extras are kept deliberately and are the whole reason this is a superset rather than an
+ * alias: a missing privacy policy or terms page **stops a launch** (it is in the gate's blocking
+ * keys, and app stores and GDPR both require it) without being a technically severe defect. Being
+ * launch-blocking and being dangerous are different properties, and only one of them belongs in
+ * the score's severity weight — which is why this set adds to the ranking and never writes back.
+ */
+const LAUNCH_BLOCKING_ONLY = ["privacy_policy", "terms_of_service"] as const;
+const HARD_CRITICAL = new Set<string>([...CRITICAL_KEYS, ...LAUNCH_BLOCKING_ONLY]);
 
 /**
  * TIDINESS findings — the mirror of HARD_CRITICAL. Real, worth fixing, and never a

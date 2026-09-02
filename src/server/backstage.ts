@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { bytesForPrisma } from "@/lib/prisma-bytes";
 import { dispatchNotification } from "@/server/notifications";
 import type { Prisma } from "@prisma/client";
 import { ensureBaseRecords } from "@/server/bootstrap";
@@ -805,7 +806,7 @@ export async function attachReceipt(
   const row = await prisma.expense.update({
     where: { id: expenseId },
     data: {
-      receiptImage: storedBytes,
+      receiptImage: bytesForPrisma(storedBytes),
       receiptMime: storedMime,
       // Clear any stale thumb so the lifecycle is unambiguous.
       receiptThumb: null,
@@ -885,7 +886,7 @@ export async function reviewExpense(
       reviewedAt: new Date(),
       reviewNote: note ?? null,
       ...(thumbBytes
-        ? { receiptImage: null, receiptThumb: thumbBytes, receiptMime: "image/jpeg" }
+        ? { receiptImage: null, receiptThumb: bytesForPrisma(thumbBytes), receiptMime: "image/jpeg" }
         : {}),
     },
     include: {

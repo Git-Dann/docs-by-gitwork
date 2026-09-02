@@ -1,12 +1,8 @@
 import { launchHeadlessBrowser } from "@/server/headless-browser";
+import { assertScannableUrl, guardBrowserRequests } from "@/server/pulse-lite/url-guard";
+import { summariseAuthenticatedPage, type AuthenticatedPageSignals } from "./auth-content";
 
-export interface AuthPageContent {
-  pageTitle: string | null;
-  h1: string | null;
-  navItems: string[];
-  mainText: string;
-  authenticatedUrl: string;
-}
+export type AuthPageContent = AuthenticatedPageSignals;
 
 /**
  * Launches a headless browser, navigates to the login URL, fills in the
@@ -28,14 +24,20 @@ export async function runAuthAgent(
 
   const run = async (): Promise<AuthPageContent | null> => {
     try {
+      const safeLoginUrl = (await assertScannableUrl(loginUrl)).url;
       // Shared launcher — see visual-agent: the Lambda binary can't run on the
       // Alpine container, and this agent's swallowed errors hid that.
       browser = await launchHeadlessBrowser({ defaultViewport: { width: 1280, height: 800 } });
 
       const page = await browser.newPage();
 
+      // Chromium follows redirects and loads subresources independently of Node's
+      // fetch path. Intercept every network request so a public page cannot pivot
+      // the authenticated browser into localhost, a private service or metadata.
+      await guardBrowserRequests(page);
+
       // Navigate to the login URL
-      await page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: 15_000 });
+      await page.goto(safeLoginUrl, { waitUntil: "domcontentloaded", timeout: 15_000 });
 
       // Wait for an email input field
       const emailSelector = 'input[type="email"], input[name="email"], input[placeholder*="email" i]';
@@ -89,7 +91,7 @@ export async function runAuthAgent(
       const authenticatedUrl = page.url();
 
       // Extract content from the authenticated page
-      const content = await page.evaluate((): { pageTitle: string | null; h1: string | null; navItems: string[]; mainText: string } => {
+      const content = await page.evaluate((): { pageTitle: string | null; h1: string | null; navItems: string[] } => {
         const pageTitle = document.title || null;
 
         const h1El = document.querySelector("h1");
@@ -101,23 +103,15 @@ export async function runAuthAgent(
           .filter((t) => t.length > 0 && t.length < 80)
           .slice(0, 20);
 
-        // Extract body text without script/style/svg content
-        const mainText = (() => {
-          const clone = document.body.cloneNode(true) as HTMLElement;
-          clone.querySelectorAll("script, style, noscript, svg").forEach((el) => el.remove());
-          return ((clone.textContent ?? "").replace(/\s+/g, " ").trim()).slice(0, 600);
-        })();
-
-        return { pageTitle, h1, navItems: navLinks, mainText };
+        return { pageTitle, h1, navItems: navLinks };
       });
 
-      return {
+      return summariseAuthenticatedPage({
         pageTitle: content.pageTitle,
         h1: content.h1,
         navItems: content.navItems,
-        mainText: content.mainText,
         authenticatedUrl,
-      };
+      });
     } catch {
       return null;
     }

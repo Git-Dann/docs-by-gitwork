@@ -23,6 +23,7 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
+import { buildPageTitle } from "@/lib/page-title";
 import { avatarPosition, resolveAvatar } from "@/lib/avatar";
 import { useAccount } from "@/hooks/use-account";
 import { isAtLeast } from "@/types/auth";
@@ -31,6 +32,7 @@ import { listSupportClients, listTeamMembers } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { AiSpendCard } from "@/components/ai-spend-card";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Modal } from "@/components/ui/modal";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { PushPromptBanner } from "@/components/notifications/push-prompt-banner";
 
@@ -93,6 +95,7 @@ export function AppShell({
   titleAccessory,
   hideContentHeader = false,
   mainClassName,
+  titleContext,
 }: {
   children: React.ReactNode;
   title: string;
@@ -100,6 +103,12 @@ export function AppShell({
   /** Optional element rendered inline next to the page title (e.g. an attribution chip). */
   titleAccessory?: React.ReactNode;
   hideContentHeader?: boolean;
+  /**
+   * What this page is ABOUT, when the feature name alone isn't enough to tell
+   * two tabs apart — the client on a client-scoped page. Ends up first in the
+   * document title: "YourGroop · Tasks · Foundry".
+   */
+  titleContext?: string;
   forceCollapsedSidebar?: boolean;
   mainClassName?: string;
 }) {
@@ -160,6 +169,22 @@ export function AppShell({
     staleTime: 60_000,
   });
   const hideCareForScopedUser = shouldScopeCareNav && (scopedCareClients.data?.clients.length ?? 0) === 0;
+
+  /**
+   * Keep the browser tab named after the page.
+   *
+   * Done here rather than page-by-page because `title` is a REQUIRED prop on
+   * AppShell: every /app page must already pass one, so this cannot be forgotten
+   * on a new page the way a missing `export const metadata` silently would be.
+   * The 56 app pages had exactly one between them, which is why every tab read
+   * "Foundry by Gitwork".
+   *
+   * Client-scoped pages also set it server-side via generateMetadata (no flash
+   * on first paint); both call buildPageTitle, so they produce the same string.
+   */
+  useEffect(() => {
+    document.title = buildPageTitle(title, titleContext);
+  }, [title, titleContext]);
 
   // Close drawer on route change
   useEffect(() => {
@@ -374,7 +399,14 @@ export function AppShell({
           // bounded to the viewport, so <main overflow-auto> becomes the scroll container instead of
           // the body growing. Without it, height-framed pages (the Docs editor) can't bound to the
           // viewport and the whole page scrolls. (demo-shell already does this — keep them in sync.)
-          "min-h-0 flex-1 w-full lg:grid lg:grid-rows-[minmax(0,1fr)]",
+          //
+          // ⚠️ `flex flex-col` is for BELOW lg, and it is not cosmetic. The grid above only applies
+          // at lg+, so on a phone this was a plain block: the content column below took its natural
+          // height, <main flex-1> resolved against `auto` and grew to fit its content, and the root's
+          // `overflow-hidden` then clipped the lot with NOTHING scrollable — page or main. A dev's
+          // My Day list simply stopped at the fold. Measured at 390×844: main 2504px tall in an
+          // 844px viewport, main-scrolls=false, page-scrolls=false.
+          "flex min-h-0 w-full flex-1 flex-col lg:grid lg:grid-rows-[minmax(0,1fr)]",
           collapsed ? "lg:grid-cols-[76px_minmax(0,1fr)]" : "lg:grid-cols-[280px_minmax(0,1fr)]",
         )}
       >
@@ -397,7 +429,9 @@ export function AppShell({
         {/* ── Content column ── */}
         {/* pb-12 reserves the 48px height of the fixed "On Your Desk" dock so page
             content (and any bottom pagination bars) never sits underneath it. */}
-        <div className="flex min-h-0 flex-col bg-[var(--surface-canvas)] pb-12">
+        {/* flex-1 is what gives this column a bounded height below lg (as a flex child of the
+            wrapper above); at lg+ the grid row bounds it and flex-1 is inert on a grid item. */}
+        <div className="flex min-h-0 flex-1 flex-col bg-[var(--surface-canvas)] pb-12">
           {/* View-as preview banner */}
           {isAdmin && viewAs && previewLabel && (
             <div className="flex items-center justify-between gap-4 border-b border-amber-200 bg-amber-50 px-6 py-2">
@@ -744,6 +778,11 @@ function ProfileMenu({
   const [open, setOpen] = useState(false);
   // View-as list is collapsed until asked for — see the comment at its trigger.
   const [viewAsOpen, setViewAsOpen] = useState(false);
+  /** Sign-out confirmation. Signing out mid-task loses unsaved work and costs a
+   *  Google round trip to get back in, and the control now sits directly under
+   *  Settings — one slip away from the thing people actually meant to click. */
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   // Fetch team members so we can show real admin users in the preview switcher
   const { data: teamData } = useQuery({
@@ -842,16 +881,6 @@ function ProfileMenu({
             collapsed ? "left-0 w-72" : "left-0 right-0",
           )}
         >
-
-          {/* Settings — moved here out of the sidebar so the rail is products only. */}
-          <Link
-            href="/app/settings/account"
-            onClick={() => setOpen(false)}
-            className="mb-1 flex w-full items-center gap-3 rounded-[6px] border-b border-[var(--border-3)] px-3 py-2.5 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-          >
-            <Cog8ToothIcon className="h-4.5 w-4.5 shrink-0 text-[var(--text-4)]" style={{ width: 18, height: 18 }} />
-            Settings
-          </Link>
 
           {/* View as — Super Admin only. Collapsed behind one row by default: the
               full list (you + every restricted admin + a teammate picker + two
@@ -1018,17 +1047,67 @@ function ProfileMenu({
             <ThemeToggle iconOnly />
           </div>
 
-          <button
-            type="button"
-            onClick={() => { setOpen(false); import("next-auth/react").then(({ signOut }) => signOut()); }}
-            className="flex w-full items-center gap-3 rounded-[10px] px-4 py-3 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-          >
-            <ArrowRightOnRectangleIcon className="h-5 w-5 text-[var(--text-4)]" />
-            Sign out
-          </button>
+          {/* Account group, last: Settings and Sign out belong together, and both are
+              things you reach for far less often than View as or Theme. */}
+          <div>
+            <Link
+              href="/app/settings/account"
+              onClick={() => setOpen(false)}
+              className="flex w-full items-center gap-3 rounded-[6px] px-3 py-2.5 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            >
+              <Cog8ToothIcon className="h-4.5 w-4.5 shrink-0 text-[var(--text-4)]" style={{ width: 18, height: 18 }} />
+              Settings
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                // Close the menu but keep the confirm mounted — it lives outside this
+                // dropdown precisely so dismissing the menu can't unmount the dialog.
+                setOpen(false);
+                setConfirmSignOut(true);
+              }}
+              className="flex w-full items-center gap-3 rounded-[6px] px-3 py-2.5 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            >
+              <ArrowRightOnRectangleIcon className="h-4.5 w-4.5 shrink-0 text-[var(--text-4)]" style={{ width: 18, height: 18 }} />
+              Sign out
+            </button>
+          </div>
         </div>
       ) : null}
 
+      {/* Outside the `open &&` above on purpose: clicking Sign out closes the menu,
+          and a dialog nested inside it would unmount on the same click. */}
+      <Modal
+        open={confirmSignOut}
+        onClose={() => setConfirmSignOut(false)}
+        title="Sign out?"
+        panelClassName="w-[380px] max-w-[92vw]"
+      >
+        <p className="text-sm leading-6 text-[var(--text-3)]">
+          You&rsquo;ll be signed out of Foundry on this device. Anything you haven&rsquo;t saved
+          will be lost, and you&rsquo;ll need to sign in with Google again.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setConfirmSignOut(false)}
+            className="app-button app-button-md"
+          >
+            Stay signed in
+          </button>
+          <button
+            type="button"
+            disabled={signingOut}
+            onClick={() => {
+              setSigningOut(true);
+              void import("next-auth/react").then(({ signOut }) => signOut());
+            }}
+            className="app-button app-button-md app-button-danger"
+          >
+            {signingOut ? "Signing out…" : "Sign out"}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

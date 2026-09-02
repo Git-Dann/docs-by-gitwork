@@ -1,7 +1,9 @@
 import { google } from "googleapis";
 import { prisma } from "@/lib/prisma";
+import { recordMessageActivity } from "@/server/support";
 import type { ChannelAdapter, SyncResult, SyncContext, FilterReasons } from "./types";
 import { normalizeKeywords, lookbackSeconds, extractGmailBodyText } from "./shared";
+import { resolveCustomer, derivePreview } from "./identity";
 
 /**
  * Gmail uses the `run()` escape hatch: it owns its domain-wide-delegation auth and
@@ -105,7 +107,28 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
         const from = hdrs.find((h) => h.name === "From")?.value ?? "unknown";
         const dateStr = hdrs.find((h) => h.name === "Date")?.value;
         const receivedAt = dateStr ? new Date(dateStr) : new Date();
-        const customerLabel = from.replace(/<[^>]+>/g, "").trim() || from;
+
+        // Read the first message's body up front: it is needed BOTH to identify the customer on
+        // a forwarded contact-form email and to build a preview that isn't just the subject.
+        // Fetched once here and reused by the per-message loop below.
+        let firstBody = "";
+        if (firstMsg.id) {
+          try {
+            const r = await gmail.users.messages.get({ userId: "me", id: firstMsg.id, format: "full" });
+            firstBody = extractGmailBodyText(r.data);
+          } catch {
+            /* body is an optimisation for labelling; a failure must not drop the thread */
+          }
+        }
+
+        // ⚠️ `from` is the FORWARDER on a contact-form inbox, not the customer. Taking it at face
+        // value labelled 226 consecutive Fellas Loaded rows "Fellas Loaded", which makes the
+        // queue unreadable and would send replies back to the app instead of the human.
+        const identity = resolveCustomer(
+          { fromText: from, subject, body: firstBody },
+          { mailboxAddress: impersonateEmail, mailboxName: config.intakeAddress ?? null, clientName: client.name },
+        );
+        const customerLabel = identity.label;
 
         let conv = await prisma.supportConversation.findFirst({
           where: {
@@ -129,9 +152,15 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
               externalId: item.threadId,
               customerLabel,
               subject,
-              preview: subject,
+              // The real message text, NOT the subject. `preview: subject` meant every row in
+              // the list rendered the same string twice — subject on one line, "preview" on the
+              // next — so nothing could be triaged without opening it. null when the body adds
+              // nothing, and the UI renders no second line rather than repeating itself.
+              preview: derivePreview(firstBody, subject),
               receivedAt,
-              unread: true,
+              // Raised by recordMessageActivity below IFF an inbound message lands — a thread
+              // we started ourselves has nothing unread about it.
+              unread: false,
               tags: gmailTags,
               // "Open in Gmail" → the thread in the impersonated mailbox's web UI.
               externalUrl: `https://mail.google.com/mail/u/0/#all/${item.threadId}`,
@@ -150,6 +179,7 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
           reasons.duplicate = (reasons.duplicate ?? 0) + 1;
         }
 
+        const createdMessages: Array<{ direction: string; createdAt: Date }> = [];
         for (const msg of threadMessages) {
           if (!msg.id) continue;
           const already = await prisma.supportMessage.findFirst({
@@ -166,6 +196,7 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
             const msgHdrs = (msg.payload?.headers ?? []) as Array<{ name?: string | null; value?: string | null }>;
             const msgFrom = msgHdrs.find((h) => h.name === "From")?.value ?? "";
             const isOutbound = impersonateEmail ? msgFrom.includes(impersonateEmail) : false;
+            const createdAt = msg.internalDate ? new Date(parseInt(msg.internalDate)) : receivedAt;
 
             await prisma.supportMessage.create({
               data: {
@@ -174,13 +205,20 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
                 authorLabel: msgFrom.replace(/<[^>]+>/g, "").trim() || msgFrom,
                 body: body.slice(0, 4000),
                 externalId: msg.id,
-                createdAt: msg.internalDate ? new Date(parseInt(msg.internalDate)) : receivedAt,
+                createdAt,
               },
             });
+            createdMessages.push({ direction: isOutbound ? "outbound" : "inbound", createdAt });
           } catch {
             // skip individual message errors
           }
         }
+
+        // Gmail's thread-walk returns EVERY message in the thread regardless of label, so a
+        // reply someone sent straight from the Gmail web UI (bypassing Care entirely) lands
+        // here as an outbound message — and flips this conversation to "Replied" with nobody
+        // marking anything. That is the whole point of deriving the state from the messages.
+        await recordMessageActivity(conv.id, createdMessages);
         // Restore UNREAD so the inbox looks untouched after the sync.
         if (wasUnread) {
           await gmail.users.threads.modify({

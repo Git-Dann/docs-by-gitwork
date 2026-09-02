@@ -17,7 +17,7 @@
 
 import { PlusIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
-import { registeredPartyDetailLines } from "@/lib/gitwork";
+import { GITWORK, registeredPartyDetailLines } from "@/lib/gitwork";
 import {
   EmptyHint,
   FieldLabel,
@@ -119,7 +119,7 @@ export function PartiesEditor({
                     value={party.name}
                     onChange={(e) => patch(index, { name: e.target.value })}
                     className="app-input-compact"
-                    placeholder="Gitwork Ltd"
+                    placeholder={GITWORK.legalName}
                   />
                 </label>
                 <label className="space-y-1.5">
@@ -170,7 +170,7 @@ export function PartiesEditor({
                     value={party.organization}
                     onChange={(e) => patch(index, { organization: e.target.value })}
                     className="app-input-compact"
-                    placeholder="Gitwork Ltd"
+                    placeholder={GITWORK.legalName}
                   />
                 </label>
                 <label className="space-y-1.5">
@@ -180,7 +180,7 @@ export function PartiesEditor({
                     value={party.email}
                     onChange={(e) => patch(index, { email: e.target.value })}
                     className="app-input-compact"
-                    placeholder="hello@gitwork.io"
+                    placeholder={GITWORK.email}
                   />
                 </label>
                 <label className="flex items-center gap-2 text-sm text-[var(--text-2)] @[26rem]:col-span-2">
@@ -867,7 +867,7 @@ export function SignaturesEditor({
                     value={block.partyName}
                     onChange={(e) => patch(index, { partyName: e.target.value })}
                     className="app-input-compact"
-                    placeholder="Gitwork Ltd"
+                    placeholder={GITWORK.legalName}
                   />
                 </label>
                 <label className="space-y-1.5">

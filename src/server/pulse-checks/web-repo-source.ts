@@ -35,7 +35,7 @@
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { RepoSnapshot } from "./native-mobile";
-import { isVendoredPath, stripCStyleComments } from "./native-mobile";
+import { isVendoredPath, stripCStyleComments, sampleCoverage } from "./native-mobile";
 import { anyDependency, parsePackageManifest, type PackageManifest } from "./project-shape";
 
 /** Below this sampled-file coverage, absence findings self-downgrade to LOW. */
@@ -108,7 +108,7 @@ function buildContext(snapshot: RepoSnapshot): WebContext {
     automation,
     sql,
     pkg: parsePackageManifest(pkgText),
-    coverage: sourcePaths.length === 0 ? 0 : Math.min(1, files.size / sourcePaths.length),
+    coverage: sampleCoverage(files.size, sourcePaths.length, snapshot.truncated),
     paths: snapshot.paths,
   };
 }
@@ -233,15 +233,76 @@ function injectionChecks(ctx: WebContext): PulseScanCheckInput[] {
     });
   }
 
-  // SQL assembled by string building, across the four idioms that produce it.
-  const sqlKeyword = "(?:SELECT|INSERT|UPDATE|DELETE|WHERE|FROM|VALUES)";
-  const sqlPatterns: Array<[RegExp, string]> = [
-    [new RegExp(`f["'][^"']*${sqlKeyword}[^"']*\\{`, "i"), "Python f-string"],
-    [new RegExp(`["'][^"']*${sqlKeyword}[^"']*["']\\s*\\.\\s*format\\s*\\(`, "i"), "str.format()"],
-    [new RegExp(`\`[^\`]*${sqlKeyword}[^\`]*\\$\\{`, "i"), "template literal"],
-    [new RegExp(`["'][^"']*${sqlKeyword}[^"']*["']\\s*\\+\\s*\\w`, "i"), "string concatenation"],
-    [new RegExp(`["'][^"']*${sqlKeyword}[^"']*["']\\s*%\\s*\\(?\\w`, "i"), "%-formatting"],
-  ];
+  // ── SQL assembled by string building ───────────────────────────────────────
+  //
+  // ⚠️ Three rules here, all learned by running this family against a real
+  // TypeScript codebase rather than a fixture. As first written it reported
+  // three Prisma-only API routes as SQL injection, at FAIL, in Security — which
+  // under the release gate can BLOCK a launch on a false positive.
+  //
+  // 1. THE BODY CANNOT CROSS A NEWLINE. `[^"']*` had no bound, so the "string
+  //    literal" it believed it was inside ran for hundreds of lines of ordinary
+  //    code. A single- or double-quoted string cannot contain a raw newline in
+  //    any of these languages, so excluding it is not a heuristic — it is the
+  //    grammar. Template literals may span lines, so those are length-bounded
+  //    instead.
+  //
+  // 2. THE `f` PREFIX NEEDS A WORD BOUNDARY. `f["']` matched the closing quote
+  //    of any string ending in the letter f — `role: "STAFF"` being the
+  //    commonest possible case in a web app. A Python f-string prefix is a
+  //    standalone token.
+  //
+  // 3. ONE SQL KEYWORD IS NOT EVIDENCE OF SQL. `where`, `from`, `select`,
+  //    `update`, `delete` and `values` are all ordinary words in web code:
+  //    Prisma's `where:`/`select:`, `import … from`, a `<select>` element, a
+  //    `deleteUser()` helper. So the rule requires a STATEMENT SHAPE — the
+  //    keyword pairings that essentially only co-occur in SQL. That trades a
+  //    little recall for precision on purpose: a scanner that fires on every
+  //    React app is worse than no scanner, and a bare `" WHERE id = " + id`
+  //    fragment is the recall this deliberately gives up.
+  // 4. THE OTHER QUOTE CHARACTER IS ORDINARY CONTENT. `[^"']` cannot cross the
+  //    apostrophe in `"… WHERE email = '" + email`, which is the single
+  //    commonest real injection shape there is — so the strict class silently
+  //    dropped the true positive it most needed to catch. Built per quote style
+  //    instead, exactly as §34.6 had to learn for Dart.
+  //
+  // 5. THE INTERPOLATION MUST LAND IN A VALUE POSITION. Fixing (4) alone lets
+  //    ordinary English through: `"Select an item from the list " + name` has
+  //    SELECT…FROM in a concatenated string and is a UI label. Real SQL breaks
+  //    at a value — after `=`, `(`, `,`, `FROM`, `INTO`, `IN (`, `LIKE`, `SET`,
+  //    `VALUES (`. Prose breaks mid-sentence. That is the discriminator, and it
+  //    is why the tests below carry as many negative cases as positive ones.
+  const body = (quote: string) => `[^${quote}\\n]`;
+  const tpl = "[^`]";
+  const sqlShape = (chars: string) =>
+    "(?:" +
+    `\\bSELECT\\b${chars}{0,200}?\\bFROM\\b` +
+    "|\\bINSERT\\s+INTO\\b" +
+    "|\\bDELETE\\s+FROM\\b" +
+    `|\\bUPDATE\\b${chars}{0,200}?\\bSET\\b` +
+    "|\\bVALUES\\s*\\(" +
+    ")";
+  /** Where a value would go in a real statement — immediately before the hole. */
+  const valuePoint =
+    "(?:=\\s*['\"`]?|\\(\\s*['\"`]?|,\\s*['\"`]?|\\bFROM\\s+|\\bINTO\\s+|\\bIN\\s*\\(\\s*|\\bLIKE\\s*['\"`]?%?|\\bSET\\s+\\w+\\s*=\\s*['\"`]?|\\bVALUES\\s*\\(\\s*['\"`]?)";
+  /** A literal placeholder, which prose never contains. Used for %/format(). */
+  const placeholder = "(?:%[sdif]|\\{\\d*\\}|\\{\\w+\\})";
+
+  const sqlPatterns: Array<[RegExp, string]> = [];
+  for (const quote of ['"', "'"]) {
+    const c = body(quote);
+    const shape = sqlShape(c);
+    sqlPatterns.push(
+      [new RegExp(`(?:^|[^A-Za-z0-9_])f${quote}${c}{0,200}?${shape}${c}{0,200}?${valuePoint}\\{`, "i"), "Python f-string"],
+      [new RegExp(`${quote}${c}{0,200}?${shape}${c}{0,200}?${placeholder}${c}{0,200}?${quote}\\s*\\.\\s*format\\s*\\(`, "i"), "str.format()"],
+      [new RegExp(`${quote}${c}{0,200}?${shape}${c}{0,200}?${valuePoint}${quote}\\s*\\+\\s*\\w`, "i"), "string concatenation"],
+      [new RegExp(`${quote}${c}{0,200}?${shape}${c}{0,200}?${placeholder}${c}{0,200}?${quote}\\s*%\\s*\\(?\\w`, "i"), "%-formatting"],
+    );
+  }
+  sqlPatterns.push([
+    new RegExp(`\`${tpl}{0,300}?${sqlShape(tpl)}${tpl}{0,300}?${valuePoint}\\$\\{`, "i"),
+    "template literal",
+  ]);
   const found = sqlPatterns.filter(([re]) => re.test(ctx.source));
   if (found.length > 0) {
     const combined = new RegExp(sqlPatterns.map(([re]) => re.source).join("|"), "i");
@@ -282,9 +343,18 @@ function injectionChecks(ctx: WebContext): PulseScanCheckInput[] {
   }
 
   // Shell execution built from a variable.
+  //
+  // ⚠️ Bounded on purpose, and this is the general rule the SQL bug above
+  // taught. A pattern that OPENS on a quote and TERMINATES on something that is
+  // not the matching quote — `${` here, `{` there — is never bounded by quote
+  // parity, so an unbounded body runs until it happens to find the terminator
+  // anywhere later in the file. (Patterns that close on their own quote are
+  // self-limiting: with one quote character the quotes alternate, so the span
+  // can only end at the literal's own closing quote. That is why the same shape
+  // in the mobile families is not a live defect and was left alone.)
   const shellSites = sitesMatching(
     ctx,
-    /shell\s*=\s*True|child_process[\s\S]{0,60}\bexec\s*\(\s*[`'"][^`'"]*\$\{|\bexec\s*\(\s*`[^`]*\$\{|os\.system\s*\(/,
+    /shell\s*=\s*True|child_process[\s\S]{0,60}\bexec\s*\(\s*[`'"][^`'"\n]{0,200}?\$\{|\bexec\s*\(\s*`[^`]{0,200}?\$\{|os\.system\s*\(/,
   );
   if (shellSites.count > 0) {
     checks.push({

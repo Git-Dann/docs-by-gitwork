@@ -24,7 +24,13 @@ import type { GanttBlock, GanttMilestone } from "@/components/tasks/gantt-chart"
 import type { ClientDetailRecord } from "@/types/client";
 import type { WikiDTO } from "@/server/wiki";
 import { GITWORK } from "@/lib/gitwork";
+import { DEFAULT_INTAKE_CATEGORIES } from "@/lib/wiki-intake-categories";
+import { getDefaultLaunchpadStructure } from "@/lib/launchpad/default-template";
+import { applyItemPatch, computeCompleteness } from "@/lib/launchpad/structure";
+import { renderLegalDoc } from "@/lib/launchpad/legal/render";
+import type { LaunchpadDTO, LaunchpadItemState } from "@/types/launchpad";
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
+import type { PulseScanDiff } from "@/types/pulse";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
 
 // ─── Demo identity ────────────────────────────────────────────────────────────
@@ -42,7 +48,11 @@ export const demoSession = {
     role: "DEVELOPER",
     // `devsignal` is admin-only in production; granted here so the DevSignal demo
     // renders (demos showcase UI regardless of role). Harmless to other demos.
-    permissions: ["clients", "proposals", "codeclear", "devsignal", "support", "backstage"],
+    // `support.manage` for the same reason: without it the Care demo has no checkbox
+    // column, no bulk bar, no channels/settings screen and no triage controls — a
+    // deliberately crippled view of the product. Mutations are no-ops here anyway,
+    // since the interceptor answers every /api/* call with canned data.
+    permissions: ["clients", "proposals", "codeclear", "devsignal", "support", "support.manage", "backstage"],
   },
   expires: "2099-01-01T00:00:00.000Z",
 };
@@ -442,6 +452,148 @@ function monitorHistory(baseLatency: number, blips: number[] = []): WikiMonitorH
 
 const WIKI_CLIENT = CLIENTS[0]; // Northwind Studio
 
+// ─── Demo Launchpad ───────────────────────────────────────────────────────────
+// Built from the REAL default structure rather than an invented fixture, so
+// /demo/portal exercises the actual modules, helpers and legal generators. §42.8's
+// lesson: a design validated against made-up data is a design validated against
+// nothing — the Care row redesign passed on invented senders and was unreadable on
+// the real inbox.
+
+const DEMO_LAUNCHPAD_MODULES = ["website", "ios"];
+
+function demoLaunchpadItem(
+  itemId: string,
+  status: LaunchpadItemState["status"],
+  extra: Partial<LaunchpadItemState> = {},
+): LaunchpadItemState {
+  return {
+    itemId,
+    status,
+    link: null,
+    note: null,
+    ownedByClient: null,
+    updatedBy: "Priya Shah",
+    updatedAt: atDays(-3),
+    ...extra,
+  };
+}
+
+/** A part-way-through kit — the state a real client is in for most of a project. */
+const DEMO_LAUNCHPAD_ITEMS: LaunchpadItemState[] = [
+  demoLaunchpadItem("brand_assets", "PROVIDED", {
+    link: "https://drive.google.com/drive/folders/northwind-brand",
+  }),
+  demoLaunchpadItem("existing_accounts_access", "PROVIDED"),
+  demoLaunchpadItem("tone_and_content", "NEEDED", {
+    note: "Copy deck is with their marketing agency — chased 11 Aug.",
+  }),
+  demoLaunchpadItem("domain_and_dns", "PROVIDED", { ownedByClient: true }),
+  demoLaunchpadItem("hosting_registrar_access", "PROVIDED", { ownedByClient: true }),
+  demoLaunchpadItem("analytics_account", "NEEDED", { ownedByClient: true }),
+  demoLaunchpadItem("website_content", "NEEDED"),
+  demoLaunchpadItem("cms_credentials", "NA", { note: "New build — no CMS to migrate from." }),
+  demoLaunchpadItem("apple_developer_account", "NEEDED", {
+    ownedByClient: true,
+    note: "D-U-N-S application submitted 8 Aug, Apple quote ~2 weeks.",
+  }),
+  demoLaunchpadItem("ios_app_icon", "NEEDED"),
+  demoLaunchpadItem("ios_screenshots", "NEEDED"),
+  demoLaunchpadItem("ios_privacy_answers", "NEEDED"),
+  demoLaunchpadItem("ios_age_rating", "PROVIDED"),
+  demoLaunchpadItem("ios_iap_setup", "NA", { note: "Free app, no in-app purchases." }),
+];
+
+const DEMO_LAUNCHPAD_ANSWERS = {
+  legal_entity_name: "Northwind Studio Ltd",
+  company_number: "09876543",
+  registered_address: "42 Deansgate, Manchester, M3 2AY",
+  primary_contact: "Priya Shah",
+  primary_contact_email: "priya@northwindstudio.co.uk",
+  credential_channel: "1Password shared vault",
+  brand_assets_link: "https://www.figma.com/file/northwind-brand-kit",
+  ios_app_name: "Northwind",
+  ios_subtitle: "Stories worth your evening",
+  payment_provider: "stripe",
+  accessibility_target: "aa",
+  cookie_consent_approach: "banner_consent",
+};
+
+const DEMO_PRIVACY_ANSWERS = {
+  company_name: "Northwind Studio Ltd",
+  trading_name: "Northwind",
+  registered_address: "42 Deansgate, Manchester, M3 2AY",
+  website_url: "https://northwindstudio.co.uk",
+  contact_email: "privacy@northwindstudio.co.uk",
+  company_number: "09876543",
+  effective_date: "1 September 2026",
+  data_collected: "Name\nEmail address\nViewing history\nIP address",
+  purposes: "To provide your account and watchlist\nTo recommend titles\nTo send service emails",
+  processors: "Fasthosts (hosting)\nStripe (payments)\nResend (email)",
+  retention_period: "For as long as you have an account, then 6 years for tax records",
+  international_transfers: "yes",
+  uses_cookies: true,
+  children: false,
+};
+
+const demoLaunchpadStructure = getDefaultLaunchpadStructure();
+
+/** One doc in each state, so the demo shows all three badges + the red banner. */
+const demoLaunchpad: LaunchpadDTO = {
+  enabled: true,
+  assigned: true,
+  templateId: "lp-tmpl-demo",
+  templateName: "Gitwork Launchpad",
+  structure: demoLaunchpadStructure,
+  enabledModules: DEMO_LAUNCHPAD_MODULES,
+  answers: DEMO_LAUNCHPAD_ANSWERS,
+  items: DEMO_LAUNCHPAD_ITEMS,
+  docs: [
+    {
+      docKey: "cookie",
+      title: "Cookie policy",
+      answers: {},
+      body: renderLegalDoc("cookie", {}).body,
+      edited: false,
+      status: "TEMPLATE",
+      approvedAt: null,
+      approvedByEmail: null,
+      updatedAt: atDays(-6),
+    },
+    {
+      docKey: "terms",
+      title: "Terms & conditions",
+      answers: { company_name: "Northwind Studio Ltd", sells_products: true },
+      body: renderLegalDoc("terms", {
+        company_name: "Northwind Studio Ltd",
+        sells_products: true,
+      }).body,
+      edited: true,
+      status: "EDITED",
+      approvedAt: null,
+      approvedByEmail: null,
+      updatedAt: atDays(-2),
+    },
+    {
+      docKey: "privacy",
+      title: "Privacy policy",
+      answers: DEMO_PRIVACY_ANSWERS,
+      body: renderLegalDoc("privacy", DEMO_PRIVACY_ANSWERS).body,
+      edited: false,
+      status: "APPROVED",
+      approvedAt: atDays(-1),
+      approvedByEmail: "priya@northwindstudio.co.uk",
+      updatedAt: atDays(-1),
+    },
+  ],
+  completeness: computeCompleteness(
+    demoLaunchpadStructure,
+    DEMO_LAUNCHPAD_MODULES,
+    DEMO_LAUNCHPAD_ITEMS,
+    DEMO_LAUNCHPAD_ANSWERS,
+  ),
+  updatedAt: atDays(-1),
+};
+
 const demoWiki: WikiDTO = {
   id: "wiki-northwind",
   clientId: WIKI_CLIENT.id,
@@ -586,10 +738,13 @@ const demoWiki: WikiDTO = {
     ],
   },
   users: [],
+  launchpad: demoLaunchpad,
   intakeEnabled: true,
+  intakeCategories: DEFAULT_INTAKE_CATEGORIES,
+  intakeCategoriesAreDefault: true,
   intakeItems: [
-    { id: "wi1", type: "FEEDBACK", title: "Add a “continue watching” rail to the home screen", description: "Surface the last 10 partially-watched titles at the top of Home.", priority: "MEDIUM", status: "TRIAGED", requestedBy: "Priya Shah", externalRef: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, hasImage: false, imageFilename: null, createdAt: atDays(-4), updatedAt: atDays(-2) },
-    { id: "wi2", type: "BUG", title: "AirPlay handoff drops audio on iOS 18", description: "Video continues but audio cuts out when handing off to Apple TV.", priority: "HIGH", status: "NEW", requestedBy: "Priya Shah", externalRef: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, hasImage: false, imageFilename: null, createdAt: atDays(-1), updatedAt: atDays(-1) },
+    { id: "wi1", type: "FEEDBACK", title: "Add a “continue watching” rail to the home screen", description: "Surface the last 10 partially-watched titles at the top of Home.", priority: "MEDIUM", status: "TRIAGED", requestedBy: "Priya Shah", externalRef: null, label: "FRONTEND", categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-4), updatedAt: atDays(-2), comments: [] },
+    { id: "wi2", type: "BUG", title: "AirPlay handoff drops audio on iOS 18", description: "Video continues but audio cuts out when handing off to Apple TV.", priority: "HIGH", status: "NEW", requestedBy: "Priya Shah", externalRef: null, label: null, categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, hasImage: false, imageFilename: null, device: "iPhone 15 Pro", osVersion: "iOS 18.1", createdAt: atDays(-1), updatedAt: atDays(-1), comments: [] },
   ],
   blockers: [
     { taskId: "t-blocked-1", title: "Wire up the new search index", blockedReason: "We need the Algolia admin API key for the production index before we can cut over. Can you add it to the shared vault?", blockedAt: atDays(-2), category: "Search & discovery", blockedResponse: null, blockedResponseAt: null },
@@ -651,13 +806,13 @@ const demoClientDetail: ClientDetailRecord = {
       id: "pf1", clientId: WIKI_CLIENT.id, name: "Production web", platformType: "WEB",
       url: "https://app.northwind.co", stagingUrl: "https://staging.northwind.co",
       repoUrl: "https://github.com/northwind/app", hasUsername: false, hasPassword: false,
-      logins: [], notes: null, previewImageUrl: null, featuredInWiki: true, createdAt: atDays(-110), updatedAt: atDays(-4),
+      logins: [], notes: null, previewImageUrl: null, featuredInWiki: true, links: [], createdAt: atDays(-110), updatedAt: atDays(-4),
     },
     {
       id: "pf2", clientId: WIKI_CLIENT.id, name: "iOS app", platformType: "IOS",
       url: "https://apps.apple.com/app/northwind", stagingUrl: null,
       repoUrl: "https://github.com/northwind/ios", hasUsername: false, hasPassword: false,
-      logins: [], notes: null, previewImageUrl: null, featuredInWiki: false, createdAt: atDays(-90), updatedAt: atDays(-9),
+      logins: [], notes: null, previewImageUrl: null, featuredInWiki: false, links: [], createdAt: atDays(-90), updatedAt: atDays(-9),
     },
   ],
   designs: [
@@ -1157,18 +1312,177 @@ const demoSupportClients = {
   ],
 };
 
-const demoConversationsByClient: Record<string, unknown[]> = {
-  "sup-northwind": [
-    { id: "cv1", clientId: "sup-northwind", source: "app_reviews", customerLabel: "App Store · ★★☆☆☆", subject: "Search is slow on older phones", preview: "Love the app but search takes ages on my iPhone 11…", receivedAt: atDays(0), unread: true, tags: ["performance"], sentiment: "negative", status: "new", priority: "high", issueType: "Bug", noteCount: 0 },
-    { id: "cv2", clientId: "sup-northwind", source: "gmail", customerLabel: "priya@northwind.co", subject: "Can we add a dark theme?", preview: "A few users have asked about a dark mode…", receivedAt: atDays(0), unread: true, tags: ["feature-request"], sentiment: "neutral", status: "open", priority: "normal", noteCount: 1 },
-    { id: "cv3", clientId: "sup-northwind", source: "discord", customerLabel: "@dev_sam", subject: "Webhook docs unclear", preview: "The retry section doesn't say what the backoff is…", receivedAt: atDays(-1), unread: true, tags: ["docs"], sentiment: "neutral", status: "open", priority: "low", noteCount: 0 },
-    { id: "cv4", clientId: "sup-northwind", source: "gmail", customerLabel: "ops@northwind.co", subject: "Thanks for the quick fix!", preview: "The download bug is gone — appreciate the fast turnaround.", receivedAt: atDays(-2), unread: false, tags: [], sentiment: "positive", status: "closed", priority: "normal", closedAt: atDays(-2), noteCount: 0 },
+/**
+ * The Care demo used to answer `{ messages: [] }`, `{ members: [] }`, `{ connections: [] }` and
+ * `{ notes: [] }` for every request — so the whole record side of the module was unreachable: no
+ * transcript, no assignee options, no send path, no notes. That made it a poor sales demo AND a
+ * useless verification surface for the one screen that most needed rendering, since `/app/care` is
+ * auth-gated with no staging.
+ *
+ * Threads are written as real support exchanges (an inbound, our reply, a follow-up) so the
+ * transcript, the Replied state and the reply gating all have something true to render.
+ */
+const demoSupportMembers = [
+  { id: "sup-m1", name: "Harry Beckett", email: "harry@example.com" },
+  { id: "sup-m2", name: "Sian Lloyd", email: "sian@example.com" },
+  { id: "sup-m3", name: "Alex Rivera", email: "alex@example.com" },
+];
+
+/**
+ * One connection per source the fixtures use, so `canSend` and "Open in channel" both resolve.
+ *
+ * ⚠️ Deliberately NOT one per source: there is no `gmail` connection, while `cv2` and `cv4` are
+ * gmail conversations. That is the real Fellas shape — a Gmail connector replaced by IMAP, its
+ * conversations left behind — and it is what the channel filter has to survive. Built from
+ * connections alone the dropdown loses "Gmail" while gmail rows stay in the table, visible and
+ * unfilterable; built from the union it does not.
+ */
+const demoSupportConnections = [
+  { id: "sup-cn1", clientId: "sup-northwind", source: "imap", status: "connected", label: "support@northwind.co", scraperConfig: {}, lastSyncedAt: atDays(0) },
+  { id: "sup-cn2", clientId: "sup-northwind", source: "discord", status: "connected", label: "Northwind community", scraperConfig: {}, lastSyncedAt: atDays(0) },
+  { id: "sup-cn3", clientId: "sup-northwind", source: "app_reviews", status: "connected", label: "App Store · Northwind", scraperConfig: {}, lastSyncedAt: atDays(0) },
+];
+
+const demoMessagesByConversation: Record<string, unknown[]> = {
+  cv1: [
+    { id: "msg-1a", conversationId: "cv1", direction: "inbound", authorLabel: "App Store · ★★☆☆☆", body: "Love the app but search takes ages on my iPhone 11 — anything over about 200 saved items and it hangs for four or five seconds before the results come in. Everything else feels quick, it's just search.", createdAt: atDays(0) },
   ],
-  "sup-cadenza": [
-    { id: "cv5", clientId: "sup-cadenza", source: "reddit", customerLabel: "u/cadenza_fan", subject: "Feature idea: shared playlists", preview: "Would be great to share a playlist with friends…", receivedAt: atDays(0), unread: true, tags: ["feature-request"], sentiment: "positive", status: "new", priority: "normal", noteCount: 0 },
-    { id: "cv6", clientId: "sup-cadenza", source: "youtube", customerLabel: "YT comment", subject: "Crash on Android 12", preview: "App crashes when I open settings on my Pixel…", receivedAt: atDays(-1), unread: false, tags: ["bug", "android"], sentiment: "negative", status: "open", priority: "urgent", issueType: "Crash", noteCount: 2 },
+  cv2: [
+    { id: "msg-2a", conversationId: "cv2", direction: "inbound", authorLabel: "priya@northwind.co", body: "Hi — a few of our users have asked about a dark mode, mostly the ones on the shop floor doing evening shifts. Is that something on the roadmap, or should we look at a workaround on our side?\n\nThanks,\nPriya", createdAt: atDays(-1) },
+    { id: "msg-2b", conversationId: "cv2", direction: "outbound", authorLabel: "Gitwork Support", body: "Hi Priya,\n\nIt is on the roadmap — the token work behind it landed last month, so what's left is the switch itself rather than a re-theme. Realistically that puts it in the next release cycle rather than this one.\n\nIn the meantime the app follows the OS setting on iOS 17+, so anyone on a recent phone can get most of the way there today.\n\nI'll come back to you the moment it has a date.\n\nBest,\nHarry", createdAt: atDays(0) },
+  ],
+  cv3: [
+    { id: "msg-3a", conversationId: "cv3", direction: "inbound", authorLabel: "@dev_sam", body: "The retry section of the webhook docs doesn't say what the backoff actually is. Is it fixed-interval or exponential, and how many attempts before you give up? We're deciding whether we need our own queue in front of it.", createdAt: atDays(-1) },
+  ],
+  cv4: [
+    { id: "msg-4a", conversationId: "cv4", direction: "inbound", authorLabel: "ops@northwind.co", body: "The download bug is gone — appreciate the fast turnaround.", createdAt: atDays(-3) },
+    { id: "msg-4b", conversationId: "cv4", direction: "outbound", authorLabel: "Gitwork Support", body: "Glad to hear it, and thanks for the clear report — the stack trace you attached is what made it a ten-minute fix rather than an afternoon.\n\nClosing this off, but reopen it any time if it resurfaces.", createdAt: atDays(-2) },
+  ],
+  cv5: [
+    { id: "msg-5a", conversationId: "cv5", direction: "inbound", authorLabel: "u/cadenza_fan", body: "Would be great to share a playlist with friends without exporting it first. Even a read-only link would do — right now I screenshot the list and send that, which is obviously daft.", createdAt: atDays(0) },
+  ],
+  cv6: [
+    { id: "msg-6a", conversationId: "cv6", direction: "inbound", authorLabel: "YT comment", body: "App crashes when I open settings on my Pixel. Android 12, latest version from the Play Store. Happens every time, straight after the settings screen starts to animate in.", createdAt: atDays(-1) },
   ],
 };
+
+const demoNotesByConversation: Record<string, unknown[]> = {
+  cv2: [
+    { id: "note-2a", conversationId: "cv2", authorId: "sup-m1", body: "Dark mode is behind the token refactor — do not promise a date until design sign-off.", createdAt: atDays(-1) },
+  ],
+  cv6: [
+    { id: "note-6a", conversationId: "cv6", authorId: "sup-m2", body: "Third Pixel crash report this week. Grouping them before we raise it.", createdAt: atDays(-1) },
+    { id: "note-6b", conversationId: "cv6", authorId: "sup-m1", body: "Reproduced on a Pixel 6 — it's the settings transition, not settings itself.", createdAt: atDays(0) },
+  ],
+};
+
+const demoConversationsByClient: Record<string, unknown[]> = {
+  "sup-northwind": [
+    { id: "cv1", clientId: "sup-northwind", source: "app_reviews", customerLabel: "App Store · ★★☆☆☆", subject: "Search is slow on older phones", preview: "Love the app but search takes ages on my iPhone 11…", receivedAt: atDays(0), unread: true, tags: ["performance"], sentiment: "negative", status: "new", priority: "high", issueType: "Bug", noteCount: 0 , lastInboundAt: atDays(0), lastOutboundAt: undefined, lastMessageAt: atDays(0), replyState: "awaiting_reply" },
+    { id: "cv2", clientId: "sup-northwind", source: "gmail", customerLabel: "priya@northwind.co", subject: "Can we add a dark theme?", preview: "A few users have asked about a dark mode…", receivedAt: atDays(0), unread: true, tags: ["feature-request"], sentiment: "neutral", status: "open", priority: "normal", noteCount: 1, assigneeId: "sup-m1", lastInboundAt: atDays(-1), lastOutboundAt: atDays(0), lastMessageAt: atDays(0), replyState: "replied" },
+    { id: "cv3", clientId: "sup-northwind", source: "discord", customerLabel: "@dev_sam", subject: "Webhook docs unclear", preview: "The retry section doesn't say what the backoff is…", receivedAt: atDays(-1), unread: true, tags: ["docs"], sentiment: "neutral", status: "open", priority: "low", noteCount: 0 , lastInboundAt: atDays(-1), lastOutboundAt: undefined, lastMessageAt: atDays(-1), replyState: "awaiting_reply" },
+    { id: "cv4", clientId: "sup-northwind", source: "gmail", customerLabel: "ops@northwind.co", subject: "Thanks for the quick fix!", preview: "The download bug is gone — appreciate the fast turnaround.", receivedAt: atDays(-2), unread: false, tags: [], sentiment: "positive", status: "closed", priority: "normal", closedAt: atDays(-2), noteCount: 0 , lastInboundAt: atDays(-3), lastOutboundAt: atDays(-2), lastMessageAt: atDays(-2), replyState: "replied" },
+  ],
+  "sup-cadenza": [
+    { id: "cv5", clientId: "sup-cadenza", source: "reddit", customerLabel: "u/cadenza_fan", subject: "Feature idea: shared playlists", preview: "Would be great to share a playlist with friends…", receivedAt: atDays(0), unread: true, tags: ["feature-request"], sentiment: "positive", status: "new", priority: "normal", noteCount: 0 , lastInboundAt: atDays(0), lastOutboundAt: undefined, lastMessageAt: atDays(0), replyState: "awaiting_reply" },
+    { id: "cv6", clientId: "sup-cadenza", source: "youtube", customerLabel: "YT comment", subject: "Crash on Android 12", preview: "App crashes when I open settings on my Pixel…", receivedAt: atDays(-1), unread: false, tags: ["bug", "android"], sentiment: "negative", status: "open", priority: "urgent", issueType: "Crash", noteCount: 2, assigneeId: "sup-m2", lastInboundAt: atDays(-1), lastOutboundAt: undefined, lastMessageAt: atDays(-1), replyState: "awaiting_reply" },
+  ],
+};
+
+
+/**
+ * Care queue counts, DERIVED from the conversation fixtures above rather than hand-written.
+ *
+ * Hand-written totals drift the moment a fixture changes, and a demo that contradicts itself is
+ * worse than one with no numbers — it teaches the reader not to trust the figures.
+ */
+/** Just the fields the counters and the list filter read — not the whole DTO. */
+type DemoConv = {
+  clientId: string; status: string; priority: string; assigneeId?: string;
+  replyState: string; lastInboundAt?: string; lastOutboundAt?: string; lastMessageAt?: string;
+  source: string; subject: string; preview?: string; customerLabel: string;
+};
+/**
+ * Apply a conversation list query to the fixtures — the same filters `listConversations` applies in
+ * SQL (status, replyState, unassigned, priority, source, q, sort).
+ *
+ * Without this the demo answered every request with the whole fixture list, so the view tabs, the
+ * channel filter, the search box and the sort control were all inert and the tab counts disagreed
+ * with the rows below them. Keep it in step with `SAVED_VIEWS` — it is what makes /demo/care a
+ * usable verification surface for a module whose real screens are auth-gated.
+ */
+function filterDemoConversations(clientId: string, search?: URLSearchParams): DemoConv[] {
+  let rows = [...((demoConversationsByClient[clientId] ?? []) as DemoConv[])];
+  if (!search) return rows;
+
+  // The wire format is `listSupportConversations`'s, not a guess: `status` is COMMA-JOINED (not
+  // repeated params) and `unassigned` is the string "1". Reading them as repeated params and as
+  // "true" silently matched nothing, so the awaiting tab rendered its own empty state while its
+  // badge read 2 — which is exactly the class of demo lie this function exists to remove.
+  const status = (search.get("status") ?? "").split(",").filter(Boolean);
+  if (status.length) rows = rows.filter((c) => status.includes(c.status ?? ""));
+
+  const replyState = search.get("replyState");
+  if (replyState) rows = rows.filter((c) => c.replyState === replyState);
+
+  if (search.get("unassigned") === "1") rows = rows.filter((c) => !c.assigneeId);
+  // "me" is the demo session's own id; no fixture is assigned to it, which is correct — the
+  // "Assigned to me" tab reads 0 and shows nothing, rather than reading 0 and showing everything.
+  const assigneeId = search.get("assigneeId");
+  if (assigneeId) rows = rows.filter((c) => c.assigneeId === assigneeId);
+
+  const priority = search.get("priority");
+  if (priority) rows = rows.filter((c) => c.priority === priority);
+
+  const source = search.get("source");
+  if (source) rows = rows.filter((c) => c.source === source);
+
+  const q = search.get("q")?.trim().toLowerCase();
+  if (q) {
+    rows = rows.filter((c) =>
+      [c.subject, c.preview, c.customerLabel].some((f) => (f ?? "").toLowerCase().includes(q)),
+    );
+  }
+
+  if (search.get("sort") === "oldest_inbound") {
+    rows.sort((a, b) => (a.lastInboundAt ?? "").localeCompare(b.lastInboundAt ?? ""));
+  } else {
+    rows.sort((a, b) => (b.lastMessageAt ?? "").localeCompare(a.lastMessageAt ?? ""));
+  }
+  return rows;
+}
+
+function demoQueueCounts(clientId: string) {
+  const rows = (demoConversationsByClient[clientId] ?? []) as DemoConv[];
+  const active = rows.filter((c) => c.status === "new" || c.status === "open");
+  const awaitingRows = active.filter((c) => c.replyState === "awaiting_reply");
+  const oldest = awaitingRows
+    .map((c) => c.lastInboundAt)
+    .filter((d): d is string => !!d)
+    .sort()[0] ?? null;
+  return {
+    awaiting: awaitingRows.length,
+    replied: active.filter((c) => c.replyState === "replied").length,
+    assignedMe: 0,
+    unassigned: awaitingRows.filter((c) => !c.assigneeId).length,
+    urgent: active.filter((c) => c.priority === "urgent").length,
+    open: active.length,
+    snoozed: rows.filter((c) => c.status === "snoozed").length,
+    closed: rows.filter((c) => c.status === "closed" || c.status === "ignored").length,
+    all: rows.length,
+    oldestAwaitingAt: oldest,
+    // Which channels the conversations actually came from — what the cockpit's channel filter is
+    // built from, alongside the live connections.
+    sources: Object.entries(
+      rows.reduce<Record<string, number>>((acc, c) => {
+        acc[c.source] = (acc[c.source] ?? 0) + 1;
+        return acc;
+      }, {}),
+    )
+      .map(([source, count]) => ({ source, count }))
+      .sort((a, b) => b.count - a.count),
+  };
+}
 
 // ─── Backstage (leave calendar only) ─────────────────────────────────────────────
 
@@ -2004,6 +2318,53 @@ const demoPulseScanList = [
   { id: "scan-northwind", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co", inputGithubRepo: null, status: "COMPLETED", healthScore: 86, generatedProposalId: null, createdAt: atDays(-5), updatedAt: atDays(-5) },
 ];
 
+/**
+ * What changed since the previous scan of the same target.
+ *
+ * Deliberately includes the `unverified` bucket, because that is the half of
+ * the story most tools do not tell: two findings from last time that this scan
+ * cannot confirm or clear. A demo that only ever shows fixes teaches the reader
+ * that a shrinking issue list means progress — which is exactly the reading
+ * `scan-diff.ts` exists to stop.
+ */
+const demoScanDiff: PulseScanDiff = {
+  previousScanId: "scan-northwind-prev",
+  previousCompletedAt: "2026-07-30T09:14:00.000Z",
+  scoreChange: 6,
+  fixed: [
+    { checkKey: "security_headers_csp", label: "Content-Security-Policy present", category: "Security", status: "PASS", prevStatus: "FAIL" },
+    { checkKey: "https_redirect", label: "HTTP redirects to HTTPS", category: "Security", status: "PASS", prevStatus: "WARN" },
+  ],
+  regressed: [
+    { checkKey: "sitemap_present", label: "sitemap.xml reachable", category: "SEO", status: "FAIL", prevStatus: "PASS" },
+  ],
+  newIssues: [
+    { checkKey: "cookie_consent_prior", label: "Consent taken before non-essential cookies", category: "Legal & Compliance", status: "WARN" },
+  ],
+  unverified: [
+    {
+      checkKey: "supabase_rls_enforced",
+      label: "Row-level security enforced",
+      category: "Security",
+      status: null,
+      prevStatus: "FAIL",
+      reason: "CHECK_ABSENT",
+      detail:
+        "This control did not run in the current scan, so the finding from last time is neither confirmed nor cleared. It is still outstanding until something proves otherwise.",
+    },
+    {
+      checkKey: "has_tests",
+      label: "Automated tests present",
+      category: "Code Quality",
+      status: "NOT_TESTED",
+      prevStatus: "WARN",
+      reason: "CHECK_DISABLED",
+      detail:
+        "This control is switched off in workspace settings, so the finding from last time was not re-tested. Turning a check off does not resolve what it found.",
+    },
+  ],
+};
+
 const demoPulseStats = {
   totalScans: 3,
   completedScans: 3,
@@ -2026,7 +2387,120 @@ const demoPulsePortfolio = [
  * Map an `/api/...` pathname (query stripped) to its demo payload. Returns an
  * empty object for anything unmapped so no fetcher errors or hangs during the demo.
  */
-export function resolveDemoApi(pathname: string): unknown {
+/**
+ * Demo Launchpad writes, applied through the REAL `applyItemPatch` / `computeCompleteness`
+ * so the demo exercises the actual status machine rather than a mock of it. That is
+ * the whole value of driving `/demo/portal` to verify a gated screen — a fake that
+ * always returns success verifies the CSS and nothing else.
+ *
+ * State is module-level and resets on reload, which is correct for a demo.
+ */
+let demoLaunchpadState: LaunchpadDTO | null = null;
+
+function demoLaunchpadNow(): LaunchpadDTO {
+  demoLaunchpadState ??= demoLaunchpad;
+  return demoLaunchpadState;
+}
+
+function recomputeDemoLaunchpad(next: LaunchpadDTO): LaunchpadDTO {
+  const updated: LaunchpadDTO = {
+    ...next,
+    completeness: computeCompleteness(
+      next.structure,
+      next.enabledModules,
+      next.items,
+      next.answers,
+    ),
+  };
+  demoLaunchpadState = updated;
+  return updated;
+}
+
+/** Handle one demo Launchpad request. Returns undefined when the path isn't ours. */
+function resolveDemoLaunchpad(
+  pathname: string,
+  init?: { method?: string; body?: unknown },
+): unknown {
+  const match = /\/launchpad(?:\/(items|docs)\/([^/]+))?(?:\/(modules|answers))?$/.exec(pathname);
+  if (!match) return undefined;
+  const current = demoLaunchpadNow();
+  const [, kind, id] = match;
+  const body =
+    typeof init?.body === "string"
+      ? (JSON.parse(init.body) as Record<string, unknown>)
+      : {};
+
+  if (kind === "items" && id) {
+    const itemId = decodeURIComponent(id);
+    const existing = current.items.find((i) => i.itemId === itemId);
+    const nextValues = applyItemPatch(
+      {
+        status: existing?.status ?? "NEEDED",
+        link: existing?.link ?? null,
+        note: existing?.note ?? null,
+        ownedByClient: existing?.ownedByClient ?? null,
+      },
+      body as Parameters<typeof applyItemPatch>[1],
+    );
+    const nextItem: LaunchpadItemState = {
+      itemId,
+      ...nextValues,
+      updatedBy: "Priya Shah",
+      updatedAt: atDays(0),
+    };
+    const items = existing
+      ? current.items.map((i) => (i.itemId === itemId ? nextItem : i))
+      : [...current.items, nextItem];
+    return { launchpad: recomputeDemoLaunchpad({ ...current, items }) };
+  }
+
+  if (kind === "docs" && id) {
+    const docs = current.docs.map((d) => {
+      if (d.docKey !== id) return d;
+      if (typeof body.approved === "boolean") {
+        return {
+          ...d,
+          status: body.approved ? ("APPROVED" as const) : d.edited ? ("EDITED" as const) : ("TEMPLATE" as const),
+          approvedAt: body.approved ? atDays(0) : null,
+          approvedByEmail: body.approved ? "priya@northwindstudio.co.uk" : null,
+        };
+      }
+      const answers = { ...d.answers, ...((body.answers as object) ?? {}) };
+      const bodyText = typeof body.body === "string" ? body.body : null;
+      const rendered = renderLegalDoc(d.docKey, answers);
+      return {
+        ...d,
+        answers,
+        body: bodyText ? bodyText : rendered.body,
+        edited: Boolean(bodyText),
+        status: bodyText ? ("EDITED" as const) : ("TEMPLATE" as const),
+        approvedAt: null,
+        approvedByEmail: null,
+      };
+    });
+    return { launchpad: recomputeDemoLaunchpad({ ...current, docs }) };
+  }
+
+  if (pathname.endsWith("/modules")) {
+    const enabledModules = Array.isArray(body.enabledModules)
+      ? (body.enabledModules as string[])
+      : current.enabledModules;
+    return { launchpad: recomputeDemoLaunchpad({ ...current, enabledModules }) };
+  }
+
+  if (pathname.endsWith("/answers")) {
+    const answers = { ...current.answers, ...((body.answers as object) ?? {}) };
+    return { launchpad: recomputeDemoLaunchpad({ ...current, answers }) };
+  }
+
+  return { launchpad: current };
+}
+
+export function resolveDemoApi(
+  pathname: string,
+  search?: URLSearchParams,
+  init?: { method?: string; body?: unknown },
+): unknown {
   switch (pathname) {
     case "/api/account":
       return demoAccount;
@@ -2049,9 +2523,14 @@ export function resolveDemoApi(pathname: string): unknown {
     case "/api/auth/session":
       return demoSession;
   }
+  // Launchpad — reads and writes, applied through the real status machine.
+  if (pathname.includes("/launchpad")) {
+    const result = resolveDemoLaunchpad(pathname, init);
+    if (result !== undefined) return result;
+  }
   // Client wiki — GET /api/clients/{slug}/wiki (exact; sub-paths are mutations → benign).
   if (/^\/api\/clients\/[^/]+\/wiki$/.test(pathname)) {
-    return demoWiki;
+    return { ...demoWiki, launchpad: demoLaunchpadNow() };
   }
   // Client portal detail sub-reads (before the generic /api/clients/{slug} case).
   if (/^\/api\/clients\/[^/]+\/slack-activity$/.test(pathname)) {
@@ -2097,12 +2576,31 @@ export function resolveDemoApi(pathname: string): unknown {
   if (pathname === "/api/support/clients") return demoSupportClients;
   {
     const conv = pathname.match(/^\/api\/support\/clients\/([^/]+)\/conversations$/);
-    if (conv) return { conversations: demoConversationsByClient[conv[1]] ?? [], nextCursor: null };
+    if (conv) return { conversations: filterDemoConversations(conv[1], search), nextCursor: null };
   }
-  if (/^\/api\/support\/clients\/[^/]+\/connections$/.test(pathname)) return { connections: [] };
-  if (/^\/api\/support\/clients\/[^/]+\/members$/.test(pathname)) return { members: [] };
-  if (/^\/api\/support\/clients\/[^/]+\/conversations\/[^/]+\/messages$/.test(pathname)) return { messages: [] };
-  if (/^\/api\/support\/clients\/[^/]+\/conversations\/[^/]+\/notes$/.test(pathname)) return { notes: [] };
+  {
+    const counts = pathname.match(/^\/api\/support\/clients\/([^/]+)\/conversations\/counts$/);
+    if (counts) return { counts: demoQueueCounts(counts[1]) };
+  }
+  // Care home's one-request roll-up for every client.
+  if (pathname === "/api/support/queue-summaries") {
+    const summaries: Record<string, ReturnType<typeof demoQueueCounts>> = {};
+    for (const id of Object.keys(demoConversationsByClient)) summaries[id] = demoQueueCounts(id);
+    return { summaries };
+  }
+  {
+    const conns = pathname.match(/^\/api\/support\/clients\/([^/]+)\/connections$/);
+    if (conns) return { connections: demoSupportConnections.filter((c) => c.clientId === conns[1]) };
+  }
+  if (/^\/api\/support\/clients\/[^/]+\/members$/.test(pathname)) return { members: demoSupportMembers };
+  {
+    const msgs = pathname.match(/^\/api\/support\/clients\/[^/]+\/conversations\/([^/]+)\/messages$/);
+    if (msgs) return { messages: demoMessagesByConversation[msgs[1]] ?? [] };
+  }
+  {
+    const notes = pathname.match(/^\/api\/support\/clients\/[^/]+\/conversations\/([^/]+)\/notes$/);
+    if (notes) return { notes: demoNotesByConversation[notes[1]] ?? [] };
+  }
 
   // Backstage — calendar only.
   if (pathname === "/api/backstage/calendar") return demoCalendarMonth;
@@ -2121,7 +2619,7 @@ export function resolveDemoApi(pathname: string): unknown {
   if (pathname === "/api/pulse/leads") return { leads: [] };
   if (pathname === "/api/pulse/monitors") return { monitors: [] };
   if (/^\/api\/pulse\/scans\/[^/]+\/history$/.test(pathname)) return { history: [] };
-  if (/^\/api\/pulse\/scans\/[^/]+\/diff$/.test(pathname)) return { diff: null };
+  if (/^\/api\/pulse\/scans\/[^/]+\/diff$/.test(pathname)) return { diff: demoScanDiff };
   if (/^\/api\/pulse\/scans\/[^/]+\/benchmarks$/.test(pathname)) return { benchmarks: null };
   {
     const ps = pathname.match(/^\/api\/pulse\/scans\/([^/]+)$/);

@@ -24,7 +24,10 @@ describe("standards verification catalogue", () => {
 
   it("keeps manual verification work visible without changing the health score", () => {
     const checks = runStandardsVerificationCatalog("IOS_APP");
-    expect(checks).toHaveLength(391);
+    expect(checks.length).toBeLessThan(391);
+    expect(checks.some((check) => check.checkKey.startsWith("standards_deep_device_"))).toBe(true);
+    expect(checks.some((check) => check.checkKey.startsWith("standards_deep_api_"))).toBe(false);
+    expect(checks.some((check) => check.checkKey.startsWith("standards_deep_host_"))).toBe(false);
     expect(checks.every((check) => check.status === "WARN" && check.confidence === "LOW")).toBe(true);
     expect(computeScoreBreakdown(checks).totalWeight).toBe(0);
   });

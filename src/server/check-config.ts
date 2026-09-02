@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { CHECKS_REGISTRY, type CheckDefinition } from "./checks-registry";
 import { DEFAULT_WORKSPACE_SLUG } from "./proposals";
+import type { PulseScanCheckInput } from "@/types/pulse";
 
 export interface CheckConfigRecord {
   checkKey: string;
@@ -14,7 +15,8 @@ export interface CheckConfigRecord {
   sortOrder: number;
 }
 
-async function getWorkspaceId(): Promise<string> {
+async function getWorkspaceId(explicitWorkspaceId?: string): Promise<string> {
+  if (explicitWorkspaceId) return explicitWorkspaceId;
   const ws = await prisma.workspace.findFirstOrThrow({
     where: { slug: DEFAULT_WORKSPACE_SLUG },
     select: { id: true },
@@ -126,4 +128,104 @@ export async function getCheckOverrides(): Promise<Map<string, { labelOverride: 
       { labelOverride: o.labelOverride, severityOverride: o.severityOverride },
     ]),
   );
+}
+
+export interface CheckPolicy {
+  disabledKeys: Set<string>;
+  overrides: Map<string, { labelOverride: string | null; severityOverride: string | null }>;
+  customChecks?: CheckConfigRecord[];
+}
+
+/** Load the exact workspace policy used by the scan being executed. */
+export async function loadCheckPolicy(workspaceId: string): Promise<CheckPolicy> {
+  const rows = await prisma.pulseCheckConfig.findMany({ where: { workspaceId } });
+  return {
+    disabledKeys: new Set(rows.filter((row) => !row.enabled).map((row) => row.checkKey)),
+    overrides: new Map(rows.map((row) => [
+      row.checkKey,
+      { labelOverride: row.labelOverride, severityOverride: row.severityOverride },
+    ])),
+    customChecks: rows
+      .filter((row) => row.isCustom && row.enabled)
+      .map((row) => ({
+        checkKey: row.checkKey,
+        category: String((row.customConfig as Record<string, unknown> | null)?.category ?? "Custom"),
+        label: row.labelOverride ?? row.checkKey,
+        enabled: row.enabled,
+        labelOverride: row.labelOverride,
+        severityOverride: row.severityOverride,
+        isCustom: true,
+        customConfig: (row.customConfig as Record<string, unknown> | null) ?? null,
+        sortOrder: row.sortOrder,
+      })),
+  };
+}
+
+/**
+ * Apply policy before persistence and scoring. Disabled controls remain visible
+ * as NOT_TESTED so a policy pack can never silently improve a score.
+ *
+ * Whenever policy changes a verdict it records the detector's own on
+ * `detectorStatus`/`detectorDetail`. Without that the rewrite was destructive:
+ * a stored scan could not be replayed against a different policy, and there was
+ * no way to ask "what did the scanner actually find" about a disabled or
+ * re-graded check. The two are separate facts and both are worth keeping — the
+ * detector's finding, and the workspace's decision about it.
+ *
+ * `label` is deliberately NOT preserved: the built-in label is recoverable from
+ * CHECKS_REGISTRY, so storing it again would be a second copy that can drift.
+ */
+export function applyCheckPolicy(
+  checks: PulseScanCheckInput[],
+  policy?: CheckPolicy,
+): PulseScanCheckInput[] {
+  if (!policy) return checks;
+  return checks.map((check) => {
+    if (policy.disabledKeys.has(check.checkKey)) {
+      return {
+        ...check,
+        status: "NOT_TESTED",
+        detail: "Check disabled in workspace settings.",
+        scoreEligible: false,
+        detectorStatus: check.status,
+        ...(check.detail ? { detectorDetail: check.detail } : {}),
+      };
+    }
+
+    const override = policy.overrides.get(check.checkKey);
+    if (!override) return check;
+    // The override only re-grades an issue the detector already found. A PASS, a
+    // SKIP or an INCONCLUSIVE is never rewritten — policy cannot invent a finding.
+    const regrades =
+      Boolean(override.severityOverride) && (check.status === "WARN" || check.status === "FAIL");
+    return {
+      ...check,
+      ...(override.labelOverride ? { label: override.labelOverride } : {}),
+      ...(regrades
+        ? {
+            status: override.severityOverride as "WARN" | "FAIL",
+            detectorStatus: check.status,
+          }
+        : {}),
+    };
+  });
+}
+
+// `policyDisposition()` — how to read the status/detectorStatus pair — lives in
+// pulse-checks/policy-disposition.ts, which is Prisma-free so the report UI can
+// import it too.
+
+/** Enabled custom controls are honest manual evidence requests until a typed
+ * executor exists for their declared customConfig. They no longer disappear. */
+export function customPolicyChecks(policy?: CheckPolicy): PulseScanCheckInput[] {
+  return (policy?.customChecks ?? []).map((custom) => ({
+    category: custom.category as PulseScanCheckInput["category"],
+    checkKey: custom.checkKey,
+    label: custom.labelOverride ?? custom.label,
+    status: "EVIDENCE_REQUIRED",
+    detail: "This workspace-defined control requires a reviewer or trusted integration to supply evidence.",
+    scoreEligible: false,
+    confidence: "LOW",
+    confidenceReason: "No typed automated executor is configured for this custom control.",
+  }));
 }

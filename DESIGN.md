@@ -296,6 +296,22 @@ exist.** Note ~8 hand-rolled field constants still diverge from it (CLAUDE.md §
 - Focused: border `2px solid {colors.primary}`, outline `3px solid {colors.primary-soft}`.
 - Error: border `2px solid {colors.danger}`, outline `3px solid {colors.danger-soft}`.
 
+### Tables
+
+**`app-table-shell` + `app-table`** — the standard table: 12px sentence-case headers, 14px/16px
+cells, hairline row borders. Correct for a table you *read* — a dozen rows you take in whole.
+
+**`app-table app-table--dense`** — the variant for a table you *scan*: a queue hundreds of rows
+long, where the base padding puts nine rows on a laptop screen. Headers switch to the mono-caps
+data-label voice, cells to 8px/12px. First used by the Care queue (CLAUDE.md §42.12).
+- Written `.app-table.app-table--dense …` (0,2,0) so it beats the base `.app-table thead th`
+  (0,1,2). A bare `.app-table--dense th` loses and silently does nothing — the same specificity
+  trap that left Deck's split-button radii wrong (CLAUDE.md §30).
+- **Either variant must sit in an `overflow-x-auto` ancestor.** Tables scroll, they never reflow —
+  `audit:ui`'s `TABLE-SCROLL` rule enforces it, and `overflow-hidden` is not a scroller.
+- Size the trailing columns (`w-[120px]` etc.) so the slack lands in the one flexible column. Auto
+  table layout otherwise hands 190px to a column reading `REDDIT`.
+
 ### Badges & Status
 
 > ⚠️ **There is no badge class.** `badge-blue` / `badge-green` / `badge-amber` / `badge-red` /
@@ -360,6 +376,20 @@ set a height, or vertical padding that implies one, on either cell independently
 - `<h1>` is **28px** / weight 400 / DM Serif Display / `leading-[1.15]` / `tracking-[-0.02em]`. Subtitle 13px/`leading-5`.
 - Both **truncate** with a `title=` attribute rather than wrapping. Wrapping would grow the band and knock the hairlines out of step; truncating without `title=` would be a TRUNCATED defect under `audit:clipping`. It needs to be both.
 - ⚠️ This is **not** `{typography.heading-1}`. That token is 44px and remains correct for public/standalone pages (`/timeline/[token]`, `/sign/[token]`, marketing) where a full-bleed serif headline is the point. Inside the app shell a 44px headline made the band 129.6px tall on every single page.
+
+**Layering.** The "On Your Desk" dock is fixed to the bottom of every `/app` page at
+**z-40**, so anything modal must beat it — use **z-50**, as `src/components/ui/modal.tsx`
+does. Eight hand-rolled dialogs in Portal sat at z-30 and left the dock painted on top of
+their overlay, undimmed and still clickable. Enforced by
+`src/components/__tests__/dialog-layering.test.ts`.
+
+⚠️ **A scrolling column clips focus rings.** `overflow-y-auto` forces `overflow-x`
+to `auto` as well — CSS will not let one axis be `visible` while the other scrolls —
+so the element becomes a clipping box. A field sitting flush against its edge has
+its 4px focus halo sliced off dead straight, which reads as a hard second border
+rather than a ring. Any scroll container holding inputs needs **at least 4px of
+horizontal padding** (use 6px); `pr-1` alone leaves the left side at zero. Found
+in the Add-platform modal, Sep 2026, where the field column measured 0px of room.
 
 **Sidebar nav** (Row 2, Col 1) — `ExpandedRail` component. Right border `1px solid {colors.hairline}`. Background: same brand-soft gradient. Width 280px fixed.
 - Nav items: 6px radius, 10px horizontal / 6px vertical padding, Inter 13px/500, 16px icon. Active state: `{colors.surface-brand}` bg, `{colors.brand-300}` border, `{colors.brand-800}` text.

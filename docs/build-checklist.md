@@ -19,7 +19,8 @@ npm run verify
 > added without its self-test fixture, `npm run verify` passed locally, and CI failed on the
 > separate self-test step. Local green must mean CI green, or the gate is theatre.
 
-That runs, in order: `prisma generate` → `tsc --noEmit` → `eslint` → `vitest` → `audit:ui`.
+That runs, in order: `prisma generate` → `tsc --noEmit` → `eslint` → `vitest` →
+`audit:dependencies` → `audit:ui --self-test` → `audit:ui`.
 It needs no database, no secrets and no running server, so it works on a fresh clone
 (`npm install` first).
 
@@ -108,18 +109,64 @@ So for any visual change:
 4. **Deck** has its own gate: `npm run deck:verify` (and rebuild + commit `public/deck/index.html`
    if you touched `vendor/bento`).
 
+### Measuring contrast on a rendered page — two traps that silently give you nonsense
+
+Any new coloured chip, badge or label needs its contrast **measured**, not eyeballed: the August
+2026 `/login` incident was dark ink on a dark surface at **1.04:1**, and nothing in the gate looks
+at colour. Measure it in headless Chromium against CSS **built from your own tree**, and know
+these two, because both return a confident wrong number:
+
+1. **Tailwind v4 emits `oklch()`, and Chrome leaves it in oklch form in computed style.** Parsing
+   the numbers out of `getComputedStyle(el).color` therefore reads L / C / H as if they were
+   R / G / B — a real reading was `fg=0,0,277`, with a channel above 255, scored against an equally
+   bogus background as "1.03:1 FAIL". **Resolve every colour through a 1x1 `<canvas>`**
+   (`ctx.fillStyle = css; ctx.fillRect(0,0,1,1); getImageData(...)`), which always hands back sRGB
+   bytes whatever the source notation.
+2. **The dark-mode remap uses translucent overlays.** `[data-theme="dark"] .bg-indigo-50` becomes
+   `rgba(96,165,250,0.12)`, so treating the declared background as opaque scored a perfectly
+   readable chip at **1.17:1**. **Composite every alpha layer down to the first opaque ancestor**
+   before computing the ratio — and do the same for the foreground, which can also be translucent.
+
+Judge against **AA 4.5:1**: a 10px uppercase chip is *not* "large text" (that needs 18.66px bold or
+24px normal), so the 3:1 allowance does not apply to the mono labels used all over this UI. Check
+**both** themes — a pairing that passes on cream can fail on navy and vice versa, since only some
+colour families are remapped (`bg-indigo-*` is, `bg-violet-*` is not; neutral / slate / zinc / gray
+are not remapped at all).
+
 ---
 
 ## 4. Verification honesty
 
-**There is no staging environment and there are no branch preview deploys.** Production is the
-Fasthosts VPS and only `main` deploys to it (`CLAUDE.md` §23) — Vercel is not in the path. So:
+**There is no staging environment.** Production is the Fasthosts VPS and only `main` deploys to it
+(`CLAUDE.md` §23) — Vercel is not in the production path.
 
-- `/app` pages **cannot be self-screenshotted** today. If a change only got a typecheck and a
-  reasoned read, say exactly that, and hand over a precise capture list — the page, the 2–3
-  viewports, the specific elements — never "please check everything".
+⚠️ **But a Vercel branch preview IS built for every PR, and it IS reachable.** This file used to
+say there were none, and that was simply wrong — measured on PR #612 in Aug 2026: `/pulse-overview`,
+`/embed/pulse` and `/api/health` all answered 200, `/` redirected to `/portal/login` as designed.
+Vercel being "vestigial" (§23) means production DNS no longer points at it; it does not mean the
+preview does not exist. The URL is in the `vercel[bot]` comment on the PR.
+
+What that does and does not buy you:
+
+- **Public routes can be verified per-branch.** `npm run audit:clipping <preview-url>/pulse-overview`
+  is a real runtime check on the actual branch — no longer something that has to wait for staging.
+  ⚠️ **From a Claude Code sandbox this currently does not complete.** The script now passes
+  `HTTPS_PROXY` through to Chromium (it does not read the proxy env vars itself, which is why every
+  page used to die with `ERR_CONNECTION_RESET` while `curl` to the same URL returned 200), but the
+  Playwright browser keeps its own NSS store and does not trust the agent proxy's re-terminated
+  TLS, so the request resets inside the tunnel. Run it from a normal machine. Do **not** reach for
+  `--ignore-certificate-errors`: a clipping audit run with TLS verification off is not evidence.
+- **`/app` pages still cannot be self-screenshotted.** The preview is auth-gated exactly like
+  production. Use the `renderToStaticMarkup` + compiled-CSS technique (`CLAUDE.md` §39.1) for those.
+- **The preview is backed by NEON, not the VPS Postgres.** Vercel's env still carries the Neon URLs
+  kept for rollback (§23), so anything you write there lands in the rollback database and is not
+  production data — and its build runs `prisma db push` against it.
+- **Some public paths have real side effects.** `POST /api/public/pulse/scan` permanently burns
+  that email's one free scan, writes a `PulseLead`, and emails the admins. Reachable is not free.
 - Never call something "verified" that wasn't actually exercised. `npm run verify` output is the
-  evidence; paste it.
+  evidence; paste it. If a change only got a typecheck and a reasoned read, say exactly that, and
+  hand over a precise capture list — the page, the 2–3 viewports, the specific elements — never
+  "please check everything".
 
 ---
 

@@ -2,12 +2,27 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiOk, fromError, apiError } from "@/lib/api-response";
 import { listCheckConfigs, saveCheckConfig } from "@/server/check-config";
-import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import {
+  assertAtLeastAdmin,
+  assertCan,
+  canViewCheckConfig,
+  getEffectiveUserOrNull,
+} from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+/**
+ * The read half of the check configuration. POST here and DELETE on `[checkKey]` were both
+ * gated; GET asserted nothing, so any signed-in member — a developer scoped to one client
+ * included — could read which controls the workspace has disabled, relabelled or downgraded.
+ * That is a map of what this workspace has decided not to look at.
+ *
+ * Gated on `settings.agents`, matching the settings page that renders it, rather than on
+ * admin — see canViewCheckConfig for why the stricter gate would be the wrong one.
+ */
+export async function GET(req: NextRequest) {
   try {
+    assertCan(await getEffectiveUserOrNull(req), canViewCheckConfig, "view Pulse check settings");
     const checks = await listCheckConfigs();
     return apiOk(checks);
   } catch (e) {

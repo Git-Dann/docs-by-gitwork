@@ -74,9 +74,11 @@ curl -X POST https://foundry.gitwork.co.uk/api/public/wiki-items/<token> \
 |---|---|---|
 | `title` | ✅ | Max 180 chars |
 | `description` | | Max 10,000 chars |
-| `type` | | `Bug` · `Feedback` · `Feature request` (also accepts Issue, Defect, Enhancement, Task, Comment). Default `Feedback` |
+| `type` | | `Bug` · `Feedback` · `Feature request` · `Design` (also accepts Issue, Defect, Enhancement, Task, Comment, Design change/edit, UI, UX). Default `Feedback` |
 | `priority` | | `Low` · `Medium` · `High` (also `P1`/`P2`/`P3`, `Urgent`, `Critical`, `Minor`). Default `Medium` |
 | `status` | | `New` · `Triaged` · `In progress` · `Closed` (also `Open`, `Accepted`, `Done`, `Resolved`, `Rejected`, `Won't fix`) |
+| `label` | | `Backend` · `Frontend` · `UI/UX` · `Research` · `Design` (also `API`, `UI`, `UX`). Carried onto the task when the request is promoted, so it lands already categorised |
+| `categoryId` | | One of **this client's own** category ids, when they've been given a custom set (e.g. `quick-design-fix-v1`). It decides `type`, so send one or the other — not both. Ask your Gitwork contact for the list |
 | `requestedBy` | | Who raised it their side |
 | `externalRef` | **strongly advised** | The item's id in their system. See idempotency below |
 | `externalUrl` | | Deep link back to the item — the team clicks through to the source |

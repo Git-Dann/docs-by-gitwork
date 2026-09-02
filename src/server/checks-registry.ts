@@ -20,6 +20,10 @@ export interface CheckDefinition {
 }
 
 export const CHECKS_REGISTRY: CheckDefinition[] = [
+  // Scan trust diagnostics — score-neutral, but required for completeness.
+  { key: "scan_collector_completeness", category: CATEGORIES.INFRASTRUCTURE, label: "Collector coverage and failure isolation" },
+  { key: "scan_extended_collector_completeness", category: CATEGORIES.INFRASTRUCTURE, label: "Extended collector coverage" },
+  { key: "repo_collector_completeness", category: CATEGORIES.INFRASTRUCTURE, label: "Repository collector coverage" },
   // -- iOS extended — data protection, WebView, build settings --
   { key: "ios_x_data_protection", category: CATEGORIES.APP_STORE, label: "Files are written with a data-protection class" },
   { key: "ios_x_biometric_fallback", category: CATEGORIES.APP_STORE, label: "Biometric authentication is backed by a device-passcode fallback" },
@@ -407,11 +411,12 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "playstore_data_safety", category: CATEGORIES.STORE_LISTING, label: "Data Safety section" },
   { key: "playstore_content_rating", category: CATEGORIES.STORE_LISTING, label: "IARC content rating" },
   { key: "ssl_valid", category: CATEGORIES.SEO, label: "HTTPS / SSL certificate" },
+  { key: "target_content_accessible", category: CATEGORIES.INFRASTRUCTURE, label: "Target content is inspectable" },
   { key: "http_redirect", category: CATEGORIES.INFRASTRUCTURE, label: "HTTP → HTTPS redirect" },
   { key: "response_time", category: CATEGORIES.INFRASTRUCTURE, label: "Response time" },
   { key: "status_200", category: CATEGORIES.INFRASTRUCTURE, label: "Returns 200 OK" },
   { key: "custom_domain", category: CATEGORIES.INFRASTRUCTURE, label: "Custom domain" },
-  { key: "cdn_detected", category: CATEGORIES.INFRASTRUCTURE, label: "CDN present" },
+  { key: "cdn_detected", category: CATEGORIES.INFRASTRUCTURE, label: "CDN / edge cache present" },
   { key: "meta_title", category: CATEGORIES.SEO, label: "<title> tag" },
   { key: "meta_description", category: CATEGORIES.SEO, label: "Meta description" },
   { key: "og_tags", category: CATEGORIES.SEO, label: "Open Graph tags" },
@@ -421,7 +426,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "has_sitemap", category: CATEGORIES.SEO, label: "sitemap.xml" },
   { key: "csp_header", category: CATEGORIES.SECURITY, label: "Content-Security-Policy" },
   { key: "hsts_header", category: CATEGORIES.SECURITY, label: "HSTS header" },
-  { key: "x_frame_options", category: CATEGORIES.SECURITY, label: "Clickjacking protection" },
+  { key: "x_frame_options", category: CATEGORIES.SECURITY, label: "X-Frame-Options header" },
   { key: "no_exposed_env", category: CATEGORIES.SECURITY, label: ".env not public" },
   { key: "no_exposed_git", category: CATEGORIES.SECURITY, label: ".git directory not public" },
   { key: "compression", category: CATEGORIES.PERFORMANCE, label: "Gzip/Brotli compression" },
@@ -483,7 +488,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "og_site_name", category: CATEGORIES.SEO, label: "og:site_name (brand in shares)" },
   { key: "subresource_integrity", category: CATEGORIES.SECURITY, label: "Subresource Integrity (SRI)" },
   { key: "secure_cookie_attributes", category: CATEGORIES.SECURITY, label: "Secure cookie attributes" },
-  { key: "cors_policy", category: CATEGORIES.SECURITY, label: "CORS policy" },
+  { key: "cors_policy", category: CATEGORIES.SECURITY, label: "CORS policy (Access-Control-Allow-Origin on this document)" },
   { key: "security_txt", category: CATEGORIES.SECURITY, label: "security.txt (responsible disclosure)" },
   { key: "server_header_leakage", category: CATEGORIES.SECURITY, label: "Server version not exposed" },
   { key: "no_mixed_content", category: CATEGORIES.SECURITY, label: "No mixed HTTP/HTTPS content" },
@@ -549,7 +554,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "no_debug_endpoints", category: CATEGORIES.SECURITY, label: "Debug/monitoring endpoints not public" },
   { key: "no_exposed_backup", category: CATEGORIES.SECURITY, label: "Database backup files not exposed" },
   { key: "http2_enabled", category: CATEGORIES.PERFORMANCE, label: "HTTP/2 protocol" },
-  { key: "no_x_powered_by", category: CATEGORIES.SECURITY, label: "X-Powered-By header absent" },
+  { key: "no_x_powered_by", category: CATEGORIES.SECURITY, label: "X-Powered-By header" },
   { key: "no_server_version", category: CATEGORIES.SECURITY, label: "Server version not disclosed" },
   { key: "cors_not_wildcard", category: CATEGORIES.SECURITY, label: "CORS not open to all origins" },
   { key: "has_word_count", category: CATEGORIES.SEO, label: "Sufficient page content" },
@@ -1069,6 +1074,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "vibe_placeholder_content", category: CATEGORIES.VIBE_HYGIENE, label: "No placeholder / filler content in production" },
   { key: "vibe_placeholder_images", category: CATEGORIES.VIBE_HYGIENE, label: "No placeholder / stock filler images" },
   { key: "spa_client_rendered", category: CATEGORIES.VIBE_HYGIENE, label: "Content is server-rendered (not a JS-only shell)" },
+  { key: "spa_content_rendered_for_scan", category: CATEGORIES.VIBE_HYGIENE, label: "Client-rendered content was read for this scan" },
   { key: "wcag22_consistent_help", category: CATEGORIES.ACCESSIBILITY, label: "Consistent help mechanism (WCAG 3.3.6)" },
   { key: "wcag22_dragging_alternative", category: CATEGORIES.ACCESSIBILITY, label: "Dragging movements have an alternative (WCAG 2.5.7)" },
 
@@ -1223,6 +1229,27 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
 
 /** All unique categories in display order */
 /** All categories in canonical display order — derived from the SoT, never hand-listed. */
+/**
+ * Single source of truth for the check count we ADVERTISE.
+ *
+ * Derived from the registry and rounded DOWN to the nearest hundred, so the public
+ * claim can only ever understate what the scanner does. Hardcoded figures had
+ * drifted badly — the same product was simultaneously described as "150+",
+ * "450+", "500+" and "100+ checks" across /context, /pulse-overview, the OG image
+ * and the results email a visitor actually receives, against a real registry of
+ * over a thousand.
+ *
+ * ⚠️ Not the same as what one scan emits. A URL-only public scan measures ~963 of
+ * these (verified against real sites); the platform families — iOS, Android,
+ * Flutter, desktop, React Native, CLI, browser extension — and the source-analysis
+ * families need a repository. So this is the catalogue size, which is the honest
+ * thing to advertise for the product; per-scan counts come from the scan itself.
+ */
+export const ADVERTISED_CHECK_COUNT = Math.floor(CHECKS_REGISTRY.length / 100) * 100;
+
+/** e.g. "over 1,000" — for prose. */
+export const ADVERTISED_CHECK_COUNT_LABEL = `over ${ADVERTISED_CHECK_COUNT.toLocaleString("en-GB")}`;
+
 export const CHECK_CATEGORIES: readonly CheckCategory[] = ORDERED_CATEGORIES;
 
 export function getCheckDefinition(key: string): CheckDefinition | undefined {

@@ -21,6 +21,7 @@ export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
     color: b.color,
     progress: b.progress,
     tasks: b.tasks,
+    statusCounts: b.statusCounts,
   }));
   const milestones: GanttMilestone[] = timeline.milestones.map((m) => ({
     id: m.id,

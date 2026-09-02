@@ -63,6 +63,7 @@ import type {
   TouchpointsSectionData,
   VideoEmbedSectionData,
 } from "@/types/proposal";
+import { GITWORK } from "@/lib/gitwork";
 
 export const BLOCK_GALLERY_TITLE = "Block gallery — every Docs block";
 
@@ -437,9 +438,9 @@ const ENTRIES: Array<{ key: SectionKey; title: string; data: ProposalSectionData
     parties: [
       {
         id: "party-1",
-        name: "Gitwork Ltd",
+        name: GITWORK.legalName,
         role: "Service Provider",
-        organization: "Gitwork Ltd",
+        organization: GITWORK.legalName,
         email: "dan@gitwork.co.uk",
         signatureRequired: true,
         definedTerm: "the Supplier",
@@ -591,7 +592,7 @@ const ENTRIES: Array<{ key: SectionKey; title: string; data: ProposalSectionData
     blocks: [
       {
         id: "sig-1",
-        partyName: "Gitwork Ltd",
+        partyName: GITWORK.legalName,
         signatoryName: "Dan Lindsay",
         signatoryRole: "Founder",
         signatoryEmail: "dan@gitwork.co.uk",

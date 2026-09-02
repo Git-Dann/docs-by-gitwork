@@ -388,3 +388,87 @@ describe("a clean repo produces a clean report, not a wall of findings", () => {
     expect(checks.filter((c) => c.status === "FAIL")).toEqual([]);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SQL string building — found wrong by running this family against a REAL
+// TypeScript repository rather than a fixture (§34.3's standing lesson).
+//
+// As first written it reported three Prisma-only API routes as SQL injection,
+// at FAIL, in Security. Under the release gate that is a BLOCKED launch on a
+// false positive — the worst outcome the gate can produce. Five compounding
+// causes, each of which alone makes the rule unusable on real code, and each
+// with a test below:
+//
+//   1. `[^"']*` had no bound, so the "string literal" ran for hundreds of lines.
+//   2. `f["']` matched the closing quote of `"STAFF"`.
+//   3. A lone `WHERE` matched Prisma's `where:`.
+//   4. `[^"']` could not cross the apostrophe in `= '" + email`, dropping the
+//      commonest real injection shape.
+//   5. Fixing (4) alone let English prose through.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const sqlFires = (file: string, body: string) =>
+  keys(evaluateWebSourceChecks(snapshot({ [file]: body }))).includes("web_sql_string_building");
+
+describe("web_sql_string_building catches real string-built SQL", () => {
+  const cases: Array<[string, string, string]> = [
+    ["a Python f-string", "app.py", 'cur.execute(f"SELECT * FROM users WHERE id = {user_id}")'],
+    ["an f-string INSERT", "app.py", 'cur.execute(f"INSERT INTO logs VALUES ({v})")'],
+    ["a template literal", "db.ts", "await sql(`SELECT id, email FROM users WHERE org = ${orgId}`);"],
+    ["a template DELETE", "db.ts", "await client.query(`DELETE FROM sessions WHERE id = ${id}`);"],
+    ["an UPDATE ... SET", "db.ts", "await sql(`UPDATE users SET name = ${name} WHERE id = ${id}`);"],
+    // The commonest real shape there is, and the one a naive `[^"']` class drops
+    // because the double-quoted string legitimately contains an apostrophe.
+    ["quote-wrapped concatenation", "db.js", `const q = "SELECT * FROM users WHERE email = '" + email;`],
+    ["str.format()", "app.py", 'cur.execute("SELECT * FROM t WHERE a = {}".format(a))'],
+    ["%-formatting", "app.py", 'cur.execute("SELECT * FROM t WHERE a = %s" % (a,))'],
+  ];
+  for (const [name, file, body] of cases) {
+    it(`fires on ${name}`, () => expect(sqlFires(file, body)).toBe(true));
+  }
+});
+
+describe("web_sql_string_building stays quiet on ordinary web code", () => {
+  const cases: Array<[string, string, string]> = [
+    // The exact shape that produced the live false positive: a string ending in
+    // the letter F, then unquoted code, then a Prisma `where:`.
+    [
+      "a Prisma query in a file containing \"STAFF\"",
+      "route.ts",
+      'const role = "STAFF";\nconst u = await prisma.user.findMany({\n  where: { workspace: { slug } },\n  select: { id: true },\n});',
+    ],
+    ["an import and an unrelated template literal", "a.ts", 'import { x } from "./x";\nconst msg = `imported from ${x}`;'],
+    ["a properly parameterised query", "db.ts", 'await client.query("SELECT * FROM users WHERE id = $1", [id]);'],
+    ["a <select> element", "f.tsx", "export const F = () => <select onChange={(e) => update(e)} />;"],
+    ["a deleteUser helper", "a.ts", "export function deleteUser(id: string) { return api.delete(`/users/${id}`); }"],
+    ["a query builder", "a.ts", 'const rows = await db.selectFrom("users").where("id", "=", id).execute();'],
+    // Prose that contains SELECT…FROM and is concatenated. Distinguished by
+    // where the hole lands: SQL breaks at a value position, prose does not.
+    ["a UI label built by concatenation", "ui.ts", 'const label = "Select an item from the list " + name;'],
+    ["a UI label built by interpolation", "ui.ts", "const label = `Select a value from the menu ${name}`;"],
+    ["copy that happens to say 'delete from'", "ui.ts", 'const t = "Delete from favourites, then retry " + n;'],
+  ];
+  for (const [name, file, body] of cases) {
+    it(`stays quiet on ${name}`, () => expect(sqlFires(file, body)).toBe(false));
+  }
+});
+
+// The shell rule's body was length-bounded as PRECAUTION, not because a defect
+// was demonstrated — it shares the SQL rule's dangerous shape (opens on a quote,
+// terminates on `${` rather than the matching quote) but its exclusion class
+// covers all three quote characters, which turns out to bound it in practice. No
+// fixture reproduced a false positive, so there is no negative test here: a test
+// that cannot tell the bug from the fix is not coverage, it is decoration. These
+// two assert the rule still catches what it is for after the bound.
+describe("web_shell_injection still catches interpolated commands", () => {
+  const shellFires = (file: string, body: string) =>
+    keys(evaluateWebSourceChecks(snapshot({ [file]: body }))).includes("web_shell_injection");
+
+  it("fires on a shell command built by interpolation", () => {
+    expect(shellFires("run.ts", "exec(`git clone ${repoUrl}`);")).toBe(true);
+  });
+
+  it("fires on Python shell=True", () => {
+    expect(shellFires("run.py", "subprocess.run(cmd, shell=True)")).toBe(true);
+  });
+});

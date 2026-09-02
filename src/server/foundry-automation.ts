@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { applyClientNameToSections } from "@/lib/apply-client-name";
 import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
 import { resolveDocumentOwnerName } from "@/lib/document-owner";
+import { GITWORK } from "@/lib/gitwork";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { allocateDocumentNumber } from "@/server/documents";
@@ -1203,7 +1204,7 @@ function buildProposalSectionsFromMeeting(input: {
             ...data,
             preparedBy: input.ownerName ?? "",
             team: "Gitwork",
-            contactDetails: "hello@gitwork.io",
+            contactDetails: GITWORK.email,
             footerNote: "Draft generated from Scribe notes. Valid only after Gitwork review and approval.",
           } satisfies Prisma.InputJsonObject,
         };
