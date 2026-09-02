@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { editDistance, fuzzyScore, fuzzySearch, normalise } from "../fuzzy-search";
+import {
+  editDistance,
+  fuzzyScore,
+  fuzzySearch,
+  normalise,
+} from "../fuzzy-search";
 
 /**
  * The real question this answers is "did we already add this course?", asked
@@ -114,7 +119,9 @@ describe("field weighting", () => {
 
   it("still finds a row when only a later field matches", () => {
     const rows = [{ name: "Dorking", country: "Scotland", notes: "" }];
-    expect(fuzzySearch(rows, "scotland", (r) => [r.name, r.country, r.notes])).toHaveLength(1);
+    expect(
+      fuzzySearch(rows, "scotland", (r) => [r.name, r.country, r.notes]),
+    ).toHaveLength(1);
   });
 });
 
@@ -130,5 +137,133 @@ describe("fuzzyScore", () => {
 
   it("is 0 for an empty query so callers can skip filtering", () => {
     expect(fuzzyScore("", ["Dorking"])).toBe(0);
+  });
+});
+
+/**
+ * Searching for a course that is NOT in the table.
+ *
+ * ── What went wrong (September 2026) ──────────────────────────────────────────
+ * Searching the live table for "Jamestown" — which is not in it — returned 33
+ * rows, none containing the word. Every one scored on the subsequence fallback
+ * against the `notes` field, which holds the original Big Wedge feedback email:
+ * 500-850 characters of prose. In a text that long, almost any ordinary sequence
+ * of letters can be found in order, so the fallback had quietly become a
+ * near-universal match on every row that had a note.
+ *
+ * The same disease sat one tier up: a 600-character note contains hundreds of
+ * words, so one of them is nearly always within edit distance 2 of whatever was
+ * typed. That is how "St Andrews" matched an unrelated row — "andrews" was two
+ * edits from some word buried in its note.
+ *
+ * The suite did not catch either, because its only negative case was "zzzzzz" —
+ * letters that appear nowhere, and so cannot be a subsequence of anything. A
+ * fuzzy matcher has to be tested with a query that LOOKS like the data and still
+ * is not in it. Every test below uses fixtures carrying a realistic long note.
+ */
+describe("a course that is not in the table", () => {
+  /** A verbatim-shaped Big Wedge note — the field that caused the bug. */
+  const note = (course: string) =>
+    "From Big Wedge Golf (16 Jun 2026):\nNew Feedback Received\n\nHello Admin,\n" +
+    "A new feedback submission has been received on Big Wedge Golf.\n" +
+    "From: Harry Davenport\nEmail: harryd2304@gmail.com\n" +
+    "Submitted: 2026-06-16 10:46:35\nFeedback ID: d14df644-b10a-4869-9e40\n" +
+    `Message:\nPlease could you add ${course}, it is my home course and the ` +
+    "scorecard is showing the wrong nine. I have attached a layout for reference.\n" +
+    "This is an automated notification from Big Wedge Golf";
+
+  const ROWS = [
+    { name: "Ardlodge", notes: note("Ardlodge") },
+    { name: "Dorking", notes: note("Dorking") },
+    { name: "Iver Golf Vlub", notes: note("Iver Golf Club") },
+    { name: "Neanger Park", notes: note("Neanger Park in Eaglehawk, Bendigo") },
+  ];
+  const search = (q: string) => fuzzySearch(ROWS, q, (r) => [r.name, r.notes]);
+
+  it.each([
+    "Jamestown",
+    "Pebble Beach",
+    "Augusta National",
+    "Torrey Pines",
+    "Chambers Bay",
+    "Whistling Straits",
+    "Muirfield Village",
+  ])("finds nothing for %s", (query) => {
+    // These read exactly like the data and are absent from it. Each one used to
+    // come back with most of the table attached.
+    expect(search(query)).toEqual([]);
+  });
+
+  it("does not match long prose on a subsequence", () => {
+    // "jamestown" IS present in order inside the note's letters; that must not
+    // count, because at that length it is coincidence rather than evidence.
+    expect(fuzzyScore("jamestown", [ROWS[0].notes])).toBe(0);
+  });
+
+  it("does not match long prose on a typo either", () => {
+    // Two edits from *something* in several hundred words is near-certain.
+    expect(fuzzyScore("andrews", [ROWS[0].notes])).toBe(0);
+    expect(fuzzyScore("davenpott", [ROWS[0].notes])).toBe(0);
+  });
+
+  it("still searches long prose on solid evidence", () => {
+    // The notes carry real detail — a town, a club name — and searching it is the
+    // point of including the field. Only the fuzzy tiers are withdrawn.
+    expect(search("bendigo").map((r) => r.name)).toEqual(["Neanger Park"]);
+    expect(search("harry davenport").length).toBe(ROWS.length);
+  });
+
+  it("does not subsequence-match a name far longer than the query", () => {
+    // The field-length gate does not cover this: a course NAME is short enough to
+    // be matched fuzzily, so the subsequence rule needs its own length bound.
+    // "Elmpter Wald Golf ClubGolfclub Elmpter Wald" is a real row, and "tampa" is
+    // genuinely present in it letter-by-letter, in order.
+    const name = "Elmpter Wald Golf ClubGolfclub Elmpter Wald";
+    expect(fuzzyScore("tampa", [name])).toBe(0);
+    // The words that are actually in it are still found.
+    expect(fuzzyScore("elmpter", [name])).toBeGreaterThan(0);
+  });
+
+  it("keeps a subsequence match where the text is short enough to mean it", () => {
+    // The rule is a length bound, not a removal: "wtsn" in "Watson" still counts.
+    expect(fuzzyScore("wtsn", ["Watson"])).toBeGreaterThan(0);
+    expect(fuzzyScore("iverglf", ["Iver Golf Vlub"])).toBeGreaterThan(0);
+  });
+
+  it("does not let a two-letter token match inside a word", () => {
+    // "st" sits inside "Wyboston", which is how "St Andrews" surfaced a row that
+    // has nothing to do with St Andrews.
+    expect(fuzzyScore("st", ["Wyboston Lakes Golf"])).toBe(0);
+    // A word that actually starts that way is still found.
+    expect(fuzzyScore("st", ["St Andrews Links"])).toBeGreaterThan(0);
+  });
+});
+
+describe("misspelling tolerance", () => {
+  it("forgives one edit from four characters, which is the Vlub case", () => {
+    // The live table really does contain "Iver Golf Vlub".
+    expect(fuzzyScore("club", ["Iver Golf Vlub"])).toBeGreaterThan(0);
+  });
+
+  it("forgives two edits only from seven characters up", () => {
+    // At six characters two edits is a third of the word — loose enough that
+    // "horley" matched forty rows of the live table.
+    expect(fuzzyScore("horley", ["Holes"])).toBe(0);
+    expect(fuzzyScore("dokring", ["Dorking"])).toBeGreaterThan(0);
+  });
+
+  it("prefers the typo match that starts the way the query does", () => {
+    // "dokring" is two edits from both, and only one is plausibly what was meant.
+    const rows = ["Bowring Park", "Dorking"];
+    expect(fuzzySearch(rows, "dokring", (r) => [r])[0]).toBe("Dorking");
+  });
+
+  it("ranks a near-exact word above the letters turning up inside a longer word", () => {
+    // "iver" sits inside "Riverside". "Iver Golf Vlub" is the row that was meant,
+    // and used to come second.
+    const rows = ["Dodge Riverside Golf Club", "Iver Golf Vlub"];
+    expect(fuzzySearch(rows, "iver golf club", (r) => [r])[0]).toBe(
+      "Iver Golf Vlub",
+    );
   });
 });

@@ -47,11 +47,27 @@ export function editDistance(a: string, b: string, max = 3): number {
   return prev[b.length];
 }
 
-/** How much misspelling to forgive, by how much the user typed. */
+/**
+ * How much misspelling to forgive, by how much the user typed.
+ *
+ * Two edits are only allowed from seven characters up. Allowing two on a
+ * six-letter token means a third of it can be wrong, which is loose enough to be
+ * coincidence: on the live table it made "horley" match forty rows, and it left
+ * "dokring" as good a match for "Bowring" as for the "Dorking" that was meant.
+ * One edit on four characters is kept deliberately — it is what finds the real row
+ * "Iver Golf Vlub" when someone types "club".
+ */
 function tolerance(token: string): number {
   if (token.length <= 3) return 0; // "ard" must be a real prefix, or everything matches
-  if (token.length <= 5) return 1;
+  if (token.length <= 6) return 1;
   return 2;
+}
+
+/** Characters two strings agree on from the start. */
+function sharedPrefix(a: string, b: string): number {
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return i;
 }
 
 /** True when every character of `token` appears in `text`, in order. */
@@ -62,6 +78,57 @@ function isSubsequence(token: string, text: string): boolean {
     if (i === token.length) return true;
   }
   return false;
+}
+
+/**
+ * How much longer than the query a text may be and still count as a subsequence
+ * match, and the shortest query the rule applies to at all.
+ *
+ * This bound is the whole rule, not a tuning knob. A subsequence is only evidence
+ * when the text is about as long as what was typed — "wtsn" inside "watson" means
+ * something; the same nine letters spread across a 600-character support email
+ * mean nothing, because in a text that long almost any ordinary sequence of
+ * letters can be found in order.
+ *
+ * Without this bound, searching the live table for "Jamestown" — a course that is
+ * not in it — returned 33 rows, every one scoring 400 against the `notes` field
+ * and none of them containing the word. The fallback had become a near-universal
+ * match on any row with a long note.
+ */
+const SUBSEQ_MAX_TEXT_RATIO = 2.5;
+const SUBSEQ_MIN_TOKEN = 4;
+
+/**
+ * The longest a field may be and still be matched FUZZILY (typo or subsequence).
+ *
+ * Same principle as the subsequence bound, one tier up. A name is short and
+ * identity-bearing, so "ardlodg" being one letter off "ardlodge" is real evidence.
+ * A 600-character support email is prose: it contains hundreds of words, so one of
+ * them is nearly always within edit distance 2 of whatever was typed. Searching the
+ * live table for "St Andrews" matched an unrelated row because "andrews" was
+ * within two edits of some word buried in its note.
+ *
+ * Long fields are still searched — they just have to match on solid evidence: an
+ * exact word, a word prefix, or a literal substring. That is what makes searching
+ * "antrim" find the row whose note reads "Antrim, Allen Park, 18 holes".
+ */
+const FUZZY_MAX_FIELD = 120;
+
+/** Below this length a token must match a word's START, never its middle. */
+const MIN_TOKEN_FOR_MIDWORD = 3;
+
+/** A subsequence match, but only where the text is short enough to mean it. */
+function subsequenceMatch(
+  token: string,
+  words: string[],
+  whole: string,
+): boolean {
+  if (token.length < SUBSEQ_MIN_TOKEN) return false;
+  const limit = token.length * SUBSEQ_MAX_TEXT_RATIO;
+  // Spanning several words ("iverglf" for "Iver Golf Vlub") is legitimate, so the
+  // whole field is eligible — but only while the whole field is itself short.
+  if (whole.length <= limit && isSubsequence(token, whole)) return true;
+  return words.some((w) => w.length <= limit && isSubsequence(token, w));
 }
 
 /**
@@ -78,23 +145,47 @@ function scoreToken(token: string, words: string[], whole: string): number {
     if (w === token) return 880;
     if (w.startsWith(token)) return 850;
   }
-  const at = whole.indexOf(token);
-  if (at >= 0) return 800 - Math.min(at, 99);
+  // Fuzzy tiers are only meaningful against a short, identity-bearing field.
+  const fuzzy = whole.length <= FUZZY_MAX_FIELD;
 
-  const tol = tolerance(token);
-  if (tol > 0) {
-    // A misspelled whole word — "ardlodg" for "ardlodge", "vlub" for "club".
-    for (const w of words) {
-      const d = editDistance(token, w, tol);
-      if (d <= tol) return 700 - d * 60;
+  if (fuzzy) {
+    const tol = tolerance(token);
+    if (tol > 0) {
+      // A misspelled whole word — "ardlodg" for "ardlodge", "vlub" for "club".
+      // Ranked ABOVE a mid-word substring: a word that is one letter off what was
+      // typed is stronger evidence than the letters turning up inside a longer
+      // word. Ranking these the other way round made "iver golf club" return
+      // "Dodge Riverside Golf Club" ahead of the actual "Iver Golf Vlub", because
+      // "iver" sits inside "riverside".
+      let bestTypo = 0;
+      for (const w of words) {
+        const d = editDistance(token, w, tol);
+        if (d > tol) continue;
+        // Break ties on how far the two agree from the start. Two words can sit
+        // the same edit distance away while only one of them plausibly began the
+        // way the user typed: "dokring" is two edits from both "dorking" and
+        // "bowring", and only the first shares an opening.
+        const score = 840 - d * 60 + sharedPrefix(token, w) * 2;
+        if (score > bestTypo) bestTypo = score;
+      }
+      if (bestTypo > 0) return bestTypo;
     }
-    // A misspelling that spans the name, e.g. "iver golf club" vs "iver golf vlub".
-    const d = editDistance(token, whole, tol);
-    if (d <= tol) return 650 - d * 60;
   }
 
-  // Last resort: the letters are all there in order ("wtsn" → "watson").
-  if (token.length >= 3 && isSubsequence(token, whole)) return 400;
+  // A literal substring somewhere in the middle of a word or field. Weak on its
+  // own, so a very short token is not allowed to match this way: "st" appears
+  // inside "Wyboston", which is how an unrelated row surfaced for "St Andrews".
+  const at = token.length >= MIN_TOKEN_FOR_MIDWORD ? whole.indexOf(token) : -1;
+  if (at >= 0) return 700 - Math.min(at, 99);
+
+  if (fuzzy) {
+    const tol = tolerance(token);
+    // A misspelling that spans the name, e.g. "iver golf club" vs "iver golf vlub".
+    if (tol > 0 && editDistance(token, whole, tol) <= tol) return 560;
+    // Last resort: the letters are all there in order ("wtsn" → "watson"), in a
+    // text short enough for that to be evidence rather than coincidence.
+    if (subsequenceMatch(token, words, whole)) return 400;
+  }
   return 0;
 }
 
@@ -105,7 +196,10 @@ function scoreToken(token: string, words: string[], whole: string): number {
  * typing more should never bring back more rows. Field order matters: earlier
  * fields are weighted higher, so a name match beats a note match.
  */
-export function fuzzyScore(query: string, fields: (string | null | undefined)[]): number {
+export function fuzzyScore(
+  query: string,
+  fields: (string | null | undefined)[],
+): number {
   const q = normalise(query);
   if (!q) return 0;
   const tokens = q.split(" ").filter(Boolean);
@@ -119,7 +213,8 @@ export function fuzzyScore(query: string, fields: (string | null | undefined)[])
     prepared.forEach((field, index) => {
       if (!field.whole) return;
       // 15% off per field position: name, then country, then notes.
-      const weighted = scoreToken(token, field.words, field.whole) * (1 - index * 0.15);
+      const weighted =
+        scoreToken(token, field.words, field.whole) * (1 - index * 0.15);
       if (weighted > best) best = weighted;
     });
     if (best === 0) return 0; // one unmatched token disqualifies the row
@@ -136,7 +231,11 @@ export function fuzzySearch<T>(
 ): T[] {
   if (!normalise(query)) return [...items];
   return items
-    .map((item, index) => ({ item, index, score: fuzzyScore(query, getFields(item)) }))
+    .map((item, index) => ({
+      item,
+      index,
+      score: fuzzyScore(query, getFields(item)),
+    }))
     .filter((row) => row.score > 0)
     .sort((a, b) => b.score - a.score || a.index - b.index)
     .map((row) => row.item);

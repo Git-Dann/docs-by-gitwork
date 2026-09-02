@@ -4484,3 +4484,68 @@ from §45.1 is how you find those by hand. **Not verified:** the live table — 
 auth-gated with no staging, so the audit was done through the Foundry MCP and the UI
 through server-rendered screenshots. Post-deploy, open Wedge → Wiki → Course requests
 and confirm Allen Park reads 3 HIGH.
+
+### 45.4 The course search matched 33 rows for a course that was not there
+
+Searching the live table for **"Jamestown"** — not in it — returned **33 rows**, none
+containing the word: "HS2 Renovated Course", "home course", "Ardlodge", "Dorking"…
+
+**Cause: a subsequence match is meaningless against long text.** Every bogus row
+scored exactly **280** = `400 × 0.7`, the subsequence fallback hitting the **`notes`**
+field, which holds the original Big Wedge feedback email — 500-850 characters of
+prose. In a text that long, almost any ordinary sequence of letters can be found *in
+order*, so `isSubsequence` had quietly become a near-universal match on every row
+with a note. Name-only score was 0; dropping `notes` from the field list gave 0 hits.
+
+**The same disease sat one tier up.** A 600-character note holds hundreds of words, so
+one of them is nearly always within edit distance 2 of whatever was typed — which is
+how **"St Andrews"** matched "Wyboston Lakes Golf" (`"andrews"` was two edits from a
+word buried in its note, and `"st"` sits inside "Wybo**st**on").
+
+**Four fixes, each a bound rather than a removal** — the forgiveness Dan asked for is
+the point of the feature, so none of it was thrown away:
+
+| Fix | Rule |
+|---|---|
+| `SUBSEQ_MAX_TEXT_RATIO = 2.5` | A subsequence counts only where the text is at most 2.5x the query. "wtsn" in "Watson" still means something. |
+| `FUZZY_MAX_FIELD = 120` | Fuzzy tiers (typo **and** subsequence) apply only to short, identity-bearing fields. Long prose still matches — on an exact word, a word prefix or a literal substring, which is what makes searching "antrim" find the row whose note reads "Antrim, Allen Park, 18 holes". |
+| `MIN_TOKEN_FOR_MIDWORD = 3` | A one- or two-character token must match a word's START, never its middle. |
+| `tolerance()`: two edits from **7** chars, not 6 | At six characters two edits is a third of the word. It made "horley" match **40** rows. One edit at four characters is kept deliberately — it is what finds the real row "Iver Golf **Vlub**" when someone types "club". |
+
+Two ranking bugs surfaced on the way and are fixed too: a **word typo now outranks a
+mid-word substring** (ranked the other way round, "iver golf club" returned "Dodge
+R**iver**side Golf Club" above the actual "Iver Golf Vlub"), and the typo tier
+**breaks ties on shared prefix** ("dokring" is two edits from both "Dorking" and
+"Bowring"; only one plausibly starts the way it was typed).
+
+⚠️ **Why the suite missed all of this: its only negative case was `"zzzzzz"`.** Letters
+that appear nowhere cannot be a subsequence of anything, so it passed while every
+normal-looking absent name leaked. **A fuzzy matcher has to be tested with queries
+that LOOK like the data and still are not in it** — the new cases use Jamestown,
+Pebble Beach, Augusta National, Torrey Pines, Chambers Bay, Whistling Straits and
+Muirfield Village, against fixtures carrying a realistic 500-character note.
+
+⚠️ **And one of the new tests was itself weaker than it looked.** Removing the
+subsequence bound left all 35 green, because `FUZZY_MAX_FIELD` already excludes long
+notes — the two fixes overlap *there*. The bound still matters for a long course
+**name**, which is short enough to be matched fuzzily, so that needed its own case:
+**"tampa" is genuinely a subsequence of the real row "Elmpter Wald Golf ClubGolfclub
+Elmpter Wald"**. Found by searching the live names for a plausible absent query that
+was a subsequence of one of them, rather than inventing a fixture.
+
+**Measured on the live data after the fix:** 26 of 26 target queries rank the right
+row first (including "dokring", "brechn", "neangar", "wentwerth", "allenpark",
+"iver golf club"); 12 of 13 absent courses return **nothing**; "horley" went 40 -> 2
+with the right top hit; and "antrim" / "bendigo" still find their rows via the notes.
+
+**The one remaining loose match, kept deliberately:** "Wolf Creek" returns 2 rows,
+both containing "Creek", because `"wolf"` is one edit from `"golf"` — which appears in
+most rows of a golf table. It is inseparable from the flagship case: `"wolf"` vs
+"Sandy Creek **Golf** Club" and `"club"` vs "Iver Golf **Vlub**" both score 780 by the
+identical mechanism, so removing one removes the other. Two well-ranked rows for an
+absent course is normal fuzzy behaviour; 33 unrelated rows was the bug.
+
+**Verified:** `npm run verify` green — tsc + lint 0 errors, **3178 tests** (17 new),
+`audit:ui` 0 findings; `npx next build` clean. Proved to discriminate by reverting each
+fix in turn — subsequence bound (1 failure), field-length gate (1), mid-word floor (1),
+tolerance scale (1), prefix tie-break (1), tier order (1).
