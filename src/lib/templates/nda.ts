@@ -410,14 +410,6 @@ export const ndaSectionBlueprints: SectionBlueprint[] = [
           email: "[registered office address]",
           signatureRequired: true,
         },
-        {
-          id: id(),
-          name: "[individual name]",
-          role: "",
-          organization: "In a personal capacity, for the Project only",
-          email: "[address for correspondence]",
-          signatureRequired: true,
-        },
       ],
     },
   },
@@ -437,6 +429,8 @@ export const ndaSectionBlueprints: SectionBlueprint[] = [
       blocks: [
         {
           id: id(),
+          type: "gitwork",
+          variableName: "Gitwork Signature",
           partyName: "Gitwork Group Ltd",
           signatoryName: "",
           signatoryRole: "",
@@ -446,24 +440,14 @@ export const ndaSectionBlueprints: SectionBlueprint[] = [
         },
         {
           id: id(),
+          type: "client",
+          variableName: "Client Signature",
           partyName: "{{client_name}}",
           signatoryName: "",
           signatoryRole: "",
           signatoryEmail: "",
           signatureDate: "",
           details: ["Company no. [company number]", "[registered office address]"],
-        },
-        {
-          id: id(),
-          partyName: "[individual name]",
-          signatoryName: "",
-          signatoryRole: "",
-          signatoryEmail: "",
-          signatureDate: "",
-          details: ["In a personal capacity, for the Project"],
-          // Swaps "FOR AND ON BEHALF OF" for "SIGNED PERSONALLY BY" and the POSITION rule for a
-          // WITNESS NAME rule, exactly as the reference's third card reads.
-          personal: true,
         },
       ],
       note: "This agreement may be signed electronically. An electronic signature applied through a recognised signing platform has the same effect as a wet ink signature. Once all parties have signed, each party should keep a copy of the fully executed agreement. A separate deed of adherence will be issued for the Project Company once it is incorporated.",

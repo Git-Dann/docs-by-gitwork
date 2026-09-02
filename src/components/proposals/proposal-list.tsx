@@ -2,6 +2,7 @@
 
 import {
   ArchiveBoxIcon,
+  ArrowUpTrayIcon,
   ArrowUturnLeftIcon,
   ChartBarIcon,
   ChevronDownIcon,
@@ -90,6 +91,7 @@ function DocLink({
 }
 import { StatusBadge } from "@/components/status-badge";
 import { TemplateGallery } from "@/components/proposals/template-gallery";
+import { CreateDocumentWizardModal } from "@/components/proposals/create-document-wizard-modal";
 import type { DocumentType } from "@/types/proposal";
 
 const statusOptions = [
@@ -195,6 +197,10 @@ export function ProposalList() {
     }));
   }, [clientFilter]);
 
+  const [intakeFile, setIntakeFile] = useState<File | null>(null);
+  const [intakeBrief, setIntakeBrief] = useState("");
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+
   useEffect(() => {
     if (openCreate) {
       setShowCreate(true);
@@ -223,6 +229,7 @@ export function ProposalList() {
   // Collections rail scope — the primary left-rail selector. `all`/`favorites` exclude archived;
   // `archived` shows only archived. Drives the card grid, table, and grouped views alike.
   const [scope, setScope] = useState<"all" | "favorites" | "archived">("all");
+  const [showWizardModal, setShowWizardModal] = useState(false);
   // Doc-type filter (rail's TYPE list). Scopes the visible set to one document type.
   const [docTypeFilter, setDocTypeFilter] = useState<DocumentType | "ALL">(
     typeParam && typeParam !== "ALL" ? (typeParam as DocumentType) : "ALL",
@@ -344,6 +351,44 @@ export function ProposalList() {
   }, [page, totalPages]);
 
   async function handleCreate() {
+    if (intakeFile || intakeBrief.trim().length > 0) {
+      setIsGeneratingAi(true);
+      try {
+        const formData = new FormData();
+        formData.append("documentType", form.documentType);
+        if (form.title.trim()) formData.append("title", form.title.trim());
+        if (form.clientName.trim()) formData.append("clientName", form.clientName.trim());
+        if (intakeBrief.trim()) formData.append("brief", intakeBrief.trim());
+        if (intakeFile) formData.append("file", intakeFile);
+
+        const res = await fetch("/api/documents/generate", {
+          method: "POST",
+          body: formData,
+        });
+
+        let json: { error?: string; documentId?: string } = {};
+        const isJson = res.headers.get("content-type")?.includes("application/json");
+        if (isJson) {
+          json = (await res.json()) as { error?: string; documentId?: string };
+        }
+
+        if (!res.ok) {
+          throw new Error(json.error || `AI document creation failed (${res.status} ${res.statusText})`);
+        }
+
+        closeCreate();
+        await queryClient.invalidateQueries({ queryKey: ["proposals"] });
+        if (json.documentId) {
+          router.push(`/app/docs/${json.documentId}`);
+        }
+      } catch (err) {
+        alert((err as Error).message);
+      } finally {
+        setIsGeneratingAi(false);
+      }
+      return;
+    }
+
     const isDeck = form.documentType === "DECK";
     const created = await createMutation.mutateAsync({
       title: form.title || DEFAULT_TITLE_BY_TYPE[form.documentType],
@@ -355,20 +400,8 @@ export function ProposalList() {
       deckTemplate: isDeck ? form.deckTemplate ?? undefined : undefined,
     });
 
-    setShowCreate(false);
-    setForm({
-      title: "",
-      clientName: "",
-      clientId: undefined,
-      documentType: "PROPOSAL",
-      templateId: null,
-      deckTemplate: null,
-    });
+    closeCreate();
 
-    // A deck is edited in Deck, not the Docs editor. Same tab (a new window is
-    // disorienting and leaves Deck's back button with nowhere to return to), and
-    // a hard navigation because /deck is a static shell behind a rewrite rather
-    // than an App Router route — router.push would try a client nav first.
     if (isDeck) {
       window.location.assign(deckHref(created.proposal.id));
       return;
@@ -378,6 +411,8 @@ export function ProposalList() {
 
   function closeCreate() {
     setShowCreate(false);
+    setIntakeFile(null);
+    setIntakeBrief("");
     setForm({
       title: "",
       clientName: "",
@@ -386,6 +421,20 @@ export function ProposalList() {
       templateId: null,
       deckTemplate: null,
     });
+  }
+
+  function handleOpenNewModal() {
+    setForm({
+      title: "",
+      clientName: "",
+      clientId: undefined,
+      documentType: "PROPOSAL",
+      templateId: null,
+      deckTemplate: null,
+    });
+    setIntakeFile(null);
+    setIntakeBrief("");
+    setShowCreate(true);
   }
 
   const totalCount = proposals.length;
@@ -451,7 +500,7 @@ export function ProposalList() {
                   type="button"
                   variant="primary"
                   size="md"
-                  onClick={() => setShowCreate(true)}
+                  onClick={handleOpenNewModal}
                   leadingIcon={<PlusIcon className="h-4 w-4" />}
                 >
                   Create your first document
@@ -607,14 +656,16 @@ export function ProposalList() {
                 type="button"
                 variant="primary"
                 size="md"
-                onClick={() => setShowCreate(true)}
+                onClick={handleOpenNewModal}
                 leadingIcon={<PlusIcon className="h-4 w-4" />}
               >
-                New
+                New Document
               </Button>
             ) : null}
           </div>
         </div>
+
+
 
         {/* Collections rail + the active view. Rail stacks above the content below lg. */}
         <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[212px_minmax(0,1fr)]">
@@ -1047,6 +1098,37 @@ export function ProposalList() {
                     )}
                   </div>
 
+                  {/* Reference Document / AI Intake (Optional) */}
+                  <div className="rounded-[10px] border border-[var(--border-2)] bg-white p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-[var(--text-1)] flex items-center gap-1.5">
+                        <SparklesIcon className="h-3.5 w-3.5 text-[var(--brand-600)]" />
+                        Reference Doc / AI Context
+                      </span>
+                      <span className="text-[10px] font-mono text-[var(--text-4)] uppercase">Optional</span>
+                    </div>
+                    <label className="flex cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] p-2 text-center transition hover:border-[var(--brand-500)] hover:bg-white">
+                      <input
+                        type="file"
+                        accept=".pdf,.docx,.txt,.md"
+                        onChange={(e) => setIntakeFile(e.target.files?.[0] ?? null)}
+                        className="hidden"
+                      />
+                      <ArrowUpTrayIcon className="h-4 w-4 text-[var(--brand-600)]" />
+                      <span className="mt-1 text-[11px] font-semibold text-[var(--text-1)] truncate max-w-[220px]">
+                        {intakeFile ? intakeFile.name : "Upload info document"}
+                      </span>
+                      <span className="text-[10px] text-[var(--text-4)]">PDF, DOCX, TXT, or MD</span>
+                    </label>
+                    <textarea
+                      value={intakeBrief}
+                      onChange={(e) => setIntakeBrief(e.target.value)}
+                      rows={2}
+                      placeholder="Or paste details (client info, scope, dates)..."
+                      className="app-textarea resize-none text-[11px] min-h-[48px]"
+                    />
+                  </div>
+
                   {/* Selected template confirmation — small chip-style summary so the operator
                       doesn't lose track of which template they picked once they scroll the
                       right-hand gallery away from the active row. */}
@@ -1113,11 +1195,12 @@ export function ProposalList() {
                 <Button
                   type="button"
                   onClick={() => void handleCreate()}
-                  loading={createMutation.isPending}
+                  loading={createMutation.isPending || isGeneratingAi}
                   variant="primary"
                   size="md"
+                  leadingIcon={intakeFile || intakeBrief.trim() ? <SparklesIcon className="h-4 w-4" /> : undefined}
                 >
-                  Create
+                  {isGeneratingAi ? "Generating with AI..." : intakeFile || intakeBrief.trim() ? "Create with AI" : "Create"}
                 </Button>
               </div>
         </Modal>

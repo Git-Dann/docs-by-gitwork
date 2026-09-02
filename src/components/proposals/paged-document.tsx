@@ -162,7 +162,7 @@ export function PagedDocument({
   // the observers — see below. A ref keeps the pass reading the current value.
   const sectionsRef = useRef(sections);
   sectionsRef.current = sections;
-  const scheduleRef = useRef<() => void>(() => {});
+  const scheduleRef = useRef<() => void>(() => { });
 
   // ⚠️ Mount-only, and that is the fix rather than a tidy-up.
   //
@@ -214,7 +214,7 @@ export function PagedDocument({
     const ro = new ResizeObserver(schedule);
     ro.observe(bodyEl);
     ro.observe(measure);
-    document.fonts?.ready.then(schedule).catch(() => {});
+    document.fonts?.ready.then(schedule).catch(() => { });
     window.addEventListener("resize", schedule);
     return () => {
       cancelAnimationFrame(raf);
@@ -222,7 +222,7 @@ export function PagedDocument({
       window.removeEventListener("resize", schedule);
       // Anything that fires between teardown and the next setup must be a no-op, not a call
       // into a cancelled frame loop.
-      scheduleRef.current = () => {};
+      scheduleRef.current = () => { };
     };
   }, []);
 

@@ -30,6 +30,8 @@ export interface SignatureSignerRecord {
   email: string;
   role: string;
   organization: string | null;
+  signerType?: string | null;
+  variableName?: string | null;
   accessToken: string;
   status: SignerStatus;
   signedAt: string | null;
@@ -38,6 +40,8 @@ export interface SignatureSignerRecord {
   invitedAt: string | null;
   firstViewedAt: string | null;
   signingOrder: number | null;
+  docusealSlug?: string | null;
+  docusealEmbedSrc?: string | null;
 }
 
 export interface SignatureEventRecord {
@@ -58,10 +62,14 @@ export interface SignatureRequestRecord {
   expiresAt: string | null;
   sentAt: string | null;
   completedAt: string | null;
+  docusealSubmissionId?: string | null;
   createdAt: string;
   updatedAt: string;
   signers: SignatureSignerRecord[];
   events?: SignatureEventRecord[];
+  document?: {
+    updatedAt: string;
+  };
 }
 
 const requestKey = (documentId: string) => ["signature-requests", documentId] as const;
@@ -76,7 +84,7 @@ export function useSignatureRequests(documentId: string | undefined) {
       );
       return res.requests;
     },
-    staleTime: 10_000,
+    staleTime: 3_000,
   });
 }
 
@@ -93,6 +101,23 @@ export function useCreateSignatureRequest(documentId: string) {
         },
       );
       return res.request;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: requestKey(documentId) }),
+  });
+}
+
+export function usePushDocuSeal(documentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch<{
+        requestId: string;
+        docusealSubmissionId: string | number;
+        signers: Array<SignatureSignerRecord>;
+      }>(`/api/documents/${documentId}/docuseal`, {
+        method: "POST",
+      });
+      return res;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: requestKey(documentId) }),
   });

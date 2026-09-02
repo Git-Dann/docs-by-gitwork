@@ -406,6 +406,12 @@ export interface SignatureBlockItem {
   signatoryEmail: string;
   /** Filled at signing time (Sprint 4 e-sig); kept blank in v3. */
   signatureDate: string;
+  /** Captured signature data URL (PNG), typed string, or DocuSeal reference. */
+  signaturePayload?: string;
+  /** Exact name recorded when consent was signed. */
+  signedName?: string;
+  /** True when this block has been signed. */
+  signed?: boolean;
   /** Optional detail lines printed under the party name (company number, registered office, …).
    *  One entry per rendered line; blank entries are dropped at render. */
   details?: string[];
@@ -413,6 +419,10 @@ export interface SignatureBlockItem {
    *  signing for a company — the card then reads "SIGNED PERSONALLY BY" and asks for a witness
    *  name in place of a position. */
   personal?: boolean;
+  /** Signatory classification for DocuSeal integration: "gitwork" (supplier) or "client" (counterparty). */
+  type?: "gitwork" | "client";
+  /** Variable key for the signature field in doc / DocuSeal tags (e.g. "gitwork_signature", "client_signature_1"). */
+  variableName?: string;
 }
 
 export interface SignaturesSectionData {

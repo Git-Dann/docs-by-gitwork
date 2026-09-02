@@ -1,0 +1,64 @@
+# Staging environment. Deployed by .github/workflows/deploy-staging.yml on push to `staging`.
+#
+# Lives in its OWN directory on the VPS (/opt/apps/foundry-staging), never
+# /opt/apps/foundry — that's production's directory, and this file is not synced
+# there by CI (same as docker-compose.yml, CI never scp's it — see deploy.yml).
+# It must be copied to /opt/apps/foundry-staging/docker-compose.yml by hand once,
+# alongside its own .env. See the one-time VPS setup steps in deploy-staging.yml.
+#
+# Every identifier below is deliberately distinct from docker-compose.yml
+# (container names, port, volume, DB name, image tag) so a staging deploy can
+# never collide with — or overwrite — the production containers/DB/image on the
+# same box. Do not "simplify" these back to match prod's names.
+services:
+  db:
+    # pgvector required — bootstrap.ts runs CREATE EXTENSION IF NOT EXISTS vector
+    # on boot for Care semantic search; boot fails without it (CLAUDE.md §23).
+    # ⚠️ Note: production currently runs plain `postgres:17-alpine` (confirmed
+    # 2026-07-29), not this image — so staging is intentionally AHEAD of prod
+    # here, not mirroring it. See CLAUDE.md §36 before assuming parity.
+    image: pgvector/pgvector:pg17
+    container_name: foundry-staging-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: foundry_staging
+      POSTGRES_USER: foundry
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      # Exposed on the host (unlike prod's db, which is internal-only) so it can
+      # be reached directly from a local psql/DB GUI client for staging debugging.
+      # 5433, not 5432 — leaves 5432 free in case anything else ever needs it,
+      # and makes it obvious at a glance this is the staging port.
+      # ⚠️ Firewall this to trusted IPs only — do not leave 5433 open to the
+      # internet. Check the Fasthosts cloud firewall rules, not just ufw/iptables
+      # on the box (see the VPS setup memory note on where the firewall lives).
+      - "5433:5432"
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+    healthcheck:
+      # -d explicit: pg_isready defaults dbname to the username when omitted, so
+      # a bare "pg_isready -U foundry" tries to connect to a db literally named
+      # "foundry" — which doesn't exist here (POSTGRES_DB is foundry_staging).
+      # It still reports healthy (pg_isready only checks the server responds at
+      # all), but logs a real FATAL every 10s. Same latent bug exists in prod's
+      # docker-compose.yml — invisible there only because POSTGRES_DB happens to
+      # equal POSTGRES_USER ("foundry").
+      test: ["CMD-SHELL", "pg_isready -U foundry -d foundry_staging"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: ghcr.io/git-dann/docs-by-gitwork:staging
+    container_name: foundry-staging
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3001:3000"
+    env_file:
+      - .env
+
+volumes:
+  postgres_staging_data:

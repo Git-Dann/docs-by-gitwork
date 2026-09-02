@@ -2,6 +2,69 @@ import type { Metadata, Viewport } from "next";
 import { AppProviders } from "@/components/providers/app-providers";
 import "./globals.css";
 
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+});
+
+const dmSerifDisplay = DM_Serif_Display({
+  subsets: ["latin"],
+  weight: ["400"],
+  style: ["normal", "italic"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+  display: "swap",
+});
+
+// Script fonts for the TYPED e-signature flow (/sign/[token]). Only the signing page references
+// these via CSS family names, so the bundle weight is mostly opportunistic — browsers won't
+// download them until a `font-family: Caveat` rule actually matches an element.
+// preload:false — these are route-specific (signing page only). Without it next/font
+// injects a <link rel="preload"> for every family on EVERY route, eagerly fetching
+// ~11 unused woff2 files (render-blocking weight). With it, the @font-face still ships
+// so the browser fetches the file lazily the moment a `font-family` rule matches.
+const caveat = Caveat({ subsets: ["latin"], weight: ["400", "700"], variable: "--font-caveat", display: "swap", preload: false, fallback: ["cursive"] });
+const dancingScript = Dancing_Script({ subsets: ["latin"], weight: ["400", "700"], variable: "--font-dancing-script", display: "swap", preload: false, fallback: ["cursive"] });
+const greatVibes = Great_Vibes({ subsets: ["latin"], weight: ["400"], variable: "--font-great-vibes", display: "swap", preload: false, fallback: ["cursive"] });
+
+// Studio marketing-brand fonts — used only by the /app/studio social-asset templates
+// (Cream/Purple style preset). Bound to CSS vars; browsers only fetch them once a
+// `font-family: var(--font-fraunces|--font-playfair)` rule actually matches, so they
+// add no weight to the rest of the app.
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-fraunces",
+  display: "swap",
+  preload: false,
+  fallback: ["Georgia", "serif"],
+});
+const playfairDisplay = Playfair_Display({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  style: ["normal", "italic"],
+  variable: "--font-playfair",
+  display: "swap",
+  preload: false,
+  fallback: ["Georgia", "serif"],
+});
+
+// Extra display/sans families offered as text-layer fonts in Studio's App Screenshots mode.
+// Bound to CSS vars (next/font self-hosts them, so no runtime request to Google — keeps the CSP
+// intact and lets html-to-image rasterize them cleanly). Only fetched once a matching
+// `font-family: var(--font-…)` rule is actually used.
+const poppins = Poppins({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-poppins", display: "swap", preload: false, fallback: ["sans-serif"] });
+const montserrat = Montserrat({ subsets: ["latin"], variable: "--font-montserrat", display: "swap", preload: false, fallback: ["sans-serif"] });
+const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space-grotesk", display: "swap", preload: false, fallback: ["sans-serif"] });
+const manrope = Manrope({ subsets: ["latin"], variable: "--font-manrope", display: "swap", preload: false, fallback: ["sans-serif"] });
+const archivo = Archivo({ subsets: ["latin"], variable: "--font-archivo", display: "swap", preload: false, fallback: ["sans-serif"] });
+const sora = Sora({ subsets: ["latin"], variable: "--font-sora", display: "swap", preload: false, fallback: ["sans-serif"] });
+
 export const metadata: Metadata = {
   // Resolves relative OpenGraph/Twitter image URLs (incl. generated og-images)
   // to absolute ones so link previews work when shared off-site.

@@ -185,6 +185,8 @@ export const dsaSectionBlueprints: SectionBlueprint[] = [
       blocks: [
         {
           id: id(),
+          type: "gitwork",
+          variableName: "Gitwork Signature",
           partyName: GITWORK.legalName,
           signatoryName: "[REVIEW] Authorised Gitwork signatory",
           signatoryRole: "Director / DPO",
@@ -193,6 +195,8 @@ export const dsaSectionBlueprints: SectionBlueprint[] = [
         },
         {
           id: id(),
+          type: "client",
+          variableName: "Client Signature",
           partyName: "Client organisation",
           signatoryName: "[REVIEW] Authorised client signatory",
           signatoryRole: "DPO / Authorised representative",

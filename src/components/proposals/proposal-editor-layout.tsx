@@ -30,6 +30,7 @@ import {
   ClipboardDocumentIcon,
   Cog6ToothIcon,
   DocumentTextIcon,
+  ExclamationTriangleIcon,
   EyeIcon,
   EyeSlashIcon,
   LinkIcon,
@@ -59,14 +60,16 @@ import { SpeakerNotesField } from "@/components/proposals/speaker-notes-field";
 import { useDocumentRelations } from "@/hooks/use-document-relations";
 import { ProposalProofPanel } from "@/components/proposals/proposal-proof-panel";
 import { SignaturePanel } from "@/components/proposals/signature-panel";
-import { EnvelopeIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import { findActiveRequest, usePushDocuSeal, useSignatureRequests } from "@/hooks/use-signatures";
+import { useToast } from "@/components/ui/toast";
+import { EnvelopeIcon, PaperAirplaneIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { SECTION_REGISTRY } from "@/lib/sections/registry";
 import { resolveInsertIndex } from "@/lib/proposal-insert-position";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { StatusBadge } from "@/components/status-badge";
 import { slugifyClientName } from "@/lib/clients";
-import { useProposal, useUpdateProposal } from "@/hooks/use-proposals";
+import { useDuplicateProposal, useProposal, useUpdateProposal } from "@/hooks/use-proposals";
 import { useDeleteSnippet, useSnippets } from "@/hooks/use-snippets";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatCurrency, formatDate, statusLabel } from "@/lib/format";
@@ -78,7 +81,57 @@ import { resolveProposalStatus } from "@/lib/proposal-workflow";
 import { approvalTrackApplies } from "@/lib/templates";
 import { createTemplateFromDocument } from "@/lib/api";
 import { DEFAULT_DOC_THEME } from "@/types/proposal";
-import type { DocumentType, ProposalDocument, ProposalSection, SectionKey } from "@/types/proposal";
+import type {
+  DocumentType,
+  ProposalDocument,
+  ProposalSection,
+  SectionKey,
+  SignatureBlockItem,
+  SignaturesSectionData,
+} from "@/types/proposal";
+
+function normalizeSectionDataForHash(key: string, data: unknown): unknown {
+  if (!data || typeof data !== "object") return data;
+
+  if (key === "signatures") {
+    const sigData = data as SignaturesSectionData;
+    if (Array.isArray(sigData.blocks)) {
+      return {
+        ...sigData,
+        blocks: sigData.blocks.map((b) => {
+          // Omit transient signing capture fields (signature payload, signed status, date, name)
+          // so that signing the document does not falsely flag the document as modified.
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { signed, signaturePayload, signedName, signatureDate, ...rest } = b;
+          return rest;
+        }),
+      };
+    }
+  }
+
+  return data;
+}
+
+// ── DocuSeal stale detection ─────────────────────────────────────────────────
+// Produces a stable fingerprint of a document's section content — the same
+// data that gets rendered into the DocuSeal PDF. Excludes timestamps and
+// metadata fields that don't affect what the signer actually sees.
+export function computeSectionsHash(sections: ProposalSection[]): string {
+  const normalized = [...sections]
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    .map(({ key, title, data, isVisible }) => ({
+      key,
+      title,
+      data: normalizeSectionDataForHash(key, data),
+      isVisible,
+    }));
+  return JSON.stringify(normalized);
+}
+
+// localStorage key scoped to the document so different docs don't clobber each other.
+function docusealBaselineKey(proposalId: string) {
+  return `docuseal-baseline:${proposalId}`;
+}
 
 type EditorTab = "overview" | "builder";
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -227,7 +280,20 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { data, isPending, error } = useProposal(proposalId);
+  const { error: toastError, success: toastSuccess } = useToast();
+  const requestsQuery = useSignatureRequests(proposalId);
+  const activeSignatureReq = findActiveRequest(requestsQuery.data);
+  const isCompleted = activeSignatureReq?.status === "COMPLETED";
+  const isDocusealActivated = Boolean(
+    activeSignatureReq?.docusealSubmissionId ||
+    (activeSignatureReq &&
+      activeSignatureReq.status !== "REVOKED" &&
+      activeSignatureReq.status !== "DECLINED" &&
+      activeSignatureReq.status !== "EXPIRED"),
+  );
   const updateMutation = useUpdateProposal(proposalId);
+  const duplicateProposalMutation = useDuplicateProposal();
+  const docusealMutation = usePushDocuSeal(proposalId);
   const snippetsQuery = useSnippets();
   const deleteSnippet = useDeleteSnippet();
   const urlTab = parseEditorTab(searchParams.get("tab"));
@@ -251,6 +317,19 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const [titleDraft, setTitleDraft] = useState("");
   const [editingClient, setEditingClient] = useState(false);
   const [clientDraft, setClientDraft] = useState("");
+
+  // ── DocuSeal stale detection ─────────────────────────────────────────────────
+  // `docusealBaseline` is the sections fingerprint captured at activation time.
+  // null  = DocuSeal has never been activated on this device/browser for this doc.
+  // string = a JSON fingerprint; compared against `computeSectionsHash(draft.sections)`
+  //          on every render to derive `isDocusealStale`.
+  const [docusealBaseline, setDocusealBaseline] = useState<string | null>(null);
+
+  // Hydrate from localStorage once on mount (survives page reloads).
+  useEffect(() => {
+    const stored = localStorage.getItem(docusealBaselineKey(proposalId));
+    if (stored) setDocusealBaseline(stored);
+  }, [proposalId]);
 
   async function handleSaveAsTemplate() {
     if (!draft) return;
@@ -306,8 +385,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   const pastRef = useRef<ProposalDocument[]>([]);
   const futureRef = useRef<ProposalDocument[]>([]);
   const lastEditAtRef = useRef(0);
-  const undoRef = useRef<() => void>(() => {});
-  const redoRef = useRef<() => void>(() => {});
+  const undoRef = useRef<() => void>(() => { });
+  const redoRef = useRef<() => void>(() => { });
   const [, forceHistory] = useState(0);
 
   useEffect(() => {
@@ -315,6 +394,18 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   }, [urlTab]);
 
   const draft = localDraft ?? data?.proposal ?? null;
+
+  // ── DocuSeal stale flag ──────────────────────────────────────────────────────
+  // Recomputed on every render from the live draft. If the sections content has
+  // changed since activation, `isDocusealStale` flips true and the Review & Send
+  // popover shows the amber warning instead of the green "DocuSeal Activated" button.
+  // Automatically clears when the user undoes changes back to the activation state.
+  const currentSectionsHash = draft?.sections ? computeSectionsHash(draft.sections) : null;
+  const isDocusealStale =
+    isDocusealActivated &&
+    docusealBaseline !== null &&
+    currentSectionsHash !== null &&
+    currentSectionsHash !== docusealBaseline;
 
   function beginTitleEdit() {
     if (!draft) return;
@@ -513,8 +604,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   // Its index in `draft.sections` — the speaker-notes group patches by index, like the builder panel.
   const optionsSectionIndex = optionsEntry
     ? (draft?.sections ?? []).findIndex(
-        (section) => getSectionEntryId(section) === optionsEntry.id,
-      )
+      (section) => getSectionEntryId(section) === optionsEntry.id,
+    )
     : -1;
 
   const handleTabChange = useCallback(
@@ -619,7 +710,8 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
         baselineRef.current = JSON.stringify(nextDraft);
         setSaveState("saved");
         setLastSavedAt(new Date().toISOString());
-      } catch {
+      } catch (err) {
+        console.error("[Document Editor] Save failed:", err);
         setSaveState("error");
       }
     },
@@ -1111,43 +1203,43 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
     // reads that registration. Anything outside a provider (the public share page, the PDF
     // route) simply gets no formatting rather than crashing.
     <FormatTargetProvider>
-    <div className="flex flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-hidden">
-      {/* 01 // DOCUMENT — ONE compact toolbar row (Deck's topbar shape). Everything that used to
+      <div className="flex flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-hidden">
+        {/* 01 // DOCUMENT — ONE compact toolbar row (Deck's topbar shape). Everything that used to
           stack vertically here is either a mono readout in this header strip (doc number, version,
           status, save state), an inline field (the title), or one click behind a popover (theme +
           labels, under the ⚙; sign-off/share/export/save-as-template under Review & Send). */}
-      <section className="widget-card overflow-hidden lg:shrink-0">
-        <div className="widget-header">
-          <span className="widget-header-label">01 // DOCUMENT</span>
-          <span className="flex min-w-0 items-center gap-2">
-            {/* Ellipses on a phone, so it carries its own title (audit-clipping TRUNCATED). */}
-            <span className="widget-header-right truncate" title={docMetaReadout}>
-              {docMetaReadout}
+        <section className="widget-card overflow-hidden lg:shrink-0">
+          <div className="widget-header">
+            <span className="widget-header-label">01 // DOCUMENT</span>
+            <span className="flex min-w-0 items-center gap-2">
+              {/* Ellipses on a phone, so it carries its own title (audit-clipping TRUNCATED). */}
+              <span className="widget-header-right truncate" title={docMetaReadout}>
+                {docMetaReadout}
+              </span>
+              <span className={cn("widget-header-right", saveTone)}>{saveReadout}</span>
             </span>
-            <span className={cn("widget-header-right", saveTone)}>{saveReadout}</span>
-          </span>
-        </div>
+          </div>
 
-        <div className="flex flex-wrap items-center gap-1.5 px-2.5 py-2 sm:px-3">
-          <Link
-            href="/app/docs"
-            aria-label="Back to Docs"
-            title="Back to Docs"
-            className={TOOL_ICON_BTN}
-          >
-            <ArrowLeftIcon className="h-4 w-4" />
-          </Link>
-
-          {/* Condensed breadcrumb — the document itself is named by the title field beside it, so
-              the old trailing "› {title}" crumb is gone as pure duplication. */}
-          {/* Breadcrumb is duplicative of the title field right beside it, and it is what over-fills
-              the toolbar row at 1280-1600 (clipping the title). Hold it back to 2xl. */}
-          <span className="hidden min-w-0 items-center gap-1 text-xs text-[var(--text-4)] 2xl:flex">
-            <Link href="/app/docs" className="hover:text-[var(--text-1)]">
-              Docs
+          <div className="flex flex-wrap items-center gap-1.5 px-2.5 py-2 sm:px-3">
+            <Link
+              href="/app/docs"
+              aria-label="Back to Docs"
+              title="Back to Docs"
+              className={TOOL_ICON_BTN}
+            >
+              <ArrowLeftIcon className="h-4 w-4" />
             </Link>
-            <ChevronRightIcon className="h-3 w-3 shrink-0" />
-            {/* The Portal link is gated on `clientId`, NOT on `clientName`.
+
+            {/* Condensed breadcrumb — the document itself is named by the title field beside it, so
+              the old trailing "› {title}" crumb is gone as pure duplication. */}
+            {/* Breadcrumb is duplicative of the title field right beside it, and it is what over-fills
+              the toolbar row at 1280-1600 (clipping the title). Hold it back to 2xl. */}
+            <span className="hidden min-w-0 items-center gap-1 text-xs text-[var(--text-4)] 2xl:flex">
+              <Link href="/app/docs" className="hover:text-[var(--text-1)]">
+                Docs
+              </Link>
+              <ChevronRightIcon className="h-3 w-3 shrink-0" />
+              {/* The Portal link is gated on `clientId`, NOT on `clientName`.
 
                 It used to link to `/app/portal/{slugify(clientName)}` whenever a name existed —
                 but a prospect has a typed name and no `WorkspaceClient` behind it, so the crumb
@@ -1156,78 +1248,78 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 With no linked client the crumb is an inline field instead, writing doc-level
                 `clientName` — which is what the cover, parties and signature blocks all resolve
                 from, so naming the prospect here names them everywhere. */}
-            {draft.clientId && draft.clientName ? (
-              <Link
-                href={`/app/portal/${slugifyClientName(draft.clientName)}`}
-                className="max-w-[130px] truncate hover:text-[var(--text-1)]"
-                title={`Open ${draft.clientName} in Portal`}
-              >
-                {draft.clientName}
-              </Link>
-            ) : (
-              <input
-                aria-label="Client name"
-                title="Name the client (no Portal record linked yet)"
-                placeholder="Client"
-                value={editingClient ? clientDraft : (draft.clientName ?? "")}
-                onFocus={beginClientEdit}
-                onChange={(event) => setClientDraft(event.target.value)}
-                onBlur={commitClientEdit}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    event.currentTarget.blur();
-                  } else if (event.key === "Escape") {
-                    setEditingClient(false);
-                    event.currentTarget.blur();
-                  }
-                }}
-                className="h-6 w-[110px] min-w-0 rounded-[4px] border border-transparent bg-transparent px-1 text-xs text-[var(--text-4)] transition hover:border-[var(--border-2)] hover:bg-white focus:border-[var(--brand-500)] focus:bg-white focus:text-[var(--text-1)] focus:outline-none"
-              />
-            )}
-            <ChevronRightIcon className="h-3 w-3 shrink-0" />
-          </span>
+              {draft.clientId && draft.clientName ? (
+                <Link
+                  href={`/app/portal/${slugifyClientName(draft.clientName)}`}
+                  className="max-w-[130px] truncate hover:text-[var(--text-1)]"
+                  title={`Open ${draft.clientName} in Portal`}
+                >
+                  {draft.clientName}
+                </Link>
+              ) : (
+                <input
+                  aria-label="Client name"
+                  title="Name the client (no Portal record linked yet)"
+                  placeholder="Client"
+                  value={editingClient ? clientDraft : (draft.clientName ?? "")}
+                  onFocus={beginClientEdit}
+                  onChange={(event) => setClientDraft(event.target.value)}
+                  onBlur={commitClientEdit}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      event.currentTarget.blur();
+                    } else if (event.key === "Escape") {
+                      setEditingClient(false);
+                      event.currentTarget.blur();
+                    }
+                  }}
+                  className="h-6 w-[110px] min-w-0 rounded-[4px] border border-transparent bg-transparent px-1 text-xs text-[var(--text-4)] transition hover:border-[var(--border-2)] hover:bg-white focus:border-[var(--brand-500)] focus:bg-white focus:text-[var(--text-1)] focus:outline-none"
+                />
+              )}
+              <ChevronRightIcon className="h-3 w-3 shrink-0" />
+            </span>
 
-          {/* Title — a compact inline-editable field, not a 44px display heading. Focus begins the
+            {/* Title — a compact inline-editable field, not a 44px display heading. Focus begins the
               edit; blur / Enter commits; Escape reverts. Same commit path as before. */}
-          <input
-            aria-label="Document title"
-            value={editingTitle ? titleDraft : draft.title}
-            onFocus={beginTitleEdit}
-            onChange={(event) => setTitleDraft(event.target.value)}
-            onBlur={commitTitleEdit}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                event.currentTarget.blur();
-              } else if (event.key === "Escape") {
-                setEditingTitle(false);
-                event.currentTarget.blur();
-              }
-            }}
-            title="Rename document"
-            // The document's name is the most important thing in this bar, so it must WIN space
-            // rather than share it: `flex-1` alongside the breadcrumb and eight controls collapsed
-            // it to 178px and clipped a 196px title. grow-[3] + a 15rem basis makes it take the
-            // lion's share of any slack, and it still shrinks (min-w) before it forces a wrap.
-            // The document's name is the most important thing in this bar, so it must not be the
-            // thing that gives way. The row is genuinely over-full at 1280-1600, so `grow` never
-            // applies and `shrink` governed — flex-1 clipped a 196px title to 178px, and adding
-            // grow made it worse (142px). `shrink-0` + a 15rem basis means it keeps its width and
-            // the FLEX ROW WRAPS instead: a title on its own line reads fine, a clipped one doesn't.
-            className="h-8 min-w-0 shrink-0 basis-[15rem] rounded-[6px] border border-transparent bg-transparent px-2 text-sm font-semibold tracking-[-0.01em] text-[var(--text-1)] transition hover:border-[var(--border-2)] hover:bg-white focus:border-[var(--brand-500)] focus:bg-white focus:outline-none"
-          />
+            <input
+              aria-label="Document title"
+              value={editingTitle ? titleDraft : draft.title}
+              onFocus={beginTitleEdit}
+              onChange={(event) => setTitleDraft(event.target.value)}
+              onBlur={commitTitleEdit}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.currentTarget.blur();
+                } else if (event.key === "Escape") {
+                  setEditingTitle(false);
+                  event.currentTarget.blur();
+                }
+              }}
+              title="Rename document"
+              // The document's name is the most important thing in this bar, so it must WIN space
+              // rather than share it: `flex-1` alongside the breadcrumb and eight controls collapsed
+              // it to 178px and clipped a 196px title. grow-[3] + a 15rem basis makes it take the
+              // lion's share of any slack, and it still shrinks (min-w) before it forces a wrap.
+              // The document's name is the most important thing in this bar, so it must not be the
+              // thing that gives way. The row is genuinely over-full at 1280-1600, so `grow` never
+              // applies and `shrink` governed — flex-1 clipped a 196px title to 178px, and adding
+              // grow made it worse (142px). `shrink-0` + a 15rem basis means it keeps its width and
+              // the FLEX ROW WRAPS instead: a title on its own line reads fine, a clipped one doesn't.
+              className="h-8 min-w-0 shrink-0 basis-[15rem] rounded-[6px] border border-transparent bg-transparent px-2 text-sm font-semibold tracking-[-0.01em] text-[var(--text-1)] transition hover:border-[var(--border-2)] hover:bg-white focus:border-[var(--brand-500)] focus:bg-white focus:outline-none"
+            />
 
-          {parentDoc ? (
-            <Link
-              href={`/app/docs/${parentDoc.id}`}
-              className="hidden h-8 shrink-0 items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2 text-xs font-medium text-[var(--brand-700)] transition hover:bg-[var(--brand-200)]/50 lg:inline-flex"
-              title={`Linked under ${parentDoc.documentType}: ${parentDoc.title}`}
-            >
-              <LinkIcon className="h-3.5 w-3.5 shrink-0" />
-              <span className="max-w-[110px] truncate">{parentDoc.title}</span>
-            </Link>
-          ) : null}
+            {parentDoc ? (
+              <Link
+                href={`/app/docs/${parentDoc.id}`}
+                className="hidden h-8 shrink-0 items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2 text-xs font-medium text-[var(--brand-700)] transition hover:bg-[var(--brand-200)]/50 lg:inline-flex"
+                title={`Linked under ${parentDoc.documentType}: ${parentDoc.title}`}
+              >
+                <LinkIcon className="h-3.5 w-3.5 shrink-0" />
+                <span className="max-w-[110px] truncate">{parentDoc.title}</span>
+              </Link>
+            ) : null}
 
             {/* Row 1 is DOCUMENT-level and ends here. Review & Send sits far right, alone —
                 separating it from Details (row 2) is also what stopped their native `title`
@@ -1240,199 +1332,199 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 six lookalike buttons in a row. Row 2 keeps only what you touch WHILE writing:
                 the pane toggles and undo/redo. */}
             <span className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-            <Link
-              href={`/app/docs/${proposalId}/preview`}
-              title="Open full preview"
-              aria-label="Open full preview"
-              className={TOOL_ICON_BTN}
-            >
-              <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-            </Link>
-            <button
-              type="button"
-              onClick={() => setPresenting(true)}
-              title="Present"
-              aria-label="Present"
-              className={TOOL_ICON_BTN}
-            >
-              <PlayIcon className="h-4 w-4" />
-            </button>
-            {/* AI menu — Ask AI · Quick draft. Hidden for non-generators (cost gate). */}
-            {canGenerateAi && (
-            <div className="shrink-0">
-              <button
-                ref={aiMenuButtonRef}
-                type="button"
-                aria-haspopup="menu"
-                aria-expanded={aiMenuOpen}
-                title="AI authoring"
-                onClick={() => {
-                  const rect = aiMenuButtonRef.current?.getBoundingClientRect();
-                  if (rect) setAiMenuPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
-                  setAiMenuOpen((v) => !v);
-                }}
-                className={cn(TOOL_BTN, "gap-1 px-2")}
+              <Link
+                href={`/app/docs/${proposalId}/preview`}
+                title="Open full preview"
+                aria-label="Open full preview"
+                className={TOOL_ICON_BTN}
               >
-                <SparklesIcon className="h-4 w-4" />
-                AI
-                <ChevronDownIcon className={cn("h-3.5 w-3.5 opacity-70 transition", aiMenuOpen && "rotate-180")} />
+                <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+              </Link>
+              <button
+                type="button"
+                onClick={() => setPresenting(true)}
+                title="Present"
+                aria-label="Present"
+                className={TOOL_ICON_BTN}
+              >
+                <PlayIcon className="h-4 w-4" />
               </button>
-              {aiMenuOpen && (
-                <div
-                  ref={aiMenuRef}
-                  role="menu"
-                  aria-label="AI actions"
-                  style={{ top: aiMenuPos.top, right: aiMenuPos.right }}
-                  className="fixed z-[100] w-60 overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white py-1 shadow-[var(--shadow-lg)]"
-                >
+              {/* AI menu — Ask AI · Quick draft. Hidden for non-generators (cost gate). */}
+              {canGenerateAi && (
+                <div className="shrink-0">
                   <button
-                    role="menuitem"
+                    ref={aiMenuButtonRef}
                     type="button"
-                    onClick={() => { setAiMenuOpen(false); setAiChatOpen(true); }}
-                    className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-1)]"
+                    aria-haspopup="menu"
+                    aria-expanded={aiMenuOpen}
+                    title="AI authoring"
+                    onClick={() => {
+                      const rect = aiMenuButtonRef.current?.getBoundingClientRect();
+                      if (rect) setAiMenuPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
+                      setAiMenuOpen((v) => !v);
+                    }}
+                    className={cn(TOOL_BTN, "gap-1 px-2")}
                   >
-                    <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
-                    <span>
-                      <span className="block text-sm font-medium text-[var(--text-1)]">Ask AI</span>
-                      <span className="block text-xs text-[var(--text-3)]">Chat to refine sections as you write.</span>
-                    </span>
+                    <SparklesIcon className="h-4 w-4" />
+                    AI
+                    <ChevronDownIcon className={cn("h-3.5 w-3.5 opacity-70 transition", aiMenuOpen && "rotate-180")} />
                   </button>
-                  <button
-                    role="menuitem"
-                    type="button"
-                    onClick={() => { setAiMenuOpen(false); setAiDraftOpen(true); }}
-                    className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-1)]"
-                  >
-                    <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
-                    <span>
-                      <span className="block text-sm font-medium text-[var(--text-1)]">Quick draft</span>
-                      <span className="block text-xs text-[var(--text-3)]">Generate a first-pass draft of every section.</span>
-                    </span>
-                  </button>
+                  {aiMenuOpen && (
+                    <div
+                      ref={aiMenuRef}
+                      role="menu"
+                      aria-label="AI actions"
+                      style={{ top: aiMenuPos.top, right: aiMenuPos.right }}
+                      className="fixed z-[100] w-60 overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white py-1 shadow-[var(--shadow-lg)]"
+                    >
+                      <button
+                        role="menuitem"
+                        type="button"
+                        onClick={() => { setAiMenuOpen(false); setAiChatOpen(true); }}
+                        className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-1)]"
+                      >
+                        <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
+                        <span>
+                          <span className="block text-sm font-medium text-[var(--text-1)]">Ask AI</span>
+                          <span className="block text-xs text-[var(--text-3)]">Chat to refine sections as you write.</span>
+                        </span>
+                      </button>
+                      <button
+                        role="menuitem"
+                        type="button"
+                        onClick={() => { setAiMenuOpen(false); setAiDraftOpen(true); }}
+                        className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-1)]"
+                      >
+                        <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
+                        <span>
+                          <span className="block text-sm font-medium text-[var(--text-1)]">Quick draft</span>
+                          <span className="block text-xs text-[var(--text-3)]">Generate a first-pass draft of every section.</span>
+                        </span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-            )}
-            {draft.documentType === "REPORT" && (
-              <button
-                type="button"
-                onClick={() => setPullDataOpen(true)}
-                className={TOOL_ICON_BTN}
-                aria-label="Pull client data"
-                title="Fill this report's data sections from a Care client's live tickets & analytics"
-              >
-                <ArrowDownTrayIcon className="h-4 w-4" />
-              </button>
-            )}
-
-            {/* ⚙ Doc settings — the per-document theme toggle + labels, re-housed out of the old
-                header rows so neither costs the toolbar any vertical space. */}
-            <div className="shrink-0">
-              <button
-                ref={docSettingsButtonRef}
-                type="button"
-                aria-haspopup="dialog"
-                aria-expanded={docSettingsOpen}
-                aria-label="Document theme and labels"
-                title="Theme & labels"
-                onClick={() => {
-                  const rect = docSettingsButtonRef.current?.getBoundingClientRect();
-                  if (rect) {
-                    setDocSettingsPos({
-                      top: rect.bottom + 8,
-                      right: window.innerWidth - rect.right,
-                    });
-                  }
-                  setDocSettingsOpen((v) => !v);
-                }}
-                className={docSettingsOpen ? TOOL_ICON_BTN_ON : TOOL_ICON_BTN}
-              >
-                <Cog6ToothIcon className="h-4 w-4" />
-              </button>
-              {docSettingsOpen && (
-                <div
-                  ref={docSettingsRef}
-                  role="dialog"
-                  aria-label="Document theme and labels"
-                  style={{ top: docSettingsPos.top, right: docSettingsPos.right }}
-                  className="fixed z-[100] w-[300px] max-w-[94vw] overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-lg)]"
+              {draft.documentType === "REPORT" && (
+                <button
+                  type="button"
+                  onClick={() => setPullDataOpen(true)}
+                  className={TOOL_ICON_BTN}
+                  aria-label="Pull client data"
+                  title="Fill this report's data sections from a Care client's live tickets & analytics"
                 >
-                  <div className="widget-header">
-                    <span className="widget-header-label">DOCUMENT</span>
-                    <span className="widget-header-right">
-                      {activeDocTheme.toUpperCase()} · {labelCount} LABEL{labelCount === 1 ? "" : "S"}
-                    </span>
-                  </div>
-                  <div className="space-y-4 p-4">
-                    <div>
-                      <p className="app-eyebrow">Theme</p>
-                      {/* Gitwork first — it's the default. "Light/Dark" was misleading: both themes
+                  <ArrowDownTrayIcon className="h-4 w-4" />
+                </button>
+              )}
+
+              {/* ⚙ Doc settings — the per-document theme toggle + labels, re-housed out of the old
+                header rows so neither costs the toolbar any vertical space. */}
+              <div className="shrink-0">
+                <button
+                  ref={docSettingsButtonRef}
+                  type="button"
+                  aria-haspopup="dialog"
+                  aria-expanded={docSettingsOpen}
+                  aria-label="Document theme and labels"
+                  title="Theme & labels"
+                  onClick={() => {
+                    const rect = docSettingsButtonRef.current?.getBoundingClientRect();
+                    if (rect) {
+                      setDocSettingsPos({
+                        top: rect.bottom + 8,
+                        right: window.innerWidth - rect.right,
+                      });
+                    }
+                    setDocSettingsOpen((v) => !v);
+                  }}
+                  className={docSettingsOpen ? TOOL_ICON_BTN_ON : TOOL_ICON_BTN}
+                >
+                  <Cog6ToothIcon className="h-4 w-4" />
+                </button>
+                {docSettingsOpen && (
+                  <div
+                    ref={docSettingsRef}
+                    role="dialog"
+                    aria-label="Document theme and labels"
+                    style={{ top: docSettingsPos.top, right: docSettingsPos.right }}
+                    className="fixed z-[100] w-[300px] max-w-[94vw] overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white shadow-[var(--shadow-lg)]"
+                  >
+                    <div className="widget-header">
+                      <span className="widget-header-label">DOCUMENT</span>
+                      <span className="widget-header-right">
+                        {activeDocTheme.toUpperCase()} · {labelCount} LABEL{labelCount === 1 ? "" : "S"}
+                      </span>
+                    </div>
+                    <div className="space-y-4 p-4">
+                      <div>
+                        <p className="app-eyebrow">Theme</p>
+                        {/* Gitwork first — it's the default. "Light/Dark" was misleading: both themes
                           are cream paper (only the COVER is navy), so this names the brand, not a
                           brightness. Live-updates the canvas via the draft/autosave path. */}
-                      <div className="mt-2 inline-flex items-center gap-0.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5">
-                        {([["gitwork", "Gitwork"], ["foundry", "Foundry"]] as const).map(
-                          ([theme, label]) => {
-                            const themeActive = activeDocTheme === theme;
-                            return (
-                              <button
-                                key={theme}
-                                type="button"
-                                onClick={() =>
-                                  updateDraft({
-                                    ...draft,
-                                    metadata: { ...draft.metadata, docTheme: theme },
-                                  })
-                                }
-                                aria-pressed={themeActive}
-                                className={cn(
-                                  "rounded-[4px] px-2.5 py-1 text-xs font-medium transition",
-                                  themeActive
-                                    ? "bg-[var(--brand-200)] text-[var(--brand-700)]"
-                                    : "text-[var(--text-3)] hover:text-[var(--text-1)]",
-                                )}
-                              >
-                                {label}
-                              </button>
-                            );
-                          },
-                        )}
+                        <div className="mt-2 inline-flex items-center gap-0.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5">
+                          {([["gitwork", "Gitwork"], ["foundry", "Foundry"]] as const).map(
+                            ([theme, label]) => {
+                              const themeActive = activeDocTheme === theme;
+                              return (
+                                <button
+                                  key={theme}
+                                  type="button"
+                                  onClick={() =>
+                                    updateDraft({
+                                      ...draft,
+                                      metadata: { ...draft.metadata, docTheme: theme },
+                                    })
+                                  }
+                                  aria-pressed={themeActive}
+                                  className={cn(
+                                    "rounded-[4px] px-2.5 py-1 text-xs font-medium transition",
+                                    themeActive
+                                      ? "bg-[var(--brand-200)] text-[var(--brand-700)]"
+                                      : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+                                  )}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            },
+                          )}
+                        </div>
+                      </div>
+                      <div className="border-t border-[var(--border-2)] pt-3">
+                        <p className="app-eyebrow">Labels</p>
+                        <LabelEditor
+                          labels={draft.labels ?? []}
+                          onChange={(labels) => updateDraft({ ...draft, labels })}
+                        />
                       </div>
                     </div>
-                    <div className="border-t border-[var(--border-2)] pt-3">
-                      <p className="app-eyebrow">Labels</p>
-                      <LabelEditor
-                        labels={draft.labels ?? []}
-                        onChange={(labels) => updateDraft({ ...draft, labels })}
-                      />
-                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
 
-            <button
-              type="button"
-              onClick={() => handleTabChange(activeTab === "overview" ? "builder" : "overview")}
-              aria-pressed={activeTab === "overview"}
-              title={activeTab === "overview" ? "Back to the editor" : "Document details"}
-              className={cn(
-                TOOL_BTN,
-                activeTab === "overview" &&
+              <button
+                type="button"
+                onClick={() => handleTabChange(activeTab === "overview" ? "builder" : "overview")}
+                aria-pressed={activeTab === "overview"}
+                title={activeTab === "overview" ? "Back to the editor" : "Document details"}
+                className={cn(
+                  TOOL_BTN,
+                  activeTab === "overview" &&
                   "border-[var(--brand-600)] bg-[var(--brand-200)] text-[var(--brand-700)]",
-              )}
-            >
-              {activeTab === "overview" ? (
-                <>
-                  <ArrowLeftIcon className="h-4 w-4" />
-                  Editor
-                </>
-              ) : (
-                <>
-                  <Squares2X2Icon className="h-4 w-4" />
-                  Details
-                </>
-              )}
-            </button>
+                )}
+              >
+                {activeTab === "overview" ? (
+                  <>
+                    <ArrowLeftIcon className="h-4 w-4" />
+                    Editor
+                  </>
+                ) : (
+                  <>
+                    <Squares2X2Icon className="h-4 w-4" />
+                    Details
+                  </>
+                )}
+              </button>
             </span>
             <span className="flex shrink-0 items-center gap-1.5">
               <button
@@ -1461,7 +1553,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                 {/* The status is already a mono readout in this card's header strip, so the chip is a
                     nicety — dropped below 2xl to keep the toolbar on ONE row at 1280. */}
                 <span className="hidden rounded-[4px] border border-white/20 bg-white/12 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-white/95 2xl:inline-block">
-                  {statusLabel(draft.status)}
+                  {statusLabel(isDocusealActivated ? "APPROVED" : draft.status)}
                 </span>
                 <ChevronDownIcon
                   className={cn("h-4 w-4 opacity-80 transition", approvalOpen && "rotate-180")}
@@ -1479,7 +1571,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                   {/* Widget-header strip — the platform signature; live status on the right. */}
                   <div className="widget-header">
                     <span className="widget-header-label">REVIEW &amp; SEND</span>
-                    <span className="widget-header-right">{statusLabel(draft.status)}</span>
+                    <span className="widget-header-right">{statusLabel(isDocusealActivated ? "APPROVED" : draft.status)}</span>
                   </div>
 
                   <div className="p-5">
@@ -1510,7 +1602,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                     {approvalApplies ? (
                       <div className="mt-3 divide-y divide-[var(--border-2)] border-t border-[var(--border-2)] pt-1">
                         {approvalOptions.map((option) => {
-                          const checked = Boolean(draft.metadata[option.key]);
+                          const checked = Boolean(draft.metadata[option.key] || isDocusealActivated);
                           return (
                             <label
                               key={option.key}
@@ -1572,27 +1664,188 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                     </div>
 
                     {/* Actions */}
-                    <div className="mt-5 flex items-center gap-2 border-t border-[var(--border-2)] pt-4">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="flex-1 justify-center"
-                        onClick={handleShareLink}
-                        leadingIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
-                      >
-                        {copied ? "Copied" : "Share"}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="primary"
-                        size="sm"
-                        className="flex-1 justify-center"
-                        onClick={handleExportPdf}
-                        leadingIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
-                      >
-                        Export
-                      </Button>
+                    <div className="mt-5 space-y-2 border-t border-[var(--border-2)] pt-4">
+                      {/* ── DocuSeal / Lifecycle state button ─────────────────────────
+                          COMPLETED : document fully executed — locked banner + duplicate to amend
+                          STALE     : document changed after activation — show amber warning + re-activate
+                          ACTIVE    : activated + content unchanged — approved indicator
+                          READY     : not yet activated — primary CTA
+                      */}
+                      {isCompleted ? (
+                        <div className="space-y-2">
+                          <div className="flex items-start gap-2 rounded-[8px] border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+                            <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                            <p className="text-[12px] leading-5 text-emerald-800">
+                              <span className="font-semibold">Document fully executed & locked.</span> All parties have completed signing.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            className="w-full justify-center"
+                            loading={duplicateProposalMutation.isPending}
+                            onClick={async () => {
+                              try {
+                                const res = await duplicateProposalMutation.mutateAsync(proposalId);
+                                toastSuccess("Created an amended duplicate copy.");
+                                router.push(`/app/docs/${res.proposal.id}`);
+                              } catch (err) {
+                                toastError(err instanceof Error ? err.message : "Failed to duplicate document.");
+                              }
+                            }}
+                            leadingIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                          >
+                            Duplicate to Amend
+                          </Button>
+                        </div>
+                      ) : isDocusealStale ? (
+                        <div className="space-y-2">
+                          {/* Warning banner */}
+                          <div className="flex items-start gap-2 rounded-[8px] border border-amber-200 bg-amber-50 px-3 py-2.5">
+                            <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                            <p className="text-[12px] leading-5 text-amber-800">
+                              <span className="font-semibold">Document changed</span> since DocuSeal was activated.
+                              Re-activate to send the updated version to signers.
+                            </p>
+                          </div>
+                          {/* Re-activate button */}
+                          <Button
+                            type="button"
+                            variant="primary"
+                            size="sm"
+                            className="w-full justify-center"
+                            onClick={async () => {
+                              try {
+                                await docusealMutation.mutateAsync();
+                                // Record the new baseline now that DocuSeal has the updated doc.
+                                if (currentSectionsHash) {
+                                  localStorage.setItem(docusealBaselineKey(proposalId), currentSectionsHash);
+                                  setDocusealBaseline(currentSectionsHash);
+                                }
+                                if (draft) {
+                                  const cleanSections: ProposalSection[] = (draft.sections || []).map((sec) => {
+                                    if (sec.key === "signatures" && sec.data && typeof sec.data === "object") {
+                                      const sigData = sec.data as SignaturesSectionData;
+                                      if (Array.isArray(sigData.blocks)) {
+                                        return {
+                                          ...sec,
+                                          data: {
+                                            ...sigData,
+                                            blocks: sigData.blocks.map((b): SignatureBlockItem => ({
+                                              ...b,
+                                              signed: false,
+                                              signaturePayload: undefined,
+                                              signedName: undefined,
+                                              signatureDate: "",
+                                            })),
+                                          },
+                                        };
+                                      }
+                                    }
+                                    return sec;
+                                  });
+                                  updateDraft({
+                                    ...draft,
+                                    sections: cleanSections,
+                                    status: "APPROVED",
+                                    metadata: {
+                                      ...draft.metadata,
+                                      productSignOff: true,
+                                      techSignOff: true,
+                                      approvalChecked: true,
+                                    },
+                                  });
+                                }
+                                toastSuccess("DocuSeal re-activated with the latest document.");
+                                setApprovalOpen(false);
+                                setActiveTab("overview");
+                              } catch (err) {
+                                const errMsg = err instanceof Error ? err.message : "DocuSeal push failed.";
+                                toastError(`DocuSeal Error: ${errMsg}`);
+                                alert(`DocuSeal Push Failed:\n\n${errMsg}`);
+                              }
+                            }}
+                            loading={docusealMutation.isPending}
+                            leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
+                          >
+                            Re-activate DocuSeal
+                          </Button>
+                        </div>
+                      ) : isDocusealActivated ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="w-full justify-center opacity-85 cursor-not-allowed bg-emerald-50 text-emerald-700 border-emerald-200"
+                          disabled
+                          leadingIcon={<CheckCircleIcon className="h-4 w-4 text-emerald-600" />}
+                        >
+                          Approved
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="primary"
+                          size="sm"
+                          className="w-full justify-center"
+                          onClick={async () => {
+                            try {
+                              await docusealMutation.mutateAsync();
+                              // Capture the sections fingerprint as the new baseline.
+                              if (currentSectionsHash) {
+                                localStorage.setItem(docusealBaselineKey(proposalId), currentSectionsHash);
+                                setDocusealBaseline(currentSectionsHash);
+                              }
+                              if (draft) {
+                                updateDraft({
+                                  ...draft,
+                                  status: "APPROVED",
+                                  metadata: {
+                                    ...draft.metadata,
+                                    productSignOff: true,
+                                    techSignOff: true,
+                                    approvalChecked: true,
+                                  },
+                                });
+                              }
+                              toastSuccess("DocuSeal submission activated successfully!");
+                              setApprovalOpen(false);
+                              setActiveTab("overview");
+                            } catch (err) {
+                              const errMsg = err instanceof Error ? err.message : "DocuSeal push failed.";
+                              toastError(`DocuSeal Error: ${errMsg}`);
+                              alert(`DocuSeal Push Failed:\n\n${errMsg}`);
+                            }
+                          }}
+                          loading={docusealMutation.isPending}
+                          leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
+                        >
+                          Activate Signature
+                        </Button>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="flex-1 justify-center"
+                          onClick={handleShareLink}
+                          leadingIcon={<ClipboardDocumentIcon className="h-4 w-4" />}
+                        >
+                          {copied ? "Copied" : "Share"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="flex-1 justify-center"
+                          onClick={handleExportPdf}
+                          leadingIcon={<ArrowDownTrayIcon className="h-4 w-4" />}
+                        >
+                          Export
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="mt-3 border-t border-[var(--border-2)] pt-3">
@@ -1626,153 +1879,153 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
             <DocumentFormatBar className="order-last w-full border-t border-[var(--border-3)] pt-1.5 sm:order-none sm:w-auto sm:border-0 sm:pt-0" />
             <span aria-hidden="true" className="hidden h-5 w-px bg-[var(--border-2)] sm:block" />
 
-          {/* Pane toggles (Deck's left/right panel toggles) — outline left, properties right. */}
-          <span className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setOutlineOpen((v) => !v)}
-              aria-pressed={outlineOpen}
-              aria-label={outlineOpen ? "Hide outline" : "Show outline"}
-              title={outlineOpen ? "Hide outline" : "Show outline"}
-              className={outlineOpen ? TOOL_ICON_BTN_ON : TOOL_ICON_BTN}
-            >
-              <QueueListIcon className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setOptionsForId((current) =>
-                  current ? null : activeEntry?.id ?? sectionEntries[0]?.id ?? null,
-                )
-              }
-              aria-pressed={optionsForId !== null}
-              aria-label={optionsForId ? "Hide block options" : "Show block options"}
-              title={optionsForId ? "Hide block options" : "Show block options"}
-              className={optionsForId !== null ? TOOL_ICON_BTN_ON : TOOL_ICON_BTN}
-            >
-              <AdjustmentsHorizontalIcon className="h-4 w-4" />
-            </button>
-          </span>
+            {/* Pane toggles (Deck's left/right panel toggles) — outline left, properties right. */}
+            <span className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setOutlineOpen((v) => !v)}
+                aria-pressed={outlineOpen}
+                aria-label={outlineOpen ? "Hide outline" : "Show outline"}
+                title={outlineOpen ? "Hide outline" : "Show outline"}
+                className={outlineOpen ? TOOL_ICON_BTN_ON : TOOL_ICON_BTN}
+              >
+                <QueueListIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setOptionsForId((current) =>
+                    current ? null : activeEntry?.id ?? sectionEntries[0]?.id ?? null,
+                  )
+                }
+                aria-pressed={optionsForId !== null}
+                aria-label={optionsForId ? "Hide block options" : "Show block options"}
+                title={optionsForId ? "Hide block options" : "Show block options"}
+                className={optionsForId !== null ? TOOL_ICON_BTN_ON : TOOL_ICON_BTN}
+              >
+                <AdjustmentsHorizontalIcon className="h-4 w-4" />
+              </button>
+            </span>
 
-          <span className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              onClick={() => undoRef.current()}
-              disabled={pastRef.current.length === 0}
-              title="Undo (⌘Z)"
-              aria-label="Undo"
-              className={TOOL_ICON_BTN}
-            >
-              <ArrowUturnLeftIcon className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => redoRef.current()}
-              disabled={futureRef.current.length === 0}
-              title="Redo (⌘⇧Z)"
-              aria-label="Redo"
-              className={TOOL_ICON_BTN}
-            >
-              <ArrowUturnRightIcon className="h-4 w-4" />
-            </button>
-          </span>
+            <span className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => undoRef.current()}
+                disabled={pastRef.current.length === 0}
+                title="Undo (⌘Z)"
+                aria-label="Undo"
+                className={TOOL_ICON_BTN}
+              >
+                <ArrowUturnLeftIcon className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => redoRef.current()}
+                disabled={futureRef.current.length === 0}
+                title="Redo (⌘⇧Z)"
+                aria-label="Redo"
+                className={TOOL_ICON_BTN}
+              >
+                <ArrowUturnRightIcon className="h-4 w-4" />
+              </button>
+            </span>
 
 
-        </div>
-      </section>
+          </div>
+        </section>
 
-      {activeTab === "overview" ? (
-        <div className="space-y-5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-          <OverviewCanvas proposal={draft} sections={sectionEntries.map((entry) => entry.section)} onProposalChange={(next) => updateDraft(next, { coalesce: true })} />
-          <RightRailTabs
-            defaultTabId="collab"
-            tabs={[
-              { id: "collab",     label: "Collaboration", panel: <CollabPanel documentId={proposalId} currentVersion={draft.version || "v1.0"} /> },
-              { id: "signature",  label: "Signatures",    panel: <SignaturePanel documentId={proposalId} /> },
-              { id: "insights",   label: "Insights",      panel: <DocumentAnalyticsPanel documentId={proposalId} /> },
-              { id: "activity",   label: "Activity",      panel: <ActivityFeed documentId={proposalId} /> },
-              { id: "linked",     label: "Linked",        panel: <DocumentRelationsPanel documentId={proposalId} clientName={draft.clientName ?? null} /> },
-              { id: "proof",      label: "Proof drafts",  panel: <ProposalProofPanel proposalId={proposalId} /> },
-            ]}
-          />
-        </div>
-      ) : (
-        // ONE fluid canvas with two FLOATING rails over it.
-        //
-        // This was three grid columns, which is why it read as three windows however the borders
-        // were tuned: a column takes width away from the document permanently, so the page got
-        // narrower as you opened tools, and every rail had to own an edge. Floating them means
-        // the canvas is the full surface at every moment and the rails sit ON it — the document
-        // is the app, the tools are furniture.
-        //
-        // Only floats at `lg`. Below that the rails stack in normal flow, because an absolutely
-        // positioned 240px panel on a 390px phone would cover the document it is meant to steer.
-        // ⚠️ `lg:flex` is LOAD-BEARING, not cosmetic. This was `relative` alone, which is
-        // `display: block` — so the canvas child's `lg:flex-1 lg:min-h-0` resolved against
-        // nothing, the canvas never took the frame's height, and its inner
-        // `overflow-auto` had no bounded height to scroll within. Result: the document
-        // could not be scrolled at all. The old grid gave the child its height via
-        // `grid-rows-1`; when the columns went, that height had to come from somewhere,
-        // and flex is what replaces it.
-        <section className="relative lg:flex lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:rounded-[10px] lg:border lg:border-[var(--border-2)] lg:bg-[var(--surface-canvas)]">
-          {/* 02 // OUTLINE — NAVIGATION ONLY. Drag-reorder, visibility, insert-at, delete, and
+        {activeTab === "overview" ? (
+          <div className="space-y-5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
+            <OverviewCanvas proposal={draft} sections={sectionEntries.map((entry) => entry.section)} onProposalChange={(next) => updateDraft(next, { coalesce: true })} />
+            <RightRailTabs
+              defaultTabId="collab"
+              tabs={[
+                { id: "collab", label: "Collaboration", panel: <CollabPanel documentId={proposalId} currentVersion={draft.version || "v1.0"} /> },
+                { id: "signature", label: "Signatures", panel: <SignaturePanel documentId={proposalId} isStale={isDocusealStale} /> },
+                { id: "insights", label: "Insights", panel: <DocumentAnalyticsPanel documentId={proposalId} /> },
+                { id: "activity", label: "Activity", panel: <ActivityFeed documentId={proposalId} /> },
+                { id: "linked", label: "Linked", panel: <DocumentRelationsPanel documentId={proposalId} clientName={draft.clientName ?? null} /> },
+                { id: "proof", label: "Proof drafts", panel: <ProposalProofPanel proposalId={proposalId} /> },
+              ]}
+            />
+          </div>
+        ) : (
+          // ONE fluid canvas with two FLOATING rails over it.
+          //
+          // This was three grid columns, which is why it read as three windows however the borders
+          // were tuned: a column takes width away from the document permanently, so the page got
+          // narrower as you opened tools, and every rail had to own an edge. Floating them means
+          // the canvas is the full surface at every moment and the rails sit ON it — the document
+          // is the app, the tools are furniture.
+          //
+          // Only floats at `lg`. Below that the rails stack in normal flow, because an absolutely
+          // positioned 240px panel on a 390px phone would cover the document it is meant to steer.
+          // ⚠️ `lg:flex` is LOAD-BEARING, not cosmetic. This was `relative` alone, which is
+          // `display: block` — so the canvas child's `lg:flex-1 lg:min-h-0` resolved against
+          // nothing, the canvas never took the frame's height, and its inner
+          // `overflow-auto` had no bounded height to scroll within. Result: the document
+          // could not be scrolled at all. The old grid gave the child its height via
+          // `grid-rows-1`; when the columns went, that height had to come from somewhere,
+          // and flex is what replaces it.
+          <section className="relative lg:flex lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:rounded-[10px] lg:border lg:border-[var(--border-2)] lg:bg-[var(--surface-canvas)]">
+            {/* 02 // OUTLINE — NAVIGATION ONLY. Drag-reorder, visibility, insert-at, delete, and
               click-to-scroll. A block's Options no longer drill in here; they open on the right, so
               you never lose your place in the document while editing. On mobile it stacks above the
               canvas with a capped scrollable height so it can't bury the document. */}
-          {/* `lg:overflow-visible` on the wrapper is deliberate and load-bearing: the outline
+            {/* `lg:overflow-visible` on the wrapper is deliberate and load-bearing: the outline
               card scrolls INSIDE itself (its list div is `lg:overflow-y-auto`), so a second
               scroller here would nest one inside the other. Mobile keeps its own capped
               scroller because there the card is not a full-height flex column. */}
-          {outlineOpen ? (
-            <div className="mb-3 max-h-[45vh] overflow-y-auto rounded-[10px] border border-[var(--border-2)] bg-white lg:absolute lg:left-4 lg:top-4 lg:bottom-4 lg:z-20 lg:mb-0 lg:max-h-none lg:w-[236px] lg:overflow-visible lg:shadow-[0_8px_28px_rgba(15,23,42,0.13)] 2xl:w-[260px]">
-              <TableOfContentsCard
+            {outlineOpen ? (
+              <div className="mb-3 max-h-[45vh] overflow-y-auto rounded-[10px] border border-[var(--border-2)] bg-white lg:absolute lg:left-4 lg:top-4 lg:bottom-4 lg:z-20 lg:mb-0 lg:max-h-none lg:w-[236px] lg:overflow-visible lg:shadow-[0_8px_28px_rgba(15,23,42,0.13)] 2xl:w-[260px]">
+                <TableOfContentsCard
+                  sections={outlineEntries}
+                  activeId={viewingSectionId ?? activeEntry?.id ?? null}
+                  editable
+                  onSelect={onOutlineSelect}
+                  onEditOptions={onOutlineEditOptions}
+                  onInsertAt={onOutlineInsertAt}
+                  onDeleteSection={onOutlineDelete}
+                  onReorder={onOutlineReorder}
+                  onToggleVisibility={onOutlineToggleVisibility}
+                />
+              </div>
+            ) : (
+              // Collapsed ≠ gone. Closing the outline reclaims the width without giving up
+              // jump-to-section, which is the thing you want most while editing.
+              <OutlineRail
                 sections={outlineEntries}
                 activeId={viewingSectionId ?? activeEntry?.id ?? null}
-                editable
                 onSelect={onOutlineSelect}
-                onEditOptions={onOutlineEditOptions}
-                onInsertAt={onOutlineInsertAt}
-                onDeleteSection={onOutlineDelete}
-                onReorder={onOutlineReorder}
-                onToggleVisibility={onOutlineToggleVisibility}
+                onExpand={onOutlineExpand}
               />
-            </div>
-          ) : (
-            // Collapsed ≠ gone. Closing the outline reclaims the width without giving up
-            // jump-to-section, which is the thing you want most while editing.
-            <OutlineRail
-              sections={outlineEntries}
-              activeId={viewingSectionId ?? activeEntry?.id ?? null}
-              onSelect={onOutlineSelect}
-              onExpand={onOutlineExpand}
-            />
-          )}
+            )}
 
-          {/* 03 // CANVAS — the live document; ALL text edited inline. Clicking a block selects it
+            {/* 03 // CANVAS — the live document; ALL text edited inline. Clicking a block selects it
               and opens its Options in the right rail. */}
-          {/* `lg:flex-1` + `lg:w-full`: the canvas is the ONLY in-flow child of the flex shell
+            {/* `lg:flex-1` + `lg:w-full`: the canvas is the ONLY in-flow child of the flex shell
               (both rails are absolutely positioned), so it must claim the full width and height
               itself. Without flex-1 it sizes to its content and the scroll container collapses. */}
-          <div className="min-w-0 lg:flex lg:min-h-0 lg:w-full lg:flex-1 lg:flex-col">
-            {/* No border and no radius of its own — the shell owns the frame now. Without this
+            <div className="min-w-0 lg:flex lg:min-h-0 lg:w-full lg:flex-1 lg:flex-col">
+              {/* No border and no radius of its own — the shell owns the frame now. Without this
                 the canvas drew a second box inside the first, which is the "three cards" look. */}
-            <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:rounded-none lg:border-0">
-              {/* The `03 // CANVAS` bar is gone on desktop. A header strip is what makes a region
+              <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-canvas)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:rounded-none lg:border-0">
+                {/* The `03 // CANVAS` bar is gone on desktop. A header strip is what makes a region
                   look like a pane, and the canvas is no longer a pane — it is the whole surface.
                   The hint it carried now floats bottom-centre, out of the document's way. */}
-              <div className="flex items-center justify-between gap-3 border-b border-[var(--border-2)] bg-white px-3 py-2 lg:hidden">
-                <span className="font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-4)]">
-                  03 // CANVAS
-                </span>
-                <span className="truncate text-[11px] text-[var(--text-4)]">
-                  {optionsEntry ? "What the client sees" : "Click any block to edit it →"}
-                </span>
-              </div>
-              {/* The canvas scrolls INSIDE this pane. On desktop the editor is a fixed-height
+                <div className="flex items-center justify-between gap-3 border-b border-[var(--border-2)] bg-white px-3 py-2 lg:hidden">
+                  <span className="font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-4)]">
+                    03 // CANVAS
+                  </span>
+                  <span className="truncate text-[11px] text-[var(--text-4)]">
+                    {optionsEntry ? "What the client sees" : "Click any block to edit it →"}
+                  </span>
+                </div>
+                {/* The canvas scrolls INSIDE this pane. On desktop the editor is a fixed-height
                   frame (root is lg:h-full), so this pane is lg:flex-1 lg:min-h-0 and the document
                   scrolls here — the page itself never scrolls past the viewport. On mobile it
                   flows normally. NEVER give this an unbounded height on desktop. */}
-              {/* ⚠️ NO rail-width padding here, and that is the point.
+                {/* ⚠️ NO rail-width padding here, and that is the point.
                   The rails are already `position: absolute`, so the intent was always that the
                   canvas is the full surface and they sit ON it. Padding the canvas clear of them
                   cancelled exactly that: it cost the document 636px (684 at 2xl) whenever a
@@ -1786,30 +2039,30 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                   in that at either size. The options panel is wider than the margin at 1280 and
                   will overlap the page edge — that is the correct trade for a panel you opened
                   deliberately and can close, and it is what every design tool does. */}
-              <div className="overflow-auto p-4 sm:p-6 lg:min-h-0 lg:flex-1 [scrollbar-gutter:stable]">
-                <ProposalPreview
-                  proposal={draft}
-                  showTableOfContents={false}
-                  frame={false}
-                  editable
-                  onSelectSection={openOptions}
-                  onInsertAfter={onCanvasInsertAfter}
-                  onSectionChange={handleSectionDataChange}
-                  onSectionMetaChange={handleSectionMetaChange}
-                  pageMode="paged"
-                />
+                <div className="overflow-auto p-4 sm:p-6 lg:min-h-0 lg:flex-1 [scrollbar-gutter:stable]">
+                  <ProposalPreview
+                    proposal={draft}
+                    showTableOfContents={false}
+                    frame={false}
+                    editable
+                    onSelectSection={openOptions}
+                    onInsertAfter={onCanvasInsertAfter}
+                    onSectionChange={handleSectionDataChange}
+                    onSectionMetaChange={handleSectionMetaChange}
+                    pageMode="paged"
+                  />
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* PROPERTIES rail — the selected block's Options, in numbered groups like Deck's props
+            {/* PROPERTIES rail — the selected block's Options, in numbered groups like Deck's props
               rail. 340px (was a 280px shared rail), which is what finally lets the editors' own
               `@[26rem]:grid-cols-2` container queries engage. */}
-          {/* Height follows the block's own fields — `lg:bottom-4` used to pin it to the full
+            {/* Height follows the block's own fields — `lg:bottom-4` used to pin it to the full
               frame, so a three-field block drew a full-height wall down the side of the page and
               obscured far more of the document than it needed to. Capped so a long editor
               (costing) still scrolls inside itself rather than running off the frame. */}
-          {/* ⚠️ `lg:bottom-4` + `pointer-events-none` is what makes the panel SCROLL, and it is
+            {/* ⚠️ `lg:bottom-4` + `pointer-events-none` is what makes the panel SCROLL, and it is
               not cosmetic. The wrapper was `top-4` with `max-h-[calc(100%-2rem)]` and no
               `bottom`, so its own height was auto — and a percentage `max-h-full` on the `aside`
               below resolves to *none* against an auto-height parent. The aside therefore grew to
@@ -1821,126 +2074,126 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
               `pointer-events-none` because the wrapper is now full-height whether or not the
               panel fills it; without it the empty space below a short panel would swallow clicks
               on the document underneath. The aside re-enables them for itself. */}
-          {optionsEntry ? (
-            <div className="pointer-events-auto mt-3 max-h-[60vh] overflow-y-auto rounded-[10px] border border-[var(--border-2)] lg:pointer-events-none lg:absolute lg:right-4 lg:top-4 lg:bottom-4 lg:z-20 lg:mt-0 lg:flex lg:max-h-none lg:flex-col lg:items-stretch lg:overflow-visible lg:rounded-none lg:border-0 lg:w-[336px] 2xl:w-[360px]">
-              {/* `widget-card` is gone — the wrapper above now owns the frame and the lift, so
+            {optionsEntry ? (
+              <div className="pointer-events-auto mt-3 max-h-[60vh] overflow-y-auto rounded-[10px] border border-[var(--border-2)] lg:pointer-events-none lg:absolute lg:right-4 lg:top-4 lg:bottom-4 lg:z-20 lg:mt-0 lg:flex lg:max-h-none lg:flex-col lg:items-stretch lg:overflow-visible lg:rounded-none lg:border-0 lg:w-[336px] 2xl:w-[360px]">
+                {/* `widget-card` is gone — the wrapper above now owns the frame and the lift, so
                   the rail is one floating panel rather than a card inside a column. */}
-              <aside className="proposal-form-theme overflow-hidden rounded-[10px] bg-white lg:pointer-events-auto lg:flex lg:max-h-full lg:min-h-0 lg:flex-col lg:border lg:border-[var(--border-2)] lg:shadow-[0_8px_28px_rgba(15,23,42,0.13)]">
-                <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto [scrollbar-gutter:stable]">
-                  <RailGroup
-                    index="01"
-                    name="BLOCK"
-                    right={
-                      <span className="flex min-w-0 items-center gap-1.5">
-                        <span className="widget-header-right truncate">
-                          {optionsEntry.section.title?.trim() ||
-                            SECTION_REGISTRY[optionsEntry.section.key]?.displayName ||
-                            "Untitled block"}
+                <aside className="proposal-form-theme overflow-hidden rounded-[10px] bg-white lg:pointer-events-auto lg:flex lg:max-h-full lg:min-h-0 lg:flex-col lg:border lg:border-[var(--border-2)] lg:shadow-[0_8px_28px_rgba(15,23,42,0.13)]">
+                  <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto [scrollbar-gutter:stable]">
+                    <RailGroup
+                      index="01"
+                      name="BLOCK"
+                      right={
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="widget-header-right truncate">
+                            {optionsEntry.section.title?.trim() ||
+                              SECTION_REGISTRY[optionsEntry.section.key]?.displayName ||
+                              "Untitled block"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setOptionsForId(null)}
+                            aria-label="Close block options"
+                            title="Close block options"
+                            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] text-[var(--text-4)] transition hover:bg-white hover:text-[var(--text-1)]"
+                          >
+                            <XMarkIcon className="h-3.5 w-3.5" />
+                          </button>
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => setOptionsForId(null)}
-                          aria-label="Close block options"
-                          title="Close block options"
-                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] text-[var(--text-4)] transition hover:bg-white hover:text-[var(--text-1)]"
-                        >
-                          <XMarkIcon className="h-3.5 w-3.5" />
-                        </button>
-                      </span>
-                    }
-                  >
-                    <ProposalBuilderPanel
-                      embedded
-                      withSpeakerNotes={false}
-                      proposal={draft}
-                      sections={sectionEntries}
-                      activeId={optionsEntry.id}
-                      onProposalChange={(next) => updateDraft(next, { coalesce: true })}
-                    />
-                  </RailGroup>
-
-                  {optionsSectionIndex >= 0 ? (
-                    <RailGroup index="02" name="SPEAKER NOTES" defaultOpen={false}>
-                      <SpeakerNotesField
+                      }
+                    >
+                      <ProposalBuilderPanel
+                        embedded
+                        withSpeakerNotes={false}
                         proposal={draft}
-                        sectionIndex={optionsSectionIndex}
+                        sections={sectionEntries}
+                        activeId={optionsEntry.id}
                         onProposalChange={(next) => updateDraft(next, { coalesce: true })}
                       />
                     </RailGroup>
-                  ) : null}
-                </div>
-              </aside>
-            </div>
-          ) : null}
-        </section>
-      )}
 
-      {presenting ? (
-        <PresentationMode proposal={draft} onClose={() => setPresenting(false)} />
-      ) : null}
+                    {optionsSectionIndex >= 0 ? (
+                      <RailGroup index="02" name="SPEAKER NOTES" defaultOpen={false}>
+                        <SpeakerNotesField
+                          proposal={draft}
+                          sectionIndex={optionsSectionIndex}
+                          onProposalChange={(next) => updateDraft(next, { coalesce: true })}
+                        />
+                      </RailGroup>
+                    ) : null}
+                  </div>
+                </aside>
+              </div>
+            ) : null}
+          </section>
+        )}
 
-      <AiDraftModal
-        open={aiDraftOpen}
-        onClose={() => setAiDraftOpen(false)}
-        documentId={proposalId}
-        onApply={(proposal) => {
-          // AI mutates the document server-side; update local draft so the editor reflects
-          // the new section data without a refetch dance.
-          setLocalDraft(proposal);
-          baselineRef.current = JSON.stringify(proposal);
-        }}
-      />
+        {presenting ? (
+          <PresentationMode proposal={draft} onClose={() => setPresenting(false)} />
+        ) : null}
 
-      <AiChatPanel
-        open={aiChatOpen}
-        onClose={() => setAiChatOpen(false)}
-        documentId={proposalId}
-        onAfterApply={(proposal) => {
-          setLocalDraft(proposal);
-          baselineRef.current = JSON.stringify(proposal);
-        }}
-      />
+        <AiDraftModal
+          open={aiDraftOpen}
+          onClose={() => setAiDraftOpen(false)}
+          documentId={proposalId}
+          onApply={(proposal) => {
+            // AI mutates the document server-side; update local draft so the editor reflects
+            // the new section data without a refetch dance.
+            setLocalDraft(proposal);
+            baselineRef.current = JSON.stringify(proposal);
+          }}
+        />
 
-      <PullSupportDataModal
-        open={pullDataOpen}
-        onClose={() => setPullDataOpen(false)}
-        documentId={proposalId}
-        defaultClientName={draft.clientName}
-        onApplied={(proposal) => {
-          setLocalDraft(proposal);
-          baselineRef.current = JSON.stringify(proposal);
-        }}
-      />
+        <AiChatPanel
+          open={aiChatOpen}
+          onClose={() => setAiChatOpen(false)}
+          documentId={proposalId}
+          onAfterApply={(proposal) => {
+            setLocalDraft(proposal);
+            baselineRef.current = JSON.stringify(proposal);
+          }}
+        />
 
-      <BlockPalette
-        open={paletteInsertAt !== null}
-        onClose={() => setPaletteInsertAt(null)}
-        onPick={(key) => {
-          if (paletteInsertAt !== null) {
-            handleAddSection(key, paletteInsertAt);
+        <PullSupportDataModal
+          open={pullDataOpen}
+          onClose={() => setPullDataOpen(false)}
+          documentId={proposalId}
+          defaultClientName={draft.clientName}
+          onApplied={(proposal) => {
+            setLocalDraft(proposal);
+            baselineRef.current = JSON.stringify(proposal);
+          }}
+        />
+
+        <BlockPalette
+          open={paletteInsertAt !== null}
+          onClose={() => setPaletteInsertAt(null)}
+          onPick={(key) => {
+            if (paletteInsertAt !== null) {
+              handleAddSection(key, paletteInsertAt);
+            }
+          }}
+          snippets={(snippetsQuery.data ?? []).map((s) => ({
+            id: s.id,
+            name: s.name,
+            sectionKey: s.sectionKey,
+          }))}
+          onPickSnippet={(id) => {
+            if (paletteInsertAt !== null) {
+              handleAddSnippet(id, paletteInsertAt);
+            }
+          }}
+          onDeleteSnippet={(id) => deleteSnippet.mutate(id)}
+          documentType={draft.documentType}
+          insertContextLabel={
+            paletteInsertAt !== null && paletteInsertAt < sectionEntries.length
+              ? `Inserting before block ${paletteInsertAt + 1}: ${sectionEntries[paletteInsertAt]?.section.title}`
+              : paletteInsertAt === sectionEntries.length
+                ? "Inserting at the end"
+                : undefined
           }
-        }}
-        snippets={(snippetsQuery.data ?? []).map((s) => ({
-          id: s.id,
-          name: s.name,
-          sectionKey: s.sectionKey,
-        }))}
-        onPickSnippet={(id) => {
-          if (paletteInsertAt !== null) {
-            handleAddSnippet(id, paletteInsertAt);
-          }
-        }}
-        onDeleteSnippet={(id) => deleteSnippet.mutate(id)}
-        documentType={draft.documentType}
-        insertContextLabel={
-          paletteInsertAt !== null && paletteInsertAt < sectionEntries.length
-            ? `Inserting before block ${paletteInsertAt + 1}: ${sectionEntries[paletteInsertAt]?.section.title}`
-            : paletteInsertAt === sectionEntries.length
-              ? "Inserting at the end"
-              : undefined
-        }
-      />
-    </div>
+        />
+      </div>
     </FormatTargetProvider>
   );
 }

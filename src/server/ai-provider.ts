@@ -29,7 +29,7 @@ export interface WorkspaceAiFields {
   localLlmModel: string | null;
 }
 
-export type AiProvider = "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
+export type AiProvider = "ANTHROPIC" | "OPENAI" | "GROQ" | "GEMINI" | "LOCAL";
 
 export interface ResolvedAiConfig {
   provider: AiProvider;
@@ -40,21 +40,28 @@ export interface ResolvedAiConfig {
 
 /**
  * Current-generation default model per provider — the single source of truth for
- * fallback models when a workspace hasn't pinned its own. Every resolver (here,
- * study.ts, pulse agents, route handlers) must read from this, never inline a literal.
- * Within-tier generation is cost-neutral (Sonnet 5 = Sonnet 4.6 pricing, etc.).
+ * fallback models when a workspace hasn't pinned its own.
  */
 export const DEFAULT_MODELS: Record<AiProvider, string> = {
-  ANTHROPIC: "claude-sonnet-5",
+  ANTHROPIC: "claude-sonnet-4-6",
   OPENAI: "gpt-4o",
+  GROQ: "openai/gpt-oss-120b",
   GEMINI: "gemini-2.0-flash",
   LOCAL: "llama3.1",
 };
 
 /** Resolve the active provider, API key, model and (OpenAI-compatible) base URL. */
 export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
-  const provider = (ws.aiProvider || "ANTHROPIC") as AiProvider;
+  const provider = (ws.aiProvider || (process.env.GROQ_API_KEY ? "GROQ" : "ANTHROPIC")) as AiProvider;
 
+  if (provider === "GROQ") {
+    return {
+      provider: "GROQ",
+      apiKey: ws.openaiApiKey ?? process.env.GROQ_API_KEY ?? null,
+      model: ws.openaiModel ?? DEFAULT_MODELS.GROQ,
+      baseUrl: "https://api.groq.com/openai/v1",
+    };
+  }
   if (provider === "OPENAI") {
     return {
       provider,
@@ -79,24 +86,23 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
       baseUrl: ws.localLlmUrl ?? "http://localhost:11434/v1",
     };
   }
+
+  // Default: ANTHROPIC (Claude 3.5 Sonnet / Claude Sonnet) using workspace.anthropicApiKey
   return {
     provider: "ANTHROPIC",
-    apiKey: process.env.ANTHROPIC_API_KEY ?? ws.anthropicApiKey ?? null,
-    model: ws.anthropicModel ?? DEFAULT_MODELS.ANTHROPIC,
+    apiKey: ws.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY ?? null,
+    model: ws.anthropicModel || DEFAULT_MODELS.ANTHROPIC,
     baseUrl: null,
   };
 }
 
 /**
- * Cheaper models used when tier="light". Routes to Haiku/mini for classification,
- * short summaries, and tagging tasks that don't need full Sonnet quality.
- * ~3.75× cheaper than Sonnet on both input and output.
+ * Cheaper models used when tier="light".
  */
 const LIGHT_MODELS: Partial<Record<AiProvider, string>> = {
-  ANTHROPIC: "claude-haiku-4-5",
+  ANTHROPIC: "claude-3-5-haiku-20241022",
   OPENAI: "gpt-4o-mini",
-  // GEMINI: gemini-2.0-flash is already the cheapest tier — no change needed
-  // LOCAL: no cost either way — keep workspace model
+  GROQ: "llama-3.1-8b-instant",
 };
 
 /**
@@ -227,18 +233,39 @@ function classifyAiError(err: unknown): string {
   return "unknown";
 }
 
-/** Best-effort extraction of a JSON object from a model response (handles ```json fences). */
+/** Best-effort extraction of a JSON object from a model response (handles ```json fences & truncated JSON). */
 export function parseJsonObject<T>(raw: string): T | null {
   if (!raw) return null;
   let text = raw.trim();
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence) text = fence[1].trim();
   const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1 || end < start) return null;
+  if (start === -1) return null;
+
+  let jsonCandidate = text.slice(start);
+  const end = jsonCandidate.lastIndexOf("}");
+  if (end !== -1) {
+    jsonCandidate = jsonCandidate.slice(0, end + 1);
+  }
+
   try {
-    return JSON.parse(text.slice(start, end + 1)) as T;
+    return JSON.parse(jsonCandidate) as T;
   } catch {
-    return null;
+    // Attempt best-effort JSON repair for truncated outputs
+    try {
+      let repaired = jsonCandidate;
+      const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
+      if (quoteCount % 2 !== 0) repaired += '"';
+
+      const openBrackets = Math.max(0, (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length);
+      const openBraces = Math.max(0, (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length);
+
+      for (let i = 0; i < openBrackets; i++) repaired += "]";
+      for (let i = 0; i < openBraces; i++) repaired += "}";
+
+      return JSON.parse(repaired) as T;
+    } catch {
+      return null;
+    }
   }
 }

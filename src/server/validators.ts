@@ -18,7 +18,7 @@ export const documentStatusSchema = z.enum([
 export const sectionSchema = z.object({
   id: z.string().optional(),
   key: z.string(),
-  title: z.string().min(1),
+  title: z.string().default(""),
   description: z.string().optional(),
   sortOrder: z.number().int().nonnegative(),
   isVisible: z.boolean(),
@@ -31,8 +31,8 @@ export const sectionSchema = z.object({
 
 export const costLineItemSchema = z.object({
   id: z.string().optional(),
-  category: z.string().min(1),
-  itemName: z.string().min(1),
+  category: z.string().default(""),
+  itemName: z.string().default(""),
   description: z.string().optional(),
   quantity: z.number().nonnegative(),
   unitCost: z.number().nonnegative(),
@@ -68,9 +68,9 @@ export const paymentScheduleRowSchema = z.object({
 
 export const timelinePhaseSchema = z.object({
   id: z.string().optional(),
-  name: z.string().min(1),
-  duration: z.string().min(1),
-  summary: z.string().min(1),
+  name: z.string().default(""),
+  duration: z.string().default(""),
+  summary: z.string().default(""),
   deliverables: z.array(z.string()),
   sortOrder: z.number().int().nonnegative(),
   viewMode: z.enum(["LIST", "MILESTONE"]),
@@ -645,7 +645,7 @@ export const proposalUpdateSchema = z.object({
   status: documentStatusSchema.optional(),
   productName: z.string().optional(),
   clientName: z.string().optional(),
-  clientId: z.string().cuid().nullable().optional(),
+  clientId: z.union([z.string().cuid(), z.literal(""), z.null()]).transform((val) => (val === "" ? null : val)).optional(),
   summary: z.string().optional(),
   version: z.string().optional(),
   expiresAt: z.string().nullable().optional(),

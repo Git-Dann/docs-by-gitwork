@@ -782,7 +782,20 @@ export function SignaturesEditor({
           variant="secondary"
           size="xs"
           leadingIcon={<PlusIcon className="h-3.5 w-3.5" />}
-          onClick={() =>
+          onClick={() => {
+            const hasGitwork = blocks.some((b) => b.type === "gitwork");
+            const defaultType: "gitwork" | "client" = !hasGitwork && blocks.length === 0 ? "gitwork" : "client";
+            const sameTypeBlocks = blocks.filter((b) => (b.type ?? (b === blocks[0] ? "gitwork" : "client")) === defaultType);
+            const count = sameTypeBlocks.length;
+            const autoVar =
+              defaultType === "gitwork"
+                ? count === 0
+                  ? "Gitwork Signature"
+                  : `Gitwork Signature ${count + 1}`
+                : count === 0
+                ? "Client Signature"
+                : `Client Signature ${count + 1}`;
+
             onChange({
               ...data,
               blocks: [
@@ -794,10 +807,12 @@ export function SignaturesEditor({
                   signatoryRole: "",
                   signatoryEmail: "",
                   signatureDate: "",
+                  type: defaultType,
+                  variableName: autoVar,
                 },
               ],
-            })
-          }
+            });
+          }}
         >
           Add signatory
         </Button>
@@ -815,6 +830,37 @@ export function SignaturesEditor({
               ariaLabel={`signature block ${index + 1}`}
             >
               <div className="grid gap-3 @[26rem]:grid-cols-2">
+                <label className="space-y-1.5">
+                  <FieldLabel>Type (DocuSeal)</FieldLabel>
+                  <select
+                    value={block.type ?? (index === 0 ? "gitwork" : "client")}
+                    onChange={(e) => {
+                      const nextType = e.target.value as "gitwork" | "client";
+                      // Auto-update variableName if it's currently unedited/empty or matching default pattern
+                      let nextVar = block.variableName;
+                      if (!nextVar || nextVar === "Gitwork Signature" || nextVar === "Client Signature" || nextVar === "gitwork_signature" || nextVar === "client_signature" || nextVar.startsWith("client_signature_") || nextVar.startsWith("Client Signature ") || nextVar.startsWith("gitwork_signature_") || nextVar.startsWith("Gitwork Signature ")) {
+                        const count = blocks.filter((b, i) => i !== index && (b.type ?? (i === 0 ? "gitwork" : "client")) === nextType).length;
+                        nextVar = nextType === "gitwork"
+                          ? (count === 0 ? "Gitwork Signature" : `Gitwork Signature ${count + 1}`)
+                          : (count === 0 ? "Client Signature" : `Client Signature ${count + 1}`);
+                      }
+                      patch(index, { type: nextType, variableName: nextVar });
+                    }}
+                    className="app-input-compact app-select-chevron w-full pr-9"
+                  >
+                    <option value="gitwork">Gitwork</option>
+                    <option value="client">Client</option>
+                  </select>
+                </label>
+                <label className="space-y-1.5">
+                  <FieldLabel>Signature variable</FieldLabel>
+                  <input
+                    value={block.variableName ?? ""}
+                    onChange={(e) => patch(index, { variableName: e.target.value })}
+                    className="app-input-compact"
+                    placeholder="e.g. client_signature"
+                  />
+                </label>
                 <label className="space-y-1.5">
                   <FieldLabel>Party</FieldLabel>
                   <input

@@ -57,16 +57,13 @@ async function loadWorkspaceAnthropic(workspaceId: string) {
   });
   if (!workspace) throw new Error("Workspace not found.");
 
-  const provider = workspace.aiProvider ?? "ANTHROPIC";
-  if (provider !== "ANTHROPIC") {
-    throw new AiNotConfiguredError();
-  }
-  if (!workspace.anthropicApiKey) {
+  const apiKey = workspace.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
     throw new AiNotConfiguredError();
   }
 
   return {
-    client: new Anthropic({ apiKey: workspace.anthropicApiKey, timeout: 120_000, maxRetries: 1 }),
+    client: new Anthropic({ apiKey, timeout: 120_000, maxRetries: 1 }),
     model: workspace.anthropicModel || DEFAULT_MODEL,
   };
 }
