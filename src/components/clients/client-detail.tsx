@@ -1476,7 +1476,7 @@ export function ClientDetail({ slug }: { slug: string }) {
 
       {/* ── Edit client modal ── */}
       {pausing && (
-        <div className="fixed inset-0 z-30">
+        <div className="fixed inset-0 z-50">
           <button
             type="button"
             aria-label="Close"
@@ -3442,7 +3442,7 @@ function ClientEditModal({
   }
 
   return (
-    <div className="fixed inset-0 z-30">
+    <div className="fixed inset-0 z-50">
       <button
         type="button"
         aria-label="Close"

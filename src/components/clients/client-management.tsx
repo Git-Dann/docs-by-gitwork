@@ -1028,7 +1028,7 @@ function AddLeadModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-30">
+    <div className="fixed inset-0 z-50">
       <button
         type="button"
         aria-label="Close"
@@ -1524,7 +1524,7 @@ export function ClientManagement() {
 
       {/* ── Create client modal ── */}
       {showCreate ? (
-        <div className="fixed inset-0 z-30">
+        <div className="fixed inset-0 z-50">
           <button
             type="button"
             aria-label="Close"
@@ -1671,7 +1671,7 @@ function NewOnboardingLinkModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-30">
+    <div className="fixed inset-0 z-50">
       <button
         type="button"
         aria-label="Close"

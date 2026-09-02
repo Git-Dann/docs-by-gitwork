@@ -377,6 +377,12 @@ set a height, or vertical padding that implies one, on either cell independently
 - Both **truncate** with a `title=` attribute rather than wrapping. Wrapping would grow the band and knock the hairlines out of step; truncating without `title=` would be a TRUNCATED defect under `audit:clipping`. It needs to be both.
 - ⚠️ This is **not** `{typography.heading-1}`. That token is 44px and remains correct for public/standalone pages (`/timeline/[token]`, `/sign/[token]`, marketing) where a full-bleed serif headline is the point. Inside the app shell a 44px headline made the band 129.6px tall on every single page.
 
+**Layering.** The "On Your Desk" dock is fixed to the bottom of every `/app` page at
+**z-40**, so anything modal must beat it — use **z-50**, as `src/components/ui/modal.tsx`
+does. Eight hand-rolled dialogs in Portal sat at z-30 and left the dock painted on top of
+their overlay, undimmed and still clickable. Enforced by
+`src/components/__tests__/dialog-layering.test.ts`.
+
 ⚠️ **A scrolling column clips focus rings.** `overflow-y-auto` forces `overflow-x`
 to `auto` as well — CSS will not let one axis be `visible` while the other scrolls —
 so the element becomes a clipping box. A field sitting flush against its edge has
