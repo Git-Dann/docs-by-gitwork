@@ -4395,3 +4395,92 @@ header its own scroller.
 **Still open:** a 7-column table on a 390px phone is a 384px sideways scroll — honest, and better
 than clipping, but a stacked card layout below `sm` would be better still. Not done here because
 it is a redesign rather than the defect, and `/app` cannot be visually verified before merge.
+
+### 45.3 Course requests carry a demand count and a Low/Medium/High tag
+
+Every row in the Wedge course-request table now shows **how many golfers have asked
+for that course** and a **LOW / MEDIUM / HIGH** reading of it, in both the active
+table and the collapsed Added table, and in the read-only client wiki view.
+
+**It is derived, never stored.** `computeCourseDemand` runs over the request list on
+every render, so it is correct for all 756 requests already in the table *and* for
+every new one, with no backfill, no schema change and no migration. That is the whole
+reason it was built this way — Dan asked for "all previous courses and all new
+requests", and derivation gives both for free.
+
+**Each row is one golfer's submission**, which is what makes counting rows a valid
+measure of demand: Big Wedge stamps the *submitted* date into the notes, and rows for
+the same course carry different ones. Checked before building — 13 of the 15
+duplicate-name pairs in the audit were submitted on different days, so they are
+separate people, not an import that ran twice.
+
+⚠️ **The count only works because the names are folded, and that fold is the whole
+design.** Keyed on the raw `courseName` the answer is always 1: an audit of the live
+table (368 of 756 rows, September 2026) found **zero** exact duplicates. Folding the
+trailing club/course designator, punctuation, casing and spacing found **18 courses
+asked for twice or more**, topping out at three — "Allen Park Golf Centre",
+"AllenPark" and "Allen park", one of whose notes reads *"I requested this over two
+weeks ago"*.
+
+⚠️ **Do NOT add a typo tolerance to `courseKey`.** It was tried. A one-character
+allowance merged **Hawick** (Scotland) with **Howick** (New Zealand), and **Basildon**
+(Essex) with **Baildon** (West Yorkshire) — four real, distinct courses reported as
+two. `country` cannot rescue it: the field is polluted with **raw UUIDs** from the
+intake (`3dae3001-4e4f-…`, which `safeCountry()` already hides in the UI) and
+disagrees with itself — "England" / "United Kingdom" / "Scotland" for the same place.
+Under-counting a genuine misspelling is the safe error; inventing demand sends someone
+to license a course nobody asked for. For the same reason the fold is anchored to the
+**end** of the name and never removes an interior word: "Richmond Park" is a different
+course from "The Richmond Golf Club", and both are in the table.
+
+Because the count is a judgement about free text, the grouping is **inspectable** — the
+cell's `title` lists every spelling that was counted together.
+
+**Demand is computed over EVERY request, never the filtered tab.** A course three
+golfers asked for that was sent to the provider months ago must not read "1 LOW" in
+the New tab; it is the most wanted course on the board. There is a render test for
+exactly this, because `filtered` is in scope, the component compiles either way, and
+the wrong numbers still look plausible.
+
+**Thresholds** live in `DEMAND_THRESHOLDS` (`medium: 2, high: 3`) and are calibrated to
+the observed distribution — 330 courses at one request, 16 at two, 2 at three. Anything
+higher and every row reads LOW.
+
+**Two things the contrast measurement caught**, both the class of defect behind the
+August `/login` incident:
+- `bg-indigo-100` beside `bg-indigo-50` measured a **1.1:1** step and read as the same
+  chip. HIGH is a **solid** fill instead, which also carries its own contrast rather
+  than borrowing the page surface, so it is safe in both themes.
+- The LOW chip used `--text-4` on `--surface-1` = **4.36:1**, under AA for 10px text.
+  It is `--text-3` now (6.95:1) — which is what the country chip beside it already
+  used.
+
+⚠️ **Measuring rendered contrast has two traps, and I hit both.** Tailwind v4 emits
+**`oklch()`**, and Chrome leaves it in oklch form in computed style — so parsing the
+numbers out of the string reads L/C/H as if they were R/G/B (it reported "fg=0,0,277").
+Resolve colours through a **1×1 canvas**, which always hands back sRGB bytes. And the
+dark remap turns `bg-indigo-50` into a **12%-alpha overlay**, so comparing against the
+declared colour as if it were opaque gives a meaningless 1.17:1 — **composite every
+alpha layer down to the first opaque ancestor** before computing the ratio.
+
+Demand uses **indigo**, deliberately not the amber/blue/emerald/red the statuses own:
+demand and status are different axes and must not read as the same scale. Indigo is one
+of the families `globals.css` remaps for dark mode; violet is not.
+
+**Verified:** `npm run verify` green — tsc + lint 0 errors, **3161 tests** (24 new),
+`audit:ui` 0 findings; `npx next build` clean. The module was run over the audited live
+data and reproduced the audit exactly (348 courses, 18 with repeat demand, 6 rows HIGH
+/ 32 MEDIUM / 330 LOW, no false merges). Geometry re-measured at 390 · 430 · 768 ·
+1024 · 1280 · 1440 in both variants: 0px unreachable, 0px page scroll, course name
+still 186px on a phone, no chip overflow. All six chip × theme contrast pairs clear
+AA. Proved to discriminate by computing demand from `filtered` (2 failures), removing
+the designator fold (10), removing the space compression (5), reintroducing an
+over-eager fold (2) and shifting the thresholds (3).
+
+**Known limits, both under-counts rather than false positives:** a genuine misspelling
+("Rideway" for "Ridgeway", "contree" for "Cobtree") counts separately, and a name that
+gains a real word ("Cobtree Manor" vs "Cobtree Manor Park") does too. The fuzzy search
+from §45.1 is how you find those by hand. **Not verified:** the live table — `/app` is
+auth-gated with no staging, so the audit was done through the Foundry MCP and the UI
+through server-rendered screenshots. Post-deploy, open Wedge → Wiki → Course requests
+and confirm Allen Park reads 3 HIGH.

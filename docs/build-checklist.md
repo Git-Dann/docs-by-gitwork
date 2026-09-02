@@ -109,6 +109,30 @@ So for any visual change:
 4. **Deck** has its own gate: `npm run deck:verify` (and rebuild + commit `public/deck/index.html`
    if you touched `vendor/bento`).
 
+### Measuring contrast on a rendered page — two traps that silently give you nonsense
+
+Any new coloured chip, badge or label needs its contrast **measured**, not eyeballed: the August
+2026 `/login` incident was dark ink on a dark surface at **1.04:1**, and nothing in the gate looks
+at colour. Measure it in headless Chromium against CSS **built from your own tree**, and know
+these two, because both return a confident wrong number:
+
+1. **Tailwind v4 emits `oklch()`, and Chrome leaves it in oklch form in computed style.** Parsing
+   the numbers out of `getComputedStyle(el).color` therefore reads L / C / H as if they were
+   R / G / B — a real reading was `fg=0,0,277`, with a channel above 255, scored against an equally
+   bogus background as "1.03:1 FAIL". **Resolve every colour through a 1x1 `<canvas>`**
+   (`ctx.fillStyle = css; ctx.fillRect(0,0,1,1); getImageData(...)`), which always hands back sRGB
+   bytes whatever the source notation.
+2. **The dark-mode remap uses translucent overlays.** `[data-theme="dark"] .bg-indigo-50` becomes
+   `rgba(96,165,250,0.12)`, so treating the declared background as opaque scored a perfectly
+   readable chip at **1.17:1**. **Composite every alpha layer down to the first opaque ancestor**
+   before computing the ratio — and do the same for the foreground, which can also be translucent.
+
+Judge against **AA 4.5:1**: a 10px uppercase chip is *not* "large text" (that needs 18.66px bold or
+24px normal), so the 3:1 allowance does not apply to the mono labels used all over this UI. Check
+**both** themes — a pairing that passes on cream can fail on navy and vice versa, since only some
+colour families are remapped (`bg-indigo-*` is, `bg-violet-*` is not; neutral / slate / zinc / gray
+are not remapped at all).
+
 ---
 
 ## 4. Verification honesty

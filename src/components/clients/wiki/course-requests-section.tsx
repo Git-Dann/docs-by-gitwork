@@ -16,6 +16,11 @@ import {
 } from "@heroicons/react/24/outline";
 import type { CourseRequestRecord } from "@/lib/api";
 import { fuzzySearch, normalise } from "@/lib/fuzzy-search";
+import {
+  computeCourseDemand,
+  type CourseDemand,
+  type DemandLevel,
+} from "@/lib/course-demand";
 
 // JetBrains Mono stack — used for all data labels and timestamps per DESIGN.md
 const MONO =
@@ -39,6 +44,49 @@ const STATUS_LABEL: Record<Status, string> = {
   ADDED: "Added",
   REJECTED: "Rejected",
 };
+
+/**
+ * Demand uses ONE hue at rising intensity, deliberately indigo rather than the
+ * amber/blue/emerald/red the statuses already own — demand and status are
+ * different axes and must not be read as the same scale. Indigo is one of the
+ * families `globals.css` remaps for dark mode; violet is not.
+ */
+const DEMAND_STYLE: Record<DemandLevel, string> = {
+  LOW: "bg-[var(--surface-1)] text-[var(--text-3)]",
+  MEDIUM: "bg-indigo-50 text-indigo-700",
+  // Solid, not another tint: indigo-100 next to indigo-50 was measured at a 1.1:1
+  // step and read as the same chip. A solid fill also carries its own contrast
+  // instead of borrowing the page surface, so it is safe in both themes.
+  HIGH: "bg-indigo-600 text-white",
+};
+
+/** The count is the fact; the level is a reading of it. Both are shown. */
+function DemandCell({ demand }: { demand: CourseDemand | undefined }) {
+  if (!demand)
+    return <span className="text-[11px] text-[var(--text-4)]">—</span>;
+  // When several spellings were folded together, say which — the grouping is a
+  // judgement about free-text names and a reader must be able to check it.
+  const title =
+    demand.count > 1
+      ? `${demand.count} requests for this course: ${demand.names.join(" · ")}`
+      : "Requested once";
+  return (
+    <div
+      className="flex items-center gap-1.5"
+      style={{ fontFamily: MONO }}
+      title={title}
+    >
+      <span className="text-[12px] font-semibold text-[var(--text-2)]">
+        {demand.count}
+      </span>
+      <span
+        className={`rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${DEMAND_STYLE[demand.level]}`}
+      >
+        {demand.level}
+      </span>
+    </div>
+  );
+}
 
 /** Strip UUIDs that occasionally land in the country field from intake bugs. */
 function safeCountry(c: string | null): string | null {
@@ -225,9 +273,17 @@ export function CourseRequestsSection({
 
   // Grid template: checkbox | course+notes | country | submitted | sent | status | actions
   // readOnly drops checkbox and actions columns
+  /**
+   * Demand is computed over EVERY request, never `filtered` — it is a property of
+   * the course across all four statuses. Counting within the current tab would
+   * report 1 for a course three golfers asked for that was sent months ago.
+   */
+  const demand = useMemo(() => computeCourseDemand(requests), [requests]);
+
+  // checkbox | course | demand | country | submitted | sent | status | actions
   const gridCols = readOnly
-    ? "1fr 88px 92px 92px 72px"
-    : "20px 1fr 88px 92px 92px 72px 52px";
+    ? "1fr 88px 88px 92px 92px 72px"
+    : "20px 1fr 88px 88px 92px 92px 72px 52px";
   /**
    * The fixed columns alone come to 416px (+72px of gaps, +24px row padding) before the
    * course name is given a single pixel, so the row cannot fit a phone and must not try.
@@ -238,11 +294,11 @@ export function CourseRequestsSection({
    * the list share ONE scroller so their columns stay in step.
    */
   const scrollFrame = "overflow-x-auto";
-  // 700px, not the 512px the columns strictly need: at the tighter figure the 1fr course
-  // name is squeezed to 76px — narrower than the Country column beside it — and every
-  // name ellipses. 700px gives the name 186px (measured at 390px wide), which is the
-  // point of scrolling rather than reflowing.
-  const scrollInner = "min-w-[700px]";
+  // 800px, not the 600px the columns strictly need: at the tighter figure the 1fr
+  // course name is squeezed below the Country column beside it and every name
+  // ellipses, which defeats the point of scrolling. It grew from 700px when the
+  // Demand column was added — keep the two in step.
+  const scrollInner = "min-w-[800px]";
 
   return (
     <div>
@@ -371,6 +427,9 @@ export function CourseRequestsSection({
                 Course
               </span>
               <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
+                Demand
+              </span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
                 Country
               </span>
               <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
@@ -435,6 +494,9 @@ export function CourseRequestsSection({
                         </span>
                       )}
                     </div>
+
+                    {/* How many golfers have asked for this course */}
+                    <DemandCell demand={demand.get(r.id)} />
 
                     {/* Country */}
                     <div style={{ fontFamily: MONO }}>
@@ -577,13 +639,15 @@ export function CourseRequestsSection({
                     className="grid items-center gap-x-3 px-3 py-2 hover:bg-white/70 transition"
                     style={{
                       gridTemplateColumns: readOnly
-                        ? "1fr 88px 92px 92px"
-                        : "1fr 88px 92px 92px 52px",
+                        ? "1fr 88px 88px 92px 92px"
+                        : "1fr 88px 88px 92px 92px 52px",
                     }}
                   >
                     <span className="truncate text-[13px] text-[var(--text-2)]">
                       {r.courseName}
                     </span>
+                    {/* An added course still shows what the demand for it was. */}
+                    <DemandCell demand={demand.get(r.id)} />
                     <div style={{ fontFamily: MONO }}>
                       {country ? (
                         <span className="inline-block max-w-full truncate rounded-[4px] bg-[var(--surface-1)] px-1.5 py-0.5 text-[11px] text-[var(--text-3)]">
