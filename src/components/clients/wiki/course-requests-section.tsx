@@ -1,18 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
-  PlusIcon,
-  TrashIcon,
-  PencilSquareIcon,
-  ClipboardDocumentIcon,
+  ArrowDownTrayIcon,
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
-  ArrowDownTrayIcon,
+  ClipboardDocumentIcon,
+  MagnifyingGlassIcon,
+  PencilSquareIcon,
+  PlusIcon,
+  TrashIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import type { CourseRequestRecord } from "@/lib/api";
+import { fuzzySearch, normalise } from "@/lib/fuzzy-search";
 
 // JetBrains Mono stack — used for all data labels and timestamps per DESIGN.md
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -105,6 +108,7 @@ export function CourseRequestsSection({
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showAdded, setShowAdded] = useState(false);
+  const [search, setSearch] = useState("");
 
   // "All active" = still needs attention (New/Rejected). Sent is done-for-now —
   // stays fully reachable via its own tab, just not bundled into the default view.
@@ -112,8 +116,24 @@ export function CourseRequestsSection({
   const activeRequests = requests.filter((r) => r.status === "NEW" || r.status === "REJECTED");
   const addedRequests = requests.filter((r) => r.status === "ADDED");
 
-  const filtered =
-    filter === "ALL"
+  /**
+   * Search spans EVERY status, and overrides the tabs while it has a value.
+   *
+   * The question being asked is "have we already got this course?" — an answer of
+   * "not in New" is useless when it went out as Sent months ago and is now Added.
+   * Each row already shows its own status, so a hit reads correctly whichever
+   * bucket it came from. Filtering happens over the list already in memory
+   * (~750 rows), so results appear as you type with nothing to wait for.
+   */
+  const searching = normalise(search).length > 0;
+  const searchResults = useMemo(
+    () => fuzzySearch(requests, search, (r) => [r.courseName, r.country, r.notes]),
+    [requests, search],
+  );
+
+  const filtered = searching
+    ? searchResults
+    : filter === "ALL"
       ? activeRequests
       : nonAddedRequests.filter((r) => r.status === filter);
 
@@ -241,7 +261,9 @@ export function CourseRequestsSection({
               : `${STATUS_LABEL[s]} (${counts[s]})`}
           </button>
         ))}
-        <div className="ml-auto flex items-center gap-2">
+        {/* On a phone the tabs wrap first, so this group takes its own full-width
+            row rather than leaving a 190px search stub floated right. */}
+        <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
           {!readOnly && filtered.length > 1 && (
             <button
               type="button"
@@ -252,6 +274,29 @@ export function CourseRequestsSection({
               {allVisibleSelected ? "Deselect all" : "Select all"}
             </button>
           )}
+          {/* Search sits opposite the status tabs, and deliberately searches every
+              status rather than the selected tab — see the `searching` note above. */}
+          <div className="relative min-w-0 flex-1 sm:flex-none">
+            <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-4)]" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Find any course…"
+              aria-label="Search all course requests"
+              className="app-input-compact w-full pl-8 pr-7 sm:w-[190px]"
+            />
+            {searching && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-[4px] p-0.5 text-[var(--text-4)] transition hover:text-[var(--text-1)]"
+              >
+                <XMarkIcon className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -282,10 +327,17 @@ export function CourseRequestsSection({
       )}
 
       {/* ── List ──────────────────────────────────────────────────────── */}
+      {searching && filtered.length > 0 && (
+        <p className="mb-2 text-[11px] uppercase tracking-[0.06em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+          {filtered.length} match{filtered.length === 1 ? "" : "es"} across all {requests.length} requests
+        </p>
+      )}
       {filtered.length === 0 ? (
         <div className="rounded-[10px] border border-dashed border-[rgba(0,0,0,0.12)] py-12 text-center">
           <p className="text-[13px] text-[var(--text-4)]">
-            No course requests for this selection.
+            {searching
+              ? `No course matches “${search.trim()}” — searched all ${requests.length} requests.`
+              : "No course requests for this selection."}
           </p>
           {!readOnly && onAdd && (
             <button
@@ -439,8 +491,10 @@ export function CourseRequestsSection({
         </div>
       )}
 
-      {/* ── 02 // ADDED COURSES — collapsed reference table ─────────── */}
-      {addedRequests.length > 0 && (
+      {/* ── 02 // ADDED COURSES — collapsed reference table ───────────
+          Hidden while searching: results already span every status, so leaving
+          this open would show the same rows twice. */}
+      {!searching && addedRequests.length > 0 && (
         <div className="mt-6">
           <button
             type="button"
