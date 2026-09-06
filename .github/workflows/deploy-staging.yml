@@ -1,0 +1,165 @@
+name: Build, Push & Deploy — STAGING
+
+# Staging's whole purpose is to see a branch running BEFORE it reaches main, so
+# this is deliberately deployable from any ref rather than only from one branch:
+#
+#   • push to `staging`  — auto-deploy, the default flow
+#   • workflow_dispatch  — deploy ANY branch (Actions tab → this workflow →
+#                          "Run workflow" → pick a branch). This is the one that
+#                          makes staging worth having: it lets a feature branch
+#                          be opened in a browser, which no other environment
+#                          allows (every /app page is auth-gated and, until
+#                          staging, unreachable outside production).
+on:
+  push:
+    branches:
+      - staging
+  workflow_dispatch:
+
+# Separate group from `deploy-production`. Sharing it would make a staging
+# deploy queue behind a production one and vice versa, coupling the two
+# environments for no reason.
+#
+# cancel-in-progress is TRUE here, unlike production. On staging, superseding an
+# in-flight deploy is what you want — you're iterating, and the newest push is
+# the one you care about. Production sets it FALSE because cancelling mid-run can
+# interrupt the SSH/compose step and leave the box half-deployed; that risk is
+# acceptable on staging and a broken staging box is recoverable by re-running.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Capture build metadata
+        id: meta
+        # Version carries a -staging suffix so the sidebar footer makes it
+        # obvious which environment you're looking at. Confusing the two while
+        # debugging is the failure this prevents.
+        run: |
+          echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "version=${PKG_VERSION}.${{ github.run_number }}-staging" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          # ⚠️ :staging and :staging-<sha> ONLY. Never :latest — that is the tag
+          # production's compose pulls, so pushing it here would deploy staging
+          # code to production on its next restart. deploy.yml's header records
+          # a real incident (2026-07-28) where two runs racing on :latest
+          # silently reverted production; this is that hazard across
+          # environments, and it would be much harder to spot.
+          tags: |
+            ghcr.io/git-dann/docs-by-gitwork:staging
+            ghcr.io/git-dann/docs-by-gitwork:staging-${{ github.sha }}
+          build-args: |
+            COMMIT_SHA=${{ github.sha }}
+            BUILD_TIME=${{ steps.meta.outputs.time }}
+            APP_VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Deploy to staging VPS
+        uses: appleboy/ssh-action@v1
+        env:
+          # ── Managed secrets, staging's own ──────────────────────────────────
+          # Distinct Actions secret names from production's so there is no way to
+          # accidentally sync a production value into staging or vice versa.
+          # Every one is OPTIONAL: upsert_env treats an empty value as a no-op,
+          # so an unset secret leaves whatever is in the box's .env untouched
+          # rather than blanking it.
+          #
+          # Note AUTH_GOOGLE_* are deliberately NOT managed here. They are
+          # pasted once by hand (see deploy/staging/generate-env.sh) because they
+          # are shared with production's OAuth client — routing them through a
+          # second set of Actions secrets would mean two copies of one value
+          # drifting apart.
+          STAGING_GITHUB_TOKEN: ${{ secrets.STAGING_GITHUB_TOKEN }}
+          STAGING_ANTHROPIC_API_KEY: ${{ secrets.STAGING_ANTHROPIC_API_KEY }}
+        with:
+          host: ${{ secrets.STAGING_VPS_HOST }}
+          username: ${{ secrets.STAGING_VPS_USER }}
+          key: ${{ secrets.STAGING_VPS_SSH_KEY }}
+          # Passed over the SSH channel, never interpolated into a logged command.
+          envs: STAGING_GITHUB_TOKEN,STAGING_ANTHROPIC_API_KEY
+          script: |
+            set -e
+            # ⚠️ foundry-STAGING, not foundry. Getting this wrong deploys the
+            # staging image over production.
+            cd /opt/apps/foundry-staging
+
+            # Idempotent upsert of one key in .env. Never prints the value.
+            # An empty value is a NO-OP rather than a delete, so a secret that
+            # isn't set in Actions can't wipe one set by hand on the box.
+            upsert_env() {
+              key="$1"
+              val="$2"
+              if [ -z "$val" ]; then
+                echo "  $key: not provided by CI — leaving .env untouched"
+                return 0
+              fi
+              touch .env
+              # Guarantee a trailing newline: appending to a file that lacks one
+              # concatenates onto the previous variable and corrupts both.
+              if [ -n "$(tail -c1 .env 2>/dev/null)" ]; then printf '\n' >> .env; fi
+              if grep -q "^${key}=" .env; then
+                grep -v "^${key}=" .env > .env.next
+                printf '%s=%s\n' "$key" "$val" >> .env.next
+                cat .env.next > .env   # preserve the original file's inode + perms
+                rm -f .env.next
+                echo "  $key: updated from CI"
+              else
+                printf '%s=%s\n' "$key" "$val" >> .env
+                echo "  $key: added from CI"
+              fi
+              chmod 600 .env
+            }
+
+            echo "Syncing managed staging secrets into .env"
+            upsert_env GITHUB_TOKEN      "${STAGING_GITHUB_TOKEN:-}"
+            upsert_env ANTHROPIC_API_KEY "${STAGING_ANTHROPIC_API_KEY:-}"
+
+            # Fail loudly if the .env was never generated, rather than starting a
+            # container that boots without a database URL and 500s on every page.
+            if ! grep -q '^DATABASE_URL=' .env; then
+              echo "ERROR: no DATABASE_URL in /opt/apps/foundry-staging/.env." >&2
+              echo "       Run: bash generate-env.sh   (see docs/staging-environment.md)" >&2
+              exit 1
+            fi
+
+            docker compose pull app
+            docker compose up -d db
+            # Schema push in a throwaway container — the runtime image doesn't
+            # bundle the prisma CLI. No --accept-data-loss, same as production:
+            # never let a deploy silently drop a column.
+            docker compose run --rm --no-deps --user root --entrypoint sh app \
+              -c "npx --yes prisma@6.16.2 db push --schema=prisma/schema.prisma --skip-generate"
+            # Recreate so the container picks up any .env change made above.
+            docker compose up -d --no-deps --force-recreate app
+            docker image prune -f
+
+            echo "Deployed $(git rev-parse --short HEAD 2>/dev/null || echo '')"
