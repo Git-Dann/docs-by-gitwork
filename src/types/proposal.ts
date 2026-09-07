@@ -819,6 +819,11 @@ export interface ProposalMetadata {
   techSignOff: boolean;
   approvalChecked: boolean;
   /**
+   * Fingerprint baseline of document sections captured when DocuSeal is activated.
+   * Stored on the document so staleness checks survive reloads and work across browsers.
+   */
+  docusealBaseline?: string | null;
+  /**
    * Per-document override for whether the internal review track (Product / Tech / MD sign-off)
    * applies. `undefined` → fall back to the doc type's default (see `DOC_TYPE_CONFIG`). Set
    * explicitly to force the review track on or off regardless of type.

@@ -90,43 +90,12 @@ import type {
   SignaturesSectionData,
 } from "@/types/proposal";
 
-function normalizeSectionDataForHash(key: string, data: unknown): unknown {
-  if (!data || typeof data !== "object") return data;
+import {
+  computeSectionsHash,
+  parseStoredBaseline,
+} from "@/lib/docuseal-sections-hash";
 
-  if (key === "signatures") {
-    const sigData = data as SignaturesSectionData;
-    if (Array.isArray(sigData.blocks)) {
-      return {
-        ...sigData,
-        blocks: sigData.blocks.map((b) => {
-          // Omit transient signing capture fields (signature payload, signed status, date, name)
-          // so that signing the document does not falsely flag the document as modified.
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { signed, signaturePayload, signedName, signatureDate, ...rest } = b;
-          return rest;
-        }),
-      };
-    }
-  }
-
-  return data;
-}
-
-// ── DocuSeal stale detection ─────────────────────────────────────────────────
-// Produces a stable fingerprint of a document's section content — the same
-// data that gets rendered into the DocuSeal PDF. Excludes timestamps and
-// metadata fields that don't affect what the signer actually sees.
-export function computeSectionsHash(sections: ProposalSection[]): string {
-  const normalized = [...sections]
-    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-    .map(({ key, title, data, isVisible }) => ({
-      key,
-      title,
-      data: normalizeSectionDataForHash(key, data),
-      isVisible,
-    }));
-  return JSON.stringify(normalized);
-}
+export { computeSectionsHash };
 
 // localStorage key scoped to the document so different docs don't clobber each other.
 function docusealBaselineKey(proposalId: string) {
@@ -325,11 +294,14 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
   //          on every render to derive `isDocusealStale`.
   const [docusealBaseline, setDocusealBaseline] = useState<string | null>(null);
 
-  // Hydrate from localStorage once on mount (survives page reloads).
+  // Hydrate from document metadata or localStorage once on mount/update (survives page reloads).
   useEffect(() => {
-    const stored = localStorage.getItem(docusealBaselineKey(proposalId));
-    if (stored) setDocusealBaseline(stored);
-  }, [proposalId]);
+    const serverBaseline = (data?.proposal?.metadata as Record<string, unknown> | undefined)?.docusealBaseline as string | undefined;
+    const stored = serverBaseline || (typeof window !== "undefined" ? localStorage.getItem(docusealBaselineKey(proposalId)) : null);
+    if (stored) {
+      setDocusealBaseline(parseStoredBaseline(stored));
+    }
+  }, [proposalId, data?.proposal?.metadata]);
 
   async function handleSaveAsTemplate() {
     if (!draft) return;
@@ -1742,6 +1714,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                                     status: "APPROVED",
                                     metadata: {
                                       ...draft.metadata,
+                                      docusealBaseline: currentSectionsHash,
                                       productSignOff: true,
                                       techSignOff: true,
                                       approvalChecked: true,
@@ -1794,6 +1767,7 @@ export function ProposalEditorLayout({ proposalId }: { proposalId: string }) {
                                   status: "APPROVED",
                                   metadata: {
                                     ...draft.metadata,
+                                    docusealBaseline: currentSectionsHash,
                                     productSignOff: true,
                                     techSignOff: true,
                                     approvalChecked: true,
