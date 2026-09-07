@@ -187,7 +187,7 @@ export const sowSectionBlueprints: SectionBlueprint[] = [
           id: id(),
           type: "gitwork",
           variableName: "Gitwork Signature",
-          partyName: GITWORK.legalName,
+          partyName: "Gitwork Ltd",
           signatoryName: "[REVIEW] authorised signatory name",
           signatoryRole: "Director",
           signatoryEmail: "[REVIEW] signatory email",

@@ -33,7 +33,7 @@ export async function sendCompletionEmailsToAllSigners(requestId: string, origin
     }
 
     const documentTitle = req.document.title?.trim() || req.document.documentType || "Signed Document";
-    const appOrigin = origin || process.env.NEXT_PUBLIC_APP_URL || "https://staging.foundry.gitwork.tech";
+    const appOrigin = origin || process.env.NEXT_PUBLIC_APP_URL || "https://foundry.gitwork.co.uk";
 
     // 1. Fetch official signed PDF buffer (DocuSeal signed PDF if DocuSeal submission, otherwise Headless PDF)
     let pdfBuffer: Buffer | null = null;

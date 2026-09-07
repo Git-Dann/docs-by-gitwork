@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { renderSignatureRequestEmailHtml } from "@/server/email-templates";
 import { sendSmtpEmail } from "@/server/smtp";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { originFrom } from "@/lib/request-origin";
 import { z } from "zod";
 
 const sendEmailSchema = z.object({
@@ -18,6 +20,7 @@ export async function POST(
   try {
     const { id: documentId } = await params;
     const body = sendEmailSchema.parse(await req.json());
+    const user = await getEffectiveUserOrNull(req);
 
     // 1. Fetch document and workspace
     const doc = await prisma.document.findUnique({
@@ -27,6 +30,11 @@ export async function POST(
         title: true,
         documentType: true,
         clientName: true,
+        owner: {
+          select: {
+            name: true,
+          },
+        },
         workspace: {
           select: {
             name: true,
@@ -43,7 +51,15 @@ export async function POST(
     const signer = await prisma.signatureSigner.findUnique({
       where: { id: body.signerId },
       include: {
-        request: true,
+        request: {
+          include: {
+            createdBy: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -51,13 +67,15 @@ export async function POST(
       return apiError("Signer record not found for this document.", 404);
     }
 
-    const host = req.headers.get("host") || "staging.foundry.gitwork.tech";
-    const protocol = req.headers.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
-    const origin = `${protocol}://${host}`;
+    const origin = originFrom(req);
 
     const clientFirstName = signer.name.trim().split(" ")[0] || signer.name;
     const documentTitle = doc.title?.trim() || doc.documentType || "Document";
-    const senderName = "Muhammad Usman"; // Gitwork sender
+    const senderName =
+      user?.name?.trim() ||
+      doc.owner?.name?.trim() ||
+      signer.request.createdBy?.name?.trim() ||
+      "Gitwork";
 
     // Always send the standard signature request email using the existing token.
     // Links are not single-use — the signer can open and re-open as needed.

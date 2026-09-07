@@ -148,7 +148,7 @@ export function SignaturePanel({ documentId, isStale }: SignaturePanelProps) {
               <p className="text-sm leading-6 text-[var(--text-2)]">
                 Send the document to every signatory in the <strong>Signatures</strong> section.
                 Both <strong>Gitwork</strong> and <strong>Client</strong> signers receive tokenized embedded links
-                served on our Foundry staging domain.
+                served on our Foundry domain.
               </p>
               <p className="mt-2 text-xs text-[var(--text-4)]">
                 Tip: signature blocks with custom variables and DocuSeal roles (Gitwork vs Client) will map automatically.

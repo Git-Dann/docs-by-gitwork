@@ -187,7 +187,7 @@ export const dsaSectionBlueprints: SectionBlueprint[] = [
           id: id(),
           type: "gitwork",
           variableName: "Gitwork Signature",
-          partyName: GITWORK.legalName,
+          partyName: "Gitwork Ltd",
           signatoryName: "[REVIEW] Authorised Gitwork signatory",
           signatoryRole: "Director / DPO",
           signatoryEmail: "privacy@gitwork.co.uk",
