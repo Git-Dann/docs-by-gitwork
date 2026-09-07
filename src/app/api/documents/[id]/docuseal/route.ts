@@ -16,7 +16,8 @@ import { launchHeadlessBrowser } from "@/server/headless-browser";
 import { createSignatureRequest } from "@/server/signatures";
 import { assertCan, canShareDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { getDocusealBlocksMeta } from "@/lib/docuseal-block-meta";
-import type { SignatureBlockItem } from "@/types/proposal";
+import { computeSectionsHash } from "@/lib/docuseal-sections-hash";
+import type { ProposalSection, SignatureBlockItem } from "@/types/proposal";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
@@ -319,6 +320,19 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
 
     // Auto-switch document status to APPROVED and mark internal sign-offs complete when DocuSeal is activated
+    const sectionsToHash = doc.sections.map((s) => {
+      if (s.id === signaturesSection?.id) {
+        return {
+          ...s,
+          data: {
+            ...signatureData,
+            blocks: activeBlocks,
+          },
+        };
+      }
+      return s;
+    });
+    const baselineHash = computeSectionsHash(sectionsToHash as unknown as ProposalSection[]);
     const currentMeta = (doc.metadata as Record<string, unknown> | null) ?? {};
     await prisma.document.update({
       where: { id },
@@ -326,6 +340,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         status: "APPROVED",
         metadata: {
           ...currentMeta,
+          docusealBaseline: baselineHash,
           productSignOff: true,
           techSignOff: true,
           approvalChecked: true,
