@@ -10,6 +10,7 @@ import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { bytesForPrisma } from "@/lib/prisma-bytes";
 import { dispatchNotification } from "@/server/notifications";
 import type {
   WikiPageType,
@@ -18,14 +19,30 @@ import type {
   CourseRequestStatus,
   WikiIntakeItemStatus,
   WikiIntakeItemType,
+  WikiIntakeCommentAuthorKind,
   TaskPriority,
 } from "@prisma/client";
 import type { DesignTokens } from "@/types/design-tokens";
+import { buildTaskStatusCounts, type TaskLabel, type TaskStatus } from "@/types/tasks";
+import {
+  resolveIntakeCategories,
+  typeForCategory,
+  usesDefaultCategories,
+  validateIntakeCategories,
+  type IntakeCategory,
+} from "@/lib/wiki-intake-categories";
 import { loadWikiMonitors, type WikiMonitorsSection } from "./wiki-monitors";
 import { assertWithinIntakeQuota } from "./wiki-intake-limit";
 import { deliverIntakeWebhook } from "./wiki-intake-webhook";
+import {
+  notifyClientSlackChangelogApproved,
+  notifyClientSlackChangelogPending,
+  notifyClientSlackNewRequests,
+} from "./wiki-slack-notify";
 import { loadWikiDocuments, type WikiDocumentsSection } from "./wiki-documents";
 import { loadWikiCodeHandover, type WikiCodeHandoverSection } from "./wiki-code";
+import { getLaunchpadByWikiId } from "./launchpad";
+import type { LaunchpadDTO } from "@/types/launchpad";
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -88,6 +105,13 @@ export interface WikiIntakeItemRecord {
   status: WikiIntakeItemStatus;
   requestedBy: string | null;
   externalRef: string | null;
+  /** The dev-facing label (Backend/Frontend/UI-UX/Research/Design) — the same
+   *  taxonomy Task.label uses, carried onto the task a request is promoted to. */
+  label: TaskLabel | null;
+  /** Which of the client's own categories was picked (null → none/default). */
+  categoryId: string | null;
+  /** The category's label when raised — fallback if it's since been deleted. */
+  categoryLabel: string | null;
   /** Deep link back to the item in the client's own tracker (API-supplied). */
   externalUrl: string | null;
   /** Screenshot/attachment links supplied by the API (http(s) only). */
@@ -97,8 +121,21 @@ export interface WikiIntakeItemRecord {
   /** True when an image is attached — bytes are served via a separate route. */
   hasImage: boolean;
   imageFilename: string | null;
+  /** Free-text device/OS context supplied with the report (both optional). */
+  device: string | null;
+  osVersion: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Reply thread — either side (Gitwork team or the client) can add to it. */
+  comments: WikiIntakeCommentRecord[];
+}
+
+export interface WikiIntakeCommentRecord {
+  id: string;
+  authorKind: "TEAM" | "CLIENT";
+  authorName: string;
+  body: string;
+  createdAt: string;
 }
 
 /** A feature block rendered as a Gantt bar on the wiki Timeline page. */
@@ -110,6 +147,7 @@ export interface WikiTimelineBlock {
   color: string | null;
   progress: number;
   tasks: { title: string; done: boolean }[];
+  statusCounts: Record<TaskStatus, number>;
 }
 
 export interface WikiTimelineMilestone {
@@ -171,6 +209,12 @@ export interface WikiDTO {
   intakeItems: WikiIntakeItemRecord[];
   /** Whether the Requests (client intake) section is enabled for this wiki. */
   intakeEnabled: boolean;
+  /** The categories a client picks from when raising a request. Resolved —
+   *  always populated, falling back to the built-in four when this client has
+   *  no custom list, so consumers never re-implement that fallback. */
+  intakeCategories: IntakeCategory[];
+  /** True when the above is the built-in list rather than a configured one. */
+  intakeCategoriesAreDefault: boolean;
   /** Tasks the devs flagged blocked-on-client — surfaced in the Requests section as an
    *  "Action needed" list. Client-safe subset (no assignees/internal notes). */
   blockers: WikiBlockerRecord[];
@@ -190,6 +234,13 @@ export interface WikiDTO {
   headerLinks: WikiHeaderLinks | null;
   /** Documents section — whether it's enabled + the doc list (links/files/Foundry). */
   documents: WikiDocumentsSection;
+  /**
+   * Launchpad — the tracked list of everything we need FROM the client to start and
+   * ship, plus the fillable legal drafts. Null when the wiki has no row for it at
+   * all; otherwise carries its own `enabled` + `assigned` flags, because "switched
+   * off" and "on but not set up yet" need different copy on the page.
+   */
+  launchpad: LaunchpadDTO | null;
   /**
    * Client login accounts for the public link (email + name; password never
    * exposed). Populated only for the internal editor — the public payload omits
@@ -282,14 +333,26 @@ function serializeWikiIntakeItem(item: {
   status: WikiIntakeItemStatus;
   requestedBy: string | null;
   externalRef: string | null;
+  label?: TaskLabel | null;
+  categoryId?: string | null;
+  categoryLabel?: string | null;
   externalUrl?: string | null;
   attachmentUrls?: unknown;
   source: string | null;
   taskId: string | null;
   mime?: string | null;
   filename?: string | null;
+  device?: string | null;
+  osVersion?: string | null;
   createdAt: Date;
   updatedAt: Date;
+  comments?: {
+    id: string;
+    authorKind: WikiIntakeCommentAuthorKind;
+    authorName: string;
+    body: string;
+    createdAt: Date;
+  }[];
 }): WikiIntakeItemRecord {
   return {
     id: item.id,
@@ -300,6 +363,9 @@ function serializeWikiIntakeItem(item: {
     status: item.status,
     requestedBy: item.requestedBy,
     externalRef: item.externalRef,
+    label: item.label ?? null,
+    categoryId: item.categoryId ?? null,
+    categoryLabel: item.categoryLabel ?? null,
     externalUrl: item.externalUrl ?? null,
     // Json column — guard the shape rather than trusting it.
     attachmentUrls: Array.isArray(item.attachmentUrls) ? (item.attachmentUrls as string[]) : [],
@@ -307,8 +373,17 @@ function serializeWikiIntakeItem(item: {
     taskId: item.taskId,
     hasImage: Boolean(item.mime),
     imageFilename: item.filename ?? null,
+    device: item.device ?? null,
+    osVersion: item.osVersion ?? null,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
+    comments: (item.comments ?? []).map((c) => ({
+      id: c.id,
+      authorKind: c.authorKind,
+      authorName: c.authorName,
+      body: c.body,
+      createdAt: c.createdAt.toISOString(),
+    })),
   };
 }
 
@@ -464,6 +539,7 @@ async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
         color: b.color,
         progress: taskCount === 0 ? 0 : Math.round((doneCount / taskCount) * 100),
         tasks: b.tasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
+        statusCounts: buildTaskStatusCounts(b.tasks),
       };
     })
     .filter((b): b is WikiTimelineBlock => b !== null);
@@ -505,6 +581,8 @@ async function buildDTO(
   shareToken: string | null;
   shareEnabled: boolean;
   intakeEnabled?: boolean;
+  launchpadEnabled?: boolean;
+  intakeCategories?: unknown;
   platforms: unknown;
   pageShares?: unknown;
   hiddenSections?: unknown;
@@ -564,9 +642,20 @@ async function buildDTO(
   },
   opts?: { includeUsers?: boolean },
 ): Promise<WikiDTO> {
-  // These 9 section loaders are independent — run them together instead of one
+  // These 10 section loaders are independent — run them together instead of one
   // round-trip after another (this ran on every wiki page load with zero caching).
-  const [blockers, timeline, designSystem, monitors, codeHandover, team, productTeam, headerLinks, documents] =
+  const [
+    blockers,
+    timeline,
+    designSystem,
+    monitors,
+    codeHandover,
+    team,
+    productTeam,
+    headerLinks,
+    documents,
+    launchpad,
+  ] =
     await Promise.all([
       loadWikiBlockers(wiki.clientId),
       loadWikiTimeline(wiki.clientId),
@@ -577,6 +666,7 @@ async function buildDTO(
       loadWikiProductTeam(wiki.clientId),
       loadWikiHeaderLinks(wiki.clientId),
       loadWikiDocuments(wiki.clientId),
+      getLaunchpadByWikiId(wiki.id),
     ]);
   return {
     id: wiki.id,
@@ -622,6 +712,8 @@ async function buildDTO(
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .map(serializeWikiIntakeItem),
     intakeEnabled: wiki.intakeEnabled ?? true,
+    intakeCategories: resolveIntakeCategories(wiki.intakeCategories),
+    intakeCategoriesAreDefault: usesDefaultCategories(wiki.intakeCategories),
     blockers,
     timeline,
     designSystem,
@@ -631,6 +723,7 @@ async function buildDTO(
     productTeam,
     headerLinks,
     documents,
+    launchpad,
     users: opts?.includeUsers
       ? (wiki.wikiUsers ?? [])
           .slice()
@@ -677,8 +770,14 @@ const WIKI_INCLUDE = {
       taskId: true,
       mime: true,
       filename: true,
+      device: true,
+      osVersion: true,
       createdAt: true,
       updatedAt: true,
+      comments: {
+        select: { id: true, authorKind: true, authorName: true, body: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+      },
     },
   },
   wikiUsers: { select: { id: true, email: true, name: true, createdAt: true } },
@@ -841,7 +940,27 @@ export async function addChangelogEntry(
     },
   });
 
+  if (entry.status === "PENDING") {
+    void notifyClientSlackChangelogPending(entry.wikiId, entry);
+  }
   return serializeEntry(entry);
+}
+
+/**
+ * Atomically flip an entry to APPROVED and report whether THIS call is the
+ * one that actually made the change. A plain "read status, then write" is
+ * racy: two concurrent PATCHes (a double-click, a retry) can both read
+ * PENDING before either write commits, so both would conclude "I approved
+ * this" and both would ping Slack. `updateMany` with the guard in the WHERE
+ * clause is atomic at the database level — only one concurrent caller's
+ * update can match a row still not-APPROVED, so only one gets count > 0.
+ */
+async function markApprovedOnce(entryId: string): Promise<boolean> {
+  const result = await prisma.clientChangelogEntry.updateMany({
+    where: { id: entryId, status: { not: "APPROVED" } },
+    data: { status: "APPROVED" },
+  });
+  return result.count > 0;
 }
 
 /** Update the status of a single changelog entry. */
@@ -849,10 +968,14 @@ export async function updateChangelogEntryStatus(
   entryId: string,
   status: WikiEntryStatus,
 ): Promise<ChangelogEntryRecord> {
+  const approvedNow = status === "APPROVED" && (await markApprovedOnce(entryId));
   const entry = await prisma.clientChangelogEntry.update({
     where: { id: entryId },
     data: { status },
   });
+  if (approvedNow) {
+    void notifyClientSlackChangelogApproved(entry.wikiId, entry);
+  }
   return serializeEntry(entry);
 }
 
@@ -867,6 +990,7 @@ export async function updateChangelogEntry(
     status?: WikiEntryStatus;
   },
 ): Promise<ChangelogEntryRecord> {
+  const approvedNow = input.status === "APPROVED" && (await markApprovedOnce(entryId));
   const entry = await prisma.clientChangelogEntry.update({
     where: { id: entryId },
     data: {
@@ -879,6 +1003,9 @@ export async function updateChangelogEntry(
       ...(input.status !== undefined ? { status: input.status } : {}),
     },
   });
+  if (approvedNow) {
+    void notifyClientSlackChangelogApproved(entry.wikiId, entry);
+  }
   return serializeEntry(entry);
 }
 
@@ -1131,18 +1258,26 @@ export async function ingestCourseRequestsByToken(
 
 
 export interface WikiItemIngestItem {
-  type?: "BUG" | "FEEDBACK" | "TASK";
+  type?: "BUG" | "FEEDBACK" | "TASK" | "DESIGN";
   title: string;
   description?: string | null;
   priority?: "LOW" | "MEDIUM" | "HIGH";
   requestedBy?: string | null;
   externalRef?: string | null;
+  /** The same dev-facing label Task.label uses — carried onto the task if promoted. */
+  label?: TaskLabel | null;
+  /** One of the client's own category ids. When it resolves, it decides `type`. */
+  categoryId?: string | null;
   /** Deep link back to the item in the client's own tracker. */
   externalUrl?: string | null;
   /** Screenshot / attachment LINKS (http(s) only). Never fetched server-side. */
   attachmentUrls?: string[] | null;
   /** Only meaningful on an update — a new item always starts at NEW. */
   status?: "NEW" | "TRIAGED" | "PROMOTED" | "CLOSED";
+  /** Free-text device (e.g. "iPhone 14 Pro") — optional context for bug reports. */
+  device?: string | null;
+  /** Free-text OS/version (e.g. "iOS 17.4") — optional context for bug reports. */
+  osVersion?: string | null;
 }
 
 /** http(s) only, so nothing can put a javascript:/data: URL in front of the team. */
@@ -1163,9 +1298,10 @@ export interface WikiItemIngestResult {
   count: number;
 }
 
-function wikiItemPrefix(type: "BUG" | "FEEDBACK" | "TASK"): string {
+function wikiItemPrefix(type: "BUG" | "FEEDBACK" | "TASK" | "DESIGN"): string {
   if (type === "BUG") return "[Bug]";
   if (type === "TASK") return "[Task]";
+  if (type === "DESIGN") return "[Design]";
   return "[Feedback]";
 }
 
@@ -1174,17 +1310,80 @@ function wikiItemPrefix(type: "BUG" | "FEEDBACK" | "TASK"): string {
  * resolves to one ClientWiki, so items stay inside that client's Wiki intake
  * page until an Admin/Super Admin promotes them into Portal Tasks.
  */
+/**
+ * Resolve the wiki behind a token that arrived on a PUBLIC WIKI URL
+ * (`/wiki/[slug]/[token]`), i.e. the client's own share link.
+ *
+ * ⚠️ This exists because the client-facing Requests form was authenticating
+ * against the WRONG CREDENTIAL, and had been since it shipped in d1012e3d. The
+ * form posts the token from the wiki URL — a `shareToken`, or a per-section
+ * token out of `pageShareTokens` — but every intake helper resolved the wiki by
+ * `courseIngestToken`, which is the separate secret for the inbound API and is
+ * usually null. The lookup could therefore never match, so every request a
+ * client tried to file came back "Invalid wiki token": the credential blamed,
+ * when the credential was fine and the code was asking the wrong question.
+ * Requests filed internally were unaffected, which is why it stayed hidden.
+ *
+ * Order mirrors `resolvePublicWiki`: whole-wiki share first, then a per-section
+ * token. `courseIngestToken` is tried last purely so anything that happened to
+ * work against this route before keeps working.
+ */
+export async function resolveWikiIdByPublicToken(token: string): Promise<string | null> {
+  const t = token?.trim();
+  if (!t) return null;
+  const whole = await prisma.clientWiki.findFirst({
+    where: { shareToken: t, shareEnabled: true },
+    select: { id: true },
+  });
+  if (whole) return whole.id;
+  const bySection = await prisma.clientWiki.findFirst({
+    where: { pageShareTokens: { has: t } },
+    select: { id: true },
+  });
+  if (bySection) return bySection.id;
+  const byIngest = await prisma.clientWiki.findUnique({
+    where: { courseIngestToken: t },
+    select: { id: true },
+  });
+  return byIngest?.id ?? null;
+}
+
+/**
+ * The inbound API path. Deliberately resolves ONLY `courseIngestToken`: the
+ * integrator credential and the client's share link must not be
+ * interchangeable, or a shared wiki URL would also authorise the full API
+ * (list, patch, delete).
+ */
 export async function ingestWikiItemsByToken(
   token: string,
   items: WikiItemIngestItem[],
   opts: { dryRun?: boolean } = {},
 ): Promise<WikiItemIngestResult | null> {
   if (!token) return null;
-  const wiki = await prisma.clientWiki.findUnique({
+  const found = await prisma.clientWiki.findUnique({
     where: { courseIngestToken: token },
+    select: { id: true },
+  });
+  if (!found) return null;
+  return ingestWikiItemsIntoWiki(found.id, items, opts);
+}
+
+/**
+ * Shared body for both intake paths — the API's ingest token and the client's
+ * own wiki share link. Takes a resolved wiki id so the CREDENTIAL question is
+ * answered by the caller and this function only does the work.
+ */
+async function ingestWikiItemsIntoWiki(
+  wikiId: string,
+  items: WikiItemIngestItem[],
+  opts: { dryRun?: boolean } = {},
+): Promise<WikiItemIngestResult | null> {
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { id: wikiId },
     select: {
       id: true,
       intakeEnabled: true,
+      intakeCategories: true,
       client: { select: { id: true, slug: true, name: true, workspaceId: true } },
       intakeItems: { select: { title: true, externalRef: true, status: true } },
     },
@@ -1213,6 +1412,8 @@ export async function ingestWikiItemsByToken(
       .filter(Boolean),
   );
 
+  const categories = resolveIntakeCategories(wiki.intakeCategories);
+
   const created: WikiIntakeItemRecord[] = [];
   let skipped = 0;
   for (const raw of items) {
@@ -1228,17 +1429,23 @@ export async function ingestWikiItemsByToken(
       continue;
     }
 
+    const resolved = typeForCategory(categories, raw.categoryId, raw.type ?? "FEEDBACK");
     const item = await prisma.clientWikiIntakeItem.create({
       data: {
         wikiId: wiki.id,
-        type: raw.type ?? "FEEDBACK",
+        type: resolved.type,
+        categoryId: resolved.categoryId,
+        categoryLabel: resolved.categoryLabel,
         title,
         description: raw.description?.trim() || null,
         priority: raw.priority ?? "MEDIUM",
         requestedBy: raw.requestedBy?.trim() || null,
         externalRef,
+        label: raw.label ?? null,
         externalUrl: safeIntakeLink(raw.externalUrl),
         attachmentUrls: safeIntakeLinks(raw.attachmentUrls),
+        device: raw.device?.trim() || null,
+        osVersion: raw.osVersion?.trim() || null,
         source: "api",
       },
     });
@@ -1264,6 +1471,10 @@ export async function ingestWikiItemsByToken(
       groupKey: `tasks.client_request:${wiki.client.id}`,
       count: created.length,
     });
+    // Best-effort ping to the client's own linked internal Slack channel, if
+    // any — separate from the in-app/push notification above, which goes to
+    // Gitwork staff.
+    void notifyClientSlackNewRequests(wiki.id, created);
   }
 
   return { client, created, skipped, count: created.length };
@@ -1284,11 +1495,144 @@ export async function setWikiIntakeEnabled(clientId: string, enabled: boolean): 
   void wiki;
 }
 
+/**
+ * A client filing one request from the Requests form on their own wiki. The
+ * token here comes off the public wiki URL, so it is resolved as a SHARE token
+ * (see resolveWikiIdByPublicToken) — not as the API's ingest secret, which is
+ * the mismatch that made this fail with "Invalid wiki token" for every client.
+ */
+/**
+ * Why a client's request submission was rejected, so the route can say which of
+ * the two it was. "Invalid wiki token" for a switched-off Requests section is
+ * what turned a one-toggle fix into a support message about a broken link.
+ */
+/**
+ * What a client may still change on a request they raised, and what stops them.
+ *
+ * Editable while NEW or TRIAGED — we may have read it, but nothing downstream
+ * exists yet, so a typo fix or an added detail costs nobody anything.
+ *
+ * Locked once PROMOTED or CLOSED, deliberately:
+ *  · PROMOTED means a task exists and a dev owns it. Letting the client rewrite
+ *    the text under them, or delete the request a task was created from, is how
+ *    a board ends up describing work nobody agreed to.
+ *  · CLOSED is a record of something already dealt with.
+ * In both cases the answer is to raise a new request or ask us, not to edit
+ * history — and the route says so rather than returning a bare 404.
+ */
+const CLIENT_MUTABLE_STATUSES: WikiIntakeItemStatus[] = ["NEW", "TRIAGED"];
+
+export type ClientIntakeMutation =
+  | { ok: true; item: WikiIntakeItemRecord }
+  | { ok: false; reason: "not_found" | "locked" };
+
+/** Shared resolution + guard for both client-side mutations. */
+async function findClientMutableItem(
+  token: string,
+  itemId: string,
+): Promise<
+  | { ok: true; wikiId: string; categories: IntakeCategory[]; item: { id: string; type: WikiIntakeItemType } }
+  | { ok: false; reason: "not_found" | "locked" }
+> {
+  const wikiId = await resolveWikiIdByPublicToken(token);
+  if (!wikiId) return { ok: false, reason: "not_found" };
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { id: wikiId },
+    select: { intakeEnabled: true, intakeCategories: true },
+  });
+  if (!wiki?.intakeEnabled) return { ok: false, reason: "not_found" };
+  // Scoped to this wiki, so a token can never reach another client's item.
+  const item = await prisma.clientWikiIntakeItem.findFirst({
+    where: { id: itemId, wikiId },
+    select: { id: true, status: true, type: true },
+  });
+  if (!item) return { ok: false, reason: "not_found" };
+  if (!CLIENT_MUTABLE_STATUSES.includes(item.status)) return { ok: false, reason: "locked" };
+  return {
+    ok: true,
+    wikiId,
+    categories: resolveIntakeCategories(wiki.intakeCategories),
+    item: { id: item.id, type: item.type },
+  };
+}
+
+/**
+ * A client editing their own request from their wiki. Only the fields they filled
+ * in — status, promotion and the dev label stay ours.
+ *
+ * No webhook: this IS the client's change, and echoing it back to the system that
+ * may have sent it would loop. Same reasoning as the API's own PATCH.
+ */
+export async function updateWikiIntakeItemByShareToken(
+  token: string,
+  itemId: string,
+  patch: {
+    title?: string;
+    description?: string | null;
+    priority?: TaskPriority;
+    categoryId?: string | null;
+  },
+): Promise<ClientIntakeMutation> {
+  const found = await findClientMutableItem(token, itemId);
+  if (!found.ok) return found;
+
+  const resolved =
+    patch.categoryId !== undefined
+      ? typeForCategory(found.categories, patch.categoryId, found.item.type)
+      : null;
+
+  const row = await prisma.clientWikiIntakeItem.update({
+    where: { id: found.item.id },
+    data: {
+      ...(patch.title !== undefined ? { title: patch.title.trim() } : {}),
+      ...(patch.description !== undefined
+        ? { description: patch.description?.trim() || null }
+        : {}),
+      ...(patch.priority ? { priority: patch.priority } : {}),
+      ...(resolved
+        ? {
+            type: resolved.type,
+            categoryId: resolved.categoryId,
+            categoryLabel: resolved.categoryLabel,
+          }
+        : {}),
+    },
+  });
+  return { ok: true, item: serializeWikiIntakeItem(row) };
+}
+
+/** A client withdrawing their own request. Same guard as editing. */
+export async function deleteWikiIntakeItemByShareToken(
+  token: string,
+  itemId: string,
+): Promise<ClientIntakeMutation> {
+  const found = await findClientMutableItem(token, itemId);
+  if (!found.ok) return found;
+  const row = await prisma.clientWikiIntakeItem.delete({ where: { id: found.item.id } });
+  return { ok: true, item: serializeWikiIntakeItem(row) };
+}
+
+export async function publicWikiIntakeState(
+  token: string,
+): Promise<"ok" | "unknown" | "intake_disabled"> {
+  const wikiId = await resolveWikiIdByPublicToken(token);
+  if (!wikiId) return "unknown";
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { id: wikiId },
+    select: { intakeEnabled: true },
+  });
+  return wiki?.intakeEnabled ? "ok" : "intake_disabled";
+}
+
 export async function addWikiIntakeItemByToken(
   token: string,
   item: WikiItemIngestItem,
 ): Promise<WikiIntakeItemRecord | null> {
-  const result = await ingestWikiItemsByToken(token, [{ ...item, requestedBy: item.requestedBy ?? "Client wiki" }]);
+  const wikiId = await resolveWikiIdByPublicToken(token);
+  if (!wikiId) return null;
+  const result = await ingestWikiItemsIntoWiki(wikiId, [
+    { ...item, requestedBy: item.requestedBy ?? "Client wiki" },
+  ]);
   return result?.created[0] ?? null;
 }
 
@@ -1333,6 +1677,7 @@ export async function updateWikiIntakeItemByToken(
       ...(patch.requestedBy !== undefined
         ? { requestedBy: patch.requestedBy?.trim() || null }
         : {}),
+      ...(patch.label !== undefined ? { label: patch.label ?? null } : {}),
       ...(patch.externalUrl !== undefined
         ? { externalUrl: safeIntakeLink(patch.externalUrl) }
         : {}),
@@ -1379,21 +1724,55 @@ export async function addWikiIntakeItem(
     where: { clientId },
     create: { clientId },
     update: {},
-    select: { id: true },
+    select: { id: true, intakeCategories: true },
   });
+  // The type is DERIVED from the picked category, never taken from the caller —
+  // a form that could send its own (categoryId, type) pair could file a "Design"
+  // category as a BUG and split the client's wording from the board's behaviour.
+  const categories = resolveIntakeCategories(wiki.intakeCategories);
+  const resolved = typeForCategory(categories, item.categoryId, item.type ?? "FEEDBACK");
   const row = await prisma.clientWikiIntakeItem.create({
     data: {
       wikiId: wiki.id,
-      type: item.type ?? "FEEDBACK",
+      type: resolved.type,
+      categoryId: resolved.categoryId,
+      categoryLabel: resolved.categoryLabel,
       title: item.title.trim(),
       description: item.description?.trim() || null,
       priority: item.priority ?? "MEDIUM",
       requestedBy: item.requestedBy?.trim() || null,
       externalRef: item.externalRef?.trim() || null,
+      label: item.label ?? null,
+      device: item.device?.trim() || null,
+      osVersion: item.osVersion?.trim() || null,
       source: "manual",
     },
   });
   return serializeWikiIntakeItem(row);
+}
+
+/**
+ * Set this client's own Requests categories. Staff-only (the routes gate it) —
+ * a client picking from the list is not the same as editing it, and an unmapped
+ * or duplicate category would muddy the devs' view of the board.
+ * An empty list clears back to the built-in four.
+ */
+export async function setWikiIntakeCategories(
+  clientId: string,
+  input: unknown,
+): Promise<IntakeCategory[]> {
+  const result = validateIntakeCategories(input);
+  if (!result.ok) throw new Error(result.error);
+  // Prisma's Json input type doesn't accept a plain interface array; the shape
+  // is guaranteed by validateIntakeCategories immediately above.
+  const value = result.categories as unknown as Prisma.InputJsonValue;
+  const wiki = await prisma.clientWiki.upsert({
+    where: { clientId },
+    create: { clientId, intakeCategories: value },
+    update: { intakeCategories: value },
+    select: { intakeCategories: true },
+  });
+  return resolveIntakeCategories(wiki.intakeCategories);
 }
 
 export async function updateWikiIntakeItem(
@@ -1410,6 +1789,7 @@ export async function updateWikiIntakeItem(
       ...(data.status ? { status: data.status } : {}),
       ...(data.requestedBy !== undefined ? { requestedBy: data.requestedBy?.trim() || null } : {}),
       ...(data.externalRef !== undefined ? { externalRef: data.externalRef?.trim() || null } : {}),
+      ...(data.label !== undefined ? { label: data.label ?? null } : {}),
     },
   });
   // Tell the client's tracker their request moved on our side. Fire-and-forget:
@@ -1438,6 +1818,85 @@ export async function deleteWikiIntakeItem(id: string): Promise<void> {
   if (row) {
     void deliverIntakeWebhook({ wikiId: row.wikiId, event: "request.deleted", item: row });
   }
+}
+
+function serializeWikiIntakeComment(c: {
+  id: string;
+  authorKind: WikiIntakeCommentAuthorKind;
+  authorName: string;
+  body: string;
+  createdAt: Date;
+}): WikiIntakeCommentRecord {
+  return {
+    id: c.id,
+    authorKind: c.authorKind,
+    authorName: c.authorName,
+    body: c.body,
+    createdAt: c.createdAt.toISOString(),
+  };
+}
+
+/** A Gitwork team member replies on a request. Internal — no token needed;
+ *  the route resolves the caller via the session and passes their identity. */
+export async function addWikiIntakeComment(
+  itemId: string,
+  author: { userId: string; name: string },
+  body: string,
+): Promise<WikiIntakeCommentRecord> {
+  const trimmed = body.trim();
+  if (!trimmed) throw new Error("Comment can't be empty.");
+  const comment = await prisma.clientWikiIntakeComment.create({
+    data: {
+      intakeItemId: itemId,
+      authorKind: "TEAM",
+      authorName: author.name,
+      authorUserId: author.userId,
+      body: trimmed,
+    },
+  });
+  return serializeWikiIntakeComment(comment);
+}
+
+/**
+ * A reply from the public wiki page — either a signed-in client user or a
+ * Gitwork user previewing the page (the route resolves which and passes the
+ * already-decided authorKind/authorName; same identity precedence as
+ * resolveRequestedBy on the sibling intake-items route, no typed-name field).
+ * Resolved via resolveWikiIdByPublicToken — the same helper the other
+ * public-page intake actions use (share token first, then a per-section
+ * token) — so a comment is reachable everywhere the item itself is.
+ * Deliberately NOT reused via findClientMutableItem: that helper locks once
+ * an item leaves NEW, but commenting is exactly what a client does AFTER the
+ * team has triaged or closed a request ("here's the fix"), so it stays open
+ * regardless of status. Returns null for an invalid/disabled token or an item
+ * that isn't theirs — same non-distinguishing failure as the rest of the
+ * token-scoped functions, so a caller can't use the error to probe for id
+ * existence.
+ */
+export async function addWikiIntakeCommentByToken(
+  token: string,
+  itemId: string,
+  input: { authorKind: WikiIntakeCommentAuthorKind; authorName: string; body: string },
+): Promise<WikiIntakeCommentRecord | null> {
+  const authorName = input.authorName.trim();
+  const body = input.body.trim();
+  if (!authorName || !body) return null;
+
+  const wikiId = await resolveWikiIdByPublicToken(token);
+  if (!wikiId) return null;
+  const wiki = await prisma.clientWiki.findUnique({ where: { id: wikiId }, select: { intakeEnabled: true } });
+  if (!wiki?.intakeEnabled) return null;
+
+  const item = await prisma.clientWikiIntakeItem.findFirst({
+    where: { id: itemId, wikiId },
+    select: { id: true },
+  });
+  if (!item) return null;
+
+  const comment = await prisma.clientWikiIntakeComment.create({
+    data: { intakeItemId: item.id, authorKind: input.authorKind, authorName, body },
+  });
+  return serializeWikiIntakeComment(comment);
 }
 
 async function nextWikiPromotedTaskOrderKey(workspaceId: string, clientId: string): Promise<number> {
@@ -1470,6 +1929,9 @@ export async function promoteWikiIntakeItemToTask(
       description: item.description,
       status: "BACKLOG",
       priority: item.priority,
+      // Carry the client's chosen label straight onto the board, so a promoted
+      // request arrives already categorised the way devs filter — no re-triage.
+      label: item.label,
       orderKey: await nextWikiPromotedTaskOrderKey(item.wiki.client.workspaceId, item.wiki.client.id),
       metadata: {
         wikiIntake: {
@@ -1606,7 +2068,12 @@ export async function attachWikiIntakeItemImage(
   const transcoded = await transcodeIntakeImage(bytes, mime);
   const row = await prisma.clientWikiIntakeItem.update({
     where: { id: itemId },
-    data: { image: transcoded.bytes, thumb: transcoded.thumb, mime: transcoded.mime, filename },
+    data: {
+      image: bytesForPrisma(transcoded.bytes),
+      thumb: bytesForPrisma(transcoded.thumb),
+      mime: transcoded.mime,
+      filename,
+    },
   });
   return serializeWikiIntakeItem(row);
 }
@@ -1619,8 +2086,13 @@ export async function attachWikiIntakeItemImageByToken(
   mime: string,
   filename: string | null,
 ): Promise<WikiIntakeItemRecord | null> {
+  // Same public route as the create above, so the same share-token resolution:
+  // this was looking up courseIngestToken, so attaching a screenshot to a
+  // request could never work from a client's wiki either.
+  const wikiId = await resolveWikiIdByPublicToken(token);
+  if (!wikiId) return null;
   const wiki = await prisma.clientWiki.findUnique({
-    where: { courseIngestToken: token },
+    where: { id: wikiId },
     select: { id: true, intakeEnabled: true },
   });
   if (!wiki || !wiki.intakeEnabled) return null;
@@ -1632,7 +2104,12 @@ export async function attachWikiIntakeItemImageByToken(
   const transcoded = await transcodeIntakeImage(bytes, mime);
   const row = await prisma.clientWikiIntakeItem.update({
     where: { id: itemId },
-    data: { image: transcoded.bytes, thumb: transcoded.thumb, mime: transcoded.mime, filename },
+    data: {
+      image: bytesForPrisma(transcoded.bytes),
+      thumb: bytesForPrisma(transcoded.thumb),
+      mime: transcoded.mime,
+      filename,
+    },
   });
   return serializeWikiIntakeItem(row);
 }
@@ -1658,8 +2135,11 @@ export async function getWikiIntakeItemImageBytesByToken(
   itemId: string,
   variant: "full" | "thumb" = "full",
 ): Promise<{ bytes: Buffer; mime: string } | null> {
-  const wiki = await prisma.clientWiki.findUnique({ where: { courseIngestToken: token }, select: { id: true } });
-  if (!wiki) return null;
+  // Share-token resolution, as above — otherwise an image attached to a client
+  // request renders as a broken thumbnail on their own wiki.
+  const wikiId = await resolveWikiIdByPublicToken(token);
+  if (!wikiId) return null;
+  const wiki = { id: wikiId };
   const row = await prisma.clientWikiIntakeItem.findFirst({
     where: { id: itemId, wikiId: wiki.id },
     select: { image: true, thumb: true, mime: true },
@@ -1832,6 +2312,11 @@ const SHAREABLE_SECTIONS = [
   "timeline",
   "monitors",
   "documents",
+  // Shareable so a client can be sent JUST their Launchpad — often to a finance or
+  // legal contact who has no business seeing the rest of the wiki. Reads are
+  // token-only; writes still require the wiki-access cookie (see launchpad-access.ts),
+  // so a link recipient can see what is being asked of them but cannot answer it.
+  "launchpad",
   "code-handover",
   "design-system",
   "ia",

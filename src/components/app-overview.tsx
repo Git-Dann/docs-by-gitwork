@@ -6,6 +6,7 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import PulseWidget from "@/components/dashboard/pulse-widget";
 import CareWidget from "@/components/dashboard/care-widget";
+import LaunchpadWidget from "@/components/dashboard/launchpad-widget";
 import ProposalsWidget from "@/components/dashboard/proposals-widget";
 import ClientsWidget from "@/components/dashboard/clients-widget";
 import GmailWidget from "@/components/dashboard/gmail-widget";
@@ -22,6 +23,7 @@ import { DailyRollup } from "@/components/tasks/daily-rollup";
 import { BroadcastComposer } from "@/components/tasks/broadcast-composer";
 import { can } from "@/components/dashboard/dashboard-config";
 import { useAccount } from "@/hooks/use-account";
+import { useClientList } from "@/hooks/use-proposals";
 import { useStaffingAlerts } from "@/hooks/use-backstage";
 import { isAtLeast, isSuperAdmin } from "@/types/auth";
 import { useViewAs } from "@/lib/view-as";
@@ -34,6 +36,13 @@ type GridEntry = {
   component: React.ComponentType<{ size: WidgetSize; index: number }>;
   /** "feed" tiles are tall (list/inbox content); "summary" tiles are short. */
   band: WidgetBand;
+  /**
+   * A tile that only earns its place when the workspace actually uses the feature.
+   * The GRID decides, not the widget: `BentoBand` renders an unconditional bordered
+   * wrapper per entry, so a widget returning null would leave a 220px empty card
+   * where the tile should be.
+   */
+  requires?: "launchpad";
   size: WidgetSize;
   /** Module permission required to see this widget (undefined = always shown). */
   module?: string;
@@ -57,6 +66,10 @@ const GRID: GridEntry[] = [
   { component: PulseWidget,     band: "summary", size: "sm", module: "pulse" },
   { component: CareWidget,      band: "summary", size: "sm", module: "support" },
   { component: ProposalsWidget, band: "summary", size: "sm", module: "proposals" },
+  // Gated on `clients` (it reads the Portal client list), and the component itself
+  // returns null when no client has a Launchpad — so the tile is absent rather than
+  // reporting a healthy-looking 0 for a workspace that has never used the feature.
+  { component: LaunchpadWidget, band: "summary", size: "sm", module: "clients", requires: "launchpad" },
 ];
 
 type NumberedTile = GridEntry & { number: number };
@@ -99,6 +112,7 @@ function greetingPart(): string {
 
 export function AppOverview() {
   const account = useAccount();
+  const clientList = useClientList();
   const isAdmin = isAtLeast(account.data?.role ?? "", "ADMIN");
   const { viewAs, effectivePermissions } = useViewAs(isAdmin);
   // "On your desk" self-hides on an empty desk; it reports its render state so
@@ -153,7 +167,13 @@ export function AppOverview() {
   const canActuallyPublish = !isAdmin && hasTaskPublish;
   // The DevOps broadcast composer shares the roll-up's gate.
   const canBroadcast = canPublishRollup;
-  const widgets = GRID.filter((g) => showAll || !g.module || resolvedPermissions.includes(g.module));
+  // Same query key ClientsWidget uses, so this reads the cache rather than refetching.
+  const anyLaunchpad = (clientList.data?.clients ?? []).some((c) => c.launchpad);
+  const widgets = GRID.filter(
+    (g) =>
+      (showAll || !g.module || resolvedPermissions.includes(g.module)) &&
+      (g.requires !== "launchpad" || anyLaunchpad),
+  );
   const hasBackstage = showAll || resolvedPermissions.includes("backstage");
 
   const firstName = (account.data?.name ?? "").trim().split(/\s+/)[0];

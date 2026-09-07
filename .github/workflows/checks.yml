@@ -21,15 +21,18 @@ concurrency:
   group: checks-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22.x
           cache: npm
@@ -49,6 +52,9 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Dependency vulnerability gate
+        run: npm run audit:dependencies
+
       # Self-test first: the rules are heuristics over source, so a rule that has
       # silently stopped firing would otherwise report a clean pass.
       - name: UI standards audit — self-test
@@ -59,7 +65,7 @@ jobs:
 
       # `npx next build`, NOT `npm run build` — the npm script runs `prisma db push`
       # first and would mutate whatever database it was pointed at. Verified to
-      # compile and prerender all 101 static pages with no DATABASE_URL set, so it
+      # compile and prerender all static pages with no DATABASE_URL set, so it
       # catches the RSC-boundary and static-generation breakage `tsc` can't see.
       - name: Build
         # Same heap bump the Docker builder stage has carried since 2026-08-04 (§40.3), which

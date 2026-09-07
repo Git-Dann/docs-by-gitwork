@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
+import { useEffect, useRef, useState } from "react";
+import { ArrowPathIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 import { usePulseEmbedConfig, useSetPulseEmbedConfig } from "@/hooks/use-pulse";
-import { CHECKS_REGISTRY } from "@/server/checks-registry";
-import { DEFAULT_EMBED_CHECK_KEYS } from "@/server/pulse-embed-config";
 import { cn } from "@/lib/format";
 import { ToggleSwitch } from "@/components/pulse/pulse-embed-panel";
 
@@ -34,11 +32,8 @@ function Widget({ number, title, status, children }: { number: string; title: st
 }
 
 export function PulseEmbedSettings() {
-  const { data, isLoading } = usePulseEmbedConfig();
+  const { data, isLoading, isError, error, refetch, isFetching } = usePulseEmbedConfig();
   const { mutate: save, isPending } = useSetPulseEmbedConfig();
-  const [search, setSearch] = useState("");
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const seededExpanded = useRef(false);
   const [previewKey, setPreviewKey] = useState(0);
   const previewRootRef = useRef<HTMLDivElement>(null);
 
@@ -46,15 +41,6 @@ export function PulseEmbedSettings() {
   const [siteKeyDraft, setSiteKeyDraft] = useState("");
   const [secretKeyDraft, setSecretKeyDraft] = useState("");
   const seededDrafts = useRef(false);
-
-  const checkKeys = useMemo(() => new Set(data?.checkKeys ?? DEFAULT_EMBED_CHECK_KEYS), [data?.checkKeys]);
-
-  useEffect(() => {
-    if (seededExpanded.current || !data) return;
-    seededExpanded.current = true;
-    setExpanded(new Set(CHECKS_REGISTRY.filter((c) => checkKeys.has(c.key)).map((c) => c.category)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
 
   useEffect(() => {
     if (seededDrafts.current || !data) return;
@@ -80,59 +66,40 @@ export function PulseEmbedSettings() {
     setSecretKeyDraft(""); // never redisplay it, even the value just typed
   }
 
-  // Auto-resize the preview iframe to its content height (same protocol embed.js uses).
+  // Auto-resize the preview iframe to its content height (same protocol embed.js
+  // uses) — same-origin self-embed (src="/embed/pulse"), so both the message
+  // origin and its source window are checked against this specific iframe before
+  // trusting the payload.
   useEffect(() => {
     function onMessage(e: MessageEvent) {
+      if (e.origin !== window.location.origin || !previewRootRef.current) return;
+      const iframe = previewRootRef.current.querySelector("iframe");
+      if (!iframe || e.source !== iframe.contentWindow) return;
       const d = e.data as { type?: string; height?: number };
-      if (d?.type === "pulse-embed-height" && typeof d.height === "number" && previewRootRef.current) {
-        const iframe = previewRootRef.current.querySelector("iframe");
-        if (iframe) iframe.style.height = `${d.height}px`;
+      if (d?.type === "pulse-embed-height" && typeof d.height === "number") {
+        iframe.style.height = `${d.height}px`;
       }
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, []);
 
-  const grouped = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const map = new Map<string, typeof CHECKS_REGISTRY>();
-    for (const c of CHECKS_REGISTRY) {
-      if (q && !c.key.toLowerCase().includes(q) && !c.label.toLowerCase().includes(q)) continue;
-      if (!map.has(c.category)) map.set(c.category, []);
-      map.get(c.category)!.push(c);
-    }
-    const selectedCountFor = (checks: typeof CHECKS_REGISTRY) => checks.filter((c) => checkKeys.has(c.key)).length;
-    return new Map([...map.entries()].sort((a, b) => selectedCountFor(b[1]) - selectedCountFor(a[1])));
-  }, [search, checkKeys]);
-
-  const isExpanded = (category: string) => search.trim().length > 0 || expanded.has(category);
-
-  function toggleCategory(category: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(category)) next.delete(category);
-      else next.add(category);
-      return next;
-    });
-  }
-
-  function toggleCheck(key: string) {
-    const next = new Set(checkKeys);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    save({ checkKeys: [...next] });
-  }
-
-  function selectAll(checks: typeof CHECKS_REGISTRY) {
-    const next = new Set(checkKeys);
-    for (const c of checks) next.add(c.key);
-    save({ checkKeys: [...next] });
-  }
-
-  function clearAll(checks: typeof CHECKS_REGISTRY) {
-    const next = new Set(checkKeys);
-    for (const c of checks) next.delete(c.key);
-    save({ checkKeys: [...next] });
+  if (isError) {
+    return (
+      <div className="flex flex-col items-start gap-2">
+        <p className="rounded-[6px] border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          Couldn&apos;t load the embed config — {error instanceof Error ? error.message : "please try again."}
+        </p>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="text-sm font-medium text-[var(--brand-700)] hover:underline disabled:opacity-50"
+        >
+          {isFetching ? "Retrying…" : "Retry"}
+        </button>
+      </div>
+    );
   }
 
   if (isLoading || !data) {
@@ -146,7 +113,7 @@ export function PulseEmbedSettings() {
           <div className="flex items-center justify-between gap-3 border-b border-[var(--border-2)] pb-4">
             <div>
               <p className="text-sm font-medium text-[var(--text-1)]">Public embed enabled</p>
-              <p className="mt-0.5 text-xs text-[var(--text-4)]">Off rejects all scan/unlock requests with a friendly &quot;unavailable&quot; message.</p>
+              <p className="mt-0.5 text-xs text-[var(--text-4)]">Off rejects new scans and in-depth-review requests with a friendly &quot;unavailable&quot; message.</p>
             </div>
             <ToggleSwitch checked={data.enabled} disabled={isPending} onChange={(v) => save({ enabled: v })} />
           </div>
@@ -187,8 +154,12 @@ export function PulseEmbedSettings() {
           </div>
 
           <div className="border-b border-[var(--border-2)] py-3">
-            <p className="text-sm font-medium text-[var(--text-1)]">Free-scan limit</p>
-            <p className="widget-timestamp mt-0.5">One lifetime unlock per email — fixed, not editable here.</p>
+            <p className="text-sm font-medium text-[var(--text-1)]">Free scans</p>
+            <p className="widget-timestamp mt-0.5">
+              Unlimited to view — no email needed to see a result. One in-depth-review request per
+              email address. Abuse is bounded by Turnstile plus per-IP, per-host and total
+              concurrency caps (rate-limit.ts), not by withholding results.
+            </p>
           </div>
 
           <div className="pt-3">
@@ -203,72 +174,6 @@ export function PulseEmbedSettings() {
             </label>
           </div>
         </Widget>
-
-        <Widget
-          number="02"
-          title="CHECKS SHOWN"
-          status={<span className="widget-header__status">{checkKeys.size} / {CHECKS_REGISTRY.length}</span>}
-        >
-          <div className="relative mb-3">
-            <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--text-4)]" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search checks…"
-              className="app-input w-full pl-8 text-sm"
-            />
-          </div>
-
-          <div className="max-h-[32rem] overflow-y-auto rounded-[6px] border border-[var(--border-2)]">
-            {[...grouped.entries()].map(([category, checks]) => {
-              const selectedInCategory = checks.filter((c) => checkKeys.has(c.key)).length;
-              const open = isExpanded(category);
-              return (
-                <div key={category} className="border-b border-[var(--border-2)] last:border-b-0">
-                  <button
-                    type="button"
-                    onClick={() => toggleCategory(category)}
-                    className="flex w-full items-center justify-between gap-2 bg-[var(--surface-1)] px-3 py-2 text-left"
-                  >
-                    <span className="widget-data-label flex items-center gap-1.5">
-                      {open ? <ChevronDownIcon className="size-3.5 shrink-0" /> : <ChevronRightIcon className="size-3.5 shrink-0" />}
-                      {category}
-                      {selectedInCategory > 0 && (
-                        <span className="rounded-[4px] bg-[var(--brand-100)] px-1.5 py-px text-[10px] font-bold text-[var(--brand-700)]">
-                          {selectedInCategory}/{checks.length}
-                        </span>
-                      )}
-                    </span>
-                    {open && (
-                      <span className="flex shrink-0 items-center gap-2 text-[11px] font-medium normal-case tracking-normal">
-                        <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); selectAll(checks); }} className="text-[var(--brand-700)] hover:underline">
-                          All
-                        </span>
-                        <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); clearAll(checks); }} className="text-[var(--text-4)] hover:underline">
-                          None
-                        </span>
-                      </span>
-                    )}
-                  </button>
-                  {open && checks.map((c) => (
-                    <label key={c.key} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-[var(--text-2)] hover:bg-[var(--surface-1)]">
-                      <input
-                        type="checkbox"
-                        className="app-checkbox shrink-0"
-                        checked={checkKeys.has(c.key)}
-                        onChange={() => toggleCheck(c.key)}
-                      />
-                      {c.label}
-                    </label>
-                  ))}
-                </div>
-              );
-            })}
-            {grouped.size === 0 && (
-              <p className="px-3 py-6 text-center text-sm text-[var(--text-4)]">No checks match &quot;{search}&quot;.</p>
-            )}
-          </div>
-        </Widget>
       </div>
 
       <div className="xl:sticky xl:top-4">
@@ -276,14 +181,25 @@ export function PulseEmbedSettings() {
           number="03"
           title="LIVE PREVIEW"
           status={
-            <button
-              type="button"
-              onClick={() => setPreviewKey((k) => k + 1)}
-              className="widget-header__status inline-flex items-center gap-1.5 hover:text-[var(--brand-700)]"
-            >
-              <ArrowPathIcon className="size-3.5" />
-              Reload
-            </button>
+            <div className="flex items-center gap-3">
+              <a
+                href="/demo/pulse-embed"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="widget-header__status inline-flex items-center gap-1.5 hover:text-[var(--brand-700)]"
+              >
+                <ArrowTopRightOnSquareIcon className="size-3.5" />
+                View example
+              </a>
+              <button
+                type="button"
+                onClick={() => setPreviewKey((k) => k + 1)}
+                className="widget-header__status inline-flex items-center gap-1.5 hover:text-[var(--brand-700)]"
+              >
+                <ArrowPathIcon className="size-3.5" />
+                Reload
+              </button>
+            </div>
           }
         >
           <p className="mb-3 text-xs text-[var(--text-4)]">The real widget — run a scan against your current settings.</p>

@@ -1,9 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { usePulseLeads, useImportPulseLead } from "@/hooks/use-pulse";
+import { usePulseLeads, useImportPulseLead, usePulseLeadPreview } from "@/hooks/use-pulse";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
+import { PulseCheckStatusIcon, ScoreRing } from "@/components/pulse/pulse-shared";
 import { cn } from "@/lib/format";
+import type { PulseCheckStatus, PulseScanCheckInput } from "@/types/pulse";
 
 function scoreTone(score: number | null): string {
   if (score == null) return "text-[var(--text-4)]";
@@ -12,9 +16,56 @@ function scoreTone(score: number | null): string {
   return "text-red-600";
 }
 
+const STATUS_ORDER: PulseCheckStatus[] = ["FAIL", "WARN", "INCONCLUSIVE", "PASS", "SKIPPED", "NOT_APPLICABLE"];
+
+function sortChecks(checks: PulseScanCheckInput[]): PulseScanCheckInput[] {
+  return [...checks].sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status));
+}
+
+/** Read-only look at a lead's own scan checks — never imports or mutates anything,
+ * unlike "Import to Foundry" which kicks off a real, billable full AI scan. */
+function PulseLeadPreviewModal({ leadId, onClose }: { leadId: string | null; onClose: () => void }) {
+  const { data, isLoading } = usePulseLeadPreview(leadId);
+  const checks = data ? sortChecks(data.checks) : [];
+
+  return (
+    <Modal open={leadId != null} onClose={onClose} title="Scan preview" panelClassName="max-w-2xl">
+      {isLoading || !data ? (
+        <p className="p-6 text-sm text-[var(--text-4)]">Loading…</p>
+      ) : (
+        <div className="flex max-h-[70vh] flex-col">
+          <div className="flex items-center gap-4 border-b border-[var(--border-2)] px-5 py-4">
+            {data.healthScore != null && <ScoreRing score={data.healthScore} size={64} />}
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-[var(--text-1)]">{data.email}</p>
+              <p className="truncate text-xs text-[var(--text-4)]">{data.targetUrl}</p>
+            </div>
+          </div>
+          <div className="flex-1 divide-y divide-[var(--border-2)] overflow-y-auto">
+            {checks.length === 0 ? (
+              <p className="p-5 text-sm text-[var(--text-4)]">No check data was captured for this scan.</p>
+            ) : (
+              checks.map((check) => (
+                <div key={check.checkKey} className="flex items-start gap-3 px-5 py-3">
+                  <span className="mt-0.5 shrink-0"><PulseCheckStatusIcon status={check.status} /></span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-[var(--text-1)]">{check.label}</p>
+                    {check.detail && <p className="mt-0.5 text-xs text-[var(--text-4)]">{check.detail}</p>}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 export function PulseLeadsPanel() {
   const { data, isLoading } = usePulseLeads();
   const { mutate: importLead, isPending, variables } = useImportPulseLead();
+  const [previewLeadId, setPreviewLeadId] = useState<string | null>(null);
 
   const leads = data?.leads ?? [];
   if (isLoading || leads.length === 0) return null; // quietly absent until leads exist
@@ -34,7 +85,7 @@ export function PulseLeadsPanel() {
           <span className="flex-1 text-xs font-medium text-[var(--text-4)]">Lead</span>
           <span className="hidden w-20 shrink-0 text-xs font-medium text-[var(--text-4)] sm:block">Critical</span>
           <span className="hidden w-10 shrink-0 text-xs font-medium text-[var(--text-4)] sm:block">Score</span>
-          <span className="w-[136px] shrink-0" />
+          <span className="w-[200px] shrink-0" />
         </div>
 
         {/* Rows */}
@@ -60,7 +111,10 @@ export function PulseLeadsPanel() {
               <span className={cn("hidden w-10 shrink-0 text-sm font-bold tabular-nums sm:block", scoreTone(lead.healthScore))}>
                 {lead.healthScore ?? "—"}
               </span>
-              <div className="flex w-[136px] shrink-0 justify-end">
+              <div className="flex w-[200px] shrink-0 items-center justify-end gap-2">
+                <Button variant="tertiary" size="sm" onClick={() => setPreviewLeadId(lead.id)}>
+                  Preview
+                </Button>
                 {lead.importedScanId ? (
                   <Link href={`/app/pulse/${lead.importedScanId}`}>
                     <Button variant="tertiary" size="sm">View scan →</Button>
@@ -72,7 +126,7 @@ export function PulseLeadsPanel() {
                     onClick={() => importLead(lead.id)}
                     loading={isPending && variables === lead.id}
                   >
-                    Import to Foundry
+                    Import
                   </Button>
                 )}
               </div>
@@ -80,6 +134,8 @@ export function PulseLeadsPanel() {
           ))}
         </div>
       </div>
+
+      <PulseLeadPreviewModal leadId={previewLeadId} onClose={() => setPreviewLeadId(null)} />
     </div>
   );
 }

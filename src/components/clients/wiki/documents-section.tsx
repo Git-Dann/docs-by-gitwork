@@ -12,6 +12,7 @@ import {
   ArrowUpTrayIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  MagnifyingGlassIcon,
 } from "@heroicons/react/24/outline";
 import {
   useCreateWikiLinkDoc,
@@ -32,11 +33,44 @@ const KIND_META: Record<Kind, { icon: typeof LinkIcon; label: string; tint: stri
   FILE: { icon: PaperClipIcon, label: "File", tint: "rgba(16,185,129,0.12)", color: "#059669" },
 };
 
+const KIND_TABS: Array<"ALL" | Kind> = ["ALL", "FOUNDRY", "LINK", "FILE"];
+const KIND_TAB_LABEL: Record<"ALL" | Kind, string> = {
+  ALL: "All",
+  FOUNDRY: "Foundry",
+  LINK: "Links",
+  FILE: "Files",
+};
+
+// Same technique as the Docs card grid (`proposal-list.tsx`'s DocCard /
+// DOC_COVER_PALETTE) — a deterministic hash picks one of six soft tints, so a
+// doc keeps the same look across renders. Duplicated locally since that one
+// isn't exported; the palette itself is identical for visual consistency.
+const DOC_COVER_PALETTE = [
+  { from: "#EFF6FF", to: "#DBEAFE", ink: "#1E3A8A" }, // blue
+  { from: "#F5F3FF", to: "#EDE9FE", ink: "#5B21B6" }, // violet
+  { from: "#ECFDF5", to: "#D1FAE5", ink: "#065F46" }, // emerald
+  { from: "#FFFBEB", to: "#FEF3C7", ink: "#92400E" }, // amber
+  { from: "#FFF1F2", to: "#FFE4E6", ink: "#9F1239" }, // rose
+  { from: "#F8FAFC", to: "#F1F5F9", ink: "#334155" }, // slate
+] as const;
+
+function docCoverPalette(seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+  }
+  return DOC_COVER_PALETTE[Math.abs(hash) % DOC_COVER_PALETTE.length];
+}
+
 function formatSize(bytes: number | null): string {
   if (bytes == null) return "";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatAdded(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
 /** Sub-label under a doc title — never the raw URL. */
@@ -52,7 +86,11 @@ function hrefFor(d: WikiDocumentDTO, fileBase: string): string {
   return d.url ?? "#";
 }
 
-function DocRow({
+/** One card in the grid — the Docs product's gradient-cover-card, adapted to
+ *  what a Wiki doc actually has (no blocks/status/ref code, so those slots
+ *  are dropped rather than faked). The whole cover opens/downloads the doc;
+ *  `action` (delete, in the manager) sits in the footer row. */
+function WikiDocCard({
   doc,
   fileBase,
   action,
@@ -64,34 +102,55 @@ function DocRow({
   const meta = KIND_META[doc.kind as Kind];
   const Icon = meta.icon;
   const isFile = doc.kind === "FILE";
+  const palette = docCoverPalette(doc.id);
+  const OpenIcon = isFile ? ArrowDownTrayIcon : ArrowTopRightOnSquareIcon;
   return (
-    <li className="flex items-center gap-3 px-4 py-3">
+    <article className="group/wikidoc flex flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white transition hover:border-[var(--border-1)] hover:shadow-[var(--shadow-sm)]">
       <a
         href={hrefFor(doc, fileBase)}
         target="_blank"
         rel="noreferrer"
-        className="group flex min-w-0 flex-1 items-center gap-3"
+        title={isFile ? "Download" : "Open"}
+        className="relative flex min-h-[128px] flex-col justify-between p-4"
+        style={{ backgroundImage: `linear-gradient(135deg, ${palette.from}, ${palette.to})` }}
       >
-        <span
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px]"
-          style={{ background: meta.tint, color: meta.color }}
-        >
-          <Icon className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[14px] font-medium text-[var(--text-1)] group-hover:text-[var(--brand-700)]">
-            {doc.title}
+        <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: palette.ink, opacity: 0.7 }}>
+          <span
+            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px]"
+            style={{ background: meta.tint, color: meta.color }}
+          >
+            <Icon className="h-2.5 w-2.5" />
           </span>
-          <span className="block truncate text-[12px] text-[var(--text-4)]">{metaFor(doc)}</span>
+          {meta.label}
         </span>
-        {isFile ? (
-          <ArrowDownTrayIcon className="h-4 w-4 shrink-0 text-[var(--text-4)] transition group-hover:text-[var(--brand-700)]" />
-        ) : (
-          <ArrowTopRightOnSquareIcon className="h-4 w-4 shrink-0 text-[var(--text-4)] transition group-hover:text-[var(--brand-700)]" />
-        )}
+        <span
+          className="absolute right-2.5 top-2.5 inline-flex h-6 w-6 items-center justify-center rounded-[6px] bg-white/50 opacity-0 transition group-hover/wikidoc:opacity-100"
+          style={{ color: palette.ink }}
+        >
+          <OpenIcon className="h-3.5 w-3.5" />
+        </span>
+        <div className="mt-3">
+          <h3
+            className="line-clamp-3 font-[family-name:var(--font-display)] text-[18px] font-normal leading-[1.2] tracking-[-0.3px]"
+            style={{ color: palette.ink }}
+          >
+            {doc.title}
+          </h3>
+          <p
+            className="mt-1.5 truncate font-mono text-[10px] font-medium uppercase tracking-[0.12em]"
+            style={{ color: palette.ink, opacity: 0.65 }}
+          >
+            {metaFor(doc)}
+          </p>
+        </div>
       </a>
-      {action}
-    </li>
+      <div className="flex items-center justify-between gap-2 px-3.5 py-2.5">
+        <p className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--text-4)]">
+          Added {formatAdded(doc.addedAt)}
+        </p>
+        {action}
+      </div>
+    </article>
   );
 }
 
@@ -110,7 +169,7 @@ function Pager({
   const from = page * PAGE_SIZE + 1;
   const to = Math.min(total, (page + 1) * PAGE_SIZE);
   return (
-    <div className="flex items-center justify-between px-4 py-2.5">
+    <div className="flex items-center justify-between px-1 py-2.5">
       <span className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
         {from}–{to} of {total}
       </span>
@@ -136,6 +195,131 @@ function Pager({
   );
 }
 
+/** Search box + kind tabs (All/Foundry/Links/Files, each with a live count —
+ *  the same filter-tab convention as the Requests intake list). Counts are
+ *  taken off the full set, not the search-filtered one, so they don't jitter
+ *  as you type. */
+function DocumentsToolbar({
+  documents,
+  search,
+  onSearch,
+  kind,
+  onKind,
+}: {
+  documents: WikiDocumentDTO[];
+  search: string;
+  onSearch: (v: string) => void;
+  kind: "ALL" | Kind;
+  onKind: (k: "ALL" | Kind) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-4)]" />
+        <input
+          value={search}
+          onChange={(e) => onSearch(e.target.value)}
+          placeholder="Search documents…"
+          className="app-input pl-9"
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {KIND_TABS.map((tab) => {
+          const count = tab === "ALL" ? documents.length : documents.filter((d) => d.kind === tab).length;
+          const active = kind === tab;
+          return (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => onKind(tab)}
+              className={[
+                "rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] transition",
+                active
+                  ? "bg-[var(--brand-600)] text-white"
+                  : "text-[var(--text-3)] ring-1 ring-[var(--border-1)] hover:bg-[var(--surface-1)]",
+              ].join(" ")}
+              style={{ fontFamily: MONO }}
+            >
+              {KIND_TAB_LABEL[tab]} <span className={active ? "text-white/70" : "text-[var(--text-4)]"}>{count}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Search + kind filter, applied client-side — the Wiki's whole document set
+ *  for one client is always small enough to filter in the browser. */
+function useFilteredDocs(documents: WikiDocumentDTO[]) {
+  const [search, setSearch] = useState("");
+  const [kind, setKind] = useState<"ALL" | Kind>("ALL");
+  const [page, setPage] = useState(0);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return documents.filter((d) => {
+      if (kind !== "ALL" && d.kind !== kind) return false;
+      if (!q) return true;
+      return (
+        d.title.toLowerCase().includes(q) ||
+        (d.fileName ?? "").toLowerCase().includes(q) ||
+        (d.host ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [documents, search, kind]);
+
+  function selectKind(next: "ALL" | Kind) {
+    setKind(next);
+    setPage(0);
+  }
+  function selectSearch(next: string) {
+    setSearch(next);
+    setPage(0);
+  }
+
+  return { search, kind, page, setPage, filtered, selectKind, selectSearch };
+}
+
+/** The 4-across card grid + pager, shared by the public list and the manager. */
+function DocumentsGrid({
+  docs,
+  fileBase,
+  page,
+  onPage,
+  actionFor,
+  emptyLabel,
+}: {
+  docs: WikiDocumentDTO[];
+  fileBase: string;
+  page: number;
+  onPage: (p: number) => void;
+  actionFor?: (doc: WikiDocumentDTO) => React.ReactNode;
+  emptyLabel: string;
+}) {
+  const pages = Math.ceil(docs.length / PAGE_SIZE) || 1;
+  const shown = docs.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  if (docs.length === 0) {
+    return (
+      <p className="rounded-[10px] border border-dashed border-[rgba(0,0,0,0.12)] px-4 py-8 text-center text-[13px] text-[var(--text-4)]">
+        {emptyLabel}
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {shown.map((d) => (
+          <WikiDocCard key={d.id} doc={d} fileBase={fileBase} action={actionFor?.(d)} />
+        ))}
+      </div>
+      <Pager page={page} pages={pages} total={docs.length} onPage={onPage} />
+    </div>
+  );
+}
+
 // ── Public / read-only list ─────────────────────────────────────────────────
 export function DocumentsList({
   documents,
@@ -145,9 +329,7 @@ export function DocumentsList({
   /** Base path for file downloads: `/api/wiki/<token>` or `/api/clients/<slug>/wiki`. */
   fileBase: string;
 }) {
-  const [page, setPage] = useState(0);
-  const pages = Math.ceil(documents.length / PAGE_SIZE) || 1;
-  const shown = documents.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const { search, kind, page, setPage, filtered, selectKind, selectSearch } = useFilteredDocs(documents);
 
   return (
     <section className="widget-card">
@@ -157,22 +339,22 @@ export function DocumentsList({
           {" // DOCUMENTS"}
         </span>
       </div>
-      <div className="p-6">
+      <div className="space-y-4 p-6">
         {documents.length === 0 ? (
           <p className="rounded-[10px] border border-dashed border-[rgba(0,0,0,0.12)] px-4 py-8 text-center text-[13px] text-[var(--text-4)]">
             No documents yet.
           </p>
         ) : (
-          <div className="overflow-hidden rounded-[12px] border border-[rgba(0,0,0,0.08)]">
-            <ul className="divide-y divide-[rgba(0,0,0,0.06)]">
-              {shown.map((d) => (
-                <DocRow key={d.id} doc={d} fileBase={fileBase} />
-              ))}
-            </ul>
-            <div className="border-t border-[rgba(0,0,0,0.06)]">
-              <Pager page={page} pages={pages} total={documents.length} onPage={setPage} />
-            </div>
-          </div>
+          <>
+            <DocumentsToolbar documents={documents} search={search} onSearch={selectSearch} kind={kind} onKind={selectKind} />
+            <DocumentsGrid
+              docs={filtered}
+              fileBase={fileBase}
+              page={page}
+              onPage={setPage}
+              emptyLabel="No documents match your search."
+            />
+          </>
         )}
       </div>
     </section>
@@ -194,7 +376,7 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(0);
+  const { search, kind, page, setPage, filtered, selectKind, selectSearch } = useFilteredDocs(documents);
 
   // Everything the server will actually accept: this client's docs plus any doc
   // not yet assigned to a client. Previously this read the client-detail
@@ -205,11 +387,6 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
   const linkable = useLinkableWikiDocuments(slug, mode === "foundry");
   const candidateDocs = linkable.data?.documents ?? [];
 
-  const pages = Math.ceil(documents.length / PAGE_SIZE) || 1;
-  const shown = useMemo(
-    () => documents.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
-    [documents, page],
-  );
   const fileBase = `/api/clients/${slug}/wiki`;
 
   async function submitLink() {
@@ -405,33 +582,29 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
             No documents yet. Add a link or upload a file to get started.
           </p>
         ) : (
-          <div className="overflow-hidden rounded-[12px] border border-[rgba(0,0,0,0.08)]">
-            <ul className="divide-y divide-[rgba(0,0,0,0.06)]">
-              {shown.map((d) => (
-                <DocRow
-                  key={d.id}
-                  doc={d}
-                  fileBase={fileBase}
-                  action={
-                    <button
-                      type="button"
-                      title="Delete"
-                      disabled={remove.isPending}
-                      onClick={() => {
-                        if (window.confirm(`Delete "${d.title}"?`)) remove.mutate(d.id);
-                      }}
-                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
-                    >
-                      <TrashIcon className="h-4 w-4" />
-                    </button>
-                  }
-                />
-              ))}
-            </ul>
-            <div className="border-t border-[rgba(0,0,0,0.06)]">
-              <Pager page={page} pages={pages} total={documents.length} onPage={setPage} />
-            </div>
-          </div>
+          <>
+            <DocumentsToolbar documents={documents} search={search} onSearch={selectSearch} kind={kind} onKind={selectKind} />
+            <DocumentsGrid
+              docs={filtered}
+              fileBase={fileBase}
+              page={page}
+              onPage={setPage}
+              emptyLabel="No documents match your search."
+              actionFor={(d) => (
+                <button
+                  type="button"
+                  title="Delete"
+                  disabled={remove.isPending}
+                  onClick={() => {
+                    if (window.confirm(`Delete "${d.title}"?`)) remove.mutate(d.id);
+                  }}
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                </button>
+              )}
+            />
+          </>
         )}
       </div>
     </section>

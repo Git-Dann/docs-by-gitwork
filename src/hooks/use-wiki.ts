@@ -57,12 +57,17 @@ import {
   addDocToWikiApi,
   removeDocFromWikiApi,
   createWikiIntakeItem,
+  setWikiIntakeCategoriesApi,
   createPublicWikiIntakeItem,
+  updatePublicWikiIntakeItem,
+  deletePublicWikiIntakeItem,
   updateWikiIntakeItemApi,
   deleteWikiIntakeItemApi,
   promoteWikiIntakeItemApi,
   uploadWikiIntakeItemImage,
   uploadPublicWikiIntakeItemImage,
+  addWikiIntakeComment,
+  addPublicWikiIntakeComment,
 } from "@/lib/api";
 import type { CourseImportInput, BigWedgeSyncResult, MonitorInput, WikiIntakeItemPayload } from "@/lib/api";
 
@@ -361,6 +366,30 @@ export function useCreateWikiIntakeItem(slug: string) {
   });
 }
 
+/** Staff-only: replace this client's Requests categories (empty → defaults). */
+export function useSetWikiIntakeCategories(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      categories: { id?: string; label: string; mapsTo: "BUG" | "FEEDBACK" | "TASK" | "DESIGN" }[],
+    ) => setWikiIntakeCategoriesApi(slug, categories),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useUpdatePublicWikiIntakeItem(token: string) {
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updatePublicWikiIntakeItem>[2] }) =>
+      updatePublicWikiIntakeItem(token, id, patch),
+  });
+}
+
+export function useDeletePublicWikiIntakeItem(token: string) {
+  return useMutation({
+    mutationFn: (id: string) => deletePublicWikiIntakeItem(token, id),
+  });
+}
+
 export function useCreatePublicWikiIntakeItem(token: string) {
   return useMutation({
     mutationFn: (input: WikiIntakeItemPayload) => createPublicWikiIntakeItem(token, input),
@@ -404,6 +433,21 @@ export function useUploadWikiIntakeItemImage(slug: string) {
 export function useUploadPublicWikiIntakeItemImage(token: string) {
   return useMutation({
     mutationFn: ({ id, file }: { id: string; file: File }) => uploadPublicWikiIntakeItemImage(token, id, file),
+  });
+}
+
+export function useAddWikiIntakeComment(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, body }: { itemId: string; body: string }) => addWikiIntakeComment(slug, itemId, body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useAddPublicWikiIntakeComment(token: string) {
+  return useMutation({
+    mutationFn: ({ itemId, body }: { itemId: string; body: string }) =>
+      addPublicWikiIntakeComment(token, itemId, body),
   });
 }
 

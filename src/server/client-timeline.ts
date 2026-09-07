@@ -7,6 +7,7 @@ import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { type EffectiveUser, ForbiddenError } from "@/server/auth/effective-user";
 import { assertClientInScope } from "@/server/tasks";
+import { buildTaskStatusCounts } from "@/types/tasks";
 import type {
   TimelineShareDTO,
   PublicTimelineDTO,
@@ -75,7 +76,14 @@ export async function getPublicTimeline(shareToken: string): Promise<PublicTimel
     where: { clientId: client.id },
     orderBy: [{ orderKey: "asc" }, { startDate: "asc" }],
     include: {
-      tasks: { select: { title: true, status: true, dueDate: true }, orderBy: { orderKey: "asc" } },
+      // Top-level, active tasks only — matches the internal Tasks Gantt
+      // (feature-blocks.ts) and the wiki Timeline (wiki.ts's loadWikiTimeline),
+      // so this share can't drift from either.
+      tasks: {
+        where: { parentId: null, archivedAt: null },
+        select: { title: true, status: true, dueDate: true },
+        orderBy: { orderKey: "asc" },
+      },
     },
   });
 
@@ -102,6 +110,7 @@ export async function getPublicTimeline(shareToken: string): Promise<PublicTimel
         color: b.color,
         progress: taskCount === 0 ? 0 : Math.round((doneCount / taskCount) * 100),
         tasks: b.tasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
+        statusCounts: buildTaskStatusCounts(b.tasks),
       };
     })
     .filter((b): b is PublicTimelineBlock => b !== null);

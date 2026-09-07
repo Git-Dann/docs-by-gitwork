@@ -21,12 +21,20 @@ const EVENT = "gitwork:theme-changed";
  * render path (which navigates to /docs/[token]?print=1 via headless Chromium).
  * Kept in sync with the inline anti-flash script in src/app/layout.tsx.
  *
+ * ⚠️ Both sign-in pages (`/login`, `/portal/login`) are in this list and MUST stay
+ * here. They are hand-painted in fixed hexes to look identical for every visitor,
+ * but they also use `bg-white`, and `[data-theme="dark"] .bg-white` remaps that to
+ * `--surface-0` (near-black) while the inline `color` stays dark ink. Omitting them
+ * shipped a sign-in page in August 2026 whose "Continue with Google" label and
+ * Pulse/Study/Docs headings were invisible — dark text on dark cards — for anyone
+ * whose stored theme or OS was dark.
+ *
  * NOTE: `wiki` is deliberately NOT here — the client wiki supports light/dark via
  * its own ThemeToggle (internal takeover + public share header), matching Foundry.
  */
 // Kept in sync with the inline anti-flash script in src/app/layout.tsx. The `(?:\/|$)`
 // tail matches both `/demo/…` module pages AND the bare `/demo` hub (no trailing slash).
-const FORCE_LIGHT = /^\/(docs|report|sign|timeline|brand|onboarding|preview|embed|demo|apply|vet)(?:\/|$)/;
+const FORCE_LIGHT = /^\/(docs|report|sign|timeline|brand|onboarding|preview|embed|demo|apply|vet|login|portal\/login)(?:\/|$)/;
 
 /**
  * Routes that must ALWAYS render dark, regardless of the visitor's OS / stored

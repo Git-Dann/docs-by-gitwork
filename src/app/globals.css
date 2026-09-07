@@ -1,10 +1,29 @@
+@import "@fontsource-variable/archivo/wght.css";
+@import "@fontsource-variable/caveat/wght.css";
+@import "@fontsource-variable/dancing-script/wght.css";
+@import "@fontsource-variable/fraunces/wght.css";
+@import "@fontsource-variable/fraunces/wght-italic.css";
+@import "@fontsource-variable/inter/wght.css";
+@import "@fontsource-variable/jetbrains-mono/wght.css";
+@import "@fontsource-variable/manrope/wght.css";
+@import "@fontsource-variable/montserrat/wght.css";
+@import "@fontsource-variable/playfair-display/wght.css";
+@import "@fontsource-variable/playfair-display/wght-italic.css";
+@import "@fontsource-variable/sora/wght.css";
+@import "@fontsource-variable/space-grotesk/wght.css";
+@import "@fontsource/dm-serif-display/latin-400.css";
+@import "@fontsource/dm-serif-display/latin-400-italic.css";
+@import "@fontsource/great-vibes/latin-400.css";
+@import "@fontsource/poppins/latin-400.css";
+@import "@fontsource/poppins/latin-500.css";
+@import "@fontsource/poppins/latin-600.css";
+@import "@fontsource/poppins/latin-700.css";
 @import "tailwindcss";
 
 /*
- * Fonts are self-hosted via `next/font/google` in `src/app/layout.tsx`
- * (Inter, DM Serif Display, JetBrains Mono — same as DESIGN.md).
- * next/font binds them to --font-sans, --font-display, --font-mono on <html>
- * which override the @theme fallbacks below via cascade specificity.
+ * All font files are self-hosted through Fontsource. Builds therefore have no
+ * dependency on fonts.googleapis.com/fonts.gstatic.com, and the same CSS variables
+ * continue to provide the typography contract consumed throughout the app.
  */
 
 /*
@@ -315,9 +334,20 @@
 @theme {
   --color-background: #ffffff;
   --color-foreground: #0F172A;
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-display: "DM Serif Display", "Times New Roman", Georgia, serif;
-  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --font-caveat: "Caveat Variable", "Caveat", cursive;
+  --font-dancing-script: "Dancing Script Variable", "Dancing Script", cursive;
+  --font-great-vibes: "Great Vibes", cursive;
+  --font-fraunces: "Fraunces Variable", "Fraunces", Georgia, serif;
+  --font-playfair: "Playfair Display Variable", "Playfair Display", Georgia, serif;
+  --font-poppins: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --font-montserrat: "Montserrat Variable", "Montserrat", ui-sans-serif, system-ui, sans-serif;
+  --font-space-grotesk: "Space Grotesk Variable", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-manrope: "Manrope Variable", "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-archivo: "Archivo Variable", "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --font-sora: "Sora Variable", "Sora", ui-sans-serif, system-ui, sans-serif;
 }
 
 * {
@@ -600,6 +630,30 @@ h2, h3, h4, h5 {
 
   .app-table tbody tr:hover {
     background: var(--surface-1);
+  }
+
+  /*
+     Dense variant, for a table you SCAN rather than read — a triage queue two hundred rows long,
+     where the base 14px/16px cell padding puts nine rows on a laptop screen. Headers switch to the
+     house data-label voice (mono uppercase 10px, per DESIGN.md's table grammar) because at this
+     density a 12px sentence-case header competes with the content beneath it.
+
+     Written as `.app-table.app-table--dense` (0,2,0) so it beats the base `.app-table thead th`
+     (0,1,2) selectors it overrides — a bare `.app-table--dense th` would lose and silently do
+     nothing, which is the specificity trap CLAUDE.md §30 records for Deck's radii.
+  */
+  .app-table.app-table--dense thead th {
+    padding: 7px 12px;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    white-space: nowrap;
+  }
+
+  .app-table.app-table--dense tbody td {
+    padding: 8px 12px;
   }
 
   .app-dialog-backdrop {

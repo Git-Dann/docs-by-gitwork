@@ -1,9 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const dnsRecords = vi.hoisted(() => new Map<string, string[]>());
+
+// Mocks BOTH resolvers, because the modules under test now distinguish "no such
+// record" from "could not ask" and read through `resolveDnsRecord`.
+//
+// This mock used to name only `checkDnsRecord`. When the email module moved off
+// it the mock went inert without failing — the suite kept running, against the
+// real resolver, and only one assertion happened to notice. A mock that silently
+// stops intercepting is worse than no mock, so `checkDnsRecord` is mocked here as
+// well: whichever a module reaches for, the fixture answers.
+const lookup = (name: string, type: string) => dnsRecords.get(`${name}:${type}`) ?? dnsRecords.get(name) ?? [];
 vi.mock("../_types", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../_types")>();
-  return { ...actual, checkDnsRecord: vi.fn(async (name: string, type: string) => dnsRecords.get(`${name}:${type}`) ?? dnsRecords.get(name) ?? []) };
+  return {
+    ...actual,
+    checkDnsRecord: vi.fn(async (name: string, type: string) => lookup(name, type)),
+    resolveDnsRecord: vi.fn(async (name: string, type: string) => ({ ok: true as const, records: lookup(name, type) })),
+    resolveAllDnsRecords: vi.fn(async (lookups: Array<[string, string]>) => ({
+      ok: true as const,
+      records: lookups.flatMap(([name, type]) => lookup(name, type)),
+    })),
+  };
 });
 
 import { runAuthExtended } from "../auth-extended";

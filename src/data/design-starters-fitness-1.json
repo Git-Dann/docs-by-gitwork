@@ -1,0 +1,268 @@
+[
+  {
+    "slug": "design-alltrails",
+    "name": "AllTrails Design System",
+    "summary": "Rebuilds the AllTrails outdoor-navigation look: a topo-paper light UI, a green/amber/red difficulty language, and a map-first explore surface.",
+    "description": "Generates production SwiftUI tokens and components for an AllTrails-style hiking app — a field-guide color system, the tabular trail-card stat row, and the animated route-trace map interaction.",
+    "type": "PROMPT",
+    "tags": [
+      "fitness",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A full SwiftUI color/type/spacing token set matching AllTrails' topo-paper palette and Inter type ramp",
+        "Signature components: trail card, difficulty pill, Record GPS button, and the animating route-trace polyline",
+        "A responsive Explore/Navigator flow spec with map-first layout rules and outdoor-legibility accessibility notes"
+      ],
+      "promptText": "<role>\nYou are a senior iOS design engineer who specializes in outdoor and field-utility apps — products that must stay legible in bright sunlight, on the move, with gloves or wet hands on the glass. You think in SwiftUI tokens first, then components, then screens, and you never ship an accent color without a stated semantic role.\n</role>\n\n<reference_data>\nColor roles (light-first product, dark mode only for OS parity):\n- Canvas: #FFFFFF; grouped-section surface \"topo paper\": #F2F4F1; sunken/pressed: #EBEEE8; divider: #E2E6DF\n- Text: primary #1A1A1A, secondary #6B6F68, tertiary #9A9E96\n- Lead accent \"trail green\": #428000, pressed #336300, soft tint #E8F0DF\n- Difficulty scale (fixed semantic meaning, reused for map pins and condition chips): Easy #428000, Moderate #C77700, Hard #B3261E, each with a matching ~14% soft-tint background (#E8F0DF / #FBEEDD / #F7E0DE)\n- Star-rating gold: #F2A93B\n- Map route polyline: #428000 at 4pt stroke, rounded caps/joins\nTypography: Inter at weights 400/600/700 only, tabular numerals on every stat/rating. Sizes: screen title 28pt/700, detail title 24pt/700, section header 20pt/700, card title (trail name) 17pt/600, body 16pt/400 at 1.55 line-height, stat value 15pt/700, subtitle/location 14pt/400, difficulty-pill label 13pt/700 uppercase with 0.3pt tracking, button 16pt/600, tab label 11pt/600.\nCorner radii: 10pt (thumbnails), 12pt (trail-card photo, review/condition cards), 16-18pt (chips/sheets), 25pt (pill buttons, search bar), 11pt (difficulty pill), 50% (Record button, avatars).\nSpacing base unit 4pt, scale 4/8/12/16/20/24/28/32/40/56; standard margin 16pt; section gap 24pt.\n</reference_data>\n\n<house_rules>\n1. Difficulty color is a fixed vocabulary, not a stylistic choice — green/amber/red must always mean Easy/Moderate/Hard on every pill, pin, and condition chip, never repurposed for emphasis elsewhere.\n2. Every numeric stat (length, elevation, time, rating) renders with tabular/monospaced digits so a scrolling list of cards keeps its columns aligned.\n3. The map is a full-bleed layer, never boxed — floating controls (search bar, Map/List toggle) sit above it with their own soft shadow, they don't constrain its bounds.\n4. The trail card is one tappable unit (press scale ~0.98) with a fixed internal order: photo, then difficulty pill + rating row, then name, then location, then stat row.\n5. The Record button is the one element allowed a colored (green-tinted) shadow; every other shadow in the system is neutral black at low opacity.\n6. Difficulty and condition information must never rely on color alone — the pill always carries the word (\"EASY\"/\"MODERATE\"/\"HARD\"), for color-blind accessibility.\n7. Body and label type stays at weight 400/600/700 only — never introduce a thin weight; this is a legibility-in-sunlight requirement, not a style preference.\n8. Route/trace-style animations (the polyline drawing on) should run around 800-1000ms ease-out; card taps and toggles stay in the 200-300ms range — nothing snaps harshly.\n9. Light mode is the primary and default experience; if a dark variant is requested, preserve the green/difficulty semantics unchanged and only swap canvas/surface/text tokens.\n</house_rules>\n\n<the_project>\n- App name and one-line concept:\n- Primary content object (e.g., trail, route, location) and its 3-5 key stats:\n- Difficulty or rating system to reuse (keep the 3-tier color language, or replace with your own fixed-meaning scale):\n- Screens needed for this pass (e.g., Explore/map, Detail, Record/capture, List):\n- Data source or mock data shape available:\n- Any brand deviations from AllTrails green (state the replacement hex and where it must NOT change meaning):\n- Target iOS minimum version:\n</the_project>\n\n<what_to_give_me>\n1. A complete SwiftUI Color and Font token file matching the reference palette and type ramp, adapted to any brand deviations supplied.\n2. The trail-card-equivalent component: photo, difficulty/status pill, save button, tabular stat row, full-card tap target.\n3. The primary capture/CTA button (pill and, if relevant, a circular Record-style control with active/recording state).\n4. The map-first explore layout: full-bleed map, floating search bar, floating Map/List toggle, pin styling with a selected state.\n5. Motion specs as SwiftUI withAnimation/Shape code for the signature trace-draw or equivalent hero animation.\n6. A responsive/accessibility checklist covering Dynamic Type behavior, VoiceOver labeling for the difficulty pill, and outdoor-contrast notes.\n7. A short do's-and-don'ts list specific to this project's adaptation of the system.\n</what_to_give_me>",
+      "keywords": [
+        "alltrails",
+        "hiking",
+        "outdoor",
+        "gps",
+        "swiftui",
+        "design-system",
+        "ios",
+        "map",
+        "trail",
+        "fitness"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:alltrails",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-apple-fitness",
+    "name": "Apple Fitness Design System",
+    "summary": "Rebuilds Apple Fitness's ring-first, true-black data-as-brand interface with tabular Summary cards and a cinematic Fitness+ shelf.",
+    "description": "Generates SwiftUI tokens and components for a rings-and-metrics fitness app, including the three-ring hero, grouped metric tiles, and the artwork-forward workout shelf.",
+    "type": "PROMPT",
+    "tags": [
+      "fitness",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A true-black SwiftUI token set with Apple's label-opacity text ramp and grouped-card surface steps",
+        "The three-ring hero atom (track + progress arc + glow) plus a metric-tile grid and cinematic shelf component",
+        "A motion spec for ring sweep-in, goal-close celebration, and Reduce-Motion fallbacks"
+      ],
+      "promptText": "<role>\nYou are an iOS design engineer specializing in Apple Human Interface Guidelines-native health dashboards — apps where the data visualization IS the brand and every other element is intentionally restrained system chrome.\n</role>\n\n<reference_data>\nColors: true-black canvas #000000; three immutable ring colors — Ring A #FA114F (bright variant #FF375F), Ring B #92E82A (bright variant #66FF00), Ring C #1EE4E1 (bright variant #00F0FF); each ring's own color at 22% opacity is its unfilled track. Grouped surfaces: #1C1C1E (level 1), #2C2C2E (level 2), #3A3A3C (level 3); hairline separator #38383A. Chrome accent (active tab, links, primary CTA): #FF375F, pressed #D80E45. Secondary brand surface accent: #C969E0. Label-opacity text ramp on dark: 100% white, 60% white (#EBEBF5 at 60%), 30% white (#EBEBF5 at 30%) — not fixed gray hex values. Semantic: success #30D158, error #FF453A, warning #FF9F0A, award gold #FFD60A.\nTypography: SF Pro Display at 20pt and above, SF Pro Text below 20pt, cross-platform fallback Inter. Large title 40pt/800, section header 22pt/800, body 17pt (400 or 600), ring-legend value 19pt/800 tabular, tile value 22pt/800 tabular, ring-label eyebrow 12pt/700 uppercase in the ring's own color, tab label 10pt/500. Numerals always tabular for anything living in the ring legend, tiles, or a live HUD.\nRadii: 8pt (segmented control, search field), 12pt (tinted buttons), 14pt (metric tiles, prominent buttons), 18pt (hero grouped card), 22pt (sheets/modals), 500pt (pills/chips), 50% (rings, avatars).\nSpacing base 4pt; scale 4/8/10/12/16/20/22/28/32/44; card padding 14-22pt; card-to-card gap 10-16pt; screen inset 16pt.\n</reference_data>\n\n<house_rules>\n1. The ring colors are immutable brand identity — never restyle, retint, or theme them for dark/light or any client rebrand; if a client needs different metric colors, treat that as a genuinely new product, not a token swap.\n2. Depth comes from surface lightness and system blur materials, never drop shadows — on a true-black canvas a cast shadow is invisible and looks like a bug, not a feature.\n3. Every ring's unfilled track is that ring's own hue at 22% opacity — never a neutral gray track; the ring and its track must always visually pair.\n4. Secondary and tertiary text is expressed as opacity steps of white (100/60/30%), not as separate gray hex values, so it survives on any background value.\n5. Reserve the single chrome accent color for the active tab, links, and the primary CTA only — it must not appear on body text or as decoration elsewhere.\n6. All ring-adjacent and tile numerals are tabular figures without exception; a jittering number beside a static ring reads as broken.\n7. The ring-sweep-and-celebrate motion (rings animate 0 to value on open, slight stagger between rings, particle/haptic on 100%) is the system's one emotional beat — chrome everywhere else should stay calm and quick (150-300ms).\n8. Cinematic content shelves (workout/session artwork) are full-color and high-fidelity — never mute or desaturate them to \"match\" the restrained chrome; the contrast between calm chrome and vivid artwork is intentional.\n9. Always supply a Reduce Motion fallback: rings resolve to final value via a quick crossfade instead of a sweep, and celebratory particles are replaced by a static \"complete\" state.\n</house_rules>\n\n<the_project>\n- App name and core metrics tracked (e.g., 2-4 ring-style daily goals):\n- Names and fixed colors for each ring/metric (or reuse the reference three):\n- Primary content shelf (workouts, sessions, courses) and its card format:\n- Screens needed (e.g., daily summary, metric detail, content library, in-session/live view):\n- Data source or mock data shape available:\n- Platform surfaces beyond iPhone (Watch mirror, iPad, widget)?:\n- Target iOS minimum version:\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color/Font token file for the true-black canvas, grouped surfaces, ring colors + tracks, and the label-opacity ramp.\n2. The multi-ring hero atom as a reusable SwiftUI Shape/view with configurable stroke width, colors, and animatable progress.\n3. A metric-tile grid component (icon chip + label + tabular value + sub-caption) in a 2-column responsive layout.\n4. The cinematic content shelf (snap-scrolling artwork cards with a frosted badge and play control).\n5. Full motion code for the ring sweep-in (staggered withAnimation), the goal-close celebration, and its Reduce Motion fallback.\n6. A bottom tab bar spec using system blur material with the single chrome accent for the active state.\n7. A short do's-and-don'ts list specific to keeping the ring colors and shadow-free depth model intact as the app grows.\n</what_to_give_me>",
+      "keywords": [
+        "apple fitness",
+        "activity rings",
+        "swiftui",
+        "design-system",
+        "ios",
+        "true black",
+        "health",
+        "dashboard",
+        "fitness+",
+        "workout"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:apple-fitness",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-calm",
+    "name": "Calm Design System",
+    "summary": "Rebuilds Calm's night-sky, glass-card meditation UI with a serif/sans pairing and a slow-breathing bubble as the hero interaction.",
+    "description": "Generates SwiftUI tokens and components for a sleep/meditation app — the dusk gradient canvas, translucent glass cards, and a true 4-7-8 breathing bubble animation.",
+    "type": "PROMPT",
+    "tags": [
+      "fitness",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A SwiftUI token set for the twilight gradient canvas, glass-card materials, and the Lora/Inter serif-sans type pairing",
+        "The signature breathing bubble component with an accurate multi-phase easing cycle",
+        "Daily-hero, shelf-tile, and full player-screen component specs with slow, continuous motion timing"
+      ],
+      "promptText": "<role>\nYou are an iOS design engineer who specializes in sleep, mindfulness, and slow-motion interfaces — products where every animation must read as unhurried and every color choice must avoid alarm or urgency.\n</role>\n\n<reference_data>\nColors: full-screen vertical gradient canvas running from a twilight blue #2A6FD6 at the top through a mid-tone #1A4A8F to a deep near-black navy #0B1E3F at the bottom. Glass card fill: rgba(255,255,255,0.08) standard, rgba(255,255,255,0.12) raised, hairline divider rgba(255,255,255,0.12). Single accent, used sparingly: #2A6FD6 (pressed #1F57AB, lighter variant #4A85E0). Text: primary #FFFFFF, secondary #B8C4D8 (about 72% white, cool-toned), tertiary #8794A8. Rare warm accent for streaks: #F2C94C; soft desaturated error rose #E08A8A (never harsh red); soft confirmation sage #7FB8A0. No shipped light theme — this product is dark-only.\nTypography: headlines/display in a literary serif (Lora), body/UI in a humanist sans (Inter). Greeting hero 30pt serif/600, screen title 26pt serif/600, card title 19pt serif/600, section header 16pt sans/700, body 17pt sans/400 at 1.55 line-height, button 17pt sans/600, breathing-cue text 22pt serif/400 with 0.5pt tracking, large countdown timer 44pt sans/300 (deliberately light-weight for an airy feel), tab label 11pt sans/600. The serif is reserved for anything emotional/narrative (greetings, titles, breathing cues); the sans carries every functional string (buttons, meta, nav) — the two roles are never swapped.\nRadii: 12pt (thumbnails), 16pt (shelf tiles), 20pt (hero cards, generic glass cards, sheets), 26pt/full (primary pill, search field, chips), 50% (play buttons, avatars, the breathing bubble).\nSpacing base 4pt, scale 4/8/12/16/20/24/28/32/40/56; margin 20pt; section gap 32pt.\n</reference_data>\n\n<house_rules>\n1. Glass cards must remain visibly translucent (rgba white at 8-12% plus backdrop blur) so the gradient canvas always shows through — never drop in a fully opaque card fill.\n2. The single accent color is reserved for primary actions, the active tab, and progress indication; it never appears as body-text emphasis — use the serif or a weight shift instead.\n3. Serif and sans roles are fixed: narrative/emotional strings get the serif, every functional/UI string gets the sans. Do not use the serif for a button label or the sans for a greeting.\n4. All motion is slow and continuous — cross-dissolve screen transitions run 500-600ms minimum, and nothing in this system uses a spring/bounce easing.\n5. The breathing-bubble animation must follow its stated phase timing exactly (a distinct inhale/hold/exhale/hold structure) using ease-in-out only; treat the specific phase durations as sacred, not decorative defaults.\n6. Photography behind text is always scrim-darkened with a gradient overlay in the canvas's own dark tone, never given a drop shadow, to keep the glass-and-sky feeling intact.\n7. Reserve the rare warm accent strictly for streak/achievement moments — introducing a second everyday accent color breaks the single-accent discipline.\n8. Generous whitespace is structural to the calming effect: keep the stated margin and section-gap values rather than tightening them to fit more content.\n9. This is a dark-only product by design — do not add a bright/light theme toggle unless the project explicitly requires one, and if so, treat it as a secondary, non-default mode.\n</house_rules>\n\n<the_project>\n- App name and core relaxation/mindfulness activity (e.g., meditation, sleep story, breathing exercise):\n- Primary content type and its card format (title, narrator/instructor, duration):\n- Screens needed (e.g., home/daily hero, content library, full-screen player, breathing exercise):\n- Data source or mock data shape available:\n- Any brand deviations from the twilight-blue gradient (state replacement hex values):\n- Sound/audio component needed (mixer, background sounds)?:\n- Target iOS minimum version:\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color/Font/LinearGradient token file for the canvas gradient, glass materials, and the serif/sans type ramp.\n2. The breathing-bubble component as an animatable SwiftUI View with exact phase-timed scale animation and crossfading cue text.\n3. A daily-hero card component (full-bleed darkened photo, serif title, glass play button).\n4. A horizontally-scrolling content shelf tile and a list-row component for browsing sessions.\n5. The full player-screen layout: centered artwork/scene, serif title, circular progress scrubber, glass icon action row.\n6. Motion code for the slow cross-dissolve transitions and the bubble's multi-phase easing cycle.\n7. A short do's-and-don'ts list specific to keeping the glass-on-gradient feel and single-accent discipline intact as the app grows.\n</what_to_give_me>",
+      "keywords": [
+        "calm",
+        "meditation",
+        "sleep",
+        "mindfulness",
+        "swiftui",
+        "design-system",
+        "ios",
+        "breathing",
+        "glassmorphism",
+        "wellness"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:calm",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-fitbit",
+    "name": "Fitbit Design System",
+    "summary": "Rebuilds Fitbit's teal-black coaching dashboard with per-metric fixed colors, ring-driven progress, and big-number-first cards.",
+    "description": "Generates SwiftUI tokens and components for a supportive health-coaching app — the steps-ring hero, color-coded metric tile grid, and score-badge cards.",
+    "type": "PROMPT",
+    "tags": [
+      "fitness",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A teal-tinted dark SwiftUI token set with a fixed per-metric color table (steps, heart rate, sleep, readiness, zone minutes, calories)",
+        "The steps-ring hero, metric-tile grid, and score-badge (sleep/readiness) components with count-up and ring-sweep motion",
+        "Coaching-copy and button guidance to keep tone warm rather than clinical"
+      ],
+      "promptText": "<role>\nYou are an iOS design engineer who builds consumer health-coaching dashboards — products that turn biometric numbers into warm, encouraging cards rather than clinical charts, using color as a navigational memory aid across an entire app.\n</role>\n\n<reference_data>\nColors: dark canvas with a cyan undertone — canvas #001017, surface-1 #002A3A, surface-2 #00384D, surface-3/ring-track #0A475E, divider #143E50. Brand/CTA accent: #00B0B9, brightened on-dark variant for text/links #21D9CE, pressed #008A91, 15% tint #00B0B926. Fixed per-metric hues, identical across light/dark and never swapped: steps/activity #00B0B9, heart rate #FF6B81, sleep #7C5CFF, daily-readiness score #B8E986, active-zone-minutes #FF8A3D, calories #FFC233, secondary metrics (e.g. SpO2/stress) #4FC3F7. Text: primary #EAF6F9, secondary #8AAEB8, tertiary #5C808B. Semantic: on-track #3FC7A6, behind-target reuses the zone-minutes orange #FF8A3D, alert reuses heart-rate coral #FF6B81.\nTypography: a rounded geometric sans across the whole app (DM Sans as an open stand-in). Metric hero number 44pt/700 with -1.0pt tracking, screen title 32pt/700, tile value 26pt/700, greeting 22pt/700, card title 18pt/700, body 16pt/400, unit suffix 13pt/600 (rendered visibly smaller/lighter than its value, often baseline-aligned), caption/trend-chip text 12pt/600, tab label 10pt/600. Numerals: tabular for anything tabular/chart-like, proportional allowed for big hero numbers.\nRadii: 7-8pt (icon chips, small chips), 12pt (inputs), 16-20pt (metric tiles, content cards), 24pt (hero cards), 500pt/full pill (all buttons, search bar, segmented controls, trend chips), 50% (rings, score badges).\nSpacing base 4pt, scale 4/8/12/16/20/24/28/32/40; screen inset 20pt; card padding 16-22pt; tile-grid gap 12pt.\n</reference_data>\n\n<house_rules>\n1. Every health metric owns one fixed hue used everywhere it appears — its tile icon, its ring, its chart line, and its detail screen — so a user recognizes a metric by color alone before reading the label; never let two metrics share a color or one metric shift color between screens.\n2. The big number is always the visual hero of its card — render it at the largest, boldest weight available and keep its label/unit visibly smaller and quieter.\n3. Units are subordinate typography: render a unit string noticeably smaller and one weight step lighter than the value it follows, typically baseline-aligned.\n4. Use progress rings, not rectangular bars, as the primary goal-visualization shape across steps, sleep, zone minutes, and readiness — rings are this system's shape language.\n5. Any text or icon placed on top of the brand accent color or a metric's fixed color uses the deep canvas-ink color for contrast, never white — this is a specific, deliberate contrast choice for this palette, not a general rule.\n6. Coaching and status copy is warm and plain-language (e.g., a short encouraging sentence) rather than clinical percentage-style phrasing.\n7. On appearance, progress rings sweep from 0 to their value and hero/tile numbers count up from 0 — treat this pair of animations as required entrance motion, not optional flourish, and pair a goal-hit moment with a success haptic.\n8. Cards and buttons are generously rounded (16pt+) with full-pill buttons throughout — avoid small or sharp radii, which would read as clinical rather than encouraging.\n9. Metric hues stay identical in any light-theme variant — only the canvas and text tokens swap; never recolor a metric for theme parity.\n</house_rules>\n\n<the_project>\n- App name and the 4-6 health/activity metrics it tracks:\n- Fixed color assigned to each metric (reuse the reference table or supply your own, one hue per metric):\n- Primary hero metric for the main dashboard screen (e.g., a step or activity count):\n- Any 0-100 score-style metrics needing a badge/ring treatment (e.g., sleep score, readiness):\n- Screens needed (e.g., daily dashboard, metric detail with chart, coaching/insights feed):\n- Data source or mock data shape available:\n- Target iOS minimum version:\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color/Font token file covering the teal-black canvas, brand accent, and the full per-metric color table.\n2. The primary ring-hero component (progress ring + centered count-up number + encouraging side copy + trend chip).\n3. A 2-column metric-tile grid component (icon chip in metric color + label + big tabular value + sub-caption), one tile per tracked metric.\n4. A score-badge card (circular 0-100 score in its metric color) for any score-style metrics supplied.\n5. Motion code for the ring-sweep, number count-up, and card stagger-in-on-appear behaviors, plus a goal-hit celebration.\n6. A bottom tab bar and primary pill-button spec using the brand accent with the correct on-accent ink color.\n7. A short do's-and-don'ts list specific to keeping the per-metric color discipline and warm coaching tone intact as the app grows.\n</what_to_give_me>",
+      "keywords": [
+        "fitbit",
+        "health tracker",
+        "steps",
+        "sleep score",
+        "swiftui",
+        "design-system",
+        "ios",
+        "wearable",
+        "dashboard",
+        "fitness"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:fitbit",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-flo",
+    "name": "Flo Design System",
+    "summary": "Rebuilds Flo's soft blush-and-coral cycle-tracking UI, centered on a rotating phase wheel and reassuring, never-alarming prediction copy.",
+    "description": "Generates SwiftUI tokens and components for a personal health-tracking app — the circular phase wheel, prediction cards, and a soft symptom-logging chip grid.",
+    "type": "PROMPT",
+    "tags": [
+      "fitness",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A soft, rounded SwiftUI token set built around a warm coral/lavender two-color phase language on a blush surface",
+        "The signature rotating phase wheel component plus a reassuring prediction card and symptom chip grid",
+        "A calendar cell-state spec and gentle motion timing so nothing in the system reads as alarming"
+      ],
+      "promptText": "<role>\nYou are an iOS design engineer who specializes in personal health and cycle-tracking products — apps handling intimate, sometimes anxiety-inducing data, where every visual decision must read as calm, private, and reassuring rather than clinical or alarming.\n</role>\n\n<reference_data>\nColors: pure-white canvas #FFFFFF with a barely-there blush section surface #FFF0F3; sunken/pressed #FBE9ED; divider #F3DDE3. Lead accent #FF6B81 (pressed #E85870, soft tint #FFD9DF). Phase-partner accent #C5B3E6 (deep variant #A893D6 for a specific sub-state, soft tint #EDE6F7) — together these two hues carry the entire phase story; no third phase color is introduced. Text: primary #1A1A2E (a near-black with a violet cast, not pure black), secondary #6E6A82, tertiary #A09CB0. Soft, non-alarming semantic colors only: a gentle sage #7DC9A8 for positive confirmations, a gentle amber #F2B36B for anything needing attention — never red for an alert in this system.\nTypography: a rounded geometric sans (Inter as the reference face) at weights 400/600/700 only. Wheel-center hero figure 30pt/700, greeting 28pt/700, screen title 24pt/700, section header 22pt/700, card title 18pt/600, prediction emphasis line 20pt/700 in the lead accent color, body 16pt/400 at 1.55 line-height, calendar-day number 15pt/600, button 16pt/600, tab label 11pt/600. Tabular numerals on the wheel-center figure and calendar so numbers never reflow.\nRadii: 12pt (small inner elements), 16pt (insight cards, selected calendar cell), 18-20pt (chips, prediction cards, blush sections), 26pt (primary/secondary pill buttons, search field), 50% (the phase wheel, floating log button, avatars).\nSpacing base 4pt, scale 4/8/12/16/20/24/28/32/40/56; margin 20pt; section gap 28pt.\n</reference_data>\n\n<house_rules>\n1. Exactly two accent colors carry the entire phase/status story (the lead warm hue and its cooler partner) — do not introduce a third phase color; distinguish additional states with tint depth or an outline vs. fill treatment instead.\n2. Alerts and warnings are always phrased and colored gently — a soft amber, never red; positive confirmations use a soft sage, never a loud green. This system never uses color to alarm.\n3. Predictive or forecast information is visually distinguished from confirmed data (e.g., an outlined ring vs. a solid fill) so the user can tell \"predicted\" from \"logged\" without reading a label.\n4. Every corner in the system is generously rounded (12pt minimum, most surfaces 16pt+) — no sharp/square corners anywhere, reinforcing the soft, unclinical tone.\n5. Card and button shadows are tinted with the lead accent color at low opacity rather than neutral black, so depth feels warm rather than harsh.\n6. The central circular phase-wheel object is the anchor of the primary/home screen — give it generous vertical clearance and never let secondary content crowd it.\n7. All motion is gentle: fades, morphs, and scale transitions run 200-700ms with soft easing; nothing snaps, springs aggressively, or animates faster than what a calm, reassuring product would use.\n8. Numeric hero figures (the wheel's center number, calendar day numbers) always use tabular digits so a rotating/updating wheel or a shifting calendar grid never causes layout jitter.\n9. Light mode is the default and primary experience for this class of product; if dark mode is requested, preserve the lead/partner accent hues unchanged and only swap canvas/surface/text tokens.\n</house_rules>\n\n<the_project>\n- App name and the core cyclical/recurring thing being tracked:\n- Two-color phase or state system to reuse (or your own lead + partner hex pair, with each color's fixed meaning stated):\n- Primary interactive object for the home screen (e.g., a wheel, calendar, or timeline):\n- Symptom/data-logging inputs needed (chip categories, quick-log fields):\n- Screens needed (e.g., home/today, calendar, insights, logging flow):\n- Data source or mock data shape available:\n- Target iOS minimum version:\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color/Font token file for the blush canvas, the two-accent phase system, and the rounded type ramp.\n2. The rotating/interactive phase-wheel component with its multi-state ring segments and a live-updating center label.\n3. A prediction or forecast card component using reassuring, non-alarming copy conventions and the correct accent-tinted shadow.\n4. A wrapping symptom/data-logging chip grid with a clear selected-vs-unselected visual state.\n5. A calendar or timeline cell-state spec distinguishing predicted vs. confirmed vs. \"today\" states without relying on color alone.\n6. Motion code for the wheel's reveal/scrub animation and the gentle screen-transition timing used throughout.\n7. A short do's-and-don'ts list specific to keeping the calm, never-alarming tone intact as the app grows.\n</what_to_give_me>",
+      "keywords": [
+        "flo",
+        "cycle tracking",
+        "health",
+        "period tracker",
+        "swiftui",
+        "design-system",
+        "ios",
+        "wellness",
+        "calendar",
+        "fitness"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:flo",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-garmin-connect",
+    "name": "Garmin Connect Design System",
+    "summary": "Rebuilds Garmin Connect's true-black data-cockpit UI: a single functional accent, condensed tabular metrics, and a glowing GPS route map.",
+    "description": "Generates SwiftUI tokens and components for a serious athlete-metrics app — the stat-cell grid, GPS route map with glow, and fixed-semantic gauge colors.",
+    "type": "PROMPT",
+    "tags": [
+      "fitness",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A true-black SwiftUI token set with a single functional brand accent and a fixed-meaning data-visualization color table",
+        "The stat-cell grid, GPS route-map, and gauge/ring components with condensed tabular typography throughout",
+        "A density-first layout spec (hairlines over shadows) for a dense multi-metric activity-detail screen"
+      ],
+      "promptText": "<role>\nYou are an iOS design engineer who builds serious sports-performance and telemetry dashboards for athletes — products where the user wants dense, precise numbers arranged like an instrument cluster, not a lifestyle app softened around the data.\n</role>\n\n<reference_data>\nColors: true-black canvas #000000 (not charcoal). Surface steps: #121417 (level 1, cards/rows), #1B1E22 (level 2, tiles/nested), #23272C (level 3, track backgrounds/inputs); hairline divider #2A2E33. Single brand accent: #007CC3 for fills (buttons, route line), brightened to #2A9FD6 for text/links/active states on black (needed for contrast), pressed #00689F. Text: primary #FFFFFF, secondary #A6ACB3, tertiary #6B7178. Data-visualization colors are fixed and theme-invariant, each meaning exactly one thing: an energy-reserve gauge #2EA8E0, a weekly-minutes metric #00A8A8, a steps metric #C8B560, and a 5-zone heart-rate ramp #9AA0A6, #4CAF50, #C8B560, #F0A030, #E5402A (lightest/easiest to hardest effort). Semantic: success/goal-met #4CAF50, warning #F0A030, error/max #E5402A.\nTypography: a neutral grotesque (Roboto) for UI/body/labels, paired with its condensed cut (Roboto Condensed) for every meaningful number so long values fit one line in a narrow cell — both tabular. Screen title 32pt/900, hero metric 40pt condensed/700, activity/session name 26pt condensed/700, section heading 20pt/700, stat-cell value 22pt condensed/700, tile value (large) 28pt condensed/700, body 16pt/500, eyebrow/micro-label 12pt/700 uppercase with 0.5pt tracking, stat unit 11pt/500, button 15pt/700 uppercase with 0.5pt tracking, tab label 10pt/500.\nRadii: 4pt (progress-bar fills), 6pt (buttons, inputs, segmented control, chips-as-tags), 12pt (cards, tiles, map container), 16pt (sheets/modals), 500pt (pill chips/status pills), 50% (rings, gauges, avatars, map pins).\nSpacing base 4pt, scale 4/8/12/16/20/24/32/40/48; card padding 16pt; stat-cell padding 14pt vertical/12pt horizontal; screen inset 16pt.\n</reference_data>\n\n<house_rules>\n1. There is exactly one brand accent color in this entire system — do not introduce a second hue for \"brand harmony\"; every other saturated color present is a fixed data-visualization semantic (a heart-rate zone, an energy gauge, a status color) and must never be reused decoratively.\n2. Every meaningful numeric value (pace, distance, duration, heart rate, elevation) is set in the condensed numeral face with tabular figures — never a proportional font for a metric, or long values will wrap or auto-shrink.\n3. In any data card, the numeric value is the largest, heaviest element and its label is a small uppercase gray eyebrow above it — this label-quiet/value-loud hierarchy is the system's core layout rule.\n4. Depth is communicated by surface-lightness steps and 1px hairlines, not drop shadows — reserve any shadow for genuinely floating layers like sheets or menus, and keep it subtle even there since shadows barely read on true black.\n5. Numeric columns (splits, stat tables) are right-aligned and tabular so a stacked table of values lines up perfectly; never center-align a column of numbers.\n6. The bottom tab bar carries no background pill or highlight behind its active tab — the active state is expressed purely by the accent-colored glyph and label.\n7. A GPS route or live-tracking line is drawn in the single brand accent with a soft colored glow (not a plain stroke) to signal it is live/traced data, distinct from every other static line in the UI.\n8. Fixed-meaning data colors (zone ramps, gauges) never restyle between light and dark theme or per-client rebrand — their color is inseparable from what they represent.\n9. Motion exists to serve function, not decoration: a route line draws on once per view, gauges/rings fill from zero once, and stat cells may stagger in on first appearance — beyond that, keep transitions quick (150-300ms) and purposeful.\n</house_rules>\n\n<the_project>\n- App name and the sport/activity type(s) tracked (e.g., running, cycling, multi-sport):\n- Core metrics to show on the activity/session detail screen (aim for 6, e.g., distance/time/pace/HR/calories/elevation):\n- Any zone-ramp or fixed-meaning gauge metrics needed (e.g., effort zones, an energy/readiness gauge):\n- Screens needed (e.g., today/dashboard, activity list, activity detail with map, trends):\n- Data source or mock data shape available:\n- Target iOS minimum version:\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color/Font token file for the true-black surface-step system, the single brand accent, and the fixed data-viz color table.\n2. A 3-column stat-cell grid component (uppercase eyebrow + condensed tabular value + subordinate unit) for the core session metrics.\n3. A GPS/route map component with a glowing accent-colored polyline, distinct start/end markers, and a draw-on animation.\n4. A ring or gauge component (track + progress arc/bar) for any zone-ramp or fixed-meaning metric supplied.\n5. A splits/history table component with right-aligned tabular numeric columns and a highlighted best-value row.\n6. Motion code for the route draw-on, the gauge/ring fill-from-zero, and the stat-cell stagger-in.\n7. A short do's-and-don'ts list specific to keeping the single-accent, no-shadow, tabular-numeral discipline intact as the app grows.\n</what_to_give_me>",
+      "keywords": [
+        "garmin",
+        "sports tracker",
+        "gps",
+        "heart rate zones",
+        "swiftui",
+        "design-system",
+        "ios",
+        "athlete",
+        "true black",
+        "fitness"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:garmin-connect",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-headspace",
+    "name": "Headspace Design System",
+    "summary": "Rebuilds Headspace's illustrated, butter-cream meditation UI around a breathing gradient sphere, warm ink-tinted shadows, and title-case Apercu type.",
+    "description": "Generates SwiftUI tokens and components for a meditation/wellness app — the breathing sphere hero, aurora-gradient daily card, and illustration-companion empty states.",
+    "type": "PROMPT",
+    "tags": [
+      "fitness",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A warm butter-cream SwiftUI token set with an aurora gradient wash and ink-brown-tinted (never black) shadows",
+        "The breathing gradient sphere hero component with an accurate multi-phase inhale/hold/exhale/hold cycle",
+        "Session-card, quick-action-tile, and player-control specs plus a dusk-mode canvas swap for an evening surface"
+      ],
+      "promptText": "<role>\nYou are an iOS design engineer who specializes in warm, illustration-first wellness products — apps that intentionally look hand-drawn and gentle rather than clinical or data-driven, where every shadow, weight, and haptic is deliberately soft.\n</role>\n\n<reference_data>\nColors: butter-cream canvas #FFF7E7 (never pure white); off-cream card surface #FBF1DA; warm-gray divider #E8DFC9. Primary accent \"marigold\" #FF6B35 (pressed #E55A2B, light tint #FFB89E). A signature 3-stop gradient wash used on hero/daily surfaces: #FFB89E through #FFD25C to #FF6B35. Secondary mood accents: butter yellow #FFD25C, moss sage #7E9F4B (with a light tint #B4C68F), coral #F4877E, lavender #B7B0DC. An evening/dark mode canvas, distinct from a neutral dark theme: dusk #1A1430, surface #2A2046, divider #3F3460. Text: primary ink #2E1A47 (a warm purple-brown, never true black), secondary ink #594675, tertiary ink #8E7DA5. Semantic colors stay muted/warm: success sage #7E9F4B, warning amber #FF9F4A, error a muted coral #E04646 (never a hard red).\nTypography: a soft humanist sans (Apercu, with Nunito as an open fallback) at weights 300/400/500/700/900, used in title case only — uppercase is treated as too harsh for this brand's voice. Greeting hero 32pt/700, screen title 28pt/700, session/content title 22pt/700, section header 18pt/700, card title 17pt/600, body 16pt/400 at 1.5 line-height, large countdown timer 56pt/700 tabular, tag pill 13pt/600, button 17pt/600 (medium weight, deliberately not bold, to stay gentle), tab label 11pt/500.\nRadii: 12pt (small tag pills/chips), 16pt (text-input areas, settings panels), 20pt (search field, quick-action tiles), 24pt (session/content cards, sheets — this system's signature radius), 500pt/full pill (buttons, tag pills), 50% (avatars, play/pause control, the breathing sphere).\nSpacing base 4pt, scale 4/8/12/16/20/24/32/40/48/64/80; margin 24pt; section gap 32pt.\n</reference_data>\n\n<house_rules>\n1. Never use pure white or pure black anywhere in this system — the canvas is always the warm cream tone and body text is always the warm ink-brown tone, even where a generic app would default to plain white or black.\n2. All text renders in title case; uppercase styling on this typeface reads as shouting and breaks the calm tone, so avoid it even for small labels or eyebrows.\n3. Every shadow in the system is tinted with the ink-brown color (or the marigold accent for primary CTAs specifically) at low opacity — never a neutral black shadow.\n4. The primary accent gradient wash (a 3-stop warm gradient) is reserved for hero/daily surfaces and full-bleed content-card overlays — it is a signature moment, not a background to apply everywhere.\n5. An illustrated companion character (rather than photography or an icon) is the default treatment for empty states and milestone/completion moments — this is a fully illustrated brand, not a photographic one.\n6. Haptic feedback throughout is soft/light only — never use a heavy or strong impact style, matching the gentle visual language.\n7. The signature breathing-sphere animation must use pure ease-in-out timing across its inhale/hold/exhale/hold phases — no spring or bounce easing, which would feel mechanical rather than organic.\n8. Any evening/night surface (e.g., a sleep-focused mode) gets its own warm dusk-toned dark palette, not a generic gray dark mode — the transition between the two canvases should crossfade slowly (400-600ms) rather than cut instantly.\n9. Spacing stays generous throughout (24pt margins, 1.5 body line-height, 32pt section gaps as a floor) — resist tightening layouts to fit more content, since the pacing itself is part of the brand's calming effect.\n</house_rules>\n\n<the_project>\n- App name and the core practice/activity (e.g., meditation, breathing exercise, journaling):\n- Illustration style available or needed for companion characters/empty states:\n- Primary content type and its card format (title, instructor/narrator, duration, category tag):\n- Screens needed (e.g., daily home, content library, full-screen session player, profile/streak):\n- An evening/alternate-mode surface needed (e.g., sleep content), and its distinct accent color:\n- Data source or mock data shape available:\n- Target iOS minimum version:\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color/Font token file for the cream canvas, the gradient wash, ink-brown text ramp, and the dusk alternate-mode palette.\n2. The breathing-sphere hero component: a radial-gradient circle with an exact multi-phase scale animation and crossfading guidance text.\n3. A full-bleed session/content card component (illustrated or photographic background, gradient overlay, tag pill, title, subtitle).\n4. A quick-action tile component (compact card with an illustration, title, and subtitle) for a horizontally scrolling row.\n5. Player-control components: a large circular play/pause control plus skip buttons and a thin top progress arc.\n6. Motion code for the breathing-sphere cycle, a streak-ring fill-on-reveal animation, and the dusk-mode canvas crossfade.\n7. A short do's-and-don'ts list specific to keeping the warm-ink, title-case, soft-haptic tone intact as the app grows.\n</what_to_give_me>",
+      "keywords": [
+        "headspace",
+        "meditation",
+        "mindfulness",
+        "breathing exercise",
+        "swiftui",
+        "design-system",
+        "ios",
+        "illustration",
+        "wellness",
+        "fitness"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:headspace",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  }
+]

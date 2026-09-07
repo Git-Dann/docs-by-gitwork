@@ -1,6 +1,7 @@
 import { DocumentType, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { DEFAULT_PROPOSAL_METADATA, getDefaultProposalSections } from "@/lib/default-template";
+import { GITWORK } from "@/lib/gitwork";
 import {
   TEMPLATE_DESCRIPTION_BY_TYPE,
   TEMPLATE_NAME_BY_TYPE,
@@ -16,6 +17,11 @@ import {
   getQuickOnboardingForm,
   getEnterpriseOnboardingForm,
 } from "@/lib/onboarding/default-form";
+import {
+  DEFAULT_LAUNCHPAD_TEMPLATE_NAME,
+  DEFAULT_LAUNCHPAD_TEMPLATE_SLUG,
+  getDefaultLaunchpadStructure,
+} from "@/lib/launchpad/default-template";
 import { prisma } from "@/lib/prisma";
 import { buildDefaultConfigRow } from "@/server/devsignal/config";
 import { seedChallenges } from "@/server/devsignal/challenge-store";
@@ -35,6 +41,7 @@ import { getDefaultCodeClearCandidatePayloads } from "@/server/codeclear";
 import { migratePermissionModel } from "@/server/permissions";
 import { seedBuiltInStarters } from "@/server/starters-catalog";
 import { seedStarterAdditions } from "@/server/starters-additions-seed";
+import { seedDesignSystemStarters } from "@/server/design-starters-seed";
 import { seedMasterPromptStarter } from "@/server/master-prompt-starter";
 import { seedHandbookArticles } from "@/server/handbook-catalog";
 import { seedGolfClubs } from "@/server/golf-clubs";
@@ -207,11 +214,45 @@ async function ensurePortalSchema() {
 
 type BaseRecords = Awaited<ReturnType<typeof _ensureBaseRecords>>;
 let baseRecordsCache: BaseRecords | null = null;
+let baseRecordsPromise: Promise<BaseRecords> | null = null;
 
+/**
+ * Bootstrap the workspace, schema patches and built-in content. Runs once per
+ * container.
+ *
+ * ⚠️ Memoises the PROMISE, not just the resolved value. It previously did
+ * `if (cache) return cache; cache = await _ensureBaseRecords()`, so on a cold
+ * container every request that arrived before the first one finished saw an empty
+ * cache and started its OWN bootstrap. That is a check-then-act race across the
+ * whole of `_ensureBaseRecords`, and it had two visible consequences in production:
+ *
+ *  1. Three `CREATE INDEX IF NOT EXISTS` statements failed with 23505 on every
+ *     boot — both callers passed the existence check, then collided writing
+ *     `pg_class`. Harmless in outcome, but it put three `prisma:error` lines in the
+ *     log on every deploy, which is how a real error gets missed.
+ *
+ *  2. **Duplicate built-in Starters.** `_ensureBaseRecords` calls four starter
+ *     seeders, each an upsert-by-slug. Run concurrently, two invocations both read
+ *     "not present" and both insert. Production had 13 duplicate rows across 12
+ *     slugs, and the affected slug moved between observations — different races on
+ *     different boots. Cleaning them up without this fix would only postpone them.
+ *
+ * On failure the memo is cleared so a later request can retry; otherwise one
+ * transient database blip would poison the container for its whole lifetime.
+ */
 export async function ensureBaseRecords(): Promise<BaseRecords> {
   if (baseRecordsCache) return baseRecordsCache;
-  baseRecordsCache = await _ensureBaseRecords();
-  return baseRecordsCache;
+  baseRecordsPromise ??= _ensureBaseRecords().then(
+    (records) => {
+      baseRecordsCache = records;
+      return records;
+    },
+    (error) => {
+      baseRecordsPromise = null;
+      throw error;
+    },
+  );
+  return baseRecordsPromise;
 }
 
 async function _ensureBaseRecords() {
@@ -409,6 +450,24 @@ async function _ensureBaseRecords() {
     },
   });
 
+  // The default Launchpad template — the tracked requirements + legal drafts we ask
+  // a client for. Same discipline as the onboarding forms above: `update: {}` so
+  // operator edits in Settings → Launchpad survive a re-boot, and the empty update
+  // only guarantees the row exists.
+  await prisma.launchpadTemplate.upsert({
+    where: { slug: DEFAULT_LAUNCHPAD_TEMPLATE_SLUG },
+    update: {},
+    create: {
+      workspaceId: workspace.id,
+      slug: DEFAULT_LAUNCHPAD_TEMPLATE_SLUG,
+      name: DEFAULT_LAUNCHPAD_TEMPLATE_NAME,
+      description:
+        "Everything we need from a client to start and ship — foundations, website, payments, iOS, Android and compliance.",
+      structure: getDefaultLaunchpadStructure() as unknown as Prisma.InputJsonValue,
+      isDefault: true,
+    },
+  });
+
   // DevSignal default pipeline config. `update: {}` so in-app weight edits
   // aren't clobbered on re-boot (same discipline as the onboarding forms).
   {
@@ -452,6 +511,9 @@ async function _ensureBaseRecords() {
   await seedBuiltInStarters(workspace.id);
   // Net-new Prompt starters added after a gap analysis pass — see starters-additions-seed.ts.
   await seedStarterAdditions(workspace.id);
+  // iOS design-system Starters (one per app, reverse-engineered from awesome-ios-design-md).
+  // See design-starters-seed.ts.
+  await seedDesignSystemStarters(workspace.id);
   // The editable, versioned master build-prompt template — workspace-owned + create-only.
   await seedMasterPromptStarter(workspace.id);
 
@@ -919,7 +981,7 @@ async function ensureSampleProposal({
       data: {
         preparedBy: user.name ?? "Dan Lindsay",
         team: "Gitwork",
-        contactDetails: "hello@gitwork.io",
+        contactDetails: GITWORK.email,
         footerNote:
           "This proposal is valid for 30 days from the date above. Get in touch if you need an extension.",
         showBrandingBlock: true,

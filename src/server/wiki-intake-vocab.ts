@@ -30,9 +30,16 @@ export const INTAKE_TYPE = z.preprocess((v) => {
     FEATURE_REQUEST: "TASK",
     ENHANCEMENT: "TASK",
     REQUEST: "TASK",
+    DESIGN: "DESIGN",
+    DESIGN_CHANGE: "DESIGN",
+    DESIGN_EDIT: "DESIGN",
+    DESIGN_REQUEST: "DESIGN",
+    UI: "DESIGN",
+    UX: "DESIGN",
+    VISUAL: "DESIGN",
   };
   return map[k] ?? v;
-}, z.enum(["BUG", "FEEDBACK", "TASK"]));
+}, z.enum(["BUG", "FEEDBACK", "TASK", "DESIGN"]));
 
 export const INTAKE_PRIORITY = z.preprocess((v) => {
   if (typeof v !== "string") return v;
@@ -53,6 +60,30 @@ export const INTAKE_PRIORITY = z.preprocess((v) => {
   };
   return map[k] ?? v;
 }, z.enum(["LOW", "MEDIUM", "HIGH"]));
+
+/** The same dev-facing label Task.label uses — an integrator can send their
+ *  own wording and it maps onto the board's existing categories. */
+export const INTAKE_LABEL = z.preprocess((v) => {
+  if (v === null || v === undefined) return v;
+  if (typeof v !== "string") return v;
+  const trimmed = v.trim();
+  if (!trimmed) return null;
+  const k = trimmed.toUpperCase().replace(/[\s/-]+/g, "_");
+  const map: Record<string, string> = {
+    BACKEND: "BACKEND",
+    BACK_END: "BACKEND",
+    API: "BACKEND",
+    FRONTEND: "FRONTEND",
+    FRONT_END: "FRONTEND",
+    UI_UX: "UI_UX",
+    UI: "UI_UX",
+    UX: "UI_UX",
+    UI_UX_DONE: "UI_UX",
+    RESEARCH: "RESEARCH",
+    DESIGN: "DESIGN",
+  };
+  return map[k] ?? v;
+}, z.enum(["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN"]).nullable());
 
 export const INTAKE_STATUS = z.preprocess((v) => {
   if (typeof v !== "string") return v;
@@ -80,8 +111,12 @@ export const intakeCommonFields = {
   type: INTAKE_TYPE,
   priority: INTAKE_PRIORITY,
   status: INTAKE_STATUS,
+  label: INTAKE_LABEL.optional(),
   requestedBy: z.string().trim().max(120).optional().nullable(),
   externalUrl: z.string().trim().url().max(2000).optional().nullable(),
   /** Links only — never fetched server-side (SSRF). */
   attachmentUrls: z.array(z.string().trim().url().max(2000)).max(10).optional().nullable(),
+  /** Free-text device/OS context (e.g. "iPhone 14 Pro" / "iOS 17.4") — optional. */
+  device: z.string().trim().max(120).optional().nullable(),
+  osVersion: z.string().trim().max(60).optional().nullable(),
 } as const;

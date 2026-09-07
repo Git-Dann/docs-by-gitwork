@@ -1,5 +1,6 @@
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
+import { isStandardsControlApplicable } from "./platform-applicability";
 
 /**
  * Pulse's evidence-required verification catalogue. These checks are deliberately
@@ -261,7 +262,9 @@ export function resolveEvidenceBackedControls(platform: string | undefined, obse
 /** Evidence-required selected-surface checks. LOW confidence keeps manual work score-neutral. */
 export function runStandardsVerificationCatalog(platform?: string): PulseScanCheckInput[] {
   const [id, label, environment] = profileFor(platform);
-  return PULSE_VERIFICATION_CONTROLS.map((control) => ({
+  return PULSE_VERIFICATION_CONTROLS.filter((control) =>
+    isStandardsControlApplicable(platform, keyFor(control)),
+  ).map((control) => ({
     category: CATEGORIES.STANDARDS_VERIFICATION,
     checkKey: keyFor(control),
     label: `${label}: ${control.label}`,

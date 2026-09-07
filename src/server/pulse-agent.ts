@@ -12,7 +12,10 @@ import { computeComplianceScorecard } from "@/server/pulse-checks/compliance-sco
 import { resolveTargetMarkets, isJurisdictionCode, type JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
 import { calculateHealthScore } from "@/server/pulse-scan";
 import { rankFindings } from "@/server/pulse-checks/priority";
-import type { PulseScanCheckInput } from "@/types/pulse";
+import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
+import { collectorCoverage } from "@/server/pulse-checks/collector-health";
+import { evaluateReleaseGate, gatePolicyById, withScanIncomplete } from "@/server/pulse-checks/release-decision";
+import type { PulseScanCheckInput, GateEvaluationRecord, ScoreBreakdown } from "@/types/pulse";
 
 export interface AgentVerdict {
   url: string;
@@ -45,7 +48,33 @@ export interface AgentVerdict {
   warnings: { checkKey: string; label: string; category: string; detail: string }[];
   rls: { applicable: boolean; enforced: boolean | null; detail: string };
   compliance: { jurisdiction: string; label: string; compliancePct: number; missing: string[] }[];
+  /**
+   * ⚠️ Registry labels are ASSERTIONS OF THE DESIRED STATE ("Database queries are
+   * parameterised", "WebView JavaScript is not enabled for remote content"). This
+   * field used to be `.map((i) => i.label)`, so for a FAILING check it handed the
+   * caller a statement that the thing was already correct — the exact inverse of
+   * the finding, on what is Pulse's most agent-visible surface (the MCP
+   * `pulse_scan` / `pulse_scan_result` tools return this verbatim).
+   *
+   * It now carries the check's `detail`, which for a non-passing check is the
+   * evidence plus the remediation prose, and only falls back to the label when a
+   * check emitted no detail at all. Kept as `string[]` so the MCP contract does
+   * not break; read `topIssues` for the structured form.
+   */
   topFixes: string[];
+  /**
+   * The same top findings, structured — so a caller never has to parse prose to
+   * learn which check fired. `problem` is deliberately NOT the registry label,
+   * for the reason documented on `topFixes` above.
+   */
+  topIssues: { checkKey: string; category: string; problem: string; evidence: string }[];
+  /**
+   * The release decision. This is what a CI gate should exit on — the score and
+   * the issue counts are inputs to it, not substitutes for it. Always present:
+   * a scan that failed outright still gets an INCONCLUSIVE rather than nothing,
+   * because an absent decision is too easily read as consent.
+   */
+  gate: GateEvaluationRecord;
 }
 
 /** Build the compact verdict from a finished set of (trust-annotated) checks. */
@@ -57,6 +86,16 @@ export function buildAgentVerdict(args: {
   checks: PulseScanCheckInput[];
   targetMarkets?: string[];
   detectedMarkets?: JurisdictionCode[];
+  /**
+   * Collector coverage from the run. Absent when rebuilding a verdict from a
+   * stored scan, which costs the "a required collector never ran" reason but
+   * never invents one — a missing input must not become a clean bill.
+   */
+  collectors?: ScoreBreakdown["collectors"];
+  /** Which bar to judge against. Falls back to the general launch policy. */
+  gatePolicyId?: string;
+  /** Why the scan did not finish. Carried into both the summary and the gate. */
+  failureReason?: string;
 }): AgentVerdict {
   const { checks } = args;
   const bucket = (b: string) => checks.filter((c) => c.trustBucket === b);
@@ -104,12 +143,29 @@ export function buildAgentVerdict(args: {
     .map(asIssue)
     .sort(byPriority);
 
+  // Failures first, then warnings, already priority-ranked — so the top 5 are the
+  // top 5 by severity, and a scan whose worst findings are all warnings still
+  // returns something rather than an empty list.
+  const topFindings = [...confirmedIssues, ...warnings].slice(0, 5);
+
   const summaryParts = [
-    `${args.healthScore}/100`,
+    args.failureReason ?? `${args.healthScore}/100`,
     `${confirmedIssues.length} confirmed issue${confirmedIssues.length !== 1 ? "s" : ""}`,
   ];
   if (warnings.length > 0) summaryParts.push(`${warnings.length} warning${warnings.length !== 1 ? "s" : ""}`);
   if (rls.applicable) summaryParts.push(`RLS ${rls.enforced ? "enforced" : "OFF"}`);
+
+  // The gate is derived from the SAME checks this verdict describes, so the
+  // decision and the issue lists can never tell an agent two different stories.
+  const policy = gatePolicyById(args.gatePolicyId);
+  const evaluated = evaluateReleaseGate(
+    checks,
+    { ...computeScoreBreakdown(checks), collectors: args.collectors },
+    policy,
+  );
+  const gate = args.status === "FAILED"
+    ? withScanIncomplete(evaluated, args.failureReason ?? "Pulse reported the scan as FAILED.")
+    : evaluated;
 
   return {
     url: args.url,
@@ -130,15 +186,26 @@ export function buildAgentVerdict(args: {
     warnings: warnings.slice(0, 15),
     rls,
     compliance: scorecard.map((e) => ({ jurisdiction: e.jurisdiction, label: e.label, compliancePct: e.compliancePct, missing: e.missing.map((m) => m.label).slice(0, 8) })),
-    // Failures first, then warnings — so a scan whose worst findings are warnings
-    // still recommends something rather than returning an empty fix list. Both lists
-    // are already priority-ranked above, so the top 5 are genuinely the top 5.
-    topFixes: [...confirmedIssues, ...warnings].slice(0, 5).map((i) => i.label),
+    // `detail`, never `label` — see the AgentVerdict.topFixes doc comment. A label
+    // asserts the state we WANT, so emitting it for a failing check told the caller
+    // the opposite of what was found.
+    topFixes: topFindings.map((i) => (i.detail.trim() ? i.detail : i.label)),
+    topIssues: topFindings.map((i) => ({
+      checkKey: i.checkKey,
+      category: i.category,
+      problem: i.detail.trim() ? i.detail : i.label,
+      evidence: i.detail,
+    })),
+    gate,
   };
 }
 
 /** Run a fresh lite scan for an agent and return the compact verdict. */
-export async function runAgentScan(input: { url: string; targetMarkets?: string[] }): Promise<AgentVerdict> {
+export async function runAgentScan(input: {
+  url: string;
+  targetMarkets?: string[];
+  gatePolicyId?: string;
+}): Promise<AgentVerdict> {
   const markets = (input.targetMarkets ?? []).filter(isJurisdictionCode) as JurisdictionCode[];
   try {
     const lite = await runLiteScan({
@@ -156,14 +223,23 @@ export async function runAgentScan(input: { url: string; targetMarkets?: string[
       checks: lite.checks,
       targetMarkets: input.targetMarkets,
       detectedMarkets: lite.detectedMarkets,
+      collectors: collectorCoverage(lite.collectorExecutions),
+      gatePolicyId: input.gatePolicyId,
     });
   } catch (error) {
-    return {
-      url: input.url, status: "FAILED", healthScore: 0,
-      summary: error instanceof Error ? error.message : "Scan failed.",
-      grades: [], techStack: [],
-      counts: { confirmed: 0, likely: 0, verifiedWorking: 0, inconclusive: 0, failures: 0, warnings: 0 },
-      confirmedIssues: [], warnings: [], rls: { applicable: false, enforced: null, detail: "" }, compliance: [], topFixes: [],
-    };
+    const reason = error instanceof Error ? error.message : "Scan failed.";
+    // A scan that never ran cannot clear a gate. Returning no decision at all
+    // would leave a CI script to invent one, and the convenient invention is
+    // "nothing failed, therefore ship". Built through buildAgentVerdict so the
+    // failure path cannot drift from the rules the success path obeys.
+    return buildAgentVerdict({
+      url: input.url,
+      status: "FAILED",
+      healthScore: 0,
+      techStack: [],
+      checks: [],
+      gatePolicyId: input.gatePolicyId,
+      failureReason: reason,
+    });
   }
 }

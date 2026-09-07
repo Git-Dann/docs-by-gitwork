@@ -242,7 +242,7 @@ function DocumentLinkFormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-30">
+    <div className="fixed inset-0 z-50">
       <button
         type="button"
         aria-label="Close"

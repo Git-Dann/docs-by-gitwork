@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { usePulseEmbedConfig, useSetPulseEmbedConfig } from "@/hooks/use-pulse";
-import { DEFAULT_EMBED_CHECK_KEYS } from "@/server/pulse-embed-config";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import { CardHeader } from "@/components/pulse/pulse-overview";
@@ -47,11 +46,9 @@ export function PulseEmbedTopCard({
   collapsed?: boolean;
   onToggle?: () => void;
 }) {
-  const { data, isLoading } = usePulseEmbedConfig();
+  const { data, isLoading, isError, error, refetch, isFetching } = usePulseEmbedConfig();
   const { mutate: save, isPending } = useSetPulseEmbedConfig();
   const [copied, setCopied] = useState(false);
-
-  const checkCount = useMemo(() => (data?.checkKeys ?? DEFAULT_EMBED_CHECK_KEYS).length, [data?.checkKeys]);
 
   function copySnippet() {
     navigator.clipboard.writeText(EMBED_SNIPPET).then(() => {
@@ -70,14 +67,28 @@ export function PulseEmbedTopCard({
         onToggle={onToggle}
       />
 
-      {isLoading || !data ? (
+      {isError ? (
+        <div className="flex flex-1 flex-col gap-2 p-4">
+          <p className="rounded-[6px] border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            Couldn&apos;t load the embed config — {error instanceof Error ? error.message : "please try again."}
+          </p>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="self-start text-xs font-medium text-[var(--brand-700)] hover:underline disabled:opacity-50"
+          >
+            {isFetching ? "Retrying…" : "Retry"}
+          </button>
+        </div>
+      ) : isLoading || !data ? (
         <div className="flex flex-1 items-center p-4">
           <span className="text-xs text-[var(--text-4)]">Loading…</span>
         </div>
       ) : collapsed ? (
         <div className="flex flex-1 items-center justify-between gap-3 p-4">
           <span className="min-w-0 truncate text-xs text-[var(--text-4)]">
-            {checkCount} check{checkCount === 1 ? "" : "s"} shown on gitwork.co.uk
+            Widget for gitwork.co.uk
           </span>
           <Link href="/app/pulse/embed" className="shrink-0">
             <Button variant="secondary" size="sm">Manage</Button>
@@ -86,8 +97,24 @@ export function PulseEmbedTopCard({
       ) : (
         <div className="flex flex-1 flex-col p-4">
           <p className="text-[12px] leading-snug text-[var(--text-4)]">
-            The free site-health teaser embedded on gitwork.co.uk — {checkCount} check{checkCount === 1 ? "" : "s"} shown, email-gated findings.
+            The same free scanner as the sales page, as a widget to drop into someone else&apos;s
+            page. Every deterministic check runs; the triaged findings show with their evidence
+            and no email is asked for. The in-depth review — what it means, the fix order, the
+            advisory tail — is the ask.
           </p>
+
+          <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 border-t border-[var(--border-2)] pt-3">
+            <dt className="widget-data-label">Route</dt>
+            <dd className="text-right font-mono text-[11px] text-[var(--text-3)]">/embed/pulse</dd>
+            <dt className="widget-data-label">Bot protection</dt>
+            <dd className="text-right text-[11px] text-[var(--text-3)]">
+              {/* `turnstileConfigured` requires BOTH keys — a site key alone renders a
+                  widget that can never verify, which reads as configured and is not. */}
+              {data.turnstileConfigured ? "Turnstile" : "Not configured"}
+            </dd>
+            <dt className="widget-data-label">Attribution</dt>
+            <dd className="text-right font-mono text-[11px] text-[var(--text-3)]">gitwork.co.uk</dd>
+          </dl>
 
           <div className="mt-3 flex items-center justify-between gap-3">
             <span className="text-xs text-[var(--text-3)]">Enabled</span>
@@ -97,7 +124,7 @@ export function PulseEmbedTopCard({
           <div className="mt-3">
             <p className="text-xs text-[var(--text-3)]">Embed snippet</p>
             <div className="mt-1 flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-2">
-              <code className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-3)]">{EMBED_SNIPPET}</code>
+              <code title={EMBED_SNIPPET} className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-3)]">{EMBED_SNIPPET}</code>
               <button
                 type="button"
                 onClick={copySnippet}
